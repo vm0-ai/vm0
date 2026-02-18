@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.18.0](https://github.com/vm0-ai/vm0/compare/core-v8.17.0...core-v8.18.0) (2026-02-18)
+
+
+### Features
+
+* **cli:** add computer connector support ([#3124](https://github.com/vm0-ai/vm0/issues/3124)) ([a950821](https://github.com/vm0-ai/vm0/commit/a9508213014337b0a4a7effb4756ed7056e3cb0f))
+
 ## [8.17.0](https://github.com/vm0-ai/vm0/compare/core-v8.16.1...core-v8.17.0) (2026-02-17)
 
 

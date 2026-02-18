@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.38.0](https://github.com/vm0-ai/vm0/compare/cli-v9.37.7...cli-v9.38.0) (2026-02-18)
+
+
+### Features
+
+* **cli:** add computer connector support ([#3124](https://github.com/vm0-ai/vm0/issues/3124)) ([a950821](https://github.com/vm0-ai/vm0/commit/a9508213014337b0a4a7effb4756ed7056e3cb0f))
+
+
+### Performance Improvements
+
+* **ci:** deploy runner to all metal hosts in parallel ([#3134](https://github.com/vm0-ai/vm0/issues/3134)) ([88152d3](https://github.com/vm0-ai/vm0/commit/88152d30f602490b463ce6049d327c67d21516cb))
+* **ci:** increase runner e2e parallelism to 5 per host ([#3135](https://github.com/vm0-ai/vm0/issues/3135)) ([d81e066](https://github.com/vm0-ai/vm0/commit/d81e066c9b6b3520ba6a734b0b62bd2ddb030f5f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.18.0
+
 ## [9.37.7](https://github.com/vm0-ai/vm0/compare/cli-v9.37.6...cli-v9.37.7) (2026-02-17)
 
 

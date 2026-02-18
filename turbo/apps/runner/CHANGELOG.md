@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.19.6](https://github.com/vm0-ai/vm0/compare/runner-v3.19.5...runner-v3.19.6) (2026-02-18)
+
+
+### Bug Fixes
+
+* **vsock-guest:** handle echild race with pid 1 zombie reaper ([#3118](https://github.com/vm0-ai/vm0/issues/3118)) ([985f349](https://github.com/vm0-ai/vm0/commit/985f349134b981d6123fe26ee79f991ec56ceb59))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.18.0
+
 ## [3.19.5](https://github.com/vm0-ai/vm0/compare/runner-v3.19.4...runner-v3.19.5) (2026-02-17)
 
 

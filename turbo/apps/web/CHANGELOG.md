@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.45.0](https://github.com/vm0-ai/vm0/compare/web-v12.44.0...web-v12.45.0) (2026-02-18)
+
+
+### Features
+
+* **cli:** add computer connector support ([#3124](https://github.com/vm0-ai/vm0/issues/3124)) ([a950821](https://github.com/vm0-ai/vm0/commit/a9508213014337b0a4a7effb4756ed7056e3cb0f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.18.0
+
 ## [12.44.0](https://github.com/vm0-ai/vm0/compare/web-v12.43.1...web-v12.44.0) (2026-02-17)
 
 
