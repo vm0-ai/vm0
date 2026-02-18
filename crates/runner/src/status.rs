@@ -61,8 +61,10 @@ impl StatusTracker {
         }
     }
 
-    pub fn set_proxy_port(&mut self, port: u16) {
+    pub async fn set_proxy_port(&mut self, port: u16) {
         self.proxy_port = Some(port);
+        let state = self.state.lock().await;
+        self.write_status(&state).await;
     }
 
     pub async fn set_mode(&self, mode: RunnerMode) {
@@ -194,9 +196,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
         let mut tracker = StatusTracker::new(path.clone());
-        tracker.set_proxy_port(8080);
-
-        tracker.write_initial().await;
+        tracker.set_proxy_port(8080).await;
 
         let status = read_status(&path);
         assert_eq!(status["proxy_port"], 8080);

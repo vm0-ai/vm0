@@ -1149,9 +1149,19 @@ jobs:
               --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
               --env USE_MOCK_CLAUDE=true"
 
-            # Health check — give the runner a moment to initialize (mitmdump, status.json)
-            sleep 3
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner doctor"
+            # Health check — wait for the runner to initialize (mitmdump, status.json).
+            # Retry up to 5 times with 2s intervals to handle slow cold starts.
+            for attempt in 1 2 3 4 5; do
+              sleep 2
+              if ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner doctor"; then
+                break
+              fi
+              if [ "$attempt" -eq 5 ]; then
+                echo "runner doctor failed after 5 attempts"
+                exit 1
+              fi
+              echo "runner doctor attempt $attempt failed, retrying..."
+            done
             echo "=== Runner started on ${HOST} ==="
           }
 
