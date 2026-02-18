@@ -1,5 +1,3 @@
-//! vm0 runner — manages Firecracker VM sandboxes on metal hosts.
-
 mod api;
 mod cmd;
 mod config;
