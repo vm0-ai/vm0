@@ -109,6 +109,30 @@ impl HomePaths {
     pub fn snapshot_lock(&self, hash: &str) -> PathBuf {
         self.locks_dir().join(format!("snapshot-{hash}.lock"))
     }
+
+    /// Extract the rootfs hash from a managed rootfs file path.
+    ///
+    /// Returns `Some(hash)` if the path is `<rootfs_dir>/{hash}/<file>`, `None` otherwise.
+    pub fn extract_rootfs_hash(&self, rootfs_path: &Path) -> Option<String> {
+        let parent = rootfs_path.parent()?;
+        if parent.parent()? == self.rootfs_dir() {
+            parent.file_name()?.to_str().map(String::from)
+        } else {
+            None
+        }
+    }
+
+    /// Extract the snapshot hash from a managed snapshot file path.
+    ///
+    /// Returns `Some(hash)` if the path is `<snapshots_dir>/{hash}/<file>`, `None` otherwise.
+    pub fn extract_snapshot_hash(&self, snapshot_path: &Path) -> Option<String> {
+        let parent = snapshot_path.parent()?;
+        if parent.parent()? == self.snapshots_dir() {
+            parent.file_name()?.to_str().map(String::from)
+        } else {
+            None
+        }
+    }
 }
 
 /// Paths for a rootfs build output directory (keyed by input hash).
@@ -171,5 +195,52 @@ impl LogPaths {
 
     pub fn network_log(&self, run_id: uuid::Uuid) -> PathBuf {
         self.dir.join(format!("network-{run_id}.jsonl"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn home(root: &Path) -> HomePaths {
+        HomePaths {
+            root: root.to_path_buf(),
+        }
+    }
+
+    #[test]
+    fn extract_rootfs_hash_from_managed_path() {
+        let h = home(Path::new("/home/user/.vm0-runner"));
+        let path = Path::new("/home/user/.vm0-runner/rootfs/abc123/rootfs.squashfs");
+        assert_eq!(h.extract_rootfs_hash(path).as_deref(), Some("abc123"));
+    }
+
+    #[test]
+    fn extract_rootfs_hash_returns_none_for_unmanaged_path() {
+        let h = home(Path::new("/home/user/.vm0-runner"));
+        let path = Path::new("/other/rootfs/abc123/rootfs.squashfs");
+        assert_eq!(h.extract_rootfs_hash(path), None);
+    }
+
+    #[test]
+    fn extract_rootfs_hash_returns_none_for_bare_file() {
+        let h = home(Path::new("/home/user/.vm0-runner"));
+        let path = Path::new("/home/user/.vm0-runner/rootfs/rootfs.squashfs");
+        // parent = rootfs/, parent.parent = .vm0-runner/ — doesn't match rootfs_dir
+        assert_eq!(h.extract_rootfs_hash(path), None);
+    }
+
+    #[test]
+    fn extract_snapshot_hash_from_managed_path() {
+        let h = home(Path::new("/home/user/.vm0-runner"));
+        let path = Path::new("/home/user/.vm0-runner/snapshots/def456/snapshot.bin");
+        assert_eq!(h.extract_snapshot_hash(path).as_deref(), Some("def456"));
+    }
+
+    #[test]
+    fn extract_snapshot_hash_returns_none_for_unmanaged_path() {
+        let h = home(Path::new("/home/user/.vm0-runner"));
+        let path = Path::new("/tmp/snapshots/def456/snapshot.bin");
+        assert_eq!(h.extract_snapshot_hash(path), None);
     }
 }

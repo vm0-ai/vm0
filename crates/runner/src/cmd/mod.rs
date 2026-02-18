@@ -1,5 +1,6 @@
 mod benchmark;
 mod build;
+mod gc;
 mod rootfs;
 mod service;
 mod setup;
@@ -8,6 +9,7 @@ mod start;
 
 pub use benchmark::{BenchmarkArgs, run_benchmark};
 pub use build::{BuildArgs, run_build};
+pub use gc::{GcArgs, run_gc};
 pub use rootfs::{RootfsArgs, run_rootfs};
 pub use service::{ServiceArgs, run_service};
 pub use setup::run_setup;

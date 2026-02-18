@@ -174,6 +174,21 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
                 runner_config.base_dir.display()
             ))
         })?;
+    // Shared locks on rootfs/snapshot — allows `runner gc` to detect in-use resources.
+    let _rootfs_lock =
+        if let Some(hash) = home.extract_rootfs_hash(&runner_config.firecracker.rootfs) {
+            Some(lock::acquire_shared(home.rootfs_lock(&hash)).await?)
+        } else {
+            None
+        };
+    let _snapshot_lock = if let Some(ref snap) = runner_config.firecracker.snapshot
+        && let Some(hash) = home.extract_snapshot_hash(&snap.snapshot_path)
+    {
+        Some(lock::acquire_shared(home.snapshot_lock(&hash)).await?)
+    } else {
+        None
+    };
+
     let log_paths = crate::paths::LogPaths::new(home.logs_dir());
     tokio::fs::create_dir_all(log_paths.dir())
         .await

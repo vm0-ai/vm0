@@ -34,6 +34,20 @@ pub async fn acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
     .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))?
 }
 
+/// Acquire a shared flock on the given path, blocking until available.
+///
+/// Multiple shared locks can coexist; only exclusive locks conflict.
+/// The returned guard holds the lock until dropped.
+pub async fn acquire_shared(path: PathBuf) -> RunnerResult<Flock<File>> {
+    tokio::task::spawn_blocking(move || {
+        let file = open_lock_file(&path)?;
+        Flock::lock(file, FlockArg::LockShared)
+            .map_err(|(_file, e)| RunnerError::Internal(format!("flock {}: {e}", path.display())))
+    })
+    .await
+    .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))?
+}
+
 /// Try to acquire an exclusive flock, returning an error immediately if held by another process.
 ///
 /// The returned guard holds the lock until dropped.
@@ -129,6 +143,43 @@ mod tests {
         let guard = try_acquire(path.clone()).await.unwrap();
         assert!(path.exists());
         drop(guard);
+    }
+
+    #[tokio::test]
+    async fn shared_locks_coexist() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+
+        let _guard1 = acquire_shared(path.clone()).await.unwrap();
+        let _guard2 = acquire_shared(path.clone()).await.unwrap();
+        // Both held simultaneously — no conflict.
+    }
+
+    #[tokio::test]
+    async fn shared_lock_blocks_exclusive() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+
+        let _guard = acquire_shared(path.clone()).await.unwrap();
+        let err = try_acquire(path).await.unwrap_err();
+        assert!(err.to_string().contains("already held by another process"));
+    }
+
+    #[tokio::test]
+    async fn exclusive_blocks_shared_nonblocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+
+        let _guard = acquire(path.clone()).await.unwrap();
+
+        // A nonblocking shared attempt must fail.
+        let file = std::fs::File::options()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        let err = Flock::lock(file, FlockArg::LockSharedNonblock).unwrap_err();
+        assert_eq!(err.1, nix::errno::Errno::EWOULDBLOCK);
     }
 
     #[tokio::test]

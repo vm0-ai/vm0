@@ -58,6 +58,8 @@ enum Command {
     Start(Box<cmd::StartArgs>),
     /// Manage the runner as a systemd service
     Service(cmd::ServiceArgs),
+    /// Clean up unused rootfs and snapshot directories
+    Gc(cmd::GcArgs),
 }
 
 /// Extract the runner `name` field from a runner config YAML.
@@ -184,6 +186,7 @@ async fn main() -> ExitCode {
         Command::Benchmark(args) => cmd::run_benchmark(args).await,
         Command::Start(args) => cmd::run_start(*args).await.map(|()| ExitCode::SUCCESS),
         Command::Service(args) => cmd::run_service(args).await.map(|()| ExitCode::SUCCESS),
+        Command::Gc(args) => cmd::run_gc(args).await.map(|()| ExitCode::SUCCESS),
     };
 
     match result {
