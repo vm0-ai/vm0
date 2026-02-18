@@ -7,6 +7,12 @@ on:
       - main
   merge_group:
 
+env:
+  # Sandbox VM parameters for runner build
+  RUNNER_VCPU: 2
+  RUNNER_MEMORY_MB: 2048
+  RUNNER_MAX_CONCURRENT: 6
+
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'merge_group' && format('merge-queue-{0}', github.run_id) || 'staging') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1094,6 +1100,9 @@ jobs:
               --guest-download ${BIN_DIR}/guest-download \
               --guest-agent ${BIN_DIR}/guest-agent \
               --guest-mock-claude ${BIN_DIR}/guest-mock-claude \
+              --vcpu ${RUNNER_VCPU} \
+              --memory-mb ${RUNNER_MEMORY_MB} \
+              --max-concurrent ${RUNNER_MAX_CONCURRENT} \
               --api-url http://localhost \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
@@ -1182,6 +1191,9 @@ jobs:
               --guest-download ${BIN_DIR}/guest-download \
               --guest-agent ${BIN_DIR}/guest-agent \
               --guest-mock-claude ${BIN_DIR}/guest-mock-claude \
+              --vcpu ${RUNNER_VCPU} \
+              --memory-mb ${RUNNER_MEMORY_MB} \
+              --max-concurrent ${RUNNER_MAX_CONCURRENT} \
               --api-url ${PREVIEW_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
@@ -1306,7 +1318,7 @@ jobs:
 
       - name: Run Runner E2E Tests (Chunk ${{ matrix.index }})
         run: |
-          PARALLEL=5
+          PARALLEL=${RUNNER_MAX_CONCURRENT}
           echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel) ==="
           echo "Files: ${{ matrix.files }}"
           BATS_TEST_TIMEOUT=60 RUNNER_GROUP="vm0/development-${JOB_REF}" ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --no-parallelize-within-files ${{ matrix.files }}
