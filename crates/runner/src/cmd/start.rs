@@ -177,14 +177,18 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     // Shared locks on rootfs/snapshot — allows `runner gc` to detect in-use resources.
     let _rootfs_lock =
         if let Some(hash) = home.extract_rootfs_hash(&runner_config.firecracker.rootfs) {
-            Some(lock::acquire_shared(home.rootfs_lock(&hash)).await?)
+            let lock = lock::acquire_shared(home.rootfs_lock(&hash)).await?;
+            crate::paths::touch_mtime(&home.rootfs_dir().join(&hash));
+            Some(lock)
         } else {
             None
         };
     let _snapshot_lock = if let Some(ref snap) = runner_config.firecracker.snapshot
         && let Some(hash) = home.extract_snapshot_hash(&snap.snapshot_path)
     {
-        Some(lock::acquire_shared(home.snapshot_lock(&hash)).await?)
+        let lock = lock::acquire_shared(home.snapshot_lock(&hash)).await?;
+        crate::paths::touch_mtime(&home.snapshots_dir().join(&hash));
+        Some(lock)
     } else {
         None
     };

@@ -56,6 +56,7 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     if is_build_complete(&rootfs_paths).await? {
         tracing::info!("[OK] rootfs already built: {}", output_dir.display());
         tracing::info!("rootfs hash: {hash}");
+        crate::paths::touch_mtime(output_dir);
         return Ok(hash);
     }
 
@@ -66,6 +67,7 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     if is_build_complete(&rootfs_paths).await? {
         tracing::info!("[OK] rootfs already built: {}", output_dir.display());
         tracing::info!("rootfs hash: {hash}");
+        crate::paths::touch_mtime(output_dir);
         return Ok(hash);
     }
 

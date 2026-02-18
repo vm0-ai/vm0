@@ -4,6 +4,19 @@ use sha2::{Digest, Sha256};
 
 use crate::error::{RunnerError, RunnerResult};
 
+/// Update a directory's mtime to now, so `runner gc` treats it as recently used.
+pub fn touch_mtime(dir: &Path) {
+    let Ok(f) = std::fs::File::open(dir) else {
+        tracing::debug!("touch_mtime: cannot open {}", dir.display());
+        return;
+    };
+    if let Err(e) =
+        f.set_times(std::fs::FileTimes::new().set_modified(std::time::SystemTime::now()))
+    {
+        tracing::debug!("touch_mtime: set_times failed for {}: {e}", dir.display());
+    }
+}
+
 /// Guest paths (must match rootfs layout).
 pub mod guest {
     pub const STORAGE_MANIFEST: &str = "/tmp/storage-manifest.json";

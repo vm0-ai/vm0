@@ -173,11 +173,17 @@ fn probe_lock(path: &Path) -> LockProbe {
     }
 }
 
-/// Compute total disk usage (st_blocks * 512) and latest mtime for a directory.
+/// Compute total disk usage (st_blocks * 512) and last-used time for a directory.
+///
+/// Last-used time comes from the root directory's own mtime, which `touch_mtime`
+/// updates on every cache hit and `runner start`.
 async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
-    let mut total_blocks = 0u64;
-    let mut latest_mtime = SystemTime::UNIX_EPOCH;
+    let mtime = match tokio::fs::metadata(dir).await {
+        Ok(meta) => meta.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+        Err(_) => SystemTime::UNIX_EPOCH,
+    };
 
+    let mut total_blocks = 0u64;
     let mut stack = vec![dir.to_path_buf()];
     while let Some(current) = stack.pop() {
         let mut entries = match tokio::fs::read_dir(&current).await {
@@ -194,18 +200,13 @@ async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
             };
             const BYTES_PER_BLOCK: u64 = 512;
             total_blocks += meta.blocks() * BYTES_PER_BLOCK;
-            if let Ok(mtime) = meta.modified()
-                && mtime > latest_mtime
-            {
-                latest_mtime = mtime;
-            }
             if meta.is_dir() {
                 stack.push(entry.path());
             }
         }
     }
 
-    (total_blocks, latest_mtime)
+    (total_blocks, mtime)
 }
 
 fn human_bytes(bytes: u64) -> String {
@@ -419,23 +420,22 @@ mod tests {
 
         let artifacts_dir = dir.path().join("snapshots");
 
-        // Create two dirs and set explicit mtimes for determinism.
+        // Create two dirs and set explicit directory mtimes for determinism.
+        // dir_stats uses the root directory mtime as the "last used" signal.
         let old_dir = artifacts_dir.join("old_hash");
         std::fs::create_dir_all(&old_dir).unwrap();
-        let old_file_path = old_dir.join("snapshot.bin");
-        std::fs::write(&old_file_path, b"old").unwrap();
+        std::fs::write(old_dir.join("snapshot.bin"), b"old").unwrap();
         let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-        std::fs::File::open(&old_file_path)
+        std::fs::File::open(&old_dir)
             .unwrap()
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
 
         let new_dir = artifacts_dir.join("new_hash");
         std::fs::create_dir_all(&new_dir).unwrap();
-        let new_file_path = new_dir.join("snapshot.bin");
-        std::fs::write(&new_file_path, b"new").unwrap();
+        std::fs::write(new_dir.join("snapshot.bin"), b"new").unwrap();
         let new_time = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000);
-        std::fs::File::open(&new_file_path)
+        std::fs::File::open(&new_dir)
             .unwrap()
             .set_times(FileTimes::new().set_modified(new_time))
             .unwrap();

@@ -33,6 +33,7 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<SnapshotConfig> {
 
     if is_snapshot_complete(&output).await? {
         tracing::info!("[OK] snapshot already exists: {}", output_dir.display());
+        crate::paths::touch_mtime(&output_dir);
         return Ok(output.snapshot_config(&snapshot_hash).into());
     }
 
@@ -42,6 +43,7 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<SnapshotConfig> {
     // Re-check after acquiring lock — another process may have completed the build.
     if is_snapshot_complete(&output).await? {
         tracing::info!("[OK] snapshot already exists: {}", output_dir.display());
+        crate::paths::touch_mtime(&output_dir);
         return Ok(output.snapshot_config(&snapshot_hash).into());
     }
 
