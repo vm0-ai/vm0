@@ -6,7 +6,7 @@
  * - localhost:9222 (WebSocket) → wss://chrome.{domain} (Chrome CDP)
  * - localhost:18080 (HTTP) → https://webdav.{domain} (WebDAV)
  */
-import WebSocket from "ws";
+import WebSocket, { WebSocketServer } from "ws";
 import http from "http";
 import https from "https";
 
@@ -21,10 +21,10 @@ if (!BRIDGE_TOKEN || !DOMAIN) {
 }
 
 // Chrome CDP WebSocket Proxy (localhost:9222 → wss://chrome.{domain})
-const wss = new WebSocket.Server({ host: "127.0.0.1", port: 9222 });
+const wss = new WebSocketServer({ host: "127.0.0.1", port: 9222 });
 console.log("✅ Chrome CDP proxy listening on ws://localhost:9222");
 
-wss.on("connection", (localWs) => {
+wss.on("connection", (localWs: WebSocket) => {
   const remoteUrl = `wss://chrome.${DOMAIN}`;
   const remoteWs = new WebSocket(remoteUrl, {
     headers: {
@@ -38,13 +38,13 @@ wss.on("connection", (localWs) => {
     console.log("   Remote WebSocket connected");
   });
 
-  localWs.on("message", (msg) => {
+  localWs.on("message", (msg: WebSocket.RawData) => {
     if (remoteWs.readyState === WebSocket.OPEN) {
       remoteWs.send(msg);
     }
   });
 
-  remoteWs.on("message", (msg) => {
+  remoteWs.on("message", (msg: WebSocket.RawData) => {
     if (localWs.readyState === WebSocket.OPEN) {
       localWs.send(msg);
     }
@@ -60,11 +60,11 @@ wss.on("connection", (localWs) => {
     localWs.close();
   });
 
-  localWs.on("error", (err) => {
+  localWs.on("error", (err: Error) => {
     console.error("   Local WebSocket error:", err.message);
   });
 
-  remoteWs.on("error", (err) => {
+  remoteWs.on("error", (err: Error) => {
     console.error("   Remote WebSocket error:", err.message);
   });
 });
