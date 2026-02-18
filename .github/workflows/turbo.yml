@@ -977,7 +977,6 @@ jobs:
         needs.prepare.outputs.crates-changed == 'true'
       )
     outputs:
-      runner-hosts: ${{ steps.host.outputs.hosts }}
       host-count: ${{ steps.host.outputs.host-count }}
       bin-dir: ${{ steps.host.outputs.bin-dir }}
       runner-dir: ${{ steps.host.outputs.runner-dir }}
@@ -1009,7 +1008,6 @@ jobs:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
         run: |
-          echo "hosts=${METAL_HOSTS}" >> "$GITHUB_OUTPUT"
           echo "bin-dir=~/.vm0-runner/bin/${JOB_REF}" >> "$GITHUB_OUTPUT"
           echo "runner-dir=~/.vm0-runner/runners/${JOB_REF}" >> "$GITHUB_OUTPUT"
           NUM_HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | grep -c .)
@@ -1025,7 +1023,7 @@ jobs:
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          METAL_HOSTS: ${{ steps.host.outputs.hosts }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           BIN_DIR: ${{ steps.host.outputs.bin-dir }}
           RUNNER_DIR: ${{ steps.host.outputs.runner-dir }}
@@ -1117,7 +1115,7 @@ jobs:
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          METAL_HOSTS: ${{ needs.deploy-runner-prepare.outputs.runner-hosts }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
@@ -1274,12 +1272,12 @@ jobs:
       always() &&
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
-      needs.deploy-runner-prepare.outputs.runner-hosts != ''
+      needs.deploy-runner-prepare.outputs.bin-dir != ''
     steps:
       - name: Cleanup runner on all metal hosts
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          METAL_HOSTS: ${{ needs.deploy-runner-prepare.outputs.runner-hosts }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
