@@ -980,6 +980,7 @@ jobs:
       host-count: ${{ steps.host.outputs.host-count }}
       bin-dir: ${{ steps.host.outputs.bin-dir }}
       runner-dir: ${{ steps.host.outputs.runner-dir }}
+      runner-matrix: ${{ steps.runner-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
 
@@ -1017,6 +1018,69 @@ jobs:
           fi
           echo "host-count=${NUM_HOSTS}" >> "$GITHUB_OUTPUT"
           echo "Deploying to ${NUM_HOSTS} metal hosts"
+
+      - name: Generate runner E2E test matrix
+        id: runner-matrix
+        shell: bash
+        run: |
+          # Split runner tests into NUM_HOSTS chunks (one per metal host)
+          NUM_CHUNKS=${{ steps.host.outputs.host-count }}
+
+          declare -A FILE_TESTS
+          TOTAL_TESTS=0
+          for f in e2e/tests/03-experimental-runner/*.bats; do
+            count=$(grep -c "^@test" "$f" 2>/dev/null || echo 0)
+            FILE_TESTS["$f"]=$count
+            TOTAL_TESTS=$((TOTAL_TESTS + count))
+          done
+
+          mapfile -t SORTED_FILES < <(
+            for f in "${!FILE_TESTS[@]}"; do
+              echo "${FILE_TESTS[$f]} $f"
+            done | sort -rn | cut -d' ' -f2
+          )
+
+          echo "Runner E2E: ${#SORTED_FILES[@]} files, $TOTAL_TESTS tests, $NUM_CHUNKS chunks (1 per metal host)"
+
+          # Greedy load-balancing: assign heaviest file to lightest chunk
+          declare -a CHUNK_FILES
+          declare -a CHUNK_COUNTS
+          for ((i=0; i<NUM_CHUNKS; i++)); do
+            CHUNK_FILES[$i]=""
+            CHUNK_COUNTS[$i]=0
+          done
+
+          for f in "${SORTED_FILES[@]}"; do
+            tests=${FILE_TESTS[$f]}
+            min_chunk=0
+            min_count=${CHUNK_COUNTS[0]}
+            for ((i=1; i<NUM_CHUNKS; i++)); do
+              if [ ${CHUNK_COUNTS[$i]} -lt $min_count ]; then
+                min_chunk=$i
+                min_count=${CHUNK_COUNTS[$i]}
+              fi
+            done
+            if [ -n "${CHUNK_FILES[$min_chunk]}" ]; then
+              CHUNK_FILES[$min_chunk]="${CHUNK_FILES[$min_chunk]} $f"
+            else
+              CHUNK_FILES[$min_chunk]="$f"
+            fi
+            CHUNK_COUNTS[$min_chunk]=$((CHUNK_COUNTS[$min_chunk] + tests))
+          done
+
+          CHUNKS="["
+          for ((i=0; i<NUM_CHUNKS; i++)); do
+            if [ $i -gt 0 ]; then
+              CHUNKS="$CHUNKS,"
+            fi
+            files="${CHUNK_FILES[$i]}"
+            file_count=$(echo "$files" | wc -w)
+            CHUNKS="$CHUNKS{\"index\":$((i+1)),\"files\":\"$files\"}"
+            echo "Chunk $((i+1)): $file_count files, ${CHUNK_COUNTS[$i]} tests"
+          done
+          CHUNKS="$CHUNKS]"
+
+          echo "matrix=$CHUNKS" >> $GITHUB_OUTPUT
 
       - name: Deploy binaries and build rootfs/snapshot on all metal hosts
         shell: bash
@@ -1219,6 +1283,10 @@ jobs:
         needs.prepare.outputs.runner-changed == 'true' ||
         needs.prepare.outputs.crates-changed == 'true'
       )
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.deploy-runner-prepare.outputs.runner-matrix) }}
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v6
@@ -1263,12 +1331,13 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-      - name: Run Runner E2E Tests
+      - name: Run Runner E2E Tests (Chunk ${{ matrix.index }})
         run: |
           PARALLEL=$(( HOST_COUNT * 5 ))
-          echo "=== Running Runner E2E Tests (${PARALLEL} parallel across ${HOST_COUNT} hosts) ==="
-          BATS_TEST_TIMEOUT=60 RUNNER_GROUP="vm0/development-${JOB_REF}" ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats
-          echo "✅ Runner tests passed"
+          echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel) ==="
+          echo "Files: ${{ matrix.files }}"
+          BATS_TEST_TIMEOUT=60 RUNNER_GROUP="vm0/development-${JOB_REF}" ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --no-parallelize-within-files ${{ matrix.files }}
+          echo "✅ Chunk ${{ matrix.index }} tests passed"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
