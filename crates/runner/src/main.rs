@@ -8,6 +8,8 @@ mod http;
 mod lock;
 mod network_logs;
 mod paths;
+#[allow(dead_code)] // used by cmd/doctor (next commit)
+mod process;
 mod proxy;
 mod status;
 mod telemetry;
