@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdir, rm, readFile } from "fs/promises";
+import { mkdir, rm } from "fs/promises";
 import { join } from "path";
 import { homedir } from "os";
 import {
