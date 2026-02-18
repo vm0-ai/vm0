@@ -14,6 +14,7 @@ use crate::config;
 use crate::deps;
 use crate::error::{RunnerError, RunnerResult};
 use crate::executor::{self, ExecutorConfig};
+use crate::lock;
 use crate::paths::{HomePaths, RunnerPaths};
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::status::{RunnerMode, StatusTracker};
@@ -156,7 +157,23 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
             ))
         })?;
 
+    // Exclusive lock — prevents two runner processes from sharing the same base_dir.
+    // Canonicalize so that equivalent paths (e.g. with `..`) produce the same lock.
+    let base_dir_canonical = runner_config.base_dir.canonicalize().map_err(|e| {
+        RunnerError::Config(format!(
+            "canonicalize base_dir {}: {e}",
+            runner_config.base_dir.display()
+        ))
+    })?;
     let home = HomePaths::new()?;
+    let _base_dir_lock = lock::try_acquire(home.base_dir_lock(&base_dir_canonical))
+        .await
+        .map_err(|e| {
+            RunnerError::Config(format!(
+                "cannot lock base_dir {}: {e}",
+                runner_config.base_dir.display()
+            ))
+        })?;
     let log_paths = crate::paths::LogPaths::new(home.logs_dir());
     tokio::fs::create_dir_all(log_paths.dir())
         .await

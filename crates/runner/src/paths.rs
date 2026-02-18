@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use sha2::{Digest, Sha256};
+
 use crate::error::{RunnerError, RunnerResult};
 
 /// Guest paths (must match rootfs layout).
@@ -93,6 +95,11 @@ impl HomePaths {
 
     pub fn locks_dir(&self) -> PathBuf {
         self.root.join("locks")
+    }
+
+    pub fn base_dir_lock(&self, base_dir: &Path) -> PathBuf {
+        let hash = Sha256::digest(base_dir.as_os_str().as_encoded_bytes());
+        self.locks_dir().join(format!("base-dir-{hash:x}.lock"))
     }
 
     pub fn rootfs_lock(&self, hash: &str) -> PathBuf {
