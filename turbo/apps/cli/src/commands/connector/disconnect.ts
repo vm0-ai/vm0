@@ -2,6 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { CONNECTOR_TYPES, connectorTypeSchema } from "@vm0/core";
 import { deleteConnector } from "../../lib/api";
+import { stopComputerServices } from "./lib/computer/stop-services";
 
 export const disconnectCommand = new Command()
   .name("disconnect")
@@ -20,7 +21,14 @@ export const disconnectCommand = new Command()
         process.exit(1);
       }
 
-      await deleteConnector(parseResult.data);
+      const connectorType = parseResult.data;
+
+      // Special flow for computer connector
+      if (connectorType === "computer") {
+        await stopComputerServices();
+      }
+
+      await deleteConnector(connectorType);
       console.log(chalk.green(`✓ Disconnected ${type}`));
     } catch (error) {
       if (error instanceof Error) {
