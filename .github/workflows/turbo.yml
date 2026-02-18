@@ -1148,6 +1148,10 @@ jobs:
               --config ${RUNNER_DIR}/runner.yaml \
               --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
               --env USE_MOCK_CLAUDE=true"
+
+            # Health check — give the runner a moment to initialize (mitmdump, status.json)
+            sleep 3
+            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner doctor"
             echo "=== Runner started on ${HOST} ==="
           }
 
