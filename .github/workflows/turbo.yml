@@ -1243,7 +1243,7 @@ jobs:
 
       - name: Run Runner E2E Tests
         run: |
-          PARALLEL=$(( HOST_COUNT * 4 ))
+          PARALLEL=$(( HOST_COUNT * 5 ))
           echo "=== Running Runner E2E Tests (${PARALLEL} parallel across ${HOST_COUNT} hosts) ==="
           BATS_TEST_TIMEOUT=60 RUNNER_GROUP="vm0/development-${JOB_REF}" ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats
           echo "✅ Runner tests passed"
