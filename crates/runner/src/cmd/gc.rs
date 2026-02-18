@@ -40,8 +40,10 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     )
     .await?;
 
+    let locks_removed = gc_orphaned_locks(&home, args.dry_run).await?;
+
     let total = rootfs_freed + snapshot_freed;
-    if total == 0 {
+    if total == 0 && locks_removed == 0 {
         info!("nothing to clean up");
     } else if args.dry_run {
         info!("total: {} would be freed", human_bytes(total));
@@ -171,6 +173,54 @@ fn probe_lock(path: &Path) -> LockProbe {
         Err((_, e)) if e == nix::errno::Errno::EWOULDBLOCK => LockProbe::Held,
         Err((_, e)) => LockProbe::Error(e.to_string()),
     }
+}
+
+/// Remove unused lock files. Any lock file that can be exclusively locked is
+/// not held by any process and can be safely deleted — `open_lock_file` will
+/// recreate it on next use, and the inode recheck in `lock.rs` prevents races.
+async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64> {
+    let locks_dir = home.locks_dir();
+    let mut entries = match tokio::fs::read_dir(&locks_dir).await {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "read {}: {e}",
+                locks_dir.display()
+            )));
+        }
+    };
+
+    let mut removed = 0u64;
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !name.ends_with(".lock") {
+            continue;
+        }
+
+        let lock_path = entry.path();
+        match probe_lock(&lock_path) {
+            LockProbe::Free(_lock) => {
+                if dry_run {
+                    info!("[dry-run] would remove unused lock {name}");
+                } else {
+                    match tokio::fs::remove_file(&lock_path).await {
+                        Ok(()) => info!("removed unused lock {name}"),
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(e) => {
+                            tracing::debug!("cannot remove {}: {e}", lock_path.display());
+                        }
+                    }
+                }
+                removed += 1;
+            }
+            LockProbe::Held | LockProbe::Error(_) => {}
+        }
+    }
+
+    Ok(removed)
 }
 
 /// Compute total disk usage (st_blocks * 512) and last-used time for a directory.
