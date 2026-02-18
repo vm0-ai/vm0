@@ -8,9 +8,23 @@ async function killProcess(service: string): Promise<void> {
     return;
   }
 
-  process.kill(pid, "SIGTERM");
+  try {
+    process.kill(pid, "SIGTERM");
+    console.log(chalk.green(`✓ Stopped ${service} (PID ${pid})`));
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ESRCH"
+    ) {
+      console.log(chalk.dim(`  ${service} process already stopped`));
+    } else {
+      throw error;
+    }
+  }
+
   await deletePid(service);
-  console.log(chalk.green(`✓ Stopped ${service} (PID ${pid})`));
 }
 
 export async function stopComputerServices(): Promise<void> {

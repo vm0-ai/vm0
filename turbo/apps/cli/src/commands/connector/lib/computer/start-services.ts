@@ -4,7 +4,7 @@ import { homedir } from "os";
 import { join } from "path";
 import chalk from "chalk";
 import { startNgrokTunnel } from "./ngrok";
-import { writePid, getLogPath } from "./pid-manager";
+import { writePid, getLogPath, ensurePidDir } from "./pid-manager";
 
 interface ComputerConnectorCredentials {
   ngrokToken: string;
@@ -30,6 +30,7 @@ async function startWsgidav(): Promise<number> {
   }
 
   const downloadsPath = join(homedir(), "Downloads");
+  await ensurePidDir();
   const logPath = getLogPath("wsgidav");
   const logFile = await open(logPath, "w");
 
