@@ -429,10 +429,16 @@ async fn detect_global_orphans(
         // else: ppid matches a runner → not orphan, skip
     }
 
-    // Orphan mitmproxy processes
-    let claimed_mitm_pids: Vec<u32> = reports.iter().filter_map(|r| r.proxy_pid).collect();
+    // Orphan mitmproxy processes.
+    // A mitmdump belongs to a runner if its port matches the runner's proxy
+    // port (from status.json). All processes on that port — main process and
+    // worker forks — are considered owned.
+    let claimed_ports: Vec<u16> = reports
+        .iter()
+        .filter_map(|r| r.status.as_ref()?.proxy_port)
+        .collect();
     for mitm in mitm_procs {
-        if claimed_mitm_pids.contains(&mitm.pid) {
+        if claimed_ports.contains(&mitm.port) {
             continue;
         }
         if is_reparented(mitm.ppid, &runner_pids) {
