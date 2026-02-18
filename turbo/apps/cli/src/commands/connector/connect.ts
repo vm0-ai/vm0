@@ -10,7 +10,9 @@ import {
   type ComputerConnectorCreateResponse,
 } from "@vm0/core";
 import { getApiUrl, getToken } from "../../lib/api/config";
+import { deleteConnector } from "../../lib/api";
 import { startComputerServices } from "./lib/computer/start-services";
+import { stopComputerServices } from "./lib/computer/stop-services";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -80,7 +82,14 @@ export const connectCommand = new Command()
         const credentials =
           createResult.body as ComputerConnectorCreateResponse;
         await startComputerServices(credentials);
-        return;
+
+        // Reached here on Ctrl+C / SIGTERM — clean up and disconnect
+        console.log();
+        console.log(chalk.cyan("Disconnecting computer connector..."));
+        await stopComputerServices();
+        await deleteConnector("computer");
+        console.log(chalk.green("✓ Disconnected computer"));
+        process.exit(0);
       }
 
       console.log(`Connecting ${chalk.cyan(type)}...`);

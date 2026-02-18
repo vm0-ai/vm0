@@ -50,6 +50,7 @@ async function startWsgidav(): Promise<number> {
   );
 
   child.unref();
+  await logFile.close();
 
   if (!child.pid) {
     throw new Error("Failed to start wsgidav");
@@ -74,12 +75,23 @@ export async function startComputerServices(
     ),
   );
 
+  await writePid("connector-connect", process.pid);
+
   console.log();
   console.log(chalk.green("✓ Computer connector active"));
   console.log(`  Cloud Endpoint: https://*.${credentials.domain}`);
   console.log(`  WebDAV: ~/Downloads exposed to agents`);
   console.log();
-  console.log(chalk.cyan("Connection details:"));
-  console.log(`  Domain: ${credentials.domain}`);
-  console.log(`  Bridge Token: ${credentials.bridgeToken}`);
+  console.log(chalk.dim("Press Ctrl+C to disconnect"));
+  console.log();
+
+  await new Promise<void>((resolve) => {
+    const keepAlive = setInterval(() => {}, 60_000);
+    const cleanup = () => {
+      clearInterval(keepAlive);
+      resolve();
+    };
+    process.once("SIGINT", cleanup);
+    process.once("SIGTERM", cleanup);
+  });
 }

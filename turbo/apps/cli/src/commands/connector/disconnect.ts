@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { CONNECTOR_TYPES, connectorTypeSchema } from "@vm0/core";
 import { deleteConnector } from "../../lib/api";
 import { stopComputerServices } from "./lib/computer/stop-services";
+import { readPid } from "./lib/computer/pid-manager";
 
 export const disconnectCommand = new Command()
   .name("disconnect")
@@ -25,6 +26,28 @@ export const disconnectCommand = new Command()
 
       // Special flow for computer connector
       if (connectorType === "computer") {
+        const connectPid = await readPid("connector-connect");
+        if (connectPid) {
+          try {
+            // Signal the running connect process to clean up and exit
+            process.kill(connectPid, "SIGTERM");
+            console.log(chalk.green("✓ Sent disconnect signal to connector"));
+            return;
+          } catch (err) {
+            if (
+              !(
+                err &&
+                typeof err === "object" &&
+                "code" in err &&
+                err.code === "ESRCH"
+              )
+            ) {
+              throw err;
+            }
+            // Connect process is gone — fall through to direct cleanup
+          }
+        }
+        // No connect process running — clean up directly
         await stopComputerServices();
       }
 
