@@ -1,5 +1,15 @@
 # Changelog
 
+## [9.38.1](https://github.com/vm0-ai/vm0/compare/cli-v9.38.0...cli-v9.38.1) (2026-02-18)
+
+
+### Bug Fixes
+
+* **ci:** unique runner name per metal host ([#3141](https://github.com/vm0-ai/vm0/issues/3141)) ([ad5dcf4](https://github.com/vm0-ai/vm0/commit/ad5dcf49e603392ac476d2e44a033e635756d47b))
+* **cli:** check dependencies before connecting computer connector ([#3146](https://github.com/vm0-ai/vm0/issues/3146)) ([1e9d814](https://github.com/vm0-ai/vm0/commit/1e9d814ea5b49fbe687bbab3e6b8357fbdbe7619))
+* **e2e:** make agent names unique to prevent compose config collisions ([#3147](https://github.com/vm0-ai/vm0/issues/3147)) ([022c83f](https://github.com/vm0-ai/vm0/commit/022c83fcb4dd21135b50964d71f8cac193d42254))
+* **e2e:** make secret and variable names unique in t20-schedule test ([#3149](https://github.com/vm0-ai/vm0/issues/3149)) ([4ef861f](https://github.com/vm0-ai/vm0/commit/4ef861f72b361bf9a66201f512e58a8d65a40261))
+
 ## [9.38.0](https://github.com/vm0-ai/vm0/compare/cli-v9.37.7...cli-v9.38.0) (2026-02-18)
 
 
