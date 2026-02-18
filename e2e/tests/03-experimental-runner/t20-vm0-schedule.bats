@@ -156,6 +156,9 @@ setup() {
 @test "vm0 schedule setup with platform secrets and vars" {
     local CONFIG_AGENT_NAME="schedule-config-${UNIQUE_ID}"
     local CONFIG_TEST_DIR="$(mktemp -d)"
+    local SECRET_NAME="SCHED_KEY_${UNIQUE_ID//-/_}"
+    local VAR_URL_NAME="SCHED_URL_${UNIQUE_ID//-/_}"
+    local VAR_DEBUG_NAME="SCHED_DBG_${UNIQUE_ID//-/_}"
 
     # Create agent with secrets and vars requirements
     cat > "$CONFIG_TEST_DIR/vm0.yaml" <<EOF
@@ -168,9 +171,9 @@ agents:
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
-      SCHEDULE_TEST_API_KEY: "\${{ secrets.SCHEDULE_TEST_API_KEY }}"
-      SCHEDULE_TEST_API_URL: "\${{ vars.SCHEDULE_TEST_API_URL }}"
-      SCHEDULE_TEST_DEBUG: "\${{ vars.SCHEDULE_TEST_DEBUG }}"
+      SCHEDULE_TEST_API_KEY: "\${{ secrets.${SECRET_NAME} }}"
+      SCHEDULE_TEST_API_URL: "\${{ vars.${VAR_URL_NAME} }}"
+      SCHEDULE_TEST_DEBUG: "\${{ vars.${VAR_DEBUG_NAME} }}"
 EOF
 
     cd "$CONFIG_TEST_DIR"
@@ -178,13 +181,13 @@ EOF
     assert_success
 
     # Set secret via platform
-    run $CLI_COMMAND secret set SCHEDULE_TEST_API_KEY --body "test-api-key-value"
+    run $CLI_COMMAND secret set "$SECRET_NAME" --body "test-api-key-value"
     assert_success
 
     # Set vars via platform
-    run $CLI_COMMAND variable set SCHEDULE_TEST_API_URL "https://api.example.com"
+    run $CLI_COMMAND variable set "$VAR_URL_NAME" "https://api.example.com"
     assert_success
-    run $CLI_COMMAND variable set SCHEDULE_TEST_DEBUG "true"
+    run $CLI_COMMAND variable set "$VAR_DEBUG_NAME" "true"
     assert_success
 
     # Setup schedule (secrets and vars come from platform tables, not CLI flags)
@@ -202,8 +205,8 @@ EOF
 
     # Clean up
     $CLI_COMMAND schedule delete "$CONFIG_AGENT_NAME" --force 2>/dev/null || true
-    $CLI_COMMAND secret delete SCHEDULE_TEST_API_KEY -y 2>/dev/null || true
-    $CLI_COMMAND variable delete SCHEDULE_TEST_API_URL -y 2>/dev/null || true
-    $CLI_COMMAND variable delete SCHEDULE_TEST_DEBUG -y 2>/dev/null || true
+    $CLI_COMMAND secret delete "$SECRET_NAME" -y 2>/dev/null || true
+    $CLI_COMMAND variable delete "$VAR_URL_NAME" -y 2>/dev/null || true
+    $CLI_COMMAND variable delete "$VAR_DEBUG_NAME" -y 2>/dev/null || true
     rm -rf "$CONFIG_TEST_DIR"
 }
