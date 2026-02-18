@@ -1012,7 +1012,11 @@ jobs:
           echo "hosts=${METAL_HOSTS}" >> "$GITHUB_OUTPUT"
           echo "bin-dir=~/.vm0-runner/bin/${JOB_REF}" >> "$GITHUB_OUTPUT"
           echo "runner-dir=~/.vm0-runner/runners/${JOB_REF}" >> "$GITHUB_OUTPUT"
-          NUM_HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | wc -l)
+          NUM_HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | grep -c .)
+          if [ "$NUM_HOSTS" -lt 1 ]; then
+            echo "::error::AWS_METAL_RUNNER_HOSTS is empty"
+            exit 1
+          fi
           echo "host-count=${NUM_HOSTS}" >> "$GITHUB_OUTPUT"
           echo "Deploying to ${NUM_HOSTS} metal hosts"
 
