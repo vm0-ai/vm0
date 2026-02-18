@@ -958,14 +958,14 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
-  # Deploy runner: cross-compile, deploy to metal host, build rootfs/snapshot, and start service
-  # Waits for deploy-web so the runner can connect to the preview API on startup
+  # Deploy runner prepare: cross-compile, deploy to metal host, build rootfs/snapshot with mock URL
+  # Runs in parallel with deploy-web since rootfs/snapshot don't need the preview URL
   # Skip on push to main - runner deployment is only needed for PRs
-  deploy-runner:
+  deploy-runner-prepare:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
-    needs: [prepare, deploy-web]
+    needs: [prepare]
     timeout-minutes: 5
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
@@ -1017,7 +1017,7 @@ jobs:
           echo "runner-dir=~/.vm0-runner/runners/${JOB_REF}" >> "$GITHUB_OUTPUT"
           echo "Selected metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS})"
 
-      - name: Deploy, build, and start on metal host
+      - name: Deploy binaries and build rootfs/snapshot on metal host
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
@@ -1025,8 +1025,6 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           BIN_DIR: ${{ steps.host.outputs.bin-dir }}
           RUNNER_DIR: ${{ steps.host.outputs.runner-dir }}
-          PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
@@ -1043,8 +1041,61 @@ jobs:
           echo "=== Running setup ==="
           ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner setup"
 
-          # Run build (rootfs via Docker + snapshot via Firecracker, generates runner.yaml)
-          echo "=== Running build ==="
+          # Run build with mock URL to trigger rootfs+snapshot construction and caching
+          # --api-url does not affect rootfs/snapshot hash, only runner.yaml config
+          echo "=== Running build (mock URL for caching) ==="
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
+            --name ${JOB_REF} \
+            --group vm0/development-${JOB_REF} \
+            --runner-dirname ${JOB_REF} \
+            --guest-init ${BIN_DIR}/guest-init \
+            --guest-download ${BIN_DIR}/guest-download \
+            --guest-agent ${BIN_DIR}/guest-agent \
+            --guest-mock-claude ${BIN_DIR}/guest-mock-claude \
+            --api-url http://localhost \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+  # Deploy runner start: rebuild config with real preview URL and start service
+  # Waits for both deploy-runner-prepare (binaries + rootfs/snapshot) and deploy-web (preview URL)
+  # The second `runner build` is a cache hit — only rewrites runner.yaml (~100ms)
+  deploy-runner-start:
+    runs-on: ubuntu-latest
+    needs: [prepare, deploy-runner-prepare, deploy-web]
+    timeout-minutes: 2
+    if: |
+      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
+      github.event_name != 'push' &&
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.runner-changed == 'true' ||
+        needs.prepare.outputs.crates-changed == 'true'
+      )
+    steps:
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      - name: Rebuild config and start runner service
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
+          RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
+          PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+          REMOTE="${METAL_USER}@${HOST}"
+
+          # Re-run build with real preview URL (cache hit, only rewrites runner.yaml)
+          echo "=== Running build (real URL, cache hit) ==="
           ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
             --name ${JOB_REF} \
             --group vm0/development-${JOB_REF} \
@@ -1075,7 +1126,7 @@ jobs:
         prepare,
         cli-e2e-01-serial,
         deploy-web,
-        deploy-runner,
+        deploy-runner-start,
       ]
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
@@ -1155,19 +1206,19 @@ jobs:
   # Skip on push to main - runner deployment is only needed for PRs
   cleanup-runner:
     runs-on: ubuntu-latest
-    needs: [prepare, deploy-runner, cli-e2e-03-runner]
+    needs: [prepare, deploy-runner-prepare, deploy-runner-start, cli-e2e-03-runner]
     if: |
       always() &&
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
-      needs.deploy-runner.outputs.runner-host != ''
+      needs.deploy-runner-prepare.outputs.runner-host != ''
     steps:
       - name: Cleanup runner on metal host
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          HOST: ${{ needs.deploy-runner.outputs.runner-host }}
-          BIN_DIR: ${{ needs.deploy-runner.outputs.bin-dir }}
-          RUNNER_DIR: ${{ needs.deploy-runner.outputs.runner-dir }}
+          HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
+          BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
+          RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
         run: |
