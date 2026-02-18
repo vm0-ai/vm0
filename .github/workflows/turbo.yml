@@ -1033,8 +1033,10 @@ jobs:
 
           deploy_to_host() {
             local HOST=$1
+            local HOST_INDEX=$2
+            local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
             local REMOTE="${METAL_USER}@${HOST}"
-            echo "=== Deploying to ${HOST} ==="
+            echo "=== Deploying to ${HOST} (runner: ${RUNNER_NAME}) ==="
 
             # Clean previous run artifacts and upload binaries
             ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR} && mkdir -p ${BIN_DIR}"
@@ -1048,7 +1050,7 @@ jobs:
             # Run build with mock URL to trigger rootfs+snapshot construction and caching
             # --api-url does not affect rootfs/snapshot hash, only runner.yaml config
             ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
-              --name ${JOB_REF} \
+              --name ${RUNNER_NAME} \
               --group vm0/development-${JOB_REF} \
               --runner-dirname ${JOB_REF} \
               --guest-init ${BIN_DIR}/guest-init \
@@ -1066,8 +1068,10 @@ jobs:
           LOG_DIR=$(mktemp -d)
           HOSTS=()
           PIDS=()
+          HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            deploy_to_host "$HOST" > "${LOG_DIR}/${HOST}.log" 2>&1 &
+            HOST_INDEX=$((HOST_INDEX + 1))
+            deploy_to_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
             PIDS+=($!)
             HOSTS+=("$HOST")
           done
@@ -1127,12 +1131,14 @@ jobs:
 
           start_on_host() {
             local HOST=$1
+            local HOST_INDEX=$2
+            local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
             local REMOTE="${METAL_USER}@${HOST}"
-            echo "=== Starting runner on ${HOST} ==="
+            echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
 
             # Re-run build with real preview URL (cache hit, only rewrites runner.yaml)
             ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
-              --name ${JOB_REF} \
+              --name ${RUNNER_NAME} \
               --group vm0/development-${JOB_REF} \
               --runner-dirname ${JOB_REF} \
               --guest-init ${BIN_DIR}/guest-init \
@@ -1144,7 +1150,7 @@ jobs:
 
             # Start as systemd transient service
             ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner service start \
-              --name ${JOB_REF} \
+              --name ${RUNNER_NAME} \
               --config ${RUNNER_DIR}/runner.yaml \
               --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
               --env USE_MOCK_CLAUDE=true"
@@ -1168,8 +1174,10 @@ jobs:
           LOG_DIR=$(mktemp -d)
           HOSTS=()
           PIDS=()
+          HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            start_on_host "$HOST" > "${LOG_DIR}/${HOST}.log" 2>&1 &
+            HOST_INDEX=$((HOST_INDEX + 1))
+            start_on_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
             PIDS+=($!)
             HOSTS+=("$HOST")
           done
@@ -1304,11 +1312,14 @@ jobs:
           chmod 600 "$HOME/.ssh/runner.pem"
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
 
+          HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
+            HOST_INDEX=$((HOST_INDEX + 1))
             (
+              RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
               REMOTE="${METAL_USER}@${HOST}"
-              echo "Cleaning up ${JOB_REF} on ${HOST}"
-              ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner service stop --name ${JOB_REF}" || true
+              echo "Cleaning up ${RUNNER_NAME} on ${HOST}"
+              ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner service stop --name ${RUNNER_NAME}" || true
               ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR}" || true
             ) &
           done
