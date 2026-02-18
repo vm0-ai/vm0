@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import { access, constants } from "fs/promises";
 import { createServer } from "net";
 import type { AddressInfo } from "net";
 import { homedir } from "os";
@@ -13,6 +14,19 @@ interface ComputerConnectorCredentials {
   domain: string;
 }
 
+const CHROME_CANDIDATES = [
+  // macOS absolute paths
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  // Linux / PATH-based
+  "google-chrome",
+  "google-chrome-stable",
+  "chromium-browser",
+  "chromium",
+  "chrome",
+];
+
 async function getRandomPort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
@@ -24,15 +38,38 @@ async function getRandomPort(): Promise<number> {
   });
 }
 
-async function findCommand(...candidates: string[]): Promise<string | null> {
-  for (const binary of candidates) {
-    const found = await new Promise<boolean>((resolve) => {
-      const child = spawn("which", [binary]);
-      child.on("close", (code) => resolve(code === 0));
-    });
-    if (found) return binary;
+async function findBinary(...candidates: string[]): Promise<string | null> {
+  for (const candidate of candidates) {
+    if (candidate.startsWith("/")) {
+      try {
+        await access(candidate, constants.X_OK);
+        return candidate;
+      } catch {
+        // not found, try next
+      }
+    } else {
+      const found = await new Promise<boolean>((resolve) => {
+        const child = spawn("which", [candidate]);
+        child.on("close", (code) => resolve(code === 0));
+      });
+      if (found) return candidate;
+    }
   }
   return null;
+}
+
+export async function checkComputerDependencies(): Promise<void> {
+  const wsgidavBinary = await findBinary("wsgidav");
+  if (!wsgidavBinary) {
+    throw new Error(
+      "wsgidav not found\n\nInstall with: pip install wsgidav[cheroot]",
+    );
+  }
+
+  const chromeBinary = await findBinary(...CHROME_CANDIDATES);
+  if (!chromeBinary) {
+    throw new Error("Chrome not found\n\nInstall Google Chrome or Chromium");
+  }
 }
 
 export async function startComputerServices(
@@ -40,20 +77,14 @@ export async function startComputerServices(
 ): Promise<void> {
   console.log(chalk.cyan("Starting computer connector services..."));
 
-  const wsgidavBinary = await findCommand("wsgidav");
+  const wsgidavBinary = await findBinary("wsgidav");
   if (!wsgidavBinary) {
     throw new Error(
       "wsgidav not found\n\nInstall with: pip install wsgidav[cheroot]",
     );
   }
 
-  const chromeBinary = await findCommand(
-    "google-chrome",
-    "google-chrome-stable",
-    "chromium",
-    "chromium-browser",
-    "chrome",
-  );
+  const chromeBinary = await findBinary(...CHROME_CANDIDATES);
   if (!chromeBinary) {
     throw new Error("Chrome not found\n\nInstall Google Chrome or Chromium");
   }

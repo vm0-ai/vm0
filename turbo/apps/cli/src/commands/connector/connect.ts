@@ -11,7 +11,10 @@ import {
 } from "@vm0/core";
 import { getApiUrl, getToken } from "../../lib/api/config";
 import { deleteConnector } from "../../lib/api";
-import { startComputerServices } from "./lib/computer/start-services";
+import {
+  checkComputerDependencies,
+  startComputerServices,
+} from "./lib/computer/start-services";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -56,6 +59,7 @@ export const connectCommand = new Command()
 
       // Special flow for computer connector
       if (connectorType === "computer") {
+        await checkComputerDependencies();
         console.log(chalk.cyan("Setting up computer connector..."));
 
         const computerClient = initClient(computerConnectorContract, {
