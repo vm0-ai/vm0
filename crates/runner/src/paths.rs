@@ -53,7 +53,7 @@ impl RunnerPaths {
 
 /// Paths rooted at ~/.vm0-runner/.
 pub struct HomePaths {
-    root: PathBuf,
+    pub(crate) root: PathBuf,
 }
 
 impl HomePaths {

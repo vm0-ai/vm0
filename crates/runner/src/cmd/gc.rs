@@ -1,6 +1,6 @@
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use clap::Args;
 use nix::fcntl::{Flock, FlockArg};
@@ -8,6 +8,9 @@ use tracing::info;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
+
+/// Network log files older than this are eligible for GC.
+const NETWORK_LOG_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 3600);
 
 #[derive(Args)]
 pub struct GcArgs {
@@ -41,9 +44,10 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     .await?;
 
     let locks_removed = gc_orphaned_locks(&home, args.dry_run).await?;
+    let (net_logs_removed, net_logs_freed) = gc_network_logs(&home, args.dry_run).await?;
 
-    let total = rootfs_freed + snapshot_freed;
-    if total == 0 && locks_removed == 0 {
+    let total = rootfs_freed + snapshot_freed + net_logs_freed;
+    if total == 0 && locks_removed == 0 && net_logs_removed == 0 {
         info!("nothing to clean up");
     } else if args.dry_run {
         info!("total: {} would be freed", human_bytes(total));
@@ -221,6 +225,75 @@ async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64>
     }
 
     Ok(removed)
+}
+
+/// Delete stale network log files (older than [`NETWORK_LOG_MAX_AGE`]).
+///
+/// Network log files (`network-{run_id}.jsonl`) accumulate when upload fails or
+/// the runner crashes before cleanup. Returns `(files_removed, bytes_freed)`.
+async fn gc_network_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, u64)> {
+    let logs_dir = home.logs_dir();
+    let mut entries = match tokio::fs::read_dir(&logs_dir).await {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, 0)),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "read {}: {e}",
+                logs_dir.display()
+            )));
+        }
+    };
+
+    let now = SystemTime::now();
+    let mut removed = 0u64;
+    let mut freed = 0u64;
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+
+        // Only target network log files, not runner logs.
+        if !name.starts_with("network-") || !name.ends_with(".jsonl") {
+            continue;
+        }
+
+        let Ok(meta) = entry.metadata().await else {
+            continue;
+        };
+
+        let age = meta
+            .modified()
+            .ok()
+            .and_then(|mtime| now.duration_since(mtime).ok())
+            .unwrap_or_default();
+
+        if age <= NETWORK_LOG_MAX_AGE {
+            continue;
+        }
+
+        let size = meta.blocks() * 512;
+        if dry_run {
+            info!(
+                "[dry-run] would delete network log {name} ({})",
+                human_bytes(size)
+            );
+        } else {
+            match tokio::fs::remove_file(entry.path()).await {
+                Ok(()) => {
+                    info!("deleted network log {name} ({})", human_bytes(size));
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    tracing::debug!("cannot remove {}: {e}", entry.path().display());
+                    continue;
+                }
+            }
+        }
+        removed += 1;
+        freed += size;
+    }
+
+    Ok((removed, freed))
 }
 
 /// Compute total disk usage (st_blocks * 512) and last-used time for a directory.
@@ -517,5 +590,96 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(freed, 0);
+    }
+
+    fn test_home(root: &Path) -> HomePaths {
+        HomePaths {
+            root: root.to_path_buf(),
+        }
+    }
+
+    #[tokio::test]
+    async fn gc_network_logs_deletes_stale() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let logs_dir = home.logs_dir();
+        std::fs::create_dir_all(&logs_dir).unwrap();
+
+        let old_file = logs_dir.join("network-550e8400-e29b-41d4-a716-446655440000.jsonl");
+        std::fs::write(&old_file, r#"{"timestamp":"2026-01-01T00:00:00"}"#).unwrap();
+        let old_time = SystemTime::now() - Duration::from_secs(8 * 24 * 3600);
+        std::fs::File::open(&old_file)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let (removed, _freed) = gc_network_logs(&home, false).await.unwrap();
+        assert_eq!(removed, 1);
+        assert!(!old_file.exists());
+    }
+
+    #[tokio::test]
+    async fn gc_network_logs_keeps_recent() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let logs_dir = home.logs_dir();
+        std::fs::create_dir_all(&logs_dir).unwrap();
+
+        let recent = logs_dir.join("network-aabbccdd-1234-5678-9abc-def012345678.jsonl");
+        std::fs::write(&recent, r#"{"timestamp":"2026-02-18T00:00:00"}"#).unwrap();
+
+        let (removed, _) = gc_network_logs(&home, false).await.unwrap();
+        assert_eq!(removed, 0);
+        assert!(recent.exists());
+    }
+
+    #[tokio::test]
+    async fn gc_network_logs_ignores_runner_logs() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let logs_dir = home.logs_dir();
+        std::fs::create_dir_all(&logs_dir).unwrap();
+
+        // Old runner log file — must NOT be deleted.
+        let runner_log = logs_dir.join("runner-default.2026-02-10.log");
+        std::fs::write(&runner_log, "log content").unwrap();
+        let old_time = SystemTime::now() - Duration::from_secs(30 * 24 * 3600);
+        std::fs::File::open(&runner_log)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let (removed, _) = gc_network_logs(&home, false).await.unwrap();
+        assert_eq!(removed, 0);
+        assert!(runner_log.exists());
+    }
+
+    #[tokio::test]
+    async fn gc_network_logs_dry_run() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let logs_dir = home.logs_dir();
+        std::fs::create_dir_all(&logs_dir).unwrap();
+
+        let old_file = logs_dir.join("network-00000000-0000-0000-0000-000000000001.jsonl");
+        std::fs::write(&old_file, r#"{"timestamp":"2026-01-01T00:00:00"}"#).unwrap();
+        let old_time = SystemTime::now() - Duration::from_secs(8 * 24 * 3600);
+        std::fs::File::open(&old_file)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let (removed, _) = gc_network_logs(&home, true).await.unwrap();
+        assert_eq!(removed, 1);
+        assert!(old_file.exists(), "dry-run should not delete");
     }
 }
