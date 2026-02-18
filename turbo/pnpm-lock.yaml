@@ -77,9 +77,6 @@ importers:
       tar:
         specifier: ^7.5.2
         version: 7.5.2
-      ws:
-        specifier: ^8.18.0
-        version: 8.18.3
       yaml:
         specifier: ^2.3.4
         version: 2.8.1
@@ -96,9 +93,6 @@ importers:
       '@types/tar':
         specifier: ^6.1.13
         version: 6.1.13
-      '@types/ws':
-        specifier: ^8.5.13
-        version: 8.18.1
       '@vm0/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config

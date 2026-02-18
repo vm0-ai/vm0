@@ -20,5 +20,4 @@ export async function stopComputerServices(): Promise<void> {
   console.log(chalk.green("✓ Stopped ngrok tunnel"));
 
   await killProcess("wsgidav");
-  await killProcess("proxy");
 }

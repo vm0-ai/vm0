@@ -57,40 +57,6 @@ async function startWsgidav(): Promise<number> {
   return child.pid;
 }
 
-async function startSandboxProxy(
-  bridgeToken: string,
-  domain: string,
-): Promise<number> {
-  const proxyScriptPath = join(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "..",
-    "sandbox-proxy.ts",
-  );
-  const logPath = getLogPath("proxy");
-  const logFile = await open(logPath, "w");
-
-  const child = spawn("npx", ["tsx", proxyScriptPath], {
-    detached: true,
-    stdio: ["ignore", logFile.fd, logFile.fd],
-    env: {
-      ...process.env,
-      COMPUTER_CONNECTOR_BRIDGE_TOKEN: bridgeToken,
-      COMPUTER_CONNECTOR_DOMAIN: domain,
-    },
-  });
-
-  child.unref();
-
-  if (!child.pid) {
-    throw new Error("Failed to start sandbox proxy");
-  }
-
-  return child.pid;
-}
-
 export async function startComputerServices(
   credentials: ComputerConnectorCredentials,
 ): Promise<void> {
@@ -107,15 +73,12 @@ export async function startComputerServices(
     ),
   );
 
-  const proxyPid = await startSandboxProxy(
-    credentials.bridgeToken,
-    credentials.domain,
-  );
-  await writePid("proxy", proxyPid);
-  console.log(chalk.green("✓ Sandbox proxy started"));
-
   console.log();
   console.log(chalk.green("✓ Computer connector active"));
   console.log(`  Cloud Endpoint: https://*.${credentials.domain}`);
   console.log(`  WebDAV: ~/Downloads exposed to agents`);
+  console.log();
+  console.log(chalk.cyan("Connection details:"));
+  console.log(`  Domain: ${credentials.domain}`);
+  console.log(`  Bridge Token: ${credentials.bridgeToken}`);
 }

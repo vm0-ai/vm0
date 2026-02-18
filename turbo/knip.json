@@ -34,8 +34,7 @@
     "apps/cli": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.ts",
-        "src/**/*.{test,spec}.ts",
-        "sandbox-proxy.ts"
+        "src/**/*.{test,spec}.ts"
       ],
       "project": ["src/**/*.ts"],
       "ignoreDependencies": ["@types/tar"],

@@ -6,6 +6,6 @@
     "moduleResolution": "bundler",
     "module": "ESNext"
   },
-  "include": ["src/**/*", "sandbox-proxy.ts"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }
