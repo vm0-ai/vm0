@@ -1065,20 +1065,26 @@ jobs:
             echo "=== Done deploying to ${HOST} ==="
           }
 
+          LOG_DIR=$(mktemp -d)
+          HOSTS=()
           PIDS=()
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            deploy_to_host "$HOST" &
+            deploy_to_host "$HOST" > "${LOG_DIR}/${HOST}.log" 2>&1 &
             PIDS+=($!)
+            HOSTS+=("$HOST")
           done
 
           FAILED=0
-          for PID in "${PIDS[@]}"; do
-            if ! wait "$PID"; then
+          for i in "${!PIDS[@]}"; do
+            if ! wait "${PIDS[$i]}"; then
               FAILED=1
+              echo "::error::Deployment failed on ${HOSTS[$i]}"
             fi
+            echo "=== ${HOSTS[$i]} ==="
+            cat "${LOG_DIR}/${HOSTS[$i]}.log"
           done
+          rm -rf "$LOG_DIR"
           if [ "$FAILED" -ne 0 ]; then
-            echo "::error::One or more host deployments failed"
             exit 1
           fi
 
@@ -1146,20 +1152,26 @@ jobs:
             echo "=== Runner started on ${HOST} ==="
           }
 
+          LOG_DIR=$(mktemp -d)
+          HOSTS=()
           PIDS=()
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            start_on_host "$HOST" &
+            start_on_host "$HOST" > "${LOG_DIR}/${HOST}.log" 2>&1 &
             PIDS+=($!)
+            HOSTS+=("$HOST")
           done
 
           FAILED=0
-          for PID in "${PIDS[@]}"; do
-            if ! wait "$PID"; then
+          for i in "${!PIDS[@]}"; do
+            if ! wait "${PIDS[$i]}"; then
               FAILED=1
+              echo "::error::Runner start failed on ${HOSTS[$i]}"
             fi
+            echo "=== ${HOSTS[$i]} ==="
+            cat "${LOG_DIR}/${HOSTS[$i]}.log"
           done
+          rm -rf "$LOG_DIR"
           if [ "$FAILED" -ne 0 ]; then
-            echo "::error::One or more runner starts failed"
             exit 1
           fi
 
