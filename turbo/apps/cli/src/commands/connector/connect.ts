@@ -12,7 +12,6 @@ import {
 import { getApiUrl, getToken } from "../../lib/api/config";
 import { deleteConnector } from "../../lib/api";
 import { startComputerServices } from "./lib/computer/start-services";
-import { stopComputerServices } from "./lib/computer/stop-services";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -83,10 +82,8 @@ export const connectCommand = new Command()
           createResult.body as ComputerConnectorCreateResponse;
         await startComputerServices(credentials);
 
-        // Reached here on Ctrl+C / SIGTERM — clean up and disconnect
-        console.log();
+        // Reached here after double Ctrl+C / SIGTERM — services already cleaned up
         console.log(chalk.cyan("Disconnecting computer connector..."));
-        await stopComputerServices();
         await deleteConnector("computer");
         console.log(chalk.green("✓ Disconnected computer"));
         process.exit(0);

@@ -1,10 +1,10 @@
 import { spawn } from "child_process";
-import { open } from "fs/promises";
+import { createServer } from "net";
+import type { AddressInfo } from "net";
 import { homedir } from "os";
 import { join } from "path";
 import chalk from "chalk";
-import { startNgrokTunnel } from "./ngrok";
-import { writePid, getLogPath, ensurePidDir } from "./pid-manager";
+import { startNgrokTunnels, stopNgrokTunnels } from "./ngrok";
 
 interface ComputerConnectorCredentials {
   ngrokToken: string;
@@ -13,50 +13,26 @@ interface ComputerConnectorCredentials {
   domain: string;
 }
 
-async function checkCommandExists(command: string): Promise<boolean> {
-  const { spawn } = await import("child_process");
-  return new Promise((resolve) => {
-    const child = spawn("which", [command]);
-    child.on("close", (code) => resolve(code === 0));
+async function getRandomPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address() as AddressInfo;
+      server.close(() => resolve(port));
+    });
+    server.on("error", reject);
   });
 }
 
-async function startWsgidav(): Promise<number> {
-  const wsgidavExists = await checkCommandExists("wsgidav");
-  if (!wsgidavExists) {
-    throw new Error(
-      "wsgidav not found\n\nInstall with: pip install wsgidav[cheroot]",
-    );
+async function findCommand(...candidates: string[]): Promise<string | null> {
+  for (const binary of candidates) {
+    const found = await new Promise<boolean>((resolve) => {
+      const child = spawn("which", [binary]);
+      child.on("close", (code) => resolve(code === 0));
+    });
+    if (found) return binary;
   }
-
-  const downloadsPath = join(homedir(), "Downloads");
-  await ensurePidDir();
-  const logPath = getLogPath("wsgidav");
-  const logFile = await open(logPath, "w");
-
-  const child = spawn(
-    "wsgidav",
-    [
-      "--host=127.0.0.1",
-      "--port=8888",
-      `--root=${downloadsPath}`,
-      "--auth=anonymous",
-      "--no-config",
-    ],
-    {
-      detached: true,
-      stdio: ["ignore", logFile.fd, logFile.fd],
-    },
-  );
-
-  child.unref();
-  await logFile.close();
-
-  if (!child.pid) {
-    throw new Error("Failed to start wsgidav");
-  }
-
-  return child.pid;
+  return null;
 }
 
 export async function startComputerServices(
@@ -64,34 +40,106 @@ export async function startComputerServices(
 ): Promise<void> {
   console.log(chalk.cyan("Starting computer connector services..."));
 
-  const wsgidavPid = await startWsgidav();
-  await writePid("wsgidav", wsgidavPid);
+  const wsgidavBinary = await findCommand("wsgidav");
+  if (!wsgidavBinary) {
+    throw new Error(
+      "wsgidav not found\n\nInstall with: pip install wsgidav[cheroot]",
+    );
+  }
+
+  const chromeBinary = await findCommand(
+    "google-chrome",
+    "google-chrome-stable",
+    "chromium",
+    "chromium-browser",
+    "chrome",
+  );
+  if (!chromeBinary) {
+    throw new Error("Chrome not found\n\nInstall Google Chrome or Chromium");
+  }
+
+  const webdavPort = await getRandomPort();
+  const cdpPort = await getRandomPort();
+
+  const downloadsPath = join(homedir(), "Downloads");
+  const wsgidav = spawn(
+    wsgidavBinary,
+    [
+      "--host=127.0.0.1",
+      `--port=${webdavPort}`,
+      `--root=${downloadsPath}`,
+      "--auth=anonymous",
+      "--no-config",
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  wsgidav.stdout?.on("data", (data: Buffer) => process.stdout.write(data));
+  wsgidav.stderr?.on("data", (data: Buffer) => process.stderr.write(data));
   console.log(chalk.green("✓ WebDAV server started"));
 
-  await startNgrokTunnel(credentials.ngrokToken, credentials.endpointPrefix);
-  console.log(
-    chalk.green(
-      `✓ ngrok tunnel: webdav.${credentials.endpointPrefix}.internal`,
-    ),
+  const chrome = spawn(
+    chromeBinary,
+    [
+      `--remote-debugging-port=${cdpPort}`,
+      "--remote-debugging-address=127.0.0.1",
+      "--headless=new",
+      "--no-sandbox",
+      "--disable-gpu",
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
   );
+  chrome.stdout?.on("data", (data: Buffer) => process.stdout.write(data));
+  chrome.stderr?.on("data", (data: Buffer) => process.stderr.write(data));
+  console.log(chalk.green("✓ Chrome started"));
 
-  await writePid("connector-connect", process.pid);
+  try {
+    await startNgrokTunnels(
+      credentials.ngrokToken,
+      credentials.endpointPrefix,
+      webdavPort,
+      cdpPort,
+    );
+    console.log(
+      chalk.green(
+        `✓ ngrok tunnels: webdav.${credentials.domain}, chrome.${credentials.domain}`,
+      ),
+    );
 
-  console.log();
-  console.log(chalk.green("✓ Computer connector active"));
-  console.log(`  Cloud Endpoint: https://*.${credentials.domain}`);
-  console.log(`  WebDAV: ~/Downloads exposed to agents`);
-  console.log();
-  console.log(chalk.dim("Press Ctrl+C to disconnect"));
-  console.log();
+    console.log();
+    console.log(chalk.green("✓ Computer connector active"));
+    console.log(`  WebDAV:     ~/Downloads → webdav.${credentials.domain}`);
+    console.log(
+      `  Chrome CDP: port ${cdpPort}   → chrome.${credentials.domain}`,
+    );
+    console.log();
+    console.log(chalk.dim("Press ^C twice to disconnect"));
+    console.log();
 
-  await new Promise<void>((resolve) => {
-    const keepAlive = setInterval(() => {}, 60_000);
-    const cleanup = () => {
-      clearInterval(keepAlive);
-      resolve();
-    };
-    process.once("SIGINT", cleanup);
-    process.once("SIGTERM", cleanup);
-  });
+    let sigintCount = 0;
+    await new Promise<void>((resolve) => {
+      const keepAlive = setInterval(() => {}, 60_000);
+      const done = () => {
+        clearInterval(keepAlive);
+        process.removeListener("SIGINT", onSigint);
+        resolve();
+      };
+      const onSigint = () => {
+        sigintCount++;
+        if (sigintCount === 1) {
+          console.log(chalk.dim("\nPress ^C again to disconnect and exit..."));
+        } else {
+          done();
+        }
+      };
+      process.on("SIGINT", onSigint);
+      process.once("SIGTERM", done);
+    });
+  } finally {
+    console.log();
+    console.log(chalk.cyan("Stopping services..."));
+    wsgidav.kill("SIGTERM");
+    chrome.kill("SIGTERM");
+    await stopNgrokTunnels();
+    console.log(chalk.green("✓ Services stopped"));
+  }
 }
