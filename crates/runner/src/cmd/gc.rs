@@ -253,7 +253,7 @@ async fn gc_network_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, 
         let Some(name) = name.to_str() else { continue };
 
         // Only target network log files, not runner logs.
-        if !name.starts_with("network-") || !name.ends_with(".jsonl") {
+        if !crate::paths::LogPaths::is_network_log(name) {
             continue;
         }
 
