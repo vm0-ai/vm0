@@ -593,9 +593,7 @@ mod tests {
     }
 
     fn test_home(root: &Path) -> HomePaths {
-        HomePaths {
-            root: root.to_path_buf(),
-        }
+        HomePaths::with_root(root.to_path_buf())
     }
 
     #[tokio::test]

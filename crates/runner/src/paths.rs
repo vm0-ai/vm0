@@ -53,7 +53,7 @@ impl RunnerPaths {
 
 /// Paths rooted at ~/.vm0-runner/.
 pub struct HomePaths {
-    pub(crate) root: PathBuf,
+    root: PathBuf,
 }
 
 impl HomePaths {
@@ -63,6 +63,11 @@ impl HomePaths {
         Ok(Self {
             root: PathBuf::from(home).join(".vm0-runner"),
         })
+    }
+
+    #[cfg(test)]
+    pub fn with_root(root: PathBuf) -> Self {
+        Self { root }
     }
 
     pub fn bin_dir(&self) -> PathBuf {
@@ -221,9 +226,7 @@ mod tests {
     use super::*;
 
     fn home(root: &Path) -> HomePaths {
-        HomePaths {
-            root: root.to_path_buf(),
-        }
+        HomePaths::with_root(root.to_path_buf())
     }
 
     #[test]
