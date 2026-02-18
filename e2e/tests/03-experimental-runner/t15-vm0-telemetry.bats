@@ -10,8 +10,9 @@
 
 load '../../helpers/setup'
 
-# Unique agent name for this test file to avoid compose conflicts in parallel runs
-AGENT_NAME="e2e-t15"
+setup_file() {
+    export AGENT_NAME="e2e-t15-$(date +%s%3N)-$RANDOM"
+}
 
 setup() {
     # Create unique volume for this test

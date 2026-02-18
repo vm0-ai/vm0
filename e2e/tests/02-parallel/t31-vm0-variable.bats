@@ -101,7 +101,7 @@ teardown() {
     local unique_id="$(date +%s%3N)-$RANDOM"
     local var_value="var-value-${unique_id}"
     local artifact_name="e2e-var-expand-${unique_id}"
-    local agent_name="e2e-var-expand-agent"
+    local agent_name="e2e-var-expand-${unique_id}"
     local test_artifact_dir="$(mktemp -d)"
     local test_config="$(mktemp --suffix=.yaml)"
 
@@ -171,7 +171,7 @@ EOF
     local server_value="server-value-${unique_id}"
     local cli_value="cli-value-${unique_id}"
     local artifact_name="e2e-var-override-${unique_id}"
-    local agent_name="e2e-var-override-agent"
+    local agent_name="e2e-var-override-${unique_id}"
     local test_artifact_dir="$(mktemp -d)"
     local test_config="$(mktemp --suffix=.yaml)"
 
