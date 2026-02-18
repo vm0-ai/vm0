@@ -1306,7 +1306,7 @@ jobs:
 
       - name: Run Runner E2E Tests (Chunk ${{ matrix.index }})
         run: |
-          PARALLEL=$(( HOST_COUNT * 5 ))
+          PARALLEL=5
           echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel) ==="
           echo "Files: ${{ matrix.files }}"
           BATS_TEST_TIMEOUT=60 RUNNER_GROUP="vm0/development-${JOB_REF}" ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --no-parallelize-within-files ${{ matrix.files }}
@@ -1318,7 +1318,6 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          HOST_COUNT: ${{ needs.deploy-runner-prepare.outputs.host-count }}
 
       - name: Stop Cron Simulator
         if: always()
