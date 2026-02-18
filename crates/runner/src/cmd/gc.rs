@@ -659,6 +659,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gc_network_logs_keeps_at_boundary() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let logs_dir = home.logs_dir();
+        std::fs::create_dir_all(&logs_dir).unwrap();
+
+        // File just under 7 days old — should be kept (age <= MAX_AGE).
+        // Subtract 1 second less than max age to avoid race between set_times and check.
+        let boundary = logs_dir.join("network-11111111-1111-1111-1111-111111111111.jsonl");
+        std::fs::write(&boundary, r#"{"timestamp":"2026-02-11T00:00:00"}"#).unwrap();
+        let boundary_time = SystemTime::now() - NETWORK_LOG_MAX_AGE + Duration::from_secs(1);
+        std::fs::File::open(&boundary)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(boundary_time))
+            .unwrap();
+
+        let (removed, _) = gc_network_logs(&home, false).await.unwrap();
+        assert_eq!(removed, 0);
+        assert!(boundary.exists(), "file at max age should be kept");
+    }
+
+    #[tokio::test]
     async fn gc_network_logs_dry_run() {
         use std::fs::FileTimes;
         use std::time::Duration;
