@@ -162,19 +162,7 @@ enum LockProbe {
 
 /// Try a nonblocking exclusive flock to check if a resource is in use.
 fn probe_lock(path: &Path) -> LockProbe {
-    // Create parent directories (locks dir may not exist on a fresh install).
-    if let Some(parent) = path.parent()
-        && let Err(e) = std::fs::create_dir_all(parent)
-    {
-        return LockProbe::Error(format!("create lock dir: {e}"));
-    }
-    let file = match std::fs::File::options()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .open(path)
-    {
+    let file = match crate::lock::open_lock_file(path) {
         Ok(f) => f,
         Err(e) => return LockProbe::Error(e.to_string()),
     };
@@ -194,10 +182,14 @@ async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
     while let Some(current) = stack.pop() {
         let mut entries = match tokio::fs::read_dir(&current).await {
             Ok(rd) => rd,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("dir_stats: cannot read {}: {e}", current.display());
+                continue;
+            }
         };
         while let Ok(Some(entry)) = entries.next_entry().await {
             let Ok(meta) = entry.metadata().await else {
+                tracing::debug!("dir_stats: cannot stat {}", entry.path().display());
                 continue;
             };
             const BYTES_PER_BLOCK: u64 = 512;
@@ -418,23 +410,35 @@ mod tests {
 
     #[tokio::test]
     async fn gc_keep_latest_preserves_newest() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
         let dir = tempfile::tempdir().unwrap();
         let locks_dir = dir.path().join("locks");
         std::fs::create_dir_all(&locks_dir).unwrap();
 
         let artifacts_dir = dir.path().join("snapshots");
 
-        // Create two dirs with different mtimes.
+        // Create two dirs and set explicit mtimes for determinism.
         let old_dir = artifacts_dir.join("old_hash");
         std::fs::create_dir_all(&old_dir).unwrap();
-        std::fs::write(old_dir.join("snapshot.bin"), b"old").unwrap();
-
-        // Sleep briefly to ensure different mtime.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let old_file_path = old_dir.join("snapshot.bin");
+        std::fs::write(&old_file_path, b"old").unwrap();
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&old_file_path)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
 
         let new_dir = artifacts_dir.join("new_hash");
         std::fs::create_dir_all(&new_dir).unwrap();
-        std::fs::write(new_dir.join("snapshot.bin"), b"new").unwrap();
+        let new_file_path = new_dir.join("snapshot.bin");
+        std::fs::write(&new_file_path, b"new").unwrap();
+        let new_time = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000);
+        std::fs::File::open(&new_file_path)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(new_time))
+            .unwrap();
 
         gc_dir(
             "snapshots",

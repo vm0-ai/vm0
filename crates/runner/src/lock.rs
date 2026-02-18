@@ -6,7 +6,7 @@ use nix::fcntl::{Flock, FlockArg};
 use crate::error::{RunnerError, RunnerResult};
 
 /// Open (or create) the lock file, creating parent directories as needed.
-fn open_lock_file(path: &Path) -> RunnerResult<File> {
+pub(crate) fn open_lock_file(path: &Path) -> RunnerResult<File> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             RunnerError::Internal(format!("create lock dir {}: {e}", parent.display()))
