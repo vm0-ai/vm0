@@ -408,8 +408,11 @@ fn spawn_job(
     let semaphore = Arc::clone(semaphore);
 
     jobs.spawn(async move {
-        // Acquire permit inside the spawned task. The main loop only calls
-        // next_job() when capacity is available, so this rarely blocks.
+        // Acquire permit inside the spawned task. The main loop checks
+        // available_permits() > 0 before calling next_job(), so this rarely
+        // blocks. At most one extra job can be claimed beyond max_concurrent
+        // if a permit is taken between the check and this acquire — same
+        // race window as the pre-refactor code.
         let permit = match semaphore.acquire_owned().await {
             Ok(p) => p,
             Err(_) => {
