@@ -27,6 +27,13 @@ impl<H> RetryState<H> {
         }
     }
 
+    /// Record that the very first attempt failed (e.g. initial Ably connect).
+    /// Schedules a retry with the initial backoff and sets failures to 1.
+    pub(crate) fn record_initial_failure(&mut self) {
+        self.consecutive_failures = 1;
+        self.schedule();
+    }
+
     /// Schedule a restart after the current backoff delay.
     pub(crate) fn schedule(&mut self) {
         self.restart_at = Some(Instant::now() + self.backoff);

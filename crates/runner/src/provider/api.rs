@@ -81,8 +81,7 @@ impl ApiProvider {
             }
             Err(e) => {
                 warn!(error = %e, "ably unavailable, will retry");
-                ably_retry.schedule();
-                ably_retry.consecutive_failures = 1;
+                ably_retry.record_initial_failure();
                 (None, false)
             }
         };
