@@ -3,7 +3,6 @@ use std::time::{Duration, Instant};
 
 use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory};
 use tracing::{error, info, warn};
-use uuid::Uuid;
 
 /// Maximum wall-clock time for a single job (2 hours).
 const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
@@ -79,7 +78,7 @@ async fn execute_inner(
     config: &ExecutorConfig,
     telemetry: &mut JobTelemetry,
 ) -> RunnerResult<(i32, Option<String>)> {
-    let sandbox_id = Uuid::new_v4();
+    let sandbox_id = context.run_id;
     let sandbox_config = SandboxConfig {
         id: sandbox_id,
         resources: sandbox::ResourceLimits {
@@ -509,6 +508,7 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
 mod tests {
     use super::*;
     use crate::types::{ArtifactEntry, ResumeSession, StorageEntry, StorageManifest};
+    use uuid::Uuid;
 
     fn minimal_context() -> ExecutionContext {
         ExecutionContext {
