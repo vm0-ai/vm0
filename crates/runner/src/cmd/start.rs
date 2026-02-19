@@ -312,10 +312,15 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
         }
 
         tokio::select! {
-            // Job discovery via provider (Ably push + poll + claim)
-            job = provider.next_job() => {
-                let Some(context) = job else { break }; // provider shutdown
-                let run_id = context.run_id;
+            // Job discovery via provider (Ably push + poll).
+            // discover() has no server-side side effects — safe to cancel.
+            discovered = provider.discover() => {
+                let Some(run_id) = discovered else { break }; // provider shutdown
+                // claim() runs in the branch handler — non-interruptible,
+                // so a successful claim is always paired with complete().
+                let Some(context) = provider.claim(run_id).await else {
+                    continue; // already claimed by another runner
+                };
                 info!(run_id = %run_id, "job claimed, acquiring permit");
                 // Acquire permit in the main loop *before* spawning. Permits are
                 // only acquired here and released by completing tasks, so since

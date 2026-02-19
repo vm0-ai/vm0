@@ -100,34 +100,11 @@ impl ApiProvider {
             cancel,
         })
     }
-
-    /// Attempt to claim a job. On success, store sandbox token and return context.
-    /// On `AlreadyClaimed` or other errors, return `None` (caller retries discovery).
-    async fn try_claim(&self, run_id: Uuid) -> Option<ExecutionContext> {
-        match self.api.claim(run_id).await {
-            Ok(ctx) => {
-                info!(run_id = %run_id, "job claimed");
-                self.tokens
-                    .lock()
-                    .await
-                    .insert(run_id, ctx.sandbox_token.clone());
-                Some(ctx)
-            }
-            Err(RunnerError::AlreadyClaimed) => {
-                info!(run_id = %run_id, "already claimed, skipping");
-                None
-            }
-            Err(e) => {
-                error!(run_id = %run_id, error = %e, "claim failed");
-                None
-            }
-        }
-    }
 }
 
 #[async_trait::async_trait]
 impl JobProvider for ApiProvider {
-    async fn next_job(&self) -> Option<ExecutionContext> {
+    async fn discover(&self) -> Option<Uuid> {
         let mut state = self.discovery.lock().await;
         loop {
             // Check shutdown
@@ -165,9 +142,7 @@ impl JobProvider for ApiProvider {
                         Some(ably_subscriber::Event::Message(msg)) => {
                             if let Some(run_id) = parse_job_run_id(&msg) {
                                 info!(run_id = %run_id, "ably: job notification");
-                                if let Some(ctx) = self.try_claim(run_id).await {
-                                    return Some(ctx);
-                                }
+                                return Some(run_id);
                             }
                         }
                         Some(ably_subscriber::Event::Connected) => {
@@ -204,11 +179,8 @@ impl JobProvider for ApiProvider {
                     match self.api.poll(&self.group).await {
                         Ok(Some(job)) => {
                             info!(run_id = %job.run_id, "poll: job found");
-                            if let Some(ctx) = self.try_claim(job.run_id).await {
-                                *poll_now = true;
-                                return Some(ctx);
-                            }
                             *poll_now = true;
+                            return Some(job.run_id);
                         }
                         Ok(None) => {}
                         Err(e) => {
@@ -222,6 +194,27 @@ impl JobProvider for ApiProvider {
                 }
                 // Ably retry timer
                 () = crate::retry::sleep_until_retry(&ably_retry.restart_at) => {}
+            }
+        }
+    }
+
+    async fn claim(&self, run_id: Uuid) -> Option<ExecutionContext> {
+        match self.api.claim(run_id).await {
+            Ok(ctx) => {
+                info!(run_id = %run_id, "job claimed");
+                self.tokens
+                    .lock()
+                    .await
+                    .insert(run_id, ctx.sandbox_token.clone());
+                Some(ctx)
+            }
+            Err(RunnerError::AlreadyClaimed) => {
+                info!(run_id = %run_id, "already claimed, skipping");
+                None
+            }
+            Err(e) => {
+                error!(run_id = %run_id, error = %e, "claim failed");
+                None
             }
         }
     }

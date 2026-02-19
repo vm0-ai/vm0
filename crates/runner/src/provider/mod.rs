@@ -14,16 +14,33 @@ use crate::types::ExecutionContext;
 
 /// Abstraction over job lifecycle — discovery, claiming, and completion reporting.
 ///
-/// The runner main loop calls [`next_job()`](JobProvider::next_job) to get work
-/// and [`complete()`](JobProvider::complete) to report results. All transport
+/// The runner main loop calls [`discover()`](JobProvider::discover) to find work,
+/// [`claim()`](JobProvider::claim) to claim it, and
+/// [`complete()`](JobProvider::complete) to report results. All transport
 /// details (Ably push, HTTP poll, WebSocket, etc.) are hidden behind this trait.
+///
+/// `discover()` and `claim()` are deliberately separate so that `discover()`
+/// can live as a cancellable `select!` branch future while `claim()` runs
+/// inside the branch handler where it cannot be interrupted.
 #[async_trait::async_trait]
 pub trait JobProvider: Send + Sync {
-    /// Wait for the next available job. Returns `None` on shutdown signal.
+    /// Wait for the next job candidate. Returns `None` on shutdown signal.
     ///
-    /// Implementations handle discovery (push/poll), claiming, and retry logic
-    /// internally. The returned [`ExecutionContext`] is ready for execution.
-    async fn next_job(&self) -> Option<ExecutionContext>;
+    /// Implementations handle discovery (push/poll) internally. The returned
+    /// `Uuid` is a candidate `run_id` ready to be claimed via
+    /// [`claim()`](JobProvider::claim).
+    ///
+    /// This method has **no server-side side effects** and can be safely
+    /// dropped (cancelled) at any `.await` point.
+    async fn discover(&self) -> Option<Uuid>;
+
+    /// Claim a discovered job. Returns `None` if the job was already claimed
+    /// by another runner or an error occurred.
+    ///
+    /// Callers **must** invoke this from a non-cancellable context (e.g.
+    /// inside a `select!` branch handler) to guarantee that a successful
+    /// claim is always paired with a later [`complete()`](JobProvider::complete).
+    async fn claim(&self, run_id: Uuid) -> Option<ExecutionContext>;
 
     /// Report job completion. Called concurrently from spawned executor tasks.
     ///
@@ -32,7 +49,7 @@ pub trait JobProvider: Send + Sync {
 
     /// Release discovery resources (subscriptions, background tasks).
     ///
-    /// Called once after `next_job()` returns `None` and before draining
+    /// Called once after `discover()` returns `None` and before draining
     /// in-flight jobs. `complete()` calls may still arrive after this.
     async fn shutdown(&self);
 }
