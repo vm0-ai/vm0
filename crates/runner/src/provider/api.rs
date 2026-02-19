@@ -46,7 +46,7 @@ pub struct ApiProvider {
     /// Only one caller (main loop) — never contended in practice.
     discovery: tokio::sync::Mutex<DiscoveryState>,
     /// Per-job sandbox tokens for completion auth.
-    tokens: tokio::sync::RwLock<HashMap<Uuid, String>>,
+    tokens: tokio::sync::Mutex<HashMap<Uuid, String>>,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -96,7 +96,7 @@ impl ApiProvider {
                 ably_connected,
                 poll_now: true, // immediate first poll
             }),
-            tokens: tokio::sync::RwLock::new(HashMap::new()),
+            tokens: tokio::sync::Mutex::new(HashMap::new()),
             cancel,
         })
     }
@@ -108,7 +108,7 @@ impl ApiProvider {
             Ok(ctx) => {
                 info!(run_id = %run_id, "job claimed");
                 self.tokens
-                    .write()
+                    .lock()
                     .await
                     .insert(run_id, ctx.sandbox_token.clone());
                 Some(ctx)
@@ -227,10 +227,7 @@ impl JobProvider for ApiProvider {
     }
 
     async fn complete(&self, run_id: Uuid, exit_code: i32, error: Option<&str>) {
-        let token = {
-            let mut tokens = self.tokens.write().await;
-            tokens.remove(&run_id)
-        };
+        let token = self.tokens.lock().await.remove(&run_id);
         let Some(token) = token else {
             error!(run_id = %run_id, "no sandbox token found for completion");
             return;
