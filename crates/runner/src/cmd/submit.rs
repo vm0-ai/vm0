@@ -62,7 +62,7 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
     let response: JobResponse = serde_json::from_slice(&buf)
         .map_err(|e| RunnerError::Internal(format!("parse response: {e}")))?;
 
-    eprintln!(
+    println!(
         "run_id={} exit_code={} error={}",
         response.run_id,
         response.exit_code,

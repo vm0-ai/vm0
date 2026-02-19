@@ -51,12 +51,12 @@ pub(crate) struct JobResponse {
 /// Each incoming connection is treated as a single job request. The client
 /// writes a JSON-encoded [`JobRequest`], shuts down its write end (EOF),
 /// and waits for a JSON-encoded [`JobResponse`].
+/// Lock ordering: always acquire `state` before `streams`.
+/// `discover()` holds `state` for its entire loop and briefly locks `streams`
+/// to insert write halves. `claim()` only locks `state`. `complete()` only
+/// locks `streams`. Never acquire `state` while holding `streams`.
 pub struct LocalProvider {
-    /// Discovery state: listener + pending contexts. Held for the duration
-    /// of `discover()`, same pattern as `ApiProvider::discovery`.
     state: tokio::sync::Mutex<LocalState>,
-    /// Write halves of accepted connections, keyed by run_id.
-    /// `complete()` removes + writes the response here.
     streams: tokio::sync::Mutex<HashMap<Uuid, OwnedWriteHalf>>,
     cancel: CancellationToken,
     sock_path: PathBuf,
