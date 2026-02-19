@@ -1255,11 +1255,14 @@ jobs:
       [
         prepare,
         cli-e2e-01-serial,
+        cli-e2e-02-parallel,
         deploy-web,
         deploy-runner-prepare,
         deploy-runner-start,
       ]
     if: |
+      always() &&
+      (needs.cli-e2e-02-parallel.result == 'success' || needs.cli-e2e-02-parallel.result == 'skipped') &&
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
