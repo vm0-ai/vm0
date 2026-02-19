@@ -193,8 +193,8 @@ async fn execute(
         log_info!(LOG_TAG, "✗ Execution failed ({}s)", cli_elapsed.as_secs());
     }
 
-    // Checkpoint on success
-    if cli_exit_code == 0 && exit_code == 0 {
+    // Checkpoint on success (skip when no API — local/test mode)
+    if cli_exit_code == 0 && exit_code == 0 && env::has_api() {
         log_info!(LOG_TAG, "{} completed successfully", env::cli_agent_type());
 
         log_info!(LOG_TAG, "▷ Checkpoint");
@@ -217,6 +217,8 @@ async fn execute(
                 exit_code = 1;
             }
         }
+    } else if cli_exit_code == 0 && exit_code == 0 {
+        log_info!(LOG_TAG, "{} completed successfully", env::cli_agent_type());
     } else if cli_exit_code != 0 {
         log_info!(
             LOG_TAG,
