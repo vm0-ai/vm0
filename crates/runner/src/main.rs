@@ -59,6 +59,8 @@ enum Command {
     Start(Box<cmd::StartArgs>),
     /// Manage the runner as a systemd service
     Service(cmd::ServiceArgs),
+    /// Kill a running sandbox
+    Kill(cmd::KillArgs),
     /// Clean up unused rootfs and snapshot directories
     Gc(cmd::GcArgs),
     /// Runtime health diagnostics for all runners on the host
@@ -187,6 +189,7 @@ async fn main() -> ExitCode {
         Command::Rootfs(args) => cmd::run_rootfs(args).await.map(|_| ExitCode::SUCCESS),
         Command::Snapshot(args) => cmd::run_snapshot(args).await.map(|_| ExitCode::SUCCESS),
         Command::Benchmark(args) => cmd::run_benchmark(args).await,
+        Command::Kill(args) => cmd::run_kill(args).await,
         Command::Start(args) => cmd::run_start(*args).await.map(|()| ExitCode::SUCCESS),
         Command::Service(args) => cmd::run_service(args).await.map(|()| ExitCode::SUCCESS),
         Command::Gc(args) => cmd::run_gc(args).await.map(|()| ExitCode::SUCCESS),

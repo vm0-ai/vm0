@@ -126,6 +126,27 @@ async fn read_ppid(pid: u32) -> Option<u32> {
     None
 }
 
+/// Parse the process group ID from `/proc/{pid}/stat` content.
+///
+/// Format: `pid (comm) state ppid pgrp ...`
+/// The comm field may contain spaces and parentheses, so we find the
+/// last `)` to skip past it reliably.
+fn parse_pgid_from_stat(content: &str) -> Option<u32> {
+    let after_comm = content.rsplit_once(')')?.1;
+    let mut fields = after_comm.split_whitespace();
+    let _state = fields.next()?;
+    let _ppid = fields.next()?;
+    let pgrp = fields.next()?;
+    pgrp.parse().ok()
+}
+
+/// Read `/proc/{pid}/stat` and extract the process group ID (field 5).
+pub async fn read_pgid(pid: u32) -> Option<u32> {
+    let path = format!("/proc/{pid}/stat");
+    let content = tokio::fs::read_to_string(&path).await.ok()?;
+    parse_pgid_from_stat(&content)
+}
+
 /// Read `/proc/{pid}/cwd` symlink to get the process working directory.
 async fn read_cwd(pid: u32) -> Option<PathBuf> {
     let link = format!("/proc/{pid}/cwd");
@@ -402,5 +423,40 @@ mod tests {
     #[test]
     fn parse_workspace_cwd_non_workspace() {
         assert!(parse_workspace_cwd(Path::new("/tmp/something")).is_none());
+    }
+
+    // -- PGID parsing --
+
+    #[test]
+    fn parse_pgid_simple() {
+        // Real /proc/pid/stat: "1234 (firecracker) S 1200 1100 1100 ..."
+        let stat = "1234 (firecracker) S 1200 1100 1100 0 0 0";
+        assert_eq!(parse_pgid_from_stat(stat), Some(1100));
+    }
+
+    #[test]
+    fn parse_pgid_comm_with_spaces() {
+        // comm can contain spaces
+        let stat = "5678 (Web Content) S 100 200 200 0 0 0";
+        assert_eq!(parse_pgid_from_stat(stat), Some(200));
+    }
+
+    #[test]
+    fn parse_pgid_comm_with_parens() {
+        // comm can contain parentheses — last ')' is the delimiter
+        let stat = "9999 (foo (bar)) S 500 600 600 0 0 0";
+        assert_eq!(parse_pgid_from_stat(stat), Some(600));
+    }
+
+    #[test]
+    fn parse_pgid_empty() {
+        assert!(parse_pgid_from_stat("").is_none());
+    }
+
+    #[test]
+    fn parse_pgid_truncated() {
+        // Missing pgrp field
+        let stat = "1234 (cmd) S 100";
+        assert!(parse_pgid_from_stat(stat).is_none());
     }
 }
