@@ -49,6 +49,10 @@ impl RunnerPaths {
     pub fn proxy_registry_lock(&self) -> PathBuf {
         self.base_dir.join("proxy-registry.json.lock")
     }
+
+    pub fn jobs_sock(&self) -> PathBuf {
+        self.base_dir.join("jobs.sock")
+    }
 }
 
 /// Paths rooted at ~/.vm0-runner/.

@@ -16,7 +16,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::executor::{self, ExecutorConfig};
 use crate::lock;
 use crate::paths::{HomePaths, RunnerPaths};
-use crate::provider::{ApiProvider, JobProvider};
+use crate::provider::{ApiProvider, JobProvider, LocalProvider};
 use crate::proxy;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::status::{RunnerMode, StatusTracker};
@@ -39,6 +39,9 @@ pub struct StartArgs {
     /// Runner authentication token (overrides config)
     #[arg(long, env = "VM0_RUNNER_TOKEN")]
     token: Option<String>,
+    /// Use local Unix socket provider instead of API (for testing)
+    #[arg(long)]
+    local: bool,
 }
 
 /// Load config and run the main poll loop.
@@ -154,24 +157,25 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         vcpu,
         memory_mb,
     } = sandbox;
-    let config::ServerConfig {
-        url: api_url,
-        token,
-    } = server;
-
     let mut status = StatusTracker::new(paths.status());
     status.set_proxy_port(mitm.port()).await;
     let status = Arc::new(status);
 
     // Create provider — handles discovery + claim + complete
-    let http = crate::http::HttpClient::new(api_url.clone())?;
     let cancel = CancellationToken::new();
-    let group_name = group.clone();
-    let provider = ApiProvider::new(http.clone(), token, group, cancel.clone()).await;
+    let http = crate::http::HttpClient::new(server.url.clone())?;
+    let (provider, group_name): (Arc<dyn JobProvider>, String) = if args.local {
+        let provider = LocalProvider::new(paths.jobs_sock(), cancel.clone()).await?;
+        (provider, group)
+    } else {
+        let group_name = group.clone();
+        let provider = ApiProvider::new(http.clone(), server.token, group, cancel.clone()).await;
+        (provider, group_name)
+    };
 
     let is_snapshot = fc_config.snapshot.is_some();
     let exec_config = Arc::new(ExecutorConfig {
-        api_url,
+        api_url: server.url,
         vcpu,
         memory_mb,
         is_snapshot,

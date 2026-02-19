@@ -66,6 +66,8 @@ enum Command {
     Gc(cmd::GcArgs),
     /// Runtime health diagnostics for all runners on the host
     Doctor(cmd::DoctorArgs),
+    /// Submit a job to a locally running runner
+    Submit(cmd::SubmitArgs),
 }
 
 /// Extract the runner `name` field from a runner config YAML.
@@ -195,6 +197,7 @@ async fn main() -> ExitCode {
         Command::Service(args) => cmd::run_service(args).await.map(|()| ExitCode::SUCCESS),
         Command::Gc(args) => cmd::run_gc(args).await.map(|()| ExitCode::SUCCESS),
         Command::Doctor(args) => cmd::run_doctor(args).await,
+        Command::Submit(args) => cmd::run_submit(args).await,
     };
 
     match result {

@@ -5,8 +5,11 @@
 //! changing the executor or main loop.
 
 mod api;
+mod local;
 
 pub use api::ApiProvider;
+pub use local::LocalProvider;
+pub(crate) use local::{JobRequest, JobResponse};
 
 use uuid::Uuid;
 
