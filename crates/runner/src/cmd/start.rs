@@ -317,10 +317,10 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
                 let Some(context) = job else { break }; // provider shutdown
                 let run_id = context.run_id;
                 info!(run_id = %run_id, "job claimed, acquiring permit");
-                // Acquire permit in the main loop *before* spawning. We already
-                // checked available_permits() > 0 above, so this is nearly
-                // instant. If permits were consumed by prior spawned tasks
-                // during the next_job() call, we block briefly until one frees.
+                // Acquire permit in the main loop *before* spawning. Permits are
+                // only acquired here and released by completing tasks, so since
+                // we checked available_permits() > 0 above, this succeeds
+                // immediately.
                 let permit = match Arc::clone(&semaphore).acquire_owned().await {
                     Ok(p) => p,
                     Err(_) => {
