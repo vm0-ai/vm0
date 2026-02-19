@@ -99,7 +99,7 @@ jobs:
           cd crates
           cargo run -p ably-subscriber --example smoke_test
 
-  runner-benchmark:
+  runner-build:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
@@ -112,6 +112,11 @@ jobs:
       needs.detect.outputs.guest-agent-changed == 'true' ||
       needs.detect.outputs.guest-mock-claude-changed == 'true'
     timeout-minutes: 20
+    outputs:
+      host: ${{ steps.host.outputs.host }}
+      job-ref: ${{ steps.host.outputs.job-ref }}
+      rootfs-hash: ${{ steps.build.outputs.rootfs-hash }}
+      snapshot-hash: ${{ steps.build.outputs.snapshot-hash }}
     steps:
       - uses: actions/checkout@v6
 
@@ -138,7 +143,7 @@ jobs:
         id: host
         env:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          JOB_REF: ${{ github.event_name == 'pull_request' && format('pr-{0}-benchmark', github.event.pull_request.number) || 'main-benchmark' }}
+          JOB_REF: ${{ github.event_name == 'pull_request' && format('pr-{0}-test', github.event.pull_request.number) || 'main-test' }}
         run: |
           NUM_HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | wc -l)
           HASH=$(echo -n "$JOB_REF" | md5sum | cut -c1-8)
@@ -148,22 +153,21 @@ jobs:
           echo "job-ref=${JOB_REF}" >> "$GITHUB_OUTPUT"
           echo "Selected metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS})"
 
-      - name: Deploy and test on metal host
+      - name: Deploy and build on metal host
+        id: build
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ steps.host.outputs.host }}
           JOB_REF: ${{ steps.host.outputs.job-ref }}
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
-          RUNNER_DIR="~/.vm0-runner/runners/${JOB_REF}"
           TARGET_DIR="crates/target/aarch64-unknown-linux-musl/release"
 
           # Clean previous run artifacts and upload binaries
           echo "=== Deploying binaries to ${HOST}:${BIN_DIR} ==="
-          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR} && mkdir -p ${BIN_DIR}"
+          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-local && mkdir -p ${BIN_DIR}"
           for bin in runner guest-init guest-download guest-agent guest-mock-claude; do
             scp $SSH_OPTS "${TARGET_DIR}/${bin}" "${REMOTE}:${BIN_DIR}/"
           done
@@ -185,34 +189,147 @@ jobs:
             echo "ERROR: Failed to extract build hashes"
             exit 1
           fi
+          echo "rootfs-hash=${ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
+          echo "snapshot-hash=${SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
 
-          # Generate runner.yaml config
+  runner-benchmark:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      - name: Run benchmark
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          ROOTFS_HASH: ${{ needs.runner-build.outputs.rootfs-hash }}
+          SNAPSHOT_HASH: ${{ needs.runner-build.outputs.snapshot-hash }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+          REMOTE="${METAL_USER}@${HOST}"
+          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+          RUNNER_DIR="~/.vm0-runner/runners/${JOB_REF}-bench"
+
           echo "=== Generating config ==="
           ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
             --rootfs-hash ${ROOTFS_HASH} \
             --snapshot-hash ${SNAPSHOT_HASH} \
-            --name ${JOB_REF} \
+            --name ${JOB_REF}-bench \
             --group vm0/development-${JOB_REF} \
-            --runner-dirname ${JOB_REF} \
+            --runner-dirname ${JOB_REF}-bench \
             --api-url https://localhost \
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
-          # Run benchmark (boot VM from snapshot, exec command, verify network)
           echo "=== Running benchmark ==="
           ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner benchmark \
             --config ${RUNNER_DIR}/runner.yaml \
             'curl -sf --max-time 10 https://httpbin.org/get'"
 
-      - name: Cleanup
-        if: always()
+  runner-start-local:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      - name: Run local provider test
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          HOST: ${{ steps.host.outputs.host }}
-          JOB_REF: ${{ steps.host.outputs.job-ref }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          ROOTFS_HASH: ${{ needs.runner-build.outputs.rootfs-hash }}
+          SNAPSHOT_HASH: ${{ needs.runner-build.outputs.snapshot-hash }}
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
-          RUNNER_DIR="~/.vm0-runner/runners/${JOB_REF}"
+          RUNNER_DIR="~/.vm0-runner/runners/${JOB_REF}-local"
+
+          echo "=== Generating config ==="
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+            --rootfs-hash ${ROOTFS_HASH} \
+            --snapshot-hash ${SNAPSHOT_HASH} \
+            --name ${JOB_REF}-local \
+            --group vm0/development-${JOB_REF} \
+            --runner-dirname ${JOB_REF}-local \
+            --api-url https://localhost \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "=== Running local provider test ==="
+          ssh $SSH_OPTS $REMOTE bash -s -- "${BIN_DIR}" "${RUNNER_DIR}" <<'REMOTE_SCRIPT'
+          BIN_DIR=$1; RUNNER_DIR=$2
+
+          USE_MOCK_CLAUDE=true "$BIN_DIR/runner" start \
+            --local --config "$RUNNER_DIR/runner.yaml" \
+            > "$RUNNER_DIR/local.log" 2>&1 &
+          RUNNER_PID=$!
+
+          # Wait for socket, bail early if runner crashes
+          for i in $(seq 1 30); do
+            [ -S "$RUNNER_DIR/jobs.sock" ] && break
+            kill -0 $RUNNER_PID 2>/dev/null || { echo "ERROR: Runner exited early"; cat "$RUNNER_DIR/local.log"; exit 1; }
+            sleep 1
+          done
+          if [ ! -S "$RUNNER_DIR/jobs.sock" ]; then
+            echo "ERROR: Local socket did not appear within 30s"
+            cat "$RUNNER_DIR/local.log"
+            kill $RUNNER_PID 2>/dev/null || true
+            exit 1
+          fi
+
+          # Submit a job and verify it completes
+          "$BIN_DIR/runner" submit \
+            --socket "$RUNNER_DIR/jobs.sock" \
+            --prompt 'echo hello from local provider test'
+          RC=$?
+          if [ $RC -ne 0 ]; then
+            echo "ERROR: Job submission failed (exit $RC)"
+            cat "$RUNNER_DIR/local.log"
+          fi
+
+          # Drain and wait for graceful shutdown
+          kill -USR1 $RUNNER_PID 2>/dev/null
+          wait $RUNNER_PID 2>/dev/null || true
+          exit $RC
+          REMOTE_SCRIPT
+
+  runner-cleanup:
+    runs-on: ubuntu-latest
+    needs: [runner-build, runner-benchmark, runner-start-local]
+    if: ${{ always() && needs.runner-build.result != 'skipped' }}
+    steps:
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      - name: Cleanup
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+          REMOTE="${METAL_USER}@${HOST}"
+          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
           echo "Cleaning up ${JOB_REF} on ${HOST}"
-          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR}" || true
+          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-local" || true
