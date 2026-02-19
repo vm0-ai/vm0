@@ -60,6 +60,16 @@ impl<H> RetryState<H> {
         true
     }
 
+    /// Number of consecutive failures since the last success.
+    pub(crate) fn consecutive_failures(&self) -> u32 {
+        self.consecutive_failures
+    }
+
+    /// Current backoff duration (doubles on each failure, capped at max).
+    pub(crate) fn backoff(&self) -> Duration {
+        self.backoff
+    }
+
     /// `true` if the restart timer has fired and no task is in flight.
     pub(crate) fn timer_ready(&self) -> bool {
         self.handle.is_none() && self.restart_at.is_some_and(|at| Instant::now() >= at)

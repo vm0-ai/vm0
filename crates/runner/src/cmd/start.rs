@@ -489,9 +489,9 @@ fn handle_mitm_restart_result(
 ) {
     match result {
         Ok(child) => {
-            if retry.consecutive_failures > 0 {
+            if retry.consecutive_failures() > 0 {
                 info!(
-                    attempts = retry.consecutive_failures,
+                    attempts = retry.consecutive_failures(),
                     "mitmproxy restarted after failures"
                 );
             } else {
@@ -502,19 +502,19 @@ fn handle_mitm_restart_result(
         }
         Err(e) => {
             // Capture before on_failure() — matches the delay actually scheduled.
-            let next_secs = retry.backoff.as_secs();
+            let next_secs = retry.backoff().as_secs();
             if !retry.on_failure() {
                 error!(
                     error = %e,
-                    failures = retry.consecutive_failures,
+                    failures = retry.consecutive_failures(),
                     "mitmproxy restart abandoned after too many failures"
                 );
                 return;
             }
-            if retry.consecutive_failures >= 5 {
+            if retry.consecutive_failures() >= 5 {
                 error!(
                     error = %e,
-                    failures = retry.consecutive_failures,
+                    failures = retry.consecutive_failures(),
                     next_attempt_secs = next_secs,
                     "mitmproxy restart failing persistently"
                 );

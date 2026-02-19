@@ -218,6 +218,15 @@ impl JobProvider for ApiProvider {
         }
     }
 
+    /// # Ordering requirement
+    ///
+    /// `discover()` holds the discovery Mutex for its entire loop.
+    /// Callers must cancel the `CancellationToken` *before* calling
+    /// `shutdown()` so that `discover()` observes the cancellation,
+    /// returns `None`, and releases the lock. The main loop in
+    /// `start.rs` guarantees this: the signal handler cancels the
+    /// token, `discover()` returns `None` breaking the loop, and
+    /// then `shutdown()` is called.
     async fn shutdown(&self) {
         let mut state = self.discovery.lock().await;
         // Drop Ably subscription to close WebSocket
@@ -231,9 +240,15 @@ impl JobProvider for ApiProvider {
 
     async fn complete(&self, run_id: Uuid, exit_code: i32, error: Option<&str>) {
         let token = self.tokens.lock().await.remove(&run_id);
-        let Some(token) = token else {
-            error!(run_id = %run_id, "no sandbox token found for completion");
-            return;
+        let token = match token {
+            Some(t) => t,
+            None => {
+                error!(
+                    run_id = %run_id,
+                    "no sandbox token for completion, falling back to runner token"
+                );
+                self.api.token.clone()
+            }
         };
 
         if let Err(e) = self.api.complete(&token, run_id, exit_code, error).await {
@@ -311,9 +326,9 @@ fn handle_ably_reconnect_result(
 ) {
     match result {
         Ok(sub) => {
-            if retry.consecutive_failures > 0 {
+            if retry.consecutive_failures() > 0 {
                 info!(
-                    attempts = retry.consecutive_failures,
+                    attempts = retry.consecutive_failures(),
                     "ably reconnected after failures"
                 );
             } else {
@@ -325,13 +340,13 @@ fn handle_ably_reconnect_result(
         }
         Err(e) => {
             // Capture before on_failure() — matches the delay actually scheduled.
-            let next_secs = retry.backoff.as_secs();
+            let next_secs = retry.backoff().as_secs();
             // Ably retries forever (max_failures = None), so this always returns true.
             let _ = retry.on_failure();
-            if retry.consecutive_failures >= 10 {
+            if retry.consecutive_failures() >= 10 {
                 error!(
                     error = %e,
-                    failures = retry.consecutive_failures,
+                    failures = retry.consecutive_failures(),
                     next_attempt_secs = next_secs,
                     "ably reconnection failing persistently"
                 );
