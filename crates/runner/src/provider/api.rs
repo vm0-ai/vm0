@@ -60,7 +60,13 @@ type AblyReconnectHandle =
 
 impl ApiProvider {
     /// Create a new API-backed provider with initial Ably connection attempt.
-    pub async fn new(api: ApiClient, group: String, cancel: CancellationToken) -> Arc<Self> {
+    pub async fn new(
+        http: crate::http::HttpClient,
+        token: String,
+        group: String,
+        cancel: CancellationToken,
+    ) -> Arc<Self> {
+        let api = ApiClient::new(http, token);
         let mut ably_retry: RetryState<AblyReconnectHandle> =
             RetryState::new(ABLY_BACKOFF_INITIAL, ABLY_BACKOFF_MAX, None);
 

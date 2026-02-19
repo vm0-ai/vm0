@@ -10,7 +10,6 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use crate::api::ApiClient;
 use crate::config;
 use crate::deps;
 use crate::error::{RunnerError, RunnerResult};
@@ -165,9 +164,8 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
 
     // Create provider — handles Ably + poll + claim + complete
     let http = crate::http::HttpClient::new(api_url.clone())?;
-    let api = ApiClient::new(http.clone(), token);
     let cancel = CancellationToken::new();
-    let provider = ApiProvider::new(api, group, cancel.clone()).await;
+    let provider = ApiProvider::new(http.clone(), token, group, cancel.clone()).await;
 
     let config = RunConfig {
         name,
