@@ -27,7 +27,6 @@ struct RunnerReport {
     pid: u32,
     config_path: PathBuf,
     subcommand: String,
-    config: Option<RunnerConfig>,
     service_type: ServiceType,
     status: Option<StatusInfo>,
     api_ok: Option<bool>,
@@ -169,7 +168,6 @@ async fn build_runner_report(
         pid: runner.pid,
         config_path: runner.config_path.clone(),
         subcommand: runner.subcommand.clone(),
-        config,
         service_type,
         status,
         api_ok,
@@ -389,44 +387,18 @@ async fn detect_global_orphans(
 ) -> Vec<String> {
     let mut warnings = Vec::new();
 
-    // Collect all runner PIDs and base_dirs
     let runner_pids: Vec<u32> = reports.iter().map(|r| r.pid).collect();
-    let runner_base_dirs: Vec<PathBuf> = reports
-        .iter()
-        .filter_map(|r| r.config.as_ref().map(|c| c.base_dir.clone()))
-        .collect();
 
     // Orphan firecracker processes
     for fc in fc_procs {
-        if is_reparented(fc.ppid, &runner_pids) {
-            // ppid known but not a runner → true orphan
+        if process::is_orphan(fc.pid, &runner_pids).await {
             warnings.push(format!(
                 "orphan firecracker PID {} (run {}, ppid={})",
                 fc.pid,
                 fc.run_id,
                 fc.ppid.map_or("?".into(), |p| p.to_string()),
             ));
-        } else if fc.ppid.is_none() {
-            // ppid unknown → fallback to base_dir check
-            match &fc.base_dir {
-                Some(bd) if !runner_base_dirs.contains(bd) => {
-                    warnings.push(format!(
-                        "orphan firecracker PID {} (run {}, base_dir {})",
-                        fc.pid,
-                        fc.run_id,
-                        bd.display()
-                    ));
-                }
-                None => {
-                    warnings.push(format!(
-                        "firecracker PID {} (run {}): cannot determine owner",
-                        fc.pid, fc.run_id
-                    ));
-                }
-                _ => {}
-            }
         }
-        // else: ppid matches a runner → not orphan, skip
     }
 
     // Orphan mitmproxy processes.
@@ -441,38 +413,20 @@ async fn detect_global_orphans(
         if claimed_ports.contains(&mitm.port) {
             continue;
         }
-        if is_reparented(mitm.ppid, &runner_pids) {
+        if process::is_orphan(mitm.pid, &runner_pids).await {
             warnings.push(format!(
                 "orphan mitmdump PID {} (port {}, ppid={})",
                 mitm.pid,
                 mitm.port,
                 mitm.ppid.map_or("?".into(), |p| p.to_string()),
             ));
-        } else if mitm.ppid.is_none() {
-            warnings.push(format!(
-                "orphan mitmdump PID {} (port {})",
-                mitm.pid, mitm.port
-            ));
         }
-        // else: ppid matches a runner → not orphan, skip
     }
 
     // Orphan network namespaces
     warnings.extend(detect_orphan_namespaces().await);
 
     warnings
-}
-
-/// A child process is "reparented" if its ppid is not any known runner PID.
-///
-/// This happens when the parent runner crashes — the kernel reparents the child
-/// to PID 1 (init/systemd). We also treat ppid=None (unreadable) as not
-/// reparented to avoid false positives.
-fn is_reparented(ppid: Option<u32>, runner_pids: &[u32]) -> bool {
-    match ppid {
-        Some(p) => !runner_pids.contains(&p),
-        None => false, // can't read ppid → don't flag
-    }
 }
 
 /// List `vm0-ns-*` namespaces and check if their pool locks are held.
@@ -823,7 +777,6 @@ mod tests {
             pid: 1,
             config_path: PathBuf::from("/data/active.yaml"),
             subcommand: "start".into(),
-            config: None,
             service_type: ServiceType::Installed("vm0-runner-active".into()),
             status: None,
             api_ok: None,
@@ -834,31 +787,5 @@ mod tests {
         let stopped = find_stopped_services(&installed, &reports);
         assert_eq!(stopped.len(), 1);
         assert_eq!(stopped.first().unwrap().unit_name, "vm0-runner-stopped");
-    }
-
-    #[test]
-    fn is_reparented_ppid_1() {
-        let runner_pids = vec![100, 200];
-        assert!(is_reparented(Some(1), &runner_pids));
-    }
-
-    #[test]
-    fn is_reparented_ppid_matches_runner() {
-        let runner_pids = vec![100, 200];
-        assert!(!is_reparented(Some(100), &runner_pids));
-    }
-
-    #[test]
-    fn is_reparented_ppid_unknown() {
-        let runner_pids = vec![100];
-        // Can't read ppid → don't flag as orphan
-        assert!(!is_reparented(None, &runner_pids));
-    }
-
-    #[test]
-    fn is_reparented_ppid_other_process() {
-        let runner_pids = vec![100];
-        // ppid is some other process, not a runner
-        assert!(is_reparented(Some(999), &runner_pids));
     }
 }

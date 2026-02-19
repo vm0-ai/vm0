@@ -253,6 +253,38 @@ pub async fn discover_all() -> DiscoveredProcesses {
 }
 
 // ---------------------------------------------------------------------------
+// Orphan detection
+// ---------------------------------------------------------------------------
+
+/// Walk the ppid chain from `pid` upward to determine if it's an orphan.
+///
+/// Firecracker is not a direct child of the runner — the spawn chain is
+/// `runner → sudo → ip netns exec → sudo -u → firecracker`, so checking
+/// only the immediate ppid is insufficient. This function walks up the
+/// process tree until it either finds a runner PID (not orphan) or reaches
+/// PID 1 / init (orphan).
+///
+/// Returns `false` (not orphan) when the ppid chain cannot be read, to
+/// avoid false positives.
+pub async fn is_orphan(pid: u32, runner_pids: &[u32]) -> bool {
+    let mut current = pid;
+    // Max depth prevents infinite loops from circular pid references.
+    for _ in 0..16 {
+        let Some(ppid) = read_ppid(current).await else {
+            return false; // can't read → don't flag
+        };
+        if runner_pids.contains(&ppid) {
+            return false;
+        }
+        if ppid <= 1 {
+            return true; // reached init → orphaned
+        }
+        current = ppid;
+    }
+    false // max depth reached → don't flag
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
