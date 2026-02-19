@@ -1456,6 +1456,7 @@ name = "runner"
 version = "0.1.0"
 dependencies = [
  "ably-subscriber",
+ "async-trait",
  "base64",
  "chrono",
  "clap",
@@ -1472,6 +1473,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",

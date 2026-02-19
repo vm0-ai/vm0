@@ -9,6 +9,7 @@ mod lock;
 mod network_logs;
 mod paths;
 mod process;
+mod provider;
 mod proxy;
 mod status;
 mod telemetry;
