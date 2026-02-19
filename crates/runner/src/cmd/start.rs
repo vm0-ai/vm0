@@ -5,7 +5,7 @@ use std::time::Duration;
 use clap::Args;
 use sandbox::SandboxFactory;
 use sandbox_fc::FirecrackerFactory;
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -316,10 +316,22 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
             job = provider.next_job() => {
                 let Some(context) = job else { break }; // provider shutdown
                 let run_id = context.run_id;
-                info!(run_id = %run_id, "job claimed, spawning executor");
+                info!(run_id = %run_id, "job claimed, acquiring permit");
+                // Acquire permit in the main loop *before* spawning. We already
+                // checked available_permits() > 0 above, so this is nearly
+                // instant. If permits were consumed by prior spawned tasks
+                // during the next_job() call, we block briefly until one frees.
+                let permit = match Arc::clone(&semaphore).acquire_owned().await {
+                    Ok(p) => p,
+                    Err(_) => {
+                        error!("semaphore closed unexpectedly");
+                        break;
+                    }
+                };
+                info!(run_id = %run_id, "spawning executor");
                 spawn_job(
                     context, provider, &factory, &exec_config,
-                    &semaphore, &mut jobs, &config.status,
+                    permit, &mut jobs, &config.status,
                 );
             }
             // Mitmproxy crash detection
@@ -389,15 +401,15 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
 
 /// Spawn a job executor task.
 ///
-/// The provider has already claimed the job — this function acquires a
-/// semaphore permit, spawns the executor, and reports completion via the
-/// provider when done.
+/// The provider has already claimed the job and the caller has acquired
+/// a semaphore permit — this function spawns the executor and reports
+/// completion via the provider when done.
 fn spawn_job(
     context: crate::types::ExecutionContext,
     provider: &Arc<dyn JobProvider>,
     factory: &Arc<FirecrackerFactory>,
     exec_config: &Arc<ExecutorConfig>,
-    semaphore: &Arc<Semaphore>,
+    permit: OwnedSemaphorePermit,
     jobs: &mut JoinSet<()>,
     status: &Arc<StatusTracker>,
 ) {
@@ -407,24 +419,8 @@ fn spawn_job(
     let factory = Arc::clone(factory);
     let exec_config = Arc::clone(exec_config);
     let status = Arc::clone(status);
-    let semaphore = Arc::clone(semaphore);
 
     jobs.spawn(async move {
-        // Acquire permit inside the spawned task. The main loop checks
-        // available_permits() > 0 before calling next_job(), so this rarely
-        // blocks. Note: the pre-refactor code acquired the permit *before*
-        // the HTTP claim call, whereas now the claim happens inside
-        // next_job() before this acquire. This means at most one extra job
-        // can be claimed beyond max_concurrent — bounded and self-correcting
-        // since excess tasks simply block here until a permit frees up.
-        let permit = match semaphore.acquire_owned().await {
-            Ok(p) => p,
-            Err(_) => {
-                error!("semaphore closed unexpectedly");
-                return;
-            }
-        };
-
         status.add_run(run_id).await;
 
         // Inner spawn isolates panics: if execute_job panics, the outer task
