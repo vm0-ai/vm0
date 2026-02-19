@@ -62,12 +62,11 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
     let response: JobResponse = serde_json::from_slice(&buf)
         .map_err(|e| RunnerError::Internal(format!("parse response: {e}")))?;
 
-    println!(
-        "run_id={} exit_code={} error={}",
-        response.run_id,
-        response.exit_code,
-        response.error.as_deref().unwrap_or("none")
-    );
+    // Write response as JSON to stdout for machine-parseable output.
+    // The buf is already valid JSON from the server, write it directly.
+    use std::io::Write;
+    std::io::stdout().write_all(&buf).ok();
+    std::io::stdout().write_all(b"\n").ok();
 
     if response.exit_code == 0 {
         Ok(ExitCode::SUCCESS)
