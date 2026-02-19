@@ -172,16 +172,24 @@ jobs:
           echo "=== Running setup ==="
           ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner setup"
 
-          # Run build (rootfs via Docker + snapshot via Firecracker, generates runner.yaml)
+          # Run build (rootfs via Docker + snapshot via Firecracker)
           echo "=== Running build ==="
-          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
-            --name ${JOB_REF} \
-            --group vm0/development-${JOB_REF} \
-            --runner-dirname ${JOB_REF} \
+          BUILD_OUTPUT=$(ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
             --guest-init ${BIN_DIR}/guest-init \
             --guest-download ${BIN_DIR}/guest-download \
             --guest-agent ${BIN_DIR}/guest-agent \
-            --guest-mock-claude ${BIN_DIR}/guest-mock-claude \
+            --guest-mock-claude ${BIN_DIR}/guest-mock-claude")
+          ROOTFS_HASH=$(echo "$BUILD_OUTPUT" | grep '^rootfs_hash=' | cut -d= -f2)
+          SNAPSHOT_HASH=$(echo "$BUILD_OUTPUT" | grep '^snapshot_hash=' | cut -d= -f2)
+
+          # Generate runner.yaml config
+          echo "=== Generating config ==="
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+            --rootfs-hash ${ROOTFS_HASH} \
+            --snapshot-hash ${SNAPSHOT_HASH} \
+            --name ${JOB_REF} \
+            --group vm0/development-${JOB_REF} \
+            --runner-dirname ${JOB_REF} \
             --api-url https://localhost \
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 

@@ -22,7 +22,7 @@ pub struct SnapshotArgs {
 }
 
 /// Create a snapshot and return the complete snapshot path information.
-pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<SnapshotConfig> {
+pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<(String, SnapshotConfig)> {
     let paths = HomePaths::new()?;
 
     let snapshot_hash = compute_snapshot_hash(&args);
@@ -34,7 +34,8 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<SnapshotConfig> {
     if is_snapshot_complete(&output).await? {
         tracing::info!("[OK] snapshot already exists: {}", output_dir.display());
         crate::paths::touch_mtime(&output_dir);
-        return Ok(output.snapshot_config(&snapshot_hash).into());
+        let config = output.snapshot_config(&snapshot_hash).into();
+        return Ok((snapshot_hash, config));
     }
 
     // Acquire exclusive lock to prevent concurrent builds with the same hash.
@@ -44,7 +45,8 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<SnapshotConfig> {
     if is_snapshot_complete(&output).await? {
         tracing::info!("[OK] snapshot already exists: {}", output_dir.display());
         crate::paths::touch_mtime(&output_dir);
-        return Ok(output.snapshot_config(&snapshot_hash).into());
+        let config = output.snapshot_config(&snapshot_hash).into();
+        return Ok((snapshot_hash, config));
     }
 
     // Clean up any partial output from a previous failed attempt.
@@ -96,7 +98,7 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<SnapshotConfig> {
         "snapshot creation complete"
     );
 
-    Ok(sc.into())
+    Ok((snapshot_hash, sc.into()))
 }
 
 /// Check whether all expected snapshot outputs exist in the directory.

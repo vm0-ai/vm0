@@ -987,6 +987,8 @@ jobs:
       bin-dir: ${{ steps.host.outputs.bin-dir }}
       runner-dir: ${{ steps.host.outputs.runner-dir }}
       runner-matrix: ${{ steps.runner-matrix.outputs.matrix }}
+      rootfs-hash: ${{ steps.deploy.outputs.rootfs-hash }}
+      snapshot-hash: ${{ steps.deploy.outputs.snapshot-hash }}
     steps:
       - uses: actions/checkout@v6
 
@@ -1062,6 +1064,7 @@ jobs:
           echo "matrix=${CHUNKS}]" >> $GITHUB_OUTPUT
 
       - name: Deploy binaries and build rootfs/snapshot on all metal hosts
+        id: deploy
         shell: bash
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
@@ -1090,21 +1093,14 @@ jobs:
             # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
             ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner setup"
 
-            # Run build with mock URL to trigger rootfs+snapshot construction and caching
-            # --api-url does not affect rootfs/snapshot hash, only runner.yaml config
+            # Run build to create rootfs + snapshot (outputs hashes to stdout)
             ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
-              --name ${RUNNER_NAME} \
-              --group vm0/development-${JOB_REF} \
-              --runner-dirname ${JOB_REF} \
               --guest-init ${BIN_DIR}/guest-init \
               --guest-download ${BIN_DIR}/guest-download \
               --guest-agent ${BIN_DIR}/guest-agent \
               --guest-mock-claude ${BIN_DIR}/guest-mock-claude \
               --vcpu ${RUNNER_VCPU} \
-              --memory-mb ${RUNNER_MEMORY_MB} \
-              --max-concurrent ${RUNNER_MAX_CONCURRENT} \
-              --api-url http://localhost \
-              --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+              --memory-mb ${RUNNER_MEMORY_MB}"
 
             # Clean up old rootfs/snapshots, keep the 3 most recent
             ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 3"
@@ -1131,14 +1127,21 @@ jobs:
             echo "=== ${HOSTS[$i]} ==="
             cat "${LOG_DIR}/${HOSTS[$i]}.log"
           done
-          rm -rf "$LOG_DIR"
           if [ "$FAILED" -ne 0 ]; then
+            rm -rf "$LOG_DIR"
             exit 1
           fi
 
-  # Deploy runner start: rebuild config with real preview URL and start service
+          # Extract build hashes from any host's log (all hosts produce identical hashes)
+          FIRST_LOG=$(ls ${LOG_DIR}/*.log | head -1)
+          ROOTFS_HASH=$(grep '^rootfs_hash=' "$FIRST_LOG" | cut -d= -f2)
+          SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$FIRST_LOG" | cut -d= -f2)
+          rm -rf "$LOG_DIR"
+          echo "rootfs-hash=${ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
+          echo "snapshot-hash=${SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
+
+  # Deploy runner start: generate config with real preview URL and start service
   # Waits for both deploy-runner-prepare (binaries + rootfs/snapshot) and deploy-web (preview URL)
-  # The second `runner build` is a cache hit — only rewrites runner.yaml (~100ms)
   deploy-runner-start:
     runs-on: ubuntu-latest
     needs: [prepare, deploy-runner-prepare, deploy-web]
@@ -1170,6 +1173,8 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
+          ROOTFS_HASH: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash }}
+          SNAPSHOT_HASH: ${{ needs.deploy-runner-prepare.outputs.snapshot-hash }}
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
@@ -1182,15 +1187,13 @@ jobs:
             local REMOTE="${METAL_USER}@${HOST}"
             echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
 
-            # Re-run build with real preview URL (cache hit, only rewrites runner.yaml)
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
+            # Generate runner.yaml with real preview URL (no build needed, uses cached hashes)
+            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+              --rootfs-hash ${ROOTFS_HASH} \
+              --snapshot-hash ${SNAPSHOT_HASH} \
               --name ${RUNNER_NAME} \
               --group vm0/development-${JOB_REF} \
               --runner-dirname ${JOB_REF} \
-              --guest-init ${BIN_DIR}/guest-init \
-              --guest-download ${BIN_DIR}/guest-download \
-              --guest-agent ${BIN_DIR}/guest-agent \
-              --guest-mock-claude ${BIN_DIR}/guest-mock-claude \
               --vcpu ${RUNNER_VCPU} \
               --memory-mb ${RUNNER_MEMORY_MB} \
               --max-concurrent ${RUNNER_MAX_CONCURRENT} \

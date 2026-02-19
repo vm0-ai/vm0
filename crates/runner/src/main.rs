@@ -54,6 +54,8 @@ enum Command {
     Rootfs(cmd::RootfsArgs),
     /// Create a Firecracker VM snapshot for fast sandbox boot
     Snapshot(cmd::SnapshotArgs),
+    /// Generate runner.yaml from pre-built rootfs and snapshot hashes
+    Config(cmd::ConfigArgs),
     /// Run a single bash command in a VM for benchmarking
     Benchmark(cmd::BenchmarkArgs),
     /// Start the runner and poll for jobs (must run setup + build first)
@@ -191,6 +193,7 @@ async fn main() -> ExitCode {
         Command::Build(args) => cmd::run_build(args).await.map(|()| ExitCode::SUCCESS),
         Command::Rootfs(args) => cmd::run_rootfs(args).await.map(|_| ExitCode::SUCCESS),
         Command::Snapshot(args) => cmd::run_snapshot(args).await.map(|_| ExitCode::SUCCESS),
+        Command::Config(args) => cmd::run_config(args).await.map(|()| ExitCode::SUCCESS),
         Command::Benchmark(args) => cmd::run_benchmark(args).await,
         Command::Kill(args) => cmd::run_kill(args).await,
         Command::Start(args) => cmd::run_start(*args).await.map(|()| ExitCode::SUCCESS),
