@@ -10,9 +10,10 @@ use uuid::Uuid;
 
 use reqeast::StatusCode;
 
-use super::{JobProvider, RetryState};
+use super::JobProvider;
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
+use crate::retry::RetryState;
 use crate::types::{CompleteRequest, ExecutionContext, Job, PollResponse};
 
 // ---------------------------------------------------------------------------
@@ -216,11 +217,11 @@ impl JobProvider for ApiProvider {
                     }
                 }
                 // Ably reconnection result
-                result = super::recv_retry(&mut ably_retry.handle) => {
+                result = crate::retry::recv_retry(&mut ably_retry.handle) => {
                     handle_ably_reconnect_result(result, ably, ably_connected, ably_retry);
                 }
                 // Ably retry timer
-                () = super::sleep_until_retry(&ably_retry.restart_at) => {}
+                () = crate::retry::sleep_until_retry(&ably_retry.restart_at) => {}
             }
         }
     }

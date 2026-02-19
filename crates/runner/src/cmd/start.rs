@@ -16,8 +16,9 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::executor::{self, ExecutorConfig};
 use crate::lock;
 use crate::paths::{HomePaths, RunnerPaths};
-use crate::provider::{ApiProvider, JobProvider, RetryState, recv_retry, sleep_until_retry};
+use crate::provider::{ApiProvider, JobProvider};
 use crate::proxy::{self, ProxyRegistryHandle};
+use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::status::{RunnerMode, StatusTracker};
 
 /// Initial backoff before retrying mitmproxy after a crash.

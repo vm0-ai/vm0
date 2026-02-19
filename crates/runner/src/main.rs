@@ -10,6 +10,7 @@ mod paths;
 mod process;
 mod provider;
 mod proxy;
+mod retry;
 mod status;
 mod telemetry;
 mod types;
