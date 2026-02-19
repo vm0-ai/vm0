@@ -324,7 +324,8 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
                 let permit = match Arc::clone(&semaphore).acquire_owned().await {
                     Ok(p) => p,
                     Err(_) => {
-                        error!("semaphore closed unexpectedly");
+                        error!(run_id = %run_id, "semaphore closed unexpectedly");
+                        provider.complete(run_id, 1, Some("runner internal error: semaphore closed")).await;
                         break;
                     }
                 };
