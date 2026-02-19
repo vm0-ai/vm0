@@ -181,6 +181,10 @@ jobs:
             --guest-mock-claude ${BIN_DIR}/guest-mock-claude")
           ROOTFS_HASH=$(echo "$BUILD_OUTPUT" | grep '^rootfs_hash=' | cut -d= -f2)
           SNAPSHOT_HASH=$(echo "$BUILD_OUTPUT" | grep '^snapshot_hash=' | cut -d= -f2)
+          if [ -z "$ROOTFS_HASH" ] || [ -z "$SNAPSHOT_HASH" ]; then
+            echo "ERROR: Failed to extract build hashes"
+            exit 1
+          fi
 
           # Generate runner.yaml config
           echo "=== Generating config ==="

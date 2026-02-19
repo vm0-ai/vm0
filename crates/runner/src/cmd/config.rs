@@ -7,7 +7,7 @@ use crate::config::{
     SandboxConfig, ServerConfig,
 };
 use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};
-use crate::error::RunnerResult;
+use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, RootfsPaths};
 
 #[derive(Args)]
@@ -51,7 +51,29 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
     let paths = HomePaths::new()?;
     let rootfs_paths = RootfsPaths::new(&paths, &args.rootfs_hash);
 
-    let snapshot_output = SnapshotOutputPaths::new(paths.snapshots_dir().join(&args.snapshot_hash));
+    // Fail fast if referenced artifacts don't exist.
+    let rootfs_dir = rootfs_paths.dir();
+    if !tokio::fs::try_exists(rootfs_dir)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("check rootfs dir: {e}")))?
+    {
+        return Err(RunnerError::Config(format!(
+            "rootfs not found for hash {}; run `build` or `rootfs` first",
+            args.rootfs_hash
+        )));
+    }
+    let snapshot_dir = paths.snapshots_dir().join(&args.snapshot_hash);
+    if !tokio::fs::try_exists(&snapshot_dir)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("check snapshot dir: {e}")))?
+    {
+        return Err(RunnerError::Config(format!(
+            "snapshot not found for hash {}; run `build` or `snapshot` first",
+            args.snapshot_hash
+        )));
+    }
+
+    let snapshot_output = SnapshotOutputPaths::new(snapshot_dir);
     let snapshot_config = snapshot_output.snapshot_config(&args.snapshot_hash).into();
 
     let runner_dir = paths.runners_dir().join(&args.runner_dirname);

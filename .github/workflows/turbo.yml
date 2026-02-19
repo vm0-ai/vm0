@@ -1137,6 +1137,10 @@ jobs:
           ROOTFS_HASH=$(grep '^rootfs_hash=' "$FIRST_LOG" | cut -d= -f2)
           SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$FIRST_LOG" | cut -d= -f2)
           rm -rf "$LOG_DIR"
+          if [ -z "$ROOTFS_HASH" ] || [ -z "$SNAPSHOT_HASH" ]; then
+            echo "::error::Failed to extract build hashes from log"
+            exit 1
+          fi
           echo "rootfs-hash=${ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
           echo "snapshot-hash=${SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
 
