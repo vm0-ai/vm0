@@ -339,8 +339,10 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
     }
 
     // -----------------------------------------------------------------------
-    // Shutdown — drain running jobs while keeping mitmproxy alive
+    // Shutdown — release discovery resources, then drain running jobs
     // -----------------------------------------------------------------------
+    provider.shutdown().await;
+
     let remaining = jobs.len();
     if remaining > 0 {
         info!(remaining, "waiting for running jobs to finish");
@@ -410,9 +412,11 @@ fn spawn_job(
     jobs.spawn(async move {
         // Acquire permit inside the spawned task. The main loop checks
         // available_permits() > 0 before calling next_job(), so this rarely
-        // blocks. At most one extra job can be claimed beyond max_concurrent
-        // if a permit is taken between the check and this acquire — same
-        // race window as the pre-refactor code.
+        // blocks. Note: the pre-refactor code acquired the permit *before*
+        // the HTTP claim call, whereas now the claim happens inside
+        // next_job() before this acquire. This means at most one extra job
+        // can be claimed beyond max_concurrent — bounded and self-correcting
+        // since excess tasks simply block here until a permit frees up.
         let permit = match semaphore.acquire_owned().await {
             Ok(p) => p,
             Err(_) => {

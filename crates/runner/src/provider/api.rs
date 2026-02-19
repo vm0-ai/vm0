@@ -226,6 +226,17 @@ impl JobProvider for ApiProvider {
         }
     }
 
+    async fn shutdown(&self) {
+        let mut state = self.discovery.lock().await;
+        // Drop Ably subscription to close WebSocket
+        state.ably = None;
+        state.ably_connected = false;
+        // Abort in-flight reconnection task
+        if let Some(h) = state.ably_retry.handle.take() {
+            h.abort();
+        }
+    }
+
     async fn complete(&self, run_id: Uuid, exit_code: i32, error: Option<&str>) {
         let token = self.tokens.lock().await.remove(&run_id);
         let Some(token) = token else {
