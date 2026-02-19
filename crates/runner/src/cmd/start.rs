@@ -17,7 +17,7 @@ use crate::executor::{self, ExecutorConfig};
 use crate::lock;
 use crate::paths::{HomePaths, RunnerPaths};
 use crate::provider::{ApiProvider, JobProvider};
-use crate::proxy::{self, ProxyRegistryHandle};
+use crate::proxy;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::status::{RunnerMode, StatusTracker};
 
@@ -163,26 +163,32 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     status.set_proxy_port(mitm.port()).await;
     let status = Arc::new(status);
 
-    // Create provider — handles Ably + poll + claim + complete
+    // Create provider — handles discovery + claim + complete
     let http = crate::http::HttpClient::new(api_url.clone())?;
     let cancel = CancellationToken::new();
     let provider = ApiProvider::new(http.clone(), token, group, cancel.clone()).await;
 
-    let config = RunConfig {
-        name,
+    let is_snapshot = fc_config.snapshot.is_some();
+    let exec_config = Arc::new(ExecutorConfig {
         api_url,
-        fc_config,
-        max_concurrent,
         vcpu,
         memory_mb,
-        status,
+        is_snapshot,
         registry: registry_handle,
+        http,
         log_paths,
+    });
+
+    let config = RunConfig {
+        name,
+        fc_config,
+        max_concurrent,
+        status,
         mitm,
         mitm_crash_rx,
         provider,
-        http,
         cancel,
+        exec_config,
     };
 
     run(config).await
@@ -190,19 +196,14 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
 
 struct RunConfig {
     name: String,
-    api_url: String,
     fc_config: sandbox_fc::FirecrackerConfig,
     max_concurrent: usize,
-    vcpu: u32,
-    memory_mb: u32,
     status: Arc<StatusTracker>,
-    registry: ProxyRegistryHandle,
-    log_paths: crate::paths::LogPaths,
     mitm: proxy::MitmProxy,
     mitm_crash_rx: tokio::sync::mpsc::Receiver<()>,
     provider: Arc<dyn JobProvider>,
-    http: crate::http::HttpClient,
     cancel: CancellationToken,
+    exec_config: Arc<ExecutorConfig>,
 }
 
 type MitmRestartHandle = tokio::task::JoinHandle<RunnerResult<tokio::process::Child>>;
@@ -214,17 +215,7 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
 
     let semaphore = Arc::new(Semaphore::new(config.max_concurrent));
     let mut jobs = JoinSet::new();
-
-    let is_snapshot = config.fc_config.snapshot.is_some();
-    let exec_config = Arc::new(ExecutorConfig {
-        api_url: config.api_url.clone(),
-        vcpu: config.vcpu,
-        memory_mb: config.memory_mb,
-        is_snapshot,
-        registry: config.registry.clone(),
-        http: config.http.clone(),
-        log_paths: config.log_paths.clone(),
-    });
+    let exec_config = &config.exec_config;
 
     config.status.write_initial().await;
     info!(
@@ -335,8 +326,9 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
                     }
                 };
                 info!(run_id = %run_id, "spawning executor");
+                config.status.add_run(run_id).await;
                 spawn_job(
-                    context, provider, &factory, &exec_config,
+                    context, provider, &factory, exec_config,
                     permit, &mut jobs, &config.status,
                 );
             }
@@ -427,8 +419,6 @@ fn spawn_job(
     let status = Arc::clone(status);
 
     jobs.spawn(async move {
-        status.add_run(run_id).await;
-
         // Inner spawn isolates panics: if execute_job panics, the outer task
         // still reports completion and cleans up status/permit.
         let inner = tokio::spawn(async move {
