@@ -19,7 +19,7 @@ pub struct SubmitArgs {
     #[arg(long)]
     prompt: String,
     /// Working directory inside the VM
-    #[arg(long, default_value = "/workspace")]
+    #[arg(long, default_value = "/home/user/workspace")]
     working_dir: String,
     /// Agent type
     #[arg(long, default_value = "claude-code")]

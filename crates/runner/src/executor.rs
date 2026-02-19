@@ -281,34 +281,9 @@ async fn run_in_sandbox(
         }
     }
 
-    // When agent fails, dump the in-VM system log for debugging.
-    // (stdout/stderr are redirected to log_file inside the VM, so exit.stderr is always empty)
     let error_msg = if exit.exit_code != 0 {
-        let cat_cmd = format!("cat {log_file} 2>/dev/null");
-        match sandbox
-            .exec(&ExecRequest {
-                cmd: &cat_cmd,
-                timeout: Duration::from_secs(5),
-                env: &[],
-                sudo: false,
-            })
-            .await
-        {
-            Ok(out) => {
-                let log_content = String::from_utf8_lossy(&out.stdout);
-                if !log_content.is_empty() {
-                    warn!(
-                        run_id = %context.run_id,
-                        "guest-agent system log:\n{log_content}"
-                    );
-                }
-                Some(log_content.into_owned()).filter(|s| !s.is_empty())
-            }
-            Err(e) => {
-                warn!(run_id = %context.run_id, error = %e, "failed to read guest system log");
-                None
-            }
-        }
+        let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
+        Some(stderr).filter(|s| !s.is_empty())
     } else {
         None
     };
