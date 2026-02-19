@@ -166,6 +166,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     // Create provider — handles discovery + claim + complete
     let http = crate::http::HttpClient::new(api_url.clone())?;
     let cancel = CancellationToken::new();
+    let group_name = group.clone();
     let provider = ApiProvider::new(http.clone(), token, group, cancel.clone()).await;
 
     let is_snapshot = fc_config.snapshot.is_some();
@@ -181,6 +182,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
 
     let config = RunConfig {
         name,
+        group: group_name,
         fc_config,
         max_concurrent,
         status,
@@ -196,6 +198,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
 
 struct RunConfig {
     name: String,
+    group: String,
     fc_config: sandbox_fc::FirecrackerConfig,
     max_concurrent: usize,
     status: Arc<StatusTracker>,
@@ -208,19 +211,32 @@ struct RunConfig {
 
 type MitmRestartHandle = tokio::task::JoinHandle<RunnerResult<tokio::process::Child>>;
 
-async fn run(mut config: RunConfig) -> RunnerResult<()> {
-    let mut factory = FirecrackerFactory::new(config.fc_config.clone()).await?;
+async fn run(config: RunConfig) -> RunnerResult<()> {
+    let RunConfig {
+        name,
+        group,
+        fc_config,
+        max_concurrent,
+        status,
+        mut mitm,
+        mut mitm_crash_rx,
+        provider,
+        cancel,
+        exec_config,
+    } = config;
+
+    let mut factory = FirecrackerFactory::new(fc_config).await?;
     factory.startup().await?;
     let factory = Arc::new(factory);
 
-    let semaphore = Arc::new(Semaphore::new(config.max_concurrent));
+    let semaphore = Arc::new(Semaphore::new(max_concurrent));
     let mut jobs = JoinSet::new();
-    let exec_config = &config.exec_config;
 
-    config.status.write_initial().await;
+    status.write_initial().await;
     info!(
-        name = %config.name,
-        max_concurrent = config.max_concurrent,
+        name = %name,
+        group = %group,
+        max_concurrent,
         "runner started"
     );
 
@@ -237,7 +253,7 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
     // Signal handling
     // -----------------------------------------------------------------------
     let (mode_tx, mut mode_rx) = tokio::sync::watch::channel(RunnerMode::Running);
-    let cancel = config.cancel.clone();
+    let signal_cancel = cancel.clone();
 
     tokio::spawn(async move {
         use tokio::signal::unix::{SignalKind, signal};
@@ -258,19 +274,18 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
             }
         }
         let _ = mode_tx.send(RunnerMode::Draining);
-        cancel.cancel();
+        signal_cancel.cancel();
     });
 
     // -----------------------------------------------------------------------
     // Main loop
     // -----------------------------------------------------------------------
     let mut current_mode = RunnerMode::Running;
-    let provider = &config.provider;
     loop {
         let mode = *mode_rx.borrow_and_update();
         if mode != current_mode {
             current_mode = mode;
-            config.status.set_mode(mode).await;
+            status.set_mode(mode).await;
         }
         match mode {
             RunnerMode::Draining | RunnerMode::Stopped => break,
@@ -278,8 +293,7 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
         }
 
         // Spawn background restart task when timer fires
-        maybe_spawn_mitm_restart(&mut config.mitm, &mut config.mitm_crash_rx, &mut mitm_retry)
-            .await;
+        maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
 
         // If all permits are taken, wait for a job to finish or mode change
         if semaphore.available_permits() == 0 {
@@ -290,12 +304,12 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
                         error!(error = %e, "job task panicked");
                     }
                 }
-                _ = config.mitm_crash_rx.recv() => {
+                _ = mitm_crash_rx.recv() => {
                     warn!("mitmproxy exited unexpectedly, scheduling restart");
                     mitm_retry.schedule();
                 }
                 result = recv_retry(&mut mitm_retry.handle) => {
-                    handle_mitm_restart_result(result, &mut config.mitm, &mut mitm_retry);
+                    handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry);
                 }
                 () = sleep_until_retry(&mitm_retry.restart_at) => {}
             }
@@ -326,20 +340,20 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
                     }
                 };
                 info!(run_id = %run_id, "spawning executor");
-                config.status.add_run(run_id).await;
+                status.add_run(run_id).await;
                 spawn_job(
-                    context, provider, &factory, exec_config,
-                    permit, &mut jobs, &config.status,
+                    context, &provider, &factory, &exec_config,
+                    permit, &mut jobs, &status,
                 );
             }
             // Mitmproxy crash detection
-            _ = config.mitm_crash_rx.recv() => {
+            _ = mitm_crash_rx.recv() => {
                 warn!("mitmproxy exited unexpectedly, scheduling restart");
                 mitm_retry.schedule();
             }
             // Mitmproxy restart result (background task)
             result = recv_retry(&mut mitm_retry.handle) => {
-                handle_mitm_restart_result(result, &mut config.mitm, &mut mitm_retry);
+                handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry);
             }
             // Mitmproxy restart timer
             () = sleep_until_retry(&mitm_retry.restart_at) => {}
@@ -357,8 +371,7 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
     if remaining > 0 {
         info!(remaining, "waiting for running jobs to finish");
         while !jobs.is_empty() {
-            maybe_spawn_mitm_restart(&mut config.mitm, &mut config.mitm_crash_rx, &mut mitm_retry)
-                .await;
+            maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
 
             tokio::select! {
                 result = jobs.join_next() => {
@@ -366,12 +379,12 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
                         error!(error = %e, "job task panicked during drain");
                     }
                 }
-                _ = config.mitm_crash_rx.recv() => {
+                _ = mitm_crash_rx.recv() => {
                     warn!("mitmproxy exited unexpectedly, scheduling restart");
                     mitm_retry.schedule();
                 }
                 result = recv_retry(&mut mitm_retry.handle) => {
-                    handle_mitm_restart_result(result, &mut config.mitm, &mut mitm_retry);
+                    handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry);
                 }
                 () = sleep_until_retry(&mitm_retry.restart_at) => {}
             }
@@ -387,11 +400,11 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
     factory.shutdown().await;
 
     // Stop proxy after all jobs have drained and factory is shut down.
-    if let Err(e) = config.mitm.stop().await {
+    if let Err(e) = mitm.stop().await {
         warn!(error = %e, "proxy stop failed");
     }
 
-    config.status.set_mode(RunnerMode::Stopped).await;
+    status.set_mode(RunnerMode::Stopped).await;
     info!("runner stopped");
 
     Ok(())
