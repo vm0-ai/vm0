@@ -234,7 +234,7 @@ jobs:
             --config ${RUNNER_DIR}/runner.yaml \
             'curl -sf --max-time 10 https://httpbin.org/get'"
 
-  runner-start-local:
+  runner-upgrade-local:
     runs-on: ubuntu-latest
     needs: [runner-build]
     timeout-minutes: 5
@@ -247,7 +247,7 @@ jobs:
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
           chmod 600 "$HOME/.ssh/runner.pem"
 
-      - name: Run local provider test
+      - name: Run upgrade test
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
@@ -259,59 +259,89 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
-          RUNNER_DIR="~/.vm0-runner/runners/${JOB_REF}-local"
+          GROUP="vm0/upgrade-${JOB_REF}"
 
-          echo "=== Generating config ==="
-          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
-            --rootfs-hash ${ROOTFS_HASH} \
-            --snapshot-hash ${SNAPSHOT_HASH} \
-            --name ${JOB_REF}-local \
-            --group vm0/development-${JOB_REF} \
-            --runner-dirname ${JOB_REF}-local \
-            --api-url https://localhost \
-            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
-
-          echo "=== Running local provider test ==="
-          ssh $SSH_OPTS $REMOTE bash -s -- "${BIN_DIR}" "${RUNNER_DIR}" <<'REMOTE_SCRIPT'
-          BIN_DIR=$1; RUNNER_DIR=$2
-
-          USE_MOCK_CLAUDE=true "$BIN_DIR/runner" start \
-            --local --config "$RUNNER_DIR/runner.yaml" \
-            > "$RUNNER_DIR/local.log" 2>&1 &
-          RUNNER_PID=$!
-
-          # Wait for socket, bail early if runner crashes
-          for i in $(seq 1 30); do
-            [ -S "$RUNNER_DIR/jobs.sock" ] && break
-            kill -0 $RUNNER_PID 2>/dev/null || { echo "ERROR: Runner exited early"; cat "$RUNNER_DIR/local.log"; exit 1; }
-            sleep 1
+          echo "=== Generating configs for runner A and B ==="
+          for SUFFIX in upgrade-a upgrade-b; do
+            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+              --rootfs-hash ${ROOTFS_HASH} \
+              --snapshot-hash ${SNAPSHOT_HASH} \
+              --name ${JOB_REF}-${SUFFIX} \
+              --group ${GROUP} \
+              --runner-dirname ${JOB_REF}-${SUFFIX} \
+              --api-url https://localhost \
+              --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
           done
-          if [ ! -S "$RUNNER_DIR/jobs.sock" ]; then
-            echo "ERROR: Local socket did not appear within 30s"
-            cat "$RUNNER_DIR/local.log"
-            kill $RUNNER_PID 2>/dev/null || true
-            exit 1
-          fi
 
-          # Submit a job and verify it completes
-          "$BIN_DIR/runner" submit \
-            --socket "$RUNNER_DIR/jobs.sock" \
-            --prompt 'echo hello from local provider test'
-          RC=$?
-          if [ $RC -ne 0 ]; then
-            echo "ERROR: Job submission failed (exit $RC)"
-            cat "$RUNNER_DIR/local.log"
-          fi
+          echo "=== Running upgrade test ==="
+          ssh $SSH_OPTS $REMOTE bash -s -- "${BIN_DIR}" "${JOB_REF}" "${GROUP}" <<'REMOTE_SCRIPT'
+          BIN_DIR=$1; JOB_REF=$2; GROUP=$3
+          RUNNER_DIR_A="$HOME/.vm0-runner/runners/${JOB_REF}-upgrade-a"
+          RUNNER_DIR_B="$HOME/.vm0-runner/runners/${JOB_REF}-upgrade-b"
 
-          # Drain and wait for graceful shutdown
-          kill -USR1 $RUNNER_PID 2>/dev/null
-          wait $RUNNER_PID 2>/dev/null || true
-          exit $RC
+          cleanup() {
+            kill $PID_A $PID_B 2>/dev/null || true
+            wait $PID_A $PID_B 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          # 1. Start runner A
+          echo "--- Starting runner A ---"
+          USE_MOCK_CLAUDE=true "$BIN_DIR/runner" start \
+            --local --config "$RUNNER_DIR_A/runner.yaml" \
+            > "$RUNNER_DIR_A/local.log" 2>&1 &
+          PID_A=$!
+          sleep 2
+          kill -0 $PID_A 2>/dev/null || { echo "ERROR: Runner A crashed"; cat "$RUNNER_DIR_A/local.log"; exit 1; }
+
+          # 2. Submit a job (background — blocks until result file appears)
+          echo "--- Submit job 1 (background) ---"
+          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'sleep 10 && echo job1-in-flight' &
+          SUBMIT1_PID=$!
+
+          # Give A time to claim and start executing the job
+          sleep 3
+
+          # 3. Start runner B (simulates new version deployment)
+          echo "--- Starting runner B ---"
+          USE_MOCK_CLAUDE=true "$BIN_DIR/runner" start \
+            --local --config "$RUNNER_DIR_B/runner.yaml" \
+            > "$RUNNER_DIR_B/local.log" 2>&1 &
+          PID_B=$!
+          sleep 2
+          kill -0 $PID_B 2>/dev/null || { echo "ERROR: Runner B crashed"; cat "$RUNNER_DIR_B/local.log"; exit 1; }
+
+          # 4. Drain A while job 1 is still in flight
+          echo "--- Draining runner A (job 1 still running) ---"
+          kill -USR1 $PID_A 2>/dev/null
+
+          # 5. Verify job 1 completes successfully despite A being drained
+          echo "--- Waiting for job 1 to complete on A ---"
+          wait $SUBMIT1_PID
+          JOB1_RC=$?
+          [ $JOB1_RC -eq 0 ] || { echo "ERROR: Job 1 failed (exit $JOB1_RC) — drain killed in-flight job"; cat "$RUNNER_DIR_A/local.log"; exit 1; }
+          echo "--- Job 1 completed successfully after drain ---"
+
+          # 6. Wait for A to exit
+          wait $PID_A 2>/dev/null || true
+
+          # 7. Submit job 2 → only B is left
+          echo "--- Submit job 2 (only B) ---"
+          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'echo job2-after-upgrade'
+          [ $? -eq 0 ] || { echo "ERROR: Job 2 failed"; cat "$RUNNER_DIR_B/local.log"; exit 1; }
+
+          # 8. Drain B
+          echo "--- Draining runner B ---"
+          kill -USR1 $PID_B 2>/dev/null
+          wait $PID_B 2>/dev/null || true
+          trap - EXIT
+
+          echo "=== Upgrade test passed ==="
           REMOTE_SCRIPT
 
   runner-cleanup:
     runs-on: ubuntu-latest
-    needs: [runner-build, runner-benchmark, runner-start-local]
+    needs: [runner-build, runner-benchmark, runner-upgrade-local]
     if: ${{ always() && needs.runner-build.result != 'skipped' }}
     steps:
       - name: Setup SSH
@@ -332,4 +362,4 @@ jobs:
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
           echo "Cleaning up ${JOB_REF} on ${HOST}"
-          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-local" || true
+          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-upgrade-a ~/.vm0-runner/runners/${JOB_REF}-upgrade-b ~/.vm0-runner/groups/vm0/upgrade-${JOB_REF}" || true

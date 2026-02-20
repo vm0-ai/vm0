@@ -165,7 +165,11 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     let cancel = CancellationToken::new();
     let http = crate::http::HttpClient::new(server.url.clone())?;
     let (provider, group_name): (Arc<dyn JobProvider>, String) = if args.local {
-        let provider = LocalProvider::new(paths.jobs_sock(), cancel.clone()).await?;
+        let group_dir = home.groups_dir().join(&group);
+        std::fs::create_dir_all(&group_dir).map_err(|e| {
+            RunnerError::Config(format!("create group dir {}: {e}", group_dir.display()))
+        })?;
+        let provider = LocalProvider::new(group_dir, cancel.clone());
         (provider, group)
     } else {
         let group_name = group.clone();
