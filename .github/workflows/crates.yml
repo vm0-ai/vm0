@@ -294,12 +294,13 @@ jobs:
           sleep 2
           kill -0 $PID_A 2>/dev/null || { echo "ERROR: Runner A crashed"; cat "$RUNNER_DIR_A/local.log"; exit 1; }
 
-          # 2. Submit job 1 → only A is running
-          echo "--- Submit job 1 (only A) ---"
-          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'echo job1-single-runner'
-          [ $? -eq 0 ] || { echo "ERROR: Job 1 failed"; cat "$RUNNER_DIR_A/local.log"; exit 1; }
+          # 2. Submit job 1 (background, long-running) → only A running
+          echo "--- Submit job 1 (only A, long-running) ---"
+          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'sleep 10 && echo job1' &
+          SUBMIT1_PID=$!
+          sleep 3
 
-          # 3. Start runner B (simulates new version deployment)
+          # 3. Start runner B while job 1 still in-flight on A
           echo "--- Starting runner B ---"
           USE_MOCK_CLAUDE=true "$BIN_DIR/runner" start \
             --local --config "$RUNNER_DIR_B/runner.yaml" \
@@ -310,29 +311,28 @@ jobs:
 
           # 4. Submit job 2 (background, long-running) → A and B compete
           echo "--- Submit job 2 (A and B compete, long-running) ---"
-          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'sleep 10 && echo job2-in-flight' &
+          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'sleep 10 && echo job2' &
           SUBMIT2_PID=$!
-
-          # Give winner time to claim and start executing
           sleep 3
 
-          # 5. Drain A while job 2 is in-flight
+          # 5. Drain A while jobs may be in-flight
           echo "--- Draining runner A ---"
           kill -USR1 $PID_A 2>/dev/null
 
-          # 6. Verify job 2 completes despite drain
-          echo "--- Waiting for job 2 to complete ---"
+          # 6. Verify both jobs complete despite drain
+          echo "--- Waiting for job 1 ---"
+          wait $SUBMIT1_PID
+          [ $? -eq 0 ] || { echo "ERROR: Job 1 failed"; cat "$RUNNER_DIR_A/local.log"; exit 1; }
+          echo "--- Waiting for job 2 ---"
           wait $SUBMIT2_PID
-          JOB2_RC=$?
-          [ $JOB2_RC -eq 0 ] || { echo "ERROR: Job 2 failed (exit $JOB2_RC)"; cat "$RUNNER_DIR_A/local.log"; cat "$RUNNER_DIR_B/local.log"; exit 1; }
-          echo "--- Job 2 completed successfully ---"
+          [ $? -eq 0 ] || { echo "ERROR: Job 2 failed"; cat "$RUNNER_DIR_A/local.log"; cat "$RUNNER_DIR_B/local.log"; exit 1; }
 
           # 7. Wait for A to exit
           wait $PID_A 2>/dev/null || true
 
           # 8. Submit job 3 → only B is left
           echo "--- Submit job 3 (only B) ---"
-          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'echo job3-after-upgrade'
+          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'echo job3'
           [ $? -eq 0 ] || { echo "ERROR: Job 3 failed"; cat "$RUNNER_DIR_B/local.log"; exit 1; }
 
           # 9. Drain B
