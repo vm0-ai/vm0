@@ -6,17 +6,17 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 
 | Crate | Description |
 |-------|-------------|
-| **runner** | Firecracker sandbox orchestrator — polls for jobs, manages VM lifecycle, and bridges API to sandbox-fc |
-| **sandbox** | Sandbox trait and shared types — `SandboxConfig`, `ExecRequest`, `SandboxFactory` |
-| **sandbox-fc** | Firecracker sandbox implementation — VM lifecycle, network namespace pool, overlay FS, snapshots |
-| **vsock-proto** | Protocol encoding/decoding shared by host and guest |
-| **vsock-host** | Host-side async client (tokio) — sends commands to the guest |
-| **vsock-guest** | Guest-side agent — runs inside the VM, handles host commands |
-| **vsock-test** | End-to-end integration tests — real host + real guest over Unix sockets |
-| **guest-init** | Init process (PID 1) for Firecracker VMs — filesystem setup, signal handling, vsock-guest |
-| **guest-agent** | Orchestrates CLI execution, heartbeat, telemetry upload, and checkpoint creation inside Firecracker VM |
-| **guest-common** | Shared utilities for guest crates |
-| **guest-download** | Downloads and extracts storage archives based on manifest — parallel downloads with retry logic |
+| **runner** | Sandbox orchestrator — polls for jobs (API or local queue), manages VM lifecycle, proxy, service install, and bridges to sandbox-fc |
+| **sandbox** | Sandbox trait and shared types — `SandboxFactory`, `Sandbox`, `SandboxConfig`, `ExecRequest`, `ExecResult` |
+| **sandbox-fc** | Firecracker sandbox implementation — VM lifecycle, network namespace pool, overlay FS, snapshot restore |
+| **vsock-proto** | Wire protocol encoding/decoding shared by host and guest — length-prefixed binary messages |
+| **vsock-host** | Host-side async vsock client (tokio) — connects to guest via Unix domain sockets |
+| **vsock-guest** | Guest-side vsock library — IPC over vsock/Unix sockets, embedded in guest-init as PID 2 |
+| **vsock-test** | Integration tests for vsock — real host + real guest over Unix sockets |
+| **guest-init** | Init process (PID 1) for Firecracker VMs — filesystem setup, mount/pivot_root, signal handling, forks vsock-guest |
+| **guest-agent** | Guest orchestrator — CLI execution, heartbeat, telemetry upload, and checkpoint creation inside the VM |
+| **guest-common** | Shared utilities for guest crates — logging macros, telemetry recording, environment accessors |
+| **guest-download** | Downloads and extracts storage archives — parallel downloads (4 concurrent), streaming extraction, retry logic |
 | **guest-mock-claude** | Mock Claude CLI for testing — executes bash commands and outputs Claude-compatible JSONL |
 | **ably-subscriber** | Ably Pub/Sub subscribe-only realtime client — WebSocket/MessagePack protocol with token auth and automatic reconnection |
 | **reqeast** | Thin reqwest wrapper — auto-installs `ring` TLS crypto provider, avoiding `aws-lc-sys` musl cross-compilation issues |
@@ -38,28 +38,39 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 │  Host            │                       │
 │                  │                       │
 │  runner ── sandbox-fc ── vsock-host      │
-│                 │                        │
-│            sandbox (trait)               │
+│    │             │                       │
+│    │        sandbox (trait)              │
+│    │                                     │
+│    ├── ably-subscriber (job polling)     │
+│    └── mitmproxy (HTTPS interception)    │
 └──────────────────────────────────────────┘
 ```
 
 ## TLS in Guest Binaries
 
-Guest crates (`guest-agent`, `guest-download`) **must** use system certificate roots, not bundled webpki roots. The host runs a mitmproxy transparent proxy that intercepts HTTPS traffic with its own CA certificate, which is installed into the guest's system certificate store at boot. Using bundled roots would bypass the proxy CA and cause TLS verification failures. As of reqwest 0.13, the `rustls` feature uses `rustls-platform-verifier` which reads from the system certificate store on Linux.
+Guest crates (`guest-agent`, `guest-download`) **must** use system certificate roots, not bundled webpki roots. The host runs a mitmproxy transparent proxy that intercepts HTTPS traffic with its own CA certificate, which is installed into the guest's system certificate store at boot. Using bundled roots would bypass the proxy CA and cause TLS verification failures.
 
-All crates that make HTTP requests should depend on **`reqeast`** (not `reqwest` directly). `reqeast` uses `ring` as the TLS crypto provider instead of `aws-lc-rs`, which is required for `aarch64-unknown-linux-musl` cross-compilation. See [`reqeast/README.md`](reqeast/README.md) for details.
+Both HTTP clients in the workspace use `rustls-platform-verifier` to read from the system certificate store:
+
+- **`reqeast`** (async, reqwest wrapper) — used by `guest-agent`, `runner`, `ably-subscriber`. Auto-installs the `ring` crypto provider to avoid `aws-lc-rs` musl cross-compilation issues. See [`reqeast/README.md`](reqeast/README.md).
+- **`ureq`** (sync, no tokio) — used by `guest-download` with the `platform-verifier` feature. Uses `ring` by default.
 
 ## Building
 
 ```bash
+# Native build
 cargo build
 cargo build --release
-cargo build --release --target aarch64-unknown-linux-musl -p guest-init
+
+# Cross-compile guest binaries for aarch64 (production target)
+cross build --target aarch64-unknown-linux-musl \
+  -p runner -p guest-init -p guest-download -p guest-agent -p guest-mock-claude \
+  --release
 ```
 
 ## Testing
 
 ```bash
 cargo test
-cargo test -p vsock-test
+cargo clippy --all-targets
 ```
