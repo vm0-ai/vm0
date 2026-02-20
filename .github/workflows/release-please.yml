@@ -32,7 +32,7 @@ jobs:
       web_version: ${{ steps.release.outputs['turbo/apps/web--version'] }}
       platform_version: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
     steps:
-      - uses: seven332/release-please-action@feat/cargo-workspace-path
+      - uses: seven332/release-please-action@vm0
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
