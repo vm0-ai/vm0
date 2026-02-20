@@ -294,7 +294,12 @@ jobs:
           sleep 2
           kill -0 $PID_A 2>/dev/null || { echo "ERROR: Runner A crashed"; cat "$RUNNER_DIR_A/local.log"; exit 1; }
 
-          # 2. Start runner B
+          # 2. Submit job 1 → only A is running
+          echo "--- Submit job 1 (only A) ---"
+          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'echo job1-single-runner'
+          [ $? -eq 0 ] || { echo "ERROR: Job 1 failed"; cat "$RUNNER_DIR_A/local.log"; exit 1; }
+
+          # 3. Start runner B (simulates new version deployment)
           echo "--- Starting runner B ---"
           USE_MOCK_CLAUDE=true "$BIN_DIR/runner" start \
             --local --config "$RUNNER_DIR_B/runner.yaml" \
@@ -303,30 +308,24 @@ jobs:
           sleep 2
           kill -0 $PID_B 2>/dev/null || { echo "ERROR: Runner B crashed"; cat "$RUNNER_DIR_B/local.log"; exit 1; }
 
-          # 3. Competition: both A and B race to claim one job
-          echo "--- Submit job 1 (A and B compete) ---"
-          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'echo job1-competition'
-          [ $? -eq 0 ] || { echo "ERROR: Job 1 failed"; cat "$RUNNER_DIR_A/local.log"; cat "$RUNNER_DIR_B/local.log"; exit 1; }
-          echo "--- Job 1 completed (one runner won the claim) ---"
-
-          # 4. Submit long-running job (background) for drain test
-          echo "--- Submit job 2 (background, long-running) ---"
+          # 4. Submit job 2 (background, long-running) → A and B compete
+          echo "--- Submit job 2 (A and B compete, long-running) ---"
           "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'sleep 10 && echo job2-in-flight' &
           SUBMIT2_PID=$!
 
-          # Give runner time to claim and start executing
+          # Give winner time to claim and start executing
           sleep 3
 
-          # 5. Drain A while job 2 may be in-flight
+          # 5. Drain A while job 2 is in-flight
           echo "--- Draining runner A ---"
           kill -USR1 $PID_A 2>/dev/null
 
-          # 6. Verify job 2 completes successfully despite drain
+          # 6. Verify job 2 completes despite drain
           echo "--- Waiting for job 2 to complete ---"
           wait $SUBMIT2_PID
           JOB2_RC=$?
-          [ $JOB2_RC -eq 0 ] || { echo "ERROR: Job 2 failed (exit $JOB2_RC) — drain killed in-flight job"; cat "$RUNNER_DIR_A/local.log"; cat "$RUNNER_DIR_B/local.log"; exit 1; }
-          echo "--- Job 2 completed successfully after drain ---"
+          [ $JOB2_RC -eq 0 ] || { echo "ERROR: Job 2 failed (exit $JOB2_RC)"; cat "$RUNNER_DIR_A/local.log"; cat "$RUNNER_DIR_B/local.log"; exit 1; }
+          echo "--- Job 2 completed successfully ---"
 
           # 7. Wait for A to exit
           wait $PID_A 2>/dev/null || true
