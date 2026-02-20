@@ -18,70 +18,15 @@
         "turbo/apps/platform": {
             "release-type": "node"
         },
-        "crates/ably-subscriber": {
-            "release-type": "rust",
-            "skip-github-release": true
-        },
-        "crates/guest-agent": {
-            "release-type": "rust",
-            "skip-github-release": true
-        },
-        "crates/guest-common": {
-            "release-type": "rust",
-            "skip-github-release": true
-        },
-        "crates/guest-download": {
-            "release-type": "rust",
-            "skip-github-release": true
-        },
-        "crates/guest-init": {
-            "release-type": "rust",
-            "skip-github-release": true
-        },
-        "crates/guest-mock-claude": {
-            "release-type": "rust",
-            "skip-github-release": true
-        },
-        "crates/reqeast": {
-            "release-type": "rust",
-            "skip-github-release": true
-        },
         "crates/runner": {
             "release-type": "rust",
             "component": "runner-rs"
-        },
-        "crates/sandbox": {
-            "release-type": "rust",
-            "skip-github-release": true
-        },
-        "crates/sandbox-fc": {
-            "release-type": "rust",
-            "skip-github-release": true
-        },
-        "crates/vsock-guest": {
-            "release-type": "rust",
-            "skip-github-release": true
-        },
-        "crates/vsock-host": {
-            "release-type": "rust",
-            "skip-github-release": true
-        },
-        "crates/vsock-proto": {
-            "release-type": "rust",
-            "skip-github-release": true
-        },
-        "crates/vsock-test": {
-            "release-type": "rust",
-            "skip-github-release": true
         }
     },
     "plugins": [
         {
             "type": "node-workspace",
             "alwaysLinkLocal": true
-        },
-        {
-            "type": "cargo-workspace"
         }
     ]
 }
