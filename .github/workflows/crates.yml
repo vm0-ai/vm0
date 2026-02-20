@@ -285,6 +285,10 @@ jobs:
           }
           trap cleanup EXIT
 
+          # Kill leftover runners from previous CI runs
+          pkill -f "runner start.*${JOB_REF}-upgrade" 2>/dev/null || true
+          sleep 1
+
           # 1. Start runner A
           echo "--- Starting runner A ---"
           USE_MOCK_CLAUDE=true "$BIN_DIR/runner" start \
