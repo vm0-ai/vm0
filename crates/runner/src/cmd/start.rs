@@ -39,7 +39,7 @@ pub struct StartArgs {
     /// Runner authentication token (overrides config)
     #[arg(long, env = "VM0_RUNNER_TOKEN")]
     token: Option<String>,
-    /// Use local Unix socket provider instead of API (for testing)
+    /// Use local file queue provider instead of API (for testing)
     #[arg(long)]
     local: bool,
 }
