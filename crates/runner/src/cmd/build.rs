@@ -18,16 +18,15 @@ pub struct BuildArgs {
 }
 
 pub async fn run_build(args: BuildArgs) -> RunnerResult<()> {
+    let dry_run = args.rootfs.dry_run;
     let rootfs_hash = super::rootfs::run_rootfs(args.rootfs).await?;
-    let (snapshot_hash, _snapshot_config) = super::snapshot::run_snapshot(SnapshotArgs {
-        rootfs_hash: rootfs_hash.clone(),
+    super::snapshot::run_snapshot(SnapshotArgs {
+        rootfs_hash,
         vcpu: args.vcpu,
         memory_mb: args.memory_mb,
+        dry_run,
     })
     .await?;
-
-    println!("rootfs_hash={rootfs_hash}");
-    println!("snapshot_hash={snapshot_hash}");
 
     Ok(())
 }

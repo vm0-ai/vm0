@@ -20,6 +20,9 @@ pub struct RootfsArgs {
     guest_agent: PathBuf,
     #[arg(long)]
     guest_mock_claude: PathBuf,
+    /// Compute and print the input hash without building
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 impl RootfsArgs {
@@ -42,14 +45,20 @@ impl RootfsArgs {
 
 /// Build rootfs and return the content hash of the inputs.
 pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
+    let dry_run = args.dry_run;
     let guest_bins = args.guest_bins();
-    let paths = HomePaths::new()?;
 
     // Compute input hash: script + dockerfile + guest binaries.
     // The build script content is included so any logic change invalidates cache.
     let hash = compute_input_hash(&guest_bins).await?;
     tracing::info!("rootfs input hash: {hash}");
+    println!("rootfs_hash={hash}");
 
+    if dry_run {
+        return Ok(hash);
+    }
+
+    let paths = HomePaths::new()?;
     let rootfs_paths = RootfsPaths::new(&paths, &hash);
     let output_dir = rootfs_paths.dir();
 
