@@ -1,25 +1,25 @@
 {
     "packages": {
         "turbo/packages/core": {
-            "releaseType": "node"
+            "release-type": "node"
         },
         "turbo/apps/cli": {
-            "releaseType": "node"
+            "release-type": "node"
         },
         "turbo/apps/web": {
-            "releaseType": "node"
+            "release-type": "node"
         },
         "turbo/apps/docs": {
-            "releaseType": "node"
+            "release-type": "node"
         },
         "turbo/apps/runner": {
-            "releaseType": "node"
+            "release-type": "node"
         },
         "turbo/apps/platform": {
-            "releaseType": "node"
+            "release-type": "node"
         },
         "crates/runner": {
-            "releaseType": "rust",
+            "release-type": "rust",
             "component": "runner-rs"
         }
     },
