@@ -296,7 +296,7 @@ jobs:
 
           # 2. Submit job 1 (background, long-running) → only A running
           echo "--- Submit job 1 (only A, long-running) ---"
-          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'sleep 10 && echo job1' &
+          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'sleep 30 && echo job1' &
           SUBMIT1_PID=$!
           sleep 3
 
@@ -311,7 +311,7 @@ jobs:
 
           # 4. Submit job 2 (background, long-running) → A and B compete
           echo "--- Submit job 2 (A and B compete, long-running) ---"
-          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'sleep 10 && echo job2' &
+          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'sleep 30 && echo job2' &
           SUBMIT2_PID=$!
           sleep 3
 
