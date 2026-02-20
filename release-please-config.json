@@ -81,7 +81,8 @@
             "alwaysLinkLocal": true
         },
         {
-            "type": "cargo-workspace"
+            "type": "cargo-workspace",
+            "cargoWorkspacePath": "crates"
         }
     ]
 }
