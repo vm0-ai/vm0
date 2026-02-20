@@ -281,15 +281,18 @@ jobs:
           SVC_A="${JOB_REF}-upgrade-a"
           SVC_B="${JOB_REF}-upgrade-b"
 
-          fail() { echo "FAIL: $1"; exit 1; }
+          FAILED=0
+          fail() { FAILED=1; echo "FAIL: $1"; exit 1; }
 
           cleanup() {
             echo "--- Cleanup: uninstalling services ---"
             "$BIN_DIR/runner" service uninstall --name "$SVC_A" 2>/dev/null || true
             "$BIN_DIR/runner" service uninstall --name "$SVC_B" 2>/dev/null || true
-            echo "--- Cleanup: dumping logs ---"
-            journalctl --unit "vm0-runner-${SVC_A}" --lines 50 --no-pager 2>/dev/null || true
-            journalctl --unit "vm0-runner-${SVC_B}" --lines 50 --no-pager 2>/dev/null || true
+            if [ "$FAILED" -ne 0 ]; then
+              echo "--- Cleanup: dumping logs (test failed) ---"
+              journalctl --unit "vm0-runner-${SVC_A}" --lines 50 --no-pager 2>/dev/null || true
+              journalctl --unit "vm0-runner-${SVC_B}" --lines 50 --no-pager 2>/dev/null || true
+            fi
           }
           trap cleanup EXIT
 
@@ -301,7 +304,7 @@ jobs:
           echo "--- Installing runner A ---"
           "$BIN_DIR/runner" service install --name "$SVC_A" \
             --config "$RUNNER_DIR_A/runner.yaml" --local --env USE_MOCK_CLAUDE=true
-          sleep 2
+          sleep 2  # wait for systemd to start the service and the runner to initialize
 
           # 2. Submit job 1 (background, long-running) → only A running
           echo "--- Submit job 1 (only A, long-running) ---"
@@ -313,7 +316,7 @@ jobs:
           echo "--- Installing runner B ---"
           "$BIN_DIR/runner" service install --name "$SVC_B" \
             --config "$RUNNER_DIR_B/runner.yaml" --local --env USE_MOCK_CLAUDE=true
-          sleep 2
+          sleep 2  # wait for systemd to start the service and the runner to initialize
 
           # 4. Submit job 2 (background, long-running) → A and B compete
           echo "--- Submit job 2 (A and B compete, long-running) ---"
