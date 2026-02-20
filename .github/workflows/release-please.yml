@@ -28,6 +28,7 @@ jobs:
       docs_release_created: ${{ steps.release.outputs['turbo/apps/docs--release_created'] }}
       runner_release_created: ${{ steps.release.outputs['turbo/apps/runner--release_created'] }}
       platform_release_created: ${{ steps.release.outputs['turbo/apps/platform--release_created'] }}
+      runner_rust_release_created: ${{ steps.release.outputs['crates/runner--release_created'] }}
       web_version: ${{ steps.release.outputs['turbo/apps/web--version'] }}
       platform_version: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
     steps:

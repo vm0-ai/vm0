@@ -17,6 +17,10 @@
         },
         "turbo/apps/platform": {
             "releaseType": "node"
+        },
+        "crates/runner": {
+            "releaseType": "rust",
+            "component": "runner-rs"
         }
     },
     "plugins": [
