@@ -278,25 +278,30 @@ jobs:
           BIN_DIR=$1; JOB_REF=$2; GROUP=$3
           RUNNER_DIR_A="$HOME/.vm0-runner/runners/${JOB_REF}-upgrade-a"
           RUNNER_DIR_B="$HOME/.vm0-runner/runners/${JOB_REF}-upgrade-b"
+          SVC_A="${JOB_REF}-upgrade-a"
+          SVC_B="${JOB_REF}-upgrade-b"
+
+          fail() { echo "FAIL: $1"; exit 1; }
 
           cleanup() {
-            kill $PID_A $PID_B 2>/dev/null || true
-            wait $PID_A $PID_B 2>/dev/null || true
+            echo "--- Cleanup: uninstalling services ---"
+            "$BIN_DIR/runner" service uninstall --name "$SVC_A" 2>/dev/null || true
+            "$BIN_DIR/runner" service uninstall --name "$SVC_B" 2>/dev/null || true
+            echo "--- Cleanup: dumping logs ---"
+            journalctl --unit "vm0-runner-${SVC_A}" --lines 50 --no-pager 2>/dev/null || true
+            journalctl --unit "vm0-runner-${SVC_B}" --lines 50 --no-pager 2>/dev/null || true
           }
           trap cleanup EXIT
 
-          # Kill leftover runners from previous CI runs
-          pkill -f "runner start.*${JOB_REF}-upgrade" 2>/dev/null || true
-          sleep 1
+          # Pre-cleanup: uninstall leftover services from previous CI runs
+          "$BIN_DIR/runner" service uninstall --name "$SVC_A" 2>/dev/null || true
+          "$BIN_DIR/runner" service uninstall --name "$SVC_B" 2>/dev/null || true
 
-          # 1. Start runner A
-          echo "--- Starting runner A ---"
-          USE_MOCK_CLAUDE=true "$BIN_DIR/runner" start \
-            --local --config "$RUNNER_DIR_A/runner.yaml" \
-            > "$RUNNER_DIR_A/local.log" 2>&1 &
-          PID_A=$!
+          # 1. Install runner A
+          echo "--- Installing runner A ---"
+          "$BIN_DIR/runner" service install --name "$SVC_A" \
+            --config "$RUNNER_DIR_A/runner.yaml" --local --env USE_MOCK_CLAUDE=true
           sleep 2
-          kill -0 $PID_A 2>/dev/null || { echo "ERROR: Runner A crashed"; cat "$RUNNER_DIR_A/local.log"; exit 1; }
 
           # 2. Submit job 1 (background, long-running) → only A running
           echo "--- Submit job 1 (only A, long-running) ---"
@@ -304,14 +309,11 @@ jobs:
           SUBMIT1_PID=$!
           sleep 3
 
-          # 3. Start runner B while job 1 still in-flight on A
-          echo "--- Starting runner B ---"
-          USE_MOCK_CLAUDE=true "$BIN_DIR/runner" start \
-            --local --config "$RUNNER_DIR_B/runner.yaml" \
-            > "$RUNNER_DIR_B/local.log" 2>&1 &
-          PID_B=$!
+          # 3. Install runner B while job 1 still in-flight on A
+          echo "--- Installing runner B ---"
+          "$BIN_DIR/runner" service install --name "$SVC_B" \
+            --config "$RUNNER_DIR_B/runner.yaml" --local --env USE_MOCK_CLAUDE=true
           sleep 2
-          kill -0 $PID_B 2>/dev/null || { echo "ERROR: Runner B crashed"; cat "$RUNNER_DIR_B/local.log"; exit 1; }
 
           # 4. Submit job 2 (background, long-running) → A and B compete
           echo "--- Submit job 2 (A and B compete, long-running) ---"
@@ -321,28 +323,27 @@ jobs:
 
           # 5. Drain A while jobs may be in-flight
           echo "--- Draining runner A ---"
-          kill -USR1 $PID_A 2>/dev/null
+          "$BIN_DIR/runner" service drain --name "$SVC_A"
 
           # 6. Verify both jobs complete despite drain
           echo "--- Waiting for job 1 ---"
-          wait $SUBMIT1_PID
-          [ $? -eq 0 ] || { echo "ERROR: Job 1 failed"; cat "$RUNNER_DIR_A/local.log"; exit 1; }
+          wait $SUBMIT1_PID || fail "Job 1 failed"
           echo "--- Waiting for job 2 ---"
-          wait $SUBMIT2_PID
-          [ $? -eq 0 ] || { echo "ERROR: Job 2 failed"; cat "$RUNNER_DIR_A/local.log"; cat "$RUNNER_DIR_B/local.log"; exit 1; }
+          wait $SUBMIT2_PID || fail "Job 2 failed"
 
-          # 7. Wait for A to exit
-          wait $PID_A 2>/dev/null || true
+          # 7. Uninstall A (systemctl stop blocks until drain finishes)
+          echo "--- Uninstalling runner A ---"
+          "$BIN_DIR/runner" service uninstall --name "$SVC_A"
 
           # 8. Submit job 3 → only B is left
           echo "--- Submit job 3 (only B) ---"
-          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'echo job3'
-          [ $? -eq 0 ] || { echo "ERROR: Job 3 failed"; cat "$RUNNER_DIR_B/local.log"; exit 1; }
+          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'echo job3' || fail "Job 3 failed"
 
-          # 9. Drain B
+          # 9. Drain and uninstall B
           echo "--- Draining runner B ---"
-          kill -USR1 $PID_B 2>/dev/null
-          wait $PID_B 2>/dev/null || true
+          "$BIN_DIR/runner" service drain --name "$SVC_B"
+          echo "--- Uninstalling runner B ---"
+          "$BIN_DIR/runner" service uninstall --name "$SVC_B"
           trap - EXIT
 
           echo "=== Upgrade test passed ==="
@@ -371,4 +372,6 @@ jobs:
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
           echo "Cleaning up ${JOB_REF} on ${HOST}"
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner service uninstall --name ${JOB_REF}-upgrade-a" 2>/dev/null || true
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner service uninstall --name ${JOB_REF}-upgrade-b" 2>/dev/null || true
           ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-upgrade-a ~/.vm0-runner/runners/${JOB_REF}-upgrade-b ~/.vm0-runner/groups/vm0/upgrade-${JOB_REF}" || true

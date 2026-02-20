@@ -40,6 +40,9 @@ struct ServiceStartArgs {
     /// Environment variables to pass to the service (KEY=VALUE)
     #[arg(long, value_name = "KEY=VALUE")]
     env: Vec<String>,
+    /// Use local file queue provider instead of API
+    #[arg(long)]
+    local: bool,
 }
 
 #[derive(Args)]
@@ -53,6 +56,9 @@ struct ServiceInstallArgs {
     /// Environment variables to pass to the service (KEY=VALUE)
     #[arg(long, value_name = "KEY=VALUE")]
     env: Vec<String>,
+    /// Use local file queue provider instead of API
+    #[arg(long)]
+    local: bool,
 }
 
 #[derive(Args)]
@@ -143,11 +149,13 @@ fn generate_unit_file(
     config_path: &Path,
     user: &str,
     env_vars: &[String],
+    local: bool,
 ) -> String {
     let mut env_lines = String::new();
     for entry in env_vars {
         env_lines.push_str(&format!("Environment=\"{entry}\"\n"));
     }
+    let local_flag = if local { " --local" } else { "" };
     format!(
         "\
 [Unit]
@@ -157,7 +165,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=\"{exe}\" start --config \"{config}\"
+ExecStart=\"{exe}\" start --config \"{config}\"{local_flag}
 Restart=on-failure
 RestartSec=5
 MemoryMax=2G
@@ -310,6 +318,9 @@ async fn start(args: ServiceStartArgs) -> RunnerResult<()> {
     cmd.arg(&exe_path)
         .args(["start", "--config"])
         .arg(&config_path);
+    if args.local {
+        cmd.arg("--local");
+    }
 
     let status = cmd
         .status()
@@ -351,7 +362,8 @@ async fn install(args: ServiceInstallArgs) -> RunnerResult<()> {
         .ok_or_else(|| RunnerError::Internal(format!("no user found for uid {uid}")))?
         .name;
 
-    let unit_content = generate_unit_file(&unit, &exe_path, &config_path, &user, &args.env);
+    let unit_content =
+        generate_unit_file(&unit, &exe_path, &config_path, &user, &args.env, args.local);
     let upath = unit_file_path(&unit);
 
     write_unit_file(&upath, &unit_content).await?;
@@ -496,10 +508,11 @@ mod tests {
             Path::new("/home/ubuntu/runner.yaml"),
             "ubuntu",
             &[],
+            false,
         );
         assert!(content.contains("Description=VM0 Runner (vm0-runner-v0.1.0)"));
         assert!(content.contains(
-            "ExecStart=\"/home/ubuntu/.vm0-runner/bin/v0.1.0/vm0-runner\" start --config \"/home/ubuntu/runner.yaml\""
+            "ExecStart=\"/home/ubuntu/.vm0-runner/bin/v0.1.0/vm0-runner\" start --config \"/home/ubuntu/runner.yaml\"\n"
         ));
         assert!(content.contains("User=ubuntu"));
         assert!(content.contains("SyslogIdentifier=vm0-runner-v0.1.0"));
@@ -509,6 +522,7 @@ mod tests {
         assert!(content.contains("[Install]"));
         assert!(content.contains("WantedBy=multi-user.target"));
         assert!(!content.contains("Environment="));
+        assert!(!content.contains("--local"));
     }
 
     #[test]
@@ -524,6 +538,7 @@ mod tests {
             Path::new("/home/ubuntu/runner.yaml"),
             "ubuntu",
             &env,
+            false,
         );
         assert!(content.contains("Environment=\"VERCEL_AUTOMATION_BYPASS_SECRET=xxx\""));
         assert!(content.contains("Environment=\"USE_MOCK_CLAUDE=true\""));
@@ -539,11 +554,27 @@ mod tests {
             Path::new("/opt/my config/runner.yaml"),
             "deploy-user",
             &[],
+            false,
         );
         assert!(content.contains(
             "ExecStart=\"/opt/my runner/vm0-runner\" start --config \"/opt/my config/runner.yaml\""
         ));
         assert!(content.contains("User=deploy-user"));
+    }
+
+    #[test]
+    fn test_generate_unit_file_local_flag() {
+        let content = generate_unit_file(
+            "vm0-runner-v0.1.0",
+            Path::new("/usr/bin/runner"),
+            Path::new("/etc/runner.yaml"),
+            "ubuntu",
+            &[],
+            true,
+        );
+        assert!(content.contains(
+            "ExecStart=\"/usr/bin/runner\" start --config \"/etc/runner.yaml\" --local\n"
+        ));
     }
 
     #[test]
