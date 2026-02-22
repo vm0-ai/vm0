@@ -594,7 +594,6 @@
       "idx": 84,
       "version": "7",
       "when": 1770900000000,
-<<<<<<< HEAD
       "tag": "0084_add_email_thread_sessions",
       "breakpoints": true
     },
