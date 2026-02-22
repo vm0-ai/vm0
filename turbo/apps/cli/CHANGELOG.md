@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.38.3](https://github.com/vm0-ai/vm0/compare/cli-v9.38.2...cli-v9.38.3) (2026-02-22)
+
+
+### Bug Fixes
+
+* **api:** use framework-based filename lookup in instructions api ([#3192](https://github.com/vm0-ai/vm0/issues/3192)) ([607608a](https://github.com/vm0-ai/vm0/commit/607608aa76b4237e2692dec598318a614e44ac02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.18.1
+
 ## [9.38.2](https://github.com/vm0-ai/vm0/compare/cli-v9.38.1...cli-v9.38.2) (2026-02-22)
 
 

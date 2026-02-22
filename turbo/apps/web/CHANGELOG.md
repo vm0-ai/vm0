@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.47.0](https://github.com/vm0-ai/vm0/compare/web-v12.46.0...web-v12.47.0) (2026-02-22)
+
+
+### Features
+
+* **email:** auto-detect scope from sender for agent-only addresses ([#3198](https://github.com/vm0-ai/vm0/issues/3198)) ([ad0837d](https://github.com/vm0-ai/vm0/commit/ad0837dba470110ca1bd13840ff171e9feed8860))
+
+
+### Bug Fixes
+
+* **api:** use framework-based filename lookup in instructions api ([#3192](https://github.com/vm0-ai/vm0/issues/3192)) ([607608a](https://github.com/vm0-ai/vm0/commit/607608aa76b4237e2692dec598318a614e44ac02))
+* **email:** validate sender authenticity via dmarc for email triggers ([#3196](https://github.com/vm0-ai/vm0/issues/3196)) ([aec7039](https://github.com/vm0-ai/vm0/commit/aec703937eb780fdc5594ef600d92b13d9c579a7)), closes [#3194](https://github.com/vm0-ai/vm0/issues/3194)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.18.1
+
 ## [12.46.0](https://github.com/vm0-ai/vm0/compare/web-v12.45.0...web-v12.46.0) (2026-02-22)
 
 

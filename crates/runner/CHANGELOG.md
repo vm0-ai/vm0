@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.2.0...runner-rs-v0.3.0) (2026-02-22)
+
+
+### Features
+
+* **runner:** extend gc to clean up old deployment versions ([#3201](https://github.com/vm0-ai/vm0/issues/3201)) ([09f2d1c](https://github.com/vm0-ai/vm0/commit/09f2d1cabac6089daf4bb2365abb88d95e1065c4))
+
 ## [0.2.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.1.0...runner-rs-v0.2.0) (2026-02-22)
 
 

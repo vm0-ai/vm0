@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.18.1](https://github.com/vm0-ai/vm0/compare/core-v8.18.0...core-v8.18.1) (2026-02-22)
+
+
+### Bug Fixes
+
+* **api:** use framework-based filename lookup in instructions api ([#3192](https://github.com/vm0-ai/vm0/issues/3192)) ([607608a](https://github.com/vm0-ai/vm0/commit/607608aa76b4237e2692dec598318a614e44ac02))
+
 ## [8.18.0](https://github.com/vm0-ai/vm0/compare/core-v8.17.0...core-v8.18.0) (2026-02-18)
 
 
