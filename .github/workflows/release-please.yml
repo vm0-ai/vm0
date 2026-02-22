@@ -26,9 +26,9 @@ jobs:
       cli_release_created: ${{ steps.release.outputs['turbo/apps/cli--release_created'] }}
       web_release_created: ${{ steps.release.outputs['turbo/apps/web--release_created'] }}
       docs_release_created: ${{ steps.release.outputs['turbo/apps/docs--release_created'] }}
-      runner_release_created: ${{ steps.release.outputs['turbo/apps/runner--release_created'] }}
       platform_release_created: ${{ steps.release.outputs['turbo/apps/platform--release_created'] }}
-      runner_rust_release_created: ${{ steps.release.outputs['crates/runner--release_created'] }}
+      runner_rs_release_created: ${{ steps.release.outputs['crates/runner--release_created'] }}
+      runner_rs_version: ${{ steps.release.outputs['crates/runner--version'] }}
       web_version: ${{ steps.release.outputs['turbo/apps/web--version'] }}
       platform_version: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
     steps:
@@ -403,74 +403,10 @@ jobs:
             ts: "${{ steps.slack-start.outputs.ts }}"
             text: "*CLI* publishing to npm...\n:x: Publish failed"
 
-  publish-runner-npm:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.runner_release_created == 'true' }}
-    runs-on: ubuntu-latest
-    environment: npm
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Notify Slack - Starting
-        id: slack-start
-        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v2.1.1
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*Runner* publishing to npm..."
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: lts/*
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Install pnpm
-        run: npm install -g pnpm@latest
-
-      - name: Install dependencies
-        run: cd turbo && pnpm install --frozen-lockfile
-
-      - name: Use latest npm for OIDC support
-        run: npm install -g npm@latest
-
-      - name: Build Runner
-        run: cd turbo && pnpm --filter @vm0/runner build
-
-      - name: Publish to npm with OIDC
-        run: cd turbo/apps/runner/dist && npm publish --access public
-
-      - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v2.1.1
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Runner* publishing to npm...\n:white_check_mark: Published successfully"
-
-      - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v2.1.1
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Runner* publishing to npm...\n:x: Publish failed"
-
   # Deploy runner to production metal instances
   deploy-runner-production:
-    needs: [release-please, publish-runner-npm]
-    if: ${{ needs.release-please.outputs.runner_release_created == 'true' }}
+    needs: [release-please]
+    if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
@@ -497,39 +433,13 @@ jobs:
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Runner* deploying to production servers..."
 
-      - name: Build Sandbox Scripts
-        run: cd turbo && pnpm turbo run build --filter=@vm0/sandbox-scripts
-
       # Cross-compile Rust binaries for ARM64 (metal runners are ARM64)
-      - name: Build guest binaries for ARM64
+      - name: Build runner and guest binaries for ARM64
         run: |
           cd crates
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc \
-            cargo build --release --target aarch64-unknown-linux-musl -p guest-init -p guest-download -p guest-agent -p guest-mock-claude
-          ls -la target/aarch64-unknown-linux-musl/release/guest-init
-          ls -la target/aarch64-unknown-linux-musl/release/guest-download
-          ls -la target/aarch64-unknown-linux-musl/release/guest-agent
-          ls -la target/aarch64-unknown-linux-musl/release/guest-mock-claude
-
-      - name: Build runner bundle
-        run: |
-          # Build runner (use subshell to preserve working directory)
-          (cd turbo && pnpm --filter @vm0/runner build)
-
-          # Create staging directory with built files
-          STAGING_DIR="/tmp/vm0-runner-bundle"
-          rm -rf "$STAGING_DIR"
-          mkdir -p "$STAGING_DIR"
-          cp -r turbo/apps/runner/dist/* "$STAGING_DIR/"
-
-          # Install production dependencies
-          (cd "$STAGING_DIR" && npm install --omit=dev)
-
-          # Create tarball
-          tar -czf /tmp/vm0-runner-bundle.tar.gz -C /tmp vm0-runner-bundle
-
-          echo "Bundle created at /tmp/vm0-runner-bundle.tar.gz"
-          ls -lh /tmp/vm0-runner-bundle.tar.gz
+            cargo build --release --target aarch64-unknown-linux-musl \
+            -p runner -p guest-init -p guest-download -p guest-agent -p guest-mock-claude
 
       - name: Deploy to production with Ansible
         env:
@@ -537,13 +447,11 @@ jobs:
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           AWS_METAL_RUNNER_SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
         run: |
-          # Setup SSH key
           mkdir -p ~/.ssh
           echo "$AWS_METAL_RUNNER_SSH_KEY" > ~/.ssh/prod-runner.pem
           chmod 600 ~/.ssh/prod-runner.pem
-
-          # Run Ansible playbook with rolling deployment
           cd ansible
           ansible-playbook \
             -i "${AWS_METAL_RUNNER_HOSTS}," \
@@ -552,7 +460,7 @@ jobs:
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=https://www.vm0.ai" \
-            -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
+            -e "runner_version=${RUNNER_VERSION}" \
             -v
 
       - name: Notify Slack - Success

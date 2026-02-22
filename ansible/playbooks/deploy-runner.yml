@@ -1,601 +1,136 @@
-# Deploy VM0 Runner
+# Deploy VM0 Runner (Rust)
 #
-# This playbook deploys the VM0 runner to metal instances.
-# Supports both CI (PR testing) and Production deployments.
+# This playbook deploys a new version of the Rust-based VM0 runner to production
+# metal instances. Each version gets its own bin dir and systemd service, allowing
+# the old runner to drain gracefully while the new one starts accepting jobs.
 #
-# CI Usage - Full deployment (single host, no drain):
-#   ansible-playbook -i "host," playbooks/deploy-runner.yml \
-#     -e "ansible_user=ubuntu" \
-#     -e "runner_base_dir=/opt/vm0-runner/pr-123" \
-#     -e "runner_group=vm0/development-pr-123" \
-#     -e "pm2_process_name=vm0-runner-pr-123" \
-#     -e "official_runner_secret=xxx" \
-#     -e "api_url=https://preview-url.vercel.app" \
-#     -e "enable_drain=false"
-#
-# CI Usage - Prepare only (no api_url needed):
-#   ansible-playbook -i "host," playbooks/deploy-runner.yml --tags prepare \
-#     -e "ansible_user=ubuntu" \
-#     -e "runner_base_dir=/opt/vm0-runner/pr-123" \
-#     -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
-#     -e "enable_drain=false"
-#
-# CI Usage - Start only (requires api_url):
-#   ansible-playbook -i "host," playbooks/deploy-runner.yml --tags start \
-#     -e "ansible_user=ubuntu" \
-#     -e "runner_base_dir=/opt/vm0-runner/pr-123" \
-#     -e "runner_group=vm0/development-pr-123" \
-#     -e "pm2_process_name=vm0-runner-pr-123" \
-#     -e "official_runner_secret=xxx" \
-#     -e "api_url=https://preview-url.vercel.app"
-#
-# Production Usage (multiple hosts, with drain):
+# Usage:
 #   ansible-playbook -i "host1,host2," playbooks/deploy-runner.yml \
 #     -e "ansible_user=ubuntu" \
 #     -e "official_runner_secret=xxx" \
 #     -e "api_url=https://www.vm0.ai" \
-#     -e "enable_drain=true"
-#
-# Tags:
-#   - prepare: Phases 1-4 (stop, deploy bundle, install deps) - no api_url needed
-#   - start: Phases 5-6 (configure, start, health check) - requires api_url
-#   - (no tags): Run all phases
+#     -e "runner_version=0.3.0"
 #
 # Required Variables:
-#   - For prepare: runner_bundle_path
-#   - For start: official_runner_secret, api_url
-#   - For full: all of the above
-#
-# Optional Variables (with defaults):
-#   - runner_base_dir: Runner installation directory (default: /opt/vm0-runner/production)
-#   - runner_group: Runner group name (default: vm0/production)
-#   - pm2_process_name: PM2 process name (default: vm0-runner-production)
-#   - enable_drain: Whether to drain before stopping (default: true)
-#   - drain_timeout: Max seconds to wait for drain (default: 7200 = 2h)
-#   - extra_env: Additional environment variables as JSON (default: {})
+#   - runner_version: Semantic version of the runner being deployed
+#   - official_runner_secret: Runner authentication secret
+#   - api_url: vm0 API URL
 
 - name: Deploy VM0 Runner
   hosts: all
-  serial: 1  # Rolling update: one host at a time (no effect for single host)
-  become: yes
+  serial: 1
 
   vars:
-    # Defaults for production - CI should override these
-    runner_base_dir: /opt/vm0-runner/production
+    runner_name: "v{{ runner_version }}"
     runner_group: vm0/production
-    runner_suffix: production
-    pm2_process_name: vm0-runner-production
-    enable_drain: true
-    drain_timeout: 7200  # 2 hours
-    extra_env: {}
-    # Rootfs and snapshot configuration - CI should override for per-PR isolation
-    rootfs_path: /opt/firecracker/rootfs.squashfs
-    snapshot_path: /opt/firecracker/snapshot
-    force_rebuild_rootfs: false
-    force_rebuild_snapshot: false
-    enable_snapshot: true
-    # VM resource configuration
     vcpu: 2
     memory_mb: 1024
-    # Proxy port - CI should override for per-PR isolation (8080 + PR_NUMBER % 1000)
-    proxy_port: 8080
+    max_concurrent: 8
+    home_dir: "{{ ansible_facts['env']['HOME'] }}"
+    bin_dir: "{{ home_dir }}/.vm0-runner/bin/{{ runner_name }}"
+    runner_dir: "{{ home_dir }}/.vm0-runner/runners/{{ runner_name }}"
 
   tasks:
     # ========================================
-    # Phase 1: Pre-flight checks
+    # Phase 1: Deploy binaries
     # ========================================
-    - name: Check required variables for prepare phase
-      assert:
-        that:
-          - runner_bundle_path is defined
-        fail_msg: "Required variable for prepare: runner_bundle_path"
-      tags: [prepare]
-
-    - name: Check required variables for start phase
-      assert:
-        that:
-          - official_runner_secret is defined
-          - api_url is defined
-        fail_msg: "Required variables for start: official_runner_secret, api_url"
-      tags: [start]
-
-    - name: Display prepare configuration
-      debug:
-        msg: |
-          Preparing runner:
-          - Directory: {{ runner_base_dir }}
-          - Bundle: {{ runner_bundle_path }}
-          - Drain enabled: {{ enable_drain }}
-      tags: [prepare]
-
-    - name: Display start configuration
-      debug:
-        msg: |
-          Starting runner:
-          - Directory: {{ runner_base_dir }}
-          - Group: {{ runner_group }}
-          - Process: {{ pm2_process_name }}
-          - API: {{ api_url }}
-      tags: [start]
-
-    # ========================================
-    # Phase 2: Stop existing runner
-    # ========================================
-    - name: Check if runner is currently running
-      shell: pm2 jlist 2>/dev/null | jq -r '.[] | select(.name=="{{ pm2_process_name }}") | .pid // empty'
-      register: pm2_pid
-      ignore_errors: yes
-      changed_when: false
-      become: no
-      tags: [prepare]
-
-    # Production: Drain before stopping (wait for active jobs)
-    # Note: regex must match positive integers only (not '0' which would signal process group)
-    - name: Enter maintenance mode (stop polling, wait for active jobs)
-      when: enable_drain and pm2_pid.stdout | regex_search('^[1-9][0-9]*$')
-      tags: [prepare]
-      block:
-        - name: Signal runner to enter drain mode
-          command: kill -USR1 {{ pm2_pid.stdout }}
-
-        - name: Wait for active runs to complete
-          shell: |
-            # Poll status file until active_runs is 0 or timeout
-            timeout={{ drain_timeout }}
-            elapsed=0
-            status_file="{{ runner_base_dir }}/status.json"
-
-            while [ $elapsed -lt $timeout ]; do
-              if [ -f "$status_file" ]; then
-                # Check mode and active_runs from JSON (handle pretty-printed format with spaces)
-                mode=$(cat "$status_file" | grep -o '"mode": *"[^"]*"' | cut -d'"' -f4)
-                active=$(cat "$status_file" | grep -o '"active_runs": *[0-9]*' | grep -o '[0-9]*')
-
-                if [ "$active" = "0" ]; then
-                  echo "Drain complete: no active runs (mode: $mode)"
-                  exit 0
-                fi
-                echo "Draining: $active active run(s), mode: $mode (${elapsed}s elapsed)"
-              else
-                echo "Status file not found yet, waiting..."
-              fi
-              sleep 10
-              elapsed=$((elapsed + 10))
-            done
-
-            echo "Drain timeout after ${timeout}s"
-            exit 1
-          args:
-            executable: /bin/bash
-          register: drain_result
-
-        - name: Stop runner after drain
-          command: pm2 delete {{ pm2_process_name }}
-          ignore_errors: yes
-          become: no
-
-    # CI: Just stop without drain (no long-running jobs)
-    - name: Stop runner without drain
-      when: not enable_drain and pm2_pid.stdout | regex_search('^[1-9][0-9]*$')
-      command: pm2 delete {{ pm2_process_name }}
-      ignore_errors: yes
-      become: no
-      tags: [prepare]
-
-    # ========================================
-    # Phase 3: Deploy
-    # ========================================
-    - name: Ensure runner directory exists
+    - name: Ensure bin directory exists
       file:
-        path: "{{ runner_base_dir }}"
+        path: "{{ bin_dir }}"
         state: directory
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
         mode: '0755'
-      tags: [prepare]
 
-    - name: Clean runner directory
-      shell: rm -rf {{ runner_base_dir }}/*
-      tags: [prepare]
-
-    - name: Extract runner bundle
-      unarchive:
-        src: "{{ runner_bundle_path }}"
-        dest: "{{ runner_base_dir }}"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        extra_opts: [--strip-components=1]
-      tags: [prepare]
-
-    - name: Ensure deploy-runner directory exists
-      file:
-        path: "{{ runner_base_dir }}/deploy-runner"
-        state: directory
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0755'
-      tags: [prepare]
-
-    - name: Copy deploy scripts and Rust binaries
+    - name: Copy runner and guest binaries
       copy:
         src: "{{ item }}"
-        dest: "{{ runner_base_dir }}/deploy-runner/"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
+        dest: "{{ bin_dir }}/"
         mode: '0755'
       with_fileglob:
-        - "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/*.sh"
-        - "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/*.py"
+        - "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/runner"
         - "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/guest-init"
         - "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/guest-download"
         - "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/guest-agent"
         - "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/guest-mock-claude"
-      tags: [prepare]
-
-    - name: Copy rootfs build files
-      copy:
-        src: "{{ item }}"
-        dest: "{{ runner_base_dir }}/deploy-runner/"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0644'
-      with_fileglob:
-        - "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/Dockerfile"
-      tags: [prepare]
 
     # ========================================
-    # Phase 4: Install Dependencies (if needed)
+    # Phase 2: Setup + Build
     # ========================================
-    - name: Check if Firecracker is installed
-      stat:
-        path: /usr/local/bin/firecracker
-      register: firecracker_bin
-      tags: [prepare]
+    - name: Download dependencies (Firecracker, kernel, mitmproxy)
+      command: "{{ bin_dir }}/runner setup"
 
-    - name: Install Firecracker
-      command: "{{ runner_base_dir }}/deploy-runner/install-firecracker.sh"
-      when: not firecracker_bin.stat.exists
-      tags: [prepare]
-
-    - name: Check if mitmproxy is installed
-      command: mitmdump --version
-      register: mitmproxy_check
-      ignore_errors: yes
-      changed_when: false
-      tags: [prepare]
-
-    - name: Install pipx for mitmproxy
-      apt:
-        name: pipx
-        state: present
-      when: mitmproxy_check.rc != 0
-      tags: [prepare]
-
-    - name: Install mitmproxy via pipx
-      command: pipx install mitmproxy
-      environment:
-        PIPX_HOME: /opt/pipx
-        PIPX_BIN_DIR: /usr/local/bin
-      when: mitmproxy_check.rc != 0
-      tags: [prepare]
-
-    # Generate proxy CA certificate (needed for rootfs build)
-    - name: Ensure per-runner proxy directory exists
-      file:
-        path: "{{ runner_base_dir }}/proxy"
-        state: directory
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0755'
-      tags: [prepare]
-
-    - name: Check if proxy CA certificate exists
-      stat:
-        path: "{{ runner_base_dir }}/proxy/mitmproxy-ca.pem"
-      register: proxy_ca_file
-      tags: [prepare]
-
-    - name: Generate proxy CA certificate if not exists
-      command: "{{ runner_base_dir }}/deploy-runner/generate-proxy-ca.sh {{ runner_base_dir }}/proxy"
-      when: not proxy_ca_file.stat.exists
-      tags: [prepare]
-
-    - name: Fix proxy CA certificate ownership
-      file:
-        path: "{{ runner_base_dir }}/proxy"
-        state: directory
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        recurse: yes
-      when: not proxy_ca_file.stat.exists
-      tags: [prepare]
-
-    - name: Copy mitmproxy addon script to proxy directory
-      copy:
-        src: "{{ runner_base_dir }}/deploy-runner/mitm-addon.py"
-        dest: "{{ runner_base_dir }}/proxy/mitm-addon.py"
-        remote_src: yes
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0755'
-      tags: [prepare]
-
-    - name: Ensure proxy-ca directory exists in deploy-runner
-      file:
-        path: "{{ runner_base_dir }}/deploy-runner/proxy-ca"
-        state: directory
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0755'
-      tags: [prepare]
-
-    - name: Copy proxy CA certificate to deploy-runner for rootfs build
-      copy:
-        src: "{{ runner_base_dir }}/proxy/mitmproxy-ca-cert.pem"
-        dest: "{{ runner_base_dir }}/deploy-runner/proxy-ca/mitmproxy-ca-cert.pem"
-        remote_src: yes
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0644'
-      tags: [prepare]
-
-    - name: Check if rootfs exists
-      stat:
-        path: "{{ rootfs_path }}"
-      register: rootfs_file
-      tags: [prepare]
-
-    # Calculate hash of all files that affect rootfs content
-    # Must match files copied above: Dockerfile, *.sh, guest-init, guest-download, guest-agent, guest-mock-claude (binaries), proxy CA cert
-    - name: Calculate rootfs build inputs hash
-      shell: |
-        find "{{ runner_base_dir }}/deploy-runner/" \
-          \( -name "Dockerfile" -o -name "*.sh" -o -name "guest-init" -o -name "guest-download" -o -name "guest-agent" -o -name "guest-mock-claude" -o -name "*.pem" \) \
-          -type f -print0 | sort -z | xargs -0 cat | sha256sum | cut -d' ' -f1
-      args:
-        executable: /bin/bash
-      register: rootfs_inputs_hash
-      changed_when: false
-      tags: [prepare]
-
-    - name: Read stored rootfs hash
-      slurp:
-        src: "{{ rootfs_path }}.sha256"
-      register: stored_rootfs_hash
-      ignore_errors: yes
-      tags: [prepare]
-
-    - name: Determine if rootfs rebuild is needed
-      set_fact:
-        rootfs_needs_rebuild: >-
-          {{
-            not rootfs_file.stat.exists or
-            force_rebuild_rootfs or
-            stored_rootfs_hash.failed or
-            (stored_rootfs_hash.content | default('') | b64decode | trim) != rootfs_inputs_hash.stdout
-          }}
-      tags: [prepare]
-
-    - name: Build rootfs with cleanup on failure
-      when: rootfs_needs_rebuild
-      tags: [prepare]
-      block:
-        - name: Build rootfs
-          command: "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh {{ rootfs_path }}"
-      rescue:
-        - name: Remove old rootfs containers
-          shell: docker rm -f $(docker ps -aq --filter "name=vm0-rootfs") 2>/dev/null || true
-          changed_when: false
-
-        - name: Clean up unused Docker resources
-          command: docker system prune -af --volumes
-
-        - name: Retry rootfs build after cleanup
-          command: "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh {{ rootfs_path }}"
-
-    - name: Store rootfs hash
-      copy:
-        content: "{{ rootfs_inputs_hash.stdout }}\n"
-        dest: "{{ rootfs_path }}.sha256"
-        mode: '0644'
-      when: rootfs_needs_rebuild
-      tags: [prepare]
-
-    - name: Ensure user is in kvm group for Firecracker
+    - name: Ensure kvm group membership
       user:
         name: "{{ ansible_user }}"
         groups: kvm
-        append: yes
-      register: kvm_group_result
-      tags: [prepare]
+        append: true
+      become: true
 
-    - name: Reset connection to pick up new group membership
-      meta: reset_connection
-      when: kvm_group_result.changed
-      tags: [prepare]
-
-    # Kill PM2 daemon so it restarts with new group membership
-    # PM2 child processes inherit the daemon's groups, not the shell's groups
-    - name: Kill PM2 daemon to pick up kvm group
-      command: pm2 kill
-      become: no
-      ignore_errors: yes
-      when: kvm_group_result.changed
-      tags: [prepare]
-
-    # ========================================
-    # Phase 4.5: Generate Snapshot (optional)
-    # ========================================
-    - name: Ensure snapshot directory exists
-      file:
-        path: "{{ snapshot_path }}"
-        state: directory
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0755'
-      when: enable_snapshot
-      tags: [prepare]
-
-    - name: Check if snapshot files exist
-      shell: |
-        test -f "{{ snapshot_path }}/snapshot.bin" && \
-        test -f "{{ snapshot_path }}/memory.bin" && \
-        test -f "{{ snapshot_path }}/overlay.ext4"
-      register: snapshot_files_check
-      ignore_errors: yes
-      changed_when: false
-      when: enable_snapshot
-      tags: [prepare]
-
-    # Calculate hash of files that affect snapshot (rootfs + kernel + firecracker + runner + config)
-    - name: Calculate snapshot inputs hash
-      shell: |
-        (cat "{{ rootfs_path }}" /opt/firecracker/vmlinux /usr/local/bin/firecracker \
-             "{{ runner_base_dir }}/index.js" && \
-         echo "vcpu={{ vcpu }} memory_mb={{ memory_mb }}") 2>/dev/null | sha256sum | cut -d' ' -f1
-      args:
-        executable: /bin/bash
-      register: snapshot_inputs_hash
-      changed_when: false
-      when: enable_snapshot
-      tags: [prepare]
-
-    - name: Read stored snapshot hash
-      slurp:
-        src: "{{ snapshot_path }}/inputs.sha256"
-      register: stored_snapshot_hash
-      ignore_errors: yes
-      when: enable_snapshot
-      tags: [prepare]
-
-    - name: Determine if snapshot rebuild is needed
-      set_fact:
-        snapshot_needs_rebuild: >-
-          {{
-            (snapshot_files_check.rc | default(1)) != 0 or
-            force_rebuild_snapshot or
-            rootfs_needs_rebuild | default(false) or
-            stored_snapshot_hash.failed or
-            (stored_snapshot_hash.content | default('') | b64decode | trim) != snapshot_inputs_hash.stdout
-          }}
-      when: enable_snapshot
-      tags: [prepare]
-
-    - name: Create snapshot generation config
-      copy:
-        content: |
-          base_dir: {{ runner_base_dir }}/snapshot-gen
-          firecracker:
-            binary: /usr/local/bin/firecracker
-            kernel: /opt/firecracker/vmlinux
-            rootfs: {{ rootfs_path }}
-          sandbox:
-            vcpu: {{ vcpu }}
-            memory_mb: {{ memory_mb }}
-        dest: "{{ runner_base_dir }}/snapshot-gen.yaml"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0644'
-      when: enable_snapshot and snapshot_needs_rebuild
-      tags: [prepare]
-
-    - name: Generate snapshot for fast VM boot
+    - name: Build rootfs and snapshot
       command: >
-        node index.js snapshot {{ snapshot_path }}
-        --config {{ runner_base_dir }}/snapshot-gen.yaml
-      args:
-        chdir: "{{ runner_base_dir }}"
-      become: no
-      when: enable_snapshot and snapshot_needs_rebuild
-      tags: [prepare]
+        {{ bin_dir }}/runner build
+        --guest-init {{ bin_dir }}/guest-init
+        --guest-download {{ bin_dir }}/guest-download
+        --guest-agent {{ bin_dir }}/guest-agent
+        --guest-mock-claude {{ bin_dir }}/guest-mock-claude
+        --vcpu {{ vcpu }}
+        --memory-mb {{ memory_mb }}
+      register: build_output
 
-    - name: Store snapshot inputs hash
-      copy:
-        content: "{{ snapshot_inputs_hash.stdout }}\n"
-        dest: "{{ snapshot_path }}/inputs.sha256"
-        mode: '0644'
-      when: enable_snapshot and snapshot_needs_rebuild
-      tags: [prepare]
-
-    - name: Clean up snapshot generation files
-      file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - "{{ runner_base_dir }}/snapshot-gen.yaml"
-        - "{{ runner_base_dir }}/snapshot-gen"
-      when: enable_snapshot
-      tags: [prepare]
+    - name: Parse build hashes
+      set_fact:
+        rootfs_hash: "{{ build_output.stdout_lines | select('match', '^rootfs_hash=') | first | regex_replace('^rootfs_hash=', '') }}"
+        snapshot_hash: "{{ build_output.stdout_lines | select('match', '^snapshot_hash=') | first | regex_replace('^snapshot_hash=', '') }}"
 
     # ========================================
-    # Phase 5: Configure and Start
+    # Phase 3: Configure + Install
     # ========================================
-    - name: Generate runner configuration
-      template:
-        src: runner.yaml.j2
-        dest: "{{ runner_base_dir }}/runner.yaml"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0600'
-      tags: [start]
+    - name: Generate runner config
+      command: >
+        {{ bin_dir }}/runner config
+        --rootfs-hash {{ rootfs_hash }}
+        --snapshot-hash {{ snapshot_hash }}
+        --name {{ runner_name }}
+        --group {{ runner_group }}
+        --runner-dirname {{ runner_name }}
+        --vcpu {{ vcpu }}
+        --memory-mb {{ memory_mb }}
+        --max-concurrent {{ max_concurrent }}
+        --api-url {{ api_url }}
+        --token vm0_official_{{ official_runner_secret }}
 
-    - name: Create PM2 ecosystem file
-      template:
-        src: ecosystem.config.cjs.j2
-        dest: "{{ runner_base_dir }}/ecosystem.config.cjs"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0644'
-      tags: [start]
-
-    - name: Start runner via PM2
-      command: pm2 start ecosystem.config.cjs
-      args:
-        chdir: "{{ runner_base_dir }}"
-      become: no
-      environment: "{{ extra_env }}"
-      tags: [start]
-
-    - name: Save PM2 process list
-      command: pm2 save
-      become: no
-      tags: [start]
+    - name: Install and start runner service
+      command: >
+        {{ bin_dir }}/runner service install
+        --name {{ runner_name }}
+        --config {{ runner_dir }}/runner.yaml
 
     # ========================================
-    # Phase 6: Health Check
+    # Phase 4: Health check
     # ========================================
-    - name: Wait for runner to be ready
-      wait_for:
-        path: /tmp/{{ pm2_process_name }}.log
-        search_regex: "Press Ctrl\\+C to stop"
-        timeout: 120
-      tags: [start]
-
-    - name: Verify runner is polling
-      shell: pm2 jlist | jq -r '.[] | select(.name=="{{ pm2_process_name }}") | .pm2_env.status'
-      register: pm2_status
-      failed_when: pm2_status.stdout != "online"
-      become: no
-      tags: [start]
-
     - name: Verify runner health
-      command: node index.js doctor
-      args:
-        chdir: "{{ runner_base_dir }}"
-      become: no
-      environment: "{{ extra_env }}"
-      register: health_check
-      retries: 3
-      delay: 5
-      until: health_check.rc == 0
-      tags: [start]
+      command: "{{ bin_dir }}/runner doctor"
+      retries: 5
+      delay: 10
+      register: health
+      until: health.rc == 0
 
-    - name: Display deployment summary
-      debug:
-        msg: |
-          ✓ Runner deployed successfully on {{ inventory_hostname }}
-          - Process: {{ pm2_process_name }}
-          - Group: {{ runner_group }}
-          - API: {{ api_url }}
-          - Directory: {{ runner_base_dir }}
-      tags: [start]
+    # ========================================
+    # Phase 5: Drain old runners + Cleanup
+    # ========================================
+    - name: Find running runner services
+      shell: >
+        systemctl list-units 'vm0-runner-*.service' --state=running
+        --plain --no-legend | awk '{print $1}'
+        | sed 's/^vm0-runner-//;s/\.service$//'
+      register: running_runners
+      changed_when: false
+      ignore_errors: true
+
+    - name: Drain old runner services
+      command: "{{ bin_dir }}/runner service drain --name {{ item }}"
+      loop: "{{ running_runners.stdout_lines | default([]) }}"
+      when: item != runner_name
+      ignore_errors: true
+
+    - name: Garbage collect old artifacts
+      command: "{{ bin_dir }}/runner gc --keep-latest 3"
