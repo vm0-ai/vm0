@@ -16,7 +16,7 @@
   hosts: all
 
   vars:
-    base_dir: "{{ ansible_env.HOME }}/.vm0-runner"
+    base_dir: "{{ ansible_facts['env']['HOME'] }}/.vm0-runner"
     bin_dir: "{{ base_dir }}/bin/{{ job_ref }}"
 
   tasks:
