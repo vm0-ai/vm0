@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.46.0](https://github.com/vm0-ai/vm0/compare/web-v12.45.0...web-v12.46.0) (2026-02-22)
+
+
+### Features
+
+* **email:** add email-triggered agent runs ([#2959](https://github.com/vm0-ai/vm0/issues/2959)) ([a4ce976](https://github.com/vm0-ai/vm0/commit/a4ce976bd364744ef8f73bf575c5272d1682cb04))
+
 ## [12.45.0](https://github.com/vm0-ai/vm0/compare/web-v12.44.0...web-v12.45.0) (2026-02-18)
 
 

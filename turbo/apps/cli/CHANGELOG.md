@@ -1,5 +1,13 @@
 # Changelog
 
+## [9.38.2](https://github.com/vm0-ai/vm0/compare/cli-v9.38.1...cli-v9.38.2) (2026-02-22)
+
+
+### Bug Fixes
+
+* **cli:** test release-please cli version bump ([#3179](https://github.com/vm0-ai/vm0/issues/3179)) ([8eb6b9e](https://github.com/vm0-ai/vm0/commit/8eb6b9e811ac438d2788181fc6f3e5c70890dd53))
+* **runner:** add path validation and ci hash guards ([#3161](https://github.com/vm0-ai/vm0/issues/3161)) ([c5313ff](https://github.com/vm0-ai/vm0/commit/c5313ffdaee030c5fb3d48b950c8d7b6e36e90ae))
+
 ## [9.38.1](https://github.com/vm0-ai/vm0/compare/cli-v9.38.0...cli-v9.38.1) (2026-02-18)
 
 
