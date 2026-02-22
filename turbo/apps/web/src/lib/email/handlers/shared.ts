@@ -58,7 +58,7 @@ interface ResolvedAgent {
   composeId: string;
   userId: string;
   scopeId: string;
-  headVersionId: string | null;
+  headVersionId: string;
 }
 
 /**
@@ -96,6 +96,9 @@ export async function resolveAgentByAddress(
     .limit(1);
 
   if (!compose) return null;
+
+  // Compose must have a published version to be triggerable
+  if (!compose.headVersionId) return null;
 
   return {
     composeId: compose.id,

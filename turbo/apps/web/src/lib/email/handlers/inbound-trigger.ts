@@ -137,7 +137,7 @@ export async function handleInboundEmailTrigger(
   // 8. Create and dispatch run
   const result = await createRun({
     userId,
-    agentComposeVersionId: compose.headVersionId ?? "",
+    agentComposeVersionId: compose.headVersionId,
     prompt,
     composeId: compose.composeId,
     agentName: triggerAddress.agent,

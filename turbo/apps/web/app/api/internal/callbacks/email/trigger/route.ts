@@ -177,9 +177,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const agentSessionId = extractAgentSessionId(run?.result);
 
-  // Send response email
-  const replyToAddress = buildReplyToAddress(replyToken);
+  // Only enable reply continuity when we have a session to resume
+  const replyToAddress = agentSessionId
+    ? buildReplyToAddress(replyToken)
+    : undefined;
 
+  // Send response email
   const { messageId } = await sendEmail({
     from: buildFromAddress(compose.name),
     to: senderEmail,
