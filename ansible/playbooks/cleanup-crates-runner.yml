@@ -14,10 +14,10 @@
 
 - name: Cleanup Crates Runner
   hosts: all
-  become: yes
 
   vars:
-    bin_dir: "{{ ansible_env.HOME }}/.vm0-runner/bin/{{ job_ref }}"
+    base_dir: "{{ ansible_env.HOME }}/.vm0-runner"
+    bin_dir: "{{ base_dir }}/bin/{{ job_ref }}"
 
   tasks:
     - name: Check required variables
@@ -26,13 +26,42 @@
           - job_ref is defined
         fail_msg: "Required variable: job_ref"
 
-    - name: Uninstall persistent service upgrade-a
-      command: "{{ bin_dir }}/runner service uninstall --name {{ job_ref }}-upgrade-a"
+    - name: Stop persistent service upgrade-a
+      command: systemctl stop vm0-runner-{{ job_ref }}-upgrade-a.service
       ignore_errors: true
+      become: true
 
-    - name: Uninstall persistent service upgrade-b
-      command: "{{ bin_dir }}/runner service uninstall --name {{ job_ref }}-upgrade-b"
+    - name: Disable persistent service upgrade-a
+      command: systemctl disable vm0-runner-{{ job_ref }}-upgrade-a.service
       ignore_errors: true
+      become: true
+
+    - name: Remove unit file upgrade-a
+      file:
+        path: /etc/systemd/system/vm0-runner-{{ job_ref }}-upgrade-a.service
+        state: absent
+      become: true
+
+    - name: Stop persistent service upgrade-b
+      command: systemctl stop vm0-runner-{{ job_ref }}-upgrade-b.service
+      ignore_errors: true
+      become: true
+
+    - name: Disable persistent service upgrade-b
+      command: systemctl disable vm0-runner-{{ job_ref }}-upgrade-b.service
+      ignore_errors: true
+      become: true
+
+    - name: Remove unit file upgrade-b
+      file:
+        path: /etc/systemd/system/vm0-runner-{{ job_ref }}-upgrade-b.service
+        state: absent
+      become: true
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+      ignore_errors: true
+      become: true
 
     - name: Remove directories
       file:
@@ -40,7 +69,7 @@
         state: absent
       loop:
         - "{{ bin_dir }}"
-        - "{{ ansible_env.HOME }}/.vm0-runner/runners/{{ job_ref }}-bench"
-        - "{{ ansible_env.HOME }}/.vm0-runner/runners/{{ job_ref }}-upgrade-a"
-        - "{{ ansible_env.HOME }}/.vm0-runner/runners/{{ job_ref }}-upgrade-b"
-        - "{{ ansible_env.HOME }}/.vm0-runner/groups/vm0/upgrade-{{ job_ref }}"
+        - "{{ base_dir }}/runners/{{ job_ref }}-bench"
+        - "{{ base_dir }}/runners/{{ job_ref }}-upgrade-a"
+        - "{{ base_dir }}/runners/{{ job_ref }}-upgrade-b"
+        - "{{ base_dir }}/groups/vm0/upgrade-{{ job_ref }}"
