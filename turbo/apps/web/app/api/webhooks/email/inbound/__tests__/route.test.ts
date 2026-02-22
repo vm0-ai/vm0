@@ -374,5 +374,202 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Resend should not have been called (early return after agent lookup failed)
       expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
     });
+
+    it("should reject trigger email when DMARC fails", async () => {
+      const user = await context.setupUser({ prefix: "dmarc-fail" });
+      const suffix = user.userId.slice("dmarc-fail-".length);
+      const scopeSlug = `scope-${suffix}`;
+      const agentName = uniqueId("dmarc-agent");
+      await createTestCompose(agentName);
+
+      const senderEmail = "spoofed@example.com";
+      mockClerk({ userId: user.userId, email: senderEmail });
+
+      // Override Resend mock to return dmarc=fail
+      mockResend.emails.receiving.get.mockResolvedValueOnce({
+        data: {
+          from: senderEmail,
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          subject: "Spoofed email",
+          text: "I am pretending to be someone else",
+          html: "<p>I am pretending to be someone else</p>",
+          headers: {
+            "authentication-results":
+              "mx.resend.com; dkim=fail header.d=example.com; spf=fail smtp.mailfrom=attacker.com; dmarc=fail header.from=example.com",
+          },
+        },
+      } as never);
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "dmarc-fail-email",
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          from: senderEmail,
+          subject: "Spoofed email",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // No run should have been created
+      const runs = await findTestRunsByUserAndPrompt(
+        user.userId,
+        "Spoofed email\n\nI am pretending to be someone else",
+      );
+      expect(runs).toHaveLength(0);
+    });
+
+    it("should reject trigger email when DMARC is none even if DKIM passes", async () => {
+      const user = await context.setupUser({ prefix: "dkim-pass" });
+      const suffix = user.userId.slice("dkim-pass-".length);
+      const scopeSlug = `scope-${suffix}`;
+      const agentName = uniqueId("dkim-agent");
+      await createTestCompose(agentName);
+
+      const senderEmail = "user@nodmarc.com";
+      mockClerk({ userId: user.userId, email: senderEmail });
+
+      // Override Resend mock: dmarc=none but dkim=pass — still rejected
+      mockResend.emails.receiving.get.mockResolvedValueOnce({
+        data: {
+          from: senderEmail,
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          subject: "DKIM Only",
+          text: "My domain has no DMARC but DKIM is valid",
+          html: "<p>My domain has no DMARC but DKIM is valid</p>",
+          headers: {
+            "authentication-results":
+              "mx.resend.com; dkim=pass header.d=nodmarc.com; spf=fail smtp.mailfrom=nodmarc.com; dmarc=none header.from=nodmarc.com",
+          },
+        },
+      } as never);
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "dkim-pass-email",
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          from: senderEmail,
+          subject: "DKIM Only",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // No run should have been created — DMARC-only policy rejects dmarc=none
+      const runs = await findTestRunsByUserAndPrompt(
+        user.userId,
+        "DKIM Only\n\nMy domain has no DMARC but DKIM is valid",
+      );
+      expect(runs).toHaveLength(0);
+    });
+
+    it("should reject trigger email when authentication-results header is missing", async () => {
+      const user = await context.setupUser({ prefix: "no-auth" });
+      const suffix = user.userId.slice("no-auth-".length);
+      const scopeSlug = `scope-${suffix}`;
+      const agentName = uniqueId("noauth-agent");
+      await createTestCompose(agentName);
+
+      const senderEmail = "user@example.com";
+      mockClerk({ userId: user.userId, email: senderEmail });
+
+      // Override Resend mock: no authentication-results header
+      mockResend.emails.receiving.get.mockResolvedValueOnce({
+        data: {
+          from: senderEmail,
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          subject: "No Auth Headers",
+          text: "Email without authentication results",
+          html: "<p>Email without authentication results</p>",
+          headers: {},
+        },
+      } as never);
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "no-auth-email",
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          from: senderEmail,
+          subject: "No Auth Headers",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // No run should have been created
+      const runs = await findTestRunsByUserAndPrompt(
+        user.userId,
+        "No Auth Headers\n\nEmail without authentication results",
+      );
+      expect(runs).toHaveLength(0);
+    });
+
+    it("should reject trigger email when all authentication methods fail", async () => {
+      const user = await context.setupUser({ prefix: "all-fail" });
+      const suffix = user.userId.slice("all-fail-".length);
+      const scopeSlug = `scope-${suffix}`;
+      const agentName = uniqueId("allfail-agent");
+      await createTestCompose(agentName);
+
+      const senderEmail = "user@misconfigured.com";
+      mockClerk({ userId: user.userId, email: senderEmail });
+
+      // Override Resend mock: all authentication methods fail
+      mockResend.emails.receiving.get.mockResolvedValueOnce({
+        data: {
+          from: senderEmail,
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          subject: "All Fail",
+          text: "Everything failed",
+          html: "<p>Everything failed</p>",
+          headers: {
+            "authentication-results":
+              "mx.resend.com; dkim=fail; spf=fail; dmarc=fail",
+          },
+        },
+      } as never);
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "all-fail-email",
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          from: senderEmail,
+          subject: "All Fail",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // No run should have been created
+      const runs = await findTestRunsByUserAndPrompt(
+        user.userId,
+        "All Fail\n\nEverything failed",
+      );
+      expect(runs).toHaveLength(0);
+    });
   });
 });

@@ -185,6 +185,10 @@ vi.mock("resend", () => {
             subject: "Re: test",
             text: "Hello from email",
             html: "<p>Hello from email</p>",
+            headers: {
+              "authentication-results":
+                "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
+            },
           },
         }),
       },

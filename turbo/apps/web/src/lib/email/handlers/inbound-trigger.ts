@@ -1,5 +1,6 @@
 import { getReceivedEmail } from "../client";
 import { stripQuotedReply } from "../quote-strip";
+import { verifySenderAuthenticity } from "../sender-auth";
 import {
   parseEmailTriggerAddress,
   resolveAgentByAddress,
@@ -34,7 +35,8 @@ interface InboundEmailEvent {
  * 2. Look up sender email in Clerk to get user ID
  * 3. Resolve agent by scope slug + agent name
  * 4. Check if user has permission to access the agent
- * 5. Create agent run with callback for response delivery
+ * 5. Fetch full email and verify sender via DMARC
+ * 6. Create agent run with callback for response delivery
  *
  * All failures are silent (no response email) to prevent information leakage.
  */
@@ -101,8 +103,21 @@ export async function handleInboundEmailTrigger(
     return;
   }
 
-  // 5. Fetch full email and build prompt
+  // 5. Fetch full email
   const email = await getReceivedEmail(emailId);
+
+  // 6. Verify sender authenticity via DMARC
+  const verification = verifySenderAuthenticity(email.headers);
+  if (!verification.verified) {
+    log.warn("Sender authentication failed, ignoring email", {
+      from: senderEmail,
+      reason: verification.reason,
+      emailId,
+    });
+    return;
+  }
+
+  // 7. Build prompt from email content
   const bodyContent = stripQuotedReply(email.text);
 
   // Combine subject + body as prompt
@@ -115,11 +130,11 @@ export async function handleInboundEmailTrigger(
     return;
   }
 
-  // 6. Generate reply token for conversation continuity
+  // 8. Generate reply token for conversation continuity
   const sessionPlaceholderId = crypto.randomUUID();
   const replyToken = generateReplyToken(sessionPlaceholderId);
 
-  // 7. Build callback
+  // 9. Build callback
   const callbacks = [
     {
       url: `${getApiUrl()}/api/internal/callbacks/email/trigger`,
@@ -134,7 +149,7 @@ export async function handleInboundEmailTrigger(
     },
   ];
 
-  // 8. Create and dispatch run
+  // 10. Create and dispatch run
   const result = await createRun({
     userId,
     agentComposeVersionId: compose.headVersionId,
