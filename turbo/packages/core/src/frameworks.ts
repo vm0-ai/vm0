@@ -79,3 +79,29 @@ export function getFrameworkDisplayName(framework: string): string {
   assertSupportedFramework(framework);
   return FRAMEWORK_DISPLAY_NAMES[framework];
 }
+
+/**
+ * Canonical instructions filename for each framework.
+ */
+const FRAMEWORK_INSTRUCTIONS_FILENAMES: Record<SupportedFramework, string> = {
+  "claude-code": "CLAUDE.md",
+  codex: "AGENTS.md",
+};
+
+/**
+ * Get the canonical instructions filename for a framework
+ *
+ * Each framework expects instructions at a specific filename:
+ * - claude-code: CLAUDE.md (read from ~/.claude/)
+ * - codex: AGENTS.md (read from ~/.codex/)
+ *
+ * Used by CLI (upload) and web API (read) to ensure a symmetric contract.
+ *
+ * @param framework - The framework name (undefined defaults to claude-code)
+ * @returns The canonical filename for instructions
+ * @throws Error if framework is defined but not supported
+ */
+export function getInstructionsFilename(framework?: string): string {
+  const validated = getValidatedFramework(framework);
+  return FRAMEWORK_INSTRUCTIONS_FILENAMES[validated];
+}
