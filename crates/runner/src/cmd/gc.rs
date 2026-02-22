@@ -6,6 +6,7 @@ use clap::Args;
 use nix::fcntl::{Flock, FlockArg};
 use tracing::info;
 
+use crate::cmd::service;
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
@@ -45,14 +46,23 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
 
     let locks_removed = gc_orphaned_locks(&home, args.dry_run).await?;
     let (net_logs_removed, net_logs_freed) = gc_network_logs(&home, args.dry_run).await?;
+    let versions_removed = gc_versions(&home, args.dry_run).await?;
 
     let total = rootfs_freed + snapshot_freed + net_logs_freed;
-    if total == 0 && locks_removed == 0 && net_logs_removed == 0 {
+    if total == 0 && locks_removed == 0 && net_logs_removed == 0 && versions_removed == 0 {
         info!("nothing to clean up");
     } else if args.dry_run {
-        info!("total: {} would be freed", human_bytes(total));
+        info!(
+            versions = versions_removed,
+            "total: {} would be freed",
+            human_bytes(total)
+        );
     } else {
-        info!("total: {} freed", human_bytes(total));
+        info!(
+            versions = versions_removed,
+            "total: {} freed",
+            human_bytes(total)
+        );
     }
 
     Ok(())
@@ -330,6 +340,95 @@ async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
     }
 
     (total_blocks, mtime)
+}
+
+/// Check whether a directory name is a semver version string (`v<major>.<minor>.<patch>`).
+fn is_semver_version(name: &str) -> bool {
+    let Some(rest) = name.strip_prefix('v') else {
+        return false;
+    };
+    let parts: Vec<&str> = rest.split('.').collect();
+    parts.len() == 3 && parts.iter().all(|p| p.parse::<u32>().is_ok())
+}
+
+/// Remove old deployment version directories that are not actively running.
+///
+/// Scans `home.bin_dir()` for semver-named subdirectories (e.g. `v0.2.0`), checks
+/// whether the corresponding systemd unit is active, and deletes inactive versions
+/// (bin dir, runner config dir, and systemd unit).
+async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<u64> {
+    let bin_dir = home.bin_dir();
+    let mut entries = match tokio::fs::read_dir(&bin_dir).await {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "read {}: {e}",
+                bin_dir.display()
+            )));
+        }
+    };
+
+    let mut removed = 0u64;
+
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|e| RunnerError::Internal(format!("read entry in {}: {e}", bin_dir.display())))?
+    {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !is_semver_version(name) {
+            continue;
+        }
+
+        // Check if the corresponding systemd unit is active — skip if so.
+        let unit = match service::unit_name(name) {
+            Ok(u) => u,
+            Err(_) => continue,
+        };
+        match service::is_unit_active(&unit).await {
+            Ok(true) => {
+                info!("version {name}: active, skipping");
+                continue;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                // systemctl unavailable (e.g. in tests or broken PATH).
+                // Log and treat as inactive — the version dir will still be
+                // removed, which is preferable to silently accumulating stale
+                // versions when systemd units are already gone.
+                tracing::debug!(
+                    "version {name}: cannot check unit status ({e}), assuming inactive"
+                );
+            }
+        }
+
+        if dry_run {
+            info!("[dry-run] would remove version {name}");
+        } else {
+            // Best-effort uninstall the systemd service (may not exist).
+            let _ = service::uninstall_service(name).await;
+
+            // Remove bin directory.
+            let version_bin = bin_dir.join(name);
+            if let Err(e) = tokio::fs::remove_dir_all(&version_bin).await
+                && e.kind() != std::io::ErrorKind::NotFound
+            {
+                tracing::debug!("cannot remove {}: {e}", version_bin.display());
+                continue;
+            }
+
+            // Best-effort remove runner config directory.
+            let version_config = home.runners_dir().join(name);
+            let _ = tokio::fs::remove_dir_all(&version_config).await;
+
+            info!("removed version {name}");
+        }
+        removed += 1;
+    }
+
+    Ok(removed)
 }
 
 fn human_bytes(bytes: u64) -> String {
@@ -681,6 +780,85 @@ mod tests {
         let (removed, _) = gc_network_logs(&home, false).await.unwrap();
         assert_eq!(removed, 0);
         assert!(boundary.exists(), "file at max age should be kept");
+    }
+
+    #[test]
+    fn is_semver_version_valid() {
+        assert!(is_semver_version("v1.0.0"));
+        assert!(is_semver_version("v0.2.10"));
+        assert!(is_semver_version("v12.34.56"));
+    }
+
+    #[test]
+    fn is_semver_version_invalid() {
+        assert!(!is_semver_version("staging"));
+        assert!(!is_semver_version("test-abc"));
+        assert!(!is_semver_version("v1.0"));
+        assert!(!is_semver_version("v1.0.0-rc1"));
+        assert!(!is_semver_version("1.0.0"));
+        assert!(!is_semver_version(""));
+        assert!(!is_semver_version("v"));
+        assert!(!is_semver_version("v1.0.0.0"));
+    }
+
+    #[tokio::test]
+    async fn gc_versions_removes_inactive_semver_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let runners_dir = home.runners_dir();
+
+        // Create semver version dirs in bin/
+        std::fs::create_dir_all(bin_dir.join("v1.0.0")).unwrap();
+        std::fs::create_dir_all(bin_dir.join("v2.0.0")).unwrap();
+        // Create a non-semver dir that should be untouched
+        std::fs::create_dir_all(bin_dir.join("staging")).unwrap();
+
+        // Create corresponding runner config dirs
+        std::fs::create_dir_all(runners_dir.join("v1.0.0")).unwrap();
+
+        // systemctl will fail in test env, so versions are treated as inactive
+        let removed = gc_versions(&home, false).await.unwrap();
+        assert_eq!(removed, 2);
+        assert!(!bin_dir.join("v1.0.0").exists());
+        assert!(!bin_dir.join("v2.0.0").exists());
+        assert!(
+            bin_dir.join("staging").exists(),
+            "non-semver should be untouched"
+        );
+        assert!(!runners_dir.join("v1.0.0").exists());
+    }
+
+    #[tokio::test]
+    async fn gc_versions_dry_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+
+        std::fs::create_dir_all(bin_dir.join("v1.0.0")).unwrap();
+
+        let removed = gc_versions(&home, true).await.unwrap();
+        assert_eq!(removed, 1);
+        assert!(bin_dir.join("v1.0.0").exists(), "dry-run should not delete");
+    }
+
+    #[tokio::test]
+    async fn gc_versions_empty_bin_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.bin_dir()).unwrap();
+
+        let removed = gc_versions(&home, false).await.unwrap();
+        assert_eq!(removed, 0);
+    }
+
+    #[tokio::test]
+    async fn gc_versions_missing_bin_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        // Don't create bin_dir — should return 0, not error.
+        let removed = gc_versions(&home, false).await.unwrap();
+        assert_eq!(removed, 0);
     }
 
     #[tokio::test]

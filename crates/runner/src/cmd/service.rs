@@ -114,7 +114,7 @@ const UNIT_PREFIX: &str = "vm0-runner-";
 ///
 /// Validates that the suffix contains only safe characters for systemd unit
 /// names and file paths.
-fn unit_name(suffix: &str) -> RunnerResult<String> {
+pub(crate) fn unit_name(suffix: &str) -> RunnerResult<String> {
     if suffix.is_empty()
         || !suffix
             .bytes()
@@ -245,7 +245,7 @@ async fn write_unit_file(path: &Path, content: &str) -> RunnerResult<()> {
 }
 
 /// Check whether a systemd unit is active (running or activating).
-async fn is_unit_active(name: &str) -> RunnerResult<bool> {
+pub(crate) async fn is_unit_active(name: &str) -> RunnerResult<bool> {
     let svc = format!("{name}.service");
     let status = tokio::process::Command::new("systemctl")
         .args(["is-active", "--quiet", &svc])
@@ -376,9 +376,11 @@ async fn install(args: ServiceInstallArgs) -> RunnerResult<()> {
     Ok(())
 }
 
-/// `service uninstall` — stop + disable + remove unit file.
-async fn uninstall(args: ServiceNameArgs) -> RunnerResult<()> {
-    let unit = unit_name(&args.name)?;
+/// Stop + disable + remove the unit file for the given service suffix.
+///
+/// Best-effort: does not fail if the service is already stopped or missing.
+pub(crate) async fn uninstall_service(suffix: &str) -> RunnerResult<()> {
+    let unit = unit_name(suffix)?;
     let svc = format!("{unit}.service");
 
     // Best-effort stop + disable (may already be stopped/disabled).
@@ -401,6 +403,11 @@ async fn uninstall(args: ServiceNameArgs) -> RunnerResult<()> {
 
     info!(unit = %unit, "service uninstalled");
     Ok(())
+}
+
+/// `service uninstall` — stop + disable + remove unit file.
+async fn uninstall(args: ServiceNameArgs) -> RunnerResult<()> {
+    uninstall_service(&args.name).await
 }
 
 /// `service drain` — send SIGUSR1, disable unit, return immediately.
