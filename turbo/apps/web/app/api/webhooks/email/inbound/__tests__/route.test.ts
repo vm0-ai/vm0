@@ -572,4 +572,104 @@ describe("POST /api/webhooks/email/inbound", () => {
       expect(runs).toHaveLength(0);
     });
   });
+
+  describe("Email Trigger (agent@domain, auto-detect scope)", () => {
+    it("should dispatch agent run for agent-only email (auto-detect scope)", async () => {
+      const user = await context.setupUser({ prefix: "auto-scope" });
+      const agentName = uniqueId("auto-agent");
+      await createTestCompose(agentName);
+
+      const senderEmail = "sender@example.com";
+      mockClerk({ userId: user.userId, email: senderEmail });
+
+      // Send to agentname@domain (no scope, no plus sign)
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "auto-scope-email",
+          to: [`${agentName}@vm7.bot`],
+          from: senderEmail,
+          subject: "Auto Scope Test",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // Verify: agent run was created
+      const runs = await findTestRunsByUserAndPrompt(
+        user.userId,
+        "Auto Scope Test\n\nHello from email",
+      );
+      expect(runs).toHaveLength(1);
+
+      // Verify: trigger callback was registered
+      const callbacks = await findTestCallbacksByRunId(runs[0]!.id);
+      const triggerCallback = callbacks.find((c) =>
+        c.url.includes("/callbacks/email/trigger"),
+      );
+      expect(triggerCallback).toBeDefined();
+      expect(triggerCallback!.payload).toMatchObject({
+        senderEmail,
+        userId: user.userId,
+        inboundEmailId: "auto-scope-email",
+      });
+    });
+
+    it("should ignore agent-only email from unregistered sender", async () => {
+      mockResend.emails.receiving.get.mockClear();
+      mockClerk({ userId: "some-user-id", email: "registered@example.com" });
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "unreg-auto-email",
+          to: ["someagent@vm7.bot"],
+          from: "unregistered@example.com",
+          subject: "Test",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
+    });
+
+    it("should ignore agent-only email when sender has no scope", async () => {
+      mockResend.emails.receiving.get.mockClear();
+
+      // Mock Clerk to return a userId that has no scope in the database
+      const senderEmail = "noscopeuser@example.com";
+      mockClerk({ userId: "no-scope-user-id", email: senderEmail });
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "no-scope-email",
+          to: ["someagent@vm7.bot"],
+          from: senderEmail,
+          subject: "Test",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // No email fetch should have happened (early return after scope lookup failed)
+      expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
+    });
+  });
 });

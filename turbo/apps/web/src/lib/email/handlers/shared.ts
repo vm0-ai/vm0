@@ -44,6 +44,26 @@ export function parseEmailTriggerAddress(
 }
 
 /**
+ * Parse an agent-only email address in the format: agent@domain
+ * Returns the agent name if the address is a simple local-part (no plus sign),
+ * or null if the address contains a plus sign or doesn't match.
+ *
+ * Examples:
+ * - "my-agent@vm0.bot" → "my-agent"
+ * - "scope+agent@vm0.bot" → null (has plus sign, use parseEmailTriggerAddress)
+ * - "reply+token@vm0.bot" → null (has plus sign)
+ * - "@vm0.bot" → null (empty local part)
+ */
+export function parseAgentOnlyAddress(toAddress: string): string | null {
+  if (toAddress.includes("+")) return null;
+
+  const match = toAddress.match(/^([a-z0-9][a-z0-9-]*)@/i);
+  if (!match?.[1]) return null;
+
+  return match[1].toLowerCase();
+}
+
+/**
  * Check if an email address is a reply address (reply+token@domain)
  */
 export function isReplyAddress(toAddress: string): boolean {

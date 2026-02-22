@@ -3,12 +3,14 @@ import { stripQuotedReply } from "../quote-strip";
 import { verifySenderAuthenticity } from "../sender-auth";
 import {
   parseEmailTriggerAddress,
+  parseAgentOnlyAddress,
   resolveAgentByAddress,
   generateReplyToken,
 } from "./shared";
 import { createRun } from "../../run";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
+import { getUserScopeByClerkId } from "../../scope/scope-service";
 import { canAccessCompose } from "../../agent/permission-service";
 import { getUserEmail } from "../../auth/get-user-email";
 import { logger } from "../../logger";
@@ -28,10 +30,12 @@ interface InboundEmailEvent {
 
 /**
  * Handle an inbound email that triggers an agent run.
- * This is for direct emails to scope+agent@domain addresses.
+ * Supports two address formats:
+ * - scope+agent@domain (explicit scope)
+ * - agent@domain (scope auto-detected from sender's personal scope)
  *
  * Flow:
- * 1. Parse scope+agent from recipient address
+ * 1. Parse trigger address from recipients (scope+agent or agent-only)
  * 2. Look up sender email in Clerk to get user ID
  * 3. Resolve agent by scope slug + agent name
  * 4. Check if user has permission to access the agent
@@ -46,8 +50,13 @@ export async function handleInboundEmailTrigger(
   const { email_id: emailId, to, from: senderEmail, subject } = event.data;
 
   // 1. Find trigger address in recipients
+  //    Supports two formats:
+  //    - scope+agent@domain (explicit scope)
+  //    - agent@domain (scope auto-detected from sender)
   let triggerAddress: { scope: string; agent: string } | null = null;
+  let userId: string | null = null;
 
+  // 1a. Try scope+agent format first
   for (const addr of to) {
     const parsed = parseEmailTriggerAddress(addr);
     if (parsed) {
@@ -56,9 +65,38 @@ export async function handleInboundEmailTrigger(
     }
   }
 
+  // 1b. If no scope+agent match, try agent-only format
   if (!triggerAddress) {
-    log.debug("No trigger address found in recipients", { to });
-    return;
+    let agentName: string | null = null;
+
+    for (const addr of to) {
+      const parsed = parseAgentOnlyAddress(addr);
+      if (parsed) {
+        agentName = parsed;
+        break;
+      }
+    }
+
+    if (!agentName) {
+      log.debug("No trigger address found in recipients", { to });
+      return;
+    }
+
+    // For agent-only format, we need the sender's scope.
+    // Look up sender in Clerk first (needed for scope lookup).
+    userId = await getUserIdByEmail(senderEmail);
+    if (!userId) {
+      log.debug("Sender email not registered", { from: senderEmail });
+      return;
+    }
+
+    const userScope = await getUserScopeByClerkId(userId);
+    if (!userScope) {
+      log.debug("Sender has no scope", { from: senderEmail, userId });
+      return;
+    }
+
+    triggerAddress = { scope: userScope.slug, agent: agentName };
   }
 
   log.debug("Processing email trigger", {
@@ -67,11 +105,13 @@ export async function handleInboundEmailTrigger(
     from: senderEmail,
   });
 
-  // 2. Look up sender in Clerk
-  const userId = await getUserIdByEmail(senderEmail);
+  // 2. Look up sender in Clerk (skip if already done for agent-only format)
   if (!userId) {
-    log.debug("Sender email not registered", { from: senderEmail });
-    return;
+    userId = await getUserIdByEmail(senderEmail);
+    if (!userId) {
+      log.debug("Sender email not registered", { from: senderEmail });
+      return;
+    }
   }
 
   // 3. Resolve agent

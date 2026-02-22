@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { parseEmailTriggerAddress, isReplyAddress } from "../shared";
+import {
+  parseEmailTriggerAddress,
+  parseAgentOnlyAddress,
+  isReplyAddress,
+} from "../shared";
 
 describe("parseEmailTriggerAddress", () => {
   it("should parse valid scope+agent address", () => {
@@ -55,6 +59,40 @@ describe("parseEmailTriggerAddress", () => {
   it("should return null for empty string", () => {
     const result = parseEmailTriggerAddress("");
     expect(result).toBeNull();
+  });
+});
+
+describe("parseAgentOnlyAddress", () => {
+  it("should parse valid agent-only address", () => {
+    expect(parseAgentOnlyAddress("my-agent@vm0.bot")).toBe("my-agent");
+  });
+
+  it("should normalize to lowercase", () => {
+    expect(parseAgentOnlyAddress("MY-AGENT@vm0.bot")).toBe("my-agent");
+  });
+
+  it("should handle agent with numbers", () => {
+    expect(parseAgentOnlyAddress("agent123@vm0.bot")).toBe("agent123");
+  });
+
+  it("should return null for scope+agent format", () => {
+    expect(parseAgentOnlyAddress("scope+agent@vm0.bot")).toBeNull();
+  });
+
+  it("should return null for reply address", () => {
+    expect(parseAgentOnlyAddress("reply+token@vm0.bot")).toBeNull();
+  });
+
+  it("should return null for empty local part", () => {
+    expect(parseAgentOnlyAddress("@vm0.bot")).toBeNull();
+  });
+
+  it("should return null for agent starting with hyphen", () => {
+    expect(parseAgentOnlyAddress("-agent@vm0.bot")).toBeNull();
+  });
+
+  it("should return null for empty string", () => {
+    expect(parseAgentOnlyAddress("")).toBeNull();
   });
 });
 
