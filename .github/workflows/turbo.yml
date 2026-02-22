@@ -1360,33 +1360,35 @@ jobs:
       github.event_name != 'push' &&
       needs.deploy-runner-prepare.outputs.bin-dir != ''
     steps:
-      # Read METAL_HOSTS from secret directly — GitHub Actions masks secret values in job outputs
-      - name: Cleanup runner on all metal hosts
+      - uses: actions/checkout@v6
+
+      - name: Install Ansible
+        run: |
+          apt-get update && apt-get install -y python3 python3-pip
+          pip3 install ansible
+
+      - name: Setup SSH key
         env:
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
-          RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
         run: |
           mkdir -p "$HOME/.ssh"
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
           chmod 600 "$HOME/.ssh/runner.pem"
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
 
-          HOST_INDEX=0
-          for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            HOST_INDEX=$((HOST_INDEX + 1))
-            (
-              RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
-              REMOTE="${METAL_USER}@${HOST}"
-              echo "Cleaning up ${RUNNER_NAME} on ${HOST}"
-              ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner service stop --name ${RUNNER_NAME}" || true
-              ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR}" || true
-            ) &
-          done
-          wait
+      - name: Cleanup runner on all metal hosts
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+        run: |
+          cd ansible
+          ansible-playbook \
+            -i "${METAL_HOSTS}," \
+            playbooks/cleanup-turbo-runner.yml \
+            --private-key "$HOME/.ssh/runner.pem" \
+            -e "ansible_user=${METAL_USER}" \
+            -e "job_ref=${JOB_REF}" \
+            -v || true
 
   # Build E2B templates (development account)
   # Uses repository-level E2B_API_KEY secret

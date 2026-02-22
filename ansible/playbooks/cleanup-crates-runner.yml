@@ -1,0 +1,46 @@
+# Cleanup Crates Runner
+#
+# This playbook cleans up runner resources deployed by crates.yml CI pipeline.
+# Uninstalls persistent systemd services and removes ephemeral directories.
+#
+# Usage:
+#   ansible-playbook -i "host," playbooks/cleanup-crates-runner.yml \
+#     -e "ansible_user=ubuntu" \
+#     -e "job_ref=pr-123-test" \
+#     --private-key /path/to/key.pem
+#
+# Required Variables:
+#   - job_ref: The job reference identifier (e.g., pr-123-test)
+
+- name: Cleanup Crates Runner
+  hosts: all
+  become: yes
+
+  vars:
+    bin_dir: "{{ ansible_env.HOME }}/.vm0-runner/bin/{{ job_ref }}"
+
+  tasks:
+    - name: Check required variables
+      assert:
+        that:
+          - job_ref is defined
+        fail_msg: "Required variable: job_ref"
+
+    - name: Uninstall persistent service upgrade-a
+      command: "{{ bin_dir }}/runner service uninstall --name {{ job_ref }}-upgrade-a"
+      ignore_errors: true
+
+    - name: Uninstall persistent service upgrade-b
+      command: "{{ bin_dir }}/runner service uninstall --name {{ job_ref }}-upgrade-b"
+      ignore_errors: true
+
+    - name: Remove directories
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ bin_dir }}"
+        - "{{ ansible_env.HOME }}/.vm0-runner/runners/{{ job_ref }}-bench"
+        - "{{ ansible_env.HOME }}/.vm0-runner/runners/{{ job_ref }}-upgrade-a"
+        - "{{ ansible_env.HOME }}/.vm0-runner/runners/{{ job_ref }}-upgrade-b"
+        - "{{ ansible_env.HOME }}/.vm0-runner/groups/vm0/upgrade-{{ job_ref }}"

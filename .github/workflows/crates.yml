@@ -353,7 +353,14 @@ jobs:
     needs: [runner-build, runner-benchmark, runner-upgrade-local]
     if: ${{ always() && needs.runner-build.result != 'skipped' }}
     steps:
-      - name: Setup SSH
+      - uses: actions/checkout@v6
+
+      - name: Install Ansible
+        run: |
+          apt-get update && apt-get install -y python3 python3-pip
+          pip3 install ansible
+
+      - name: Setup SSH key
         env:
           SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
         run: |
@@ -367,10 +374,11 @@ jobs:
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
-          REMOTE="${METAL_USER}@${HOST}"
-          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
-          echo "Cleaning up ${JOB_REF} on ${HOST}"
-          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner service uninstall --name ${JOB_REF}-upgrade-a" 2>/dev/null || true
-          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner service uninstall --name ${JOB_REF}-upgrade-b" 2>/dev/null || true
-          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-upgrade-a ~/.vm0-runner/runners/${JOB_REF}-upgrade-b ~/.vm0-runner/groups/vm0/upgrade-${JOB_REF}" || true
+          cd ansible
+          ansible-playbook \
+            -i "${HOST}," \
+            playbooks/cleanup-crates-runner.yml \
+            --private-key "$HOME/.ssh/runner.pem" \
+            -e "ansible_user=${METAL_USER}" \
+            -e "job_ref=${JOB_REF}" \
+            -v || true
