@@ -52,6 +52,7 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     // The build script content is included so any logic change invalidates cache.
     let hash = compute_input_hash(&guest_bins).await?;
     tracing::info!("rootfs input hash: {hash}");
+    // Machine-readable output — do not change format without updating consumers
     println!("rootfs_hash={hash}");
 
     if dry_run {

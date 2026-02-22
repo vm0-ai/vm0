@@ -28,6 +28,7 @@ pub struct SnapshotArgs {
 pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<(String, Option<SnapshotConfig>)> {
     let snapshot_hash = compute_snapshot_hash(&args);
     tracing::info!("snapshot hash: {snapshot_hash}");
+    // Machine-readable output — do not change format without updating consumers
     println!("snapshot_hash={snapshot_hash}");
 
     if args.dry_run {
