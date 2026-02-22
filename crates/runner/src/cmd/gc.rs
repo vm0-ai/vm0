@@ -49,20 +49,23 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     let versions_removed = gc_versions(&home, args.dry_run).await?;
 
     let total = rootfs_freed + snapshot_freed + net_logs_freed;
-    if total == 0 && locks_removed == 0 && net_logs_removed == 0 && versions_removed == 0 {
+    if total == 0 && locks_removed == 0 && net_logs_removed == 0 && versions_removed.is_empty() {
         info!("nothing to clean up");
-    } else if args.dry_run {
-        info!(
-            versions = versions_removed,
-            "total: {} would be freed",
-            human_bytes(total)
-        );
     } else {
-        info!(
-            versions = versions_removed,
-            "total: {} freed",
-            human_bytes(total)
-        );
+        let verb = if args.dry_run {
+            "would be freed"
+        } else {
+            "freed"
+        };
+        info!("total: {} {verb}", human_bytes(total));
+        if !versions_removed.is_empty() {
+            let list = versions_removed.join(", ");
+            if args.dry_run {
+                info!("versions that would be removed: {list}");
+            } else {
+                info!("versions removed: {list}");
+            }
+        }
     }
 
     Ok(())
@@ -356,11 +359,11 @@ fn is_semver_version(name: &str) -> bool {
 /// Scans `home.bin_dir()` for semver-named subdirectories (e.g. `v0.2.0`), checks
 /// whether the corresponding systemd unit is active, and deletes inactive versions
 /// (bin dir, runner config dir, and systemd unit).
-async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<u64> {
+async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<Vec<String>> {
     let bin_dir = home.bin_dir();
     let mut entries = match tokio::fs::read_dir(&bin_dir).await {
         Ok(rd) => rd,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => {
             return Err(RunnerError::Internal(format!(
                 "read {}: {e}",
@@ -369,7 +372,7 @@ async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<u64> {
         }
     };
 
-    let mut removed = 0u64;
+    let mut removed: Vec<String> = Vec::new();
 
     while let Some(entry) = entries
         .next_entry()
@@ -425,7 +428,7 @@ async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<u64> {
 
             info!("removed version {name}");
         }
-        removed += 1;
+        removed.push(name.to_string());
     }
 
     Ok(removed)
@@ -818,8 +821,9 @@ mod tests {
         std::fs::create_dir_all(runners_dir.join("v1.0.0")).unwrap();
 
         // systemctl will fail in test env, so versions are treated as inactive
-        let removed = gc_versions(&home, false).await.unwrap();
-        assert_eq!(removed, 2);
+        let mut removed = gc_versions(&home, false).await.unwrap();
+        removed.sort();
+        assert_eq!(removed, ["v1.0.0", "v2.0.0"]);
         assert!(!bin_dir.join("v1.0.0").exists());
         assert!(!bin_dir.join("v2.0.0").exists());
         assert!(
@@ -838,7 +842,7 @@ mod tests {
         std::fs::create_dir_all(bin_dir.join("v1.0.0")).unwrap();
 
         let removed = gc_versions(&home, true).await.unwrap();
-        assert_eq!(removed, 1);
+        assert_eq!(removed, ["v1.0.0"]);
         assert!(bin_dir.join("v1.0.0").exists(), "dry-run should not delete");
     }
 
@@ -849,7 +853,7 @@ mod tests {
         std::fs::create_dir_all(home.bin_dir()).unwrap();
 
         let removed = gc_versions(&home, false).await.unwrap();
-        assert_eq!(removed, 0);
+        assert!(removed.is_empty());
     }
 
     #[tokio::test]
@@ -858,7 +862,7 @@ mod tests {
         let home = test_home(dir.path());
         // Don't create bin_dir — should return 0, not error.
         let removed = gc_versions(&home, false).await.unwrap();
-        assert_eq!(removed, 0);
+        assert!(removed.is_empty());
     }
 
     #[tokio::test]
