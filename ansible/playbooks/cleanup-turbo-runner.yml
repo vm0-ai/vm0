@@ -28,7 +28,7 @@
         fail_msg: "Required variable: job_ref"
 
     - name: Find running transient services
-      shell: systemctl list-units 'vm0-runner-{{ job_ref }}-*' --no-legend --plain | awk '{print $1}'
+      shell: systemctl list-units 'vm0-runner-{{ job_ref }}-*' --no-legend --plain | awk '{print $1}' | grep -E '^vm0-runner-{{ job_ref }}-[0-9]+\.service$' || true
       register: running_services
       changed_when: false
       ignore_errors: true
