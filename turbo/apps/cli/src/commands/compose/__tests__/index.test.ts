@@ -10,17 +10,11 @@ import * as os from "os";
 import * as yaml from "yaml";
 import chalk from "chalk";
 
-// Mock downloadGitHubSkill and downloadGitHubDirectory since they use git commands (external system call)
-// This is the actual external boundary - git sparse-checkout via child_process.exec
-vi.mock("../../../lib/domain/github-skills", async (importOriginal) => {
-  const original =
-    await importOriginal<typeof import("../../../lib/domain/github-skills")>();
-  return {
-    ...original,
-    downloadGitHubSkill: vi.fn(),
-    downloadGitHubDirectory: vi.fn(),
-  };
-});
+// Mock git-client boundary module (external system call: git sparse-checkout via child_process.exec)
+vi.mock("../../../lib/external/git-client", () => ({
+  downloadGitHubSkill: vi.fn(),
+  downloadGitHubDirectory: vi.fn(),
+}));
 
 // Mock child_process.spawn since it's an external system call boundary
 // Used by silentUpgradeAfterCommand to run npm/pnpm install
@@ -35,7 +29,7 @@ vi.mock("child_process", async (importOriginal) => {
 import {
   downloadGitHubSkill,
   downloadGitHubDirectory,
-} from "../../../lib/domain/github-skills";
+} from "../../../lib/external/git-client";
 const mockDownloadGitHubSkill = vi.mocked(downloadGitHubSkill);
 const mockDownloadGitHubDirectory = vi.mocked(downloadGitHubDirectory);
 
