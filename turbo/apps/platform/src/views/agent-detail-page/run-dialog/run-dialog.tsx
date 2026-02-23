@@ -176,7 +176,7 @@ export function RunDialog() {
           {isSchedule && (
             <div className="flex flex-col gap-3">
               <label className="text-sm font-medium text-foreground px-1">
-                Frequence
+                Frequency
               </label>
               <div className="flex items-center gap-2">
                 <IconClock

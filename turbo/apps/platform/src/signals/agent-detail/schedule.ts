@@ -4,7 +4,7 @@ import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { agentDetail$ } from "./agent-detail.ts";
-import { buildCronExpression, type ScheduleTimeOption } from "./run-dialog.ts";
+import { buildCronExpression, type ScheduleTimeOption } from "./cron.ts";
 
 const L = logger("Schedule");
 

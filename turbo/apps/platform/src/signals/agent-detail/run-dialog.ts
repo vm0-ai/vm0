@@ -9,6 +9,8 @@ import {
   prepareNewRun$,
   cancelPendingRun$,
 } from "./inline-run.ts";
+import { fetchAgentSchedule$ } from "./schedule.ts";
+import { type ScheduleTimeOption, buildCronExpression } from "./cron.ts";
 
 const L = logger("RunDialog");
 
@@ -29,13 +31,6 @@ export const runDialogPrompt$ = computed((get) => get(internalPrompt$));
 export const setRunDialogPrompt$ = command(({ set }, value: string) => {
   set(internalPrompt$, value);
 });
-
-// Time option: "now" or a schedule preset
-export type ScheduleTimeOption =
-  | "every-weekday"
-  | "every-day"
-  | "every-week"
-  | "every-month";
 
 type TimeOption = "now" | ScheduleTimeOption;
 
@@ -122,37 +117,6 @@ export const openRunDialog$ = command(({ set }) => {
 export const closeRunDialog$ = command(({ set }) => {
   set(internalOpen$, false);
 });
-
-// ---------------------------------------------------------------------------
-// Cron expression mapping
-// ---------------------------------------------------------------------------
-
-export function buildCronExpression(opts: {
-  timeOption: ScheduleTimeOption;
-  hour: string;
-  minute?: string;
-  dayOfWeek?: string;
-  dayOfMonth?: string;
-}): string {
-  const h = Number.parseInt(opts.hour, 10);
-  const m = opts.minute !== undefined ? Number.parseInt(opts.minute, 10) : 0;
-  switch (opts.timeOption) {
-    case "every-weekday": {
-      return `${String(m)} ${String(h)} * * 1-5`;
-    }
-    case "every-day": {
-      return `${String(m)} ${String(h)} * * *`;
-    }
-    case "every-week": {
-      const dow = opts.dayOfWeek ?? "1";
-      return `${String(m)} ${String(h)} * * ${dow}`;
-    }
-    case "every-month": {
-      const dom = opts.dayOfMonth ?? "1";
-      return `${String(m)} ${String(h)} ${dom} * *`;
-    }
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Submit — immediate run or schedule creation
@@ -266,7 +230,6 @@ export const submitRunDialog$ = command(async ({ get, set }) => {
     toast.success("Schedule created");
 
     // Refresh the schedule badge in the header
-    const { fetchAgentSchedule$ } = await import("./schedule.ts");
     await set(fetchAgentSchedule$);
   } catch (error) {
     throwIfAbort(error);
