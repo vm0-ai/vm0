@@ -18,11 +18,9 @@
       ],
       "project": ["**/*.{ts,tsx}", "scripts/**/*.ts"],
       "ignoreDependencies": [
-        "@vm0/ui",
         "e2b",
         "@testing-library/react",
         "@types/tar",
-        "@slack/web-api",
         "import-in-the-middle",
         "require-in-the-middle",
         "cpu-features"
@@ -38,6 +36,7 @@
       ],
       "project": ["src/**/*.ts"],
       "ignoreDependencies": ["@types/tar"],
+      "ignoreBinaries": ["tsup"],
       "tsup": {
         "config": ["tsup.config.ts"]
       }
@@ -53,8 +52,7 @@
       "ignore": ["custom-eslint/**"],
       "ignoreDependencies": [
         "tailwindcss",
-        "typescript-eslint",
-        "@clerk/clerk-react"
+        "typescript-eslint"
       ]
     },
     "apps/runner": {
@@ -63,6 +61,7 @@
         "src/**/*.{test,spec}.ts"
       ],
       "project": ["src/**/*.ts"],
+      "ignoreBinaries": ["tsup"],
       "tsup": {
         "config": ["tsup.config.ts"]
       }
