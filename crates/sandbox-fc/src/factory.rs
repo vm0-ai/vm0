@@ -13,7 +13,8 @@ use crate::sandbox::FirecrackerSandbox;
 
 /// Shell command executed during snapshot creation to pre-warm guest caches.
 /// Changing this invalidates all cached snapshots (included in [`config_hash`]).
-pub const PREWARM_SCRIPT: &str = "su - user -c true";
+pub const PREWARM_SCRIPT: &str =
+    "su - user -c 'claude --help >/dev/null 2>&1; codex --help >/dev/null 2>&1; true'";
 
 /// SHA-256 fingerprint of all sandbox-fc internal configuration that affects
 /// snapshot output (boot args, guest network, pre-warm script, etc.).
