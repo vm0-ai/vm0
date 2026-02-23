@@ -17,6 +17,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
+import { storages } from "../../../../src/db/schema/storage";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
@@ -26,6 +27,7 @@ import {
 } from "../../../../src/lib/scope/scope-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
+import { getInstructionsStorageName } from "@vm0/core";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 
 const router = tsr.router(composesMainContract, {
@@ -155,7 +157,7 @@ const router = tsr.router(composesMainContract, {
       };
     }
 
-    const { content } = body;
+    const { content, previousName } = body;
 
     // Validate agents is not array (Zod validates it's an object, but not that it's not an array)
     if (Array.isArray(content.agents)) {
@@ -350,6 +352,47 @@ const router = tsr.router(composesMainContract, {
         updatedAt: new Date(),
       })
       .where(eq(agentComposes.id, composeId));
+
+    // When renaming, migrate the instructions storage volume to the new name.
+    // If the target name already exists (e.g. from a previous agent), delete it
+    // first to avoid unique constraint violations, then rename the old one.
+    if (previousName && previousName.toLowerCase() !== normalizedAgentName) {
+      const oldStorageName = getInstructionsStorageName(
+        previousName.toLowerCase(),
+      );
+      const newStorageName = getInstructionsStorageName(normalizedAgentName);
+
+      // Check if old storage exists before attempting rename
+      const [oldStorage] = await globalThis.services.db
+        .select({ id: storages.id })
+        .from(storages)
+        .where(
+          and(
+            eq(storages.scopeId, userScope.id),
+            eq(storages.name, oldStorageName),
+            eq(storages.type, "volume"),
+          ),
+        )
+        .limit(1);
+
+      if (oldStorage) {
+        // Remove any existing storage with the new name to avoid conflicts
+        await globalThis.services.db
+          .delete(storages)
+          .where(
+            and(
+              eq(storages.scopeId, userScope.id),
+              eq(storages.name, newStorageName),
+              eq(storages.type, "volume"),
+            ),
+          );
+
+        await globalThis.services.db
+          .update(storages)
+          .set({ name: newStorageName, updatedAt: new Date() })
+          .where(eq(storages.id, oldStorage.id));
+      }
+    }
 
     const updatedAt = new Date().toISOString();
 

@@ -193,7 +193,7 @@ function webScrapingSkills(): ComboboxOption[] {
     s("browserbase", "browserbase", "https://cdn.simpleicons.org/googlechrome"),
     s("browserless", "browserless", "https://vm0.ai/skills/browserless.png"),
     s("firecrawl", "firecrawl", "https://vm0.ai/skills/firecrawl.svg"),
-    s("mercury", "mercury", "https://cdn.simpleicons.org/mercury"),
+    s("mercury", "mercury", "https://vm0.ai/skills/mercury.svg"),
     s("scrapeninja", "scrapeninja", "https://vm0.ai/skills/scrapeninja.svg"),
   ];
 }

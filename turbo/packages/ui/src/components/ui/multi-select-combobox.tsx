@@ -8,8 +8,8 @@ import {
   IconSearch,
 } from "@tabler/icons-react";
 
-import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 import { cn } from "../../lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 
 export interface ComboboxOption {
   value: string;
@@ -37,6 +37,20 @@ export function MultiSelectCombobox({
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const searchInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Radix Dialog's react-remove-scroll adds a non-passive wheel listener on
+  // document that calls preventDefault() for events outside the Dialog DOM.
+  // Popover portal content is outside the Dialog DOM, so scroll gets blocked.
+  // Native stopPropagation prevents the event from reaching that listener.
+  const scrollContainerRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      if (!node) return;
+      const stop = (e: Event) => e.stopPropagation();
+      node.addEventListener("wheel", stop);
+      node.addEventListener("touchmove", stop);
+    },
+    [],
+  );
 
   const filtered = React.useMemo(() => {
     if (!search) return options;
@@ -70,12 +84,12 @@ export function MultiSelectCombobox({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
-          type="button"
+        <div
           role="combobox"
           aria-expanded={open}
+          tabIndex={0}
           className={cn(
-            "flex min-h-9 w-full items-center gap-1.5 rounded-lg border border-border bg-input px-3 py-1.5 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10",
+            "flex min-h-9 w-full cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-input px-3 py-1.5 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10",
             className,
           )}
         >
@@ -90,14 +104,21 @@ export function MultiSelectCombobox({
                     <OptionIcon src={opt.icon} alt={opt.label} size={14} />
                   )}
                   {opt.label}
-                  <button
-                    type="button"
+                  <span
+                    role="button"
+                    tabIndex={0}
                     className="ml-0.5 rounded-sm text-muted-foreground hover:text-foreground"
                     onClick={(e) => remove(opt.value, e)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        remove(opt.value, e as unknown as React.MouseEvent);
+                      }
+                    }}
                     aria-label={`Remove ${opt.label}`}
                   >
                     <IconX size={12} />
-                  </button>
+                  </span>
                 </span>
               ))
             ) : (
@@ -108,7 +129,7 @@ export function MultiSelectCombobox({
             size={16}
             className="shrink-0 text-muted-foreground"
           />
-        </button>
+        </div>
       </PopoverTrigger>
       <PopoverContent
         className="w-[var(--radix-popover-trigger-width)] p-0"
@@ -116,6 +137,10 @@ export function MultiSelectCombobox({
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           searchInputRef.current?.focus();
+        }}
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          setSearch("");
         }}
       >
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
@@ -129,7 +154,7 @@ export function MultiSelectCombobox({
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
           />
         </div>
-        <div className="max-h-60 overflow-y-auto p-1">
+        <div ref={scrollContainerRef} className="max-h-60 overflow-y-auto p-1">
           {filtered.length === 0 ? (
             <p className="py-4 text-center text-sm text-muted-foreground">
               No results found

@@ -84,8 +84,8 @@ export const configDialogValid$ = computed((get) => {
   }
   const agentKeys = Object.keys(compose.agents);
   const firstKey = agentKeys[0];
-  if (!firstKey) {
-    return true;
+  if (firstKey === undefined || firstKey === "") {
+    return false;
   }
   return /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/.test(firstKey);
 });
@@ -130,7 +130,7 @@ export const updateComposeField$ = command(
 
     const agentKeys = Object.keys(compose.agents);
     const firstKey = agentKeys[0];
-    if (!firstKey) {
+    if (firstKey === undefined) {
       return;
     }
 
@@ -173,7 +173,7 @@ export const updateAgentName$ = command(({ get, set }, newName: string) => {
 
   const agentKeys = Object.keys(compose.agents);
   const firstKey = agentKeys[0];
-  if (!firstKey || newName === firstKey) {
+  if (firstKey === undefined || newName === firstKey) {
     return;
   }
 
@@ -204,7 +204,7 @@ export const updateSkills$ = command(({ get, set }, skillValues: string[]) => {
 
   const agentKeys = Object.keys(compose.agents);
   const firstKey = agentKeys[0];
-  if (!firstKey) {
+  if (firstKey === undefined) {
     return;
   }
 
@@ -265,10 +265,15 @@ export const saveConfigDialog$ = command(async ({ get, set }) => {
 
   try {
     const fetchFn = get(fetch$);
+    const newAgentKey = Object.keys(compose.agents)[0];
+    const nameChanged = newAgentKey && newAgentKey !== detail.name;
     const response = await fetchFn("/api/agent/composes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: compose }),
+      body: JSON.stringify({
+        content: compose,
+        ...(nameChanged ? { previousName: detail.name } : {}),
+      }),
     });
 
     if (!response.ok) {
@@ -279,10 +284,6 @@ export const saveConfigDialog$ = command(async ({ get, set }) => {
         errorData?.message ?? `Save failed: ${response.statusText}`,
       );
     }
-
-    // Check if name changed
-    const newAgentKey = Object.keys(compose.agents)[0];
-    const nameChanged = newAgentKey && newAgentKey !== detail.name;
 
     if (nameChanged) {
       // Navigate to new agent URL

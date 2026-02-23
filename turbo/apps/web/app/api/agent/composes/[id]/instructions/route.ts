@@ -100,11 +100,11 @@ export async function GET(
   const agentKeys = Object.keys(content.agents);
   const firstKey = agentKeys[0];
   const agentDef = firstKey ? content.agents[firstKey] : null;
-  const instructionsFilename = agentDef?.instructions;
-
-  if (!instructionsFilename) {
-    return NextResponse.json({ content: null, filename: null });
-  }
+  // Use the explicit instructions filename from YAML, or fall back to the
+  // framework-canonical name (e.g. CLAUDE.md for claude-code).  The CLI may
+  // upload instructions without setting the `instructions` field in the YAML.
+  const instructionsFilename =
+    agentDef?.instructions ?? getInstructionsFilename(agentDef?.framework);
 
   // Look up the instructions storage volume
   const storageName = getInstructionsStorageName(result.name);

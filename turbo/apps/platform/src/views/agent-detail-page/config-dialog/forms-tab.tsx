@@ -11,7 +11,7 @@ import { skills$, skillUrlToValue } from "../../../data/skills.ts";
 
 function validateAgentName(name: string): string | null {
   if (!name) {
-    return null;
+    return "Agent name is required";
   }
   if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/.test(name)) {
     return "Must be 3-64 chars, letters/numbers/hyphens, start and end with letter or number";
@@ -32,7 +32,7 @@ export function FormsTab() {
 
   const agentKeys = Object.keys(compose.agents);
   const firstKey = agentKeys[0];
-  if (!firstKey) {
+  if (firstKey === undefined) {
     return null;
   }
 
