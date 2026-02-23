@@ -1776,23 +1776,6 @@ export async function findTestRunCallbacks(
     .where(eq(agentRunCallbacks.runId, runId));
 }
 
-/**
- * Find the first run that matches the given status for verification in tests.
- *
- * Direct DB read is required because no API endpoint supports filtering
- * runs by status — the public API only looks up by specific run ID.
- */
-export async function findTestRunByStatus(
-  status: string,
-): Promise<typeof agentRuns.$inferSelect | undefined> {
-  const [row] = await globalThis.services.db
-    .select()
-    .from(agentRuns)
-    .where(eq(agentRuns.status, status))
-    .limit(1);
-  return row;
-}
-
 export async function findTestSlackInstallation(workspaceId: string) {
   const [row] = await globalThis.services.db
     .select()

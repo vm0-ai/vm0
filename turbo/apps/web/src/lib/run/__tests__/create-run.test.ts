@@ -11,7 +11,7 @@ import {
   insertStalePendingRun,
   findTestRunRecord,
   findTestRunCallbacks,
-  findTestRunByStatus,
+  findTestRunsByUserAndPrompt,
 } from "../../../__tests__/api-test-helpers";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
 import { addPermission } from "../../agent/permission-service";
@@ -223,7 +223,11 @@ describe("createRun()", () => {
       );
 
       // Verify run is marked as failed in DB
-      const run = await findTestRunByStatus("failed");
+      const runs = await findTestRunsByUserAndPrompt(
+        user.userId,
+        "Hello, world!",
+      );
+      const run = runs.find((r) => r.status === "failed");
 
       expect(run).toBeDefined();
       expect(run!.error).toContain("Sandbox creation failed");
