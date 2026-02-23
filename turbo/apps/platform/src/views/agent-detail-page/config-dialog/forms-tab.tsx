@@ -1,19 +1,29 @@
 import { useGet, useSet } from "ccstate-react";
 import { Input } from "@vm0/ui/components/ui/input";
+import { MultiSelectCombobox } from "@vm0/ui/components/ui/multi-select-combobox";
 import {
   editableCompose$,
   updateComposeField$,
+  updateAgentName$,
+  updateSkills$,
 } from "../../../signals/agent-detail/config-dialog.ts";
+import { SKILLS, skillUrlToValue } from "../../../data/skills.ts";
 
-function extractSkillName(url: string): string {
-  // https://github.com/vm0-ai/vm0-skills/tree/main/hackernews → hackernews
-  const parts = url.split("/");
-  return parts[parts.length - 1] ?? url;
+function validateAgentName(name: string): string | null {
+  if (!name) {
+    return null;
+  }
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/.test(name)) {
+    return "Must be 3-64 chars, letters/numbers/hyphens, start and end with letter or number";
+  }
+  return null;
 }
 
 export function FormsTab() {
   const compose = useGet(editableCompose$);
   const updateField = useSet(updateComposeField$);
+  const updateName = useSet(updateAgentName$);
+  const updateSkillValues = useSet(updateSkills$);
 
   if (!compose) {
     return null;
@@ -30,13 +40,21 @@ export function FormsTab() {
     return null;
   }
 
+  const nameError = validateAgentName(firstKey);
+  const selectedSkills = agent.skills?.map(skillUrlToValue) ?? [];
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-foreground">
           Agent name
         </label>
-        <Input value={firstKey} readOnly className="bg-muted" />
+        <Input
+          value={firstKey}
+          onChange={(e) => updateName(e.target.value)}
+          placeholder="my-agent"
+        />
+        {nameError && <p className="text-xs text-destructive">{nameError}</p>}
       </div>
 
       <div className="flex flex-col gap-2">
@@ -50,21 +68,16 @@ export function FormsTab() {
         />
       </div>
 
-      {agent.skills && agent.skills.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-foreground">Skills</label>
-          <div className="flex flex-wrap gap-1.5">
-            {agent.skills.map((skill) => (
-              <span
-                key={skill}
-                className="inline-flex items-center rounded-md border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
-              >
-                {extractSkillName(skill)}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="flex flex-col gap-2">
+        <label className="text-sm font-medium text-foreground">Skills</label>
+        <MultiSelectCombobox
+          options={SKILLS}
+          selected={selectedSkills}
+          onChange={updateSkillValues}
+          placeholder="Select skills..."
+          searchPlaceholder="Search skills..."
+        />
+      </div>
 
       <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-foreground">Framework</label>

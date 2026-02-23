@@ -299,6 +299,84 @@ describe("config dialog", () => {
     });
   });
 
+  it("should allow editing agent name and sync to YAML", async () => {
+    mockAgentDetailAPI();
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(findSettingsIconButton());
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Your agent configs" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Forms" }));
+
+    await vi.waitFor(() => {
+      expect(screen.getByDisplayValue("my-agent")).toBeInTheDocument();
+    });
+
+    const nameInput = screen.getByDisplayValue("my-agent");
+    fireEvent.change(nameInput, { target: { value: "new-agent" } });
+
+    // Switch to YAML tab and verify name change is reflected
+    fireEvent.click(screen.getByRole("tab", { name: "vm0.yaml" }));
+
+    await vi.waitFor(() => {
+      const textarea = document.querySelector("textarea");
+      expect(textarea?.value).toContain("new-agent");
+    });
+  });
+
+  it("should show validation error for invalid agent name", async () => {
+    mockAgentDetailAPI();
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(findSettingsIconButton());
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Your agent configs" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Forms" }));
+
+    await vi.waitFor(() => {
+      expect(screen.getByDisplayValue("my-agent")).toBeInTheDocument();
+    });
+
+    const nameInput = screen.getByDisplayValue("my-agent");
+    fireEvent.change(nameInput, { target: { value: "-invalid" } });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText(/Must be 3-64 chars/)).toBeInTheDocument();
+    });
+  });
+
   it("should close dialog without saving on Cancel", async () => {
     mockAgentDetailAPI();
 

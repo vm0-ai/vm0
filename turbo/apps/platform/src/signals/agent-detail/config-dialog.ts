@@ -4,7 +4,9 @@ import { stringify, parse } from "yaml";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
+import { navigateInReact$ } from "../route.ts";
 import { agentDetail$, fetchAgentDetail$ } from "./agent-detail.ts";
+import { skillValueToUrl } from "../../data/skills.ts";
 import type { AgentDetail } from "./types.ts";
 
 const L = logger("ConfigDialog");
@@ -143,6 +145,67 @@ export const updateComposeField$ = command(
 );
 
 // ---------------------------------------------------------------------------
+// Update agent name — restructures the agents dictionary key
+// ---------------------------------------------------------------------------
+
+export const updateAgentName$ = command(({ get, set }, newName: string) => {
+  const compose = get(internalEditableCompose$);
+  if (!compose) {
+    return;
+  }
+
+  const agentKeys = Object.keys(compose.agents);
+  const firstKey = agentKeys[0];
+  if (!firstKey || newName === firstKey) {
+    return;
+  }
+
+  const agentDef = compose.agents[firstKey];
+  if (!agentDef) {
+    return;
+  }
+
+  const updated: ComposeContent = {
+    ...compose,
+    agents: { [newName]: agentDef },
+  };
+
+  set(internalEditableCompose$, updated);
+  set(internalYamlText$, stringify(updated));
+  set(internalYamlError$, null);
+});
+
+// ---------------------------------------------------------------------------
+// Update skills — converts values to GitHub URLs
+// ---------------------------------------------------------------------------
+
+export const updateSkills$ = command(({ get, set }, skillValues: string[]) => {
+  const compose = get(internalEditableCompose$);
+  if (!compose) {
+    return;
+  }
+
+  const agentKeys = Object.keys(compose.agents);
+  const firstKey = agentKeys[0];
+  if (!firstKey) {
+    return;
+  }
+
+  const updated = structuredClone(compose);
+  const agent = updated.agents[firstKey];
+  if (!agent) {
+    return;
+  }
+
+  agent.skills =
+    skillValues.length > 0 ? skillValues.map(skillValueToUrl) : undefined;
+
+  set(internalEditableCompose$, updated);
+  set(internalYamlText$, stringify(updated));
+  set(internalYamlError$, null);
+});
+
+// ---------------------------------------------------------------------------
 // Update from YAML tab — parse YAML and update compose
 // ---------------------------------------------------------------------------
 
@@ -200,10 +263,23 @@ export const saveConfigDialog$ = command(async ({ get, set }) => {
       );
     }
 
-    // Refresh agent detail and close dialog
-    await set(fetchAgentDetail$);
-    set(internalOpen$, false);
-    toast.success("Agent configuration saved");
+    // Check if name changed
+    const newAgentKey = Object.keys(compose.agents)[0];
+    const nameChanged = newAgentKey && newAgentKey !== detail.name;
+
+    if (nameChanged) {
+      // Navigate to new agent URL
+      set(internalOpen$, false);
+      toast.success("Agent configuration saved");
+      set(navigateInReact$, "/agents/:name", {
+        pathParams: { name: newAgentKey },
+      });
+    } else {
+      // Refresh agent detail and close dialog
+      await set(fetchAgentDetail$);
+      set(internalOpen$, false);
+      toast.success("Agent configuration saved");
+    }
   } catch (error) {
     throwIfAbort(error);
     const message = error instanceof Error ? error.message : "Failed to save";
