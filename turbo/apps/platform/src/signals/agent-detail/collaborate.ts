@@ -1,23 +1,14 @@
 import { command, computed, state, type Computed } from "ccstate";
-import type {
-  AgentEvent,
-  AgentEventsResponse,
-  LogDetail,
-  LogStatus,
-} from "../logs-page/types.ts";
-import { delay } from "signal-timers";
+import type { AgentEvent, LogStatus } from "../logs-page/types.ts";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { agentDetail$, fetchAgentInstructions$ } from "./agent-detail.ts";
 import { collaborateAgentName } from "../../env.ts";
 import { closeInlineRun$ } from "./inline-run.ts";
+import { setupPollingLoop$, type PageResult } from "./polling.ts";
 
 const L = logger("Collaborate");
-
-const AGENT_EVENTS_PAGE_LIMIT = 30;
-const MAX_INTERVAL = 30_000;
-const BASE_POLL_INTERVAL = 3000;
 
 // ---------------------------------------------------------------------------
 // Chat message types
@@ -99,39 +90,6 @@ export const clearCollaborateChatInput$ = command(({ set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Page result & factory (mirrors inline-run.ts)
-// ---------------------------------------------------------------------------
-
-interface PageResult {
-  events: AgentEvent[];
-  hasMore: boolean;
-}
-
-function createEventPageComputed(
-  runId: string,
-  since?: string,
-): Computed<Promise<PageResult>> {
-  return computed(async (get) => {
-    const fetchFn = get(fetch$);
-    const params = new URLSearchParams({
-      limit: String(AGENT_EVENTS_PAGE_LIMIT),
-      order: "asc",
-    });
-    if (since) {
-      params.set("since", String(new Date(since).getTime()));
-    }
-    const response = await fetchFn(
-      `/api/agent/runs/${runId}/telemetry/agent?${params.toString()}`,
-    );
-    if (!response.ok) {
-      throw new Error(`Failed to fetch agent events: ${response.statusText}`);
-    }
-    const data = (await response.json()) as AgentEventsResponse;
-    return { events: data.events, hasMore: data.hasMore };
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Derived: flatten current run events
 // ---------------------------------------------------------------------------
 
@@ -152,19 +110,6 @@ export const allCollaborateRunEvents$ = computed(async (get) => {
     return true;
   });
 });
-
-// ---------------------------------------------------------------------------
-// Terminal status helper
-// ---------------------------------------------------------------------------
-
-function isTerminalStatus(status: LogStatus): boolean {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "timeout" ||
-    status === "cancelled"
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Persistence: save/restore per-agent state
@@ -353,7 +298,24 @@ export const sendCollaborateMessage$ = command(
       set(pollingAbortController$, controller);
 
       // Start polling
-      await set(setupCollaboratePolling$, controller.signal);
+      await set(setupPollingLoop$, {
+        runId,
+        signal: controller.signal,
+        state: {
+          get events$() {
+            return get(internalRunEvents$);
+          },
+          setEvents: (updater) => {
+            set(internalRunEvents$, updater);
+          },
+          setStatus: (status) => {
+            set(internalRunStatus$, status);
+          },
+        },
+        onTerminal: (completedRunId) => {
+          set(onRunComplete$, completedRunId);
+        },
+      });
     } catch (error) {
       throwIfAbort(error);
       L.error("Collaborate send error:", error);
@@ -369,115 +331,6 @@ export const sendCollaborateMessage$ = command(
     } finally {
       set(internalSending$, false);
       set(saveToCache$);
-    }
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Polling (three-phase, mirrors inline-run.ts)
-// ---------------------------------------------------------------------------
-
-const pollNewEvents$ = command(async ({ get, set }, runId: string) => {
-  const pages = get(internalRunEvents$);
-  if (pages.length === 0) {
-    return;
-  }
-
-  const lastPage = await get(pages[pages.length - 1]);
-  if (lastPage.events.length === 0) {
-    const freshPage = createEventPageComputed(runId);
-    set(internalRunEvents$, [freshPage]);
-    return;
-  }
-
-  const lastEvent = lastPage.events[lastPage.events.length - 1];
-  const newPage = createEventPageComputed(runId, lastEvent.createdAt);
-  const newPageResult = await get(newPage);
-
-  if (newPageResult.events.length > 0) {
-    set(internalRunEvents$, (prev) => [...prev, newPage]);
-  }
-});
-
-const setupCollaboratePolling$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const runId = get(internalActiveRunId$);
-    if (!runId) {
-      return;
-    }
-
-    // Phase 1: Eager initial load
-    const firstPage = createEventPageComputed(runId);
-    set(internalRunEvents$, [firstPage]);
-
-    let keepLoading = true;
-    while (keepLoading && !signal.aborted) {
-      const pages = get(internalRunEvents$);
-      const lastPage = await get(pages[pages.length - 1]);
-      signal.throwIfAborted();
-      if (lastPage.hasMore && lastPage.events.length > 0) {
-        const lastEvent = lastPage.events[lastPage.events.length - 1];
-        const nextPage = createEventPageComputed(runId, lastEvent.createdAt);
-        set(internalRunEvents$, (prev) => [...prev, nextPage]);
-      } else {
-        keepLoading = false;
-      }
-    }
-
-    // Phase 2: Check if already terminal
-    try {
-      const fetchFn = get(fetch$);
-      const response = await fetchFn(`/api/platform/logs/${runId}`);
-      signal.throwIfAborted();
-      if (response.ok) {
-        const detail = (await response.json()) as LogDetail;
-        set(internalRunStatus$, detail.status);
-        if (isTerminalStatus(detail.status)) {
-          await set(pollNewEvents$, runId);
-          signal.throwIfAborted();
-          set(onRunComplete$, runId);
-          return;
-        }
-      }
-    } catch (error) {
-      throwIfAbort(error);
-    }
-
-    // Phase 3: Polling loop
-    let errorCount = 0;
-
-    while (!signal.aborted) {
-      const interval = Math.min(
-        BASE_POLL_INTERVAL * 2 ** errorCount,
-        MAX_INTERVAL,
-      );
-
-      await delay(interval, { signal });
-      signal.throwIfAborted();
-
-      try {
-        const fetchFn = get(fetch$);
-        const response = await fetchFn(`/api/platform/logs/${runId}`);
-        signal.throwIfAborted();
-
-        if (response.ok) {
-          const detail = (await response.json()) as LogDetail;
-          set(internalRunStatus$, detail.status);
-          if (isTerminalStatus(detail.status)) {
-            await set(pollNewEvents$, runId);
-            signal.throwIfAborted();
-            set(onRunComplete$, runId);
-            return;
-          }
-        }
-
-        await set(pollNewEvents$, runId);
-        signal.throwIfAborted();
-        errorCount = 0;
-      } catch (error) {
-        throwIfAbort(error);
-        errorCount++;
-      }
     }
   },
 );
@@ -522,13 +375,13 @@ const onRunComplete$ = command(({ get, set }, runId: string) => {
         }
       }
     })
-    .catch(() => {
-      // Non-critical: session extraction failure doesn't break UX
+    .catch((error: unknown) => {
+      L.error("Failed to extract session:", error);
     });
 
   // Refresh instructions (orchestrator may have modified them)
-  set(fetchAgentInstructions$).catch(() => {
-    // Non-critical
+  set(fetchAgentInstructions$).catch((error: unknown) => {
+    L.error("Failed to refresh instructions:", error);
   });
 
   set(saveToCache$);

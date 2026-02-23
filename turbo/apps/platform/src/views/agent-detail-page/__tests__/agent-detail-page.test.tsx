@@ -341,6 +341,157 @@ describe("agent detail page", () => {
     });
   });
 
+  it("should show user message bubble after sending a message", async () => {
+    mockAgentDetailAPI();
+
+    // Mock orchestrator resolution and run creation
+    server.use(
+      http.get("/api/agent/composes", ({ request }) => {
+        const url = new URL(request.url);
+        const queryName = url.searchParams.get("name");
+
+        if (queryName === "test-collaborate-agent") {
+          return HttpResponse.json({ id: "orchestrator_1" });
+        }
+
+        if (queryName === "my-agent") {
+          return HttpResponse.json({
+            id: "compose_1",
+            name: "my-agent",
+            headVersionId: "version_1",
+            content: {
+              version: "1",
+              agents: {
+                "my-agent": {
+                  description: "A test agent",
+                  framework: "claude-code",
+                },
+              },
+            },
+            createdAt: "2024-01-01T00:00:00Z",
+            updatedAt: "2024-01-01T00:00:00Z",
+          });
+        }
+
+        return new HttpResponse(null, { status: 404 });
+      }),
+      http.post("/api/agent/runs", () => {
+        return HttpResponse.json({ runId: "run_123" });
+      }),
+      http.get("/api/agent/runs/:runId/telemetry/agent", () => {
+        return HttpResponse.json({ events: [], hasMore: false });
+      }),
+      http.get("/api/platform/logs/:runId", () => {
+        return HttpResponse.json({
+          id: "run_123",
+          status: "running",
+          createdAt: "2024-01-01T00:00:00Z",
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // Open collaborate panel
+    fireEvent.click(screen.getByRole("button", { name: "Collaborate" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("Send a message to start collaborating"),
+      ).toBeInTheDocument();
+    });
+
+    // Type a message and send
+    const textarea = screen.getByPlaceholderText("Type a message...");
+    fireEvent.change(textarea, { target: { value: "Help me build my agent" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    // User message bubble should appear
+    await vi.waitFor(() => {
+      expect(screen.getByText("Help me build my agent")).toBeInTheDocument();
+    });
+  });
+
+  it("should show error when collaborate message send fails", async () => {
+    mockAgentDetailAPI();
+
+    // Mock orchestrator resolution to fail
+    server.use(
+      http.get("/api/agent/composes", ({ request }) => {
+        const url = new URL(request.url);
+        const queryName = url.searchParams.get("name");
+
+        if (queryName === "test-collaborate-agent") {
+          return new HttpResponse(null, { status: 500 });
+        }
+
+        if (queryName === "my-agent") {
+          return HttpResponse.json({
+            id: "compose_1",
+            name: "my-agent",
+            headVersionId: "version_1",
+            content: {
+              version: "1",
+              agents: {
+                "my-agent": {
+                  description: "A test agent",
+                  framework: "claude-code",
+                },
+              },
+            },
+            createdAt: "2024-01-01T00:00:00Z",
+            updatedAt: "2024-01-01T00:00:00Z",
+          });
+        }
+
+        return new HttpResponse(null, { status: 404 });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // Open collaborate panel
+    fireEvent.click(screen.getByRole("button", { name: "Collaborate" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("Send a message to start collaborating"),
+      ).toBeInTheDocument();
+    });
+
+    // Type a message and send
+    const textarea = screen.getByPlaceholderText("Type a message...");
+    fireEvent.change(textarea, { target: { value: "Hello" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    // Error message should appear
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText(/Failed to resolve orchestrator/),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("should not show Collaborate button for shared (non-owner) agents", async () => {
     server.use(
       http.get("/api/agent/composes", ({ request }) => {

@@ -20,20 +20,8 @@ import {
   clearCollaborateChatInput$,
   type ChatMessage,
 } from "../../signals/agent-detail/collaborate.ts";
+import { isTerminalStatus } from "../../signals/agent-detail/polling.ts";
 import { FormattedEventsView } from "../logs-page/log-detail/components/formatted-events-view.tsx";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function isTerminal(status: string | null): boolean {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "timeout" ||
-    status === "cancelled"
-  );
-}
 
 function noop() {
   // intentional no-op for search interface
@@ -174,7 +162,7 @@ function AssistantBubble({
 
   const events = eventsLoadable.state === "hasData" ? eventsLoadable.data : [];
   const isActiveRun = isLast && activeRunId !== null;
-  const terminal = isTerminal(runStatus);
+  const terminal = isTerminalStatus(runStatus);
 
   if (message.error) {
     return (
@@ -230,7 +218,7 @@ function AssistantBubble({
 }
 
 function StatusLabel({ status }: { status: string }) {
-  const colorClass = isTerminal(status)
+  const colorClass = isTerminalStatus(status)
     ? status === "completed"
       ? "text-green-600"
       : "text-destructive"
