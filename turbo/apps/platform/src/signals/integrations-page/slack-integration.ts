@@ -8,7 +8,7 @@ const L = logger("SlackIntegration");
 
 interface SlackIntegrationData {
   workspace: { id: string; name: string | null };
-  agent: { id: string; name: string } | null;
+  agent: { id: string; name: string; scopeSlug: string } | null;
   isAdmin: boolean;
   environment: {
     requiredSecrets: string[];
@@ -124,7 +124,7 @@ export const updateSlackDefaultAgent$ = command(
           ...prev.data,
           agent: prev.data.agent
             ? { ...prev.data.agent, name: agentName }
-            : { id: "", name: agentName },
+            : { id: "", name: agentName, scopeSlug: "" },
         },
       };
     });

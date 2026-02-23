@@ -208,18 +208,33 @@ export function SlackSettingsPage() {
   const openConfirm = useSet(openSlackDisconnectDialog$);
   const closeConfirm = useSet(closeSlackDisconnectDialog$);
 
+  // Construct scoped agent name that matches the format used in agentsList$
+  // (shared agents use "scope/name", owned agents use just "name").
+  const scopedAgentName = (() => {
+    if (!data?.agent) {
+      return undefined;
+    }
+    const fullName = `${data.agent.scopeSlug}/${data.agent.name}`;
+    // If the scoped name exists in agents list, use it (shared agent)
+    if (agents.some((a) => a.name === fullName)) {
+      return fullName;
+    }
+    // Otherwise use bare name (owned agent)
+    return data.agent.name;
+  })();
+
   // Ensure the current workspace agent appears in the dropdown even if
   // it isn't in the user's own agents list (e.g. shared by another user).
   const agentOptions = (() => {
-    if (!data?.agent) {
+    if (!scopedAgentName) {
       return agents;
     }
-    const hasCurrentAgent = agents.some((a) => a.name === data.agent?.name);
+    const hasCurrentAgent = agents.some((a) => a.name === scopedAgentName);
     if (hasCurrentAgent) {
       return agents;
     }
     return [
-      { name: data.agent.name, headVersionId: null, updatedAt: "" },
+      { name: scopedAgentName, headVersionId: null, updatedAt: "" },
       ...agents,
     ];
   })();
@@ -264,13 +279,13 @@ export function SlackSettingsPage() {
           <>
             <DefaultAgentSection
               isAdmin={data?.isAdmin ?? false}
-              agentName={data?.agent?.name}
+              agentName={scopedAgentName}
               agentOptions={agentOptions}
               onAgentChange={handleAgentChange}
             />
 
             <MissingEnvBanner
-              agentName={data?.agent?.name}
+              agentName={scopedAgentName}
               missingSecrets={data?.environment.missingSecrets ?? []}
               missingVars={data?.environment.missingVars ?? []}
             />
