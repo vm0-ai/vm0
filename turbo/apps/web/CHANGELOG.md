@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.49.0](https://github.com/vm0-ai/vm0/compare/web-v12.48.1...web-v12.49.0) (2026-02-23)
+
+
+### Features
+
+* **email:** add threading, mirrored from address, and original subject to trigger response ([#3227](https://github.com/vm0-ai/vm0/issues/3227)) ([21f7962](https://github.com/vm0-ai/vm0/commit/21f79620893424bdf8b9d465cf203354011f99c6))
+
 ## [12.48.1](https://github.com/vm0-ai/vm0/compare/web-v12.48.0...web-v12.48.1) (2026-02-23)
 
 
