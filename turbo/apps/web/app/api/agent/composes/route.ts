@@ -8,6 +8,7 @@ import {
   AGENT_NAME_REGEX,
   SUPPORTED_FRAMEWORKS,
   isSupportedFramework,
+  mergeSkillEnvironment,
 } from "@vm0/core";
 import {
   resolveFrameworkImage,
@@ -30,6 +31,25 @@ import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
 import { getInstructionsStorageName } from "@vm0/core";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
+
+/**
+ * Ensure skill-declared env vars are present in the agent environment.
+ * Skills declare required secrets/vars in their SKILL.md frontmatter;
+ * this keeps the compose environment consistent whether submitted from
+ * the CLI or the platform UI.
+ */
+async function resolveSkillEnvVars(
+  agent: AgentComposeYaml["agents"][string],
+): Promise<void> {
+  if (!agent?.skills || agent.skills.length === 0) {
+    return;
+  }
+  const environment = agent.environment ?? {};
+  await mergeSkillEnvironment(agent.skills, environment);
+  if (Object.keys(environment).length > 0) {
+    agent.environment = environment;
+  }
+}
 
 const router = tsr.router(composesMainContract, {
   getByName: async ({ query, headers }) => {
@@ -247,6 +267,9 @@ const router = tsr.router(composesMainContract, {
         },
       };
     }
+
+    // Merge skill-declared environment variables into agent environment
+    await resolveSkillEnvVars(agent);
 
     // Resolve image and working_dir server-side based on framework
     const resolvedImage = resolveFrameworkImage(framework, agent?.apps);

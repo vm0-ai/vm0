@@ -72,8 +72,7 @@
         "src/**/__tests__/**/*.{test,spec}.ts",
         "src/**/*.{test,spec}.ts"
       ],
-      "project": ["src/**/*.ts"],
-      "ignoreDependencies": ["yaml"]
+      "project": ["src/**/*.ts"]
     },
     "packages/sandbox-scripts": {
       "entry": [

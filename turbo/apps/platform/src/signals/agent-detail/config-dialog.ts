@@ -7,7 +7,7 @@ import { logger } from "../log.ts";
 import { navigateInReact$ } from "../route.ts";
 import { agentDetail$, fetchAgentDetail$ } from "./agent-detail.ts";
 import { skillValueToUrl } from "../../data/skills.ts";
-import { AGENT_NAME_REGEX } from "@vm0/core";
+import { AGENT_NAME_REGEX, fetchSkillFrontmatter } from "@vm0/core";
 import type { AgentDetail } from "./types.ts";
 
 const L = logger("ConfigDialog");
@@ -92,6 +92,128 @@ export const configDialogValid$ = computed((get) => {
 });
 
 // ---------------------------------------------------------------------------
+// Skill env var sync — merge skill-declared env vars into compose on select
+// ---------------------------------------------------------------------------
+
+const internalOriginalSkillUrls$ = state<Set<string>>(new Set());
+const internalSkillEnvHints$ = state<string[]>([]);
+export const skillEnvHints$ = computed((get) => get(internalSkillEnvHints$));
+
+interface SkillFrontmatterMap {
+  url: string;
+  secrets: string[];
+  vars: string[];
+}
+
+async function fetchAllSkillFrontmatters(
+  skills: string[],
+): Promise<SkillFrontmatterMap[]> {
+  if (skills.length === 0) {
+    return [];
+  }
+  const results = await Promise.allSettled(
+    skills.map((url) => fetchSkillFrontmatter(url)),
+  );
+  const out: SkillFrontmatterMap[] = [];
+  for (let i = 0; i < skills.length; i++) {
+    const result = results[i];
+    if (result?.status !== "fulfilled" || !result.value) {
+      continue;
+    }
+    out.push({
+      url: skills[i]!,
+      secrets: result.value.vm0_secrets ?? [],
+      vars: result.value.vm0_vars ?? [],
+    });
+  }
+  return out;
+}
+
+/**
+ * Sync skill-declared env vars into the compose environment.
+ * - Adds `${{ secrets.X }}` / `${{ vars.X }}` for newly declared vars.
+ * - Removes stale skill-added entries (self-referencing pattern) when skills
+ *   are deselected.
+ * - Updates hints to show env vars from newly added skills only.
+ */
+const syncSkillEnvironment$ = command(
+  async ({ get, set }, skills: string[]) => {
+    const fms = await fetchAllSkillFrontmatters(skills);
+
+    // Collect all declared env vars across current skills
+    const declared = new Map<string, "secret" | "var">();
+    for (const fm of fms) {
+      for (const name of fm.secrets) {
+        declared.set(name, "secret");
+      }
+      for (const name of fm.vars) {
+        declared.set(name, "var");
+      }
+    }
+
+    // Read latest compose and update environment
+    const compose = get(internalEditableCompose$);
+    if (!compose) {
+      return;
+    }
+    const firstKey = Object.keys(compose.agents)[0];
+    if (firstKey === undefined) {
+      return;
+    }
+    const updated = structuredClone(compose);
+    const agent = updated.agents[firstKey];
+    if (!agent) {
+      return;
+    }
+
+    const env: Record<string, string> = agent.environment ?? {};
+
+    // Remove stale skill-added entries
+    for (const key of Object.keys(env)) {
+      const val = env[key];
+      const isSkillAdded =
+        val === `\${{ secrets.${key} }}` || val === `\${{ vars.${key} }}`;
+      if (isSkillAdded && !declared.has(key)) {
+        delete env[key];
+      }
+    }
+
+    // Add missing entries
+    for (const [name, source] of declared) {
+      if (!(name in env)) {
+        env[name] =
+          source === "secret"
+            ? `\${{ secrets.${name} }}`
+            : `\${{ vars.${name} }}`;
+      }
+    }
+
+    if (Object.keys(env).length > 0) {
+      agent.environment = env;
+    } else {
+      delete agent.environment;
+    }
+
+    set(internalEditableCompose$, updated);
+    set(internalYamlText$, stringify(updated));
+    set(internalYamlError$, null);
+
+    // Hints: only env vars from newly added skills
+    const original = get(internalOriginalSkillUrls$);
+    const hintNames = new Set<string>();
+    for (const fm of fms) {
+      if (original.has(fm.url)) {
+        continue;
+      }
+      for (const name of [...fm.secrets, ...fm.vars]) {
+        hintNames.add(name);
+      }
+    }
+    set(internalSkillEnvHints$, [...hintNames]);
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Open dialog — initialises editable state from current agent detail
 // ---------------------------------------------------------------------------
 
@@ -108,6 +230,15 @@ export const openConfigDialog$ = command(({ get, set }) => {
   set(internalSaveError$, null);
   set(internalActiveTab$, "yaml");
   set(internalOpen$, true);
+
+  // Track original skills so hints only show for newly added ones
+  const agentKeys = Object.keys(content.agents);
+  const firstKey = agentKeys[0];
+  const originalSkills = firstKey
+    ? (content.agents[firstKey]?.skills ?? [])
+    : [];
+  set(internalOriginalSkillUrls$, new Set(originalSkills));
+  set(internalSkillEnvHints$, []);
 });
 
 // ---------------------------------------------------------------------------
@@ -116,6 +247,8 @@ export const openConfigDialog$ = command(({ get, set }) => {
 
 export const closeConfigDialog$ = command(({ set }) => {
   set(internalOpen$, false);
+  set(internalSkillEnvHints$, []);
+  set(internalOriginalSkillUrls$, new Set());
 });
 
 // ---------------------------------------------------------------------------
@@ -221,6 +354,9 @@ export const updateSkills$ = command(({ get, set }, skillValues: string[]) => {
   set(internalEditableCompose$, updated);
   set(internalYamlText$, stringify(updated));
   set(internalYamlError$, null);
+
+  // Sync skill-declared env vars into compose environment
+  set(syncSkillEnvironment$, agent.skills ?? []).catch(() => {});
 });
 
 // ---------------------------------------------------------------------------

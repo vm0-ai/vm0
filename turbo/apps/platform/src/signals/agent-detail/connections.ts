@@ -67,6 +67,52 @@ export type AgentMergedItem =
     };
 
 // ---------------------------------------------------------------------------
+// Agent required connector types — derived from apps + environment mapping
+// ---------------------------------------------------------------------------
+
+export const agentRequiredConnectorTypes$ = computed(
+  (get): Set<ConnectorType> => {
+    const detail = get(agentDetail$);
+    const required = new Set<ConnectorType>();
+
+    if (!detail?.content?.agents) {
+      return required;
+    }
+
+    const agentDefs = Object.values(detail.content.agents);
+    const firstAgent = agentDefs[0];
+    if (!firstAgent) {
+      return required;
+    }
+
+    // From environment field — match env var names against connector environmentMappings
+    if (firstAgent.environment) {
+      const refs = extractVariableReferences(firstAgent.environment);
+      const grouped = groupVariablesBySource(refs);
+      const envVarNames = new Set([
+        ...grouped.secrets.map((r) => r.name),
+        ...grouped.credentials.map((r) => r.name),
+      ]);
+
+      for (const type of Object.keys(CONNECTOR_TYPES) as ConnectorType[]) {
+        if (type === "computer") {
+          continue;
+        }
+        const mapping = CONNECTOR_TYPES[type].environmentMapping;
+        for (const envKey of Object.keys(mapping)) {
+          if (envVarNames.has(envKey)) {
+            required.add(type);
+            break;
+          }
+        }
+      }
+    }
+
+    return required;
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Connector status — which connectors the agent needs
 // ---------------------------------------------------------------------------
 
@@ -79,11 +125,12 @@ export interface AgentConnectorStatus {
 }
 
 export const agentConnectorStatus$ = computed(async (get) => {
+  const requiredTypes = get(agentRequiredConnectorTypes$);
   const { connectors } = await get(connectors$);
   const connectorMap = new Map(connectors.map((c) => [c.type, c]));
 
   return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
-    .filter((type) => type !== "computer")
+    .filter((type) => requiredTypes.has(type))
     .map((type) => {
       const config = CONNECTOR_TYPES[type];
       const connector = connectorMap.get(type);

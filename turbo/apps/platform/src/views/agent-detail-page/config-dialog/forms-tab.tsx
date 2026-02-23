@@ -6,6 +6,7 @@ import {
   updateComposeField$,
   updateAgentName$,
   updateSkills$,
+  skillEnvHints$,
 } from "../../../signals/agent-detail/config-dialog.ts";
 import { skills$, skillUrlToValue } from "../../../data/skills.ts";
 import { AGENT_NAME_REGEX } from "@vm0/core";
@@ -23,6 +24,7 @@ function validateAgentName(name: string): string | null {
 export function FormsTab() {
   const compose = useGet(editableCompose$);
   const skills = useGet(skills$);
+  const envHints = useGet(skillEnvHints$);
   const updateField = useSet(updateComposeField$);
   const updateName = useSet(updateAgentName$);
   const updateSkillValues = useSet(updateSkills$);
@@ -88,6 +90,12 @@ export function FormsTab() {
           placeholder="Select skills..."
           searchPlaceholder="Search skills..."
         />
+        {envHints.length > 0 && (
+          <p className="text-xs text-amber-500">
+            The following environment variables will be configured:{" "}
+            <span className="font-mono font-bold">{envHints.join(", ")}</span>
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col gap-2">

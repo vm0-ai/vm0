@@ -1,15 +1,16 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { parse as parseYaml } from "yaml";
 import {
   getInstructionsStorageName,
   getSkillStorageName as getCoreSkillStorageName,
   parseGitHubTreeUrl as parseGitHubTreeUrlCore,
+  parseSkillFrontmatter,
   type ParsedGitHubTreeUrl,
+  type SkillFrontmatter,
 } from "@vm0/core";
 
 // Re-export from @vm0/core for convenience
-export { getInstructionsStorageName };
+export { getInstructionsStorageName, type SkillFrontmatter };
 
 // Re-export git operations from boundary module for backward compatibility
 export {
@@ -67,63 +68,6 @@ export async function validateSkillDirectory(skillDir: string): Promise<void> {
       `Skill directory missing required SKILL.md file: ${skillDir}`,
     );
   }
-}
-
-/**
- * Parsed skill frontmatter from SKILL.md
- */
-export interface SkillFrontmatter {
-  name?: string;
-  description?: string;
-  vm0_secrets?: string[];
-  vm0_vars?: string[];
-}
-
-/**
- * Parse frontmatter from SKILL.md content
- * Extracts YAML between --- markers at the start of the file
- *
- * @param content - Raw content of SKILL.md file
- * @returns Parsed frontmatter fields
- */
-function parseSkillFrontmatter(content: string): SkillFrontmatter {
-  // Match frontmatter between --- markers at the start of the file
-  const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!frontmatterMatch) {
-    return {};
-  }
-
-  const yamlContent = frontmatterMatch[1];
-  if (!yamlContent) {
-    return {};
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(yamlContent);
-  } catch {
-    // Invalid YAML, return empty frontmatter
-    return {};
-  }
-
-  if (!parsed || typeof parsed !== "object") {
-    return {};
-  }
-
-  const data = parsed as Record<string, unknown>;
-
-  // Validate and extract fields
-  return {
-    name: typeof data.name === "string" ? data.name : undefined,
-    description:
-      typeof data.description === "string" ? data.description : undefined,
-    vm0_secrets: Array.isArray(data.vm0_secrets)
-      ? data.vm0_secrets.filter((s): s is string => typeof s === "string")
-      : undefined,
-    vm0_vars: Array.isArray(data.vm0_vars)
-      ? data.vm0_vars.filter((s): s is string => typeof s === "string")
-      : undefined,
-  };
 }
 
 /**

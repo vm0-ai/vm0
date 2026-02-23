@@ -13,12 +13,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@vm0/ui/components/ui/popover";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-  type SecretResponse,
-  type VariableResponse,
-} from "@vm0/core";
+import type { SecretResponse, VariableResponse } from "@vm0/core";
 import { AppShell } from "../layout/app-shell.tsx";
 import { ConnectorIcon } from "../settings-page/connector-icons.tsx";
 import { SecretDialog } from "../settings-page/secret-dialog.tsx";
@@ -34,6 +29,7 @@ import {
 import {
   agentConnectorStatus$,
   agentMergedItems$,
+  agentRequiredConnectorTypes$,
   connectionsActiveTab$,
   setConnectionsActiveTab$,
   type AgentConnectorStatus,
@@ -162,17 +158,14 @@ function ConnectorRow({ item }: { item: AgentConnectorStatus }) {
 
 function ConnectorsTab() {
   const connectorStatus = useLastResolved(agentConnectorStatus$);
-  const types = (Object.keys(CONNECTOR_TYPES) as ConnectorType[]).filter(
-    (t) => t !== "computer",
-  );
 
   if (!connectorStatus) {
     return (
       <div className="flex flex-col">
-        {types.map((type, i) => (
+        {["c1", "c2"].map((id, i) => (
           <div
-            key={type}
-            className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 animate-pulse ${i === 0 ? "rounded-t-xl" : ""} ${i === types.length - 1 ? "rounded-b-xl border-b" : ""}`}
+            key={id}
+            className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 animate-pulse ${i === 0 ? "rounded-t-xl" : ""} ${i === 1 ? "rounded-b-xl border-b" : ""}`}
           >
             <div className="h-7 w-7 rounded bg-muted" />
             <div className="flex flex-1 flex-col gap-2">
@@ -506,6 +499,9 @@ export function AgentConnectionsPage() {
   const loading = useGet(agentDetailLoading$);
   const activeTab = useGet(connectionsActiveTab$);
   const setActiveTab = useSet(setConnectionsActiveTab$);
+  const requiredConnectors = useGet(agentRequiredConnectorTypes$);
+  const hasConnectors = requiredConnectors.size > 0;
+  const effectiveTab = hasConnectors ? activeTab : "secrets";
 
   return (
     <AppShell
@@ -532,14 +528,18 @@ export function AgentConnectionsPage() {
                 This is the secret list used for your agents in every run
               </p>
             </div>
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList>
-                <TabsTrigger value="connectors">Connectors</TabsTrigger>
-                <TabsTrigger value="secrets">Secrets and variables</TabsTrigger>
-              </TabsList>
-            </Tabs>
-            {activeTab === "connectors" && <ConnectorsTab />}
-            {activeTab === "secrets" && <SecretsAndVariablesTab />}
+            {hasConnectors ? (
+              <Tabs value={effectiveTab} onValueChange={setActiveTab}>
+                <TabsList>
+                  <TabsTrigger value="connectors">Connectors</TabsTrigger>
+                  <TabsTrigger value="secrets">
+                    Secrets and variables
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            ) : null}
+            {effectiveTab === "connectors" && <ConnectorsTab />}
+            {effectiveTab === "secrets" && <SecretsAndVariablesTab />}
             <SecretDialog />
             <VariableDialog />
             <DeleteSecretDialog />
