@@ -83,6 +83,7 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
               <button
                 type="button"
                 onClick={() => openSchedule()}
+                aria-label="Edit schedule"
                 className="flex h-9 w-9 items-center justify-center border-l border-border text-secondary-foreground hover:bg-accent rounded-r-md cursor-pointer"
               >
                 <IconEdit size={16} />

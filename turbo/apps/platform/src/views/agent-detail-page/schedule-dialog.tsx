@@ -205,7 +205,7 @@ export function ScheduleDialog() {
             onClick={() => detach(deleteSchedule(), Reason.DomCallback)}
             disabled={saving}
           >
-            Destructive
+            Delete
           </Button>
           <div className="flex gap-2">
             <Button variant="outline" onClick={close} disabled={saving}>

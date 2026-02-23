@@ -127,12 +127,7 @@ describe("schedule dialog", () => {
     });
 
     // Click the edit button next to the Scheduled badge
-    const editButtons = screen.getAllByRole("button");
-    const editButton = editButtons.find((btn) =>
-      btn.closest(".inline-flex")?.textContent?.includes("Scheduled"),
-    );
-    expect(editButton).toBeDefined();
-    fireEvent.click(editButton!);
+    fireEvent.click(screen.getByRole("button", { name: "Edit schedule" }));
 
     await vi.waitFor(() => {
       expect(
@@ -167,11 +162,7 @@ describe("schedule dialog", () => {
     });
 
     // Open schedule dialog
-    const editButtons = screen.getAllByRole("button");
-    const editButton = editButtons.find((btn) =>
-      btn.closest(".inline-flex")?.textContent?.includes("Scheduled"),
-    );
-    fireEvent.click(editButton!);
+    fireEvent.click(screen.getByRole("button", { name: "Edit schedule" }));
 
     await vi.waitFor(() => {
       expect(
@@ -219,11 +210,7 @@ describe("schedule dialog", () => {
     });
 
     // Open schedule dialog
-    const editButtons = screen.getAllByRole("button");
-    const editButton = editButtons.find((btn) =>
-      btn.closest(".inline-flex")?.textContent?.includes("Scheduled"),
-    );
-    fireEvent.click(editButton!);
+    fireEvent.click(screen.getByRole("button", { name: "Edit schedule" }));
 
     await vi.waitFor(() => {
       expect(
@@ -231,8 +218,8 @@ describe("schedule dialog", () => {
       ).toBeInTheDocument();
     });
 
-    // Click destructive (delete) button
-    fireEvent.click(screen.getByRole("button", { name: "Destructive" }));
+    // Click delete button
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     // Dialog should close and badge should disappear
     await vi.waitFor(() => {
