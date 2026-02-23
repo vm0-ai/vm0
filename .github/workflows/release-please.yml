@@ -431,7 +431,7 @@ jobs:
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*Runner* deploying to production servers..."
+            text: "*Runner RS* deploying to production servers..."
 
       # Cross-compile Rust binaries for ARM64 (metal runners are ARM64)
       - name: Build runner and guest binaries for ARM64
@@ -472,7 +472,7 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Runner* deploying to production servers...\n:white_check_mark: Deployed successfully"
+            text: "*Runner RS* deploying to production servers...\n:white_check_mark: Deployed successfully"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -483,7 +483,7 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Runner* deploying to production servers...\n:x: Deploy failed"
+            text: "*Runner RS* deploying to production servers...\n:x: Deploy failed"
 
   # Build E2B templates to production account
   # Uses production environment E2B_API_KEY secret
