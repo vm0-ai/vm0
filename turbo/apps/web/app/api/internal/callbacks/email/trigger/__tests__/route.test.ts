@@ -28,6 +28,9 @@ interface TriggerCallbackPayload {
   userId: string;
   inboundEmailId: string;
   replyToken: string;
+  inboundMessageId?: string;
+  subject?: string;
+  triggerLocalPart?: string;
 }
 
 function createCallbackRequest(
@@ -134,7 +137,7 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
   });
 
   describe("Email Sending", () => {
-    it("should send response email for completed trigger run", async () => {
+    it("should send response email with mirrored from address and original subject", async () => {
       const user = await context.setupUser({ prefix: "trigger-ok" });
       mockClerk({ userId: user.userId });
       const agentName = uniqueId("trigger-agent");
@@ -144,12 +147,16 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
 
       const replyToken = generateReplyToken(crypto.randomUUID());
       const senderEmail = "sender@example.com";
+      const triggerLocalPart = `my-scope+${agentName}`;
       const payload: TriggerCallbackPayload = {
         senderEmail,
         composeId,
         userId: user.userId,
         inboundEmailId: "email-123",
         replyToken,
+        inboundMessageId: "<orig-msg-id@example.com>",
+        subject: "Help me with this",
+        triggerLocalPart,
       };
 
       const { secret } = await createTestCallback({
@@ -174,10 +181,58 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
         to: string;
         subject: string;
         replyTo: string;
+        headers: Record<string, string>;
       };
       expect(sendArgs.to).toBe(senderEmail);
-      expect(sendArgs.subject).toContain("Re:");
+      expect(sendArgs.from).toContain(triggerLocalPart);
+      expect(sendArgs.subject).toBe("Re: Help me with this");
       expect(sendArgs.replyTo).toContain("reply+");
+      expect(sendArgs.headers).toMatchObject({
+        "In-Reply-To": "<orig-msg-id@example.com>",
+        References: "<orig-msg-id@example.com>",
+      });
+    });
+
+    it("should strip existing Re: prefix to prevent duplication", async () => {
+      const user = await context.setupUser({ prefix: "trigger-re" });
+      mockClerk({ userId: user.userId });
+      const agentName = uniqueId("re-agent");
+      const { composeId } = await createTestCompose(agentName);
+      const { runId } = await createTestRun(composeId, "Test prompt");
+      await completeTestRun(user.userId, runId);
+
+      const replyToken = generateReplyToken(crypto.randomUUID());
+      const payload: TriggerCallbackPayload = {
+        senderEmail: "sender@example.com",
+        composeId,
+        userId: user.userId,
+        inboundEmailId: "email-456",
+        replyToken,
+        subject: "Re: Original Topic",
+        triggerLocalPart: agentName,
+      };
+
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/email/trigger",
+        payload: { ...payload },
+      });
+
+      const request = createCallbackRequest(
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      const sendArgs = mockResend.emails.send.mock.calls[0]![0] as {
+        subject: string;
+        from: string;
+      };
+      expect(sendArgs.subject).toBe("Re: Original Topic");
+      expect(sendArgs.from).toContain(agentName);
     });
 
     it("should send error email for failed trigger run", async () => {

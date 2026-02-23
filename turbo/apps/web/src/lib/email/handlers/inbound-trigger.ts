@@ -151,12 +151,11 @@ export async function handleInboundEmailTrigger(
   const email = await getReceivedEmail(emailId);
 
   // 6. Extract inbound Message-ID for threading (case-insensitive lookup)
-  const messageIdKey = Object.keys(email.headers).find(
+  const headers = email.headers ?? {};
+  const messageIdKey = Object.keys(headers).find(
     (k) => k.toLowerCase() === "message-id",
   );
-  const inboundMessageId = messageIdKey
-    ? email.headers[messageIdKey]
-    : undefined;
+  const inboundMessageId = messageIdKey ? headers[messageIdKey] : undefined;
 
   // 7. Verify sender authenticity via DMARC
   const verification = verifySenderAuthenticity(email.headers);
