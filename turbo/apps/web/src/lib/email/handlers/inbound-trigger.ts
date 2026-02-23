@@ -54,7 +54,7 @@ export async function handleInboundEmailTrigger(
   //    - scope+agent@domain (explicit scope)
   //    - agent@domain (scope auto-detected from sender)
   let triggerAddress: { scope: string; agent: string } | null = null;
-  let triggerLocalPart: string | null = null;
+  let triggerLocalPart: string | undefined;
   let userId: string | null = null;
 
   // 1a. Try scope+agent format first

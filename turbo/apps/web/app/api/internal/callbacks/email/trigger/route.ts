@@ -196,7 +196,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { messageId } = await sendEmail({
     from: buildFromAddress(payload.triggerLocalPart ?? compose.name),
     to: senderEmail,
-    subject: payload.subject ? `Re: ${payload.subject}` : `Re: ${compose.name}`,
+    subject: `Re: ${payload.subject?.replace(/^Re:\s*/i, "") ?? compose.name}`,
     react: AgentReplyEmail({
       agentName: compose.name,
       output,
