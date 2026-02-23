@@ -1102,8 +1102,8 @@ jobs:
               --vcpu ${RUNNER_VCPU} \
               --memory-mb ${RUNNER_MEMORY_MB}"
 
-            # Clean up old rootfs/snapshots, keep the 3 most recent
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 3"
+            # Clean up old rootfs/snapshots, keep the 2 most recent
+            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 2"
             echo "=== Done deploying to ${HOST} ==="
           }
 

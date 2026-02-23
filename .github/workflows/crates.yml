@@ -185,6 +185,10 @@ jobs:
             --guest-mock-claude ${BIN_DIR}/guest-mock-claude")
           ROOTFS_HASH=$(echo "$BUILD_OUTPUT" | grep '^rootfs_hash=' | cut -d= -f2)
           SNAPSHOT_HASH=$(echo "$BUILD_OUTPUT" | grep '^snapshot_hash=' | cut -d= -f2)
+
+          # Clean up old rootfs/snapshots, keep the 2 most recent
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 2"
+
           if [ -z "$ROOTFS_HASH" ] || [ -z "$SNAPSHOT_HASH" ]; then
             echo "ERROR: Failed to extract build hashes"
             exit 1
