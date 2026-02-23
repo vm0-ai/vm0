@@ -5,6 +5,7 @@ import {
   createTestRequest,
   createTestCompose,
   createTestAgentSession,
+  createTestSessionWithConversation,
   createTestEmailThreadSession,
   findTestRunsByUserAndPrompt,
   findTestCallbacksByRunId,
@@ -86,7 +87,10 @@ describe("POST /api/webhooks/email/inbound", () => {
     // Given a user with a compose and email thread session
     const user = await context.setupUser();
     const { composeId } = await createTestCompose(uniqueId("email-agent"));
-    const agentSession = await createTestAgentSession(user.userId, composeId);
+    const agentSession = await createTestSessionWithConversation(
+      user.userId,
+      composeId,
+    );
 
     // Generate a valid HMAC reply token
     const replyToken = generateReplyToken(agentSession.id);
@@ -627,7 +631,10 @@ describe("POST /api/webhooks/email/inbound", () => {
   it("should extract content from HTML when text is empty (reply)", async () => {
     const user = await context.setupUser({ prefix: "html-reply" });
     const { composeId } = await createTestCompose(uniqueId("html-reply-agent"));
-    const agentSession = await createTestAgentSession(user.userId, composeId);
+    const agentSession = await createTestSessionWithConversation(
+      user.userId,
+      composeId,
+    );
     const replyToken = generateReplyToken(agentSession.id);
 
     await createTestEmailThreadSession({
