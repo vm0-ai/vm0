@@ -16,6 +16,7 @@ import {
   setConfigActiveTab$,
   configDialogSaving$,
   configDialogSaveError$,
+  configDialogValid$,
   saveConfigDialog$,
 } from "../../../signals/agent-detail/config-dialog.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
@@ -26,6 +27,7 @@ export function ConfigDialog() {
   const open = useGet(configDialogOpen$);
   const activeTab = useGet(configActiveTab$);
   const saving = useGet(configDialogSaving$);
+  const valid = useGet(configDialogValid$);
   const saveError = useGet(configDialogSaveError$);
   const close = useSet(closeConfigDialog$);
   const setTab = useSet(setConfigActiveTab$);
@@ -58,7 +60,7 @@ export function ConfigDialog() {
           </Button>
           <Button
             onClick={() => detach(save(), Reason.DomCallback)}
-            disabled={saving}
+            disabled={saving || !valid}
           >
             {saving ? "Saving..." : "Save"}
           </Button>

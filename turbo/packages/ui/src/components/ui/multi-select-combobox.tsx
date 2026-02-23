@@ -63,7 +63,7 @@ export function MultiSelectCombobox({
     () =>
       selected
         .map((v) => options.find((o) => o.value === v))
-        .filter(Boolean) as ComboboxOption[],
+        .filter((o): o is ComboboxOption => o !== undefined),
     [selected, options],
   );
 

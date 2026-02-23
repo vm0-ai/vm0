@@ -1,3 +1,4 @@
+import { computed } from "ccstate";
 import type { ComboboxOption } from "@vm0/ui";
 
 const SKILL_URL_PREFIX = "https://github.com/vm0-ai/vm0-skills/tree/main/";
@@ -10,9 +11,7 @@ export function skillUrlToValue(url: string): string {
   if (url.startsWith(SKILL_URL_PREFIX)) {
     return url.slice(SKILL_URL_PREFIX.length);
   }
-  // Fallback: extract last segment from any URL
-  const parts = url.split("/");
-  return parts[parts.length - 1] ?? url;
+  return url;
 }
 
 /**
@@ -23,360 +22,193 @@ export function skillUrlToValue(url: string): string {
  * label = display name
  * icon  = absolute logo URL
  */
-// eslint-disable-next-line ccstate/no-package-variable -- static readonly skills data
-export const SKILLS: ComboboxOption[] = [
-  // AI & Media
-  {
-    value: "elevenlabs",
-    label: "elevenlabs",
-    icon: "https://vm0.ai/skills/elevenlabs.svg",
-  },
-  {
-    value: "fal.ai",
-    label: "fal.ai",
-    icon: "https://vm0.ai/skills/fal-image.svg",
-  },
-  {
-    value: "htmlcsstoimage",
-    label: "htmlcsstoimage",
-    icon: "https://vm0.ai/skills/htmlcsstoimage.png",
-  },
-  {
-    value: "openai",
-    label: "openai",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/e/ef/ChatGPT-Logo.svg",
-  },
-  {
-    value: "runway",
-    label: "runway",
-    icon: "https://vm0.ai/skills/runway.svg",
-  },
-  { value: "vm0-agent", label: "vm0-agent", icon: "https://vm0.ai/icon.svg" },
-  { value: "vm0-cli", label: "vm0-cli", icon: "https://vm0.ai/icon.svg" },
 
-  // Analytics
-  { value: "axiom", label: "axiom", icon: "https://vm0.ai/skills/axiom.svg" },
-  {
-    value: "cronlytic",
-    label: "cronlytic",
-    icon: "https://vm0.ai/skills/cronlytic.png",
-  },
-  {
-    value: "plausible",
-    label: "plausible",
-    icon: "https://vm0.ai/skills/plausible.svg",
-  },
-  {
-    value: "reportei",
-    label: "reportei",
-    icon: "https://cdn.simpleicons.org/googleanalytics",
-  },
-  {
-    value: "sentry",
-    label: "sentry",
-    icon: "https://cdn.simpleicons.org/sentry",
-  },
+function s(value: string, label: string, icon: string): ComboboxOption {
+  return { value, label, icon };
+}
 
-  // Cloud Storage
-  {
-    value: "cloudinary",
-    label: "cloudinary",
-    icon: "https://vm0.ai/skills/cloudinary.svg",
-  },
-  { value: "minio", label: "minio", icon: "https://vm0.ai/skills/minio.svg" },
-  {
-    value: "qdrant",
-    label: "qdrant",
-    icon: "https://vm0.ai/skills/qdrant.svg",
-  },
-  {
-    value: "supabase",
-    label: "supabase",
-    icon: "https://cdn.simpleicons.org/supabase",
-  },
-  {
-    value: "supadata",
-    label: "supadata",
-    icon: "https://cdn.simpleicons.org/supabase",
-  },
+function aiMediaSkills(): ComboboxOption[] {
+  return [
+    s("elevenlabs", "elevenlabs", "https://vm0.ai/skills/elevenlabs.svg"),
+    s("fal.ai", "fal.ai", "https://vm0.ai/skills/fal-image.svg"),
+    s(
+      "htmlcsstoimage",
+      "htmlcsstoimage",
+      "https://vm0.ai/skills/htmlcsstoimage.png",
+    ),
+    s(
+      "openai",
+      "openai",
+      "https://upload.wikimedia.org/wikipedia/commons/e/ef/ChatGPT-Logo.svg",
+    ),
+    s("runway", "runway", "https://vm0.ai/skills/runway.svg"),
+    s("vm0-agent", "vm0-agent", "https://vm0.ai/icon.svg"),
+    s("vm0-cli", "vm0-cli", "https://vm0.ai/icon.svg"),
+  ];
+}
 
-  // Communication
-  {
-    value: "agentmail",
-    label: "agentmail",
-    icon: "https://cdn.simpleicons.org/gmail",
-  },
-  {
-    value: "chatwoot",
-    label: "chatwoot",
-    icon: "https://vm0.ai/skills/chatwoot.svg",
-  },
-  {
-    value: "discord",
-    label: "discord",
-    icon: "https://cdn.simpleicons.org/discord",
-  },
-  {
-    value: "discord-webhook",
-    label: "discord-webhook",
-    icon: "https://cdn.simpleicons.org/discord",
-  },
-  { value: "gmail", label: "gmail", icon: "https://cdn.simpleicons.org/gmail" },
-  {
-    value: "intercom",
-    label: "intercom",
-    icon: "https://cdn.simpleicons.org/intercom",
-  },
-  { value: "lark", label: "lark", icon: "https://vm0.ai/skills/lark.png" },
-  {
-    value: "mailsac",
-    label: "mailsac",
-    icon: "https://cdn.simpleicons.org/gmail",
-  },
-  {
-    value: "pushinator",
-    label: "pushinator",
-    icon: "https://cdn.simpleicons.org/pushbullet",
-  },
-  {
-    value: "resend",
-    label: "resend",
-    icon: "https://cdn.simpleicons.org/resend",
-  },
-  { value: "slack", label: "slack", icon: "https://vm0.ai/skills/slack.svg" },
-  {
-    value: "slack-webhook",
-    label: "slack-webhook",
-    icon: "https://vm0.ai/skills/slack.svg",
-  },
-  {
-    value: "zendesk",
-    label: "zendesk",
-    icon: "https://cdn.simpleicons.org/zendesk",
-  },
-  {
-    value: "zeptomail",
-    label: "zeptomail",
-    icon: "https://cdn.simpleicons.org/zoho",
-  },
+function analyticsSkills(): ComboboxOption[] {
+  return [
+    s("axiom", "axiom", "https://vm0.ai/skills/axiom.svg"),
+    s("cronlytic", "cronlytic", "https://vm0.ai/skills/cronlytic.png"),
+    s("plausible", "plausible", "https://vm0.ai/skills/plausible.svg"),
+    s("reportei", "reportei", "https://cdn.simpleicons.org/googleanalytics"),
+    s("sentry", "sentry", "https://cdn.simpleicons.org/sentry"),
+  ];
+}
 
-  // Content
-  {
-    value: "hackernews",
-    label: "hackernews",
-    icon: "https://cdn.simpleicons.org/ycombinator",
-  },
-  { value: "imgur", label: "imgur", icon: "https://vm0.ai/skills/imgur.svg" },
-  {
-    value: "instagram",
-    label: "instagram",
-    icon: "https://vm0.ai/skills/instagram.svg",
-  },
-  {
-    value: "podchaser",
-    label: "podchaser",
-    icon: "https://cdn.simpleicons.org/applepodcasts",
-  },
-  { value: "qiita", label: "qiita", icon: "https://vm0.ai/skills/qiita.svg" },
-  {
-    value: "youtube",
-    label: "youtube",
-    icon: "https://cdn.simpleicons.org/youtube",
-  },
+function cloudStorageSkills(): ComboboxOption[] {
+  return [
+    s("cloudinary", "cloudinary", "https://vm0.ai/skills/cloudinary.svg"),
+    s("minio", "minio", "https://vm0.ai/skills/minio.svg"),
+    s("qdrant", "qdrant", "https://vm0.ai/skills/qdrant.svg"),
+    s("supabase", "supabase", "https://cdn.simpleicons.org/supabase"),
+    s("supadata", "supadata", "https://cdn.simpleicons.org/supabase"),
+  ];
+}
 
-  // Development
-  {
-    value: ".claude",
-    label: "Claude Config",
-    icon: "https://cdn.simpleicons.org/anthropic",
-  },
-  {
-    value: ".claude-plugin",
-    label: "Claude Plugin",
-    icon: "https://cdn.simpleicons.org/anthropic",
-  },
-  {
-    value: "deepseek",
-    label: "deepseek",
-    icon: "https://vm0.ai/skills/deepseek.svg",
-  },
-  {
-    value: "dev.to",
-    label: "dev.to",
-    icon: "https://cdn.simpleicons.org/devdotto",
-  },
-  {
-    value: "github",
-    label: "github",
-    icon: "https://vm0.ai/skills/github.svg",
-  },
-  {
-    value: "github-copilot",
-    label: "github-copilot",
-    icon: "https://vm0.ai/skills/githubcopilot.svg",
-  },
-  {
-    value: "gitlab",
-    label: "gitlab",
-    icon: "https://cdn.simpleicons.org/gitlab",
-  },
-  { value: "vm0", label: "VM0", icon: "https://vm0.ai/icon.svg" },
-  { value: ".vm0", label: "VM0 Config", icon: "https://vm0.ai/icon.svg" },
+function communicationSkills(): ComboboxOption[] {
+  return [
+    s("agentmail", "agentmail", "https://cdn.simpleicons.org/gmail"),
+    s("chatwoot", "chatwoot", "https://vm0.ai/skills/chatwoot.svg"),
+    s("discord", "discord", "https://cdn.simpleicons.org/discord"),
+    s(
+      "discord-webhook",
+      "discord-webhook",
+      "https://cdn.simpleicons.org/discord",
+    ),
+    s("gmail", "gmail", "https://cdn.simpleicons.org/gmail"),
+    s("intercom", "intercom", "https://cdn.simpleicons.org/intercom"),
+    s("lark", "lark", "https://vm0.ai/skills/lark.png"),
+    s("mailsac", "mailsac", "https://cdn.simpleicons.org/gmail"),
+    s("pushinator", "pushinator", "https://cdn.simpleicons.org/pushbullet"),
+    s("resend", "resend", "https://cdn.simpleicons.org/resend"),
+    s("slack", "slack", "https://vm0.ai/skills/slack.svg"),
+    s("slack-webhook", "slack-webhook", "https://vm0.ai/skills/slack.svg"),
+    s("zendesk", "zendesk", "https://cdn.simpleicons.org/zendesk"),
+    s("zeptomail", "zeptomail", "https://cdn.simpleicons.org/zoho"),
+  ];
+}
 
-  // Documents
-  {
-    value: "pdf4me",
-    label: "pdf4me",
-    icon: "https://vm0.ai/skills/pdf4me.svg",
-  },
-  { value: "pdfco", label: "pdfco", icon: "https://vm0.ai/skills/pdfco.svg" },
-  {
-    value: "pdforge",
-    label: "pdforge",
-    icon: "https://vm0.ai/skills/pdforge.svg",
-  },
-  {
-    value: "zapsign",
-    label: "zapsign",
-    icon: "https://vm0.ai/skills/zapsign.svg",
-  },
+function contentSkills(): ComboboxOption[] {
+  return [
+    s("hackernews", "hackernews", "https://cdn.simpleicons.org/ycombinator"),
+    s("imgur", "imgur", "https://vm0.ai/skills/imgur.svg"),
+    s("instagram", "instagram", "https://vm0.ai/skills/instagram.svg"),
+    s("podchaser", "podchaser", "https://cdn.simpleicons.org/applepodcasts"),
+    s("qiita", "qiita", "https://vm0.ai/skills/qiita.svg"),
+    s("youtube", "youtube", "https://cdn.simpleicons.org/youtube"),
+  ];
+}
 
-  // Other
-  {
-    value: "cloudflare-tunnel",
-    label: "cloudflare-tunnel",
-    icon: "https://cdn.simpleicons.org/cloudflare",
-  },
-  {
-    value: "pikvm",
-    label: "pikvm",
-    icon: "https://cdn.simpleicons.org/raspberrypi",
-  },
-  {
-    value: "vm0-computer",
-    label: "vm0-computer",
-    icon: "https://vm0.ai/icon.svg",
-  },
+function developmentSkills(): ComboboxOption[] {
+  return [
+    s(".claude", "Claude Config", "https://cdn.simpleicons.org/anthropic"),
+    s(
+      ".claude-plugin",
+      "Claude Plugin",
+      "https://cdn.simpleicons.org/anthropic",
+    ),
+    s("deepseek", "deepseek", "https://vm0.ai/skills/deepseek.svg"),
+    s("dev.to", "dev.to", "https://cdn.simpleicons.org/devdotto"),
+    s("github", "github", "https://vm0.ai/skills/github.svg"),
+    s(
+      "github-copilot",
+      "github-copilot",
+      "https://vm0.ai/skills/githubcopilot.svg",
+    ),
+    s("gitlab", "gitlab", "https://cdn.simpleicons.org/gitlab"),
+    s("vm0", "VM0", "https://vm0.ai/icon.svg"),
+    s(".vm0", "VM0 Config", "https://vm0.ai/icon.svg"),
+  ];
+}
 
-  // Productivity
-  {
-    value: "bitrix",
-    label: "bitrix",
-    icon: "https://vm0.ai/skills/bitrix.svg",
-  },
-  { value: "figma", label: "figma", icon: "https://cdn.simpleicons.org/figma" },
-  {
-    value: "google-sheets",
-    label: "google-sheets",
-    icon: "https://cdn.simpleicons.org/googlesheets",
-  },
-  {
-    value: "instantly",
-    label: "instantly",
-    icon: "https://cdn.simpleicons.org/maildotru",
-  },
-  { value: "jira", label: "jira", icon: "https://cdn.simpleicons.org/jira" },
-  { value: "kommo", label: "kommo", icon: "https://vm0.ai/skills/kommo.webp" },
-  {
-    value: "linear",
-    label: "linear",
-    icon: "https://cdn.simpleicons.org/linear",
-  },
-  {
-    value: "monday",
-    label: "monday",
-    icon: "https://vm0.ai/skills/monday.svg",
-  },
-  {
-    value: "notion",
-    label: "notion",
-    icon: "https://vm0.ai/skills/notion.svg",
-  },
-  {
-    value: "streak",
-    label: "streak",
-    icon: "https://cdn.simpleicons.org/gmail",
-  },
-  {
-    value: "twenty",
-    label: "twenty",
-    icon: "https://cdn.simpleicons.org/airtable",
-  },
-  {
-    value: "workflow-migration",
-    label: "workflow-migration",
-    icon: "https://cdn.simpleicons.org/zapier",
-  },
+function documentSkills(): ComboboxOption[] {
+  return [
+    s("pdf4me", "pdf4me", "https://vm0.ai/skills/pdf4me.svg"),
+    s("pdfco", "pdfco", "https://vm0.ai/skills/pdfco.svg"),
+    s("pdforge", "pdforge", "https://vm0.ai/skills/pdforge.svg"),
+    s("zapsign", "zapsign", "https://vm0.ai/skills/zapsign.svg"),
+  ];
+}
 
-  // Search
-  {
-    value: "brave-search",
-    label: "brave-search",
-    icon: "https://vm0.ai/skills/brave.svg",
-  },
-  {
-    value: "perplexity",
-    label: "perplexity",
-    icon: "https://vm0.ai/skills/perplexity.svg",
-  },
-  {
-    value: "rss-fetch",
-    label: "rss-fetch",
-    icon: "https://vm0.ai/skills/rss.svg",
-  },
-  {
-    value: "serpapi",
-    label: "serpapi",
-    icon: "https://vm0.ai/skills/serpapi.png",
-  },
-  {
-    value: "tavily",
-    label: "tavily",
-    icon: "https://vm0.ai/skills/tavily.svg",
-  },
+function otherSkills(): ComboboxOption[] {
+  return [
+    s(
+      "cloudflare-tunnel",
+      "cloudflare-tunnel",
+      "https://cdn.simpleicons.org/cloudflare",
+    ),
+    s("pikvm", "pikvm", "https://cdn.simpleicons.org/raspberrypi"),
+    s("vm0-computer", "vm0-computer", "https://vm0.ai/icon.svg"),
+  ];
+}
 
-  // Utilities
-  {
-    value: "minimax",
-    label: "minimax",
-    icon: "https://vm0.ai/skills/minimax.svg",
-  },
-  {
-    value: "shortio",
-    label: "shortio",
-    icon: "https://cdn.simpleicons.org/bitly",
-  },
+function productivitySkills(): ComboboxOption[] {
+  return [
+    s("bitrix", "bitrix", "https://vm0.ai/skills/bitrix.svg"),
+    s("figma", "figma", "https://cdn.simpleicons.org/figma"),
+    s(
+      "google-sheets",
+      "google-sheets",
+      "https://cdn.simpleicons.org/googlesheets",
+    ),
+    s("instantly", "instantly", "https://cdn.simpleicons.org/maildotru"),
+    s("jira", "jira", "https://cdn.simpleicons.org/jira"),
+    s("kommo", "kommo", "https://vm0.ai/skills/kommo.webp"),
+    s("linear", "linear", "https://cdn.simpleicons.org/linear"),
+    s("monday", "monday", "https://vm0.ai/skills/monday.svg"),
+    s("notion", "notion", "https://vm0.ai/skills/notion.svg"),
+    s("streak", "streak", "https://cdn.simpleicons.org/gmail"),
+    s("twenty", "twenty", "https://cdn.simpleicons.org/airtable"),
+    s(
+      "workflow-migration",
+      "workflow-migration",
+      "https://cdn.simpleicons.org/zapier",
+    ),
+  ];
+}
 
-  // Web Scraping
-  { value: "apify", label: "apify", icon: "https://vm0.ai/skills/apify.svg" },
-  {
-    value: "bright-data",
-    label: "bright-data",
-    icon: "https://vm0.ai/skills/bright-data.png",
-  },
-  {
-    value: "browserbase",
-    label: "browserbase",
-    icon: "https://cdn.simpleicons.org/googlechrome",
-  },
-  {
-    value: "browserless",
-    label: "browserless",
-    icon: "https://vm0.ai/skills/browserless.png",
-  },
-  {
-    value: "firecrawl",
-    label: "firecrawl",
-    icon: "https://vm0.ai/skills/firecrawl.svg",
-  },
-  {
-    value: "mercury",
-    label: "mercury",
-    icon: "https://cdn.simpleicons.org/mercury",
-  },
-  {
-    value: "scrapeninja",
-    label: "scrapeninja",
-    icon: "https://vm0.ai/skills/scrapeninja.svg",
-  },
-];
+function searchSkills(): ComboboxOption[] {
+  return [
+    s("brave-search", "brave-search", "https://vm0.ai/skills/brave.svg"),
+    s("perplexity", "perplexity", "https://vm0.ai/skills/perplexity.svg"),
+    s("rss-fetch", "rss-fetch", "https://vm0.ai/skills/rss.svg"),
+    s("serpapi", "serpapi", "https://vm0.ai/skills/serpapi.png"),
+    s("tavily", "tavily", "https://vm0.ai/skills/tavily.svg"),
+  ];
+}
+
+function utilitySkills(): ComboboxOption[] {
+  return [
+    s("minimax", "minimax", "https://vm0.ai/skills/minimax.svg"),
+    s("shortio", "shortio", "https://cdn.simpleicons.org/bitly"),
+  ];
+}
+
+function webScrapingSkills(): ComboboxOption[] {
+  return [
+    s("apify", "apify", "https://vm0.ai/skills/apify.svg"),
+    s("bright-data", "bright-data", "https://vm0.ai/skills/bright-data.png"),
+    s("browserbase", "browserbase", "https://cdn.simpleicons.org/googlechrome"),
+    s("browserless", "browserless", "https://vm0.ai/skills/browserless.png"),
+    s("firecrawl", "firecrawl", "https://vm0.ai/skills/firecrawl.svg"),
+    s("mercury", "mercury", "https://cdn.simpleicons.org/mercury"),
+    s("scrapeninja", "scrapeninja", "https://vm0.ai/skills/scrapeninja.svg"),
+  ];
+}
+
+export const skills$ = computed((): ComboboxOption[] => [
+  ...aiMediaSkills(),
+  ...analyticsSkills(),
+  ...cloudStorageSkills(),
+  ...communicationSkills(),
+  ...contentSkills(),
+  ...developmentSkills(),
+  ...documentSkills(),
+  ...otherSkills(),
+  ...productivitySkills(),
+  ...searchSkills(),
+  ...utilitySkills(),
+  ...webScrapingSkills(),
+]);

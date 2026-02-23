@@ -375,6 +375,66 @@ describe("config dialog", () => {
     await vi.waitFor(() => {
       expect(screen.getByText(/Must be 3-64 chars/)).toBeInTheDocument();
     });
+
+    // Save button should be disabled when name is invalid
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("should show selected skills and allow removing them", async () => {
+    mockAgentDetailAPI({
+      skills: [
+        "https://github.com/vm0-ai/vm0-skills/tree/main/hackernews",
+        "https://github.com/vm0-ai/vm0-skills/tree/main/github",
+      ],
+    });
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(findSettingsIconButton());
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Your agent configs" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Forms" }));
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("hackernews")).toBeInTheDocument();
+    });
+
+    // Remove hackernews skill via the remove button
+    const removeButton = screen.getByRole("button", {
+      name: "Remove hackernews",
+    });
+    fireEvent.click(removeButton);
+
+    await vi.waitFor(() => {
+      expect(screen.queryByText("hackernews")).not.toBeInTheDocument();
+    });
+
+    // github should still be there
+    expect(screen.getByText("github")).toBeInTheDocument();
+
+    // Verify YAML tab reflects the removal
+    fireEvent.click(screen.getByRole("tab", { name: "vm0.yaml" }));
+
+    await vi.waitFor(() => {
+      const textarea = document.querySelector("textarea");
+      expect(textarea?.value).not.toContain("hackernews");
+      expect(textarea?.value).toContain("github");
+    });
   });
 
   it("should close dialog without saving on Cancel", async () => {

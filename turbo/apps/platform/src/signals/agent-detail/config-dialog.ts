@@ -74,6 +74,23 @@ export const configDialogSaveError$ = computed((get) =>
 );
 
 // ---------------------------------------------------------------------------
+// Validation — checks if the current compose state is valid for saving
+// ---------------------------------------------------------------------------
+
+export const configDialogValid$ = computed((get) => {
+  const compose = get(internalEditableCompose$);
+  if (!compose) {
+    return true;
+  }
+  const agentKeys = Object.keys(compose.agents);
+  const firstKey = agentKeys[0];
+  if (!firstKey) {
+    return true;
+  }
+  return /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/.test(firstKey);
+});
+
+// ---------------------------------------------------------------------------
 // Open dialog — initialises editable state from current agent detail
 // ---------------------------------------------------------------------------
 

@@ -7,7 +7,7 @@ import {
   updateAgentName$,
   updateSkills$,
 } from "../../../signals/agent-detail/config-dialog.ts";
-import { SKILLS, skillUrlToValue } from "../../../data/skills.ts";
+import { skills$, skillUrlToValue } from "../../../data/skills.ts";
 
 function validateAgentName(name: string): string | null {
   if (!name) {
@@ -21,6 +21,7 @@ function validateAgentName(name: string): string | null {
 
 export function FormsTab() {
   const compose = useGet(editableCompose$);
+  const skills = useGet(skills$);
   const updateField = useSet(updateComposeField$);
   const updateName = useSet(updateAgentName$);
   const updateSkillValues = useSet(updateSkills$);
@@ -71,7 +72,7 @@ export function FormsTab() {
       <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-foreground">Skills</label>
         <MultiSelectCombobox
-          options={SKILLS}
+          options={skills}
           selected={selectedSkills}
           onChange={updateSkillValues}
           placeholder="Select skills..."
