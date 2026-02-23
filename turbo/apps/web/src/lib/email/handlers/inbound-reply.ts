@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { getReceivedEmail } from "../client";
-import { stripQuotedReply } from "../quote-strip";
+import { extractEmailBody } from "../content-extract";
 import { verifyReplyToken, lookupEmailThreadSession } from "./shared";
 import { createRun } from "../../run";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
@@ -60,8 +60,8 @@ export async function handleInboundEmailReply(
   // 4. Fetch full email body from Resend
   const email = await getReceivedEmail(emailId);
 
-  // 5. Strip quoted text
-  const replyContent = stripQuotedReply(email.text);
+  // 5. Extract email body (prefer HTML, fallback to text, strip quotes)
+  const replyContent = extractEmailBody(email.html, email.text);
   if (!replyContent.trim()) {
     log.debug("Empty reply content after stripping", { emailId });
     return;

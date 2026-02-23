@@ -438,6 +438,9 @@ importers:
       email-reply-parser:
         specifier: ^2.3.5
         version: 2.3.5
+      html-to-text:
+        specifier: ^9.0.5
+        version: 9.0.5
       import-in-the-middle:
         specifier: ^2.0.6
         version: 2.0.6
@@ -499,6 +502,9 @@ importers:
       '@types/dockerode':
         specifier: ^4.0.1
         version: 4.0.1
+      '@types/html-to-text':
+        specifier: ^9.0.4
+        version: 9.0.4
       '@types/node':
         specifier: ^24.3.0
         version: 24.3.0
@@ -4489,6 +4495,9 @@ packages:
 
   '@types/hast@3.0.4':
     resolution: {integrity: sha512-WPs+bbQw5aCj+x6laNGWLH3wviHtoCv/P3+otBhbOhJgG8qtpdAMlTCxLtsTWA7LH1Oh/bFCHsBn0TPS5m30EQ==}
+
+  '@types/html-to-text@9.0.4':
+    resolution: {integrity: sha512-pUY3cKH/Nm2yYrEmDlPR1mR7yszjGx4DrwPjQ702C4/D5CwHuZTgZdIdwPkRbcuhs7BAh2L5rg3CL5cbRiGTCQ==}
 
   '@types/http-cache-semantics@4.0.4':
     resolution: {integrity: sha512-1m0bIFVc7eJWyve9S0RnuRgcQqF/Xd5QsUZAZeQFr1Q3/p9JWoQQEqmVy+DPTNpGXwhgIetAoYF8JSc33q29QA==}
@@ -13072,6 +13081,8 @@ snapshots:
     dependencies:
       '@types/unist': 3.0.3
 
+  '@types/html-to-text@9.0.4': {}
+
   '@types/http-cache-semantics@4.0.4': {}
 
   '@types/json-schema@7.0.15': {}
@@ -13390,7 +13401,7 @@ snapshots:
       sirv: 3.0.2
       tinyglobby: 0.2.15
       tinyrainbow: 3.0.3
-      vitest: 4.0.18(@opentelemetry/api@1.9.0)(@types/node@24.3.0)(@vitest/ui@4.0.18)(happy-dom@20.1.0)(jiti@2.6.1)(lightningcss@1.30.2)(msw@2.12.7(@types/node@24.3.0)(typescript@5.9.3))(tsx@4.20.6)(yaml@2.8.1)
+      vitest: 4.0.18(@opentelemetry/api@1.9.0)(@types/node@24.3.0)(@vitest/ui@4.0.18)(happy-dom@20.1.0)(jiti@2.6.1)(lightningcss@1.30.2)(msw@2.12.7(@types/node@24.3.0)(typescript@5.9.3))(tsx@4.20.5)(yaml@2.8.1)
 
   '@vitest/utils@4.0.18':
     dependencies:

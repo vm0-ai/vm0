@@ -1,5 +1,5 @@
 import { getReceivedEmail } from "../client";
-import { stripQuotedReply } from "../quote-strip";
+import { extractEmailBody } from "../content-extract";
 import { verifySenderAuthenticity } from "../sender-auth";
 import {
   parseEmailTriggerAddress,
@@ -158,7 +158,7 @@ export async function handleInboundEmailTrigger(
   }
 
   // 7. Build prompt from email content
-  const bodyContent = stripQuotedReply(email.text);
+  const bodyContent = extractEmailBody(email.html, email.text);
 
   // Combine subject + body as prompt
   const prompt = subject

@@ -573,6 +573,112 @@ describe("POST /api/webhooks/email/inbound", () => {
     });
   });
 
+  it("should extract content from HTML when text is empty (trigger)", async () => {
+    const user = await context.setupUser({ prefix: "html-trigger" });
+    const suffix = user.userId.slice("html-trigger-".length);
+    const scopeSlug = `scope-${suffix}`;
+    const agentName = uniqueId("html-agent");
+    await createTestCompose(agentName);
+
+    const senderEmail = "sender@example.com";
+    mockClerk({ userId: user.userId, email: senderEmail });
+
+    // Override Resend mock to return HTML-only content (empty text)
+    mockResend.emails.receiving.get.mockResolvedValueOnce({
+      data: {
+        from: senderEmail,
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        subject: "Newsletter",
+        text: "",
+        html: "<p>Rich content from newsletter</p>",
+        headers: {
+          "authentication-results":
+            "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
+        },
+      },
+    } as never);
+
+    const payload = JSON.stringify({
+      type: "email.received",
+      data: {
+        email_id: "html-only-trigger",
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        from: senderEmail,
+        subject: "Newsletter",
+        created_at: new Date().toISOString(),
+      },
+    });
+
+    const request = createWebhookRequest(payload);
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    await context.mocks.flushAfter();
+
+    // Verify agent run was created with HTML-derived content
+    // Prompt = subject + "\n\n" + converted HTML body
+    const runs = await findTestRunsByUserAndPrompt(
+      user.userId,
+      "Newsletter\n\nRich content from newsletter",
+    );
+    expect(runs).toHaveLength(1);
+  });
+
+  it("should extract content from HTML when text is empty (reply)", async () => {
+    const user = await context.setupUser({ prefix: "html-reply" });
+    const { composeId } = await createTestCompose(uniqueId("html-reply-agent"));
+    const agentSession = await createTestAgentSession(user.userId, composeId);
+    const replyToken = generateReplyToken(agentSession.id);
+
+    await createTestEmailThreadSession({
+      userId: user.userId,
+      composeId,
+      agentSessionId: agentSession.id,
+      replyToToken: replyToken,
+    });
+
+    mockClerk({ userId: null });
+
+    // Override Resend mock to return HTML-only content
+    mockResend.emails.receiving.get.mockResolvedValueOnce({
+      data: {
+        from: "user@example.com",
+        to: [`reply+${replyToken}@vm7.bot`],
+        subject: "Re: test",
+        text: "",
+        html: "<p>This is my HTML reply</p>",
+        headers: {
+          "authentication-results":
+            "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
+        },
+      },
+    } as never);
+
+    const payload = JSON.stringify({
+      type: "email.received",
+      data: {
+        email_id: "html-only-reply",
+        to: [`reply+${replyToken}@vm7.bot`],
+        from: "user@example.com",
+        subject: "Re: test",
+        created_at: new Date().toISOString(),
+      },
+    });
+
+    const request = createWebhookRequest(payload);
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    await context.mocks.flushAfter();
+
+    // Verify agent run was created with HTML-derived content
+    const runs = await findTestRunsByUserAndPrompt(
+      user.userId,
+      "This is my HTML reply",
+    );
+    expect(runs).toHaveLength(1);
+  });
+
   describe("Email Trigger (agent@domain, auto-detect scope)", () => {
     it("should dispatch agent run for agent-only email (auto-detect scope)", async () => {
       const user = await context.setupUser({ prefix: "auto-scope" });
