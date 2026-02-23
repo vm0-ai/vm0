@@ -1090,6 +1090,9 @@ jobs:
               scp $SSH_OPTS "${TARGET_DIR}/${bin}" "${REMOTE}:${BIN_DIR}/"
             done
 
+            # Clean up old rootfs/snapshots, keep the 2 most recent
+            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 2"
+
             # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
             ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner setup"
 
@@ -1101,9 +1104,6 @@ jobs:
               --guest-mock-claude ${BIN_DIR}/guest-mock-claude \
               --vcpu ${RUNNER_VCPU} \
               --memory-mb ${RUNNER_MEMORY_MB}"
-
-            # Clean up old rootfs/snapshots, keep the 2 most recent
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 2"
             echo "=== Done deploying to ${HOST} ==="
           }
 
