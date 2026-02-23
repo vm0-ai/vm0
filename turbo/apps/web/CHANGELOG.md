@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.48.1](https://github.com/vm0-ai/vm0/compare/web-v12.48.0...web-v12.48.1) (2026-02-23)
+
+
+### Bug Fixes
+
+* **email:** prefer html body with text fallback for inbound email content ([#3220](https://github.com/vm0-ai/vm0/issues/3220)) ([d10236f](https://github.com/vm0-ai/vm0/commit/d10236ff20612560cd99f06cecb2a42b002dd741))
+
 ## [12.48.0](https://github.com/vm0-ai/vm0/compare/web-v12.47.0...web-v12.48.0) (2026-02-23)
 
 
