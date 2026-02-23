@@ -19,60 +19,47 @@
             "release-type": "node"
         },
         "crates/ably-subscriber": {
-            "release-type": "rust",
-            "skip-github-release": true
+            "release-type": "rust"
         },
         "crates/guest-agent": {
-            "release-type": "rust",
-            "skip-github-release": true
+            "release-type": "rust"
         },
         "crates/guest-common": {
-            "release-type": "rust",
-            "skip-github-release": true
+            "release-type": "rust"
         },
         "crates/guest-download": {
-            "release-type": "rust",
-            "skip-github-release": true
+            "release-type": "rust"
         },
         "crates/guest-init": {
-            "release-type": "rust",
-            "skip-github-release": true
+            "release-type": "rust"
         },
         "crates/guest-mock-claude": {
-            "release-type": "rust",
-            "skip-github-release": true
+            "release-type": "rust"
         },
         "crates/reqeast": {
-            "release-type": "rust",
-            "skip-github-release": true
+            "release-type": "rust"
         },
         "crates/runner": {
             "release-type": "rust",
             "component": "runner-rs"
         },
         "crates/sandbox": {
-            "release-type": "rust",
-            "skip-github-release": true
+            "release-type": "rust"
         },
         "crates/sandbox-fc": {
-            "release-type": "rust",
-            "skip-github-release": true
+            "release-type": "rust"
         },
         "crates/vsock-guest": {
-            "release-type": "rust",
-            "skip-github-release": true
+            "release-type": "rust"
         },
         "crates/vsock-host": {
-            "release-type": "rust",
-            "skip-github-release": true
+            "release-type": "rust"
         },
         "crates/vsock-proto": {
-            "release-type": "rust",
-            "skip-github-release": true
+            "release-type": "rust"
         },
         "crates/vsock-test": {
-            "release-type": "rust",
-            "skip-github-release": true
+            "release-type": "rust"
         }
     },
     "plugins": [
