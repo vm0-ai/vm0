@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.6.0...sandbox-fc-v0.6.1) (2026-02-23)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** pre-warm claude and codex in snapshot ([#3232](https://github.com/vm0-ai/vm0/issues/3232)) ([5534465](https://github.com/vm0-ai/vm0/commit/553446505f92aa30b1ac38b396f9238a6ff4c9ac))
+
 ## [0.6.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.5.0...sandbox-fc-v0.6.0) (2026-02-23)
 
 

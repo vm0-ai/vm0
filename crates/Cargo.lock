@@ -1453,7 +1453,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "ably-subscriber",
  "async-trait",
@@ -1600,7 +1600,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "async-trait",
  "clap",
