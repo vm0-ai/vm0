@@ -32,6 +32,18 @@
 
   tasks:
     # ========================================
+    # Phase 0: Stop legacy TS runner
+    # ========================================
+    - name: List pm2 processes
+      command: pm2 list
+      changed_when: false
+      ignore_errors: true
+
+    - name: Stop pm2 daemon
+      command: pm2 kill
+      ignore_errors: true
+
+    # ========================================
     # Phase 1: Deploy binaries
     # ========================================
     - name: Ensure bin directory exists
@@ -134,3 +146,26 @@
 
     - name: Garbage collect old artifacts
       command: "{{ bin_dir }}/runner gc --keep-latest 3"
+
+    # Kill orphan firecracker/mitmproxy processes left behind by crashed
+    # runners or the legacy TS runner. Run after drain so we don't hit
+    # processes that belong to the still-active old runner.
+    - name: Find orphan firecracker processes
+      command: pgrep -x firecracker
+      register: orphan_fc
+      changed_when: false
+      failed_when: false
+
+    - name: Kill orphan firecracker processes
+      command: kill {{ orphan_fc.stdout_lines | join(' ') }}
+      when: orphan_fc.stdout_lines | length > 0
+
+    - name: Find orphan mitmproxy processes
+      command: pgrep -x mitmdump
+      register: orphan_mitm
+      changed_when: false
+      failed_when: false
+
+    - name: Kill orphan mitmproxy processes
+      command: kill {{ orphan_mitm.stdout_lines | join(' ') }}
+      when: orphan_mitm.stdout_lines | length > 0
