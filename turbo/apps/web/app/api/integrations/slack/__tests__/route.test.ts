@@ -362,7 +362,7 @@ describe("/api/integrations/slack", () => {
       // Create a compose in a different scope (simulating a shared agent)
       const otherUserId = uniqueId("other-user");
       mockClerk({ userId: otherUserId });
-      const otherScope = await createTestScope(uniqueId("other-scope"));
+      await createTestScope(uniqueId("other-scope"));
       const { composeId: otherComposeId } =
         await createTestCompose("shared-agent");
 
