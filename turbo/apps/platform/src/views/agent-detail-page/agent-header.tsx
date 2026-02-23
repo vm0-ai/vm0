@@ -14,6 +14,7 @@ import {
   IconLoader2,
   IconClockHour3,
   IconEdit,
+  IconMessageChatbot,
 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import { openConfigDialog$ } from "../../signals/agent-detail/config-dialog.ts";
@@ -25,6 +26,10 @@ import {
   agentScheduleSummary$,
   openScheduleDialog$,
 } from "../../signals/agent-detail/schedule.ts";
+import {
+  isCollaborateAvailable$,
+  openCollaboratePanel$,
+} from "../../signals/agent-detail/collaborate.ts";
 import { AgentAvatar } from "./agent-avatar.tsx";
 import type { AgentDetail } from "../../signals/agent-detail/types.ts";
 import { Link } from "../router/link.tsx";
@@ -37,7 +42,9 @@ interface AgentHeaderProps {
 export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
   const openConfig = useSet(openConfigDialog$);
   const openRun = useSet(openRunDialog$);
+  const openCollaborate = useSet(openCollaboratePanel$);
   const buttonState = useGet(runButtonState$);
+  const collaborateAvailable = useGet(isCollaborateAvailable$);
   const isBusy = buttonState !== "idle";
   const schedule = useGet(agentSchedule$);
   const scheduleSummary = useGet(agentScheduleSummary$);
@@ -132,6 +139,23 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
                   : "Run agent"}
             </TooltipContent>
           </Tooltip>
+
+          {isOwner && collaborateAvailable && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9"
+                  onClick={() => openCollaborate()}
+                  aria-label="Collaborate"
+                >
+                  <IconMessageChatbot size={18} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Collaborate</TooltipContent>
+            </Tooltip>
+          )}
 
           {isOwner && (
             <Tooltip>

@@ -18,6 +18,9 @@ export default defineConfig({
   },
   define: {
     "import.meta.env.VITE_MOCK_LOG_DETAIL": JSON.stringify(""),
+    "import.meta.env.VITE_COLLABORATE_AGENT": JSON.stringify(
+      "test-collaborate-agent",
+    ),
   },
   test: {
     globals: true,

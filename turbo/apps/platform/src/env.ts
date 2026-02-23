@@ -7,6 +7,9 @@
 
 export const hasClerkAuth = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
+export const collaborateAgentName =
+  (import.meta.env.VITE_COLLABORATE_AGENT as string | undefined) ?? "";
+
 declare global {
   interface Window {
     __vitest_index__?: boolean;

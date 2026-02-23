@@ -263,6 +263,132 @@ describe("agent detail page", () => {
     expect(screen.getByRole("textbox")).toBeInTheDocument();
   });
 
+  it("should show Collaborate button for owned agents", async () => {
+    mockAgentDetailAPI();
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Collaborate" }),
+    ).toBeInTheDocument();
+  });
+
+  it("should open collaborate panel when Collaborate button is clicked", async () => {
+    mockAgentDetailAPI();
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Collaborate" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("Send a message to start collaborating"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("should close collaborate panel when close button is clicked", async () => {
+    mockAgentDetailAPI();
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Collaborate" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("Send a message to start collaborating"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close collaborate panel" }),
+    );
+
+    await vi.waitFor(() => {
+      expect(
+        screen.queryByText("Send a message to start collaborating"),
+      ).toBeNull();
+    });
+  });
+
+  it("should not show Collaborate button for shared (non-owner) agents", async () => {
+    server.use(
+      http.get("/api/agent/composes", ({ request }) => {
+        const url = new URL(request.url);
+        const queryName = url.searchParams.get("name");
+        if (queryName !== "shared-agent") {
+          return new HttpResponse(null, { status: 404 });
+        }
+        return HttpResponse.json({
+          id: "compose_2",
+          name: "shared-agent",
+          headVersionId: "version_1",
+          content: {
+            version: "1",
+            agents: {
+              "shared-agent": {
+                description: "A shared agent",
+                framework: "claude-code",
+              },
+            },
+          },
+          createdAt: "2024-01-01T00:00:00Z",
+          updatedAt: "2024-01-01T00:00:00Z",
+        });
+      }),
+      http.get("/api/agent/composes/:id/instructions", () => {
+        return HttpResponse.json({
+          content: "# Shared",
+          filename: "instructions.md",
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: `/agents/${encodeURIComponent("other-scope/shared-agent")}`,
+      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "shared-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("button", { name: "Collaborate" })).toBeNull();
+  });
+
   it("should show read-only pre for shared (non-owner) agents", async () => {
     // Shared agent path has scope/name format
     server.use(

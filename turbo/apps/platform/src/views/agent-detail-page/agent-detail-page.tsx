@@ -15,12 +15,28 @@ import {
   isInlineRunInitializing$,
   isRunPanelVisible$,
 } from "../../signals/agent-detail/inline-run.ts";
+import { isCollaboratePanelOpen$ } from "../../signals/agent-detail/collaborate.ts";
 import { AgentHeader } from "./agent-header.tsx";
 import { AgentInstructions } from "./agent-instructions.tsx";
 import { InlineRunPanel } from "./inline-run-panel.tsx";
+import { CollaboratePanel } from "./collaborate-panel.tsx";
 import { ConfigDialog } from "./config-dialog/config-dialog.tsx";
 import { RunDialog } from "./run-dialog/run-dialog.tsx";
 import { ScheduleDialog } from "./schedule-dialog.tsx";
+
+type RightPanelType = "none" | "run" | "collaborate";
+
+function useActiveRightPanel(): RightPanelType {
+  const runPanelVisible = useGet(isRunPanelVisible$);
+  const collaborateOpen = useGet(isCollaboratePanelOpen$);
+  if (collaborateOpen) {
+    return "collaborate";
+  }
+  if (runPanelVisible) {
+    return "run";
+  }
+  return "none";
+}
 
 export function AgentDetailPage() {
   const agentName = useGet(agentName$);
@@ -31,9 +47,9 @@ export function AgentDetailPage() {
   const instructions = useGet(agentInstructions$);
   const instructionsLoading = useGet(agentInstructionsLoading$);
   const activeRunId = useGet(activeRunId$);
-  const panelVisible = useGet(isRunPanelVisible$);
   const runInitializing = useGet(isInlineRunInitializing$);
   const showSkeleton = loading || runInitializing;
+  const rightPanel = useActiveRightPanel();
 
   return (
     <AppShell
@@ -52,7 +68,7 @@ export function AgentDetailPage() {
         ) : detail ? (
           <>
             <AgentHeader detail={detail} isOwner={isOwner} />
-            {panelVisible ? (
+            {rightPanel !== "none" ? (
               <div className="flex gap-4">
                 <div className="w-1/2">
                   <AgentInstructions
@@ -62,7 +78,11 @@ export function AgentDetailPage() {
                   />
                 </div>
                 <div className="w-1/2">
-                  <InlineRunPanel runId={activeRunId} />
+                  {rightPanel === "run" ? (
+                    <InlineRunPanel runId={activeRunId} />
+                  ) : (
+                    <CollaboratePanel />
+                  )}
                 </div>
               </div>
             ) : (
