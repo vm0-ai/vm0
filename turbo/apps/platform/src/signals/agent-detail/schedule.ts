@@ -42,6 +42,65 @@ interface ScheduleResponse {
 const internalAgentSchedule$ = state<ScheduleResponse | null>(null);
 export const agentSchedule$ = computed((get) => get(internalAgentSchedule$));
 
+/** Human-readable summary of the current schedule for tooltip display. */
+export const agentScheduleSummary$ = computed((get) => {
+  const schedule = get(internalAgentSchedule$);
+  if (!schedule) {
+    return null;
+  }
+
+  const parts: string[] = [];
+
+  if (schedule.cronExpression) {
+    parts.push(describeCron(schedule.cronExpression));
+  }
+
+  if (schedule.timezone) {
+    parts.push(schedule.timezone);
+  }
+
+  if (schedule.nextRunAt) {
+    const next = new Date(schedule.nextRunAt);
+    parts.push(
+      `Next: ${next.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`,
+    );
+  }
+
+  return parts.join("\n");
+});
+
+function describeCron(cron: string): string {
+  const dayNames: Record<string, string> = {
+    "0": "Sunday",
+    "1": "Monday",
+    "2": "Tuesday",
+    "3": "Wednesday",
+    "4": "Thursday",
+    "5": "Friday",
+    "6": "Saturday",
+    "7": "Sunday",
+  };
+  const parsed = parseCronExpression(cron);
+  const hh = parsed.hour.padStart(2, "0");
+  const mm = parsed.minute.padStart(2, "0");
+  const time = `${hh}:${mm}`;
+
+  switch (parsed.timeOption) {
+    case "every-weekday": {
+      return `Weekdays at ${time}`;
+    }
+    case "every-day": {
+      return `Daily at ${time}`;
+    }
+    case "every-week": {
+      return `${dayNames[parsed.dayOfWeek] ?? `Day ${parsed.dayOfWeek}`}s at ${time}`;
+    }
+    case "every-month": {
+      return `Monthly on day ${parsed.dayOfMonth} at ${time}`;
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Fetch agent schedule
 // ---------------------------------------------------------------------------
