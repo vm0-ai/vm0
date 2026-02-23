@@ -2,10 +2,8 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
-import { pathname$ } from "../../../signals/route.ts";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
-import { FeatureSwitchKey } from "@vm0/core";
 
 const context = testContext();
 
@@ -97,15 +95,6 @@ function mockLogsAPI(options?: {
 }
 
 describe("agent logs page", () => {
-  it("should redirect to /agents when feature flag is disabled", async () => {
-    await setupPage({
-      context,
-      path: "/agents/my-agent/logs",
-    });
-
-    expect(context.store.get(pathname$)).toBe("/agents");
-  });
-
   it("should render page header and logs table", async () => {
     mockAgentDetailAPI();
     mockLogsAPI();
@@ -113,7 +102,6 @@ describe("agent logs page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/logs",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -141,7 +129,6 @@ describe("agent logs page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/logs",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -156,7 +143,6 @@ describe("agent logs page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/logs",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -178,7 +164,6 @@ describe("agent logs page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/logs",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -206,7 +191,6 @@ describe("agent logs page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/logs",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {

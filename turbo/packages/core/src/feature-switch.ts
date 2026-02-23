@@ -44,10 +44,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },
-  [FeatureSwitchKey.AgentDetailPage]: {
-    maintainer: "yuma@vm0.ai",
-    enabled: false,
-  },
   [FeatureSwitchKey.ConnectorNango]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,

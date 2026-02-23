@@ -26,7 +26,6 @@ import { VariableDialog } from "../settings-page/variable-dialog.tsx";
 import { DeleteSecretDialog } from "../settings-page/delete-secret-dialog.tsx";
 import { DeleteVariableDialog } from "../settings-page/delete-variable-dialog.tsx";
 import forgotPasswordIcon from "../settings-page/icons/forgot-password.svg";
-import type { MergedItem } from "../../signals/settings-page/secrets-and-variables.ts";
 import {
   agentDetail$,
   agentDetailLoading$,
@@ -38,6 +37,7 @@ import {
   connectionsActiveTab$,
   setConnectionsActiveTab$,
   type AgentConnectorStatus,
+  type AgentMergedItem,
 } from "../../signals/agent-detail/connections.ts";
 import {
   connectConnector$,
@@ -202,7 +202,7 @@ function MissingItemRow({
   item,
   isFirst,
 }: {
-  item: MergedItem;
+  item: AgentMergedItem;
   isFirst: boolean;
 }) {
   const openAddSecret = useSet(openAddSecretDialog$);
@@ -366,7 +366,13 @@ function VariableRow({
   );
 }
 
-function ItemRow({ item, isFirst }: { item: MergedItem; isFirst: boolean }) {
+function ItemRow({
+  item,
+  isFirst,
+}: {
+  item: AgentMergedItem;
+  isFirst: boolean;
+}) {
   if (item.data === null) {
     return <MissingItemRow item={item} isFirst={isFirst} />;
   }

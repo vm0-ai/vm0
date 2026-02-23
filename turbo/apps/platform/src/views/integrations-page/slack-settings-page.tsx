@@ -51,9 +51,11 @@ function getAllConnectorEnvVars(): Set<string> {
 // ---------------------------------------------------------------------------
 
 function MissingEnvBanner({
+  agentName,
   missingSecrets,
   missingVars,
 }: {
+  agentName: string | undefined;
   missingSecrets: string[];
   missingVars: string[];
 }) {
@@ -68,6 +70,15 @@ function MissingEnvBanner({
     return null;
   }
 
+  const navigateToConnections = (tab: "connectors" | "secrets") => {
+    if (agentName) {
+      navigate("/agents/:name/connections", {
+        pathParams: { name: agentName },
+        searchParams: new URLSearchParams({ tab }),
+      });
+    }
+  };
+
   return (
     <div className="flex items-center gap-3 rounded-lg border border-amber-500 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950/30">
       <IconAlertTriangle
@@ -80,13 +91,7 @@ function MissingEnvBanner({
         {hasMissingConnectors && (
           <button
             className="font-medium text-amber-600 hover:underline dark:text-amber-500"
-            onClick={() =>
-              navigate("/settings", {
-                searchParams: new URLSearchParams({
-                  tab: "connectors",
-                }),
-              })
-            }
+            onClick={() => navigateToConnections("connectors")}
           >
             connectors
           </button>
@@ -95,13 +100,7 @@ function MissingEnvBanner({
         {hasMissingSecretsOrVars && (
           <button
             className="font-medium text-amber-600 hover:underline dark:text-amber-500"
-            onClick={() =>
-              navigate("/settings", {
-                searchParams: new URLSearchParams({
-                  tab: "secrets-and-variables",
-                }),
-              })
-            }
+            onClick={() => navigateToConnections("secrets")}
           >
             secrets or variables
           </button>
@@ -271,6 +270,7 @@ export function SlackSettingsPage() {
             />
 
             <MissingEnvBanner
+              agentName={data?.agent?.name}
               missingSecrets={data?.environment.missingSecrets ?? []}
               missingVars={data?.environment.missingVars ?? []}
             />

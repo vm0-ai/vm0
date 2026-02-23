@@ -5,12 +5,14 @@ import {
   getConnectorProvidedSecretNames,
   CONNECTOR_TYPES,
   type ConnectorType,
+  type SecretResponse,
+  type VariableResponse,
 } from "@vm0/core";
+import { searchParams$, updateSearchParams$ } from "../route.ts";
 import { agentDetail$ } from "./agent-detail.ts";
 import { connectors$ } from "../external/connectors.ts";
 import { secrets$ } from "../settings-page/secrets.ts";
 import { variables$ } from "../settings-page/variables.ts";
-import type { MergedItem } from "../settings-page/secrets-and-variables.ts";
 
 // ---------------------------------------------------------------------------
 // Agent required env — derived from compose content
@@ -45,6 +47,24 @@ const agentRequiredEnv$ = computed((get): AgentRequiredEnv => {
     requiredVariables: grouped.vars.map((r) => r.name),
   };
 });
+
+// ---------------------------------------------------------------------------
+// Merged item type — agent-scoped secrets & variables with requirement info
+// ---------------------------------------------------------------------------
+
+export type AgentMergedItem =
+  | {
+      kind: "secret";
+      name: string;
+      data: SecretResponse | null;
+      agentRequired: boolean;
+    }
+  | {
+      kind: "variable";
+      name: string;
+      data: VariableResponse | null;
+      agentRequired: boolean;
+    };
 
 // ---------------------------------------------------------------------------
 // Connector status — which connectors the agent needs
@@ -92,7 +112,7 @@ export const agentMergedItems$ = computed(async (get) => {
     Object.keys(CONNECTOR_TYPES) as ConnectorType[],
   );
 
-  const items: MergedItem[] = [];
+  const items: AgentMergedItem[] = [];
 
   const configuredSecretNames = new Set(secretsList.map((s) => s.name));
   const configuredVariableNames = new Set(variablesList.map((v) => v.name));
@@ -156,8 +176,32 @@ function isConnectionsTab(v: string): v is ConnectionsTab {
   return v === "connectors" || v === "secrets";
 }
 
-export const setConnectionsActiveTab$ = command(({ set }, v: string) => {
-  if (isConnectionsTab(v)) {
-    set(internalActiveTab$, v);
+/**
+ * Initialize tab state from URL search params.
+ * Called during connections page setup.
+ */
+export const initConnectionsTabs$ = command(({ get, set }) => {
+  const params = get(searchParams$);
+  const tab = params.get("tab");
+  if (tab && isConnectionsTab(tab)) {
+    set(internalActiveTab$, tab);
   }
+});
+
+/**
+ * Switch active tab and sync to URL.
+ */
+export const setConnectionsActiveTab$ = command(({ get, set }, tab: string) => {
+  if (!isConnectionsTab(tab)) {
+    return;
+  }
+  set(internalActiveTab$, tab);
+
+  const params = new URLSearchParams(get(searchParams$));
+  if (tab === "connectors") {
+    params.delete("tab");
+  } else {
+    params.set("tab", tab);
+  }
+  set(updateSearchParams$, params);
 });

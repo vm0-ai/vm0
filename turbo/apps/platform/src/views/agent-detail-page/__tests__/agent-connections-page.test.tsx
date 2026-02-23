@@ -2,10 +2,8 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { describe, expect, it, vi } from "vitest";
 import { screen, within, fireEvent } from "@testing-library/react";
-import { pathname$ } from "../../../signals/route.ts";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
-import { FeatureSwitchKey } from "@vm0/core";
 
 const context = testContext();
 
@@ -84,15 +82,6 @@ function mockVariablesAPI(variables?: unknown[]) {
 }
 
 describe("agent connections page", () => {
-  it("should redirect to /agents when feature flag is disabled", async () => {
-    await setupPage({
-      context,
-      path: "/agents/my-agent/connections",
-    });
-
-    expect(context.store.get(pathname$)).toBe("/agents");
-  });
-
   it("should render connections page structure", async () => {
     mockAgentDetailAPI();
     mockConnectorsAPI();
@@ -102,7 +91,6 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -125,7 +113,6 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -148,7 +135,6 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -179,7 +165,6 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -196,7 +181,6 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -216,7 +200,6 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -255,7 +238,6 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -287,7 +269,6 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
