@@ -68,7 +68,7 @@ export function MultiSelectCombobox({
     }
   }
 
-  function remove(value: string, e: React.MouseEvent) {
+  function remove(value: string, e: React.SyntheticEvent) {
     e.stopPropagation();
     onChange(selected.filter((v) => v !== value));
   }

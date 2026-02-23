@@ -8,12 +8,13 @@ import {
   updateSkills$,
 } from "../../../signals/agent-detail/config-dialog.ts";
 import { skills$, skillUrlToValue } from "../../../data/skills.ts";
+import { AGENT_NAME_REGEX } from "@vm0/core";
 
 function validateAgentName(name: string): string | null {
   if (!name) {
     return "Agent name is required";
   }
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/.test(name)) {
+  if (!AGENT_NAME_REGEX.test(name)) {
     return "Must be 3-64 chars, letters/numbers/hyphens, start and end with letter or number";
   }
   return null;

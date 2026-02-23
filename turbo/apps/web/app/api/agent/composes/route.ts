@@ -5,6 +5,7 @@ import {
 } from "../../../../src/lib/ts-rest-handler";
 import {
   composesMainContract,
+  AGENT_NAME_REGEX,
   SUPPORTED_FRAMEWORKS,
   isSupportedFramework,
 } from "@vm0/core";
@@ -214,8 +215,7 @@ const router = tsr.router(composesMainContract, {
     }
 
     // Validate name format: 3-64 chars, alphanumeric and hyphens, start/end with alphanumeric
-    const nameRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
-    if (!nameRegex.test(agentName)) {
+    if (!AGENT_NAME_REGEX.test(agentName)) {
       return {
         status: 400 as const,
         body: {
@@ -376,21 +376,23 @@ const router = tsr.router(composesMainContract, {
         .limit(1);
 
       if (oldStorage) {
-        // Remove any existing storage with the new name to avoid conflicts
-        await globalThis.services.db
-          .delete(storages)
-          .where(
-            and(
-              eq(storages.scopeId, userScope.id),
-              eq(storages.name, newStorageName),
-              eq(storages.type, "volume"),
-            ),
-          );
+        // Delete conflicting storage + rename in a single transaction
+        await globalThis.services.db.transaction(async (tx) => {
+          await tx
+            .delete(storages)
+            .where(
+              and(
+                eq(storages.scopeId, userScope.id),
+                eq(storages.name, newStorageName),
+                eq(storages.type, "volume"),
+              ),
+            );
 
-        await globalThis.services.db
-          .update(storages)
-          .set({ name: newStorageName, updatedAt: new Date() })
-          .where(eq(storages.id, oldStorage.id));
+          await tx
+            .update(storages)
+            .set({ name: newStorageName, updatedAt: new Date() })
+            .where(eq(storages.id, oldStorage.id));
+        });
       }
     }
 

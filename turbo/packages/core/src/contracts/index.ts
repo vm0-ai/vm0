@@ -28,6 +28,7 @@ export {
   type ComposesByIdContract,
   type ComposesVersionsContract,
   type ComposesListContract,
+  AGENT_NAME_REGEX,
   agentNameSchema,
   volumeConfigSchema,
   agentDefinitionSchema,

@@ -7,6 +7,7 @@ import { logger } from "../log.ts";
 import { navigateInReact$ } from "../route.ts";
 import { agentDetail$, fetchAgentDetail$ } from "./agent-detail.ts";
 import { skillValueToUrl } from "../../data/skills.ts";
+import { AGENT_NAME_REGEX } from "@vm0/core";
 import type { AgentDetail } from "./types.ts";
 
 const L = logger("ConfigDialog");
@@ -87,7 +88,7 @@ export const configDialogValid$ = computed((get) => {
   if (firstKey === undefined || firstKey === "") {
     return false;
   }
-  return /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/.test(firstKey);
+  return AGENT_NAME_REGEX.test(firstKey);
 });
 
 // ---------------------------------------------------------------------------
