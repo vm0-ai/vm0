@@ -1588,6 +1588,28 @@ export async function findTestArtifactStorage(scopeId: string) {
   return { storage, version: version ?? null };
 }
 
+/**
+ * Find a storage volume by scope and name.
+ * Returns the storage id and name, or undefined if not found.
+ */
+export async function findTestStorageByName(
+  scopeId: string,
+  name: string,
+): Promise<{ id: string; name: string } | undefined> {
+  const [result] = await globalThis.services.db
+    .select({ id: storages.id, name: storages.name })
+    .from(storages)
+    .where(
+      and(
+        eq(storages.scopeId, scopeId),
+        eq(storages.name, name),
+        eq(storages.type, "volume"),
+      ),
+    )
+    .limit(1);
+  return result;
+}
+
 export async function findTestSlackComposeRequest(composeJobId: string) {
   const [row] = await globalThis.services.db
     .select()
