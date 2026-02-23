@@ -168,7 +168,7 @@
       ignore_errors: true
 
     - name: Garbage collect old artifacts
-      command: "{{ bin_dir }}/runner gc --keep-latest 3"
+      command: "{{ bin_dir }}/runner gc --keep-latest 2"
 
     # ========================================
     # Phase 6: Final health check
