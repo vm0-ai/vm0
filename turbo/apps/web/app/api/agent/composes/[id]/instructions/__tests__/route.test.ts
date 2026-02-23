@@ -75,7 +75,10 @@ describe("GET /api/agent/composes/:id/instructions", () => {
 
     expect(response.status).toBe(200);
     expect(data.content).toBeNull();
-    expect(data.filename).toBeNull();
+    // Even without an explicit instructions field, the framework-canonical
+    // filename is returned (CLAUDE.md for claude-code) because the CLI may
+    // upload instructions without setting the field in the YAML.
+    expect(data.filename).toBe("CLAUDE.md");
   });
 
   it("should return null content when instructions volume does not exist", async () => {
