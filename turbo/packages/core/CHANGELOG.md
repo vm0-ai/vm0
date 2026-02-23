@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.19.0](https://github.com/vm0-ai/vm0/compare/core-v8.18.1...core-v8.19.0) (2026-02-23)
+
+
+### Features
+
+* **platform:** add editable agent name and skills multi-select to config dialog ([#3216](https://github.com/vm0-ai/vm0/issues/3216)) ([50fc6f3](https://github.com/vm0-ai/vm0/commit/50fc6f3fc03d6595b9ee326df2dd88a1697eb837))
+
 ## [8.18.1](https://github.com/vm0-ai/vm0/compare/core-v8.18.0...core-v8.18.1) (2026-02-22)
 
 

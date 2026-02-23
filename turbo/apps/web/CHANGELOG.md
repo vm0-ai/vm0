@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.48.0](https://github.com/vm0-ai/vm0/compare/web-v12.47.0...web-v12.48.0) (2026-02-23)
+
+
+### Features
+
+* **platform:** add editable agent name and skills multi-select to config dialog ([#3216](https://github.com/vm0-ai/vm0/issues/3216)) ([50fc6f3](https://github.com/vm0-ai/vm0/commit/50fc6f3fc03d6595b9ee326df2dd88a1697eb837))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.19.0
+
 ## [12.47.0](https://github.com/vm0-ai/vm0/compare/web-v12.46.0...web-v12.47.0) (2026-02-22)
 
 

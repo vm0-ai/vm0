@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.69.0](https://github.com/vm0-ai/vm0/compare/platform-v0.68.5...platform-v0.69.0) (2026-02-23)
+
+
+### Features
+
+* **platform:** add editable agent name and skills multi-select to config dialog ([#3216](https://github.com/vm0-ai/vm0/issues/3216)) ([50fc6f3](https://github.com/vm0-ai/vm0/commit/50fc6f3fc03d6595b9ee326df2dd88a1697eb837))
+* **platform:** add schedule management dialog and enhanced cron options ([#3211](https://github.com/vm0-ai/vm0/issues/3211)) ([d1f30aa](https://github.com/vm0-ai/vm0/commit/d1f30aa17651a80964296e3c1a677049586b9caa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.19.0
+
 ## [0.68.5](https://github.com/vm0-ai/vm0/compare/platform-v0.68.4...platform-v0.68.5) (2026-02-22)
 
 
