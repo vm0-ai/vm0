@@ -54,6 +54,7 @@ export async function handleInboundEmailTrigger(
   //    - scope+agent@domain (explicit scope)
   //    - agent@domain (scope auto-detected from sender)
   let triggerAddress: { scope: string; agent: string } | null = null;
+  let triggerLocalPart: string | null = null;
   let userId: string | null = null;
 
   // 1a. Try scope+agent format first
@@ -61,6 +62,7 @@ export async function handleInboundEmailTrigger(
     const parsed = parseEmailTriggerAddress(addr);
     if (parsed) {
       triggerAddress = parsed;
+      triggerLocalPart = `${parsed.scope}+${parsed.agent}`;
       break;
     }
   }
@@ -81,6 +83,8 @@ export async function handleInboundEmailTrigger(
       log.debug("No trigger address found in recipients", { to });
       return;
     }
+
+    triggerLocalPart = agentName;
 
     // For agent-only format, we need the sender's scope.
     // Look up sender in Clerk first (needed for scope lookup).
@@ -146,7 +150,15 @@ export async function handleInboundEmailTrigger(
   // 5. Fetch full email
   const email = await getReceivedEmail(emailId);
 
-  // 6. Verify sender authenticity via DMARC
+  // 6. Extract inbound Message-ID for threading (case-insensitive lookup)
+  const messageIdKey = Object.keys(email.headers).find(
+    (k) => k.toLowerCase() === "message-id",
+  );
+  const inboundMessageId = messageIdKey
+    ? email.headers[messageIdKey]
+    : undefined;
+
+  // 7. Verify sender authenticity via DMARC
   const verification = verifySenderAuthenticity(email.headers);
   if (!verification.verified) {
     log.warn("Sender authentication failed, ignoring email", {
@@ -157,7 +169,7 @@ export async function handleInboundEmailTrigger(
     return;
   }
 
-  // 7. Build prompt from email content
+  // 8. Build prompt from email content
   const bodyContent = extractEmailBody(email.html, email.text);
 
   // Combine subject + body as prompt
@@ -170,11 +182,11 @@ export async function handleInboundEmailTrigger(
     return;
   }
 
-  // 8. Generate reply token for conversation continuity
+  // 9. Generate reply token for conversation continuity
   const sessionPlaceholderId = crypto.randomUUID();
   const replyToken = generateReplyToken(sessionPlaceholderId);
 
-  // 9. Build callback
+  // 10. Build callback
   const callbacks = [
     {
       url: `${getApiUrl()}/api/internal/callbacks/email/trigger`,
@@ -185,11 +197,14 @@ export async function handleInboundEmailTrigger(
         userId,
         inboundEmailId: emailId,
         replyToken,
+        inboundMessageId,
+        subject,
+        triggerLocalPart,
       },
     },
   ];
 
-  // 10. Create and dispatch run
+  // 11. Create and dispatch run
   const result = await createRun({
     userId,
     agentComposeVersionId: compose.headVersionId,

@@ -26,6 +26,9 @@ interface CallbackPayload {
   userId: string;
   inboundEmailId: string;
   replyToken: string;
+  inboundMessageId?: string;
+  subject?: string;
+  triggerLocalPart?: string;
 }
 
 interface CallbackBody {
@@ -182,17 +185,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     ? buildReplyToAddress(replyToken)
     : undefined;
 
+  // Build threading headers from inbound email's Message-ID
+  const headers: Record<string, string> = {};
+  if (payload.inboundMessageId) {
+    headers["In-Reply-To"] = payload.inboundMessageId;
+    headers["References"] = payload.inboundMessageId;
+  }
+
   // Send response email
   const { messageId } = await sendEmail({
-    from: buildFromAddress(compose.name),
+    from: buildFromAddress(payload.triggerLocalPart ?? compose.name),
     to: senderEmail,
-    subject: `Re: ${compose.name}`,
+    subject: payload.subject ? `Re: ${payload.subject}` : `Re: ${compose.name}`,
     react: AgentReplyEmail({
       agentName: compose.name,
       output,
       logsUrl,
     }),
     replyTo: replyToAddress,
+    headers,
   });
 
   // Save email thread session for reply continuity

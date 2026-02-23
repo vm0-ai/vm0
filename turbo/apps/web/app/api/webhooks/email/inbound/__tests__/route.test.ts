@@ -320,6 +320,9 @@ describe("POST /api/webhooks/email/inbound", () => {
         userId: user.userId,
         inboundEmailId: "trigger-email-123",
         replyToken: expect.any(String),
+        inboundMessageId: "<default-msg-id@example.com>",
+        subject: "Test Subject",
+        triggerLocalPart: `${scopeSlug}+${agentName}`,
       });
     });
 
@@ -730,6 +733,9 @@ describe("POST /api/webhooks/email/inbound", () => {
         senderEmail,
         userId: user.userId,
         inboundEmailId: "auto-scope-email",
+        inboundMessageId: "<default-msg-id@example.com>",
+        subject: "Auto Scope Test",
+        triggerLocalPart: agentName,
       });
     });
 

@@ -190,9 +190,11 @@ export function buildReplyToAddress(token: string): string {
 
 /**
  * Build the from address for outbound emails.
+ * The localPart is used as both the display name prefix and the email local part,
+ * so the response mirrors the address the user sent to.
  */
-export function buildFromAddress(agentName: string): string {
-  return `${agentName} from VM0 <agent@${getFromDomain()}>`;
+export function buildFromAddress(localPart: string): string {
+  return `${localPart} from VM0 <${localPart}@${getFromDomain()}>`;
 }
 
 /**

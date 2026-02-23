@@ -188,6 +188,7 @@ vi.mock("resend", () => {
             headers: {
               "authentication-results":
                 "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
+              "message-id": "<default-msg-id@example.com>",
             },
           },
         }),
