@@ -112,7 +112,7 @@ export function MultiSelectCombobox({
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        remove(opt.value, e as unknown as React.MouseEvent);
+                        remove(opt.value, e);
                       }
                     }}
                     aria-label={`Remove ${opt.label}`}

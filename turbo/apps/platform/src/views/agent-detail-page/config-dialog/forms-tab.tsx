@@ -45,6 +45,15 @@ export function FormsTab() {
   const nameError = validateAgentName(firstKey);
   const selectedSkills = agent.skills?.map(skillUrlToValue) ?? [];
 
+  // Include custom/unrecognized skill URLs as extra options so they aren't
+  // silently dropped from the selection when editing.
+  const knownValues = new Set(skills.map((s) => s.value));
+  const extraOptions = selectedSkills
+    .filter((v) => !knownValues.has(v))
+    .map((v) => ({ value: v, label: v }));
+  const allOptions =
+    extraOptions.length > 0 ? [...skills, ...extraOptions] : skills;
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
@@ -73,7 +82,7 @@ export function FormsTab() {
       <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-foreground">Skills</label>
         <MultiSelectCombobox
-          options={skills}
+          options={allOptions}
           selected={selectedSkills}
           onChange={updateSkillValues}
           placeholder="Select skills..."
