@@ -56,6 +56,12 @@ function mockAgentDetailAPI() {
         createdAt: "2024-01-01T00:00:00Z",
       });
     }),
+    http.get("/api/agent/schedules", () => {
+      return HttpResponse.json({ schedules: [] });
+    }),
+    http.post("/api/agent/schedules/:name/enable", () => {
+      return new HttpResponse(null, { status: 200 });
+    }),
   );
 }
 

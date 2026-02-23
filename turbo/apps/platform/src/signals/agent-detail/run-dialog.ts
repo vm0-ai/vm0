@@ -31,12 +31,13 @@ export const setRunDialogPrompt$ = command(({ set }, value: string) => {
 });
 
 // Time option: "now" or a schedule preset
-type TimeOption =
-  | "now"
+export type ScheduleTimeOption =
   | "every-weekday"
   | "every-day"
   | "every-week"
   | "every-month";
+
+type TimeOption = "now" | ScheduleTimeOption;
 
 const internalTimeOption$ = state<TimeOption>("now");
 export const runDialogTimeOption$ = computed((get) => get(internalTimeOption$));
@@ -65,6 +66,30 @@ export const setRunDialogFrequency$ = command(({ set }, value: string) => {
   set(internalFrequency$, value);
 });
 
+// Minute of hour for schedule options
+const internalMinute$ = state("0");
+export const runDialogMinute$ = computed((get) => get(internalMinute$));
+
+export const setRunDialogMinute$ = command(({ set }, value: string) => {
+  set(internalMinute$, value);
+});
+
+// Day of week for "every-week" (cron: 0=Sun, 1=Mon, ..., 6=Sat)
+const internalDayOfWeek$ = state("1");
+export const runDialogDayOfWeek$ = computed((get) => get(internalDayOfWeek$));
+
+export const setRunDialogDayOfWeek$ = command(({ set }, value: string) => {
+  set(internalDayOfWeek$, value);
+});
+
+// Day of month for "every-month" (1-31)
+const internalDayOfMonth$ = state("1");
+export const runDialogDayOfMonth$ = computed((get) => get(internalDayOfMonth$));
+
+export const setRunDialogDayOfMonth$ = command(({ set }, value: string) => {
+  set(internalDayOfMonth$, value);
+});
+
 // ---------------------------------------------------------------------------
 // Saving state
 // ---------------------------------------------------------------------------
@@ -87,6 +112,9 @@ export const openRunDialog$ = command(({ set }) => {
   set(internalPrompt$, "");
   set(internalTimeOption$, "now");
   set(internalFrequency$, "9");
+  set(internalMinute$, "0");
+  set(internalDayOfWeek$, "1");
+  set(internalDayOfMonth$, "1");
   set(internalSaveError$, null);
   set(internalOpen$, true);
 });
@@ -99,23 +127,29 @@ export const closeRunDialog$ = command(({ set }) => {
 // Cron expression mapping
 // ---------------------------------------------------------------------------
 
-function buildCronExpression(timeOption: TimeOption, hour: string): string {
-  const h = Number.parseInt(hour, 10);
-  switch (timeOption) {
+export function buildCronExpression(opts: {
+  timeOption: ScheduleTimeOption;
+  hour: string;
+  minute?: string;
+  dayOfWeek?: string;
+  dayOfMonth?: string;
+}): string {
+  const h = Number.parseInt(opts.hour, 10);
+  const m = opts.minute !== undefined ? Number.parseInt(opts.minute, 10) : 0;
+  switch (opts.timeOption) {
     case "every-weekday": {
-      return `0 ${String(h)} * * 1-5`;
+      return `${String(m)} ${String(h)} * * 1-5`;
     }
     case "every-day": {
-      return `0 ${String(h)} * * *`;
+      return `${String(m)} ${String(h)} * * *`;
     }
     case "every-week": {
-      return `0 ${String(h)} * * 1`;
+      const dow = opts.dayOfWeek ?? "1";
+      return `${String(m)} ${String(h)} * * ${dow}`;
     }
     case "every-month": {
-      return `0 ${String(h)} 1 * *`;
-    }
-    default: {
-      return "";
+      const dom = opts.dayOfMonth ?? "1";
+      return `${String(m)} ${String(h)} ${dom} * *`;
     }
   }
 }
@@ -129,6 +163,9 @@ export const submitRunDialog$ = command(async ({ get, set }) => {
   const prompt = get(internalPrompt$);
   const timeOption = get(internalTimeOption$);
   const frequency = get(internalFrequency$);
+  const minute = get(internalMinute$);
+  const dayOfWeek = get(internalDayOfWeek$);
+  const dayOfMonth = get(internalDayOfMonth$);
 
   if (!detail || !prompt.trim()) {
     return;
@@ -181,7 +218,13 @@ export const submitRunDialog$ = command(async ({ get, set }) => {
     }
 
     // Schedule creation
-    const cronExpression = buildCronExpression(timeOption, frequency);
+    const cronExpression = buildCronExpression({
+      timeOption,
+      hour: frequency,
+      minute,
+      dayOfWeek,
+      dayOfMonth,
+    });
     const timezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     const response = await fetchFn("/api/agent/schedules", {
@@ -205,8 +248,26 @@ export const submitRunDialog$ = command(async ({ get, set }) => {
       );
     }
 
+    // Enable the schedule (backend creates with enabled=false)
+    const enableResponse = await fetchFn(
+      `/api/agent/schedules/default/enable`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ composeId: detail.id }),
+      },
+    );
+
+    if (!enableResponse.ok) {
+      L.warn("Failed to enable schedule:", enableResponse.statusText);
+    }
+
     set(internalOpen$, false);
     toast.success("Schedule created");
+
+    // Refresh the schedule badge in the header
+    const { fetchAgentSchedule$ } = await import("./schedule.ts");
+    await set(fetchAgentSchedule$);
   } catch (error) {
     throwIfAbort(error);
     L.error("Failed to submit run dialog:", error);

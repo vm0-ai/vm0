@@ -20,6 +20,7 @@ import { AgentInstructions } from "./agent-instructions.tsx";
 import { InlineRunPanel } from "./inline-run-panel.tsx";
 import { ConfigDialog } from "./config-dialog/config-dialog.tsx";
 import { RunDialog } from "./run-dialog/run-dialog.tsx";
+import { ScheduleDialog } from "./schedule-dialog.tsx";
 
 export function AgentDetailPage() {
   const agentName = useGet(agentName$);
@@ -73,6 +74,7 @@ export function AgentDetailPage() {
             )}
             <ConfigDialog />
             <RunDialog />
+            <ScheduleDialog />
           </>
         ) : (
           <div className="rounded-lg border border-border bg-card p-8 text-center">

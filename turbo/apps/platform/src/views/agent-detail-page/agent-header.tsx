@@ -12,12 +12,18 @@ import {
   IconList,
   IconLink,
   IconLoader2,
+  IconClockHour3,
+  IconEdit,
 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import { navigateInReact$ } from "../../signals/route.ts";
 import { openConfigDialog$ } from "../../signals/agent-detail/config-dialog.ts";
 import { openRunDialog$ } from "../../signals/agent-detail/run-dialog.ts";
 import { runButtonState$ } from "../../signals/agent-detail/inline-run.ts";
+import {
+  agentSchedule$,
+  openScheduleDialog$,
+} from "../../signals/agent-detail/schedule.ts";
 import { AgentAvatar } from "./agent-avatar.tsx";
 import type { AgentDetail } from "../../signals/agent-detail/types.ts";
 
@@ -32,6 +38,8 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
   const openRun = useSet(openRunDialog$);
   const buttonState = useGet(runButtonState$);
   const isBusy = buttonState !== "idle";
+  const schedule = useGet(agentSchedule$);
+  const openSchedule = useSet(openScheduleDialog$);
 
   // Extract description from the first agent definition
   const agentKeys = detail.content?.agents
@@ -64,6 +72,24 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <TooltipProvider delayDuration={100}>
+          {schedule && (
+            <div className="inline-flex h-9 shrink-0 items-center rounded-md border border-border bg-sidebar">
+              <div className="flex items-center gap-1 pl-2.5 pr-2 py-0.5">
+                <IconClockHour3 size={12} className="shrink-0 text-sky-700" />
+                <span className="text-xs font-medium leading-4 text-secondary-foreground">
+                  Scheduled
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => openSchedule()}
+                className="flex h-9 w-9 items-center justify-center border-l border-border text-secondary-foreground hover:bg-accent rounded-r-md cursor-pointer"
+              >
+                <IconEdit size={16} />
+              </button>
+            </div>
+          )}
+
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
