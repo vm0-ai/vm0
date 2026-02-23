@@ -40,7 +40,7 @@
     "@typescript-eslint/rule-tester": "^8.55.0",
     "@typescript-eslint/type-utils": "^8.55.0",
     "@typescript-eslint/utils": "^8.55.0",
-    "@vitejs/plugin-react": "^5.1.4",
+    "@vitejs/plugin-react": "^4.7.0",
     "@vm0/eslint-config": "workspace:*",
     "eslint": "^9.34.0",
     "eslint-plugin-react": "^7.37.5",
