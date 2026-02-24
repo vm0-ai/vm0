@@ -70,6 +70,17 @@
         {
             "type": "cargo-workspace",
             "cargoWorkspacePath": "crates"
+        },
+        {
+            "type": "linked-versions",
+            "groupName": "runner-guest",
+            "components": [
+                "runner-rs",
+                "guest-agent",
+                "guest-download",
+                "guest-init",
+                "guest-mock-claude"
+            ]
         }
     ]
 }
