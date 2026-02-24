@@ -148,6 +148,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     expect(emailReplyCallback!.payload).toEqual({
       emailThreadSessionId: expect.any(String),
       inboundEmailId: "inbound-email-123",
+      inboundMessageId: "<default-msg-id@example.com>",
     });
   });
 

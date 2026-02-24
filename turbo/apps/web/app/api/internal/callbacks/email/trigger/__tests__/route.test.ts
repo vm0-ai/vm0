@@ -29,6 +29,7 @@ interface TriggerCallbackPayload {
   inboundEmailId: string;
   replyToken: string;
   inboundMessageId?: string;
+  inboundReferences?: string;
   subject?: string;
   triggerLocalPart?: string;
 }

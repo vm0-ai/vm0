@@ -60,14 +60,25 @@ export async function handleInboundEmailReply(
   // 4. Fetch full email body from Resend
   const email = await getReceivedEmail(emailId);
 
-  // 5. Extract email body (prefer HTML, fallback to text, strip quotes)
+  // 5. Extract inbound Message-ID and References for threading (case-insensitive lookup)
+  const headers = email.headers ?? {};
+  const messageIdKey = Object.keys(headers).find(
+    (k) => k.toLowerCase() === "message-id",
+  );
+  const inboundMessageId = messageIdKey ? headers[messageIdKey] : undefined;
+  const referencesKey = Object.keys(headers).find(
+    (k) => k.toLowerCase() === "references",
+  );
+  const inboundReferences = referencesKey ? headers[referencesKey] : undefined;
+
+  // 6. Extract email body (prefer HTML, fallback to text, strip quotes)
   const replyContent = extractEmailBody(email.html, email.text);
   if (!replyContent.trim()) {
     log.debug("Empty reply content after stripping", { emailId });
     return;
   }
 
-  // 6. Get compose to find agent name and version
+  // 7. Get compose to find agent name and version
   const [compose] = await globalThis.services.db
     .select({
       name: agentComposes.name,
@@ -84,7 +95,7 @@ export async function handleInboundEmailReply(
     return;
   }
 
-  // 7. Build callbacks for email reply notification
+  // 8. Build callbacks for email reply notification
   const callbacks = [
     {
       url: `${getApiUrl()}/api/internal/callbacks/email/reply`,
@@ -92,11 +103,13 @@ export async function handleInboundEmailReply(
       payload: {
         emailThreadSessionId: session.id,
         inboundEmailId: emailId,
+        inboundMessageId,
+        inboundReferences,
       },
     },
   ];
 
-  // 8. Create and dispatch run via unified pipeline
+  // 9. Create and dispatch run via unified pipeline
   const result = await createRun({
     userId: session.userId,
     agentComposeVersionId: compose.headVersionId ?? "",

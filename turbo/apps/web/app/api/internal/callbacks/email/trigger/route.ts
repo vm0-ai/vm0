@@ -27,6 +27,7 @@ interface CallbackPayload {
   inboundEmailId: string;
   replyToken: string;
   inboundMessageId?: string;
+  inboundReferences?: string;
   subject?: string;
   triggerLocalPart?: string;
 }
@@ -86,11 +87,17 @@ function formatOutput(
 
 function buildThreadingHeaders(
   inboundMessageId: string | undefined,
+  inboundReferences: string | undefined,
 ): Record<string, string> {
   const headers: Record<string, string> = {};
   if (inboundMessageId) {
     headers["In-Reply-To"] = inboundMessageId;
-    headers["References"] = inboundMessageId;
+    const referencesParts: string[] = [];
+    if (inboundReferences) {
+      referencesParts.push(inboundReferences);
+    }
+    referencesParts.push(inboundMessageId);
+    headers["References"] = referencesParts.join(" ");
   }
   return headers;
 }
@@ -210,7 +217,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     ? buildReplyToAddress(replyToken)
     : undefined;
 
-  const headers = buildThreadingHeaders(payload.inboundMessageId);
+  const headers = buildThreadingHeaders(
+    payload.inboundMessageId,
+    payload.inboundReferences,
+  );
 
   // Send response email
   const { messageId } = await sendEmail({

@@ -156,6 +156,10 @@ export async function handleInboundEmailTrigger(
     (k) => k.toLowerCase() === "message-id",
   );
   const inboundMessageId = messageIdKey ? headers[messageIdKey] : undefined;
+  const referencesKey = Object.keys(headers).find(
+    (k) => k.toLowerCase() === "references",
+  );
+  const inboundReferences = referencesKey ? headers[referencesKey] : undefined;
 
   // 7. Verify sender authenticity via DMARC
   const verification = verifySenderAuthenticity(email.headers);
@@ -197,6 +201,7 @@ export async function handleInboundEmailTrigger(
         inboundEmailId: emailId,
         replyToken,
         inboundMessageId,
+        inboundReferences,
         subject,
         triggerLocalPart,
       },
