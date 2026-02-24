@@ -154,7 +154,7 @@ function createTarGz(
     for (const file of files) {
       archive.append(file.content, { name: file.name });
     }
-    void archive.finalize();
+    archive.finalize().catch(reject);
   });
 }
 
