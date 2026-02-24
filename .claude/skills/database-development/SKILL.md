@@ -1,5 +1,5 @@
 ---
-name: Database Development
+name: database-development
 description: Database migrations and Drizzle ORM guidelines for the vm0 project
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: CLI Design
+name: cli-design
 description: Design patterns and conventions for the vm0 CLI user experience
 context: fork
 ---
