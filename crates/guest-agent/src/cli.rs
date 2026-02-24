@@ -216,6 +216,10 @@ pub async fn execute_cli(
                         }
 
                         if let Ok(mut event) = serde_json::from_str::<serde_json::Value>(stripped) {
+                            // First event is the CLI init (system/init or thread.started)
+                            if seq == 0 {
+                                crate::timing::record_e2e_from_api("api_to_cli_init");
+                            }
                             // Print result to stdout if applicable
                             if event.get("type").and_then(|v| v.as_str()) == Some("result")
                                 && let Some(result) = event.get("result").and_then(|v| v.as_str())

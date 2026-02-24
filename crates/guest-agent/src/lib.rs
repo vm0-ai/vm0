@@ -13,4 +13,5 @@ pub mod masker;
 pub mod metrics;
 pub mod paths;
 pub mod telemetry;
+pub mod timing;
 mod urls;

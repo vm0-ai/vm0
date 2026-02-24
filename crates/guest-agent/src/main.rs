@@ -14,7 +14,7 @@ use guest_agent::telemetry;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
@@ -29,18 +29,7 @@ async fn main() {
 /// Cleanup (final telemetry + complete API) is guaranteed to run.
 async fn run() -> i32 {
     // Record API-to-agent E2E time (as early as possible)
-    let api_start = env::api_start_time();
-    if !api_start.is_empty()
-        && let Ok(api_ms) = api_start.parse::<u64>()
-    {
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        let e2e = now_ms.saturating_sub(api_ms);
-        record_sandbox_op("api_to_agent_start", Duration::from_millis(e2e), true, None);
-        log_info!(LOG_TAG, "E2E time from API to agent start: {e2e}ms");
-    }
+    guest_agent::timing::record_e2e_from_api("api_to_agent_start");
 
     // Validate required env vars
     if env::working_dir().is_empty() {
