@@ -1,6 +1,11 @@
 import { WebClient, type WebAPICallResult } from "@slack/web-api";
 import type { Block, KnownBlock, View } from "@slack/web-api";
 
+const STREAM_CHUNK_SIZE = 200;
+const STREAM_THROTTLE_MS = 1000;
+const STREAM_MAX_PREVIEW_LENGTH = 4000;
+const STREAM_MAX_UPDATES = 30;
+
 /**
  * Check if an error is a Slack invalid_auth error
  * This happens when the bot token is revoked, expired, or invalid
@@ -159,4 +164,91 @@ export async function exchangeOAuthCode(
     teamName: result.team.name ?? "",
     authedUserId: result.authed_user?.id ?? "",
   };
+}
+
+/**
+ * Stream a response to Slack using progressive message updates.
+ *
+ * Posts an initial typing indicator, then progressively reveals content
+ * via chat.update calls, and finalizes with full Block Kit formatting.
+ * Falls back to a single postMessage if streaming fails.
+ *
+ * @param client - Slack WebClient
+ * @param channel - Channel ID
+ * @param text - Full response text
+ * @param options - Thread timestamp, final blocks, and optional typing indicator
+ */
+export async function streamResponse(
+  client: WebClient,
+  channel: string,
+  text: string,
+  options: {
+    threadTs: string;
+    blocks: (Block | KnownBlock)[];
+    typingIndicator?: string;
+  },
+): Promise<{ ts: string | undefined; channel: string | undefined }> {
+  const initial = await client.chat.postMessage({
+    channel,
+    thread_ts: options.threadTs,
+    text: options.typingIndicator ?? "...",
+  });
+
+  const messageTs = initial.ts;
+  if (!messageTs) {
+    return { ts: initial.ts, channel: initial.channel };
+  }
+
+  const previewText = text.slice(0, STREAM_MAX_PREVIEW_LENGTH);
+  const chunks = splitIntoChunks(previewText, STREAM_CHUNK_SIZE);
+  let accumulated = "";
+  let updateCount = 0;
+
+  for (const chunk of chunks) {
+    if (updateCount >= STREAM_MAX_UPDATES) {
+      break;
+    }
+    accumulated += chunk;
+    await client.chat.update({
+      channel,
+      ts: messageTs,
+      text: accumulated,
+    });
+    updateCount++;
+    await sleep(STREAM_THROTTLE_MS);
+  }
+
+  await client.chat.update({
+    channel,
+    ts: messageTs,
+    text,
+    blocks: options.blocks,
+  });
+
+  return { ts: messageTs, channel: initial.channel };
+}
+
+function splitIntoChunks(text: string, chunkSize: number): string[] {
+  const chunks: string[] = [];
+  let remaining = text;
+  while (remaining.length > 0) {
+    if (remaining.length <= chunkSize) {
+      chunks.push(remaining);
+      break;
+    }
+    let splitAt = remaining.lastIndexOf("\n", chunkSize);
+    if (splitAt === -1 || splitAt < chunkSize / 2) {
+      splitAt = remaining.lastIndexOf(" ", chunkSize);
+    }
+    if (splitAt === -1 || splitAt < chunkSize / 2) {
+      splitAt = chunkSize;
+    }
+    chunks.push(remaining.slice(0, splitAt));
+    remaining = remaining.slice(splitAt);
+  }
+  return chunks;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

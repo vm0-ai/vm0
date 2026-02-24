@@ -72,6 +72,7 @@ export { verifySlackSignature, getSlackSignatureHeaders } from "./verify";
 export {
   createSlackClient,
   postMessage,
+  streamResponse,
   openModal,
   updateModal,
   publishAppHome,

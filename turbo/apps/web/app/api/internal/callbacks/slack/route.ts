@@ -8,9 +8,12 @@ import { slackThreadSessions } from "../../../../../src/db/schema/slack-thread-s
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { agentRunCallbacks } from "../../../../../src/db/schema/agent-run-callback";
+import type { WebClient } from "@slack/web-api";
+import type { Block, KnownBlock } from "@slack/web-api";
 import {
   createSlackClient,
   postMessage,
+  streamResponse,
   buildAgentResponseMessage,
   detectDeepLinks,
 } from "../../../../../src/lib/slack";
@@ -82,6 +85,46 @@ async function findNewSessionId(
     .orderBy(desc(agentSessions.updatedAt))
     .limit(1);
   return newSession?.id;
+}
+
+/**
+ * Post the agent response to Slack.
+ * Completed runs are streamed progressively; failed runs are posted directly.
+ */
+async function postResponseToSlack(
+  client: WebClient,
+  channelId: string,
+  threadTs: string,
+  responseText: string,
+  blocks: (Block | KnownBlock)[],
+  status: "completed" | "failed",
+  agentName: string,
+  runId: string,
+): Promise<void> {
+  if (status === "completed") {
+    try {
+      await streamResponse(client, channelId, responseText, {
+        threadTs,
+        blocks,
+        typingIndicator: `_${agentName} is responding..._`,
+      });
+    } catch (streamError) {
+      log.warn("Streaming failed, falling back to postMessage", {
+        runId,
+        error: streamError,
+      });
+      await postMessage(client, channelId, responseText, {
+        threadTs,
+        blocks,
+      });
+    }
+    return;
+  }
+
+  await postMessage(client, channelId, responseText, {
+    threadTs,
+    blocks,
+  });
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -191,17 +234,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const logsUrl = buildLogsUrl(runId);
   const deepLinks = detectDeepLinks(responseText, getPlatformUrl());
+  const blocks = buildAgentResponseMessage(
+    responseText,
+    agentName,
+    logsUrl,
+    deepLinks,
+  );
 
   // Post response to Slack
-  await postMessage(client, channelId, responseText, {
+  await postResponseToSlack(
+    client,
+    channelId,
     threadTs,
-    blocks: buildAgentResponseMessage(
-      responseText,
-      agentName,
-      logsUrl,
-      deepLinks,
-    ),
-  });
+    responseText,
+    blocks,
+    status,
+    agentName,
+    runId,
+  );
 
   // Get run to find userId for session lookup
   const [run] = await globalThis.services.db

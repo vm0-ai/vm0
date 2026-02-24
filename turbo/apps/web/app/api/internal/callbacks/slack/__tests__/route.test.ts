@@ -71,6 +71,7 @@ describe("POST /api/internal/callbacks/slack", () => {
   beforeEach(() => {
     context.setupMocks();
     mockClient.chat.postMessage.mockClear();
+    mockClient.chat.update.mockClear();
     mockClient.reactions.remove.mockClear();
   });
 
@@ -253,7 +254,7 @@ describe("POST /api/internal/callbacks/slack", () => {
   });
 
   describe("Successful Callback", () => {
-    it("should post response message to Slack on completed run", async () => {
+    it("should stream response to Slack on completed run", async () => {
       // Given a linked Slack user with an agent
       const { userLink, installation } = await givenLinkedSlackUser();
       const { binding } = await givenUserHasAgent(userLink, {
@@ -304,20 +305,29 @@ describe("POST /api/internal/callbacks/slack", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
 
-      // And a message should be posted to Slack
+      // And an initial streaming message should be posted
       expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
-      const callArgs = mockClient.chat.postMessage.mock.calls[0]![0] as {
+      const postArgs = mockClient.chat.postMessage.mock.calls[0]![0] as {
         channel: string;
         thread_ts: string;
+        text: string;
       };
-      expect(callArgs.channel).toBe(channelId);
-      expect(callArgs.thread_ts).toBe("1234567890.000000");
+      expect(postArgs.channel).toBe(channelId);
+      expect(postArgs.thread_ts).toBe("1234567890.000000");
+      expect(postArgs.text).toContain("is responding");
+
+      // And the message should be finalized via chat.update with blocks
+      expect(mockClient.chat.update).toHaveBeenCalled();
+      const lastUpdate = mockClient.chat.update.mock.calls.at(-1)?.[0] as {
+        blocks: unknown;
+      };
+      expect(lastUpdate).toHaveProperty("blocks");
 
       // And the thinking reaction should be removed
       expect(mockClient.reactions.remove).toHaveBeenCalledTimes(1);
     });
 
-    it("should post error message on failed run", async () => {
+    it("should post error message directly on failed run without streaming", async () => {
       // Given a linked Slack user with an agent
       const { userLink, installation } = await givenLinkedSlackUser();
       const { binding } = await givenUserHasAgent(userLink, {
@@ -367,13 +377,79 @@ describe("POST /api/internal/callbacks/slack", () => {
       // Then the request should succeed
       expect(response.status).toBe(200);
 
-      // And an error message should be posted
+      // And an error message should be posted directly (not streamed)
       expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
       const callArgs = mockClient.chat.postMessage.mock.calls[0]![0] as {
         text: string;
+        blocks: unknown;
       };
       expect(callArgs.text).toContain("Error");
       expect(callArgs.text).toContain("Agent crashed unexpectedly");
+      expect(callArgs).toHaveProperty("blocks");
+
+      // And no streaming updates should have been made
+      expect(mockClient.chat.update).not.toHaveBeenCalled();
+    });
+
+    it("should fall back to postMessage when streaming fails", async () => {
+      // Given a linked Slack user with an agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      const { binding } = await givenUserHasAgent(userLink, {
+        agentName: "test-agent",
+      });
+
+      // And a run with a registered callback
+      mockClerk({ userId: userLink.vm0UserId });
+      const { runId } = await createTestRun(binding.composeId, "Test prompt");
+      const channelId = `C-fallback-${Date.now()}`;
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/slack",
+        payload: {
+          workspaceId: installation.slackWorkspaceId,
+          channelId,
+          threadTs: "1234567890.000000",
+          messageTs: "1234567890.123456",
+          userLinkId: userLink.id,
+          agentName: "test-agent",
+          composeId: binding.composeId,
+          reactionAdded: true,
+        },
+      });
+
+      // And chat.update will fail (simulating rate limit or API error)
+      mockClient.chat.update.mockRejectedValue(new Error("rate_limited"));
+
+      // When the callback is invoked with completed status
+      const request = createCallbackRequest(
+        {
+          runId,
+          status: "completed",
+          payload: {
+            workspaceId: installation.slackWorkspaceId,
+            channelId,
+            threadTs: "1234567890.000000",
+            messageTs: "1234567890.123456",
+            userLinkId: userLink.id,
+            agentName: "test-agent",
+            composeId: binding.composeId,
+            reactionAdded: true,
+          },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      // Then the request should still succeed
+      expect(response.status).toBe(200);
+
+      // And a fallback postMessage with blocks should have been sent
+      // (first call is streaming initial, second is fallback with full content)
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(2);
+      const fallbackArgs = mockClient.chat.postMessage.mock.calls[1]![0] as {
+        blocks: unknown;
+      };
+      expect(fallbackArgs).toHaveProperty("blocks");
     });
 
     it("should not remove reaction when reactionAdded is false", async () => {
