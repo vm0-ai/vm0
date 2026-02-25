@@ -22,7 +22,7 @@ import { slackInstallations } from "../db/schema/slack-installation";
 import { slackThreadSessions } from "../db/schema/slack-thread-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
-import { and, eq } from "drizzle-orm";
+import { and, eq, like } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 
 // Route handlers - imported here so callers don't need to pass them
@@ -1734,11 +1734,15 @@ export async function findTestRunsByUserAndPromptContaining(
   userId: string,
   promptSubstring: string,
 ) {
-  const runs = await globalThis.services.db
+  return globalThis.services.db
     .select()
     .from(agentRuns)
-    .where(eq(agentRuns.userId, userId));
-  return runs.filter((r) => r.prompt.includes(promptSubstring));
+    .where(
+      and(
+        eq(agentRuns.userId, userId),
+        like(agentRuns.prompt, `%${promptSubstring}%`),
+      ),
+    );
 }
 
 /**

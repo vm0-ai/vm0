@@ -34,6 +34,7 @@ async function downloadAndUploadEmailAttachment(
     return null;
   }
 
+  let buffer: Buffer;
   try {
     const response = await fetch(attachment.download_url);
 
@@ -46,34 +47,34 @@ async function downloadAndUploadEmailAttachment(
     }
 
     const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
-    const s3Key = `${R2_PATH_PREFIX}/${emailId}/${attachment.id}-${attachment.filename}`;
-
-    await uploadS3Buffer(bucketName, s3Key, buffer, attachment.content_type);
-
-    const presignedUrl = await generatePresignedUrl(
-      bucketName,
-      s3Key,
-      PRESIGNED_URL_EXPIRY,
-    );
-
-    log.debug("Uploaded email attachment to R2", {
-      attachmentId: attachment.id,
-      filename: attachment.filename,
-      size: buffer.length,
-      s3Key,
-    });
-
-    return presignedUrl;
+    buffer = Buffer.from(arrayBuffer);
   } catch (error) {
-    log.debug("Error downloading/uploading email attachment", {
+    log.debug("Error downloading email attachment", {
       attachmentId: attachment.id,
       error,
     });
     return null;
   }
+
+  const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
+  const s3Key = `${R2_PATH_PREFIX}/${emailId}/${attachment.id}-${attachment.filename}`;
+
+  await uploadS3Buffer(bucketName, s3Key, buffer, attachment.content_type);
+
+  const presignedUrl = await generatePresignedUrl(
+    bucketName,
+    s3Key,
+    PRESIGNED_URL_EXPIRY,
+  );
+
+  log.debug("Uploaded email attachment to R2", {
+    attachmentId: attachment.id,
+    filename: attachment.filename,
+    size: buffer.length,
+    s3Key,
+  });
+
+  return presignedUrl;
 }
 
 function formatSize(bytes: number): string {
@@ -120,39 +121,29 @@ function formatEmailAttachmentSkipped(
 export async function processEmailAttachments(
   emailId: string,
 ): Promise<string> {
-  let attachments: ReceivedEmailAttachment[];
-  try {
-    attachments = await getReceivedEmailAttachments(emailId);
-  } catch (error) {
-    log.debug("Failed to list email attachments", { emailId, error });
-    return "";
-  }
+  const attachments = await getReceivedEmailAttachments(emailId);
 
   if (attachments.length === 0) {
     return "";
   }
 
-  const lines: string[] = [];
+  const lines = await Promise.all(
+    attachments.map(async (attachment) => {
+      if (attachment.size > MAX_ATTACHMENT_SIZE_BYTES) {
+        return formatEmailAttachmentSkipped(attachment, "exceeds size limit");
+      }
 
-  for (const attachment of attachments) {
-    if (attachment.size > MAX_ATTACHMENT_SIZE_BYTES) {
-      lines.push(
-        formatEmailAttachmentSkipped(attachment, "exceeds size limit"),
+      const presignedUrl = await downloadAndUploadEmailAttachment(
+        attachment,
+        emailId,
       );
-      continue;
-    }
 
-    const presignedUrl = await downloadAndUploadEmailAttachment(
-      attachment,
-      emailId,
-    );
-
-    if (presignedUrl) {
-      lines.push(formatEmailAttachment(attachment, presignedUrl));
-    } else {
-      lines.push(formatEmailAttachmentSkipped(attachment, "download failed"));
-    }
-  }
+      if (presignedUrl) {
+        return formatEmailAttachment(attachment, presignedUrl);
+      }
+      return formatEmailAttachmentSkipped(attachment, "download failed");
+    }),
+  );
 
   return lines.join("\n\n");
 }

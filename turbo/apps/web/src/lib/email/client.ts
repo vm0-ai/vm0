@@ -68,14 +68,6 @@ export async function sendEmail(
   return { id: data.id, messageId };
 }
 
-interface ReceivedEmailAttachmentMeta {
-  id: string;
-  filename: string | null;
-  size: number;
-  content_type: string;
-  content_disposition: string | null;
-}
-
 /**
  * Retrieve a received inbound email from Resend.
  */
@@ -86,7 +78,6 @@ export async function getReceivedEmail(emailId: string): Promise<{
   text: string;
   html: string;
   headers: Record<string, string>;
-  attachments: ReceivedEmailAttachmentMeta[];
 }> {
   const resend = getResendClient();
 
@@ -105,13 +96,6 @@ export async function getReceivedEmail(emailId: string): Promise<{
     text: data.text ?? "",
     html: data.html ?? "",
     headers: data.headers,
-    attachments: (data.attachments ?? []).map((a) => ({
-      id: a.id,
-      filename: a.filename,
-      size: a.size,
-      content_type: a.content_type,
-      content_disposition: a.content_disposition,
-    })),
   };
 }
 
