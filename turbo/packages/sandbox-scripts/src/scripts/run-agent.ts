@@ -448,6 +448,16 @@ async function run(): Promise<[number, string]> {
         try {
           const event = JSON.parse(stripped) as Record<string, unknown>;
 
+          // First event is the CLI init (system/init or thread.started)
+          if (eventSequence === 0 && API_START_TIME) {
+            const apiStartTime = parseInt(API_START_TIME, 10);
+            if (!isNaN(apiStartTime)) {
+              const e2eTime = Date.now() - apiStartTime;
+              recordSandboxOp("api_to_cli_init", e2eTime, true);
+              logInfo(`E2E api_to_cli_init: ${e2eTime}ms`);
+            }
+          }
+
           // Valid JSONL - send immediately with sequence number (0-based)
           await sendEvent(event, eventSequence);
           eventSequence++;
