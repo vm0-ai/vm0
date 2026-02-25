@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.50.1](https://github.com/vm0-ai/vm0/compare/web-v12.50.0...web-v12.50.1) (2026-02-25)
+
+
+### Bug Fixes
+
+* replace inline image data uris with placeholder in email body ([#3255](https://github.com/vm0-ai/vm0/issues/3255)) ([7bd85bf](https://github.com/vm0-ai/vm0/commit/7bd85bf91ee8b17504bd59615c53f1b2ea9919f9)), closes [#3254](https://github.com/vm0-ai/vm0/issues/3254)
+
 ## [12.50.0](https://github.com/vm0-ai/vm0/compare/web-v12.49.1...web-v12.50.0) (2026-02-25)
 
 
