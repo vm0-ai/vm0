@@ -6,8 +6,6 @@ import {
   Text,
   Link,
   Hr,
-  Preview,
-  Section,
 } from "@react-email/components";
 
 interface AgentReplyEmailProps {
@@ -24,19 +22,16 @@ export function AgentReplyEmail({
   return (
     <Html>
       <Head />
-      <Preview>Reply from &quot;{agentName}&quot;</Preview>
       <Body style={bodyStyle}>
         <Container style={containerStyle}>
-          <Text style={headingStyle}>Reply from &quot;{agentName}&quot;</Text>
-          <Section style={outputSectionStyle}>
-            <Text style={outputStyle}>{output}</Text>
-          </Section>
+          <Text style={outputStyle}>{output}</Text>
           <Hr style={hrStyle} />
+          <Text style={signatureStyle}>{agentName} from VM0</Text>
           <Text style={footerStyle}>
             <Link href={logsUrl} style={linkStyle}>
               View logs
             </Link>{" "}
-            · Reply to continue the conversation
+            · Reply to continue
           </Text>
         </Container>
       </Body>
@@ -58,19 +53,6 @@ const containerStyle = {
   borderRadius: "8px",
 };
 
-const headingStyle = {
-  fontSize: "18px",
-  fontWeight: "600" as const,
-  color: "#1a1a1a",
-  margin: "0 0 16px",
-};
-
-const outputSectionStyle = {
-  backgroundColor: "#f4f4f5",
-  borderRadius: "6px",
-  padding: "12px 16px",
-};
-
 const outputStyle = {
   fontSize: "14px",
   color: "#374151",
@@ -82,6 +64,13 @@ const outputStyle = {
 const hrStyle = {
   borderColor: "#e5e7eb",
   margin: "20px 0",
+};
+
+const signatureStyle = {
+  fontSize: "13px",
+  fontWeight: "600" as const,
+  color: "#374151",
+  margin: "0 0 4px",
 };
 
 const footerStyle = {
