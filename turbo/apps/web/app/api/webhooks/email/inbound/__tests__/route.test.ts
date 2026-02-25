@@ -1048,6 +1048,164 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Only one upload (the good attachment)
       expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalledTimes(1);
     });
+
+    it("should replace inline image data URI with placeholder in prompt", async () => {
+      const user = await context.setupUser({ prefix: "inline-img" });
+      const suffix = user.userId.slice("inline-img-".length);
+      const scopeSlug = `scope-${suffix}`;
+      const agentName = uniqueId("inline-agent");
+      await createTestCompose(agentName);
+
+      const senderEmail = "sender@example.com";
+      mockClerk({ userId: user.userId, email: senderEmail });
+
+      // Simulate Gmail inline image: base64 data URI embedded in HTML body
+      const fakeBase64 = "A".repeat(1000);
+      mockReceivedEmailGet({
+        from: senderEmail,
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        subject: "Check this photo",
+        text: "",
+        html: `<p>Can you see what I'm doing?</p><img src="data:image/jpeg;base64,${fakeBase64}" alt="photo.jpg">`,
+        headers: {
+          "authentication-results":
+            "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
+        },
+      });
+
+      // Inline image also appears in attachments list (Resend returns it)
+      mockReceivedEmailAttachmentsList([
+        {
+          id: "inline-att-1",
+          filename: "photo.jpg",
+          size: 750,
+          content_type: "image/jpeg",
+          content_disposition: "inline",
+          download_url: "https://download.resend.com/inline-img-1",
+        },
+      ]);
+
+      // Mock download for the inline image
+      const imgBuffer = Buffer.from("fake-jpeg-bytes");
+      const downloadHandler = http.get(
+        "https://download.resend.com/inline-img-1",
+        () => {
+          return new HttpResponse(imgBuffer, {
+            headers: { "content-type": "image/jpeg" },
+          });
+        },
+      );
+      server.use(downloadHandler.handler);
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "inline-img-email",
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          from: senderEmail,
+          subject: "Check this photo",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const runs = await findTestRunsByUserAndPromptContaining(
+        user.userId,
+        "Check this photo",
+      );
+      expect(runs).toHaveLength(1);
+      const prompt = runs[0]!.prompt;
+
+      // Text body preserved
+      expect(prompt).toContain("Can you see what I'm doing?");
+      // Placeholder replaces data URI
+      expect(prompt).toContain("[inline image: photo.jpg]");
+      // Base64 data NOT in prompt
+      expect(prompt).not.toContain("data:image/jpeg;base64");
+      // Inline image processed through attachment pipeline
+      expect(prompt).toContain("[attachment]: photo.jpg");
+      expect(prompt).toContain("https://mock-presigned-url");
+    });
+
+    it("should handle inline image without alt text", async () => {
+      const user = await context.setupUser({ prefix: "inline-noalt" });
+      const suffix = user.userId.slice("inline-noalt-".length);
+      const scopeSlug = `scope-${suffix}`;
+      const agentName = uniqueId("noalt-agent");
+      await createTestCompose(agentName);
+
+      const senderEmail = "sender@example.com";
+      mockClerk({ userId: user.userId, email: senderEmail });
+
+      // Inline image with no alt attribute
+      const fakeBase64 = "B".repeat(500);
+      mockReceivedEmailGet({
+        from: senderEmail,
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        subject: "No Alt Image",
+        text: "",
+        html: `<p>Look at this</p><img src="data:image/png;base64,${fakeBase64}">`,
+        headers: {
+          "authentication-results":
+            "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
+        },
+      });
+
+      mockReceivedEmailAttachmentsList([
+        {
+          id: "inline-noalt-1",
+          filename: "image.png",
+          size: 375,
+          content_type: "image/png",
+          content_disposition: "inline",
+          download_url: "https://download.resend.com/inline-noalt-1",
+        },
+      ]);
+
+      const downloadHandler = http.get(
+        "https://download.resend.com/inline-noalt-1",
+        () => {
+          return new HttpResponse(Buffer.from("fake-png"), {
+            headers: { "content-type": "image/png" },
+          });
+        },
+      );
+      server.use(downloadHandler.handler);
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "noalt-img-email",
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          from: senderEmail,
+          subject: "No Alt Image",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const runs = await findTestRunsByUserAndPromptContaining(
+        user.userId,
+        "No Alt Image",
+      );
+      expect(runs).toHaveLength(1);
+      const prompt = runs[0]!.prompt;
+
+      // Generic placeholder (no alt text available)
+      expect(prompt).toContain("[inline image]");
+      // Base64 data NOT in prompt
+      expect(prompt).not.toContain("data:image/png;base64");
+    });
   });
 
   describe("Email Reply with Attachments", () => {
