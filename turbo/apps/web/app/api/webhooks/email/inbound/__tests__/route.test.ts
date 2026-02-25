@@ -24,6 +24,42 @@ import { generateReplyToken } from "../../../../../../src/lib/email/handlers/sha
 const context = testContext();
 const mockResend = vi.mocked(new Resend(""), true);
 
+/** Mock factory: override receiving.get response for a single test */
+function mockReceivedEmailGet(data: {
+  from: string;
+  to: string[];
+  subject: string;
+  text: string;
+  html: string;
+  headers: Record<string, string>;
+  attachments?: Array<{
+    id: string;
+    filename: string;
+    size: number;
+    content_type: string;
+    content_disposition: string;
+  }>;
+}) {
+  // Resend SDK types are not exported; cast once here instead of in every test
+  mockResend.emails.receiving.get.mockResolvedValueOnce({ data } as never);
+}
+
+/** Mock factory: override receiving.attachments.list response for a single test */
+function mockReceivedEmailAttachmentsList(
+  attachments: Array<{
+    id: string;
+    filename: string;
+    size: number;
+    content_type: string;
+    content_disposition: string;
+    download_url: string;
+  }>,
+) {
+  mockResend.emails.receiving.attachments.list.mockResolvedValueOnce({
+    data: { object: "list", has_more: false, data: attachments },
+  } as never);
+}
+
 /** Build a valid Svix-signed webhook request */
 function createWebhookRequest(body: string, headers?: Record<string, string>) {
   return createTestRequest("http://localhost:3000/api/webhooks/email/inbound", {
@@ -200,15 +236,14 @@ describe("POST /api/webhooks/email/inbound", () => {
     mockClerk({ userId: null });
 
     // Mock Resend to return empty text (e.g., email with only quoted content)
-    mockResend.emails.receiving.get.mockResolvedValueOnce({
-      data: {
-        from: "user@example.com",
-        to: [`reply+${replyToken}@vm7.bot`],
-        subject: "Re: test",
-        text: "   ",
-        html: "<p></p>",
-      },
-    } as never);
+    mockReceivedEmailGet({
+      from: "user@example.com",
+      to: [`reply+${replyToken}@vm7.bot`],
+      subject: "Re: test",
+      text: "   ",
+      html: "<p></p>",
+      headers: {},
+    });
 
     const payload = JSON.stringify({
       type: "email.received",
@@ -398,19 +433,17 @@ describe("POST /api/webhooks/email/inbound", () => {
       mockClerk({ userId: user.userId, email: senderEmail });
 
       // Override Resend mock to return dmarc=fail
-      mockResend.emails.receiving.get.mockResolvedValueOnce({
-        data: {
-          from: senderEmail,
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
-          subject: "Spoofed email",
-          text: "I am pretending to be someone else",
-          html: "<p>I am pretending to be someone else</p>",
-          headers: {
-            "authentication-results":
-              "mx.resend.com; dkim=fail header.d=example.com; spf=fail smtp.mailfrom=attacker.com; dmarc=fail header.from=example.com",
-          },
+      mockReceivedEmailGet({
+        from: senderEmail,
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        subject: "Spoofed email",
+        text: "I am pretending to be someone else",
+        html: "<p>I am pretending to be someone else</p>",
+        headers: {
+          "authentication-results":
+            "mx.resend.com; dkim=fail header.d=example.com; spf=fail smtp.mailfrom=attacker.com; dmarc=fail header.from=example.com",
         },
-      } as never);
+      });
 
       const payload = JSON.stringify({
         type: "email.received",
@@ -448,19 +481,17 @@ describe("POST /api/webhooks/email/inbound", () => {
       mockClerk({ userId: user.userId, email: senderEmail });
 
       // Override Resend mock: dmarc=none but dkim=pass — still rejected
-      mockResend.emails.receiving.get.mockResolvedValueOnce({
-        data: {
-          from: senderEmail,
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
-          subject: "DKIM Only",
-          text: "My domain has no DMARC but DKIM is valid",
-          html: "<p>My domain has no DMARC but DKIM is valid</p>",
-          headers: {
-            "authentication-results":
-              "mx.resend.com; dkim=pass header.d=nodmarc.com; spf=fail smtp.mailfrom=nodmarc.com; dmarc=none header.from=nodmarc.com",
-          },
+      mockReceivedEmailGet({
+        from: senderEmail,
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        subject: "DKIM Only",
+        text: "My domain has no DMARC but DKIM is valid",
+        html: "<p>My domain has no DMARC but DKIM is valid</p>",
+        headers: {
+          "authentication-results":
+            "mx.resend.com; dkim=pass header.d=nodmarc.com; spf=fail smtp.mailfrom=nodmarc.com; dmarc=none header.from=nodmarc.com",
         },
-      } as never);
+      });
 
       const payload = JSON.stringify({
         type: "email.received",
@@ -498,16 +529,14 @@ describe("POST /api/webhooks/email/inbound", () => {
       mockClerk({ userId: user.userId, email: senderEmail });
 
       // Override Resend mock: no authentication-results header
-      mockResend.emails.receiving.get.mockResolvedValueOnce({
-        data: {
-          from: senderEmail,
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
-          subject: "No Auth Headers",
-          text: "Email without authentication results",
-          html: "<p>Email without authentication results</p>",
-          headers: {},
-        },
-      } as never);
+      mockReceivedEmailGet({
+        from: senderEmail,
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        subject: "No Auth Headers",
+        text: "Email without authentication results",
+        html: "<p>Email without authentication results</p>",
+        headers: {},
+      });
 
       const payload = JSON.stringify({
         type: "email.received",
@@ -545,19 +574,17 @@ describe("POST /api/webhooks/email/inbound", () => {
       mockClerk({ userId: user.userId, email: senderEmail });
 
       // Override Resend mock: all authentication methods fail
-      mockResend.emails.receiving.get.mockResolvedValueOnce({
-        data: {
-          from: senderEmail,
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
-          subject: "All Fail",
-          text: "Everything failed",
-          html: "<p>Everything failed</p>",
-          headers: {
-            "authentication-results":
-              "mx.resend.com; dkim=fail; spf=fail; dmarc=fail",
-          },
+      mockReceivedEmailGet({
+        from: senderEmail,
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        subject: "All Fail",
+        text: "Everything failed",
+        html: "<p>Everything failed</p>",
+        headers: {
+          "authentication-results":
+            "mx.resend.com; dkim=fail; spf=fail; dmarc=fail",
         },
-      } as never);
+      });
 
       const payload = JSON.stringify({
         type: "email.received",
@@ -595,19 +622,17 @@ describe("POST /api/webhooks/email/inbound", () => {
       mockClerk({ userId: user.userId, email: senderEmail });
 
       // Override Resend mock to return HTML-only content (empty text)
-      mockResend.emails.receiving.get.mockResolvedValueOnce({
-        data: {
-          from: senderEmail,
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
-          subject: "Newsletter",
-          text: "",
-          html: "<p>Rich content from newsletter</p>",
-          headers: {
-            "authentication-results":
-              "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
-          },
+      mockReceivedEmailGet({
+        from: senderEmail,
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        subject: "Newsletter",
+        text: "",
+        html: "<p>Rich content from newsletter</p>",
+        headers: {
+          "authentication-results":
+            "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
         },
-      } as never);
+      });
 
       const payload = JSON.stringify({
         type: "email.received",
@@ -655,19 +680,17 @@ describe("POST /api/webhooks/email/inbound", () => {
     mockClerk({ userId: null });
 
     // Override Resend mock to return HTML-only content
-    mockResend.emails.receiving.get.mockResolvedValueOnce({
-      data: {
-        from: "user@example.com",
-        to: [`reply+${replyToken}@vm7.bot`],
-        subject: "Re: test",
-        text: "",
-        html: "<p>This is my HTML reply</p>",
-        headers: {
-          "authentication-results":
-            "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
-        },
+    mockReceivedEmailGet({
+      from: "user@example.com",
+      to: [`reply+${replyToken}@vm7.bot`],
+      subject: "Re: test",
+      text: "",
+      html: "<p>This is my HTML reply</p>",
+      headers: {
+        "authentication-results":
+          "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
       },
-    } as never);
+    });
 
     const payload = JSON.stringify({
       type: "email.received",
@@ -706,47 +729,39 @@ describe("POST /api/webhooks/email/inbound", () => {
       mockClerk({ userId: user.userId, email: senderEmail });
 
       // Mock Resend to return email with attachment metadata
-      mockResend.emails.receiving.get.mockResolvedValueOnce({
-        data: {
-          from: senderEmail,
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
-          subject: "With Attachment",
-          text: "Please review the attached file",
-          html: "<p>Please review the attached file</p>",
-          headers: {
-            "authentication-results":
-              "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
-            "message-id": "<att-msg-id@example.com>",
-          },
-          attachments: [
-            {
-              id: "att-1",
-              filename: "invoice.pdf",
-              size: 5000,
-              content_type: "application/pdf",
-              content_disposition: "attachment",
-            },
-          ],
+      mockReceivedEmailGet({
+        from: senderEmail,
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        subject: "With Attachment",
+        text: "Please review the attached file",
+        html: "<p>Please review the attached file</p>",
+        headers: {
+          "authentication-results":
+            "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
+          "message-id": "<att-msg-id@example.com>",
         },
-      } as never);
+        attachments: [
+          {
+            id: "att-1",
+            filename: "invoice.pdf",
+            size: 5000,
+            content_type: "application/pdf",
+            content_disposition: "attachment",
+          },
+        ],
+      });
 
       // Mock attachment list API
-      mockResend.emails.receiving.attachments.list.mockResolvedValueOnce({
-        data: {
-          object: "list",
-          has_more: false,
-          data: [
-            {
-              id: "att-1",
-              filename: "invoice.pdf",
-              size: 5000,
-              content_type: "application/pdf",
-              content_disposition: "attachment",
-              download_url: "https://download.resend.com/att-trigger-1",
-            },
-          ],
+      mockReceivedEmailAttachmentsList([
+        {
+          id: "att-1",
+          filename: "invoice.pdf",
+          size: 5000,
+          content_type: "application/pdf",
+          content_disposition: "attachment",
+          download_url: "https://download.resend.com/att-trigger-1",
         },
-      } as never);
+      ]);
 
       // Mock attachment download via MSW
       const pdfBuffer = Buffer.from("fake-pdf-content");
@@ -821,46 +836,38 @@ describe("POST /api/webhooks/email/inbound", () => {
       mockClerk({ userId: null });
 
       // Mock Resend to return reply email
-      mockResend.emails.receiving.get.mockResolvedValueOnce({
-        data: {
-          from: "user@example.com",
-          to: [`reply+${replyToken}@vm7.bot`],
-          subject: "Re: test",
-          text: "Here is the file you requested",
-          html: "<p>Here is the file you requested</p>",
-          headers: {
-            "authentication-results":
-              "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
-          },
-          attachments: [
-            {
-              id: "att-r1",
-              filename: "data.csv",
-              size: 200,
-              content_type: "text/csv",
-              content_disposition: "attachment",
-            },
-          ],
+      mockReceivedEmailGet({
+        from: "user@example.com",
+        to: [`reply+${replyToken}@vm7.bot`],
+        subject: "Re: test",
+        text: "Here is the file you requested",
+        html: "<p>Here is the file you requested</p>",
+        headers: {
+          "authentication-results":
+            "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
         },
-      } as never);
+        attachments: [
+          {
+            id: "att-r1",
+            filename: "data.csv",
+            size: 200,
+            content_type: "text/csv",
+            content_disposition: "attachment",
+          },
+        ],
+      });
 
       // Mock attachment list API
-      mockResend.emails.receiving.attachments.list.mockResolvedValueOnce({
-        data: {
-          object: "list",
-          has_more: false,
-          data: [
-            {
-              id: "att-r1",
-              filename: "data.csv",
-              size: 200,
-              content_type: "text/csv",
-              content_disposition: "attachment",
-              download_url: "https://download.resend.com/att-reply-1",
-            },
-          ],
+      mockReceivedEmailAttachmentsList([
+        {
+          id: "att-r1",
+          filename: "data.csv",
+          size: 200,
+          content_type: "text/csv",
+          content_disposition: "attachment",
+          download_url: "https://download.resend.com/att-reply-1",
         },
-      } as never);
+      ]);
 
       // Mock attachment download via MSW
       const csvBuffer = Buffer.from("col1,col2\nval1,val2");
@@ -1043,19 +1050,17 @@ describe("POST /api/webhooks/email/inbound", () => {
       mockClerk({ userId: user.userId, email: senderEmail });
 
       // Override Resend mock to return dmarc=fail
-      mockResend.emails.receiving.get.mockResolvedValueOnce({
-        data: {
-          from: senderEmail,
-          to: [`${agentName}@vm7.bot`],
-          subject: "Spoofed auto-scope",
-          text: "I am pretending to be someone else",
-          html: "<p>I am pretending to be someone else</p>",
-          headers: {
-            "authentication-results":
-              "mx.resend.com; dkim=fail; spf=fail; dmarc=fail",
-          },
+      mockReceivedEmailGet({
+        from: senderEmail,
+        to: [`${agentName}@vm7.bot`],
+        subject: "Spoofed auto-scope",
+        text: "I am pretending to be someone else",
+        html: "<p>I am pretending to be someone else</p>",
+        headers: {
+          "authentication-results":
+            "mx.resend.com; dkim=fail; spf=fail; dmarc=fail",
         },
-      } as never);
+      });
 
       const payload = JSON.stringify({
         type: "email.received",
