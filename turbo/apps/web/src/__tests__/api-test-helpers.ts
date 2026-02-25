@@ -1727,6 +1727,21 @@ export async function findTestRunsByUserAndPrompt(
 }
 
 /**
+ * Find agent runs by user ID where prompt contains the given substring.
+ * Useful when the full prompt is not known (e.g., when attachments are appended).
+ */
+export async function findTestRunsByUserAndPromptContaining(
+  userId: string,
+  promptSubstring: string,
+) {
+  const runs = await globalThis.services.db
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.userId, userId));
+  return runs.filter((r) => r.prompt.includes(promptSubstring));
+}
+
+/**
  * Create a test callback record for agent run completion
  * Returns the callback ID and the plaintext secret for signing test requests
  */

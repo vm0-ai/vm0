@@ -190,8 +190,14 @@ vi.mock("resend", () => {
                 "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
               "message-id": "<default-msg-id@example.com>",
             },
+            attachments: [],
           },
         }),
+        attachments: {
+          list: vi.fn().mockResolvedValue({
+            data: { object: "list", has_more: false, data: [] },
+          }),
+        },
       },
     },
     webhooks: {

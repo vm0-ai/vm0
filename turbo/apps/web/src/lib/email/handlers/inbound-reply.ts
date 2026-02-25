@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { getReceivedEmail } from "../client";
+import { processEmailAttachments } from "../attachment";
 import { extractEmailBody } from "../content-extract";
 import { verifyReplyToken, lookupEmailThreadSession } from "./shared";
 import { createRun } from "../../run";
@@ -72,10 +73,16 @@ export async function handleInboundEmailReply(
   const inboundReferences = referencesKey ? headers[referencesKey] : undefined;
 
   // 6. Extract email body (prefer HTML, fallback to text, strip quotes)
-  const replyContent = extractEmailBody(email.html, email.text);
+  let replyContent = extractEmailBody(email.html, email.text);
   if (!replyContent.trim()) {
     log.debug("Empty reply content after stripping", { emailId });
     return;
+  }
+
+  // 6b. Process attachments and append to reply content
+  const attachmentText = await processEmailAttachments(emailId);
+  if (attachmentText) {
+    replyContent = `${replyContent}\n\n${attachmentText}`;
   }
 
   // 7. Get compose to find agent name and version

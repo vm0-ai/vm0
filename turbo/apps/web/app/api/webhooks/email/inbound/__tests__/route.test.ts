@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { HttpResponse } from "msw";
 import { Resend } from "resend";
 import { POST } from "../route";
 import {
@@ -8,6 +9,7 @@ import {
   createTestSessionWithConversation,
   createTestEmailThreadSession,
   findTestRunsByUserAndPrompt,
+  findTestRunsByUserAndPromptContaining,
   findTestCallbacksByRunId,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -15,6 +17,8 @@ import {
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { server } from "../../../../../../src/mocks/server";
+import { http } from "../../../../../../src/__tests__/msw";
 import { generateReplyToken } from "../../../../../../src/lib/email/handlers/shared";
 
 const context = testContext();
@@ -688,6 +692,216 @@ describe("POST /api/webhooks/email/inbound", () => {
       "This is my HTML reply",
     );
     expect(runs).toHaveLength(1);
+  });
+
+  describe("Email Trigger with Attachments", () => {
+    it("should include attachment URLs in prompt when email has attachments", async () => {
+      const user = await context.setupUser({ prefix: "att-trigger" });
+      const suffix = user.userId.slice("att-trigger-".length);
+      const scopeSlug = `scope-${suffix}`;
+      const agentName = uniqueId("att-agent");
+      await createTestCompose(agentName);
+
+      const senderEmail = "sender@example.com";
+      mockClerk({ userId: user.userId, email: senderEmail });
+
+      // Mock Resend to return email with attachment metadata
+      mockResend.emails.receiving.get.mockResolvedValueOnce({
+        data: {
+          from: senderEmail,
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          subject: "With Attachment",
+          text: "Please review the attached file",
+          html: "<p>Please review the attached file</p>",
+          headers: {
+            "authentication-results":
+              "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
+            "message-id": "<att-msg-id@example.com>",
+          },
+          attachments: [
+            {
+              id: "att-1",
+              filename: "invoice.pdf",
+              size: 5000,
+              content_type: "application/pdf",
+              content_disposition: "attachment",
+            },
+          ],
+        },
+      } as never);
+
+      // Mock attachment list API
+      mockResend.emails.receiving.attachments.list.mockResolvedValueOnce({
+        data: {
+          object: "list",
+          has_more: false,
+          data: [
+            {
+              id: "att-1",
+              filename: "invoice.pdf",
+              size: 5000,
+              content_type: "application/pdf",
+              content_disposition: "attachment",
+              download_url: "https://download.resend.com/att-trigger-1",
+            },
+          ],
+        },
+      } as never);
+
+      // Mock attachment download via MSW
+      const pdfBuffer = Buffer.from("fake-pdf-content");
+      const downloadHandler = http.get(
+        "https://download.resend.com/att-trigger-1",
+        () => {
+          return new HttpResponse(pdfBuffer, {
+            headers: { "content-type": "application/pdf" },
+          });
+        },
+      );
+      server.use(downloadHandler.handler);
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "trigger-att-email",
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          from: senderEmail,
+          subject: "With Attachment",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // Verify: agent run was created with body + attachment info in prompt
+      const matchingRuns = await findTestRunsByUserAndPromptContaining(
+        user.userId,
+        "With Attachment",
+      );
+      expect(matchingRuns).toHaveLength(1);
+      expect(matchingRuns[0]!.prompt).toContain(
+        "Please review the attached file",
+      );
+      expect(matchingRuns[0]!.prompt).toContain("[attachment]: invoice.pdf");
+      expect(matchingRuns[0]!.prompt).toContain("https://mock-presigned-url");
+
+      // Verify: S3 upload was called for the attachment
+      expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalledWith(
+        "test-bucket",
+        "email-attachments/trigger-att-email/att-1-invoice.pdf",
+        expect.any(Buffer),
+        "application/pdf",
+      );
+    });
+  });
+
+  describe("Email Reply with Attachments", () => {
+    it("should include attachment URLs in prompt when reply has attachments", async () => {
+      const user = await context.setupUser({ prefix: "att-reply" });
+      const { composeId } = await createTestCompose(
+        uniqueId("att-reply-agent"),
+      );
+      const agentSession = await createTestSessionWithConversation(
+        user.userId,
+        composeId,
+      );
+      const replyToken = generateReplyToken(agentSession.id);
+
+      await createTestEmailThreadSession({
+        userId: user.userId,
+        composeId,
+        agentSessionId: agentSession.id,
+        replyToToken: replyToken,
+      });
+
+      mockClerk({ userId: null });
+
+      // Mock Resend to return reply email
+      mockResend.emails.receiving.get.mockResolvedValueOnce({
+        data: {
+          from: "user@example.com",
+          to: [`reply+${replyToken}@vm7.bot`],
+          subject: "Re: test",
+          text: "Here is the file you requested",
+          html: "<p>Here is the file you requested</p>",
+          headers: {
+            "authentication-results":
+              "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
+          },
+          attachments: [
+            {
+              id: "att-r1",
+              filename: "data.csv",
+              size: 200,
+              content_type: "text/csv",
+              content_disposition: "attachment",
+            },
+          ],
+        },
+      } as never);
+
+      // Mock attachment list API
+      mockResend.emails.receiving.attachments.list.mockResolvedValueOnce({
+        data: {
+          object: "list",
+          has_more: false,
+          data: [
+            {
+              id: "att-r1",
+              filename: "data.csv",
+              size: 200,
+              content_type: "text/csv",
+              content_disposition: "attachment",
+              download_url: "https://download.resend.com/att-reply-1",
+            },
+          ],
+        },
+      } as never);
+
+      // Mock attachment download via MSW
+      const csvBuffer = Buffer.from("col1,col2\nval1,val2");
+      const downloadHandler = http.get(
+        "https://download.resend.com/att-reply-1",
+        () => {
+          return new HttpResponse(csvBuffer, {
+            headers: { "content-type": "text/csv" },
+          });
+        },
+      );
+      server.use(downloadHandler.handler);
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "reply-att-email",
+          to: [`reply+${replyToken}@vm7.bot`],
+          from: "user@example.com",
+          subject: "Re: test",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // Verify: agent run was created with body + attachment info in prompt
+      const matchingReplyRuns = await findTestRunsByUserAndPromptContaining(
+        user.userId,
+        "Here is the file you requested",
+      );
+      expect(matchingReplyRuns).toHaveLength(1);
+      expect(matchingReplyRuns[0]!.prompt).toContain("[attachment]: data.csv");
+      expect(matchingReplyRuns[0]!.prompt).toContain(
+        "https://mock-presigned-url",
+      );
+    });
   });
 
   describe("Email Trigger (agent@domain, auto-detect scope)", () => {

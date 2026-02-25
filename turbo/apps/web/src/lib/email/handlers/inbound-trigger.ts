@@ -1,4 +1,5 @@
 import { getReceivedEmail } from "../client";
+import { processEmailAttachments } from "../attachment";
 import { extractEmailBody } from "../content-extract";
 import { verifySenderAuthenticity } from "../sender-auth";
 import {
@@ -176,13 +177,19 @@ export async function handleInboundEmailTrigger(
   const bodyContent = extractEmailBody(email.html, email.text);
 
   // Combine subject + body as prompt
-  const prompt = subject
+  let prompt = subject
     ? `${subject}\n\n${bodyContent}`.trim()
     : bodyContent.trim();
 
   if (!prompt) {
     log.debug("Empty prompt after processing", { emailId });
     return;
+  }
+
+  // 8b. Process attachments and append to prompt
+  const attachmentText = await processEmailAttachments(emailId);
+  if (attachmentText) {
+    prompt = `${prompt}\n\n${attachmentText}`;
   }
 
   // 9. Generate reply token for conversation continuity
