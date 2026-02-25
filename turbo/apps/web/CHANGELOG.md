@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.49.1](https://github.com/vm0-ai/vm0/compare/web-v12.49.0...web-v12.49.1) (2026-02-25)
+
+
+### Bug Fixes
+
+* **email:** correct In-Reply-To and References headers for proper threading ([#3235](https://github.com/vm0-ai/vm0/issues/3235)) ([fe86f75](https://github.com/vm0-ai/vm0/commit/fe86f752d24b8f5497db6044ff1504bb93f54fee))
+
 ## [12.49.0](https://github.com/vm0-ai/vm0/compare/web-v12.48.1...web-v12.49.0) (2026-02-23)
 
 

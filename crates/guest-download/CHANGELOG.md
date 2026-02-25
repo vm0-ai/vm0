@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.1.5...guest-download-v0.7.0) (2026-02-25)
+
+
+### Miscellaneous Chores
+
+* **guest-download:** Synchronize runner-guest versions
+
 ## [0.1.5](https://github.com/vm0-ai/vm0/compare/guest-download-v0.1.4...guest-download-v0.1.5) (2026-02-23)
 
 
