@@ -812,6 +812,242 @@ describe("POST /api/webhooks/email/inbound", () => {
         "application/pdf",
       );
     });
+
+    it("should skip oversized attachment with 'exceeds size limit' message", async () => {
+      const user = await context.setupUser({ prefix: "att-oversize" });
+      const suffix = user.userId.slice("att-oversize-".length);
+      const scopeSlug = `scope-${suffix}`;
+      const agentName = uniqueId("oversize-agent");
+      await createTestCompose(agentName);
+
+      const senderEmail = "sender@example.com";
+      mockClerk({ userId: user.userId, email: senderEmail });
+
+      mockReceivedEmailGet({
+        from: senderEmail,
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        subject: "Big File",
+        text: "See attached",
+        html: "<p>See attached</p>",
+        headers: {
+          "authentication-results":
+            "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
+        },
+      });
+
+      // Return an attachment that exceeds 10MB size limit
+      mockReceivedEmailAttachmentsList([
+        {
+          id: "att-big",
+          filename: "huge.zip",
+          size: 15 * 1024 * 1024,
+          content_type: "application/zip",
+          content_disposition: "attachment",
+          download_url: "https://download.resend.com/att-big",
+        },
+      ]);
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "oversize-email",
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          from: senderEmail,
+          subject: "Big File",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const runs = await findTestRunsByUserAndPromptContaining(
+        user.userId,
+        "Big File",
+      );
+      expect(runs).toHaveLength(1);
+      expect(runs[0]!.prompt).toContain("huge.zip");
+      expect(runs[0]!.prompt).toContain("skipped: exceeds size limit");
+      expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
+    });
+
+    it("should skip attachment with 'download failed' when download returns error", async () => {
+      const user = await context.setupUser({ prefix: "att-dl-fail" });
+      const suffix = user.userId.slice("att-dl-fail-".length);
+      const scopeSlug = `scope-${suffix}`;
+      const agentName = uniqueId("dlfail-agent");
+      await createTestCompose(agentName);
+
+      const senderEmail = "sender@example.com";
+      mockClerk({ userId: user.userId, email: senderEmail });
+
+      mockReceivedEmailGet({
+        from: senderEmail,
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        subject: "Broken Attachment",
+        text: "File attached",
+        html: "<p>File attached</p>",
+        headers: {
+          "authentication-results":
+            "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
+        },
+      });
+
+      mockReceivedEmailAttachmentsList([
+        {
+          id: "att-broken",
+          filename: "broken.pdf",
+          size: 5000,
+          content_type: "application/pdf",
+          content_disposition: "attachment",
+          download_url: "https://download.resend.com/att-broken",
+        },
+      ]);
+
+      // Return 500 for the download
+      const downloadHandler = http.get(
+        "https://download.resend.com/att-broken",
+        () => {
+          return new HttpResponse(null, { status: 500 });
+        },
+      );
+      server.use(downloadHandler.handler);
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "dl-fail-email",
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          from: senderEmail,
+          subject: "Broken Attachment",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const runs = await findTestRunsByUserAndPromptContaining(
+        user.userId,
+        "Broken Attachment",
+      );
+      expect(runs).toHaveLength(1);
+      expect(runs[0]!.prompt).toContain("broken.pdf");
+      expect(runs[0]!.prompt).toContain("skipped: download failed");
+      expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
+    });
+
+    it("should handle multiple attachments with mixed results", async () => {
+      const user = await context.setupUser({ prefix: "att-mixed" });
+      const suffix = user.userId.slice("att-mixed-".length);
+      const scopeSlug = `scope-${suffix}`;
+      const agentName = uniqueId("mixed-agent");
+      await createTestCompose(agentName);
+
+      const senderEmail = "sender@example.com";
+      mockClerk({ userId: user.userId, email: senderEmail });
+
+      mockReceivedEmailGet({
+        from: senderEmail,
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        subject: "Multiple Files",
+        text: "Several attachments",
+        html: "<p>Several attachments</p>",
+        headers: {
+          "authentication-results":
+            "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
+        },
+      });
+
+      // Three attachments: one good, one oversized, one download fails
+      mockReceivedEmailAttachmentsList([
+        {
+          id: "att-good",
+          filename: "report.pdf",
+          size: 5000,
+          content_type: "application/pdf",
+          content_disposition: "attachment",
+          download_url: "https://download.resend.com/att-good",
+        },
+        {
+          id: "att-huge",
+          filename: "video.mp4",
+          size: 15 * 1024 * 1024,
+          content_type: "video/mp4",
+          content_disposition: "attachment",
+          download_url: "https://download.resend.com/att-huge",
+        },
+        {
+          id: "att-err",
+          filename: "missing.docx",
+          size: 3000,
+          content_type:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          content_disposition: "attachment",
+          download_url: "https://download.resend.com/att-err",
+        },
+      ]);
+
+      // Good attachment downloads successfully
+      const goodHandler = http.get(
+        "https://download.resend.com/att-good",
+        () => {
+          return new HttpResponse(Buffer.from("pdf-content"), {
+            headers: { "content-type": "application/pdf" },
+          });
+        },
+      );
+      // Failed attachment returns 404
+      const errHandler = http.get("https://download.resend.com/att-err", () => {
+        return new HttpResponse(null, { status: 404 });
+      });
+      server.use(goodHandler.handler, errHandler.handler);
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "mixed-att-email",
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          from: senderEmail,
+          subject: "Multiple Files",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const runs = await findTestRunsByUserAndPromptContaining(
+        user.userId,
+        "Multiple Files",
+      );
+      expect(runs).toHaveLength(1);
+      const prompt = runs[0]!.prompt;
+
+      // Good attachment: uploaded and URL in prompt
+      expect(prompt).toContain("[attachment]: report.pdf");
+      expect(prompt).toContain("https://mock-presigned-url");
+
+      // Oversized attachment: skipped with reason
+      expect(prompt).toContain("video.mp4");
+      expect(prompt).toContain("skipped: exceeds size limit");
+
+      // Failed download: skipped with reason
+      expect(prompt).toContain("missing.docx");
+      expect(prompt).toContain("skipped: download failed");
+
+      // Only one upload (the good attachment)
+      expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("Email Reply with Attachments", () => {
