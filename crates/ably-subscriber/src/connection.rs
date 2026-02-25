@@ -305,6 +305,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
 
     'outer: loop {
         let mut disconnected_sent = false;
+        let mut immediate_retry = false;
         // Main message processing loop
         loop {
             let idle_timeout = p.conn_state.max_idle_interval + p.timing.heartbeat_margin;
@@ -330,6 +331,19 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                                     tracing::warn!("Failed to decode message: {e}");
                                 }
                             }
+                        }
+                        Some(Ok(tungstenite::Message::Close(frame))) => {
+                            if let Some(ref f) = frame {
+                                tracing::info!(
+                                    code = %f.code,
+                                    reason = %f.reason,
+                                    "WebSocket Close frame received",
+                                );
+                            } else {
+                                tracing::info!("WebSocket Close frame received (no reason)");
+                            }
+                            immediate_retry = true;
+                            break; // → reconnect
                         }
                         Some(Ok(_)) => {
                             // Ignore text, ping, pong frames
@@ -393,21 +407,29 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 return;
             }
 
-            // Exponential backoff: 1s, 2s, 4s, 8s, 15s, 15s, ...
-            let exp = retry_count.saturating_sub(1).min(30);
-            let backoff = p
-                .timing
-                .initial_retry_interval
-                .saturating_mul(1u32 << exp)
-                .min(p.timing.max_retry_interval);
-            // Use subsecond nanos from wall clock for non-deterministic jitter
-            let nanos = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .subsec_nanos() as u64;
-            let jitter = Duration::from_millis(nanos % 1000);
+            // Skip backoff on first attempt after a clean close (server
+            // closed the connection gracefully — reconnect immediately).
+            let backoff_duration = if retry_count == 1 && immediate_retry {
+                tracing::info!("Reconnecting immediately after clean close");
+                Duration::ZERO
+            } else {
+                // Exponential backoff: 1s, 2s, 4s, 8s, 15s, 15s, ...
+                let exp = retry_count.saturating_sub(1).min(30);
+                let backoff = p
+                    .timing
+                    .initial_retry_interval
+                    .saturating_mul(1u32 << exp)
+                    .min(p.timing.max_retry_interval);
+                // Use subsecond nanos from wall clock for non-deterministic jitter
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .subsec_nanos() as u64;
+                let jitter = Duration::from_millis(nanos % 1000);
+                backoff + jitter
+            };
             tokio::select! {
-                _ = tokio::time::sleep(backoff + jitter) => {}
+                _ = tokio::time::sleep(backoff_duration) => {}
                 _ = &mut close_rx => {
                     tracing::info!("Close requested during reconnect");
                     return;
