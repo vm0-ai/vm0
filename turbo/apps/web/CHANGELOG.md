@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.50.0](https://github.com/vm0-ai/vm0/compare/web-v12.49.1...web-v12.50.0) (2026-02-25)
+
+
+### Features
+
+* **email:** pass attachments to agent sessions via r2 presigned urls ([#3249](https://github.com/vm0-ai/vm0/issues/3249)) ([b524482](https://github.com/vm0-ai/vm0/commit/b524482998f31d443e65da1f211bf6479d478f81))
+
 ## [12.49.1](https://github.com/vm0-ai/vm0/compare/web-v12.49.0...web-v12.49.1) (2026-02-25)
 
 
