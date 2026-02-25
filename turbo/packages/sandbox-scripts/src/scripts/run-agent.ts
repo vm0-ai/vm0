@@ -284,20 +284,24 @@ async function handleCompletion(
 }
 
 /**
+ * Record an E2E duration from API_START_TIME to now under the given op name.
+ */
+function recordE2eFromApi(opName: string): void {
+  if (!API_START_TIME) return;
+  const apiStartTime = parseInt(API_START_TIME, 10);
+  if (isNaN(apiStartTime)) return;
+  const e2eTime = Date.now() - apiStartTime;
+  recordSandboxOp(opName, e2eTime, true);
+  logInfo(`E2E ${opName}: ${e2eTime}ms`);
+}
+
+/**
  * Main execution logic.
  * Throws exceptions on failure instead of calling process.exit().
  * Returns [exit_code, error_message] tuple on completion.
  */
 async function run(): Promise<[number, string]> {
-  // Record API-to-agent E2E time (if API start timestamp is available)
-  if (API_START_TIME) {
-    const apiStartTime = parseInt(API_START_TIME, 10);
-    if (!isNaN(apiStartTime)) {
-      const e2eTime = Date.now() - apiStartTime;
-      recordSandboxOp("api_to_agent_start", e2eTime, true);
-      logInfo(`E2E time from API to agent start: ${e2eTime}ms`);
-    }
-  }
+  recordE2eFromApi("api_to_agent_start");
 
   // Validate configuration - throws if invalid
   validateConfig();
@@ -363,6 +367,8 @@ async function run(): Promise<[number, string]> {
   recordSandboxOp("init_total", initDurationMs, true);
   logInfo(`✓ Initialization complete (${Math.floor(initDurationMs / 1000)}s)`);
 
+  recordE2eFromApi("api_to_init_complete");
+
   // Lifecycle: Execution
   logInfo("▷ Execution");
   const execStartTime = Date.now();
@@ -394,6 +400,8 @@ async function run(): Promise<[number, string]> {
     const proc = spawn(cmdExe, cmd.slice(1), {
       stdio: ["ignore", "pipe", "pipe"],
     });
+
+    recordE2eFromApi("api_to_cli_spawn");
 
     // Create promise to track process exit - register handlers BEFORE reading streams
     // This prevents race condition where process exits before handlers are registered
@@ -449,13 +457,8 @@ async function run(): Promise<[number, string]> {
           const event = JSON.parse(stripped) as Record<string, unknown>;
 
           // First event is the CLI init (system/init or thread.started)
-          if (eventSequence === 0 && API_START_TIME) {
-            const apiStartTime = parseInt(API_START_TIME, 10);
-            if (!isNaN(apiStartTime)) {
-              const e2eTime = Date.now() - apiStartTime;
-              recordSandboxOp("api_to_cli_init", e2eTime, true);
-              logInfo(`E2E api_to_cli_init: ${e2eTime}ms`);
-            }
+          if (eventSequence === 0) {
+            recordE2eFromApi("api_to_cli_init");
           }
 
           // Valid JSONL - send immediately with sequence number (0-based)

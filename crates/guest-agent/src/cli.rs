@@ -174,6 +174,7 @@ pub async fn execute_cli(
     }
 
     let mut child = cmd.spawn()?;
+    crate::timing::record_e2e_from_api("api_to_cli_spawn");
 
     let stdout = child
         .stdout
