@@ -19,8 +19,7 @@ use crate::sandbox::FirecrackerSandbox;
 /// Double-wrapping creates nested sessions where inner processes escape the
 /// process group, surviving SIGKILL on timeout as orphans frozen into the
 /// snapshot.
-pub const PREWARM_SCRIPT: &str =
-    "claude --help >/dev/null 2>&1; codex --help >/dev/null 2>&1; true";
+pub const PREWARM_SCRIPT: &str = "claude --help >/dev/null 2>&1 && codex --help >/dev/null 2>&1";
 
 /// SHA-256 fingerprint of all sandbox-fc internal configuration that affects
 /// snapshot output (boot args, guest network, pre-warm script, etc.).
