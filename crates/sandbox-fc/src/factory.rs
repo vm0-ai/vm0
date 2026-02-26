@@ -19,7 +19,16 @@ use crate::sandbox::FirecrackerSandbox;
 /// Double-wrapping creates nested sessions where inner processes escape the
 /// process group, surviving SIGKILL on timeout as orphans frozen into the
 /// snapshot.
-pub const PREWARM_SCRIPT: &str = "claude --help >/dev/null 2>&1 && codex --help >/dev/null 2>&1";
+///
+/// - `NODE_COMPILE_CACHE`: persists V8 bytecode to disk so subsequent runs
+///   skip parsing/compilation (Node.js 22+). The cache dir survives snapshot
+///   restore and is reused by the guest-agent when spawning the CLI.
+/// - `codex --help`: lightweight pre-warm for Codex (no `--print` equivalent).
+pub const PREWARM_SCRIPT: &str = "\
+    export NODE_COMPILE_CACHE=/home/user/.cache/node-compile-cache && \
+    mkdir -p /home/user/.cache/node-compile-cache && \
+    claude --help >/dev/null 2>&1 && \
+    codex --help >/dev/null 2>&1";
 
 /// SHA-256 fingerprint of all sandbox-fc internal configuration that affects
 /// snapshot output (boot args, guest network, pre-warm script, etc.).

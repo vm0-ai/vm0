@@ -167,6 +167,9 @@ pub async fn execute_cli(
         .stderr(Stdio::piped())
         .process_group(0);
 
+    // Enable V8 bytecode cache for faster Node.js startup (populated during snapshot creation)
+    cmd.env("NODE_COMPILE_CACHE", "/home/user/.cache/node-compile-cache");
+
     // Pass CODEX_HOME via Command::env instead of global set_var
     if env::cli_agent_type() == "codex" {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
