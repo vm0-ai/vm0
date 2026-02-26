@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.6.0...ably-subscriber-v0.6.1) (2026-02-26)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** handle close frames and skip backoff on clean disconnect ([#3263](https://github.com/vm0-ai/vm0/issues/3263)) ([caddb21](https://github.com/vm0-ai/vm0/commit/caddb213b4df4dada54f8d368083ada6a6d9a287)), closes [#3262](https://github.com/vm0-ai/vm0/issues/3262)
+
 ## [0.6.0](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.5.0...ably-subscriber-v0.6.0) (2026-02-23)
 
 

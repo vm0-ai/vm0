@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.51.0](https://github.com/vm0-ai/vm0/compare/web-v12.50.1...web-v12.51.0) (2026-02-26)
+
+
+### Features
+
+* **email:** improve reply template with content-first layout ([#3261](https://github.com/vm0-ai/vm0/issues/3261)) ([3d28058](https://github.com/vm0-ai/vm0/commit/3d280583470605ff095f063424109e216a823c8e))
+
 ## [12.50.1](https://github.com/vm0-ai/vm0/compare/web-v12.50.0...web-v12.50.1) (2026-02-25)
 
 

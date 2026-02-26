@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.6.1...sandbox-fc-v0.6.2) (2026-02-26)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** remove double su wrapper from prewarm script ([#3265](https://github.com/vm0-ai/vm0/issues/3265)) ([3df62d1](https://github.com/vm0-ai/vm0/commit/3df62d1b9be9310e5112f3423edce504295f1775))
+
+
+### Performance Improvements
+
+* **sandbox-fc:** enable v8 compile cache for faster cli cold start ([#3267](https://github.com/vm0-ai/vm0/issues/3267)) ([6f1c8be](https://github.com/vm0-ai/vm0/commit/6f1c8be89cd5c7168326b5fa822d26eb2f9fa824))
+
 ## [0.6.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.6.0...sandbox-fc-v0.6.1) (2026-02-23)
 
 
