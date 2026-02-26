@@ -180,14 +180,17 @@ jobs:
           ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner setup"
 
           # Run build (rootfs via Docker + snapshot via Firecracker)
+          # Use tee to stream output in real-time while capturing for hash extraction
           echo "=== Running build ==="
-          BUILD_OUTPUT=$(ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
+          BUILD_LOG=$(mktemp)
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
             --guest-init ${BIN_DIR}/guest-init \
             --guest-download ${BIN_DIR}/guest-download \
             --guest-agent ${BIN_DIR}/guest-agent \
-            --guest-mock-claude ${BIN_DIR}/guest-mock-claude")
-          ROOTFS_HASH=$(echo "$BUILD_OUTPUT" | grep '^rootfs_hash=' | cut -d= -f2)
-          SNAPSHOT_HASH=$(echo "$BUILD_OUTPUT" | grep '^snapshot_hash=' | cut -d= -f2)
+            --guest-mock-claude ${BIN_DIR}/guest-mock-claude" | tee "$BUILD_LOG"
+          ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG" | cut -d= -f2)
+          SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG" | cut -d= -f2)
+          rm -f "$BUILD_LOG"
 
           if [ -z "$ROOTFS_HASH" ] || [ -z "$SNAPSHOT_HASH" ]; then
             echo "ERROR: Failed to extract build hashes"
