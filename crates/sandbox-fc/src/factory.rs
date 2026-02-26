@@ -23,6 +23,7 @@ use crate::sandbox::FirecrackerSandbox;
 /// - `NODE_COMPILE_CACHE`: persists V8 bytecode to disk so subsequent runs
 ///   skip parsing/compilation (Node.js 22+). The cache dir survives snapshot
 ///   restore and is reused by the guest-agent when spawning the CLI.
+///   The path must match `NODE_COMPILE_CACHE_DIR` in `guest-agent::cli`.
 /// - `codex --help`: lightweight pre-warm for Codex (no `--print` equivalent).
 pub const PREWARM_SCRIPT: &str = "\
     export NODE_COMPILE_CACHE=/home/user/.cache/node-compile-cache && \
