@@ -5,6 +5,11 @@
 pub struct GuestNetwork {
     /// TAP device name inside namespace (must match Firecracker config).
     pub tap_name: &'static str,
+    /// Fixed MAC for the TAP device (host-side, locally administered).
+    ///
+    /// Must be deterministic so that guest ARP cache entries baked into a
+    /// snapshot remain valid after restore in a different network namespace.
+    pub tap_mac: &'static str,
     /// Guest MAC address (locally administered, fixed for all VMs).
     pub guest_mac: &'static str,
     /// Guest IP inside the VM.
@@ -19,6 +24,7 @@ pub struct GuestNetwork {
 
 pub const GUEST_NETWORK: GuestNetwork = GuestNetwork {
     tap_name: "vm0-tap",
+    tap_mac: "02:00:00:00:00:02",
     guest_mac: "02:00:00:00:00:01",
     guest_ip: "192.168.241.2",
     gateway_ip: "192.168.241.1",

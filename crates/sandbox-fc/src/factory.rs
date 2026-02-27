@@ -49,6 +49,8 @@ pub fn config_hash() -> String {
     hasher.update(GUEST_NETWORK.guest_mac.as_bytes());
     hasher.update(b"tap_name:");
     hasher.update(GUEST_NETWORK.tap_name.as_bytes());
+    hasher.update(b"tap_mac:");
+    hasher.update(GUEST_NETWORK.tap_mac.as_bytes());
     hasher.update(b"prewarm:");
     hasher.update(PREWARM_SCRIPT.as_bytes());
     format!("{:x}", hasher.finalize())
