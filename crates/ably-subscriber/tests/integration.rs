@@ -954,13 +954,17 @@ async fn close_subscription() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 13: non-retriable DISCONNECTED → Event::Error (not reconnect)
+// Test 13: non-retriable DISCONNECTED still triggers reconnect
 // ---------------------------------------------------------------------------
 
+/// ably-js always reconnects on mid-session DISCONNECTED regardless of
+/// retriability — the server may send 429 or 401 but still expect the
+/// client to backoff-and-retry. Only connection-level ERROR is fatal.
 #[tokio::test]
-async fn non_retriable_disconnected_emits_error() {
+async fn non_retriable_disconnected_triggers_reconnect() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
@@ -982,26 +986,63 @@ async fn non_retriable_disconnected_emits_error() {
         ))
         .await
         .unwrap();
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        // Give client time to process and reconnect
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        drop(conn);
+
+        // Client should reconnect (fresh connect with new token)
+        let mut conn2 = ws.accept_and_handshake("ch", "conn-2").await.unwrap();
+        send_message(
+            &mut conn2,
+            "ch",
+            "after-non-retriable-disconnect",
+            serde_json::json!("ok"),
+        )
+        .await
+        .unwrap();
+        tokio::time::sleep(Duration::from_secs(5)).await;
     });
 
-    let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
+    let mut timing = TimingConfig::default();
+    timing.initial_retry_interval = Duration::from_millis(10);
+    timing.max_retry_interval = Duration::from_millis(50);
+    let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
         .await
         .unwrap();
 
     assert!(matches!(sub.next().await.unwrap(), Event::Connected));
 
+    // Should get Disconnected (not Error)
     let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
         .await
-        .expect("timed out")
+        .expect("timed out waiting for Disconnected")
+        .unwrap();
+    assert!(
+        matches!(event, Event::Disconnected { .. }),
+        "expected Disconnected, got {event:?}"
+    );
+
+    // Should reconnect
+    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+        .await
+        .expect("timed out waiting for Connected")
+        .unwrap();
+    assert!(
+        matches!(event, Event::Connected),
+        "expected Connected, got {event:?}"
+    );
+
+    // Message after reconnect proves subscription is alive
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for message")
         .unwrap();
     match event {
-        Event::Error { code, .. } => assert_eq!(code, 40142),
-        other => panic!("expected Error, got {other:?}"),
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-non-retriable-disconnect"))
+        }
+        other => panic!("expected Message, got {other:?}"),
     }
-
-    // Stream should end (loop stopped)
-    assert!(sub.next().await.is_none());
 }
 
 // ---------------------------------------------------------------------------

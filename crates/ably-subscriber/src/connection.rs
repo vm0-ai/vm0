@@ -271,9 +271,12 @@ impl ConnState {
         Instant::now() + renew_in
     }
 
+    /// RTN15h: resume is allowed when elapsed time since disconnect is less
+    /// than `connection_state_ttl + max_idle_interval` and we have a key.
     fn can_resume(&self) -> bool {
         if let Some(disconnected_at) = self.disconnected_at {
-            disconnected_at.elapsed() < self.connection_state_ttl && self.connection_key.is_some()
+            disconnected_at.elapsed() < self.connection_state_ttl + self.max_idle_interval
+                && self.connection_key.is_some()
         } else {
             false
         }
@@ -463,8 +466,9 @@ enum LoopAction {
 
 /// Mirrors ably-js `isRetriable()` from `connectionerrors.ts`.
 ///
-/// An error is retriable when it has no status code, is a server error (5xx),
-/// or carries a well-known connection error code even at 4xx.
+/// An error is retriable when it has no status code, no error code, is a
+/// server error (5xx), or carries a well-known connection error code even
+/// at 4xx.
 fn is_retriable(err: &crate::protocol::ErrorInfo) -> bool {
     const CONNECTION_ERROR_CODES: &[i32] = &[
         80003, // DISCONNECTED
@@ -474,6 +478,9 @@ fn is_retriable(err: &crate::protocol::ErrorInfo) -> bool {
         50002, // UNKNOWN_CONNECTION_ERR
         50001, // UNKNOWN_CHANNEL_ERR
     ];
+    if err.code == 0 {
+        return true;
+    }
     match err.status_code {
         None => true,
         Some(sc) if sc >= 500 => true,
@@ -585,18 +592,10 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
             }
         }
         action::DISCONNECTED => {
-            if let Some(ref err) = msg.error
-                && !is_retriable(err)
-            {
-                let _ = p
-                    .event_tx
-                    .send(Event::Error {
-                        code: err.code,
-                        message: err.message.clone(),
-                    })
-                    .await;
-                return LoopAction::Stop;
-            }
+            // ably-js always reconnects on mid-session DISCONNECTED regardless
+            // of retriability. The server may send DISCONNECTED with a non-
+            // retriable error (e.g. 429 rate limit) but still expect the client
+            // to reconnect after backoff. Only connection-level ERROR is fatal.
             let reason = msg.error.map(|e| e.message);
             let _ = p.event_tx.send(Event::Disconnected { reason }).await;
             return LoopAction::Reconnect;
@@ -1059,6 +1058,16 @@ mod tests {
             message: String::new(),
         };
         assert!(!is_retriable(&err));
+    }
+
+    #[test]
+    fn is_retriable_zero_code() {
+        let err = crate::protocol::ErrorInfo {
+            code: 0,
+            status_code: Some(400),
+            message: String::new(),
+        };
+        assert!(is_retriable(&err));
     }
 
     #[test]
