@@ -24,12 +24,18 @@ use crate::sandbox::FirecrackerSandbox;
 ///   skip parsing/compilation (Node.js 22+). The cache dir survives snapshot
 ///   restore and is reused by the guest-agent when spawning the CLI.
 ///   The path must match `NODE_COMPILE_CACHE_DIR` in `guest-agent::cli`.
+/// - `claude --print ...`: pre-warms the real execution path (Sentry, API
+///   clients, stream-json output) rather than just `--help` which takes a
+///   lightweight short-circuit path. Failure is tolerated (`|| true`) because
+///   there is no API key during snapshot creation — the goal is to populate
+///   the V8 compile cache, not to complete the API call.
 /// - `codex --help`: lightweight pre-warm for Codex (no `--print` equivalent).
+///   Also tolerated because codex may not be installed.
 pub const PREWARM_SCRIPT: &str = "\
     export NODE_COMPILE_CACHE=/home/user/.cache/node-compile-cache && \
     mkdir -p /home/user/.cache/node-compile-cache && \
-    claude --help >/dev/null 2>&1 && \
-    codex --help >/dev/null 2>&1";
+    (claude --print --verbose --output-format stream-json --dangerously-skip-permissions hi >/dev/null 2>&1 || true) && \
+    (codex --help >/dev/null 2>&1 || true)";
 
 /// SHA-256 fingerprint of all sandbox-fc internal configuration that affects
 /// snapshot output (boot args, guest network, pre-warm script, etc.).
