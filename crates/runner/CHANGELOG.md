@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.8.3...runner-rs-v0.8.4) (2026-02-27)
+
+
+### Performance Improvements
+
+* **rootfs:** install claude code as standalone binary for faster cold-start ([#3278](https://github.com/vm0-ai/vm0/issues/3278)) ([e8cbefa](https://github.com/vm0-ai/vm0/commit/e8cbefad6e5d3f6ea91d0eefd07baac743db8ab1))
+
 ## [0.8.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.8.2...runner-rs-v0.8.3) (2026-02-27)
 
 

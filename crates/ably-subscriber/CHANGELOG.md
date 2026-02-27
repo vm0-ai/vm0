@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.6.2...ably-subscriber-v0.6.3) (2026-02-27)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** align protocol handling with ably-js sdk ([#3275](https://github.com/vm0-ai/vm0/issues/3275)) ([7b01abf](https://github.com/vm0-ai/vm0/commit/7b01abf76b978416aaf7f6c7ccc3ee6efb94e1c3)), closes [#3274](https://github.com/vm0-ai/vm0/issues/3274)
+
 ## [0.6.2](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.6.1...ably-subscriber-v0.6.2) (2026-02-27)
 
 
