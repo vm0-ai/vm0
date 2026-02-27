@@ -46,8 +46,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Install Claude Code CLI globally (matching e2b template)
-RUN npm install -g @anthropic-ai/claude-code@2.1.12
+# Install Claude Code CLI as a standalone binary (SEA = Single Executable Application).
+# The SEA binary bundles Node.js + V8 + application code, eliminating module resolution
+# overhead at startup and significantly reducing CLI cold-start time compared to npm.
+ARG CLAUDE_CODE_VERSION=2.1.12
+RUN ARCH=$(dpkg --print-architecture) \
+    && case "$ARCH" in amd64) PLATFORM="linux-x64" ;; arm64) PLATFORM="linux-arm64" ;; *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; esac \
+    && GCS_BUCKET="https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases" \
+    && curl -fsSL "${GCS_BUCKET}/${CLAUDE_CODE_VERSION}/${PLATFORM}/claude" -o /usr/local/bin/claude \
+    && CHECKSUM=$(curl -fsSL "${GCS_BUCKET}/${CLAUDE_CODE_VERSION}/manifest.json" \
+       | jq -r ".platforms[\"$PLATFORM\"].checksum") \
+    && echo "${CHECKSUM}  /usr/local/bin/claude" | sha256sum -c - \
+    && chmod +x /usr/local/bin/claude
 
 # Install Codex CLI globally (matching e2b template)
 # See: turbo/scripts/e2b/vm0-codex/template.ts
