@@ -806,23 +806,31 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
         && connected_msg.connection_id == p.conn_state.connection_id
         && connected_msg.error.is_none();
 
-    let new_channel_serial = if !resumed {
-        tracing::info!("Resume failed or fresh connect, re-attaching channel");
-        let attach = build_attach_msg(
-            &p.channel,
-            p.channel_params.as_ref(),
-            p.conn_state.channel_serial.as_deref(),
-        );
-        let data = encode_msg(&attach)?;
-        ws_write
-            .send(tungstenite::Message::Binary(data.into()))
-            .await?;
-        let attached_msg = wait_for_attached(&mut ws_read, &p.channel).await?;
-        attached_msg.channel_serial
+    // Always re-attach the channel, even after a successful connection resume.
+    // The server may silently lose channel state without sending DETACHED,
+    // creating a "zombie subscription" where messages stop being delivered.
+    // ATTACH is idempotent — the server responds with ATTACHED regardless.
+    //
+    // This matches ably-js behavior: `Channels.onTransportActive()` calls
+    // `channel.requestState('attaching')` for every attached channel whenever
+    // a transport becomes active, including after resume.
+    // See: ably-js/src/common/lib/client/baserealtime.ts
+    if resumed {
+        tracing::info!("Connection resumed, re-attaching channel to verify state");
     } else {
-        tracing::info!("Connection resumed successfully");
-        None
-    };
+        tracing::info!("Fresh connect, attaching channel");
+    }
+    let attach = build_attach_msg(
+        &p.channel,
+        p.channel_params.as_ref(),
+        p.conn_state.channel_serial.as_deref(),
+    );
+    let data = encode_msg(&attach)?;
+    ws_write
+        .send(tungstenite::Message::Binary(data.into()))
+        .await?;
+    let attached_msg = wait_for_attached(&mut ws_read, &p.channel).await?;
+    let new_channel_serial = attached_msg.channel_serial;
 
     // Commit state only after all steps succeeded.
     p.conn_state.update_from_connected(&connected_msg);
