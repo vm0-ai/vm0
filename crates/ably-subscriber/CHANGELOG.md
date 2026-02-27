@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.6.1...ably-subscriber-v0.6.2) (2026-02-27)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** always re-attach channel after reconnect to prevent zombie subscriptions ([#3271](https://github.com/vm0-ai/vm0/issues/3271)) ([0e449cb](https://github.com/vm0-ai/vm0/commit/0e449cb1ef1cb2e54fc05675f6634a0659923497))
+
 ## [0.6.1](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.6.0...ably-subscriber-v0.6.1) (2026-02-26)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.6.2...sandbox-fc-v0.6.3) (2026-02-27)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** use deterministic mac on tap devices for snapshot arp stability ([#3269](https://github.com/vm0-ai/vm0/issues/3269)) ([4c73c27](https://github.com/vm0-ai/vm0/commit/4c73c275ae6ae6bb3fbea6b5ee93ee5b0b761418)), closes [#3268](https://github.com/vm0-ai/vm0/issues/3268)
+
 ## [0.6.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.6.1...sandbox-fc-v0.6.2) (2026-02-26)
 
 
