@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.8.2...runner-rs-v0.8.3) (2026-02-27)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** pre-warm real claude execution path instead of --help ([#3272](https://github.com/vm0-ai/vm0/issues/3272)) ([5d95121](https://github.com/vm0-ai/vm0/commit/5d95121b69e9ac5dbe76cb0859cc90b4b48a3743)), closes [#3258](https://github.com/vm0-ai/vm0/issues/3258)
+
 ## [0.8.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.8.1...runner-rs-v0.8.2) (2026-02-27)
 
 
