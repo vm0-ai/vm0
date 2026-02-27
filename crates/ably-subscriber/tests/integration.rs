@@ -152,6 +152,9 @@ async fn send_message(
     Ok(())
 }
 
+/// Register a mock that responds to POST /keys/{key_name}/requestToken.
+/// httpmock mocks match unlimited times, so a single call handles both
+/// the initial connect and any reconnects that require a new token.
 fn mock_token_endpoint(server: &MockServer, key_name: &str) {
     let path = format!("/keys/{key_name}/requestToken");
     let now = now_ms();
@@ -551,8 +554,6 @@ async fn reconnect_after_server_drop() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
     mock_token_endpoint(&http, "testKey.testId");
-    // Need a second mock for the token exchange on reconnect
-    mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
     tokio::spawn(async move {
@@ -561,7 +562,7 @@ async fn reconnect_after_server_drop() {
         send_message(&mut conn, "ch", "before-drop", serde_json::json!(1))
             .await
             .unwrap();
-        // Give client time to receive the message
+        // Yield so the client can process the message before we drop the connection.
         tokio::time::sleep(Duration::from_millis(100)).await;
         drop(conn);
 
@@ -626,7 +627,6 @@ async fn reconnect_immediately_after_close_frame() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
     mock_token_endpoint(&http, "testKey.testId");
-    mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
     tokio::spawn(async move {
@@ -635,6 +635,7 @@ async fn reconnect_immediately_after_close_frame() {
         send_message(&mut conn, "ch", "before-close", serde_json::json!(1))
             .await
             .unwrap();
+        // Yield so the client can process the message before we close.
         tokio::time::sleep(Duration::from_millis(100)).await;
         conn.close(Some(tungstenite::protocol::CloseFrame {
             code: tungstenite::protocol::frame::coding::CloseCode::Normal,
@@ -702,7 +703,6 @@ async fn reconnect_immediately_after_close_frame_no_reason() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
     mock_token_endpoint(&http, "testKey.testId");
-    mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
     tokio::spawn(async move {
@@ -710,6 +710,7 @@ async fn reconnect_immediately_after_close_frame_no_reason() {
         send_message(&mut conn, "ch", "before-close", serde_json::json!(1))
             .await
             .unwrap();
+        // Yield so the client can process the message before we close.
         tokio::time::sleep(Duration::from_millis(100)).await;
         // Close without reason
         conn.close(None).await.unwrap();
@@ -769,7 +770,6 @@ async fn reconnect_immediately_after_close_frame_no_reason() {
 async fn server_sends_disconnected() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
-    mock_token_endpoint(&http, "testKey.testId");
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
@@ -965,7 +965,6 @@ async fn non_retriable_disconnected_triggers_reconnect() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
     mock_token_endpoint(&http, "testKey.testId");
-    mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
     tokio::spawn(async move {
@@ -986,7 +985,7 @@ async fn non_retriable_disconnected_triggers_reconnect() {
         ))
         .await
         .unwrap();
-        // Give client time to process and reconnect
+        // Yield so the client can process the DISCONNECTED before we drop.
         tokio::time::sleep(Duration::from_millis(100)).await;
         drop(conn);
 
@@ -1196,8 +1195,6 @@ async fn server_initiated_auth() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
     mock_token_endpoint(&http, "testKey.testId");
-    // Second mock for the renewal exchange triggered by server AUTH
-    mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
     tokio::spawn(async move {
@@ -1283,7 +1280,6 @@ async fn heartbeat_timeout_triggers_reconnect() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
     mock_token_endpoint(&http, "testKey.testId");
-    mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
     tokio::spawn(async move {
@@ -1363,10 +1359,6 @@ async fn heartbeat_timeout_triggers_reconnect() {
 async fn retry_exhaustion_emits_error() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
-    mock_token_endpoint(&http, "testKey.testId");
-    // Extra token mocks for the retry attempts (each fresh connect needs a token)
-    mock_token_endpoint(&http, "testKey.testId");
-    mock_token_endpoint(&http, "testKey.testId");
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
@@ -1561,7 +1553,6 @@ async fn detached_within_retry_window_triggers_reconnect() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
     mock_token_endpoint(&http, "testKey.testId");
-    mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
     tokio::spawn(async move {
@@ -1752,7 +1743,6 @@ async fn reconnect_timeout_fires() {
 async fn expired_ttl_skips_resume() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
-    mock_token_endpoint(&http, "testKey.testId");
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
