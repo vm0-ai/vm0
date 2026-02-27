@@ -816,7 +816,10 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
     // a transport becomes active, including after resume.
     // See: ably-js/src/common/lib/client/baserealtime.ts
     if resumed {
-        tracing::info!("Connection resumed, re-attaching channel to verify state");
+        tracing::info!(
+            channel_serial = ?p.conn_state.channel_serial,
+            "Connection resumed, re-attaching channel to verify state",
+        );
     } else {
         tracing::info!("Fresh connect, attaching channel");
     }

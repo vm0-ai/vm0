@@ -1792,3 +1792,127 @@ async fn expired_ttl_skips_resume() {
     let did_attach = resume_rx.await.expect("server task panicked");
     assert!(did_attach, "client should have sent ATTACH (no resume)");
 }
+
+// ---------------------------------------------------------------------------
+// Test 27: resumed connection still re-attaches channel
+// ---------------------------------------------------------------------------
+
+/// Regression test: when the server returns the same connection_id (resume),
+/// the client must still send ATTACH. Before the fix, resumed connections
+/// skipped ATTACH entirely, creating "zombie subscriptions" where the channel
+/// silently lost state and messages stopped being delivered.
+#[tokio::test]
+async fn resumed_connection_reattaches_channel() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let (attach_tx, attach_rx) = tokio::sync::oneshot::channel::<bool>();
+
+    tokio::spawn(async move {
+        // First connection
+        let conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        drop(conn);
+
+        // Second connection — use the SAME conn_id to simulate a successful resume.
+        // The client should still send ATTACH despite the resume.
+        let (tcp, _) = ws.listener.accept().await.unwrap();
+        let mut ws_stream = tokio_tungstenite::accept_async(tcp).await.unwrap();
+
+        // Send CONNECTED with the same connection_id → client sees this as resume
+        let connected = ProtocolMessage {
+            action: action::CONNECTED,
+            connection_id: Some("conn-1".into()),
+            connection_key: Some("conn-1!key".into()),
+            connection_details: Some(ConnectionDetails {
+                connection_key: Some("conn-1!key".into()),
+                connection_state_ttl: Some(120_000),
+                max_idle_interval: Some(15_000),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        ws_stream
+            .send(tungstenite::Message::Binary(
+                encode_msg(&connected).unwrap().into(),
+            ))
+            .await
+            .unwrap();
+
+        // Client should send ATTACH even though connection was resumed.
+        let msg = read_protocol_msg(&mut ws_stream).await.unwrap();
+        assert_eq!(
+            msg.action,
+            action::ATTACH,
+            "client must send ATTACH on resume"
+        );
+        assert_eq!(msg.channel.as_deref(), Some("ch"));
+        let _ = attach_tx.send(true);
+
+        // Send ATTACHED
+        let attached = ProtocolMessage {
+            action: action::ATTACHED,
+            channel: Some("ch".into()),
+            channel_serial: Some("serial-resumed".into()),
+            ..Default::default()
+        };
+        ws_stream
+            .send(tungstenite::Message::Binary(
+                encode_msg(&attached).unwrap().into(),
+            ))
+            .await
+            .unwrap();
+
+        // Send a message to prove the subscription is alive
+        send_message(
+            &mut ws_stream,
+            "ch",
+            "after-resume",
+            serde_json::json!("ok"),
+        )
+        .await
+        .unwrap();
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    });
+
+    let mut timing = TimingConfig::default();
+    timing.initial_retry_interval = Duration::from_millis(10);
+    timing.max_retry_interval = Duration::from_millis(50);
+    let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
+        .await
+        .unwrap();
+
+    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+
+    // Wait for disconnect → reconnect cycle
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for Disconnected")
+        .unwrap();
+    assert!(matches!(event, Event::Disconnected { .. }));
+
+    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+        .await
+        .expect("timed out waiting for Connected")
+        .unwrap();
+    assert!(matches!(event, Event::Connected));
+
+    // Message after resumed reconnect proves subscription is alive
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for message after resume")
+        .unwrap();
+    match event {
+        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-resume")),
+        other => panic!("expected Message, got {other:?}"),
+    }
+
+    // Verify server saw ATTACH (meaning client re-attached despite resume)
+    let did_attach = attach_rx.await.expect("server task panicked");
+    assert!(
+        did_attach,
+        "client must send ATTACH even on resumed connection"
+    );
+}
