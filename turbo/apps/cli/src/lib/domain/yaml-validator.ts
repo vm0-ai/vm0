@@ -300,10 +300,12 @@ function findSimilarField(
 }
 
 /**
- * Checks for unknown fields in agent definitions that look like typos.
- * Returns an error message listing all detected typos, or null if none found.
+ * Extracts agent entries from raw config, with type guards.
+ * Returns null if config structure is invalid for agent inspection.
  */
-function checkForFieldTypos(config: unknown): string | null {
+function extractAgentEntries(
+  config: unknown,
+): Record<string, Record<string, unknown>> | null {
   if (!config || typeof config !== "object") return null;
   const cfg = config as Record<string, unknown>;
   const agents = cfg.agents as
@@ -311,6 +313,16 @@ function checkForFieldTypos(config: unknown): string | null {
     | undefined;
   if (!agents || typeof agents !== "object" || Array.isArray(agents))
     return null;
+  return agents;
+}
+
+/**
+ * Checks for unknown fields in agent definitions that look like typos.
+ * Returns an error message listing all detected typos, or null if none found.
+ */
+function checkForFieldTypos(config: unknown): string | null {
+  const agents = extractAgentEntries(config);
+  if (!agents) return null;
 
   const errors: string[] = [];
 
@@ -336,13 +348,8 @@ function checkForFieldTypos(config: unknown): string | null {
  * Checks for deprecated 'provider' field and returns migration error message
  */
 function checkForDeprecatedProvider(config: unknown): string | null {
-  if (!config || typeof config !== "object") return null;
-  const cfg = config as Record<string, unknown>;
-  const agents = cfg.agents as
-    | Record<string, Record<string, unknown>>
-    | undefined;
-  if (!agents || typeof agents !== "object" || Array.isArray(agents))
-    return null;
+  const agents = extractAgentEntries(config);
+  if (!agents) return null;
 
   for (const agent of Object.values(agents)) {
     if (agent && typeof agent === "object" && !Array.isArray(agent)) {
