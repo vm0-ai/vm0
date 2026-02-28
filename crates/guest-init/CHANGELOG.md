@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.5](https://github.com/vm0-ai/vm0/compare/guest-init-v0.8.4...guest-init-v0.8.5) (2026-02-28)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
 ## [0.8.4](https://github.com/vm0-ai/vm0/compare/guest-init-v0.8.3...guest-init-v0.8.4) (2026-02-27)
 
 

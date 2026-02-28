@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.20.0](https://github.com/vm0-ai/vm0/compare/core-v8.19.0...core-v8.20.0) (2026-02-28)
+
+
+### Features
+
+* **connectors:** add self-hosted slack connector ([#3281](https://github.com/vm0-ai/vm0/issues/3281)) ([13e92fd](https://github.com/vm0-ai/vm0/commit/13e92fde8468324ca7502fa8ded5eb60179eba05)), closes [#3279](https://github.com/vm0-ai/vm0/issues/3279)
+
 ## [8.19.0](https://github.com/vm0-ai/vm0/compare/core-v8.18.1...core-v8.19.0) (2026-02-23)
 
 

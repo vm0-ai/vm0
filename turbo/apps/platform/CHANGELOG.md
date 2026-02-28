@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.70.0](https://github.com/vm0-ai/vm0/compare/platform-v0.69.1...platform-v0.70.0) (2026-02-28)
+
+
+### Features
+
+* **connectors:** add self-hosted slack connector ([#3281](https://github.com/vm0-ai/vm0/issues/3281)) ([13e92fd](https://github.com/vm0-ai/vm0/commit/13e92fde8468324ca7502fa8ded5eb60179eba05)), closes [#3279](https://github.com/vm0-ai/vm0/issues/3279)
+* **connectors:** add self-hosted slack connector ([#3286](https://github.com/vm0-ai/vm0/issues/3286)) ([6089289](https://github.com/vm0-ai/vm0/commit/608928923103497eadee7c832c9103d9545aa826))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.20.0
+
 ## [0.69.1](https://github.com/vm0-ai/vm0/compare/platform-v0.69.0...platform-v0.69.1) (2026-02-23)
 
 

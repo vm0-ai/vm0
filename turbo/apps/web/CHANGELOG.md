@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.52.0](https://github.com/vm0-ai/vm0/compare/web-v12.51.0...web-v12.52.0) (2026-02-28)
+
+
+### Features
+
+* **connectors:** add self-hosted slack connector ([#3281](https://github.com/vm0-ai/vm0/issues/3281)) ([13e92fd](https://github.com/vm0-ai/vm0/commit/13e92fde8468324ca7502fa8ded5eb60179eba05)), closes [#3279](https://github.com/vm0-ai/vm0/issues/3279)
+* **connectors:** add self-hosted slack connector ([#3286](https://github.com/vm0-ai/vm0/issues/3286)) ([6089289](https://github.com/vm0-ai/vm0/commit/608928923103497eadee7c832c9103d9545aa826))
+* **web:** add instatus status popup widget ([#3285](https://github.com/vm0-ai/vm0/issues/3285)) ([c798155](https://github.com/vm0-ai/vm0/commit/c7981558cfba13848884c1f4548b2afcebe719be))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.20.0
+
 ## [12.51.0](https://github.com/vm0-ai/vm0/compare/web-v12.50.1...web-v12.51.0) (2026-02-26)
 
 

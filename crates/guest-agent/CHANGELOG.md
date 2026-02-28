@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.8.4...guest-agent-v0.8.5) (2026-02-28)
+
+
+### Miscellaneous Chores
+
+* **guest-agent:** Synchronize runner-guest versions
+
 ## [0.8.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.8.3...guest-agent-v0.8.4) (2026-02-27)
 
 

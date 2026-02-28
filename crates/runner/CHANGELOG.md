@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.8.4...runner-rs-v0.8.5) (2026-02-28)
+
+
+### Bug Fixes
+
+* **runner:** deterministic active_run_ids order in status.json ([#3290](https://github.com/vm0-ai/vm0/issues/3290)) ([b87e8a2](https://github.com/vm0-ai/vm0/commit/b87e8a28d6bd1e8adf1d7ce9dfc133c2aa8f9893))
+
 ## [0.8.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.8.3...runner-rs-v0.8.4) (2026-02-27)
 
 
