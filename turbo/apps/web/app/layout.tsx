@@ -248,6 +248,10 @@ export default function RootLayout({
           </>
         )}
         <ThemeProvider>{children}</ThemeProvider>
+        <Script
+          src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
+          strategy="lazyOnload"
+        />
       </body>
     </html>
   );
