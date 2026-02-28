@@ -9,14 +9,9 @@ import { connectorSessions } from "../../../../../src/db/schema/connector-sessio
 import { logger } from "../../../../../src/lib/logger";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
 import {
-  exchangeGitHubCode,
-  fetchGitHubUserInfo,
-} from "../../../../../src/lib/connector/providers/github";
-import { exchangeNotionCode } from "../../../../../src/lib/connector/providers/notion";
-import {
-  exchangeSlackCode,
-  fetchSlackUserInfo,
-} from "../../../../../src/lib/connector/providers/slack";
+  PROVIDER_HANDLERS,
+  type OAuthTokenResult,
+} from "../../../../../src/lib/connector/provider-registry";
 
 const log = logger("api:connectors:callback");
 
@@ -57,91 +52,19 @@ function buildDeleteCookieHeader(name: string): string {
   return `${name}=; Max-Age=0; Path=/`;
 }
 
-interface OAuthTokenResult {
-  accessToken: string;
-  userInfo: { id: string; username: string | null; email: string | null };
-  oauthScopes: string[];
-}
-
 async function exchangeTokenForConnector(
-  connectorType: "github" | "notion" | "slack",
+  connectorType: keyof typeof PROVIDER_HANDLERS,
   code: string,
   redirectUri: string,
 ): Promise<OAuthTokenResult> {
   const currentEnv = env();
-
-  if (connectorType === "github") {
-    const clientId = currentEnv.GH_OAUTH_CLIENT_ID;
-    const clientSecret = currentEnv.GH_OAUTH_CLIENT_SECRET;
-    if (!clientId || !clientSecret) {
-      throw new Error("GitHub OAuth not configured");
-    }
-    const tokenResult = await exchangeGitHubCode(
-      clientId,
-      clientSecret,
-      code,
-      redirectUri,
-    );
-    const ghUser = await fetchGitHubUserInfo(tokenResult.accessToken);
-    return {
-      accessToken: tokenResult.accessToken,
-      userInfo: {
-        id: ghUser.id,
-        username: ghUser.username,
-        email: ghUser.email,
-      },
-      oauthScopes: tokenResult.scopes,
-    };
-  }
-
-  if (connectorType === "notion") {
-    const clientId = currentEnv.NOTION_OAUTH_CLIENT_ID;
-    const clientSecret = currentEnv.NOTION_OAUTH_CLIENT_SECRET;
-    if (!clientId || !clientSecret) {
-      throw new Error("Notion OAuth not configured");
-    }
-    const notionResult = await exchangeNotionCode(
-      clientId,
-      clientSecret,
-      code,
-      redirectUri,
-    );
-    return {
-      accessToken: notionResult.accessToken,
-      userInfo: {
-        id: notionResult.userInfo.id,
-        username: notionResult.userInfo.username,
-        email: notionResult.userInfo.email,
-      },
-      oauthScopes: notionResult.scopes,
-    };
-  }
-
-  // slack
-  const clientId = currentEnv.SLACK_CLIENT_ID;
-  const clientSecret = currentEnv.SLACK_CLIENT_SECRET;
+  const handler = PROVIDER_HANDLERS[connectorType];
+  const clientId = handler.getClientId(currentEnv);
+  const clientSecret = handler.getClientSecret(currentEnv);
   if (!clientId || !clientSecret) {
-    throw new Error("Slack OAuth not configured");
+    throw new Error(`${connectorType} OAuth not configured`);
   }
-  const slackResult = await exchangeSlackCode(
-    clientId,
-    clientSecret,
-    code,
-    redirectUri,
-  );
-  const slackUser = await fetchSlackUserInfo(
-    slackResult.userId,
-    slackResult.accessToken,
-  );
-  return {
-    accessToken: slackResult.accessToken,
-    userInfo: {
-      id: slackUser.id,
-      username: slackUser.username,
-      email: slackUser.email,
-    },
-    oauthScopes: slackResult.scopes,
-  };
+  return handler.exchangeCode(clientId, clientSecret, code, redirectUri);
 }
 
 export async function GET(
@@ -223,8 +146,11 @@ export async function GET(
     const redirectUri = `${origin}/api/connectors/${type}/callback`;
 
     // Exchange code for token directly from provider
-    const { accessToken, userInfo, oauthScopes } =
-      await exchangeTokenForConnector(connectorType, code, redirectUri);
+    const {
+      accessToken,
+      userInfo,
+      scopes: oauthScopes,
+    } = await exchangeTokenForConnector(connectorType, code, redirectUri);
 
     log.debug("Storing connector", {
       userId,

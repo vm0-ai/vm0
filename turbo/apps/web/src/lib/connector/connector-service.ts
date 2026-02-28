@@ -10,9 +10,7 @@ import { encryptCredentialValue } from "../crypto";
 import { notFound, badRequest } from "../errors";
 import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
-import { getGitHubSecretName } from "./providers/github";
-import { getNotionSecretName } from "./providers/notion";
-import { getSlackSecretName } from "./providers/slack";
+import { PROVIDER_HANDLERS } from "./provider-registry";
 
 const log = logger("service:connector");
 
@@ -31,16 +29,8 @@ function parseConnectorType(type: string): ConnectorType {
  * Get secret name for a connector type
  */
 function getSecretNameForConnector(type: ConnectorType): string {
-  switch (type) {
-    case "github":
-      return getGitHubSecretName();
-    case "notion":
-      return getNotionSecretName();
-    case "computer":
-      return "COMPUTER_CONNECTOR_AUTHTOKEN";
-    case "slack":
-      return getSlackSecretName();
-  }
+  if (type === "computer") return "COMPUTER_CONNECTOR_AUTHTOKEN";
+  return PROVIDER_HANDLERS[type].getSecretName();
 }
 
 /**

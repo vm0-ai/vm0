@@ -4,9 +4,7 @@ import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
-import { buildGitHubAuthorizationUrl } from "../../../../../src/lib/connector/providers/github";
-import { buildNotionAuthorizationUrl } from "../../../../../src/lib/connector/providers/notion";
-import { buildSlackAuthorizationUrl } from "../../../../../src/lib/connector/providers/slack";
+import { PROVIDER_HANDLERS } from "../../../../../src/lib/connector/provider-registry";
 
 /**
  * Connector OAuth Authorize Endpoint
@@ -100,44 +98,17 @@ export async function GET(
   // Check for session parameter (CLI device flow)
   const sessionId = url.searchParams.get("session");
 
-  // Build authorization URL directly from provider
+  // Build authorization URL via provider registry
   const currentEnv = env();
-  let authUrl: string;
-  switch (connectorType) {
-    case "github": {
-      const clientId = currentEnv.GH_OAUTH_CLIENT_ID;
-      if (!clientId) {
-        return NextResponse.json(
-          { error: "GitHub OAuth not configured" },
-          { status: 500 },
-        );
-      }
-      authUrl = buildGitHubAuthorizationUrl(clientId, redirectUri, state);
-      break;
-    }
-    case "notion": {
-      const clientId = currentEnv.NOTION_OAUTH_CLIENT_ID;
-      if (!clientId) {
-        return NextResponse.json(
-          { error: "Notion OAuth not configured" },
-          { status: 500 },
-        );
-      }
-      authUrl = buildNotionAuthorizationUrl(clientId, redirectUri, state);
-      break;
-    }
-    case "slack": {
-      const clientId = currentEnv.SLACK_CLIENT_ID;
-      if (!clientId) {
-        return NextResponse.json(
-          { error: "Slack OAuth not configured" },
-          { status: 500 },
-        );
-      }
-      authUrl = buildSlackAuthorizationUrl(clientId, redirectUri, state);
-      break;
-    }
+  const handler = PROVIDER_HANDLERS[connectorType];
+  const clientId = handler.getClientId(currentEnv);
+  if (!clientId) {
+    return NextResponse.json(
+      { error: `${connectorType} OAuth not configured` },
+      { status: 500 },
+    );
   }
+  const authUrl = handler.buildAuthUrl(clientId, redirectUri, state);
 
   // Create redirect response with state cookie
   const response = NextResponse.redirect(authUrl);
