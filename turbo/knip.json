@@ -51,17 +51,6 @@
       "ignore": ["custom-eslint/**"],
       "ignoreDependencies": ["tailwindcss", "typescript-eslint"]
     },
-    "apps/runner": {
-      "entry": [
-        "src/**/__tests__/**/*.{test,spec}.ts",
-        "src/**/*.{test,spec}.ts"
-      ],
-      "project": ["src/**/*.ts"],
-      "ignoreBinaries": ["tsup"],
-      "tsup": {
-        "config": ["tsup.config.ts"]
-      }
-    },
     "packages/core": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.ts",
@@ -119,12 +108,6 @@
     "apps/platform/src/views/router/link.tsx",
     "apps/platform/src/test/mocks/clerk-react.ts",
     "apps/platform/src/test/mocks/clerk-react-experimental.ts",
-    "apps/runner/src/lib/firecracker/index.ts",
-    "apps/runner/src/lib/firecracker/guest.ts",
-    "apps/runner/src/lib/firecracker/network.ts",
-    "apps/runner/src/lib/firecracker/netns-pool.ts",
-    "apps/runner/src/lib/firecracker/client.ts",
-    "apps/runner/src/lib/firecracker/vm.ts",
     "apps/web/src/test/setup.ts",
     "apps/web/src/lib/schedule/schedule-service.ts",
     "apps/web/src/lib/model-provider/model-provider-service.ts",

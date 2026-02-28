@@ -43,12 +43,6 @@ updates:
     schedule:
       interval: "weekly"
 
-  # Docker base images - runner deployment
-  - package-ecosystem: "docker"
-    directory: "/turbo/apps/runner/scripts/deploy"
-    schedule:
-      interval: "weekly"
-
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"

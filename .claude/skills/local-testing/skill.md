@@ -16,11 +16,8 @@ This skill documents how to properly set up a local development environment for 
 # 1. Install dependencies
 cd turbo && pnpm install
 
-# 2. Build Rust binary (required for runner tests)
-cd ../crates && cargo build
-
-# 3. Run unit tests
-cd ../turbo && pnpm vitest run
+# 2. Run unit tests
+cd turbo && pnpm vitest run
 ```
 
 ### CLI E2E Tests
@@ -107,14 +104,10 @@ Check for these indicators in the logs (`/dev-logs`):
 
 ### Prerequisites
 
-Before running unit tests, ensure dependencies are installed and Rust binary is built:
+Before running unit tests, ensure dependencies are installed:
 
 ```bash
-# 1. Install Node.js dependencies
 cd turbo && pnpm install
-
-# 2. Build Rust vsock-guest binary (required for runner tests)
-cd ../crates && cargo build
 ```
 
 ### Run All Tests
@@ -146,7 +139,6 @@ cd turbo && pnpm vitest run apps/web/src/lib/__tests__/my-test.test.ts
 ```bash
 cd turbo && pnpm vitest run --project @vm0/cli
 cd turbo && pnpm vitest run --project web
-cd turbo && pnpm vitest run --project @vm0/runner
 ```
 
 ---
@@ -235,23 +227,12 @@ Mock Claude location: `turbo/packages/sandbox-scripts/src/scripts/mock-claude.ts
 cd turbo && pnpm install
 ```
 
-#### Problem: "Agent binary not found: vsock-guest"
-
-**Cause**: Rust binary not compiled
-
-**Solution**:
-```bash
-cd crates && cargo build
-```
-
 #### Problem: Tests Fail After Pulling New Changes
 
 **Solution**:
 ```bash
-# Reinstall dependencies and rebuild
 cd turbo && pnpm install
-cd ../crates && cargo build
-cd ../turbo && pnpm vitest run
+cd turbo && pnpm vitest run
 ```
 
 ---

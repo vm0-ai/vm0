@@ -12,9 +12,6 @@
         "turbo/apps/docs": {
             "release-type": "node"
         },
-        "turbo/apps/runner": {
-            "release-type": "node"
-        },
         "turbo/apps/platform": {
             "release-type": "node"
         },

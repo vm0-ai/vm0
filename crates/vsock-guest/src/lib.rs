@@ -49,7 +49,7 @@ fn to_io_error(e: ProtocolError) -> io::Error {
 /// - Release builds: Some("user") (run as user via su - user -c)
 ///
 /// The rootfs must have the "user" account (UID 1000) configured with passwordless sudo.
-/// See: turbo/apps/runner/scripts/deploy/Dockerfile for user account setup.
+/// See: crates/runner/scripts/rootfs.Dockerfile for user account setup.
 fn get_exec_user() -> Option<&'static str> {
     #[cfg(debug_assertions)]
     {

@@ -30,7 +30,6 @@ jobs:
       web-changed: ${{ steps.detect.outputs.web-changed }}
       docs-changed: ${{ steps.detect.outputs.docs-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
-      runner-changed: ${{ steps.detect.outputs.runner-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
       e2b-changed: ${{ steps.detect-e2b.outputs.e2b-changed }}
       sandbox-changed: ${{ steps.detect-docker.outputs.sandbox-changed }}
@@ -491,11 +490,9 @@ jobs:
       - name: Build Sandbox Scripts
         working-directory: turbo
         run: pnpm turbo run build --filter=@vm0/sandbox-scripts
-      - name: Build vsock-guest example (for runner tests)
-        run: cargo build --manifest-path crates/Cargo.toml -p vsock-guest --example vsock-guest
       - name: Test Other Packages
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/runner --project=@vm0/core --project=@vm0/ui
+        run: pnpm vitest run --project=@vm0/core --project=@vm0/ui
 
   # Deploy web application with database
   deploy-web:
@@ -509,7 +506,6 @@ jobs:
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true' ||
         needs.prepare.outputs.platform-changed == 'true' ||
         needs.prepare.outputs.crates-changed == 'true'
       )
@@ -720,8 +716,7 @@ jobs:
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true'
+        needs.prepare.outputs.cli-changed == 'true'
       )
     steps:
       - uses: actions/checkout@v6
@@ -818,7 +813,6 @@ jobs:
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true' ||
         needs.prepare.outputs.crates-changed == 'true'
       )
     timeout-minutes: 5
@@ -893,8 +887,7 @@ jobs:
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true'
+        needs.prepare.outputs.cli-changed == 'true'
       )
     strategy:
       fail-fast: false
@@ -979,7 +972,6 @@ jobs:
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true' ||
         needs.prepare.outputs.crates-changed == 'true'
       )
     outputs:
@@ -1156,7 +1148,6 @@ jobs:
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true' ||
         needs.prepare.outputs.crates-changed == 'true'
       )
     steps:
@@ -1275,7 +1266,6 @@ jobs:
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true' ||
         needs.prepare.outputs.crates-changed == 'true'
       )
     strategy:
