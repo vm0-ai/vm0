@@ -66,14 +66,16 @@ export function detectPackageManager(): PackageManager {
 /**
  * Check if the package manager supports auto-upgrade
  */
-function isAutoUpgradeSupported(pm: PackageManager): pm is "npm" | "pnpm" {
+export function isAutoUpgradeSupported(
+  pm: PackageManager,
+): pm is "npm" | "pnpm" {
   return pm === "npm" || pm === "pnpm";
 }
 
 /**
  * Get the manual upgrade command for a package manager
  */
-function getManualUpgradeCommand(pm: PackageManager): string {
+export function getManualUpgradeCommand(pm: PackageManager): string {
   switch (pm) {
     case "bun":
       return `bun add -g ${PACKAGE_NAME}@latest`;
@@ -110,7 +112,7 @@ function buildRerunCommand(prompt: string | undefined): string {
  * Fetch the latest version of the package from npm registry
  * Returns null if the request fails or times out
  */
-async function getLatestVersion(): Promise<string | null> {
+export async function getLatestVersion(): Promise<string | null> {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -138,7 +140,9 @@ async function getLatestVersion(): Promise<string | null> {
  * - pnpm: pnpm add -g @vm0/cli@latest
  * Returns true on success, false on failure
  */
-function performUpgrade(packageManager: "npm" | "pnpm"): Promise<boolean> {
+export function performUpgrade(
+  packageManager: "npm" | "pnpm",
+): Promise<boolean> {
   return new Promise((resolve) => {
     const isWindows = process.platform === "win32";
     const command = isWindows ? `${packageManager}.cmd` : packageManager;

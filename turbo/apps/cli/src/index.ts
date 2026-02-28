@@ -24,6 +24,7 @@ import { setupClaudeCommand } from "./commands/setup-claude";
 import { dashboardCommand } from "./commands/dashboard";
 import { devToolCommand } from "./commands/dev-tool";
 import { preferenceCommand } from "./commands/preference";
+import { upgradeCommand } from "./commands/upgrade";
 
 const program = new Command();
 
@@ -56,6 +57,7 @@ program.addCommand(onboardCommand);
 program.addCommand(setupClaudeCommand);
 program.addCommand(dashboardCommand);
 program.addCommand(preferenceCommand);
+program.addCommand(upgradeCommand);
 program.addCommand(devToolCommand, { hidden: true });
 
 export { program };
