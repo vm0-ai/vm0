@@ -9,10 +9,11 @@ import { eq, and } from "drizzle-orm";
 import type { ComputerConnectorCreateResponse } from "@vm0/core";
 import { connectors } from "../../db/schema/connector";
 import { secrets } from "../../db/schema/secret";
-import { encryptCredentialValue, decryptCredentialValue } from "../crypto";
+import { decryptCredentialValue } from "../crypto";
 import { badRequest, conflict, notFound } from "../errors";
 import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
+import { upsertSecretByScope } from "../secret/secret-service";
 import {
   findOrCreateBotUser,
   createCredential,
@@ -30,46 +31,6 @@ const COMPUTER_SECRETS = [
   "COMPUTER_CONNECTOR_DOMAIN_ID",
   "COMPUTER_CONNECTOR_DOMAIN",
 ] as const;
-
-/**
- * Upsert a single connector secret (type="connector").
- */
-async function upsertSecret(
-  scopeId: string,
-  name: string,
-  value: string,
-): Promise<void> {
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  const encryptedValue = encryptCredentialValue(value, encryptionKey);
-  const db = globalThis.services.db;
-
-  const [existing] = await db
-    .select({ id: secrets.id })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.scopeId, scopeId),
-        eq(secrets.name, name),
-        eq(secrets.type, "connector"),
-      ),
-    )
-    .limit(1);
-
-  if (existing) {
-    await db
-      .update(secrets)
-      .set({ encryptedValue, updatedAt: new Date() })
-      .where(eq(secrets.id, existing.id));
-  } else {
-    await db.insert(secrets).values({
-      scopeId,
-      name,
-      encryptedValue,
-      type: "connector",
-      description: `Computer connector: ${name}`,
-    });
-  }
-}
 
 /**
  * Create a computer connector with ngrok tunnel credentials.
@@ -197,9 +158,27 @@ export async function createComputerConnector(
 
   // Store secrets (ngrok token is one-time use, returned to client only)
   await Promise.all([
-    upsertSecret(scope.id, "COMPUTER_CONNECTOR_BRIDGE_TOKEN", bridgeToken),
-    upsertSecret(scope.id, "COMPUTER_CONNECTOR_DOMAIN_ID", reservedDomain.id),
-    upsertSecret(scope.id, "COMPUTER_CONNECTOR_DOMAIN", domain),
+    upsertSecretByScope(
+      scope.id,
+      "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
+      bridgeToken,
+      "connector",
+      "Computer connector: COMPUTER_CONNECTOR_BRIDGE_TOKEN",
+    ),
+    upsertSecretByScope(
+      scope.id,
+      "COMPUTER_CONNECTOR_DOMAIN_ID",
+      reservedDomain.id,
+      "connector",
+      "Computer connector: COMPUTER_CONNECTOR_DOMAIN_ID",
+    ),
+    upsertSecretByScope(
+      scope.id,
+      "COMPUTER_CONNECTOR_DOMAIN",
+      domain,
+      "connector",
+      "Computer connector: COMPUTER_CONNECTOR_DOMAIN",
+    ),
   ]);
 
   log.debug("Computer connector created", {

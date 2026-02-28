@@ -6,10 +6,10 @@ import {
 } from "@vm0/core";
 import { connectors } from "../../db/schema/connector";
 import { secrets } from "../../db/schema/secret";
-import { encryptCredentialValue } from "../crypto";
 import { notFound, badRequest } from "../errors";
 import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
+import { upsertSecretByScope } from "../secret/secret-service";
 import { PROVIDER_HANDLERS } from "./provider-registry";
 
 const log = logger("service:connector");
@@ -142,9 +142,6 @@ export async function upsertOAuthConnector(
   }
 
   const secretName = getSecretNameForConnector(type);
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  const encryptedValue = encryptCredentialValue(accessToken, encryptionKey);
-
   const db = globalThis.services.db;
 
   // Check if connector exists
@@ -157,35 +154,13 @@ export async function upsertOAuthConnector(
   const isUpdate = existingConnector.length > 0;
 
   // Upsert secret with type="connector"
-  const existingSecret = await db
-    .select({ id: secrets.id })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.scopeId, scope.id),
-        eq(secrets.name, secretName),
-        eq(secrets.type, "connector"),
-      ),
-    )
-    .limit(1);
-
-  if (existingSecret[0]) {
-    await db
-      .update(secrets)
-      .set({
-        encryptedValue,
-        updatedAt: new Date(),
-      })
-      .where(eq(secrets.id, existingSecret[0].id));
-  } else {
-    await db.insert(secrets).values({
-      scopeId: scope.id,
-      name: secretName,
-      encryptedValue,
-      type: "connector",
-      description: `OAuth token for ${type} connector`,
-    });
-  }
+  await upsertSecretByScope(
+    scope.id,
+    secretName,
+    accessToken,
+    "connector",
+    `OAuth token for ${type} connector`,
+  );
 
   // Upsert connector
   let connectorRow: {
@@ -316,34 +291,11 @@ export async function upsertConnectorSecret(
     throw notFound("User scope not found");
   }
 
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  const encryptedValue = encryptCredentialValue(secretValue, encryptionKey);
-  const db = globalThis.services.db;
-
-  const existingSecret = await db
-    .select({ id: secrets.id })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.scopeId, scope.id),
-        eq(secrets.name, secretName),
-        eq(secrets.type, "connector"),
-      ),
-    )
-    .limit(1);
-
-  if (existingSecret[0]) {
-    await db
-      .update(secrets)
-      .set({ encryptedValue, updatedAt: new Date() })
-      .where(eq(secrets.id, existingSecret[0].id));
-  } else {
-    await db.insert(secrets).values({
-      scopeId: scope.id,
-      name: secretName,
-      encryptedValue,
-      type: "connector",
-      description: `Connector secret: ${secretName}`,
-    });
-  }
+  await upsertSecretByScope(
+    scope.id,
+    secretName,
+    secretValue,
+    "connector",
+    `Connector secret: ${secretName}`,
+  );
 }

@@ -756,6 +756,43 @@ export async function executeDueSchedules(): Promise<{
 }
 
 /**
+ * Advance schedule to next occurrence (cron) or disable (one-time).
+ * Shared by retry-window-expired, failure, and success paths.
+ */
+async function advanceScheduleState(
+  schedule: typeof agentSchedules.$inferSelect,
+  lastRunId?: string,
+): Promise<void> {
+  const now = new Date(Date.now());
+  if (schedule.cronExpression) {
+    const nextRunAt = calculateNextRun(
+      schedule.cronExpression,
+      schedule.timezone,
+    );
+    await globalThis.services.db
+      .update(agentSchedules)
+      .set({
+        ...(lastRunId !== undefined && { lastRunId }),
+        lastRunAt: now,
+        retryStartedAt: null,
+        nextRunAt,
+      })
+      .where(eq(agentSchedules.id, schedule.id));
+  } else {
+    await globalThis.services.db
+      .update(agentSchedules)
+      .set({
+        enabled: false,
+        ...(lastRunId !== undefined && { lastRunId }),
+        lastRunAt: now,
+        retryStartedAt: null,
+        nextRunAt: null,
+      })
+      .where(eq(agentSchedules.id, schedule.id));
+  }
+}
+
+/**
  * Handle concurrency limit failure with retry logic.
  * Returns true if retry was scheduled (don't re-throw), false if should advance to next occurrence.
  */
@@ -812,40 +849,12 @@ async function handleConcurrencyFailure(
     `Schedule ${schedule.name} retry window expired after ${Math.round(windowElapsed / 60000)} min`,
   );
 
-  if (schedule.cronExpression) {
-    // Cron schedule: advance to next occurrence
-    const nextRunAt = calculateNextRun(
-      schedule.cronExpression,
-      schedule.timezone,
-    );
-    await globalThis.services.db
-      .update(agentSchedules)
-      .set({
-        lastRunId: failedRun?.id ?? schedule.lastRunId,
-        lastRunAt: now,
-        retryStartedAt: null,
-        nextRunAt,
-      })
-      .where(eq(agentSchedules.id, schedule.id));
-    log.debug(
-      `Cron schedule ${schedule.name} retry window expired, next run at ${nextRunAt?.toISOString()}`,
-    );
-  } else {
-    // One-time schedule: disable after retry window expires
-    await globalThis.services.db
-      .update(agentSchedules)
-      .set({
-        enabled: false,
-        lastRunId: failedRun?.id ?? schedule.lastRunId,
-        lastRunAt: now,
-        retryStartedAt: null,
-        nextRunAt: null,
-      })
-      .where(eq(agentSchedules.id, schedule.id));
-    log.debug(
-      `One-time schedule ${schedule.name} retry window expired and disabled`,
-    );
-  }
+  await advanceScheduleState(schedule, failedRun?.id ?? schedule.lastRunId);
+  log.debug(
+    schedule.cronExpression
+      ? `Cron schedule ${schedule.name} retry window expired`
+      : `One-time schedule ${schedule.name} retry window expired and disabled`,
+  );
 
   return true; // Already handled, don't re-throw
 }
@@ -945,34 +954,12 @@ async function executeSchedule(
     }
 
     // Any failure (concurrency-expired or other): update schedule state (disable one-time, advance cron)
-    if (schedule.cronExpression) {
-      const nextRunAt = calculateNextRun(
-        schedule.cronExpression,
-        schedule.timezone,
-      );
-      await globalThis.services.db
-        .update(agentSchedules)
-        .set({
-          lastRunAt: new Date(Date.now()),
-          nextRunAt,
-          retryStartedAt: null,
-        })
-        .where(eq(agentSchedules.id, schedule.id));
-      log.debug(
-        `Cron schedule ${schedule.name} failed, next run at ${nextRunAt?.toISOString()}`,
-      );
-    } else {
-      await globalThis.services.db
-        .update(agentSchedules)
-        .set({
-          enabled: false,
-          lastRunAt: new Date(Date.now()),
-          nextRunAt: null,
-          retryStartedAt: null,
-        })
-        .where(eq(agentSchedules.id, schedule.id));
-      log.debug(`One-time schedule ${schedule.name} failed and disabled`);
-    }
+    await advanceScheduleState(schedule);
+    log.debug(
+      schedule.cronExpression
+        ? `Cron schedule ${schedule.name} failed`
+        : `One-time schedule ${schedule.name} failed and disabled`,
+    );
 
     throw error; // Re-throw so executeDueSchedules counts it as skipped
   }
@@ -983,36 +970,11 @@ async function executeSchedule(
     .set({ lastRunId: runId })
     .where(eq(agentSchedules.id, schedule.id));
 
-  // Calculate next run time for success path
-  let nextRunAt: Date | null = null;
-  if (schedule.cronExpression) {
-    nextRunAt = calculateNextRun(schedule.cronExpression, schedule.timezone);
-  } else {
-    // One-time schedule: disable after successful execution
-    await globalThis.services.db
-      .update(agentSchedules)
-      .set({
-        enabled: false,
-        lastRunAt: new Date(Date.now()),
-        nextRunAt: null,
-        retryStartedAt: null,
-      })
-      .where(eq(agentSchedules.id, schedule.id));
-    log.debug(`One-time schedule ${schedule.name} executed and disabled`);
-    return;
-  }
-
-  // Update schedule with next run time
-  await globalThis.services.db
-    .update(agentSchedules)
-    .set({
-      lastRunAt: new Date(Date.now()),
-      nextRunAt,
-      retryStartedAt: null,
-    })
-    .where(eq(agentSchedules.id, schedule.id));
-
+  // Advance schedule to next occurrence (cron) or disable (one-time)
+  await advanceScheduleState(schedule);
   log.debug(
-    `Schedule ${schedule.name} executed, next run at ${nextRunAt?.toISOString()}`,
+    schedule.cronExpression
+      ? `Schedule ${schedule.name} executed`
+      : `One-time schedule ${schedule.name} executed and disabled`,
   );
 }
