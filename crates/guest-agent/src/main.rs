@@ -107,6 +107,18 @@ async fn execute(
     start: Instant,
     heartbeat_handle: tokio::task::JoinHandle<Result<(), error::AgentError>>,
 ) -> i32 {
+    // Pre-warm kernel DNS cache for the CLI's API endpoint.
+    // Fire-and-forget: runs in background so the cache is populated by the
+    // time the CLI spawns and makes its first HTTPS request.
+    let dns_target = if env::cli_agent_type() == "codex" {
+        "api.openai.com:443"
+    } else {
+        "api.anthropic.com:443"
+    };
+    tokio::spawn(async move {
+        let _ = tokio::net::lookup_host(dns_target).await;
+    });
+
     // Working directory setup
     let wd_start = Instant::now();
     if let Err(e) = std::fs::create_dir_all(env::working_dir())
