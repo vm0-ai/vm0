@@ -19,7 +19,6 @@ function makeConnector(
     id: crypto.randomUUID(),
     type,
     authMethod: "oauth",
-    platform: "self-hosted",
     externalId: `ext-${type}-1`,
     externalUsername: type === "github" ? "octocat" : "notion-user",
     externalEmail: null,
@@ -35,15 +34,13 @@ describe("connectors tab", () => {
     await setupPage({
       context,
       path: "/settings?tab=connectors",
-      featureSwitches: { connectorNango: true },
     });
 
     expect(screen.getByText("GitHub")).toBeInTheDocument();
     expect(screen.getByText("Notion")).toBeInTheDocument();
-    expect(screen.getByText("Gmail")).toBeInTheDocument();
 
     const connectButtons = screen.getAllByText("Connect");
-    expect(connectButtons).toHaveLength(3);
+    expect(connectButtons.length).toBeGreaterThanOrEqual(2);
   });
 
   it("shows connected status when a connector exists", async () => {
@@ -115,86 +112,5 @@ describe("connectors tab", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(screen.getByText("Notion")).toBeInTheDocument();
-  });
-
-  it("shows gmail connector with nango platform", async () => {
-    setMockConnectors([
-      {
-        id: crypto.randomUUID(),
-        type: "gmail",
-        authMethod: "oauth",
-        platform: "nango",
-        nangoConnectionId: "nango-uuid-123",
-        externalId: "gmail-user-1",
-        externalUsername: "Test User",
-        externalEmail: "user@gmail.com",
-        oauthScopes: ["https://mail.google.com/"],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    ]);
-
-    await setupPage({
-      context,
-      path: "/settings?tab=connectors",
-      featureSwitches: { connectorNango: true },
-    });
-
-    expect(screen.getByText("Gmail")).toBeInTheDocument();
-    expect(screen.getByText("Connected as Test User")).toBeInTheDocument();
-  });
-
-  it("can disconnect nango connector", async () => {
-    setMockConnectors([
-      {
-        id: crypto.randomUUID(),
-        type: "gmail",
-        authMethod: "oauth",
-        platform: "nango",
-        nangoConnectionId: "nango-uuid-456",
-        externalId: "gmail-456",
-        externalUsername: "Test User",
-        externalEmail: "test@gmail.com",
-        oauthScopes: ["https://mail.google.com/"],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    ]);
-
-    let deletedType: string | null = null;
-    server.use(
-      http.delete("/api/connectors/:type", ({ params }) => {
-        deletedType = params.type as string;
-        return new HttpResponse(null, { status: 204 });
-      }),
-    );
-
-    await setupPage({
-      context,
-      path: "/settings?tab=connectors",
-      featureSwitches: { connectorNango: true },
-    });
-
-    // Open kebab menu
-    const optionsButton = screen.getByRole("button", {
-      name: /connector options/i,
-    });
-    await user.click(optionsButton);
-
-    // Click Disconnect
-    const disconnectButton = await screen.findByText("Disconnect");
-    await user.click(disconnectButton);
-
-    // Confirm
-    const dialog = await screen.findByRole("dialog");
-    const confirmButton = within(dialog).getByRole("button", {
-      name: /^disconnect$/i,
-    });
-    await user.click(confirmButton);
-
-    // Verify gmail was deleted (which deletes from both DB and Nango)
-    await vi.waitFor(() => {
-      expect(deletedType).toBe("gmail");
-    });
   });
 });

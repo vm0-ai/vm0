@@ -25,7 +25,6 @@ describe("allConnectorTypes$", () => {
               id: "conn-1",
               type: "github",
               authMethod: "oauth",
-              platform: "self-hosted",
               externalUsername: "octocat",
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -39,7 +38,6 @@ describe("allConnectorTypes$", () => {
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { connectorNango: true },
     });
 
     const types = await store.get(allConnectorTypes$);
@@ -55,11 +53,6 @@ describe("allConnectorTypes$", () => {
           type: "notion",
           connected: false,
           label: "Notion",
-        }),
-        expect.objectContaining({
-          type: "gmail",
-          connected: false,
-          label: "Gmail",
         }),
       ]),
     );

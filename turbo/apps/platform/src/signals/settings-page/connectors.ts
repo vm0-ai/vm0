@@ -31,13 +31,6 @@ export interface ConnectorTypeWithStatus {
   connector: ConnectorResponse | null;
 }
 
-/**
- * Check if a connector type uses Nango Cloud platform
- */
-function isNangoConnector(type: ConnectorType): boolean {
-  return type === "gmail";
-}
-
 export const allConnectorTypes$ = computed(async (get) => {
   const { connectors } = await get(connectors$);
   const connectorMap = new Map(connectors.map((c) => [c.type, c]));
@@ -49,13 +42,6 @@ export const allConnectorTypes$ = computed(async (get) => {
       if (
         type === "computer" &&
         !features?.[FeatureSwitchKey.ComputerConnector]
-      ) {
-        return false;
-      }
-      // Filter Nango connectors based on feature flag
-      if (
-        isNangoConnector(type) &&
-        !features?.[FeatureSwitchKey.ConnectorNango]
       ) {
         return false;
       }

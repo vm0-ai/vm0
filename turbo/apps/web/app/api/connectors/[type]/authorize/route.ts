@@ -4,8 +4,8 @@ import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
-import { getPlatform } from "../../../../../src/lib/connector/platform/router";
-import { getUserScopeByClerkId } from "../../../../../src/lib/scope/scope-service";
+import { buildGitHubAuthorizationUrl } from "../../../../../src/lib/connector/providers/github";
+import { buildNotionAuthorizationUrl } from "../../../../../src/lib/connector/providers/notion";
 
 /**
  * Connector OAuth Authorize Endpoint
@@ -90,15 +90,6 @@ export async function GET(
     );
   }
 
-  // Get user scope for building connection ID
-  const scope = await getUserScopeByClerkId(userId);
-  if (!scope) {
-    return NextResponse.json(
-      { error: "User scope not found" },
-      { status: 500 },
-    );
-  }
-
   // Generate state for CSRF protection
   const state = generateState();
 
@@ -108,17 +99,33 @@ export async function GET(
   // Check for session parameter (CLI device flow)
   const sessionId = url.searchParams.get("session");
 
-  // Build connection ID for platform abstraction
-  const connectionId = `${scope.id}:${connectorType}`;
-
-  // Use platform abstraction to build authorization URL
-  const platform = getPlatform(connectorType);
-  const authUrl = await platform.buildAuthorizationUrl({
-    type: connectorType,
-    connectionId,
-    redirectUri,
-    state,
-  });
+  // Build authorization URL directly from provider
+  const currentEnv = env();
+  let authUrl: string;
+  switch (connectorType) {
+    case "github": {
+      const clientId = currentEnv.GH_OAUTH_CLIENT_ID;
+      if (!clientId) {
+        return NextResponse.json(
+          { error: "GitHub OAuth not configured" },
+          { status: 500 },
+        );
+      }
+      authUrl = buildGitHubAuthorizationUrl(clientId, redirectUri, state);
+      break;
+    }
+    case "notion": {
+      const clientId = currentEnv.NOTION_OAUTH_CLIENT_ID;
+      if (!clientId) {
+        return NextResponse.json(
+          { error: "Notion OAuth not configured" },
+          { status: 500 },
+        );
+      }
+      authUrl = buildNotionAuthorizationUrl(clientId, redirectUri, state);
+      break;
+    }
+  }
 
   // Create redirect response with state cookie
   const response = NextResponse.redirect(authUrl);
