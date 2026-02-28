@@ -59,7 +59,10 @@ import { POST as addPermissionRoute } from "../../app/api/agent/composes/[id]/pe
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
-import { encryptCredentialValue } from "../lib/crypto/secrets-encryption";
+import {
+  encryptCredentialValue,
+  decryptCredentialValue,
+} from "../lib/crypto/secrets-encryption";
 import type { ConnectorType } from "@vm0/core";
 import { agentSessions } from "../db/schema/agent-session";
 import {
@@ -1395,6 +1398,38 @@ export async function createTestConnector(
   });
 
   return connector!;
+}
+
+/**
+ * Find and decrypt a connector secret token from the database.
+ * Used for verifying that the correct token was stored during connector OAuth flow.
+ *
+ * @param scopeId - The scope ID to look up the secret for
+ * @param secretName - The secret name (e.g. "SLACK_ACCESS_TOKEN")
+ * @returns The decrypted token value, or undefined if not found
+ */
+export async function findTestConnectorSecret(
+  scopeId: string,
+  secretName: string,
+): Promise<string | undefined> {
+  const [storedSecret] = await globalThis.services.db
+    .select()
+    .from(secrets)
+    .where(
+      and(
+        eq(secrets.scopeId, scopeId),
+        eq(secrets.name, secretName),
+        eq(secrets.type, "connector"),
+      ),
+    )
+    .limit(1);
+
+  if (!storedSecret) return undefined;
+
+  return decryptCredentialValue(
+    storedSecret.encryptedValue,
+    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+  );
 }
 
 /**

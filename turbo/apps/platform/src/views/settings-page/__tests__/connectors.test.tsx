@@ -12,7 +12,7 @@ const context = testContext();
 const user = userEvent.setup();
 
 function makeConnector(
-  type: "github" | "notion",
+  type: "github" | "notion" | "slack",
   overrides?: Partial<ConnectorResponse>,
 ): ConnectorResponse {
   return {
@@ -41,7 +41,7 @@ describe("connectors tab", () => {
     expect(screen.getByText("Slack")).toBeInTheDocument();
 
     const connectButtons = screen.getAllByText("Connect");
-    expect(connectButtons.length).toBeGreaterThanOrEqual(2);
+    expect(connectButtons).toHaveLength(3);
   });
 
   it("shows connected status when a connector exists", async () => {
@@ -113,5 +113,6 @@ describe("connectors tab", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(screen.getByText("Notion")).toBeInTheDocument();
+    expect(screen.getByText("Slack")).toBeInTheDocument();
   });
 });

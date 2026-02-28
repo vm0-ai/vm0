@@ -9,6 +9,7 @@ import { reloadEnv } from "../../../../../../src/env";
 import {
   createTestRequest,
   createTestConnectorSession,
+  findTestConnectorSecret,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
@@ -538,7 +539,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     });
 
     it("should store authed_user.access_token (xoxp-), not bot token", async () => {
-      await context.setupUser();
+      const user = await context.setupUser();
 
       const { handlers: mswHandlers } = createSlackOAuthMock({
         accessToken: "xoxp-user-token-12345",
@@ -558,6 +559,13 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
       const location = response.headers.get("location");
       expect(location).toContain("/connector/success");
+
+      // Verify the stored token is the user token (xoxp-), not a bot token (xoxb-)
+      const decryptedToken = await findTestConnectorSecret(
+        user.scopeId,
+        "SLACK_ACCESS_TOKEN",
+      );
+      expect(decryptedToken).toBe("xoxp-user-token-12345");
     });
 
     it("should redirect with error when Slack token exchange fails", async () => {
