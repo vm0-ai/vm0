@@ -1,9 +1,10 @@
 import { resolveOrgAccessToken } from "./org-token-service";
+import type { OrgRole } from "@vm0/core";
 
 interface OrgAuth {
   userId: string;
   scopeId: string;
-  role: string;
+  role: OrgRole;
 }
 
 interface OrgAuthError {

@@ -1,5 +1,5 @@
 import { clerkClient } from "@clerk/nextjs/server";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { scopes } from "../../db/schema/scope";
 import { badRequest, forbidden, notFound } from "../errors";
 import { getUserScopeByClerkId, getScopeBySlug } from "../scope/scope-service";
@@ -8,8 +8,34 @@ import {
   revokeOrgAccessTokens,
 } from "./org-token-service";
 import { logger } from "../logger";
+import type { OrgRole } from "@vm0/core";
 
 const log = logger("service:org");
+
+/**
+ * Map Clerk's internal role string to our OrgRole type.
+ */
+function mapClerkRole(clerkRole: string): OrgRole {
+  return clerkRole === "org:admin" ? "admin" : "member";
+}
+
+/**
+ * Lookup an organization scope by ID and verify it has a Clerk org link.
+ * Throws notFound if the scope doesn't exist or isn't linked.
+ */
+async function getOrgScope(scopeId: string) {
+  const [scope] = await globalThis.services.db
+    .select()
+    .from(scopes)
+    .where(and(eq(scopes.id, scopeId), eq(scopes.type, "organization")))
+    .limit(1);
+
+  if (!scope?.clerkOrgId) {
+    throw notFound("Organization not found");
+  }
+
+  return scope as typeof scope & { clerkOrgId: string };
+}
 
 /**
  * Create a new organization.
@@ -80,19 +106,7 @@ export async function getOrganizationStatus(
   clerkUserId: string,
   scopeId: string,
 ) {
-  const [scope] = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(and(eq(scopes.id, scopeId), eq(scopes.type, "organization")))
-    .limit(1);
-
-  if (!scope) {
-    throw notFound("Organization not found");
-  }
-
-  if (!scope.clerkOrgId) {
-    throw notFound("Organization not linked to Clerk");
-  }
+  const scope = await getOrgScope(scopeId);
 
   // Get members from Clerk
   const client = await clerkClient();
@@ -121,10 +135,7 @@ export async function getOrganizationStatus(
     return {
       userId,
       email: emailMap.get(userId) ?? "",
-      role:
-        membership.role === "org:admin"
-          ? ("admin" as const)
-          : ("member" as const),
+      role: mapClerkRole(membership.role),
       joinedAt: membership.createdAt
         ? new Date(membership.createdAt).toISOString()
         : new Date().toISOString(),
@@ -135,12 +146,13 @@ export async function getOrganizationStatus(
   const callerMembership = memberships.data.find(
     (m) => m.publicUserData?.userId === clerkUserId,
   );
-  const callerRole =
-    callerMembership?.role === "org:admin" ? "admin" : "member";
+  const callerRole = callerMembership
+    ? mapClerkRole(callerMembership.role)
+    : "member";
 
   return {
     slug: scope.slug,
-    role: callerRole as "admin" | "member",
+    role: callerRole,
     members,
     createdAt: scope.createdAt.toISOString(),
   };
@@ -152,22 +164,14 @@ export async function getOrganizationStatus(
  */
 export async function inviteMember(
   scopeId: string,
-  role: string,
+  role: OrgRole,
   email: string,
 ) {
   if (role !== "admin") {
     throw forbidden("Only admins can invite members");
   }
 
-  const [scope] = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(and(eq(scopes.id, scopeId), eq(scopes.type, "organization")))
-    .limit(1);
-
-  if (!scope?.clerkOrgId) {
-    throw notFound("Organization not found");
-  }
+  const scope = await getOrgScope(scopeId);
 
   const client = await clerkClient();
   await client.organizations.createOrganizationInvitation({
@@ -187,22 +191,14 @@ export async function inviteMember(
 export async function removeMember(
   callerUserId: string,
   scopeId: string,
-  role: string,
+  role: OrgRole,
   email: string,
 ) {
   if (role !== "admin") {
     throw forbidden("Only admins can remove members");
   }
 
-  const [scope] = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(and(eq(scopes.id, scopeId), eq(scopes.type, "organization")))
-    .limit(1);
-
-  if (!scope?.clerkOrgId) {
-    throw notFound("Organization not found");
-  }
+  const scope = await getOrgScope(scopeId);
 
   // Resolve email to Clerk user ID
   const client = await clerkClient();
@@ -251,7 +247,7 @@ export async function removeMember(
 export async function leaveOrganization(
   clerkUserId: string,
   scopeId: string,
-  role: string,
+  role: OrgRole,
 ) {
   if (role === "admin") {
     throw forbidden(
@@ -259,15 +255,7 @@ export async function leaveOrganization(
     );
   }
 
-  const [scope] = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(and(eq(scopes.id, scopeId), eq(scopes.type, "organization")))
-    .limit(1);
-
-  if (!scope?.clerkOrgId) {
-    throw notFound("Organization not found");
-  }
+  const scope = await getOrgScope(scopeId);
 
   // Remove own membership from Clerk
   const client = await clerkClient();
@@ -289,7 +277,7 @@ export async function getUserAccessibleScopes(clerkUserId: string) {
   const results: Array<{
     slug: string;
     type: "personal" | "organization";
-    role?: string;
+    role?: OrgRole;
   }> = [];
 
   // Get personal scope
@@ -307,22 +295,31 @@ export async function getUserAccessibleScopes(clerkUserId: string) {
     userId: clerkUserId,
   });
 
-  // For each Clerk org membership, find matching local scope
-  for (const membership of memberships.data) {
-    const clerkOrgId = membership.organization.id;
-    const [scope] = await globalThis.services.db
-      .select()
-      .from(scopes)
-      .where(
-        and(eq(scopes.clerkOrgId, clerkOrgId), eq(scopes.type, "organization")),
-      )
-      .limit(1);
+  if (memberships.data.length === 0) {
+    return results;
+  }
 
+  // Batch-query all org scopes instead of N+1
+  const clerkOrgIds = memberships.data.map((m) => m.organization.id);
+  const orgScopes = await globalThis.services.db
+    .select()
+    .from(scopes)
+    .where(
+      and(
+        inArray(scopes.clerkOrgId, clerkOrgIds),
+        eq(scopes.type, "organization"),
+      ),
+    );
+
+  const scopeByClerkOrgId = new Map(orgScopes.map((s) => [s.clerkOrgId, s]));
+
+  for (const membership of memberships.data) {
+    const scope = scopeByClerkOrgId.get(membership.organization.id);
     if (scope) {
       results.push({
         slug: scope.slug,
         type: "organization",
-        role: membership.role === "org:admin" ? "admin" : "member",
+        role: mapClerkRole(membership.role),
       });
     }
   }
@@ -372,7 +369,7 @@ export async function verifyAndActivateScope(
       throw forbidden("You are not a member of this organization");
     }
 
-    const role = membership.role === "org:admin" ? "admin" : "member";
+    const role = mapClerkRole(membership.role);
     const { token, expiresAt } = await generateOrgAccessToken(
       clerkUserId,
       scope.id,

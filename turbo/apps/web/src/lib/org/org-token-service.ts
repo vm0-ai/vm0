@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import { eq, and, gt } from "drizzle-orm";
 import { orgAccessTokens } from "../../db/schema/org-access-token";
 import { logger } from "../logger";
+import type { OrgRole } from "@vm0/core";
 
 const log = logger("service:org-token");
 
@@ -15,7 +16,7 @@ const ORG_TOKEN_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 export async function generateOrgAccessToken(
   userId: string,
   scopeId: string,
-  role: string,
+  role: OrgRole,
 ): Promise<{ token: string; expiresAt: Date }> {
   // Delete existing tokens for this user+scope
   await globalThis.services.db
@@ -50,7 +51,7 @@ export async function generateOrgAccessToken(
  */
 export async function resolveOrgAccessToken(
   token: string,
-): Promise<{ userId: string; scopeId: string; role: string } | null> {
+): Promise<{ userId: string; scopeId: string; role: OrgRole } | null> {
   const [record] = await globalThis.services.db
     .select()
     .from(orgAccessTokens)
@@ -76,7 +77,7 @@ export async function resolveOrgAccessToken(
   return {
     userId: record.userId,
     scopeId: record.scopeId,
-    role: record.role,
+    role: record.role as OrgRole,
   };
 }
 

@@ -1,15 +1,5 @@
-import { eq } from "drizzle-orm";
 import { resolveOrgAccessToken } from "../org/org-token-service";
-import { getUserScopeByClerkId } from "./scope-service";
-import { scopes } from "../../db/schema/scope";
-
-/**
- * Extract the Bearer token from an authorization header
- */
-function extractToken(authHeader?: string): string | null {
-  if (!authHeader?.startsWith("Bearer ")) return null;
-  return authHeader.substring(7);
-}
+import { getUserScopeByClerkId, getScopeById } from "./scope-service";
 
 /**
  * Resolve scope from auth context.
@@ -18,19 +8,15 @@ function extractToken(authHeader?: string): string | null {
  * Otherwise, falls back to the user's personal scope.
  */
 export async function resolveScope(userId: string, authHeader?: string) {
-  const token = extractToken(authHeader);
+  const token = authHeader?.startsWith("Bearer ")
+    ? authHeader.substring(7)
+    : null;
 
   if (token?.startsWith("vm0_org_")) {
     const orgAuth = await resolveOrgAccessToken(token);
     if (!orgAuth) return null;
 
-    const [scope] = await globalThis.services.db
-      .select()
-      .from(scopes)
-      .where(eq(scopes.id, orgAuth.scopeId))
-      .limit(1);
-
-    return scope ?? null;
+    return getScopeById(orgAuth.scopeId);
   }
 
   return getUserScopeByClerkId(userId);
