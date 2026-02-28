@@ -191,6 +191,7 @@
     "typescript-eslint"
   ],
   "ignoreBinaries": ["oxlint", "eslint"],
+  "ignoreExportsUsedInFile": true,
   "ignoreWorkspaces": [],
   "ignoreUnresolved": [],
   "eslint": {
