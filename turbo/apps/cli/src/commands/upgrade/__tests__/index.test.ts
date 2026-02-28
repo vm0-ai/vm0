@@ -63,9 +63,9 @@ describe("upgrade command", () => {
       .map((call) => call[0])
       .filter((log): log is string => typeof log === "string");
 
-    expect(allLogs.some((log) => log.includes("Upgraded to 99.0.0"))).toBe(
-      true,
-    );
+    expect(
+      allLogs.some((log) => log.includes("Upgraded from 0.0.0-test to 99.0.0")),
+    ).toBe(true);
   });
 
   it("should upgrade via pnpm when installed with pnpm", async () => {

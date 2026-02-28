@@ -60,7 +60,9 @@ export const upgradeCommand = new Command()
     const success = await performUpgrade(packageManager);
 
     if (success) {
-      console.log(chalk.green(`✓ Upgraded to ${latestVersion}`));
+      console.log(
+        chalk.green(`✓ Upgraded from ${__CLI_VERSION__} to ${latestVersion}`),
+      );
       return;
     }
 
