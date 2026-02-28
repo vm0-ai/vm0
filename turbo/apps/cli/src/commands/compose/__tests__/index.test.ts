@@ -354,6 +354,172 @@ describe("compose command", () => {
     });
   });
 
+  describe("field typo detection", () => {
+    it("should detect plural typo 'environments' and suggest 'environment'", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: anthropic\n    environments:\n      MY_VAR: foo`,
+      );
+
+      await expect(async () => {
+        await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining('Did you mean "environment"'),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should detect singular typo 'volume' and suggest 'volumes'", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: anthropic\n    volume:\n      - data:/data`,
+      );
+
+      await expect(async () => {
+        await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining('Did you mean "volumes"'),
+      );
+    });
+
+    it("should detect singular typo 'skill' and suggest 'skills'", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: anthropic\n    skill:\n      - https://github.com/org/repo/tree/main/path`,
+      );
+
+      await expect(async () => {
+        await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining('Did you mean "skills"'),
+      );
+    });
+
+    it("should detect misspelling 'framwork' and suggest 'framework'", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framwork: anthropic`,
+      );
+
+      await expect(async () => {
+        await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining('Did you mean "framework"'),
+      );
+    });
+
+    it("should detect abbreviation 'env' and suggest 'environment'", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: anthropic\n    env:\n      MY_VAR: foo`,
+      );
+
+      await expect(async () => {
+        await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining('Did you mean "environment"'),
+      );
+    });
+
+    it("should detect abbreviation 'desc' and suggest 'description'", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: anthropic\n    desc: my agent`,
+      );
+
+      await expect(async () => {
+        await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining('Did you mean "description"'),
+      );
+    });
+
+    it("should allow unknown fields that do not resemble known fields", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    foobar: something`,
+      );
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test-agent",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
+
+      // Should not have exited with error
+      expect(mockConsoleError).not.toHaveBeenCalledWith(
+        expect.stringContaining("Did you mean"),
+      );
+    });
+
+    it("should report multiple typos at once", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: anthropic\n    environments:\n      MY_VAR: foo\n    skill:\n      - https://github.com/org/repo/tree/main/path`,
+      );
+
+      await expect(async () => {
+        await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining('Did you mean "environment"'),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining('Did you mean "skills"'),
+      );
+    });
+
+    it("should not flag valid 'environment' field as typo", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    environment:\n      MY_VAR: foo`,
+      );
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test-agent",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
+
+      expect(mockConsoleError).not.toHaveBeenCalledWith(
+        expect.stringContaining("Did you mean"),
+      );
+    });
+  });
+
   describe("API interaction", () => {
     beforeEach(async () => {
       await fs.writeFile(
