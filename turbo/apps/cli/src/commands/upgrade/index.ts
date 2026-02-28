@@ -32,7 +32,7 @@ export const upgradeCommand = new Command()
 
     console.log(
       chalk.yellow(
-        `Current version: ${__CLI_VERSION__} → Latest version: ${latestVersion}`,
+        `Current version: ${__CLI_VERSION__} -> Latest version: ${latestVersion}`,
       ),
     );
     console.log();
