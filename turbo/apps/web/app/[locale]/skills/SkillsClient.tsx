@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
@@ -288,12 +289,12 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
                       }}
                     >
                       {skill.logo ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                        <Image
                           src={skill.logo}
                           alt={skill.name}
-                          width="32"
-                          height="32"
+                          width={32}
+                          height={32}
+                          unoptimized
                           style={{
                             objectFit: "contain",
                             maxWidth: "32px",
@@ -460,8 +461,9 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
 
       <Footer />
 
-      {/* eslint-disable-next-line react/no-unknown-property */}
-      <style jsx>{`
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
         @keyframes spin {
           to {
             transform: rotate(360deg);
@@ -479,7 +481,9 @@ export default function SkillsClient({ initialSkills }: SkillsClientProps) {
           outline: none;
           border-color: rgba(255, 255, 255, 0.2);
         }
-      `}</style>
+      `,
+        }}
+      />
     </>
   );
 }
