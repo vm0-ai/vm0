@@ -23,12 +23,10 @@ use crate::sandbox::FirecrackerSandbox;
 /// - `claude --version`: exercises the Bun/JSC runtime startup path so the
 ///   OS page cache is warm. The claude binary is a Bun-compiled executable
 ///   (not Node.js), so `NODE_COMPILE_CACHE` has no effect.
-///   `ANTHROPIC_BASE_URL` points to a closed local port so any accidental
-///   network call fails fast instead of waiting for a remote timeout.
 /// - `codex --help`: lightweight pre-warm for Codex (no `--print` equivalent).
 ///   Also tolerated because codex may not be installed.
 pub const PREWARM_SCRIPT: &str = "\
-    (ANTHROPIC_BASE_URL=http://127.0.0.1:1 claude --version >/dev/null 2>&1 || true) && \
+    (claude --version >/dev/null 2>&1 || true) && \
     (codex --help >/dev/null 2>&1 || true)";
 
 /// SHA-256 fingerprint of all sandbox-fc internal configuration that affects
