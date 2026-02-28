@@ -849,7 +849,10 @@ async function handleConcurrencyFailure(
     `Schedule ${schedule.name} retry window expired after ${Math.round(windowElapsed / 60000)} min`,
   );
 
-  await advanceScheduleState(schedule, failedRun?.id ?? schedule.lastRunId);
+  await advanceScheduleState(
+    schedule,
+    failedRun?.id ?? schedule.lastRunId ?? undefined,
+  );
   log.debug(
     schedule.cronExpression
       ? `Cron schedule ${schedule.name} retry window expired`
