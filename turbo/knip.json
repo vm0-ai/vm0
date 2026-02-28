@@ -23,45 +23,78 @@
         "@types/tar",
         "import-in-the-middle",
         "require-in-the-middle",
-        "cpu-features"
+        "cpu-features",
+        "oxlint",
+        "react-dom",
+        "@types/react-dom"
       ],
+      "ignoreBinaries": ["oxlint", "next", "drizzle-kit"],
       "next": {
         "entry": ["next.config.{js,ts,mjs}"]
+      },
+      "drizzle": {
+        "config": []
       }
     },
     "apps/cli": {
       "entry": [
+        "src/index.ts",
+        "src/instrument.ts",
         "src/**/__tests__/**/*.{test,spec}.ts",
         "src/**/*.{test,spec}.ts"
       ],
       "project": ["src/**/*.ts"],
-      "ignoreDependencies": ["@types/tar"],
-      "ignoreBinaries": ["tsup"],
-      "tsup": {
-        "config": ["tsup.config.ts"]
-      }
+      "ignoreDependencies": ["@types/tar", "tsup"],
+      "ignoreBinaries": ["tsup"]
     },
     "apps/docs": {
-      "entry": ["source.config.ts"],
+      "entry": ["source.config.ts", "eslint.config.js"],
       "project": ["**/*.{ts,tsx,mdx,js,mjs}"],
-      "ignoreDependencies": ["@vm0/typescript-config"]
+      "ignoreDependencies": [
+        "@vm0/typescript-config",
+        "react-dom",
+        "@types/react-dom",
+        "tailwindcss"
+      ],
+      "ignoreBinaries": ["next", "fumadocs-mdx"]
     },
     "apps/platform": {
       "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)"],
       "project": ["**/*.{ts,tsx}"],
-      "ignore": ["custom-eslint/**"],
-      "ignoreDependencies": ["tailwindcss", "typescript-eslint"]
+      "ignore": ["custom-eslint/**", "vite.config.ts", "vitest.config.ts"],
+      "ignoreDependencies": [
+        "tailwindcss",
+        "typescript-eslint",
+        "@sentry/vite-plugin",
+        "@tailwindcss/vite",
+        "@clerk/clerk-react",
+        "@vitejs/plugin-react",
+        "eslint-plugin-turbo",
+        "eslint-plugin-react-hooks",
+        "eslint-plugin-react-refresh",
+        "eslint-plugin-react",
+        "@testing-library/jest-dom"
+      ],
+      "ignoreBinaries": ["vite"],
+      "vite": {
+        "config": []
+      },
+      "eslint": {
+        "config": []
+      },
+      "vitest": {
+        "config": []
+      }
     },
     "apps/runner": {
       "entry": [
+        "src/index.ts",
         "src/**/__tests__/**/*.{test,spec}.ts",
         "src/**/*.{test,spec}.ts"
       ],
       "project": ["src/**/*.ts"],
-      "ignoreBinaries": ["tsup"],
-      "tsup": {
-        "config": ["tsup.config.ts"]
-      }
+      "ignoreDependencies": ["tsup"],
+      "ignoreBinaries": ["tsup"]
     },
     "packages/core": {
       "entry": [
@@ -80,11 +113,19 @@
     },
     "packages/ui": {
       "entry": [
+        "src/test/setup.ts",
         "src/**/__tests__/**/*.{test,spec}.{ts,tsx}",
         "src/**/*.{test,spec}.{ts,tsx}"
       ],
       "project": ["src/**/*.{ts,tsx}"],
-      "ignoreDependencies": ["autoprefixer"]
+      "ignoreDependencies": [
+        "autoprefixer",
+        "@vitejs/plugin-react",
+        "@testing-library/jest-dom"
+      ],
+      "vitest": {
+        "config": []
+      }
     },
     "packages/eslint-config": {
       "entry": [],
@@ -120,6 +161,7 @@
     "apps/platform/src/views/router/link.tsx",
     "apps/platform/src/test/mocks/clerk-react.ts",
     "apps/platform/src/test/mocks/clerk-react-experimental.ts",
+    "apps/platform/src/test/setup.ts",
     "apps/runner/src/lib/firecracker/index.ts",
     "apps/runner/src/lib/firecracker/guest.ts",
     "apps/runner/src/lib/firecracker/network.ts",
@@ -138,7 +180,23 @@
     "scripts/rebuild-snapshots.ts",
     "scripts/rebuild-snapshots-from-db.ts"
   ],
-  "ignoreDependencies": ["@commitlint/cli"],
+  "ignoreDependencies": [
+    "@commitlint/cli",
+    "@vm0/eslint-config",
+    "oxlint",
+    "eslint",
+    "eslint-plugin-turbo",
+    "eslint-plugin-react-hooks",
+    "eslint-plugin-react-refresh",
+    "typescript-eslint"
+  ],
+  "ignoreBinaries": ["oxlint", "eslint"],
   "ignoreWorkspaces": [],
-  "ignoreUnresolved": []
+  "ignoreUnresolved": [],
+  "eslint": {
+    "config": []
+  },
+  "tsup": {
+    "config": []
+  }
 }

@@ -1,6 +1,3 @@
-"use client";
-
-import React from "react";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import Particles from "../skills/Particles";
@@ -26,10 +23,9 @@ function PricingCard({
   buttonClassName: string;
   badge?: string;
 }) {
-  const [isHovered, setIsHovered] = React.useState(false);
-
   return (
     <div
+      className="pricing-card"
       style={{
         background: "var(--card-bg)",
         backgroundImage: `
@@ -44,11 +40,8 @@ function PricingCard({
         display: "flex",
         flexDirection: "column",
         transition: "all 0.3s ease",
-        transform: isHovered ? "translateY(-2px)" : "translateY(0)",
         position: "relative",
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       {badge && (
         <div
@@ -177,10 +170,9 @@ function PricingCard({
 }
 
 function CustomPlanCard() {
-  const [isHovered, setIsHovered] = React.useState(false);
-
   return (
     <div
+      className="pricing-card"
       style={{
         background: "var(--card-bg)",
         backgroundImage: `
@@ -195,10 +187,7 @@ function CustomPlanCard() {
         alignItems: "center",
         justifyContent: "space-between",
         transition: "all 0.3s ease",
-        transform: isHovered ? "translateY(-2px)" : "translateY(0)",
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <div>
         <h3
@@ -661,34 +650,18 @@ function TableRow2({
 }
 
 function FAQItem({ question, answer }: { question: string; answer: string }) {
-  const [isExpanded, setIsExpanded] = React.useState(false);
-
   return (
-    <div
+    <details
+      className="faq-item"
       style={{
         background: "var(--card-bg)",
         border: "1px solid var(--border-light)",
         borderRadius: "16px",
         padding: "24px 32px",
         transition: "border-color 0.2s ease",
-        cursor: "pointer",
-      }}
-      onClick={() => setIsExpanded(!isExpanded)}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = "var(--border-lighter)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = "var(--border-light)";
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: "16px",
-        }}
-      >
+      <summary className="faq-summary">
         <h4
           style={{
             fontSize: "18px",
@@ -701,6 +674,7 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
           {question}
         </h4>
         <svg
+          className="faq-chevron"
           width="20"
           height="20"
           viewBox="0 0 24 24"
@@ -709,30 +683,23 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          style={{
-            flexShrink: 0,
-            transition: "transform 0.3s ease",
-            transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
-          }}
         >
           <polyline points="6 9 12 15 18 9" />
         </svg>
-      </div>
-      {isExpanded && (
-        <p
-          style={{
-            fontSize: "15px",
-            fontWeight: 300,
-            color: "var(--text-secondary)",
-            lineHeight: 1.7,
-            margin: "16px 0 0 0",
-            paddingTop: "16px",
-            borderTop: "1px solid var(--border-light)",
-          }}
-        >
-          {answer}
-        </p>
-      )}
-    </div>
+      </summary>
+      <p
+        style={{
+          fontSize: "15px",
+          fontWeight: 300,
+          color: "var(--text-secondary)",
+          lineHeight: 1.7,
+          margin: "16px 0 0 0",
+          paddingTop: "16px",
+          borderTop: "1px solid var(--border-light)",
+        }}
+      >
+        {answer}
+      </p>
+    </details>
   );
 }

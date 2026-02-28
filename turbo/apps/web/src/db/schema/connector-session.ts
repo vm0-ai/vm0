@@ -9,7 +9,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 
-export const connectorSessionStatusEnum = pgEnum("connector_session_status", [
+const connectorSessionStatusEnum = pgEnum("connector_session_status", [
   "pending",
   "complete",
   "expired",

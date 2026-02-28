@@ -3111,3 +3111,38 @@ section {
     font-size: 13px;
   }
 }
+
+/* Pricing page */
+.pricing-card:hover {
+  transform: translateY(-2px);
+}
+
+.faq-item {
+  cursor: pointer;
+}
+
+.faq-item:hover {
+  border-color: var(--border-lighter) !important;
+}
+
+.faq-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.faq-summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq-chevron {
+  flex-shrink: 0;
+  transition: transform 0.3s ease;
+}
+
+details[open] .faq-chevron {
+  transform: rotate(180deg);
+}
