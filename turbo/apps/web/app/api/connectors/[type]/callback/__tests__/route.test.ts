@@ -18,6 +18,8 @@ const context = testContext();
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL = "https://api.github.com/user";
 const NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
+const SLACK_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
+const SLACK_USER_INFO_URL = "https://slack.com/api/users.info";
 
 /**
  * Create MSW handlers for GitHub OAuth API
@@ -99,6 +101,59 @@ function createNotionOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for Slack OAuth API
+ */
+function createSlackOAuthMock(options: {
+  accessToken?: string;
+  scopes?: string;
+  tokenError?: string;
+  userId?: string;
+  userName?: string;
+  realName?: string;
+  email?: string | null;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(SLACK_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          ok: false,
+          error: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        ok: true,
+        authed_user: {
+          id: options.userId ?? "U012AB3CD",
+          access_token: options.accessToken ?? "xoxp-test-user-token",
+          scope: options.scopes ?? "channels:read,channels:history,chat:write",
+        },
+      });
+    }),
+    userInfo: http.get(SLACK_USER_INFO_URL, () => {
+      if (options.userError) {
+        return HttpResponse.json({
+          ok: false,
+          error: "user_not_found",
+        });
+      }
+      return HttpResponse.json({
+        ok: true,
+        user: {
+          id: options.userId ?? "U012AB3CD",
+          name: options.userName ?? "slackuser",
+          real_name: options.realName ?? "Slack User",
+          profile: {
+            email:
+              options.email !== undefined ? options.email : "slack@example.com",
+          },
+        },
+      });
+    }),
+  });
+}
+
+/**
  * Create a test request with OAuth callback parameters and cookies
  */
 function createCallbackRequest(options: {
@@ -140,6 +195,8 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("GH_OAUTH_CLIENT_SECRET", "test-client-secret");
     vi.stubEnv("NOTION_OAUTH_CLIENT_ID", "notion-test-client-id");
     vi.stubEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-test-client-secret");
+    vi.stubEnv("SLACK_CLIENT_ID", "test-slack-client-id");
+    vi.stubEnv("SLACK_CLIENT_SECRET", "test-slack-client-secret");
     reloadEnv();
   });
 
@@ -435,6 +492,118 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(statusResponse.status).toBe(200);
       expect(sessionData.status).toBe("error");
       expect(sessionData.errorMessage).toBeDefined();
+    });
+  });
+
+  describe("Slack OAuth Flow", () => {
+    it("should store Slack connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createSlackOAuthMock({
+        accessToken: "xoxp-slack-user-token",
+        scopes: "channels:read,channels:history,chat:write",
+        userId: "U012AB3CD",
+        realName: "Slack User",
+        email: "slack@example.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "slack",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "slack" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=slack");
+      expect(location).toContain("username=Slack+User");
+
+      // Verify connector was stored via API
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/slack",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("slack");
+      expect(connector.externalUsername).toBe("Slack User");
+      expect(connector.externalId).toBe("U012AB3CD");
+    });
+
+    it("should store authed_user.access_token (xoxp-), not bot token", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createSlackOAuthMock({
+        accessToken: "xoxp-user-token-12345",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "slack",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "slack" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+    });
+
+    it("should redirect with error when Slack token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createSlackOAuthMock({
+        tokenError: "invalid_code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "slack",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "slack" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should redirect with error when Slack user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createSlackOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "slack",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "slack" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
     });
   });
 

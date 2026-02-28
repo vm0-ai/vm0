@@ -20,6 +20,7 @@ const PLATFORM_ROUTING: Record<string, PlatformType> = {
   github: "self-hosted",
   notion: "self-hosted",
   computer: "self-hosted",
+  slack: "self-hosted",
 
   // New Nango providers
   gmail: "nango",

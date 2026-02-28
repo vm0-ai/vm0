@@ -4,12 +4,14 @@ import githubIcon from "./icons/github.svg";
 import notionIcon from "./icons/notion.svg";
 import computerIcon from "./icons/computer.svg";
 import gmailIcon from "./icons/gmail.svg";
+import slackIcon from "./icons/slack.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   github: githubIcon,
   notion: notionIcon,
   computer: computerIcon,
   gmail: gmailIcon,
+  slack: slackIcon,
 });
 
 export function ConnectorIcon({

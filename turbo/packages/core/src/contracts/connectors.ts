@@ -154,6 +154,38 @@ export const CONNECTOR_TYPES = {
       scopes: [],
     } satisfies ConnectorOAuthConfig,
   },
+  slack: {
+    label: "Slack",
+    helpText: "Connect your Slack account to send messages and read channels",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Slack to grant access.",
+        secrets: {
+          SLACK_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://slack.com/oauth/v2/authorize",
+      tokenUrl: "https://slack.com/api/oauth.v2.access",
+      scopes: [
+        "channels:read",
+        "channels:history",
+        "chat:write",
+        "users:read",
+        "users:read.email",
+        "files:read",
+      ],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -163,6 +195,7 @@ export const connectorTypeSchema = z.enum([
   "notion",
   "computer",
   "gmail",
+  "slack",
 ]);
 
 /**

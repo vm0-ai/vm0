@@ -1,0 +1,143 @@
+import { getConnectorOAuthConfig } from "@vm0/core";
+
+interface SlackTokenResult {
+  accessToken: string;
+  scopes: string[];
+  userId: string;
+}
+
+interface SlackUserInfo {
+  id: string;
+  username: string;
+  email: string | null;
+}
+
+/**
+ * Build Slack OAuth authorization URL.
+ * Uses user_scope= (not scope=) to request user-level token.
+ */
+export function buildSlackAuthorizationUrl(
+  clientId: string,
+  redirectUri: string,
+  state: string,
+): string {
+  const oauthConfig = getConnectorOAuthConfig("slack");
+  if (!oauthConfig) {
+    throw new Error("Slack OAuth config not found");
+  }
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    user_scope: oauthConfig.scopes.join(","),
+    state,
+  });
+
+  return `${oauthConfig.authorizationUrl}?${params.toString()}`;
+}
+
+/**
+ * Exchange authorization code for Slack user access token.
+ * Extracts authed_user.access_token (xoxp-...), not the bot token.
+ */
+export async function exchangeSlackCode(
+  clientId: string,
+  clientSecret: string,
+  code: string,
+  redirectUri: string,
+): Promise<SlackTokenResult> {
+  const oauthConfig = getConnectorOAuthConfig("slack");
+  if (!oauthConfig) {
+    throw new Error("Slack OAuth config not found");
+  }
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+      redirect_uri: redirectUri,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Slack token exchange failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    ok: boolean;
+    error?: string;
+    authed_user?: {
+      id?: string;
+      access_token?: string;
+      scope?: string;
+    };
+  };
+
+  if (!data.ok) {
+    throw new Error(data.error ?? "Slack token exchange returned ok=false");
+  }
+
+  if (!data.authed_user?.access_token) {
+    throw new Error("No user access token in Slack response");
+  }
+
+  return {
+    accessToken: data.authed_user.access_token,
+    scopes: data.authed_user.scope?.split(",") ?? [],
+    userId: data.authed_user.id ?? "",
+  };
+}
+
+/**
+ * Fetch Slack user info using user access token
+ */
+export async function fetchSlackUserInfo(
+  userId: string,
+  accessToken: string,
+): Promise<SlackUserInfo> {
+  const response = await fetch(
+    `https://slack.com/api/users.info?user=${userId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Slack users.info API failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    ok: boolean;
+    error?: string;
+    user?: {
+      id?: string;
+      name?: string;
+      real_name?: string;
+      profile?: { email?: string };
+    };
+  };
+
+  if (!data.ok) {
+    throw new Error(data.error ?? "Slack users.info returned ok=false");
+  }
+
+  return {
+    id: data.user?.id ?? userId,
+    username: data.user?.real_name ?? data.user?.name ?? "",
+    email: data.user?.profile?.email ?? null,
+  };
+}
+
+/**
+ * Get the primary secret name for Slack connector (the user access token).
+ */
+export function getSlackSecretName(): string {
+  return "SLACK_ACCESS_TOKEN";
+}

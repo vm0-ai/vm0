@@ -12,6 +12,7 @@ import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import { getGitHubSecretName } from "./providers/github";
 import { getNotionSecretName } from "./providers/notion";
+import { getSlackSecretName } from "./providers/slack";
 import { getNangoIntegrationId } from "./platform/nango";
 
 const log = logger("service:connector");
@@ -40,6 +41,8 @@ function getSecretNameForConnector(type: ConnectorType): string {
       return "COMPUTER_CONNECTOR_AUTHTOKEN";
     case "gmail":
       return "GMAIL_ACCESS_TOKEN";
+    case "slack":
+      return getSlackSecretName();
   }
 }
 

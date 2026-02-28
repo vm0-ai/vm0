@@ -15,6 +15,8 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     vi.stubEnv("GH_OAUTH_CLIENT_SECRET", "test-client-secret");
     vi.stubEnv("NOTION_OAUTH_CLIENT_ID", "notion-test-client-id");
     vi.stubEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-test-client-secret");
+    vi.stubEnv("SLACK_CLIENT_ID", "test-slack-client-id");
+    vi.stubEnv("SLACK_CLIENT_SECRET", "test-slack-client-secret");
     reloadEnv();
   });
 
@@ -120,6 +122,44 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
       c.startsWith("connector_oauth_session="),
     );
     expect(sessionCookie).toBeUndefined();
+  });
+
+  describe("Slack connector", () => {
+    it("should redirect to Slack OAuth with correct parameters", async () => {
+      await context.setupUser();
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/connectors/slack/authorize",
+      );
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "slack" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("https://slack.com/oauth/v2/authorize");
+      expect(location).toContain("client_id=test-slack-client-id");
+      expect(location).toContain("redirect_uri=");
+      expect(location).toContain("user_scope=");
+      expect(location).not.toContain("&scope=");
+      expect(location).toContain("state=");
+    });
+
+    it("should use user_scope not scope for Slack OAuth", async () => {
+      await context.setupUser();
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/connectors/slack/authorize",
+      );
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "slack" }),
+      });
+
+      const location = response.headers.get("location");
+      const url = new URL(location!);
+      expect(url.searchParams.get("user_scope")).toContain("channels:read");
+      expect(url.searchParams.get("scope")).toBeNull();
+    });
   });
 
   describe("Notion connector", () => {

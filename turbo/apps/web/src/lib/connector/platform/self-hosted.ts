@@ -14,6 +14,11 @@ import {
   buildNotionAuthorizationUrl,
   exchangeNotionCode,
 } from "../providers/notion";
+import {
+  buildSlackAuthorizationUrl,
+  exchangeSlackCode,
+  fetchSlackUserInfo,
+} from "../providers/slack";
 import type {
   ConnectorPlatform,
   AuthorizationParams,
@@ -45,6 +50,18 @@ async function buildAuthorizationUrl(
         throw new Error("Notion OAuth not configured");
       }
       return buildNotionAuthorizationUrl(
+        clientId,
+        params.redirectUri,
+        params.state,
+      );
+    }
+
+    case "slack": {
+      const clientId = env.SLACK_CLIENT_ID;
+      if (!clientId) {
+        throw new Error("Slack OAuth not configured");
+      }
+      return buildSlackAuthorizationUrl(
         clientId,
         params.redirectUri,
         params.state,
@@ -110,6 +127,34 @@ async function handleCallback(
         oauthScopes: result.scopes,
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
+      };
+    }
+
+    case "slack": {
+      const clientId = env.SLACK_CLIENT_ID;
+      const clientSecret = env.SLACK_CLIENT_SECRET;
+      if (!clientId || !clientSecret) {
+        throw new Error("Slack OAuth not configured");
+      }
+
+      const result = await exchangeSlackCode(
+        clientId,
+        clientSecret,
+        params.code,
+        params.redirectUri,
+      );
+
+      const userInfo = await fetchSlackUserInfo(
+        result.userId,
+        result.accessToken,
+      );
+
+      return {
+        externalId: userInfo.id,
+        externalUsername: userInfo.username,
+        externalEmail: userInfo.email,
+        oauthScopes: result.scopes,
+        accessToken: result.accessToken,
       };
     }
 
