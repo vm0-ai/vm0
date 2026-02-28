@@ -112,10 +112,9 @@ export default function Navbar() {
                 >
                   {t("contact")}
                 </a>
-                {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-                <a href="/sign-up" className="btn-get-access">
+                <Link href="/sign-up" className="btn-get-access">
                   {t("joinWaitlist")}
-                </a>
+                </Link>
               </>
             )}
             {isSignedIn && (
