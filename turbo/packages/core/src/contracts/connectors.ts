@@ -128,32 +128,6 @@ export const CONNECTOR_TYPES = {
       COMPUTER_CONNECTOR_DOMAIN: "$secrets.COMPUTER_CONNECTOR_DOMAIN",
     } as Record<string, string>,
   },
-  gmail: {
-    label: "Gmail",
-    helpText: "Connect your Gmail account to access email",
-    authMethods: {
-      oauth: {
-        label: "OAuth (Recommended)",
-        helpText: "Sign in with Google to grant Gmail access.",
-        secrets: {
-          GMAIL_ACCESS_TOKEN: {
-            label: "Access Token",
-            required: true,
-          },
-        },
-      },
-    } as Record<string, ConnectorAuthMethodConfig>,
-    defaultAuthMethod: "oauth",
-    environmentMapping: {
-      GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
-      GMAIL_ACCESS_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
-    } as Record<string, string>,
-    oauth: {
-      authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
-      tokenUrl: "https://oauth2.googleapis.com/token",
-      scopes: [],
-    } satisfies ConnectorOAuthConfig,
-  },
   slack: {
     label: "Slack",
     helpText: "Connect your Slack account to send messages and read channels",
@@ -194,7 +168,6 @@ export const connectorTypeSchema = z.enum([
   "github",
   "notion",
   "computer",
-  "gmail",
   "slack",
 ]);
 
@@ -335,8 +308,6 @@ export const connectorResponseSchema = z.object({
   id: z.string().uuid(),
   type: connectorTypeSchema,
   authMethod: z.string(),
-  platform: z.enum(["self-hosted", "nango"]),
-  nangoConnectionId: z.string().nullable().optional(),
   externalId: z.string().nullable(),
   externalUsername: z.string().nullable(),
   externalEmail: z.string().nullable(),

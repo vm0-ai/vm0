@@ -11,5 +11,4 @@ export enum FeatureSwitchKey {
   PlatformArtifacts = "platformArtifacts",
   PlatformApiKeys = "platformApiKeys",
   ComputerConnector = "computerConnector",
-  ConnectorNango = "connectorNango",
 }
