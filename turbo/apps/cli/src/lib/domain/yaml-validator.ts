@@ -228,22 +228,10 @@ export function validateAgentName(name: string): boolean {
 }
 
 /**
- * Known fields in agent definition schema.
+ * Known fields in agent definition schema, derived from the Zod schema shape.
  * Used for typo detection against unknown fields in YAML config.
  */
-const KNOWN_AGENT_FIELDS = [
-  "description",
-  "framework",
-  "apps",
-  "volumes",
-  "environment",
-  "instructions",
-  "skills",
-  "experimental_runner",
-  "experimental_firewall",
-  "image",
-  "working_dir",
-];
+const KNOWN_AGENT_FIELDS = Object.keys(agentDefinitionSchema.shape);
 
 /**
  * Computes Levenshtein edit distance between two strings.
