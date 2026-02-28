@@ -46,9 +46,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Install Claude Code CLI as a standalone binary (SEA = Single Executable Application).
-# The SEA binary bundles Node.js + V8 + application code, eliminating module resolution
-# overhead at startup and significantly reducing CLI cold-start time compared to npm.
+# Install Claude Code CLI as a standalone Bun-compiled binary.
+# The binary bundles Bun runtime (JSC) + application code into a single executable,
+# eliminating module resolution overhead and reducing CLI cold-start time.
 ARG CLAUDE_CODE_VERSION=2.1.12
 RUN ARCH=$(dpkg --print-architecture) \
     && case "$ARCH" in amd64) PLATFORM="linux-x64" ;; arm64) PLATFORM="linux-arm64" ;; *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; esac \

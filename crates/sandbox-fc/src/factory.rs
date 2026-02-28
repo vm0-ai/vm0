@@ -11,7 +11,7 @@ use crate::overlay::{
 use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
 use crate::sandbox::FirecrackerSandbox;
 
-/// Shell command executed during snapshot creation to pre-warm guest caches.
+/// Shell command executed during snapshot creation to pre-warm guest state.
 /// Changing this invalidates all cached snapshots (included in [`config_hash`]).
 ///
 /// **Note:** Do NOT wrap this in `su - user -c '...'` — the vsock-guest exec
@@ -20,21 +20,15 @@ use crate::sandbox::FirecrackerSandbox;
 /// process group, surviving SIGKILL on timeout as orphans frozen into the
 /// snapshot.
 ///
-/// - `NODE_COMPILE_CACHE`: persists V8 bytecode to disk so subsequent runs
-///   skip parsing/compilation (Node.js 22+). The cache dir survives snapshot
-///   restore and is reused by the guest-agent when spawning the CLI.
-///   The path must match `NODE_COMPILE_CACHE_DIR` in `guest-agent::cli`.
-/// - `claude --print ...`: pre-warms the real execution path (Sentry, API
-///   clients, stream-json output) rather than just `--help` which takes a
-///   lightweight short-circuit path. Failure is tolerated (`|| true`) because
-///   there is no API key during snapshot creation — the goal is to populate
-///   the V8 compile cache, not to complete the API call.
+/// - `claude --version`: exercises the Bun/JSC runtime startup path so the
+///   OS page cache is warm. The claude binary is a Bun-compiled executable
+///   (not Node.js), so `NODE_COMPILE_CACHE` has no effect.
+///   `ANTHROPIC_BASE_URL` points to a closed local port so any accidental
+///   network call fails fast instead of waiting for a remote timeout.
 /// - `codex --help`: lightweight pre-warm for Codex (no `--print` equivalent).
 ///   Also tolerated because codex may not be installed.
 pub const PREWARM_SCRIPT: &str = "\
-    export NODE_COMPILE_CACHE=/home/user/.cache/node-compile-cache && \
-    mkdir -p /home/user/.cache/node-compile-cache && \
-    (claude --print --verbose --output-format stream-json --dangerously-skip-permissions hi >/dev/null 2>&1 || true) && \
+    (ANTHROPIC_BASE_URL=http://127.0.0.1:1 claude --version >/dev/null 2>&1 || true) && \
     (codex --help >/dev/null 2>&1 || true)";
 
 /// SHA-256 fingerprint of all sandbox-fc internal configuration that affects

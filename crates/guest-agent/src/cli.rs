@@ -13,10 +13,6 @@ use tokio::io::AsyncWriteExt;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
-/// Directory for the Node.js V8 compile cache (NODE_COMPILE_CACHE).
-/// Must match the path exported in `sandbox-fc::factory::PREWARM_SCRIPT`.
-const NODE_COMPILE_CACHE_DIR: &str = "/home/user/.cache/node-compile-cache";
-
 /// Build the CLI command + args based on `CLI_AGENT_TYPE`.
 pub fn build_cli_command() -> Result<Vec<String>, AgentError> {
     let use_mock = env::use_mock_claude();
@@ -170,9 +166,6 @@ pub async fn execute_cli(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0);
-
-    // Enable V8 bytecode cache for faster Node.js startup (populated during snapshot creation)
-    cmd.env("NODE_COMPILE_CACHE", NODE_COMPILE_CACHE_DIR);
 
     // Pass CODEX_HOME via Command::env instead of global set_var
     if env::cli_agent_type() == "codex" {
