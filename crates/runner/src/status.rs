@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
@@ -45,7 +45,7 @@ pub struct StatusTracker {
 
 struct MutableState {
     mode: RunnerMode,
-    active_run_ids: HashSet<Uuid>,
+    active_run_ids: BTreeSet<Uuid>,
 }
 
 impl StatusTracker {
@@ -56,7 +56,7 @@ impl StatusTracker {
             path,
             state: Mutex::new(MutableState {
                 mode: RunnerMode::Running,
-                active_run_ids: HashSet::new(),
+                active_run_ids: BTreeSet::new(),
             }),
         }
     }
