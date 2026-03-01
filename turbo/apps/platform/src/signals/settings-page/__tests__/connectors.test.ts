@@ -74,6 +74,23 @@ describe("allConnectorTypes$", () => {
 
     expect(computerConnector).toBeUndefined();
   });
+
+  it("should hide figma connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    server.use(
+      http.get("/api/feature-switches", () => {
+        return HttpResponse.json({ figmaConnector: false });
+      }),
+    );
+
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    const types = await store.get(allConnectorTypes$);
+    const figmaConnector = types.find((t) => t.type === "figma");
+
+    expect(figmaConnector).toBeUndefined();
+  });
 });
 
 describe("disconnect dialog", () => {

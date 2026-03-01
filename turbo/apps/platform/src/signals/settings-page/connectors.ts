@@ -45,6 +45,10 @@ export const allConnectorTypes$ = computed(async (get) => {
       ) {
         return false;
       }
+      // Filter figma connector based on feature flag
+      if (type === "figma" && !features?.[FeatureSwitchKey.FigmaConnector]) {
+        return false;
+      }
       return true;
     })
     .map((type) => {
