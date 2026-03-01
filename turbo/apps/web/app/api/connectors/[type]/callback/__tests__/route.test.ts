@@ -245,8 +245,8 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-test-client-secret");
     vi.stubEnv("SLACK_CLIENT_ID", "test-slack-client-id");
     vi.stubEnv("SLACK_CLIENT_SECRET", "test-slack-client-secret");
-    vi.stubEnv("GMAIL_OAUTH_CLIENT_ID", "gmail-test-client-id");
-    vi.stubEnv("GMAIL_OAUTH_CLIENT_SECRET", "gmail-test-client-secret");
+    vi.stubEnv("GOOGLE_OAUTH_CLIENT_ID", "google-test-client-id");
+    vi.stubEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-test-client-secret");
     reloadEnv();
   });
 

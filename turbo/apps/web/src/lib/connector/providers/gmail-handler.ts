@@ -26,8 +26,8 @@ export const gmailHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.GMAIL_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.GMAIL_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => e.GOOGLE_OAUTH_CLIENT_ID,
+  getClientSecret: (e) => e.GOOGLE_OAUTH_CLIENT_SECRET,
   getSecretName: getGmailSecretName,
   getRefreshSecretName: () => "GMAIL_REFRESH_TOKEN",
 };
