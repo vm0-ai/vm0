@@ -1,4 +1,8 @@
+use std::fs::File;
+use std::path::Path;
+
 use async_trait::async_trait;
+use nix::fcntl::{PosixFadviseAdvice, posix_fadvise};
 use sandbox::{Sandbox, SandboxConfig, SandboxError, SandboxFactory};
 use sha2::{Digest, Sha256};
 use tracing::{info, warn};
@@ -298,8 +302,8 @@ impl SandboxFactory for FirecrackerFactory {
 /// memory accesses trigger host-side demand paging (~1.6s overhead).
 /// `posix_fadvise(WILLNEED)` is non-blocking — the kernel reads pages
 /// asynchronously in the background.
-fn prefetch_memory(path: &std::path::Path) {
-    let file = match std::fs::File::open(path) {
+fn prefetch_memory(path: &Path) {
+    let file = match File::open(path) {
         Ok(f) => f,
         Err(e) => {
             warn!(error = %e, path = %path.display(), "memory prefetch: open failed");
@@ -319,12 +323,7 @@ fn prefetch_memory(path: &std::path::Path) {
             return;
         }
     };
-    match nix::fcntl::posix_fadvise(
-        &file,
-        0,
-        len,
-        nix::fcntl::PosixFadviseAdvice::POSIX_FADV_WILLNEED,
-    ) {
+    match posix_fadvise(&file, 0, len, PosixFadviseAdvice::POSIX_FADV_WILLNEED) {
         Ok(()) => info!(bytes = len, path = %path.display(), "memory prefetch initiated"),
         Err(e) => warn!(error = %e, "memory prefetch: posix_fadvise failed"),
     }
