@@ -31,6 +31,9 @@ pub struct BenchmarkArgs {
     /// Command timeout in seconds
     #[arg(long, default_value_t = 300)]
     timeout_secs: u64,
+    /// Environment variables to pass (KEY=VALUE), can be repeated
+    #[arg(long, short)]
+    env: Vec<String>,
 }
 
 pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
@@ -213,12 +216,26 @@ async fn run_in_sandbox(
     }
     let clock_ms = t.elapsed().as_millis();
 
+    // Parse KEY=VALUE env pairs
+    let env_pairs: Vec<(String, String)> = args
+        .env
+        .iter()
+        .filter_map(|s| {
+            s.split_once('=')
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+        })
+        .collect();
+    let env_refs: Vec<(&str, &str)> = env_pairs
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+
     let t = Instant::now();
     let result = sandbox
         .exec(&ExecRequest {
             cmd: &args.command,
             timeout: Duration::from_secs(args.timeout_secs),
-            env: &[],
+            env: &env_refs,
             sudo: false,
         })
         .await
