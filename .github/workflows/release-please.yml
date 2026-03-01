@@ -31,6 +31,8 @@ jobs:
       runner_rs_version: ${{ steps.release.outputs['crates/runner--version'] }}
       web_version: ${{ steps.release.outputs['turbo/apps/web--version'] }}
       platform_version: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
+      cli_version: ${{ steps.release.outputs['turbo/apps/cli--version'] }}
+      docs_version: ${{ steps.release.outputs['turbo/apps/docs--version'] }}
     steps:
       - uses: seven332/release-please-action@vm0
         id: release
@@ -66,6 +68,11 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Database Migration* starting..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Database Migration* starting...\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
 
       - name: Get Production Database URL
         id: get-db-url
@@ -93,7 +100,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Database Migration* starting...\n:white_check_mark: Migration completed"
+            text: "*Database Migration* ✅ Migration completed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Database Migration* ✅ Migration completed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -104,7 +116,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Database Migration* starting...\n:x: Migration failed"
+            text: "*Database Migration* ❌ Migration failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Database Migration* ❌ Migration failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Deploy web app to production
   deploy-web-production:
@@ -134,6 +151,11 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Web App* deploying to production..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Web App* deploying to production...\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
 
       - name: Get Production Database URL
         id: get-db-url
@@ -201,7 +223,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Web App* deploying to production...\n:white_check_mark: Deployed successfully"
+            text: "*Web App* ✅ Deployed successfully"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Web App* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -212,7 +239,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Web App* deploying to production...\n:x: Deploy failed"
+            text: "*Web App* ❌ Deploy failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Web App* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Deploy docs app to production
   deploy-docs-production:
@@ -239,6 +271,11 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Docs* deploying to production..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Docs* deploying to production...\n📦 Version: `${{ needs.release-please.outputs.docs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/docs-v${{ needs.release-please.outputs.docs_version }}|View Release>"
 
       - name: Deploy Docs to Vercel Production
         id: deploy
@@ -259,7 +296,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Docs* deploying to production...\n:white_check_mark: Deployed successfully"
+            text: "*Docs* ✅ Deployed successfully"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Docs* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.docs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/docs-v${{ needs.release-please.outputs.docs_version }}|View Release>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -270,7 +312,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Docs* deploying to production...\n:x: Deploy failed"
+            text: "*Docs* ❌ Deploy failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Docs* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.docs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/docs-v${{ needs.release-please.outputs.docs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Deploy platform (Vite SPA) to production
   deploy-platform-production:
@@ -297,6 +344,11 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Platform* deploying to production..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Platform* deploying to production...\n📦 Version: `${{ needs.release-please.outputs.platform_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.platform_version }}|View Release>"
 
       - name: Deploy Platform to Vercel Production
         id: deploy
@@ -324,7 +376,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Platform* deploying to production...\n:white_check_mark: Deployed successfully"
+            text: "*Platform* ✅ Deployed successfully"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Platform* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.platform_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.platform_version }}|View Release>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -335,7 +392,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Platform* deploying to production...\n:x: Deploy failed"
+            text: "*Platform* ❌ Deploy failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Platform* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.platform_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.platform_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   publish-npm:
     needs: release-please
@@ -358,6 +420,11 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*CLI* publishing to npm..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*CLI* publishing to npm...\n📦 Version: `${{ needs.release-please.outputs.cli_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/cli-v${{ needs.release-please.outputs.cli_version }}|View Release>"
 
       - uses: actions/setup-node@v6
         with:
@@ -390,7 +457,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*CLI* publishing to npm...\n:white_check_mark: Published successfully"
+            text: "*CLI* ✅ Published successfully"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*CLI* ✅ Published successfully\n📦 Version: `${{ needs.release-please.outputs.cli_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/cli-v${{ needs.release-please.outputs.cli_version }}|View Release>\n📦 <https://www.npmjs.com/package/@vm0/cli/v/${{ needs.release-please.outputs.cli_version }}|View on npm>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -401,7 +473,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*CLI* publishing to npm...\n:x: Publish failed"
+            text: "*CLI* ❌ Publish failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*CLI* ❌ Publish failed\n📦 Version: `${{ needs.release-please.outputs.cli_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/cli-v${{ needs.release-please.outputs.cli_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Deploy runner to production metal instances
   deploy-runner-production:
@@ -432,6 +509,11 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Runner RS* deploying to production servers..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* deploying to production servers...\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
 
       # Cross-compile Rust binaries for ARM64 (metal runners are ARM64)
       - name: Cross-compile guest binaries for ARM64
@@ -517,7 +599,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Runner RS* deploying to production servers...\n:white_check_mark: Deployed successfully"
+            text: "*Runner RS* ✅ Deployed successfully"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -528,7 +615,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Runner RS* deploying to production servers...\n:x: Deploy failed"
+            text: "*Runner RS* ❌ Deploy failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Build E2B templates to production account
   # Uses production environment E2B_API_KEY secret
