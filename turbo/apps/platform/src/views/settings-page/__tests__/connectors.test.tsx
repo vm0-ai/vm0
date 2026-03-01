@@ -34,9 +34,10 @@ describe("connectors tab", () => {
     await setupPage({
       context,
       path: "/settings?tab=connectors",
-      featureSwitches: { linearConnector: true },
+      featureSwitches: { linearConnector: true, dropboxConnector: true },
     });
 
+    expect(screen.getByText("Dropbox")).toBeInTheDocument();
     expect(screen.getByText("GitHub")).toBeInTheDocument();
     expect(screen.getByText("Gmail")).toBeInTheDocument();
     expect(screen.getByText("Linear")).toBeInTheDocument();

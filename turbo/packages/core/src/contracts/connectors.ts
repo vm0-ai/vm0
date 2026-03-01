@@ -189,6 +189,39 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  dropbox: {
+    label: "Dropbox",
+    helpText: "Connect your Dropbox account to access and manage files",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Dropbox to grant access.",
+        secrets: {
+          DROPBOX_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          DROPBOX_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://www.dropbox.com/oauth2/authorize",
+      tokenUrl: "https://api.dropboxapi.com/oauth2/token",
+      scopes: [
+        "account_info.read",
+        "files.metadata.read",
+        "files.content.read",
+      ],
+    } as ConnectorOAuthConfig,
+  },
   linear: {
     label: "Linear",
     helpText: "Connect your Linear account to manage issues and projects",
@@ -257,6 +290,7 @@ export const connectorTypeSchema = z.enum([
   "notion",
   "computer",
   "slack",
+  "dropbox",
   "linear",
   "figma",
 ]);

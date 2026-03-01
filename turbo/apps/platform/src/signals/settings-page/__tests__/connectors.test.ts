@@ -90,6 +90,22 @@ describe("allConnectorTypes$", () => {
     expect(linearConnector).toBeUndefined();
   });
 
+  it("should hide dropbox connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { dropboxConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const dropboxConnector = types.find((t) => t.type === "dropbox");
+
+    expect(dropboxConnector).toBeUndefined();
+  });
+
   it("should hide figma connector when feature flag is disabled", async () => {
     const { store } = context;
 
