@@ -7,6 +7,7 @@ mod http;
 mod lock;
 mod network_logs;
 mod paths;
+mod prefetch;
 mod process;
 mod provider;
 mod proxy;

@@ -127,6 +127,12 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
             ))
         })?;
 
+    // Start background prefetch so memory.bin is in page cache before the first VM.
+    if let Some(snapshot) = &runner_config.firecracker.snapshot {
+        let path = snapshot.memory_path.clone();
+        tokio::task::spawn_blocking(move || crate::prefetch::prefetch_memory(&path));
+    }
+
     // Start proxy before factory so proxy_port is available for netns pool.
     let paths = RunnerPaths::new(runner_config.base_dir.clone());
     let (mut mitm, mitm_crash_rx) = proxy::MitmProxy::new(proxy::ProxyConfig {

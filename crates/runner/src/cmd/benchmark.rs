@@ -44,6 +44,12 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     runner_config.sandbox.max_concurrent = 1;
     let is_snapshot = runner_config.firecracker.snapshot.is_some();
 
+    // Block until memory.bin is in page cache so benchmark numbers are stable.
+    if let Some(snapshot) = &runner_config.firecracker.snapshot {
+        let path = snapshot.memory_path.clone();
+        let _ = tokio::task::spawn_blocking(move || crate::prefetch::prefetch_memory(&path)).await;
+    }
+
     // 2. Start proxy (unconditional — benchmark always uses proxy)
     let t = Instant::now();
     let home = HomePaths::new()?;
