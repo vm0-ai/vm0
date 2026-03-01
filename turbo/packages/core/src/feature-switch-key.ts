@@ -12,4 +12,5 @@ export enum FeatureSwitchKey {
   PlatformApiKeys = "platformApiKeys",
   ComputerConnector = "computerConnector",
   LinearConnector = "linearConnector",
+  DropboxConnector = "dropboxConnector",
 }

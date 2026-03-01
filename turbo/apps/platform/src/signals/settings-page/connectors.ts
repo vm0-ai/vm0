@@ -49,6 +49,13 @@ export const allConnectorTypes$ = computed(async (get) => {
       if (type === "linear" && !features?.[FeatureSwitchKey.LinearConnector]) {
         return false;
       }
+      // Filter dropbox connector based on feature flag
+      if (
+        type === "dropbox" &&
+        !features?.[FeatureSwitchKey.DropboxConnector]
+      ) {
+        return false;
+      }
       return true;
     })
     .map((type) => {
