@@ -37,11 +37,12 @@ describe("connectors tab", () => {
     });
 
     expect(screen.getByText("GitHub")).toBeInTheDocument();
+    expect(screen.getByText("Gmail")).toBeInTheDocument();
     expect(screen.getByText("Notion")).toBeInTheDocument();
     expect(screen.getByText("Slack")).toBeInTheDocument();
 
     const connectButtons = screen.getAllByText("Connect");
-    expect(connectButtons).toHaveLength(3);
+    expect(connectButtons).toHaveLength(4);
   });
 
   it("shows connected status when a connector exists", async () => {

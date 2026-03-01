@@ -1,12 +1,14 @@
 import type { ConnectorType } from "@vm0/core";
 
 import githubIcon from "./icons/github.svg";
+import gmailIcon from "./icons/gmail.svg";
 import notionIcon from "./icons/notion.svg";
 import computerIcon from "./icons/computer.svg";
 import slackIcon from "./icons/slack.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   github: githubIcon,
+  gmail: gmailIcon,
   notion: notionIcon,
   computer: computerIcon,
   slack: slackIcon,

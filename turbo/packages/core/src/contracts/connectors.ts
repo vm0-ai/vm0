@@ -97,6 +97,35 @@ export const CONNECTOR_TYPES = {
       scopes: [],
     } as ConnectorOAuthConfig,
   },
+  gmail: {
+    label: "Gmail",
+    helpText: "Connect your Gmail account to send and read emails",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Google to grant Gmail access.",
+        secrets: {
+          GMAIL_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          GMAIL_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenUrl: "https://oauth2.googleapis.com/token",
+      scopes: ["https://mail.google.com/"],
+    } as ConnectorOAuthConfig,
+  },
   computer: {
     label: "Computer",
     helpText:
@@ -166,6 +195,7 @@ export type ConnectorType = keyof typeof CONNECTOR_TYPES;
 
 export const connectorTypeSchema = z.enum([
   "github",
+  "gmail",
   "notion",
   "computer",
   "slack",

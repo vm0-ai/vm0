@@ -19,6 +19,8 @@ const context = testContext();
 
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL = "https://api.github.com/user";
+const GMAIL_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GMAIL_USERINFO_URL = "https://www.googleapis.com/oauth2/v1/userinfo";
 const NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
 const SLACK_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_USER_INFO_URL = "https://slack.com/api/users.info";
@@ -158,6 +160,48 @@ function createSlackOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for Gmail OAuth API
+ */
+function createGmailOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  name?: string | null;
+  email?: string | null;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(GMAIL_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "gmail-test-access-token",
+        refresh_token: options.refreshToken ?? "gmail-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "Bearer",
+        scope: "https://mail.google.com/",
+      });
+    }),
+    userInfo: http.get(GMAIL_USERINFO_URL, () => {
+      if (options.userError) {
+        return HttpResponse.json({ error: "invalid_token" }, { status: 401 });
+      }
+      return HttpResponse.json({
+        id: options.userId ?? "google-user-123",
+        email: options.email !== undefined ? options.email : "user@gmail.com",
+        name: options.name !== undefined ? options.name : "Gmail User",
+      });
+    }),
+  });
+}
+
+/**
  * Create a test request with OAuth callback parameters and cookies
  */
 function createCallbackRequest(options: {
@@ -201,6 +245,8 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-test-client-secret");
     vi.stubEnv("SLACK_CLIENT_ID", "test-slack-client-id");
     vi.stubEnv("SLACK_CLIENT_SECRET", "test-slack-client-secret");
+    vi.stubEnv("GMAIL_OAUTH_CLIENT_ID", "gmail-test-client-id");
+    vi.stubEnv("GMAIL_OAUTH_CLIENT_SECRET", "gmail-test-client-secret");
     reloadEnv();
   });
 
@@ -783,6 +829,164 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
         "notion",
       );
       expect(tokenExpiresAt).toBeNull();
+    });
+  });
+
+  describe("Gmail OAuth Flow", () => {
+    it("should store Gmail connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGmailOAuthMock({
+        accessToken: "gmail-access-token",
+        refreshToken: "gmail-refresh-token",
+        userId: "google-user-456",
+        name: "Test Gmail User",
+        email: "testuser@gmail.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "gmail",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "gmail" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=gmail");
+      expect(location).toContain("username=Test+Gmail+User");
+
+      // Verify connector was stored via API
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/gmail",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("gmail");
+      expect(connector.externalUsername).toBe("Test Gmail User");
+      expect(connector.externalId).toBe("google-user-456");
+      expect(connector.externalEmail).toBe("testuser@gmail.com");
+    });
+
+    it("should redirect with error when Gmail token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGmailOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "gmail",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "gmail" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Gmail returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createGmailOAuthMock({
+        accessToken: "gmail-access-token",
+        refreshToken: "gmail-refresh-token-stored",
+        userId: "google-user-456",
+        name: "Test Gmail User",
+        email: "testuser@gmail.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "gmail",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "gmail" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      // Verify refresh token was stored as a secret
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "GMAIL_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("gmail-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Gmail returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 3600;
+      const { handlers: mswHandlers } = createGmailOAuthMock({
+        accessToken: "gmail-access-token",
+        refreshToken: "gmail-refresh-token",
+        expiresIn,
+        userId: "google-user-exp",
+        name: "Expiring Gmail User",
+        email: "exp@gmail.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "gmail",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "gmail" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "gmail",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Gmail user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGmailOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "gmail",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "gmail" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
     });
   });
 });
