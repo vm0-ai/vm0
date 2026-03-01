@@ -411,7 +411,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
     permissions:
-      contents: read
+      contents: write
     environment: production
     steps:
       - uses: actions/checkout@v6
