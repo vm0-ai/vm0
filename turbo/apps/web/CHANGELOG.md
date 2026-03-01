@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.53.0](https://github.com/vm0-ai/vm0/compare/web-v12.52.0...web-v12.53.0) (2026-03-01)
+
+
+### Features
+
+* add organization scope support with clerk integration ([#2863](https://github.com/vm0-ai/vm0/issues/2863)) ([ec821d7](https://github.com/vm0-ai/vm0/commit/ec821d79768153368aa3ff213b31e3e219baf320))
+
+
+### Bug Fixes
+
+* remove eslint-disable for no-explicit-any in global types ([#3292](https://github.com/vm0-ai/vm0/issues/3292)) ([d8dbc75](https://github.com/vm0-ai/vm0/commit/d8dbc75cf99ab682b7383cbd499320d2f281fb8d))
+* remove eslint-disable for no-html-link-for-pages in navbar ([#3293](https://github.com/vm0-ai/vm0/issues/3293)) ([55532c4](https://github.com/vm0-ai/vm0/commit/55532c453ff0d9afdb6684e4a58a2f6f2f4a330f))
+* remove eslint-disable suppressions in skills client ([#3294](https://github.com/vm0-ai/vm0/issues/3294)) ([42cf6e3](https://github.com/vm0-ai/vm0/commit/42cf6e3cd1348113807ad109f589e15eeda6c20f))
+* remove lint suppressions in test-helpers ([#3296](https://github.com/vm0-ai/vm0/issues/3296)) ([5c2d34f](https://github.com/vm0-ai/vm0/commit/5c2d34fe7d70ed89a31a72d5c4a337cc2fb7b739))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.21.0
+
 ## [12.52.0](https://github.com/vm0-ai/vm0/compare/web-v12.51.0...web-v12.52.0) (2026-02-28)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.21.0](https://github.com/vm0-ai/vm0/compare/core-v8.20.0...core-v8.21.0) (2026-03-01)
+
+
+### Features
+
+* add organization scope support with clerk integration ([#2863](https://github.com/vm0-ai/vm0/issues/2863)) ([ec821d7](https://github.com/vm0-ai/vm0/commit/ec821d79768153368aa3ff213b31e3e219baf320))
+
 ## [8.20.0](https://github.com/vm0-ai/vm0/compare/core-v8.19.0...core-v8.20.0) (2026-02-28)
 
 

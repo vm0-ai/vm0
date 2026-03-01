@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.39.0](https://github.com/vm0-ai/vm0/compare/cli-v9.38.5...cli-v9.39.0) (2026-03-01)
+
+
+### Features
+
+* add organization scope support with clerk integration ([#2863](https://github.com/vm0-ai/vm0/issues/2863)) ([ec821d7](https://github.com/vm0-ai/vm0/commit/ec821d79768153368aa3ff213b31e3e219baf320))
+* **cli:** add vm0 upgrade command ([#3305](https://github.com/vm0-ai/vm0/issues/3305)) ([7150d0f](https://github.com/vm0-ai/vm0/commit/7150d0f0bdd1f2ab583d3b3346e38f91cbcfdc26))
+* **cli:** detect field typos in vm0.yaml agent definitions ([#3307](https://github.com/vm0-ai/vm0/issues/3307)) ([c3c5969](https://github.com/vm0-ai/vm0/commit/c3c59695f2e3d4a1cc04ae4be765d8d0d913901e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.21.0
+
 ## [9.38.5](https://github.com/vm0-ai/vm0/compare/cli-v9.38.4...cli-v9.38.5) (2026-02-28)
 
 

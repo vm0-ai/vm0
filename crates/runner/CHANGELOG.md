@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.8.5...runner-rs-v0.9.0) (2026-03-01)
+
+
+### Features
+
+* **runner:** embed guest binaries via build.rs ([#3319](https://github.com/vm0-ai/vm0/issues/3319)) ([acacb39](https://github.com/vm0-ai/vm0/commit/acacb39e6861d04853f148be090367f6de0e8f8a))
+
 ## [0.8.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.8.4...runner-rs-v0.8.5) (2026-02-28)
 
 
