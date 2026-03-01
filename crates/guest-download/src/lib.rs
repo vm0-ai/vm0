@@ -97,7 +97,11 @@ pub fn run(manifest_path: &str) -> bool {
         && let Some(url) = artifact.archive_url.as_deref()
     {
         let start = Instant::now();
-        log_info!(LOG_TAG, "Downloading artifact to {}", artifact.mount_path);
+        log_info!(
+            LOG_TAG,
+            "Downloading artifact from {url} to {}",
+            artifact.mount_path
+        );
 
         match download_with_retry(url, &artifact.mount_path) {
             Ok(()) => {
@@ -171,7 +175,12 @@ fn download_storages_parallel(storages: &[Storage]) -> bool {
             .map(|(idx, url, mount_path)| {
                 thread::spawn(move || {
                     let start = Instant::now();
-                    log_info!(LOG_TAG, "Downloading storage {} to {}", idx + 1, mount_path);
+                    log_info!(
+                        LOG_TAG,
+                        "Downloading storage {} from {url} to {}",
+                        idx + 1,
+                        mount_path
+                    );
 
                     let result = download_with_retry(&url, &mount_path);
                     let elapsed = start.elapsed();
