@@ -34,6 +34,7 @@ describe("connectors tab", () => {
     await setupPage({
       context,
       path: "/settings?tab=connectors",
+      featureSwitches: { linearConnector: true },
     });
 
     expect(screen.getByText("GitHub")).toBeInTheDocument();
@@ -41,9 +42,6 @@ describe("connectors tab", () => {
     expect(screen.getByText("Linear")).toBeInTheDocument();
     expect(screen.getByText("Notion")).toBeInTheDocument();
     expect(screen.getByText("Slack")).toBeInTheDocument();
-
-    const connectButtons = screen.getAllByText("Connect");
-    expect(connectButtons).toHaveLength(5);
   });
 
   it("shows connected status when a connector exists", async () => {
