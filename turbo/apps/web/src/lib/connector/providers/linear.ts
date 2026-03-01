@@ -1,0 +1,160 @@
+import { getConnectorOAuthConfig } from "@vm0/core";
+
+// User info URL is not part of ConnectorOAuthConfig since it uses GraphQL (POST), not a standard
+// REST GET endpoint. Same pattern as GMAIL_PROFILE_URL in gmail.ts.
+const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
+
+interface LinearUserInfo {
+  id: string;
+  name: string | null;
+  email: string | null;
+}
+
+interface LinearTokenResult {
+  accessToken: string;
+  refreshToken: string | null;
+  expiresIn?: number;
+  scopes: string[];
+  userInfo: LinearUserInfo;
+}
+
+/**
+ * Build Linear OAuth authorization URL.
+ */
+export function buildLinearAuthorizationUrl(
+  clientId: string,
+  redirectUri: string,
+  state: string,
+): string {
+  const oauthConfig = getConnectorOAuthConfig("linear");
+  if (!oauthConfig) {
+    throw new Error("Linear OAuth config not found");
+  }
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: oauthConfig.scopes.join(","),
+    state,
+    actor: "user",
+  });
+
+  return `${oauthConfig.authorizationUrl}?${params.toString()}`;
+}
+
+/**
+ * Exchange authorization code for access token and user info.
+ * Linear uses GraphQL API to fetch user information.
+ */
+export async function exchangeLinearCode(
+  clientId: string,
+  clientSecret: string,
+  code: string,
+  redirectUri: string,
+): Promise<LinearTokenResult> {
+  const oauthConfig = getConnectorOAuthConfig("linear");
+  if (!oauthConfig) {
+    throw new Error("Linear OAuth config not found");
+  }
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+      redirect_uri: redirectUri,
+      grant_type: "authorization_code",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Linear token exchange failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    access_token?: string;
+    refresh_token?: string | null;
+    expires_in?: number;
+    scope?: string;
+    error?: string;
+    error_description?: string;
+  };
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+
+  if (!data.access_token) {
+    throw new Error("No access token in Linear response");
+  }
+
+  const userInfo = await fetchLinearUserInfo(data.access_token);
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
+    scopes: data.scope ? data.scope.split(",") : [],
+    userInfo,
+  };
+}
+
+/**
+ * Fetch Linear user info using the GraphQL API.
+ */
+async function fetchLinearUserInfo(
+  accessToken: string,
+): Promise<LinearUserInfo> {
+  const response = await fetch(LINEAR_GRAPHQL_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query: "{ viewer { id name email } }",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Linear user info fetch failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    data?: {
+      viewer?: {
+        id?: string;
+        name?: string | null;
+        email?: string | null;
+      };
+    };
+    errors?: { message: string }[];
+  };
+
+  if (data.errors?.length) {
+    throw new Error(data.errors[0]?.message ?? "Unknown GraphQL error");
+  }
+
+  const viewer = data.data?.viewer;
+  if (!viewer?.id) {
+    throw new Error("No user data in Linear response");
+  }
+
+  return {
+    id: viewer.id,
+    name: viewer.name ?? null,
+    email: viewer.email ?? null,
+  };
+}
+
+/**
+ * Get the primary secret name for Linear connector (the access token).
+ */
+export function getLinearSecretName(): string {
+  return "LINEAR_ACCESS_TOKEN";
+}

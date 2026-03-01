@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.11.0...guest-mock-claude-v0.12.0) (2026-03-01)
+
+
+### Miscellaneous Chores
+
+* **guest-mock-claude:** Synchronize runner-guest versions
+
 ## [0.11.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.10.0...guest-mock-claude-v0.11.0) (2026-03-01)
 
 

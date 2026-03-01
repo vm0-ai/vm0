@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "fumadocs-core": "15.7.4",
-    "fumadocs-mdx": "11.8.1",
+    "fumadocs-mdx": "14.2.8",
     "fumadocs-ui": "15.7.4",
     "mermaid": "^11.12.2",
     "next": "15.5.7",

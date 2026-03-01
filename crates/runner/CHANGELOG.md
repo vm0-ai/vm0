@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.11.0...runner-rs-v0.12.0) (2026-03-01)
+
+
+### Features
+
+* **runner:** add --env flag to benchmark command ([#3335](https://github.com/vm0-ai/vm0/issues/3335)) ([25683a5](https://github.com/vm0-ai/vm0/commit/25683a5049ae80a3644a065d4f401f8ca1887052))
+
 ## [0.11.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.10.0...runner-rs-v0.11.0) (2026-03-01)
 
 

@@ -39,6 +39,7 @@ describe("connectors tab", () => {
     expect(screen.getByText("Dropbox")).toBeInTheDocument();
     expect(screen.getByText("GitHub")).toBeInTheDocument();
     expect(screen.getByText("Gmail")).toBeInTheDocument();
+    expect(screen.getByText("Linear")).toBeInTheDocument();
     expect(screen.getByText("Notion")).toBeInTheDocument();
     expect(screen.getByText("Slack")).toBeInTheDocument();
 

@@ -1,4 +1,8 @@
+use std::fs::File;
+use std::path::Path;
+
 use async_trait::async_trait;
+use nix::fcntl::{PosixFadviseAdvice, posix_fadvise};
 use sandbox::{Sandbox, SandboxConfig, SandboxError, SandboxFactory};
 use sha2::{Digest, Sha256};
 use tracing::{info, warn};
@@ -153,6 +157,10 @@ impl SandboxFactory for FirecrackerFactory {
         self.netns_pool = Some(tokio::sync::Mutex::new(netns_pool));
         self.overlay_pool = Some(tokio::sync::Mutex::new(overlay_pool));
 
+        if let Some(snapshot) = &self.config.snapshot {
+            prefetch_memory(&snapshot.memory_path);
+        }
+
         let mode = if self.config.snapshot.is_some() {
             "snapshot"
         } else {
@@ -285,5 +293,38 @@ impl SandboxFactory for FirecrackerFactory {
         }
 
         info!("factory shutdown complete");
+    }
+}
+
+/// Hint the kernel to prefetch the snapshot memory file into page cache.
+///
+/// Firecracker mmaps this file on snapshot load; without prefetching, guest
+/// memory accesses trigger host-side demand paging (~1.6s overhead).
+/// `posix_fadvise(WILLNEED)` is non-blocking — the kernel reads pages
+/// asynchronously in the background.
+fn prefetch_memory(path: &Path) {
+    let file = match File::open(path) {
+        Ok(f) => f,
+        Err(e) => {
+            warn!(error = %e, path = %path.display(), "memory prefetch: open failed");
+            return;
+        }
+    };
+    let len: i64 = match file.metadata() {
+        Ok(m) => match m.len().try_into() {
+            Ok(n) => n,
+            Err(_) => {
+                warn!(path = %path.display(), "memory prefetch: file too large");
+                return;
+            }
+        },
+        Err(e) => {
+            warn!(error = %e, "memory prefetch: metadata failed");
+            return;
+        }
+    };
+    match posix_fadvise(&file, 0, len, PosixFadviseAdvice::POSIX_FADV_WILLNEED) {
+        Ok(()) => info!(bytes = len, path = %path.display(), "memory prefetch initiated"),
+        Err(e) => warn!(error = %e, "memory prefetch: posix_fadvise failed"),
     }
 }
