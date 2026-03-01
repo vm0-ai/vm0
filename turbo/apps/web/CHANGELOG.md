@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.57.0](https://github.com/vm0-ai/vm0/compare/web-v12.56.0...web-v12.57.0) (2026-03-01)
+
+
+### Features
+
+* **runner:** inject agent name and scope env vars into sandbox runtime ([#3375](https://github.com/vm0-ai/vm0/issues/3375)) ([53a1d42](https://github.com/vm0-ai/vm0/commit/53a1d4211cf4dbb477b1fb92a2412b719d46d8a8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.24.0
+
 ## [12.56.0](https://github.com/vm0-ai/vm0/compare/web-v12.55.0...web-v12.56.0) (2026-03-01)
 
 

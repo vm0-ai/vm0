@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.24.0](https://github.com/vm0-ai/vm0/compare/core-v8.23.0...core-v8.24.0) (2026-03-01)
+
+
+### Features
+
+* **runner:** inject agent name and scope env vars into sandbox runtime ([#3375](https://github.com/vm0-ai/vm0/issues/3375)) ([53a1d42](https://github.com/vm0-ai/vm0/commit/53a1d4211cf4dbb477b1fb92a2412b719d46d8a8))
+
 ## [8.23.0](https://github.com/vm0-ai/vm0/compare/core-v8.22.0...core-v8.23.0) (2026-03-01)
 
 
