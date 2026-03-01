@@ -4,7 +4,7 @@ import { scopes } from "../../db/schema/scope";
 import { badRequest, notFound, forbidden } from "../errors";
 import { logger } from "../logger";
 import type { ScopeType } from "../../db/schema/scope";
-import { isSystemScope } from "@vm0/core";
+import { isSystemScope, SYSTEM_SCOPE_SLUG } from "@vm0/core";
 import { env } from "../../env";
 
 const log = logger("service:scope");
@@ -50,10 +50,7 @@ export function generateDefaultScopeSlug(clerkUserId: string): string {
 /**
  * Validate scope slug format
  */
-function validateScopeSlug(
-  slug: string,
-  options?: { isAdmin?: boolean },
-): void {
+function validateScopeSlug(slug: string): void {
   if (slug.length < 3 || slug.length > 64) {
     throw badRequest("Scope slug must be between 3 and 64 characters");
   }
@@ -64,10 +61,8 @@ function validateScopeSlug(
     );
   }
 
-  if (!options?.isAdmin) {
-    if (RESERVED_SLUGS.includes(slug) || slug.startsWith("vm0")) {
-      throw badRequest(`Scope slug "${slug}" is reserved`);
-    }
+  if (RESERVED_SLUGS.includes(slug) || slug.startsWith(SYSTEM_SCOPE_SLUG)) {
+    throw badRequest(`Scope slug "${slug}" is reserved`);
   }
 }
 
