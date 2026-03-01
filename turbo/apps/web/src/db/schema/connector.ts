@@ -30,6 +30,7 @@ export const connectors = pgTable(
     externalUsername: varchar("external_username", { length: 255 }),
     externalEmail: varchar("external_email", { length: 255 }),
     oauthScopes: text("oauth_scopes"), // JSON array of scopes
+    tokenExpiresAt: timestamp("token_expires_at"), // null = non-expiring token
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

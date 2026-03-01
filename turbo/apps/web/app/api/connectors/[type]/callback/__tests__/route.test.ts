@@ -680,6 +680,38 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("/connector/error");
     });
 
+    it("should store refresh token as a secret when Notion returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createNotionOAuthMock({
+        accessToken: "notion-access-token",
+        refreshToken: "notion-refresh-token-stored",
+        userId: "notion-user-456",
+        userName: "My Workspace",
+        email: "user@workspace.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "notion",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "notion" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      // Verify refresh token was stored as a secret
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "NOTION_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("notion-refresh-token-stored");
+    });
+
     it("should handle Notion response without refresh token", async () => {
       await context.setupUser();
 

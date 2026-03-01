@@ -135,6 +135,11 @@ export async function upsertOAuthConnector(
   accessToken: string,
   userInfo: ExternalUserInfo,
   oauthScopes: string[],
+  options?: {
+    refreshToken?: string | null;
+    refreshSecretName?: string;
+    expiresIn?: number;
+  },
 ): Promise<{ connector: ConnectorResponse; created: boolean }> {
   const scope = await getUserScopeByClerkId(clerkUserId);
   if (!scope) {
@@ -143,6 +148,10 @@ export async function upsertOAuthConnector(
 
   const secretName = getSecretNameForConnector(type);
   const db = globalThis.services.db;
+  const tokenExpiresAt =
+    options?.expiresIn != null
+      ? new Date(Date.now() + options.expiresIn * 1000)
+      : null;
 
   // Check if connector exists
   const existingConnector = await db
@@ -153,7 +162,7 @@ export async function upsertOAuthConnector(
 
   const isUpdate = existingConnector.length > 0;
 
-  // Upsert secret with type="connector"
+  // Upsert access token secret
   await upsertSecretByScope(
     scope.id,
     secretName,
@@ -161,6 +170,17 @@ export async function upsertOAuthConnector(
     "connector",
     `OAuth token for ${type} connector`,
   );
+
+  // Upsert refresh token secret if provided
+  if (options?.refreshToken && options.refreshSecretName) {
+    await upsertSecretByScope(
+      scope.id,
+      options.refreshSecretName,
+      options.refreshToken,
+      "connector",
+      `OAuth refresh token for ${type} connector`,
+    );
+  }
 
   // Upsert connector
   let connectorRow: {
@@ -171,6 +191,7 @@ export async function upsertOAuthConnector(
     externalUsername: string | null;
     externalEmail: string | null;
     oauthScopes: string | null;
+    tokenExpiresAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
   };
@@ -188,6 +209,7 @@ export async function upsertOAuthConnector(
         externalUsername: userInfo.username,
         externalEmail: userInfo.email,
         oauthScopes: JSON.stringify(oauthScopes),
+        tokenExpiresAt,
         updatedAt: new Date(),
       })
       .where(eq(connectors.id, existingId))
@@ -208,6 +230,7 @@ export async function upsertOAuthConnector(
         externalUsername: userInfo.username,
         externalEmail: userInfo.email,
         oauthScopes: JSON.stringify(oauthScopes),
+        tokenExpiresAt,
       })
       .returning();
     if (!created) {

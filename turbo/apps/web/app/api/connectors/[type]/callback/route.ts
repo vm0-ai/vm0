@@ -148,6 +148,8 @@ export async function GET(
     // Exchange code for token directly from provider
     const {
       accessToken,
+      refreshToken,
+      expiresIn,
       userInfo,
       scopes: oauthScopes,
     } = await exchangeTokenForConnector(connectorType, code, redirectUri);
@@ -157,6 +159,10 @@ export async function GET(
       type,
       username: userInfo.username,
     });
+
+    // Build refresh token options if provider supports it
+    const handler = PROVIDER_HANDLERS[connectorType];
+    const refreshSecretName = handler.getRefreshSecretName?.();
 
     // Store connector and secret
     const { created } = await upsertOAuthConnector(
@@ -169,6 +175,7 @@ export async function GET(
         email: userInfo.email,
       },
       oauthScopes,
+      { refreshToken, refreshSecretName, expiresIn },
     );
 
     log.info("Connector OAuth completed", {

@@ -2,6 +2,8 @@ import { type Env } from "../../env";
 
 export interface OAuthTokenResult {
   accessToken: string;
+  refreshToken?: string | null;
+  expiresIn?: number; // seconds until access token expires
   scopes: string[];
   userInfo: { id: string; username: string | null; email: string | null };
 }
@@ -17,4 +19,5 @@ export interface ProviderHandler {
   getClientId(currentEnv: Env): string | undefined;
   getClientSecret(currentEnv: Env): string | undefined;
   getSecretName(): string;
+  getRefreshSecretName?(): string;
 }
