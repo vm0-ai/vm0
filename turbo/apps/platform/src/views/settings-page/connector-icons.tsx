@@ -1,9 +1,10 @@
 import type { ConnectorType } from "@vm0/core";
 
+import computerIcon from "./icons/computer.svg";
+import dropboxIcon from "./icons/dropbox.svg";
 import githubIcon from "./icons/github.svg";
 import gmailIcon from "./icons/gmail.svg";
 import notionIcon from "./icons/notion.svg";
-import computerIcon from "./icons/computer.svg";
 import slackIcon from "./icons/slack.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
@@ -12,6 +13,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   notion: notionIcon,
   computer: computerIcon,
   slack: slackIcon,
+  dropbox: dropboxIcon,
 });
 
 export function ConnectorIcon({
