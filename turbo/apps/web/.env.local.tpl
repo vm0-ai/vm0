@@ -43,8 +43,8 @@ NOTION_OAUTH_CLIENT_ID=op://Development/vm0-env-local/notion_oauth_client_id
 NOTION_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/notion_oauth_client_secret
 
 # Optional: Google OAuth Connector (Gmail, Calendar, Drive, etc.)
-GOOGLE_OAUTH_CLIENT_ID=op://Development/vm0-env-local/google_oauth_client_id
-GOOGLE_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/google_oauth_client_secret
+GOOGLE_OAUTH_CLIENT_ID=op://Development/vm0-env-local/GOOGLE_OAUTH_CLIENT_ID
+GOOGLE_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/GOOGLE_OAUTH_CLIENT_SECRET
 
 # Optional: ngrok (Computer Connector)
 NGROK_API_KEY=op://Development/vm0-env-local/NGROK_API_KEY
