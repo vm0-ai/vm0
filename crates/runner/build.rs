@@ -1,5 +1,7 @@
+// Build scripts are compile-time only — panic/expect/unwrap are appropriate for fatal errors.
+#![allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
+
 use std::path::PathBuf;
-use std::process;
 
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(bundled_guests)");
@@ -9,8 +11,8 @@ fn main() {
     // Resolve relative paths against the workspace root so canonicalize works.
     let workspace_root: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("."));
+        .expect("CARGO_MANIFEST_DIR should have a parent")
+        .to_path_buf();
 
     let guests = [
         ("GUEST_AGENT_PATH", "BUNDLED_GUEST_AGENT"),
@@ -37,10 +39,9 @@ fn main() {
             .filter(|(k, _)| !set.contains(k))
             .map(|(k, _)| *k)
             .collect();
-        eprintln!(
-            "cargo:warning=partial GUEST_*_PATH env vars: set={set:?}, missing={missing:?} — must set all or none"
+        panic!(
+            "partial GUEST_*_PATH env vars: set={set:?}, missing={missing:?} — must set all or none"
         );
-        process::exit(1);
     }
 
     if paths.len() == guests.len() {
@@ -51,20 +52,11 @@ fn main() {
             } else {
                 PathBuf::from(raw_path)
             };
-            let abs = match std::fs::canonicalize(&resolved) {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!(
-                        "cargo:warning={raw_path} (resolved to {}): {e}",
-                        resolved.display()
-                    );
-                    process::exit(1);
-                }
-            };
-            let Some(abs_str) = abs.to_str() else {
-                eprintln!("cargo:warning=non-UTF-8 path: {}", abs.display());
-                process::exit(1);
-            };
+            let abs = std::fs::canonicalize(&resolved)
+                .unwrap_or_else(|e| panic!("{raw_path} (resolved to {}): {e}", resolved.display()));
+            let abs_str = abs
+                .to_str()
+                .unwrap_or_else(|| panic!("non-UTF-8 path: {}", abs.display()));
             println!("cargo:rustc-env={bundled_key}={abs_str}");
             println!("cargo:rerun-if-changed={abs_str}");
         }

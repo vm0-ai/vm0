@@ -62,10 +62,18 @@ Both HTTP clients in the workspace use `rustls-platform-verifier` to read from t
 cargo build
 cargo build --release
 
-# Cross-compile guest binaries for aarch64 (production target)
+# Cross-compile for aarch64 (production target)
+# Step 1: build guest binaries
 cross build --target aarch64-unknown-linux-musl \
-  -p runner -p guest-agent -p guest-download -p guest-init -p guest-mock-claude \
+  -p guest-agent -p guest-download -p guest-init -p guest-mock-claude \
   --release
+
+# Step 2: build runner with embedded guests
+GUEST_AGENT_PATH=target/aarch64-unknown-linux-musl/release/guest-agent \
+GUEST_DOWNLOAD_PATH=target/aarch64-unknown-linux-musl/release/guest-download \
+GUEST_INIT_PATH=target/aarch64-unknown-linux-musl/release/guest-init \
+GUEST_MOCK_CLAUDE_PATH=target/aarch64-unknown-linux-musl/release/guest-mock-claude \
+cross build --target aarch64-unknown-linux-musl -p runner --release
 ```
 
 ## Testing

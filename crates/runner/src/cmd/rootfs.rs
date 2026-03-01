@@ -84,6 +84,7 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     let dry_run = args.dry_run;
 
     // Create temp dir for any bundled guest binaries that need extracting.
+    // IMPORTANT: tmp_dir must outlive build script execution — dropping it deletes extracted guests.
     let tmp_dir =
         tempfile::tempdir().map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
 
