@@ -134,6 +134,9 @@ async fn execute_inner(
     // Run job inside sandbox, then destroy regardless of outcome
     let result = run_in_sandbox(sandbox.as_ref(), context, config, telemetry).await;
 
+    // Copy guest system log to host log directory (best-effort).
+    copy_system_log(sandbox.as_ref(), context, &config.log_paths).await;
+
     // Unregister VM from proxy + upload network logs before cleanup timer.
     // Unregister first ensures the addon writes no more log entries.
     if firewall_enabled {
@@ -300,6 +303,39 @@ fn dmesg_indicates_oom(stdout: &str) -> bool {
         || lower.contains("oom-kill")
         || lower.contains("oom_reaper")
         || lower.contains("killed process")
+}
+
+/// Copy the guest system log to the host log directory.
+///
+/// Best-effort: failures are logged but do not affect job outcome.
+async fn copy_system_log(sandbox: &dyn Sandbox, context: &ExecutionContext, log_paths: &LogPaths) {
+    let guest_path = format!("/tmp/vm0-system-{}.log", context.run_id);
+    let cat_cmd = format!("cat {guest_path}");
+    let result = sandbox
+        .exec(&ExecRequest {
+            cmd: &cat_cmd,
+            timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &[],
+            sudo: false,
+        })
+        .await;
+
+    let output = match result {
+        Ok(r) if r.exit_code == 0 => r.stdout,
+        Ok(r) => {
+            info!(run_id = %context.run_id, exit_code = r.exit_code, "system log not found in guest");
+            return;
+        }
+        Err(e) => {
+            warn!(run_id = %context.run_id, error = %e, "failed to read system log from guest");
+            return;
+        }
+    };
+
+    let host_path = log_paths.system_log(context.run_id);
+    if let Err(e) = tokio::fs::write(&host_path, &output).await {
+        warn!(run_id = %context.run_id, error = %e, "failed to write system log to host");
+    }
 }
 
 /// Sync guest clock to host time after snapshot restore.

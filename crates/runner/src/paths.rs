@@ -219,6 +219,10 @@ impl LogPaths {
         self.dir.join(format!("network-{run_id}.jsonl"))
     }
 
+    pub fn system_log(&self, run_id: uuid::Uuid) -> PathBuf {
+        self.dir.join(format!("system-{run_id}.log"))
+    }
+
     /// Whether `name` matches the `network-{run_id}.jsonl` pattern.
     pub fn is_network_log(name: &str) -> bool {
         name.starts_with("network-") && name.ends_with(".jsonl")
