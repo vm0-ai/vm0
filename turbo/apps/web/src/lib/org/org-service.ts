@@ -24,6 +24,18 @@ function mapClerkRole(clerkRole: string): OrgRole {
 }
 
 /**
+ * Get the primary email address for a Clerk user.
+ */
+async function getClerkUserEmail(clerkUserId: string): Promise<string> {
+  const client = await clerkClient();
+  const user = await client.users.getUser(clerkUserId);
+  return (
+    user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)
+      ?.emailAddress ?? ""
+  );
+}
+
+/**
  * Lookup an organization scope by ID and verify it has a Clerk org link.
  * Throws notFound if the scope doesn't exist or isn't linked.
  */
@@ -48,11 +60,7 @@ async function getOrgScope(scopeId: string) {
 export async function createOrganization(clerkUserId: string, slug: string) {
   // Enforce vm0-prefix restriction: only admin users can create vm0-prefixed orgs
   if (slug.startsWith("vm0")) {
-    const client = await clerkClient();
-    const user = await client.users.getUser(clerkUserId);
-    const email =
-      user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)
-        ?.emailAddress ?? "";
+    const email = await getClerkUserEmail(clerkUserId);
     if (!isVm0Admin(email)) {
       throw badRequest(`Scope slug "${slug}" is reserved`);
     }
@@ -401,11 +409,7 @@ export async function verifyAndActivateScope(
 
   // System scope: only vm0 admin users can activate
   if (scope.type === "system" && scope.slug === "vm0") {
-    const client = await clerkClient();
-    const user = await client.users.getUser(clerkUserId);
-    const email =
-      user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)
-        ?.emailAddress ?? "";
+    const email = await getClerkUserEmail(clerkUserId);
 
     if (!isVm0Admin(email)) {
       throw forbidden("System scopes cannot be activated");

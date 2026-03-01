@@ -100,13 +100,8 @@ export async function getScopeById(scopeId: string) {
 /**
  * Create a new scope
  */
-async function createScope(
-  slug: string,
-  type: ScopeType,
-  ownerId?: string,
-  options?: { isAdmin?: boolean },
-) {
-  validateScopeSlug(slug, options);
+async function createScope(slug: string, type: ScopeType, ownerId?: string) {
+  validateScopeSlug(slug);
 
   // Check if slug already exists
   const existing = await getScopeBySlug(slug);
