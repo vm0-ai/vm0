@@ -61,12 +61,6 @@ describe("allConnectorTypes$", () => {
   it("should hide computer connector when feature flag is disabled", async () => {
     const { store } = context;
 
-    server.use(
-      http.get("/api/feature-switches", () => {
-        return HttpResponse.json({ computerConnector: false });
-      }),
-    );
-
     await setupPage({ context, path: "/", withoutRender: true });
 
     const types = await store.get(allConnectorTypes$);
@@ -77,12 +71,6 @@ describe("allConnectorTypes$", () => {
 
   it("should hide figma connector when feature flag is disabled", async () => {
     const { store } = context;
-
-    server.use(
-      http.get("/api/feature-switches", () => {
-        return HttpResponse.json({ figmaConnector: false });
-      }),
-    );
 
     await setupPage({ context, path: "/", withoutRender: true });
 
