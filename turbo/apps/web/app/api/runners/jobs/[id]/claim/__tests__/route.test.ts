@@ -1,14 +1,20 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { POST } from "../route";
 import { randomUUID } from "crypto";
+import { eq } from "drizzle-orm";
 import {
   createTestRequest,
   createTestCliToken,
+  createTestCompose,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
+import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
+import { runnerJobQueue } from "../../../../../../../src/db/schema/runner-job-queue";
+import { scopes } from "../../../../../../../src/db/schema/scope";
+import { encryptSecrets } from "../../../../../../../src/lib/crypto/secrets-encryption";
 
 const context = testContext();
 
@@ -226,6 +232,140 @@ describe("POST /api/runners/jobs/:id/claim", () => {
         expect(response.status).toBe(401);
         expect(data.error.message).toContain("Not authenticated");
       });
+    });
+  });
+
+  describe("Claim flow - Agent metadata", () => {
+    it("should return agentName and agentScopeSlug in claim response", async () => {
+      // Look up user's scope slug
+      const [scope] = await globalThis.services.db
+        .select({ slug: scopes.slug })
+        .from(scopes)
+        .where(eq(scopes.id, user.scopeId))
+        .limit(1);
+
+      // Create compose (links to user's scope)
+      const { versionId } = await createTestCompose("test-agent");
+
+      // Create run record
+      const [run] = await globalThis.services.db
+        .insert(agentRuns)
+        .values({
+          userId: user.userId,
+          agentComposeVersionId: versionId,
+          status: "pending",
+          prompt: "test prompt",
+        })
+        .returning({ id: agentRuns.id });
+
+      // Queue runner job with agent metadata in stored context
+      const runnerGroup = `${scope!.slug}/default`;
+      const encryptedSecrets = encryptSecrets(
+        null,
+        globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+      );
+
+      await globalThis.services.db.insert(runnerJobQueue).values({
+        runId: run!.id,
+        runnerGroup,
+        executionContext: {
+          workingDir: "/home/user",
+          storageManifest: null,
+          environment: null,
+          resumeSession: null,
+          encryptedSecrets,
+          cliAgentType: "claude",
+          agentName: "test-agent",
+          agentScopeSlug: scope!.slug,
+        },
+        expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+      });
+
+      // Claim the job
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${run!.id}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.agentName).toBe("test-agent");
+      expect(data.agentScopeSlug).toBe(scope!.slug);
+    });
+
+    it("should omit agentName and agentScopeSlug when not set in stored context", async () => {
+      // Look up user's scope slug
+      const [scope] = await globalThis.services.db
+        .select({ slug: scopes.slug })
+        .from(scopes)
+        .where(eq(scopes.id, user.scopeId))
+        .limit(1);
+
+      // Create compose
+      const { versionId } = await createTestCompose("test-agent-no-meta");
+
+      // Create run record
+      const [run] = await globalThis.services.db
+        .insert(agentRuns)
+        .values({
+          userId: user.userId,
+          agentComposeVersionId: versionId,
+          status: "pending",
+          prompt: "test prompt",
+        })
+        .returning({ id: agentRuns.id });
+
+      // Queue runner job WITHOUT agent metadata
+      const runnerGroup = `${scope!.slug}/default`;
+      const encryptedSecrets = encryptSecrets(
+        null,
+        globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+      );
+
+      await globalThis.services.db.insert(runnerJobQueue).values({
+        runId: run!.id,
+        runnerGroup,
+        executionContext: {
+          workingDir: "/home/user",
+          storageManifest: null,
+          environment: null,
+          resumeSession: null,
+          encryptedSecrets,
+          cliAgentType: "claude",
+        },
+        expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+      });
+
+      // Claim the job
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${run!.id}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.agentName).toBeUndefined();
+      expect(data.agentScopeSlug).toBeUndefined();
     });
   });
 });

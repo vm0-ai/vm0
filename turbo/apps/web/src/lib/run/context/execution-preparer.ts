@@ -255,7 +255,7 @@ function buildPreparedContext(
   runnerGroup: string | null,
   storageManifest: StorageManifest,
   experimentalFirewall: CoreExperimentalFirewall | null,
-  agentScopeSlug: string,
+  agentScopeSlug: string | null,
 ): PreparedContext {
   return {
     // Identity
