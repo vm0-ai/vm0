@@ -123,8 +123,12 @@ async function fetchFigmaUserInfo(accessToken: string): Promise<FigmaUserInfo> {
     handle?: string | null;
   };
 
+  if (!data.id) {
+    throw new Error("Figma user info response missing id field");
+  }
+
   return {
-    id: data.id ?? "",
+    id: data.id,
     email: data.email ?? null,
     name: data.handle ?? null,
   };
