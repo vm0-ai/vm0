@@ -178,6 +178,9 @@ async fn run_in_sandbox(
     config: &ExecutorConfig,
     telemetry: &mut JobTelemetry,
 ) -> RunnerResult<(i32, Option<String>)> {
+    // System log file — all guest process output goes here for telemetry upload.
+    let log_file = format!("/tmp/vm0-system-{}.log", context.run_id);
+
     // 1. Fix guest clock after snapshot restore (must happen before HTTPS calls)
     if config.is_snapshot {
         fix_guest_clock(sandbox).await?;
@@ -186,7 +189,7 @@ async fn run_in_sandbox(
     // 2. Download storages
     if let Some(manifest) = &context.storage_manifest {
         let t = Instant::now();
-        let result = download_storages(sandbox, context, manifest).await;
+        let result = download_storages(sandbox, context, manifest, &log_file).await;
         let err = result.as_ref().err().map(|e| e.to_string());
         telemetry.record(
             "storage_download",
@@ -220,10 +223,9 @@ async fn run_in_sandbox(
         .collect();
     info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
-    // 5. Spawn agent — redirect stdout+stderr to system log file
+    // 5. Spawn agent — append stdout+stderr to system log file
     //    (guest-agent reads this back via telemetry for incremental upload)
-    let log_file = format!("/tmp/vm0-system-{}.log", context.run_id);
-    let agent_cmd = format!("{} > {log_file} 2>&1", guest::RUN_AGENT);
+    let agent_cmd = format!("{} >> {log_file} 2>&1", guest::RUN_AGENT);
     info!(run_id = %context.run_id, "spawning agent");
 
     // JOB_TIMEOUT is used for both spawn_watch (guest-side kill) and wait_exit
@@ -328,6 +330,7 @@ async fn download_storages(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     manifest: &crate::types::StorageManifest,
+    log_file: &str,
 ) -> RunnerResult<()> {
     let manifest_json = serde_json::to_vec(manifest)
         .map_err(|e| crate::error::RunnerError::Internal(format!("manifest json: {e}")))?;
@@ -335,7 +338,11 @@ async fn download_storages(
         .write_file(guest::STORAGE_MANIFEST, &manifest_json)
         .await?;
 
-    let download_cmd = format!("{} {}", guest::DOWNLOAD_BIN, guest::STORAGE_MANIFEST);
+    let download_cmd = format!(
+        "{} {} >> {log_file} 2>&1",
+        guest::DOWNLOAD_BIN,
+        guest::STORAGE_MANIFEST
+    );
     info!(run_id = %context.run_id, "downloading storages");
     let result = sandbox
         .exec(&ExecRequest {
@@ -348,8 +355,8 @@ async fn download_storages(
 
     if result.exit_code != 0 {
         return Err(crate::error::RunnerError::Internal(format!(
-            "storage download failed: {}",
-            String::from_utf8_lossy(&result.stderr)
+            "storage download failed (exit code {})",
+            result.exit_code
         )));
     }
     Ok(())
