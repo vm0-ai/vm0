@@ -1433,6 +1433,28 @@ export async function findTestConnectorSecret(
 }
 
 /**
+ * Get the tokenExpiresAt timestamp for a connector.
+ * Used for verifying that token expiry was correctly stored during OAuth flow.
+ *
+ * @param scopeId - The scope ID
+ * @param type - The connector type (e.g. "notion", "github")
+ * @returns The tokenExpiresAt Date, or null if not set, or undefined if connector not found
+ */
+export async function findTestConnectorTokenExpiresAt(
+  scopeId: string,
+  type: string,
+): Promise<Date | null | undefined> {
+  const [row] = await globalThis.services.db
+    .select({ tokenExpiresAt: connectors.tokenExpiresAt })
+    .from(connectors)
+    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.type, type)))
+    .limit(1);
+
+  if (!row) return undefined;
+  return row.tokenExpiresAt;
+}
+
+/**
  * Generate a unique session code for testing (format: XXXX-XXXX, max 9 chars)
  */
 function generateTestSessionCode(): string {

@@ -17,6 +17,7 @@ export const notionHandler: ProviderHandler = {
     return {
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn,
       scopes: result.scopes,
       userInfo: result.userInfo,
     };

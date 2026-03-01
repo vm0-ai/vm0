@@ -180,6 +180,8 @@ export async function upsertOAuthConnector(
       "connector",
       `OAuth refresh token for ${type} connector`,
     );
+  } else if (options?.refreshToken && !options.refreshSecretName) {
+    log.debug("refresh token provided but no secret name configured", { type });
   }
 
   // Upsert connector

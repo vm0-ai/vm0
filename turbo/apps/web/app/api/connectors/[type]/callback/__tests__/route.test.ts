@@ -10,6 +10,7 @@ import {
   createTestRequest,
   createTestConnectorSession,
   findTestConnectorSecret,
+  findTestConnectorTokenExpiresAt,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
@@ -70,6 +71,7 @@ function createGitHubOAuthMock(options: {
 function createNotionOAuthMock(options: {
   accessToken?: string;
   refreshToken?: string | null;
+  expiresIn?: number;
   tokenError?: string;
   userId?: string;
   userName?: string;
@@ -86,6 +88,7 @@ function createNotionOAuthMock(options: {
       return HttpResponse.json({
         access_token: options.accessToken ?? "notion-test-access-token",
         refresh_token: options.refreshToken ?? "notion-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
         token_type: "bearer",
         owner: {
           user: {
@@ -712,8 +715,44 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(refreshToken).toBe("notion-refresh-token-stored");
     });
 
-    it("should handle Notion response without refresh token", async () => {
-      await context.setupUser();
+    it("should set tokenExpiresAt when provider returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 3600;
+      const { handlers: mswHandlers } = createNotionOAuthMock({
+        accessToken: "notion-access-token",
+        refreshToken: "notion-refresh-token",
+        expiresIn,
+        userId: "notion-user-exp",
+        userName: "Expiring Workspace",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "notion",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "notion" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      // Verify tokenExpiresAt is set to now + expiresIn seconds
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "notion",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should leave tokenExpiresAt null when provider does not return expires_in", async () => {
+      const user = await context.setupUser();
 
       const { handlers: mswHandlers } = createNotionOAuthMock({
         accessToken: "notion-access-token",
@@ -737,6 +776,13 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       const location = response.headers.get("location");
       expect(location).toContain("/connector/success");
       expect(location).toContain("type=notion");
+
+      // Verify tokenExpiresAt is null (non-expiring token)
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "notion",
+      );
+      expect(tokenExpiresAt).toBeNull();
     });
   });
 });

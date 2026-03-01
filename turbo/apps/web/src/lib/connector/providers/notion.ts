@@ -9,6 +9,7 @@ interface NotionUserInfo {
 interface NotionTokenResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
   scopes: string[];
   userInfo: NotionUserInfo;
 }
@@ -85,6 +86,7 @@ export async function exchangeNotionCode(
   const data = (await response.json()) as {
     access_token?: string;
     refresh_token?: string | null;
+    expires_in?: number;
     owner?: {
       user?: {
         id?: string;
@@ -107,6 +109,7 @@ export async function exchangeNotionCode(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
     scopes: [],
     userInfo: {
       id: data.owner?.user?.id ?? "",
