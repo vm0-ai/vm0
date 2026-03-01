@@ -219,6 +219,7 @@ jobs:
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             RESEND_WEBHOOK_SECRET=${{ secrets.RESEND_WEBHOOK_SECRET }}
             RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
+            VM0_ADMIN_USERS=${{ vars.VM0_ADMIN_USERS }}
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}

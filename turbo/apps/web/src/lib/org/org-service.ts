@@ -2,7 +2,11 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { eq, and, inArray } from "drizzle-orm";
 import { scopes } from "../../db/schema/scope";
 import { badRequest, forbidden, notFound } from "../errors";
-import { getUserScopeByClerkId, getScopeBySlug } from "../scope/scope-service";
+import {
+  getUserScopeByClerkId,
+  getScopeBySlug,
+  isVm0Admin,
+} from "../scope/scope-service";
 import {
   generateOrgAccessToken,
   revokeOrgAccessTokens,
@@ -42,6 +46,18 @@ async function getOrgScope(scopeId: string) {
  * Creates a Clerk Organization and a local scope with type=organization.
  */
 export async function createOrganization(clerkUserId: string, slug: string) {
+  // Enforce vm0-prefix restriction: only admin users can create vm0-prefixed orgs
+  if (slug.startsWith("vm0")) {
+    const client = await clerkClient();
+    const user = await client.users.getUser(clerkUserId);
+    const email =
+      user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)
+        ?.emailAddress ?? "";
+    if (!isVm0Admin(email)) {
+      throw badRequest(`Scope slug "${slug}" is reserved`);
+    }
+  }
+
   // Check one-org-per-user limit
   const existingOrg = await globalThis.services.db
     .select()
@@ -383,6 +399,31 @@ export async function verifyAndActivateScope(
     };
   }
 
-  // System scopes cannot be activated
+  // System scope: only vm0 admin users can activate
+  if (scope.type === "system" && scope.slug === "vm0") {
+    const client = await clerkClient();
+    const user = await client.users.getUser(clerkUserId);
+    const email =
+      user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)
+        ?.emailAddress ?? "";
+
+    if (!isVm0Admin(email)) {
+      throw forbidden("System scopes cannot be activated");
+    }
+
+    const { token, expiresAt } = await generateOrgAccessToken(
+      clerkUserId,
+      scope.id,
+      "admin",
+    );
+
+    return {
+      scope,
+      token,
+      expiresAt: expiresAt.toISOString(),
+    };
+  }
+
+  // Other system scopes cannot be activated
   throw forbidden("System scopes cannot be activated");
 }

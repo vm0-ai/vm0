@@ -5,8 +5,21 @@ import { badRequest, notFound, forbidden } from "../errors";
 import { logger } from "../logger";
 import type { ScopeType } from "../../db/schema/scope";
 import { isSystemScope } from "@vm0/core";
+import { env } from "../../env";
 
 const log = logger("service:scope");
+
+/**
+ * Check if an email is a VM0 admin user.
+ * Admin users are defined by the VM0_ADMIN_USERS environment variable
+ * (comma-separated email list).
+ */
+export function isVm0Admin(email: string): boolean {
+  const adminUsers = env().VM0_ADMIN_USERS;
+  if (!adminUsers) return false;
+  const adminList = adminUsers.split(",").map((e) => e.trim().toLowerCase());
+  return adminList.includes(email.toLowerCase());
+}
 
 /**
  * Reserved scope slugs that cannot be used by users
@@ -37,7 +50,10 @@ export function generateDefaultScopeSlug(clerkUserId: string): string {
 /**
  * Validate scope slug format
  */
-function validateScopeSlug(slug: string): void {
+function validateScopeSlug(
+  slug: string,
+  options?: { isAdmin?: boolean },
+): void {
   if (slug.length < 3 || slug.length > 64) {
     throw badRequest("Scope slug must be between 3 and 64 characters");
   }
@@ -48,8 +64,10 @@ function validateScopeSlug(slug: string): void {
     );
   }
 
-  if (RESERVED_SLUGS.includes(slug) || slug.startsWith("vm0")) {
-    throw badRequest(`Scope slug "${slug}" is reserved`);
+  if (!options?.isAdmin) {
+    if (RESERVED_SLUGS.includes(slug) || slug.startsWith("vm0")) {
+      throw badRequest(`Scope slug "${slug}" is reserved`);
+    }
   }
 }
 
@@ -82,8 +100,13 @@ export async function getScopeById(scopeId: string) {
 /**
  * Create a new scope
  */
-async function createScope(slug: string, type: ScopeType, ownerId?: string) {
-  validateScopeSlug(slug);
+async function createScope(
+  slug: string,
+  type: ScopeType,
+  ownerId?: string,
+  options?: { isAdmin?: boolean },
+) {
+  validateScopeSlug(slug, options);
 
   // Check if slug already exists
   const existing = await getScopeBySlug(slug);

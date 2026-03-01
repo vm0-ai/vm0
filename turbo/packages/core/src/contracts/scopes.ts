@@ -24,10 +24,6 @@ export const scopeSlugSchema = z
     /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]{1,2}$/,
     "Scope slug must contain only lowercase letters, numbers, and hyphens, and must start and end with an alphanumeric character",
   )
-  .refine(
-    (slug) => !slug.startsWith("vm0"),
-    "Scope slug cannot start with 'vm0' (reserved)",
-  )
   .transform((s) => s.toLowerCase());
 
 /**

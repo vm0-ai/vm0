@@ -14,6 +14,7 @@ const mockClerkClient = vi.mocked(clerkClient);
 export function setupClerkOrgMock(options: {
   userId: string;
   orgId?: string;
+  email?: string;
   memberships?: Array<{
     userId: string;
     role: string;
@@ -21,11 +22,12 @@ export function setupClerkOrgMock(options: {
   }>;
 }): void {
   const orgId = options.orgId ?? `org_${options.userId}`;
+  const email = options.email;
   const memberships = options.memberships ?? [
     { userId: options.userId, role: "org:admin", createdAt: Date.now() },
   ];
 
-  mockClerk({ userId: options.userId });
+  mockClerk({ userId: options.userId, email });
 
   const mockOrganizations = {
     createOrganization: vi.fn().mockResolvedValue({
@@ -51,7 +53,10 @@ export function setupClerkOrgMock(options: {
       Promise.resolve({
         id: userId,
         emailAddresses: [
-          { id: "email_1", emailAddress: `${userId}@example.com` },
+          {
+            id: "email_1",
+            emailAddress: email ?? `${userId}@example.com`,
+          },
         ],
         primaryEmailAddressId: "email_1",
       }),

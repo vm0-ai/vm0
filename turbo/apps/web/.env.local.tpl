@@ -77,3 +77,6 @@ SENTRY_DSN_WEB=
 SENTRY_AUTH_TOKEN=
 SENTRY_ORG=
 SENTRY_PROJECT=
+
+# Optional: VM0 Admin Users (comma-separated emails for super-admin access)
+# VM0_ADMIN_USERS=lancy@vm0.ai,ethan@vm0.ai
