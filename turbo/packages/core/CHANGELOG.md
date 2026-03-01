@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.22.0](https://github.com/vm0-ai/vm0/compare/core-v8.21.0...core-v8.22.0) (2026-03-01)
+
+
+### Features
+
+* **connectors:** add gmail oauth connector ([#3332](https://github.com/vm0-ai/vm0/issues/3332)) ([ca303b7](https://github.com/vm0-ai/vm0/commit/ca303b71916095e799c22b975f71216ea89df021))
+
 ## [8.21.0](https://github.com/vm0-ai/vm0/compare/core-v8.20.0...core-v8.21.0) (2026-03-01)
 
 
