@@ -240,10 +240,10 @@ async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64>
     Ok(removed)
 }
 
-/// Delete stale network log files (older than [`NETWORK_LOG_MAX_AGE`]).
+/// Delete stale per-job log files (older than [`JOB_LOG_MAX_AGE`]).
 ///
-/// Network log files (`network-{run_id}.jsonl`) accumulate when upload fails or
-/// the runner crashes before cleanup. Returns `(files_removed, bytes_freed)`.
+/// Per-job log files (`network-*.jsonl`, `system-*.log`, `metrics-*.jsonl`)
+/// accumulate across runs. Returns `(files_removed, bytes_freed)`.
 async fn gc_job_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, u64)> {
     let logs_dir = home.logs_dir();
     let mut entries = match tokio::fs::read_dir(&logs_dir).await {
@@ -886,5 +886,37 @@ mod tests {
         let (removed, _) = gc_job_logs(&home, true).await.unwrap();
         assert_eq!(removed, 1);
         assert!(old_file.exists(), "dry-run should not delete");
+    }
+
+    #[tokio::test]
+    async fn gc_job_logs_deletes_stale_system_and_metrics() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let logs_dir = home.logs_dir();
+        std::fs::create_dir_all(&logs_dir).unwrap();
+
+        let old_time = SystemTime::now() - Duration::from_secs(8 * 24 * 3600);
+
+        let system_log = logs_dir.join("system-550e8400-e29b-41d4-a716-446655440000.log");
+        std::fs::write(&system_log, "log content").unwrap();
+        std::fs::File::open(&system_log)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let metrics_log = logs_dir.join("metrics-550e8400-e29b-41d4-a716-446655440000.jsonl");
+        std::fs::write(&metrics_log, "{}").unwrap();
+        std::fs::File::open(&metrics_log)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let (removed, _) = gc_job_logs(&home, false).await.unwrap();
+        assert_eq!(removed, 2);
+        assert!(!system_log.exists());
+        assert!(!metrics_log.exists());
     }
 }
