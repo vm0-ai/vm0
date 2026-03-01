@@ -1,5 +1,7 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 
+// User info URL is not part of ConnectorOAuthConfig since it uses GraphQL (POST), not a standard
+// REST GET endpoint. Same pattern as GMAIL_PROFILE_URL in gmail.ts.
 const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
 
 interface LinearUserInfo {

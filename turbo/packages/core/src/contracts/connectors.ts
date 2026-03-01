@@ -203,7 +203,7 @@ export const CONNECTOR_TYPES = {
           },
           LINEAR_REFRESH_TOKEN: {
             label: "Refresh Token",
-            required: true,
+            required: false,
           },
         },
       },
