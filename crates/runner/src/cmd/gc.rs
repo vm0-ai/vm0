@@ -10,8 +10,8 @@ use crate::cmd::service;
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
-/// Network log files older than this are eligible for GC.
-const NETWORK_LOG_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 3600);
+/// Per-job log files older than this are eligible for GC.
+const JOB_LOG_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 3600);
 
 #[derive(Args)]
 pub struct GcArgs {
@@ -45,11 +45,11 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     .await?;
 
     let locks_removed = gc_orphaned_locks(&home, args.dry_run).await?;
-    let (net_logs_removed, net_logs_freed) = gc_network_logs(&home, args.dry_run).await?;
+    let (job_logs_removed, job_logs_freed) = gc_job_logs(&home, args.dry_run).await?;
     let versions_removed = gc_versions(&home, args.dry_run).await?;
 
-    let total = rootfs_freed + snapshot_freed + net_logs_freed;
-    if total == 0 && locks_removed == 0 && net_logs_removed == 0 && versions_removed.is_empty() {
+    let total = rootfs_freed + snapshot_freed + job_logs_freed;
+    if total == 0 && locks_removed == 0 && job_logs_removed == 0 && versions_removed.is_empty() {
         info!("nothing to clean up");
     } else {
         let verb = if args.dry_run {
@@ -244,7 +244,7 @@ async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64>
 ///
 /// Network log files (`network-{run_id}.jsonl`) accumulate when upload fails or
 /// the runner crashes before cleanup. Returns `(files_removed, bytes_freed)`.
-async fn gc_network_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, u64)> {
+async fn gc_job_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, u64)> {
     let logs_dir = home.logs_dir();
     let mut entries = match tokio::fs::read_dir(&logs_dir).await {
         Ok(rd) => rd,
@@ -265,8 +265,8 @@ async fn gc_network_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, 
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
 
-        // Only target network log files, not runner logs.
-        if !crate::paths::LogPaths::is_network_log(name) {
+        // Only target per-job log files, not runner logs.
+        if !crate::paths::LogPaths::is_job_log(name) {
             continue;
         }
 
@@ -280,20 +280,20 @@ async fn gc_network_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, 
             .and_then(|mtime| now.duration_since(mtime).ok())
             .unwrap_or_default();
 
-        if age <= NETWORK_LOG_MAX_AGE {
+        if age <= JOB_LOG_MAX_AGE {
             continue;
         }
 
         let size = meta.blocks() * 512;
         if dry_run {
             info!(
-                "[dry-run] would delete network log {name} ({})",
+                "[dry-run] would delete job log {name} ({})",
                 human_bytes(size)
             );
         } else {
             match tokio::fs::remove_file(entry.path()).await {
                 Ok(()) => {
-                    info!("deleted network log {name} ({})", human_bytes(size));
+                    info!("deleted job log {name} ({})", human_bytes(size));
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                 Err(e) => {
@@ -699,7 +699,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gc_network_logs_deletes_stale() {
+    async fn gc_job_logs_deletes_stale() {
         use std::fs::FileTimes;
         use std::time::Duration;
 
@@ -716,13 +716,13 @@ mod tests {
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
 
-        let (removed, _freed) = gc_network_logs(&home, false).await.unwrap();
+        let (removed, _freed) = gc_job_logs(&home, false).await.unwrap();
         assert_eq!(removed, 1);
         assert!(!old_file.exists());
     }
 
     #[tokio::test]
-    async fn gc_network_logs_keeps_recent() {
+    async fn gc_job_logs_keeps_recent() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         let logs_dir = home.logs_dir();
@@ -731,13 +731,13 @@ mod tests {
         let recent = logs_dir.join("network-aabbccdd-1234-5678-9abc-def012345678.jsonl");
         std::fs::write(&recent, r#"{"timestamp":"2026-02-18T00:00:00"}"#).unwrap();
 
-        let (removed, _) = gc_network_logs(&home, false).await.unwrap();
+        let (removed, _) = gc_job_logs(&home, false).await.unwrap();
         assert_eq!(removed, 0);
         assert!(recent.exists());
     }
 
     #[tokio::test]
-    async fn gc_network_logs_ignores_runner_logs() {
+    async fn gc_job_logs_ignores_runner_logs() {
         use std::fs::FileTimes;
         use std::time::Duration;
 
@@ -755,13 +755,13 @@ mod tests {
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
 
-        let (removed, _) = gc_network_logs(&home, false).await.unwrap();
+        let (removed, _) = gc_job_logs(&home, false).await.unwrap();
         assert_eq!(removed, 0);
         assert!(runner_log.exists());
     }
 
     #[tokio::test]
-    async fn gc_network_logs_keeps_at_boundary() {
+    async fn gc_job_logs_keeps_at_boundary() {
         use std::fs::FileTimes;
         use std::time::Duration;
 
@@ -774,13 +774,13 @@ mod tests {
         // Subtract 1 second less than max age to avoid race between set_times and check.
         let boundary = logs_dir.join("network-11111111-1111-1111-1111-111111111111.jsonl");
         std::fs::write(&boundary, r#"{"timestamp":"2026-02-11T00:00:00"}"#).unwrap();
-        let boundary_time = SystemTime::now() - NETWORK_LOG_MAX_AGE + Duration::from_secs(1);
+        let boundary_time = SystemTime::now() - JOB_LOG_MAX_AGE + Duration::from_secs(1);
         std::fs::File::open(&boundary)
             .unwrap()
             .set_times(FileTimes::new().set_modified(boundary_time))
             .unwrap();
 
-        let (removed, _) = gc_network_logs(&home, false).await.unwrap();
+        let (removed, _) = gc_job_logs(&home, false).await.unwrap();
         assert_eq!(removed, 0);
         assert!(boundary.exists(), "file at max age should be kept");
     }
@@ -866,7 +866,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gc_network_logs_dry_run() {
+    async fn gc_job_logs_dry_run() {
         use std::fs::FileTimes;
         use std::time::Duration;
 
@@ -883,7 +883,7 @@ mod tests {
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
 
-        let (removed, _) = gc_network_logs(&home, true).await.unwrap();
+        let (removed, _) = gc_job_logs(&home, true).await.unwrap();
         assert_eq!(removed, 1);
         assert!(old_file.exists(), "dry-run should not delete");
     }

@@ -227,9 +227,11 @@ impl LogPaths {
         self.dir.join(format!("metrics-{run_id}.jsonl"))
     }
 
-    /// Whether `name` matches the `network-{run_id}.jsonl` pattern.
-    pub fn is_network_log(name: &str) -> bool {
-        name.starts_with("network-") && name.ends_with(".jsonl")
+    /// Whether `name` matches any per-job log file pattern.
+    pub fn is_job_log(name: &str) -> bool {
+        (name.starts_with("network-") && name.ends_with(".jsonl"))
+            || (name.starts_with("system-") && name.ends_with(".log"))
+            || (name.starts_with("metrics-") && name.ends_with(".jsonl"))
     }
 }
 
