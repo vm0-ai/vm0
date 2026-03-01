@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.25.0](https://github.com/vm0-ai/vm0/compare/core-v8.24.0...core-v8.25.0) (2026-03-01)
+
+
+### Features
+
+* **scope:** enable vm0 admin users to activate system scope ([#3378](https://github.com/vm0-ai/vm0/issues/3378)) ([c4d05ac](https://github.com/vm0-ai/vm0/commit/c4d05acc257e7777dab8822362e07437add11511))
+
 ## [8.24.0](https://github.com/vm0-ai/vm0/compare/core-v8.23.0...core-v8.24.0) (2026-03-01)
 
 

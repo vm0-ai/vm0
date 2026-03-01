@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.58.0](https://github.com/vm0-ai/vm0/compare/web-v12.57.0...web-v12.58.0) (2026-03-01)
+
+
+### Features
+
+* **scope:** enable vm0 admin users to activate system scope ([#3378](https://github.com/vm0-ai/vm0/issues/3378)) ([c4d05ac](https://github.com/vm0-ai/vm0/commit/c4d05acc257e7777dab8822362e07437add11511))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.25.0
+
 ## [12.57.0](https://github.com/vm0-ai/vm0/compare/web-v12.56.0...web-v12.57.0) (2026-03-01)
 
 
