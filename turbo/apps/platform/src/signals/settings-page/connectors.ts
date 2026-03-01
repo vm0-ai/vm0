@@ -45,6 +45,10 @@ export const allConnectorTypes$ = computed(async (get) => {
       ) {
         return false;
       }
+      // Filter linear connector based on feature flag
+      if (type === "linear" && !features?.[FeatureSwitchKey.LinearConnector]) {
+        return false;
+      }
       return true;
     })
     .map((type) => {

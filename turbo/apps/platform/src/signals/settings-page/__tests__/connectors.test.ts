@@ -61,18 +61,33 @@ describe("allConnectorTypes$", () => {
   it("should hide computer connector when feature flag is disabled", async () => {
     const { store } = context;
 
-    server.use(
-      http.get("/api/feature-switches", () => {
-        return HttpResponse.json({ computerConnector: false });
-      }),
-    );
-
-    await setupPage({ context, path: "/", withoutRender: true });
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { computerConnector: false },
+    });
 
     const types = await store.get(allConnectorTypes$);
     const computerConnector = types.find((t) => t.type === "computer");
 
     expect(computerConnector).toBeUndefined();
+  });
+
+  it("should hide linear connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { linearConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const linearConnector = types.find((t) => t.type === "linear");
+
+    expect(linearConnector).toBeUndefined();
   });
 });
 

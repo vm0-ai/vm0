@@ -1,4 +1,4 @@
 import { setupServer } from "msw/node";
 
-// Empty handlers - tests will use server.use() for inline handlers
+// No default handlers - tests supply their own via server.use()
 export const server = setupServer();
