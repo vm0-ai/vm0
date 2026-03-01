@@ -46,6 +46,10 @@ NOTION_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/notion_oauth_client_se
 GOOGLE_OAUTH_CLIENT_ID=op://Development/vm0-env-local/GOOGLE_OAUTH_CLIENT_ID
 GOOGLE_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/GOOGLE_OAUTH_CLIENT_SECRET
 
+# Optional: Discord OAuth Connector
+DISCORD_OAUTH_CLIENT_ID=op://Development/vm0-env-local/DISCORD_OAUTH_CLIENT_ID
+DISCORD_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/DISCORD_OAUTH_CLIENT_SECRET
+
 # Optional: ngrok (Computer Connector)
 NGROK_API_KEY=op://Development/vm0-env-local/NGROK_API_KEY
 NGROK_COMPUTER_CONNECTOR_DOMAIN=computer.vm7.io

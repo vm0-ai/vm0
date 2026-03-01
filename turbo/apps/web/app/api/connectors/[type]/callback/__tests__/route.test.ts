@@ -25,6 +25,8 @@ const GMAIL_PROFILE_URL =
 const NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
 const SLACK_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_USER_INFO_URL = "https://slack.com/api/users.info";
+const DISCORD_TOKEN_URL = "https://discord.com/api/oauth2/token";
+const DISCORD_USER_URL = "https://discord.com/api/users/@me";
 
 /**
  * Create MSW handlers for GitHub OAuth API
@@ -161,6 +163,56 @@ function createSlackOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for Discord OAuth API
+ */
+function createDiscordOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  username?: string;
+  globalName?: string | null;
+  email?: string | null;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(DISCORD_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "discord-test-access-token",
+        refresh_token: options.refreshToken ?? "discord-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "Bearer",
+        scope: "identify email",
+      });
+    }),
+    userInfo: http.get(DISCORD_USER_URL, () => {
+      if (options.userError) {
+        return HttpResponse.json(
+          { message: "401: Unauthorized" },
+          { status: 401 },
+        );
+      }
+      return HttpResponse.json({
+        id: options.userId ?? "123456789012345678",
+        username: options.username ?? "discorduser",
+        global_name:
+          options.globalName !== undefined
+            ? options.globalName
+            : "Discord User",
+        email: options.email !== undefined ? options.email : "user@discord.com",
+      });
+    }),
+  });
+}
+
+/**
  * Create MSW handlers for Gmail OAuth API
  */
 function createGmailOAuthMock(options: {
@@ -248,6 +300,8 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("SLACK_CLIENT_SECRET", "test-slack-client-secret");
     vi.stubEnv("GOOGLE_OAUTH_CLIENT_ID", "google-test-client-id");
     vi.stubEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-test-client-secret");
+    vi.stubEnv("DISCORD_OAUTH_CLIENT_ID", "discord-test-client-id");
+    vi.stubEnv("DISCORD_OAUTH_CLIENT_SECRET", "discord-test-client-secret");
     reloadEnv();
   });
 
@@ -977,6 +1031,164 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       });
       const response = await GET(request, {
         params: Promise.resolve({ type: "gmail" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Discord OAuth Flow", () => {
+    it("should store Discord connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createDiscordOAuthMock({
+        accessToken: "discord-access-token",
+        refreshToken: "discord-refresh-token",
+        userId: "987654321098765432",
+        username: "discorduser",
+        globalName: "Discord User",
+        email: "user@discord.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "discord",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "discord" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=discord");
+      expect(location).toContain("username=Discord+User");
+
+      // Verify connector was stored via API
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/discord",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("discord");
+      expect(connector.externalUsername).toBe("Discord User");
+      expect(connector.externalId).toBe("987654321098765432");
+    });
+
+    it("should redirect with error when Discord token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createDiscordOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "discord",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "discord" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Discord returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createDiscordOAuthMock({
+        accessToken: "discord-access-token",
+        refreshToken: "discord-refresh-token-stored",
+        userId: "987654321098765432",
+        username: "discorduser",
+        email: "user@discord.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "discord",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "discord" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      // Verify refresh token was stored as a secret
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "DISCORD_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("discord-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Discord returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 604800; // 7 days (Discord default)
+      const { handlers: mswHandlers } = createDiscordOAuthMock({
+        accessToken: "discord-access-token",
+        refreshToken: "discord-refresh-token",
+        expiresIn,
+        userId: "987654321098765432",
+        username: "discorduser",
+        email: "user@discord.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "discord",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "discord" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "discord",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Discord user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createDiscordOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "discord",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "discord" }),
       });
 
       expect(response.status).toBe(307);

@@ -189,6 +189,35 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  discord: {
+    label: "Discord",
+    helpText: "Connect your Discord account to access servers and channels",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Discord to grant access.",
+        secrets: {
+          DISCORD_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          DISCORD_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      DISCORD_TOKEN: "$secrets.DISCORD_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://discord.com/oauth2/authorize",
+      tokenUrl: "https://discord.com/api/oauth2/token",
+      scopes: ["identify", "email"],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -199,6 +228,7 @@ export const connectorTypeSchema = z.enum([
   "notion",
   "computer",
   "slack",
+  "discord",
 ]);
 
 /**
