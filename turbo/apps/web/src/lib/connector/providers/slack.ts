@@ -1,4 +1,5 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
+import { z } from "zod";
 
 interface SlackTokenResult {
   accessToken: string;
@@ -68,15 +69,19 @@ export async function exchangeSlackCode(
     throw new Error(`Slack token exchange failed: ${response.status}`);
   }
 
-  const data = (await response.json()) as {
-    ok: boolean;
-    error?: string;
-    authed_user?: {
-      id?: string;
-      access_token?: string;
-      scope?: string;
-    };
-  };
+  const data = z
+    .object({
+      ok: z.boolean(),
+      error: z.string().optional(),
+      authed_user: z
+        .object({
+          id: z.string().optional(),
+          access_token: z.string().optional(),
+          scope: z.string().optional(),
+        })
+        .optional(),
+    })
+    .parse(await response.json());
 
   if (!data.ok) {
     throw new Error(data.error ?? "Slack token exchange returned ok=false");
@@ -113,16 +118,20 @@ export async function fetchSlackUserInfo(
     throw new Error(`Slack users.info API failed: ${response.status}`);
   }
 
-  const data = (await response.json()) as {
-    ok: boolean;
-    error?: string;
-    user?: {
-      id?: string;
-      name?: string;
-      real_name?: string;
-      profile?: { email?: string };
-    };
-  };
+  const data = z
+    .object({
+      ok: z.boolean(),
+      error: z.string().optional(),
+      user: z
+        .object({
+          id: z.string().optional(),
+          name: z.string().optional(),
+          real_name: z.string().optional(),
+          profile: z.object({ email: z.string().optional() }).optional(),
+        })
+        .optional(),
+    })
+    .parse(await response.json());
 
   if (!data.ok) {
     throw new Error(data.error ?? "Slack users.info returned ok=false");

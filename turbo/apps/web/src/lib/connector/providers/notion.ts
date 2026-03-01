@@ -1,4 +1,5 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
+import { z } from "zod";
 
 interface NotionUserInfo {
   id: string;
@@ -83,20 +84,26 @@ export async function exchangeNotionCode(
     throw new Error(`Notion token exchange failed: ${response.status}`);
   }
 
-  const data = (await response.json()) as {
-    access_token?: string;
-    refresh_token?: string | null;
-    expires_in?: number;
-    owner?: {
-      user?: {
-        id?: string;
-        name?: string | null;
-        person?: { email?: string };
-      };
-    };
-    error?: string;
-    error_description?: string;
-  };
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
+      owner: z
+        .object({
+          user: z
+            .object({
+              id: z.string().optional(),
+              name: z.string().nullable().optional(),
+              person: z.object({ email: z.string().optional() }).optional(),
+            })
+            .optional(),
+        })
+        .optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
 
   if (data.error) {
     throw new Error(data.error_description || data.error);
@@ -149,12 +156,14 @@ export async function refreshNotionToken(
     throw new Error(`Notion token refresh failed: ${response.status}`);
   }
 
-  const data = (await response.json()) as {
-    access_token?: string;
-    refresh_token?: string | null;
-    error?: string;
-    error_description?: string;
-  };
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
 
   if (data.error) {
     throw new Error(data.error_description || data.error);

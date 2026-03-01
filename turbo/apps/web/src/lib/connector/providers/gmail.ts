@@ -1,4 +1,5 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
+import { z } from "zod";
 
 const GMAIL_PROFILE_URL =
   "https://www.googleapis.com/gmail/v1/users/me/profile";
@@ -77,14 +78,16 @@ export async function exchangeGmailCode(
     throw new Error(`Gmail token exchange failed: ${response.status}`);
   }
 
-  const data = (await response.json()) as {
-    access_token?: string;
-    refresh_token?: string | null;
-    expires_in?: number;
-    scope?: string;
-    error?: string;
-    error_description?: string;
-  };
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
+      scope: z.string().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
 
   if (data.error) {
     throw new Error(data.error_description ?? data.error);
@@ -120,12 +123,14 @@ async function fetchGmailUserInfo(accessToken: string): Promise<GmailUserInfo> {
     throw new Error(`Gmail user info fetch failed: ${response.status}`);
   }
 
-  const data = (await response.json()) as {
-    emailAddress?: string | null;
-    messagesTotal?: number;
-    threadsTotal?: number;
-    historyId?: string;
-  };
+  const data = z
+    .object({
+      emailAddress: z.string().nullable().optional(),
+      messagesTotal: z.number().optional(),
+      threadsTotal: z.number().optional(),
+      historyId: z.string().optional(),
+    })
+    .parse(await response.json());
 
   return {
     id: data.emailAddress ?? "",

@@ -1,4 +1,5 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
+import { z } from "zod";
 
 // User info URL is not part of ConnectorOAuthConfig since it uses GraphQL (POST), not a standard
 // REST GET endpoint. Same pattern as GMAIL_PROFILE_URL in gmail.ts.
@@ -76,14 +77,16 @@ export async function exchangeLinearCode(
     throw new Error(`Linear token exchange failed: ${response.status}`);
   }
 
-  const data = (await response.json()) as {
-    access_token?: string;
-    refresh_token?: string | null;
-    expires_in?: number;
-    scope?: string;
-    error?: string;
-    error_description?: string;
-  };
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
+      scope: z.string().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
 
   if (data.error) {
     throw new Error(data.error_description ?? data.error);
@@ -125,16 +128,22 @@ async function fetchLinearUserInfo(
     throw new Error(`Linear user info fetch failed: ${response.status}`);
   }
 
-  const data = (await response.json()) as {
-    data?: {
-      viewer?: {
-        id?: string;
-        name?: string | null;
-        email?: string | null;
-      };
-    };
-    errors?: { message: string }[];
-  };
+  const data = z
+    .object({
+      data: z
+        .object({
+          viewer: z
+            .object({
+              id: z.string().optional(),
+              name: z.string().nullable().optional(),
+              email: z.string().nullable().optional(),
+            })
+            .optional(),
+        })
+        .optional(),
+      errors: z.array(z.object({ message: z.string() })).optional(),
+    })
+    .parse(await response.json());
 
   if (data.errors?.length) {
     throw new Error(data.errors[0]?.message ?? "Unknown GraphQL error");
