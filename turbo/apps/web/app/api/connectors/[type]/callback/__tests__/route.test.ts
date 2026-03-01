@@ -25,6 +25,8 @@ const GMAIL_PROFILE_URL =
 const NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
 const SLACK_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_USER_INFO_URL = "https://slack.com/api/users.info";
+const FIGMA_TOKEN_URL = "https://api.figma.com/v1/oauth/token";
+const FIGMA_ME_URL = "https://api.figma.com/v1/me";
 
 /**
  * Create MSW handlers for GitHub OAuth API
@@ -161,6 +163,47 @@ function createSlackOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for Figma OAuth API
+ */
+function createFigmaOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  handle?: string | null;
+  email?: string | null;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(FIGMA_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json(
+          { error: "invalid_grant", error_description: options.tokenError },
+          { status: 400 },
+        );
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "figma-test-access-token",
+        refresh_token: options.refreshToken ?? "figma-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "Bearer",
+      });
+    }),
+    userInfo: http.get(FIGMA_ME_URL, () => {
+      if (options.userError) {
+        return HttpResponse.json({ error: "invalid_token" }, { status: 401 });
+      }
+      return HttpResponse.json({
+        id: options.userId ?? "figma-user-123",
+        email: options.email !== undefined ? options.email : "user@figma.com",
+        handle: options.handle !== undefined ? options.handle : "figmauser",
+      });
+    }),
+  });
+}
+
+/**
  * Create MSW handlers for Gmail OAuth API
  */
 function createGmailOAuthMock(options: {
@@ -248,6 +291,8 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("SLACK_CLIENT_SECRET", "test-slack-client-secret");
     vi.stubEnv("GOOGLE_OAUTH_CLIENT_ID", "google-test-client-id");
     vi.stubEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-test-client-secret");
+    vi.stubEnv("FIGMA_OAUTH_CLIENT_ID", "figma-test-client-id");
+    vi.stubEnv("FIGMA_OAUTH_CLIENT_SECRET", "figma-test-client-secret");
     reloadEnv();
   });
 
@@ -977,6 +1022,160 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       });
       const response = await GET(request, {
         params: Promise.resolve({ type: "gmail" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Figma OAuth Flow", () => {
+    it("should store Figma connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createFigmaOAuthMock({
+        accessToken: "figma-access-token",
+        refreshToken: "figma-refresh-token",
+        userId: "figma-user-123",
+        handle: "figmauser",
+        email: "testuser@figma.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "figma",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "figma" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=figma");
+      expect(location).toContain("username=figmauser");
+
+      // Verify connector was stored via API
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/figma",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("figma");
+      expect(connector.externalUsername).toBe("figmauser");
+      expect(connector.externalId).toBe("figma-user-123");
+      expect(connector.externalEmail).toBe("testuser@figma.com");
+    });
+
+    it("should redirect with error when Figma token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createFigmaOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "figma",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "figma" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Figma returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createFigmaOAuthMock({
+        accessToken: "figma-access-token",
+        refreshToken: "figma-refresh-token-stored",
+        handle: "figmauser",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "figma",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "figma" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      // Verify refresh token was stored as a secret
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "FIGMA_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("figma-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Figma returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 7776000;
+      const { handlers: mswHandlers } = createFigmaOAuthMock({
+        accessToken: "figma-access-token",
+        refreshToken: "figma-refresh-token",
+        expiresIn,
+        handle: "expuser",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "figma",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "figma" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "figma",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Figma user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createFigmaOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "figma",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "figma" }),
       });
 
       expect(response.status).toBe(307);

@@ -189,6 +189,35 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  figma: {
+    label: "Figma",
+    helpText: "Connect your Figma account to access design files and projects",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Figma to grant access.",
+        secrets: {
+          FIGMA_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          FIGMA_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      FIGMA_TOKEN: "$secrets.FIGMA_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://www.figma.com/oauth",
+      tokenUrl: "https://api.figma.com/v1/oauth/token",
+      scopes: ["files:read"],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -199,6 +228,7 @@ export const connectorTypeSchema = z.enum([
   "notion",
   "computer",
   "slack",
+  "figma",
 ]);
 
 /**
