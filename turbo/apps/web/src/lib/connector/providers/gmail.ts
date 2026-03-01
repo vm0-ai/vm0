@@ -1,6 +1,7 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 
-const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v1/userinfo";
+const GMAIL_PROFILE_URL =
+  "https://www.googleapis.com/gmail/v1/users/me/profile";
 
 interface GmailUserInfo {
   id: string;
@@ -105,10 +106,11 @@ export async function exchangeGmailCode(
 }
 
 /**
- * Fetch Gmail user info using the access token.
+ * Fetch Gmail user info using the Gmail API profile endpoint.
+ * Uses the https://mail.google.com/ scope which is already requested.
  */
 async function fetchGmailUserInfo(accessToken: string): Promise<GmailUserInfo> {
-  const response = await fetch(GOOGLE_USERINFO_URL, {
+  const response = await fetch(GMAIL_PROFILE_URL, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -119,15 +121,16 @@ async function fetchGmailUserInfo(accessToken: string): Promise<GmailUserInfo> {
   }
 
   const data = (await response.json()) as {
-    id?: string;
-    email?: string | null;
-    name?: string | null;
+    emailAddress?: string | null;
+    messagesTotal?: number;
+    threadsTotal?: number;
+    historyId?: string;
   };
 
   return {
-    id: data.id ?? "",
-    email: data.email ?? null,
-    name: data.name ?? null,
+    id: data.emailAddress ?? "",
+    email: data.emailAddress ?? null,
+    name: data.emailAddress ?? null,
   };
 }
 
