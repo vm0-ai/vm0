@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.9.0...guest-download-v0.10.0) (2026-03-01)
+
+
+### Features
+
+* **guest-download:** log download url ([#3323](https://github.com/vm0-ai/vm0/issues/3323)) ([78a6a26](https://github.com/vm0-ai/vm0/commit/78a6a26df02ae3c8ed5b9d3243edbe125f52db30))
+
 ## [0.9.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.8.5...guest-download-v0.9.0) (2026-03-01)
 
 
