@@ -189,6 +189,35 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  linear: {
+    label: "Linear",
+    helpText: "Connect your Linear account to manage issues and projects",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Linear to grant access.",
+        secrets: {
+          LINEAR_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          LINEAR_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: false,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      LINEAR_API_KEY: "$secrets.LINEAR_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://linear.app/oauth/authorize",
+      tokenUrl: "https://api.linear.app/oauth/token",
+      scopes: ["read", "write"],
+    } as ConnectorOAuthConfig,
+  },
   figma: {
     label: "Figma",
     helpText: "Connect your Figma account to access design files and projects",
@@ -228,6 +257,7 @@ export const connectorTypeSchema = z.enum([
   "notion",
   "computer",
   "slack",
+  "linear",
   "figma",
 ]);
 

@@ -46,6 +46,10 @@ NOTION_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/notion_oauth_client_se
 GOOGLE_OAUTH_CLIENT_ID=op://Development/vm0-env-local/GOOGLE_OAUTH_CLIENT_ID
 GOOGLE_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/GOOGLE_OAUTH_CLIENT_SECRET
 
+# Optional: Linear OAuth Connector
+LINEAR_OAUTH_CLIENT_ID=op://Development/vm0-env-local/LINEAR_OAUTH_CLIENT_ID
+LINEAR_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/LINEAR_OAUTH_CLIENT_SECRET
+
 # Optional: Figma OAuth Connector
 FIGMA_OAUTH_CLIENT_ID=op://Development/vm0-env-local/FIGMA_OAUTH_CLIENT_ID
 FIGMA_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/FIGMA_OAUTH_CLIENT_SECRET

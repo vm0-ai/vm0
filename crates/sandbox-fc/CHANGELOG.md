@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.5](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.6.4...sandbox-fc-v0.6.5) (2026-03-01)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** prefetch snapshot memory.bin on factory startup ([#3370](https://github.com/vm0-ai/vm0/issues/3370)) ([891041e](https://github.com/vm0-ai/vm0/commit/891041ee8cae18ddbd83864fb80e2c3e6f3dab2d))
+
 ## [0.6.4](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.6.3...sandbox-fc-v0.6.4) (2026-02-27)
 
 

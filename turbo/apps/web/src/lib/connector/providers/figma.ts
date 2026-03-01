@@ -1,4 +1,5 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
+import { z } from "zod";
 
 const FIGMA_ME_URL = "https://api.figma.com/v1/me";
 
@@ -76,13 +77,15 @@ export async function exchangeFigmaCode(
     throw new Error(`Figma token exchange failed: ${response.status}`);
   }
 
-  const data = (await response.json()) as {
-    access_token?: string;
-    refresh_token?: string | null;
-    expires_in?: number;
-    error?: string;
-    error_description?: string;
-  };
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
 
   if (data.error) {
     throw new Error(data.error_description ?? data.error);
@@ -117,15 +120,13 @@ async function fetchFigmaUserInfo(accessToken: string): Promise<FigmaUserInfo> {
     throw new Error(`Figma user info fetch failed: ${response.status}`);
   }
 
-  const data = (await response.json()) as {
-    id?: string;
-    email?: string | null;
-    handle?: string | null;
-  };
-
-  if (!data.id) {
-    throw new Error("Figma user info response missing id field");
-  }
+  const data = z
+    .object({
+      id: z.string(),
+      email: z.string().nullable().optional(),
+      handle: z.string().nullable().optional(),
+    })
+    .parse(await response.json());
 
   return {
     id: data.id,

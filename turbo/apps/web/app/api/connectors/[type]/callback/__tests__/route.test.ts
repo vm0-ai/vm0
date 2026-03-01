@@ -22,6 +22,8 @@ const GITHUB_USER_URL = "https://api.github.com/user";
 const GMAIL_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GMAIL_PROFILE_URL =
   "https://www.googleapis.com/gmail/v1/users/me/profile";
+const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
+const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
 const NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
 const SLACK_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_USER_INFO_URL = "https://slack.com/api/users.info";
@@ -163,6 +165,48 @@ function createSlackOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for Gmail OAuth API
+ */
+function createGmailOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  email?: string | null;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(GMAIL_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "gmail-test-access-token",
+        refresh_token: options.refreshToken ?? "gmail-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "Bearer",
+        scope: "https://mail.google.com/",
+      });
+    }),
+    userInfo: http.get(GMAIL_PROFILE_URL, () => {
+      if (options.userError) {
+        return HttpResponse.json({ error: "invalid_token" }, { status: 401 });
+      }
+      return HttpResponse.json({
+        emailAddress:
+          options.email !== undefined ? options.email : "user@gmail.com",
+        messagesTotal: 1000,
+        threadsTotal: 500,
+        historyId: "123456",
+      });
+    }),
+  });
+}
+
+/**
  * Create MSW handlers for Figma OAuth API
  */
 function createFigmaOAuthMock(options: {
@@ -204,18 +248,20 @@ function createFigmaOAuthMock(options: {
 }
 
 /**
- * Create MSW handlers for Gmail OAuth API
+ * Create MSW handlers for Linear OAuth API
  */
-function createGmailOAuthMock(options: {
+function createLinearOAuthMock(options: {
   accessToken?: string;
   refreshToken?: string | null;
   expiresIn?: number;
   tokenError?: string;
+  userId?: string;
+  userName?: string | null;
   email?: string | null;
   userError?: boolean;
 }) {
   return handlers({
-    tokenExchange: http.post(GMAIL_TOKEN_URL, () => {
+    tokenExchange: http.post(LINEAR_TOKEN_URL, () => {
       if (options.tokenError) {
         return HttpResponse.json({
           error: "invalid_grant",
@@ -223,23 +269,33 @@ function createGmailOAuthMock(options: {
         });
       }
       return HttpResponse.json({
-        access_token: options.accessToken ?? "gmail-test-access-token",
-        refresh_token: options.refreshToken ?? "gmail-test-refresh-token",
+        access_token: options.accessToken ?? "linear-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "linear-test-refresh-token",
         ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
         token_type: "Bearer",
-        scope: "https://mail.google.com/",
+        scope: "read,write",
       });
     }),
-    userInfo: http.get(GMAIL_PROFILE_URL, () => {
+    userInfo: http.post(LINEAR_GRAPHQL_URL, () => {
       if (options.userError) {
-        return HttpResponse.json({ error: "invalid_token" }, { status: 401 });
+        return HttpResponse.json(
+          { errors: [{ message: "Unauthorized" }] },
+          { status: 401 },
+        );
       }
       return HttpResponse.json({
-        emailAddress:
-          options.email !== undefined ? options.email : "user@gmail.com",
-        messagesTotal: 1000,
-        threadsTotal: 500,
-        historyId: "123456",
+        data: {
+          viewer: {
+            id: options.userId ?? "linear-user-123",
+            name:
+              options.userName !== undefined ? options.userName : "Linear User",
+            email:
+              options.email !== undefined ? options.email : "user@linear.app",
+          },
+        },
       });
     }),
   });
@@ -291,6 +347,8 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("SLACK_CLIENT_SECRET", "test-slack-client-secret");
     vi.stubEnv("GOOGLE_OAUTH_CLIENT_ID", "google-test-client-id");
     vi.stubEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-test-client-secret");
+    vi.stubEnv("LINEAR_OAUTH_CLIENT_ID", "linear-test-client-id");
+    vi.stubEnv("LINEAR_OAUTH_CLIENT_SECRET", "linear-test-client-secret");
     vi.stubEnv("FIGMA_OAUTH_CLIENT_ID", "figma-test-client-id");
     vi.stubEnv("FIGMA_OAUTH_CLIENT_SECRET", "figma-test-client-secret");
     reloadEnv();
@@ -1030,6 +1088,161 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     });
   });
 
+  describe("Linear OAuth Flow", () => {
+    it("should store Linear connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createLinearOAuthMock({
+        accessToken: "linear-access-token",
+        refreshToken: "linear-refresh-token",
+        userId: "linear-user-456",
+        userName: "Linear User",
+        email: "user@linear.app",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "linear",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "linear" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=linear");
+      expect(location).toContain("username=Linear+User");
+
+      // Verify connector was stored via API
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/linear",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("linear");
+      expect(connector.externalUsername).toBe("Linear User");
+      expect(connector.externalId).toBe("linear-user-456");
+    });
+
+    it("should redirect with error when Linear token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createLinearOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "linear",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "linear" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Linear returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createLinearOAuthMock({
+        accessToken: "linear-access-token",
+        refreshToken: "linear-refresh-token-stored",
+        userId: "linear-user-456",
+        userName: "Linear User",
+        email: "user@linear.app",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "linear",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "linear" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      // Verify refresh token was stored as a secret
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "LINEAR_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("linear-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Linear returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 86400;
+      const { handlers: mswHandlers } = createLinearOAuthMock({
+        accessToken: "linear-access-token",
+        refreshToken: "linear-refresh-token",
+        expiresIn,
+        email: "exp@linear.app",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "linear",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "linear" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "linear",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Linear user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createLinearOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "linear",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "linear" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
   describe("Figma OAuth Flow", () => {
     it("should store Figma connector and redirect to success page", async () => {
       await context.setupUser();
@@ -1059,7 +1272,6 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("type=figma");
       expect(location).toContain("username=figmauser");
 
-      // Verify connector was stored via API
       const getRequest = createTestRequest(
         "http://localhost:3000/api/connectors/figma",
       );
@@ -1118,7 +1330,6 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       expect(response.status).toBe(307);
 
-      // Verify refresh token was stored as a secret
       const refreshToken = await findTestConnectorSecret(
         user.scopeId,
         "FIGMA_REFRESH_TOKEN",

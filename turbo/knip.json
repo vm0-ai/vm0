@@ -35,7 +35,6 @@
       ],
       "project": ["src/**/*.ts"],
       "ignoreDependencies": ["@types/tar"],
-      "ignoreBinaries": ["tsup"],
       "tsup": {
         "config": ["tsup.config.ts"]
       }
