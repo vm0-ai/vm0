@@ -574,6 +574,8 @@ jobs:
             GH_OAUTH_CLIENT_SECRET=${{ secrets.GH_OAUTH_CLIENT_SECRET }}
             NOTION_OAUTH_CLIENT_ID=${{ vars.NOTION_OAUTH_CLIENT_ID }}
             NOTION_OAUTH_CLIENT_SECRET=${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
+            GOOGLE_OAUTH_CLIENT_ID=${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
+            GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
             NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
             PLATFORM_URL=${{ needs.prepare.outputs.platform-preview-url }}
