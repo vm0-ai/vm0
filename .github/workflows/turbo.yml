@@ -965,7 +965,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
     needs: [prepare]
-    timeout-minutes: 5
+    timeout-minutes: 10
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
