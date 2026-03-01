@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.6](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.6.5...sandbox-fc-v0.6.6) (2026-03-01)
+
+
+### Performance Improvements
+
+* **runner:** prefetch snapshot memory.bin via sequential read ([#3373](https://github.com/vm0-ai/vm0/issues/3373)) ([21289eb](https://github.com/vm0-ai/vm0/commit/21289ebcff774e6c763a350dbb57be23f1ebeed8)), closes [#3342](https://github.com/vm0-ai/vm0/issues/3342)
+
 ## [0.6.5](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.6.4...sandbox-fc-v0.6.5) (2026-03-01)
 
 

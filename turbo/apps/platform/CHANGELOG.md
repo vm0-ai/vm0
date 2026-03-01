@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.72.0](https://github.com/vm0-ai/vm0/compare/platform-v0.71.0...platform-v0.72.0) (2026-03-01)
+
+
+### Features
+
+* **connectors:** add dropbox oauth connector ([#3368](https://github.com/vm0-ai/vm0/issues/3368)) ([1dc5d4c](https://github.com/vm0-ai/vm0/commit/1dc5d4c151f986ded68c169b19bd7c9c6a07f4b6))
+* **connectors:** add feature flag for linear connector visibility ([#3372](https://github.com/vm0-ai/vm0/issues/3372)) ([f6da04e](https://github.com/vm0-ai/vm0/commit/f6da04e4653c62103975cb43f44d7c70067e4dc1))
+* **connectors:** add figma oauth connector ([#3369](https://github.com/vm0-ai/vm0/issues/3369)) ([4d93f59](https://github.com/vm0-ai/vm0/commit/4d93f59827c3567ba83ef115d90decc4ca7fa294))
+* **connectors:** add linear oauth connector ([#3366](https://github.com/vm0-ai/vm0/issues/3366)) ([f943498](https://github.com/vm0-ai/vm0/commit/f94349842e5501fe487d078fa7138a3010d65635))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.23.0
+
 ## [0.71.0](https://github.com/vm0-ai/vm0/compare/platform-v0.70.1...platform-v0.71.0) (2026-03-01)
 
 
