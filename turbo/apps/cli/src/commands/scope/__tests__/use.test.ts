@@ -82,6 +82,31 @@ describe("scope use command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
+  it("should show system label for system scope", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/scope/use", () => {
+        return HttpResponse.json({
+          scope: {
+            id: "scope-sys",
+            slug: "vm0",
+            type: "system",
+            createdAt: "2025-01-01T00:00:00Z",
+            updatedAt: "2025-01-01T00:00:00Z",
+          },
+          token: "vm0_org_admin-token",
+          expiresAt: "2025-01-01T02:00:00Z",
+        });
+      }),
+    );
+
+    await useCommand.parseAsync(["node", "cli", "vm0"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("vm0");
+    expect(logCalls).toContain("system");
+    expect(logCalls).not.toContain("organization");
+  });
+
   it("should handle API error", async () => {
     server.use(
       http.post("http://localhost:3000/api/scope/use", () => {
