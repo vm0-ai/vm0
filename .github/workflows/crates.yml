@@ -125,11 +125,20 @@ jobs:
           workspaces: crates -> target
           key: aarch64-musl
 
-      - name: Cross-compile runner and guest binaries for ARM64
+      - name: Cross-compile guest binaries for ARM64
         run: |
           cd crates
           cargo build --release --target aarch64-unknown-linux-musl \
-            -p runner -p guest-init -p guest-download -p guest-agent -p guest-mock-claude
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude
+
+      - name: Cross-compile runner with embedded guests for ARM64
+        run: |
+          cd crates
+          GUEST_AGENT_PATH=target/aarch64-unknown-linux-musl/release/guest-agent \
+          GUEST_DOWNLOAD_PATH=target/aarch64-unknown-linux-musl/release/guest-download \
+          GUEST_INIT_PATH=target/aarch64-unknown-linux-musl/release/guest-init \
+          GUEST_MOCK_CLAUDE_PATH=target/aarch64-unknown-linux-musl/release/guest-mock-claude \
+          cargo build --release --target aarch64-unknown-linux-musl -p runner
 
       - name: Setup SSH
         env:
@@ -165,12 +174,10 @@ jobs:
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
           TARGET_DIR="crates/target/aarch64-unknown-linux-musl/release"
 
-          # Clean previous run artifacts and upload binaries
-          echo "=== Deploying binaries to ${HOST}:${BIN_DIR} ==="
+          # Clean previous run artifacts and upload runner (guests are embedded)
+          echo "=== Deploying runner to ${HOST}:${BIN_DIR} ==="
           ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-local && mkdir -p ${BIN_DIR}"
-          for bin in runner guest-init guest-download guest-agent guest-mock-claude; do
-            scp $SSH_OPTS "${TARGET_DIR}/${bin}" "${REMOTE}:${BIN_DIR}/"
-          done
+          scp $SSH_OPTS "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
 
           # Clean up old rootfs/snapshots, keep the 2 most recent
           ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 2"
@@ -183,11 +190,7 @@ jobs:
           # Use tee to stream output in real-time while capturing for hash extraction
           echo "=== Running build ==="
           BUILD_LOG=$(mktemp)
-          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
-            --guest-init ${BIN_DIR}/guest-init \
-            --guest-download ${BIN_DIR}/guest-download \
-            --guest-agent ${BIN_DIR}/guest-agent \
-            --guest-mock-claude ${BIN_DIR}/guest-mock-claude" | tee "$BUILD_LOG"
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build" | tee "$BUILD_LOG"
           ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG" | cut -d= -f2)
           SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG" | cut -d= -f2)
           rm -f "$BUILD_LOG"

@@ -75,17 +75,11 @@
         state: directory
         mode: '0755'
 
-    - name: Copy runner and guest binaries
+    - name: Copy runner binary (guest binaries are embedded)
       copy:
-        src: "{{ item }}"
+        src: "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/runner"
         dest: "{{ bin_dir }}/"
         mode: '0755'
-      with_fileglob:
-        - "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/runner"
-        - "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/guest-init"
-        - "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/guest-download"
-        - "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/guest-agent"
-        - "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/guest-mock-claude"
 
     # ========================================
     # Phase 2: Setup + Build
@@ -103,10 +97,6 @@
     - name: Build rootfs and snapshot
       command: >
         {{ bin_dir }}/runner build
-        --guest-init {{ bin_dir }}/guest-init
-        --guest-download {{ bin_dir }}/guest-download
-        --guest-agent {{ bin_dir }}/guest-agent
-        --guest-mock-claude {{ bin_dir }}/guest-mock-claude
         --vcpu {{ vcpu }}
         --memory-mb {{ memory_mb }}
       register: build_output

@@ -64,7 +64,7 @@ cargo build --release
 
 # Cross-compile guest binaries for aarch64 (production target)
 cross build --target aarch64-unknown-linux-musl \
-  -p runner -p guest-init -p guest-download -p guest-agent -p guest-mock-claude \
+  -p runner -p guest-agent -p guest-download -p guest-init -p guest-mock-claude \
   --release
 ```
 
