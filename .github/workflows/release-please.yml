@@ -451,6 +451,17 @@ jobs:
           GUEST_MOCK_CLAUDE_PATH=target/aarch64-unknown-linux-musl/release/guest-mock-claude \
             cargo build --release --target aarch64-unknown-linux-musl -p runner
 
+      - name: Upload runner binary to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
+        run: |
+          cp crates/target/aarch64-unknown-linux-musl/release/runner \
+             "runner-v${VERSION}-aarch64-linux"
+          gh release upload "runner-rs-v${VERSION}" \
+            "runner-v${VERSION}-aarch64-linux" \
+            --clobber
+
       - name: Deploy to production with Ansible
         env:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
