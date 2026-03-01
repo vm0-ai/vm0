@@ -82,10 +82,6 @@ export async function exchangeDiscordCode(
     error_description?: string;
   };
 
-  if (data.error) {
-    throw new Error(data.error_description ?? data.error);
-  }
-
   if (!data.access_token) {
     throw new Error("No access token in Discord response");
   }
