@@ -1,7 +1,17 @@
+use std::path::PathBuf;
 use std::process;
 
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(bundled_guests)");
+
+    // Build scripts run with cwd=CARGO_MANIFEST_DIR (crates/runner/), but
+    // GUEST_*_PATH values are relative to the workspace root (crates/).
+    // Resolve relative paths against the workspace root so canonicalize works.
+    let workspace_root: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+
     let guests = [
         ("GUEST_AGENT_PATH", "BUNDLED_GUEST_AGENT"),
         ("GUEST_DOWNLOAD_PATH", "BUNDLED_GUEST_DOWNLOAD"),
@@ -36,10 +46,18 @@ fn main() {
     if paths.len() == guests.len() {
         println!("cargo:rustc-cfg=bundled_guests");
         for ((_, bundled_key), (_, raw_path)) in guests.iter().zip(paths.iter()) {
-            let abs = match std::fs::canonicalize(raw_path) {
+            let resolved = if std::path::Path::new(raw_path).is_relative() {
+                workspace_root.join(raw_path)
+            } else {
+                PathBuf::from(raw_path)
+            };
+            let abs = match std::fs::canonicalize(&resolved) {
                 Ok(p) => p,
                 Err(e) => {
-                    eprintln!("cargo:warning={raw_path}: {e}");
+                    eprintln!(
+                        "cargo:warning={raw_path} (resolved to {}): {e}",
+                        resolved.display()
+                    );
                     process::exit(1);
                 }
             };
