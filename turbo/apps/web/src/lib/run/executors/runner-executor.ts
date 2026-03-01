@@ -62,6 +62,8 @@ export async function executeRunnerJob(
     debugNoMockClaude: context.debugNoMockClaude || undefined,
     apiStartTime: context.apiStartTime ?? undefined,
     userTimezone: context.userTimezone ?? undefined,
+    agentName: context.agentName ?? undefined,
+    agentScopeSlug: context.agentScopeSlug ?? undefined,
   };
 
   // Insert into runner job queue

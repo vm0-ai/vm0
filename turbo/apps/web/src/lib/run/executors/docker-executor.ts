@@ -247,6 +247,15 @@ async function buildSandboxEnvVars(
     CLI_AGENT_TYPE: context.cliAgentType,
   };
 
+  // Inject agent metadata
+  if (context.agentName) {
+    sandboxEnvVars.VM0_AGENT_NAME = context.agentName;
+  }
+
+  if (context.agentScopeSlug) {
+    sandboxEnvVars.VM0_AGENT_SCOPE = context.agentScopeSlug;
+  }
+
   if (context.resumeSession?.sessionId) {
     sandboxEnvVars.VM0_RESUME_SESSION_ID = context.resumeSession.sessionId;
   }

@@ -263,6 +263,15 @@ function buildSandboxEnvVars(
     CLI_AGENT_TYPE: context.cliAgentType,
   };
 
+  // Inject agent metadata
+  if (context.agentName) {
+    sandboxEnvVars.VM0_AGENT_NAME = context.agentName;
+  }
+
+  if (context.agentScopeSlug) {
+    sandboxEnvVars.VM0_AGENT_SCOPE = context.agentScopeSlug;
+  }
+
   // Add Vercel protection bypass if available
   const vercelBypassSecret = env().VERCEL_AUTOMATION_BYPASS_SECRET;
   if (vercelBypassSecret) {

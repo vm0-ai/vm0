@@ -15,6 +15,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
+import { scopes } from "../../../db/schema/scope";
 import type { ExperimentalFirewall as CoreExperimentalFirewall } from "@vm0/core";
 import { extractCliAgentType } from "../utils";
 
@@ -190,14 +191,18 @@ export async function prepareForExecution(
     throw badRequest("Runner scope not found");
   }
 
-  // Resolve owner's scope from compose for volume access
+  // Resolve owner's scope from compose for volume access and agent metadata
   const [composeInfo] = await globalThis.services.db
-    .select({ scopeId: agentComposes.scopeId })
+    .select({
+      scopeId: agentComposes.scopeId,
+      scopeSlug: scopes.slug,
+    })
     .from(agentComposeVersions)
     .innerJoin(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
+    .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
     .where(eq(agentComposeVersions.id, context.agentComposeVersionId))
     .limit(1);
 
@@ -232,6 +237,7 @@ export async function prepareForExecution(
     runnerGroup,
     storageManifest,
     experimentalFirewall,
+    composeInfo.scopeSlug,
   );
 
   log.debug(`PreparedContext built for run ${context.runId}`);
@@ -249,6 +255,7 @@ function buildPreparedContext(
   runnerGroup: string | null,
   storageManifest: StorageManifest,
   experimentalFirewall: CoreExperimentalFirewall | null,
+  agentScopeSlug: string,
 ): PreparedContext {
   return {
     // Identity
@@ -287,6 +294,7 @@ function buildPreparedContext(
 
     // Metadata
     agentName: context.agentName || null,
+    agentScopeSlug,
     resumedFromCheckpointId: context.resumedFromCheckpointId || null,
     continuedFromSessionId: context.continuedFromSessionId || null,
 
