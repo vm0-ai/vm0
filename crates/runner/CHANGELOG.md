@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.10.0...runner-rs-v0.11.0) (2026-03-01)
+
+
+### Features
+
+* **runner:** copy guest system log to host after job ([#3329](https://github.com/vm0-ai/vm0/issues/3329)) ([e1fc90b](https://github.com/vm0-ai/vm0/commit/e1fc90ba7f5f8b555a93028e05086ffac6c3c003))
+* **runner:** redirect guest-download output to system log file ([#3328](https://github.com/vm0-ai/vm0/issues/3328)) ([68ba78d](https://github.com/vm0-ai/vm0/commit/68ba78dcb0e931aae14c74d1cd809b4f6d5924d1))
+
 ## [0.10.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.9.0...runner-rs-v0.10.0) (2026-03-01)
 
 

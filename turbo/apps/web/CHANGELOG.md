@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.54.0](https://github.com/vm0-ai/vm0/compare/web-v12.53.0...web-v12.54.0) (2026-03-01)
+
+
+### Features
+
+* **connectors:** add token expiry and refresh token storage (phase 0.5) ([#3326](https://github.com/vm0-ai/vm0/issues/3326)) ([d1f42f8](https://github.com/vm0-ai/vm0/commit/d1f42f87be4075be2c8d98051b7c91eddd07e959))
+
 ## [12.53.0](https://github.com/vm0-ai/vm0/compare/web-v12.52.0...web-v12.53.0) (2026-03-01)
 
 
