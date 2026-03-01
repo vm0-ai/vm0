@@ -1,7 +1,6 @@
 import "@/app/global.css";
 import { RootProvider } from "fumadocs-ui/provider";
 import { Noto_Sans } from "next/font/google";
-import Script from "next/script";
 import { createMetadata, baseUrl } from "@/lib/metadata";
 
 const notoSans = Noto_Sans({
@@ -36,24 +35,22 @@ export default function Layout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={notoSans.className} suppressHydrationWarning>
       <head>
-        <Script
+        <script
           src="https://plausible.io/js/pa-eEj_2G8vS8xPlTUzW2A3U.js"
           data-domain="vm0.ai"
-          strategy="afterInteractive"
-          async
+          defer
         />
-        <Script id="plausible-init" strategy="afterInteractive">
-          {`
-            window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
-            plausible.init({domain:"vm0.ai"})
-          `}
-        </Script>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init({domain:"vm0.ai"})`,
+          }}
+        />
       </head>
       <body className="flex flex-col min-h-screen">
         <RootProvider>{children}</RootProvider>
-        <Script
+        <script
           src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
-          strategy="lazyOnload"
+          defer
         />
       </body>
     </html>
