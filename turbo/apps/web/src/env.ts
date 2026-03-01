@@ -82,6 +82,9 @@ function initEnv() {
       // Google OAuth (shared across all Google connectors: Gmail, Calendar, Drive, etc.)
       GOOGLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Linear OAuth (for connector)
+      LINEAR_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      LINEAR_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // ngrok (for computer connector)
       NGROK_API_KEY: z.string().min(1).optional(),
       NGROK_COMPUTER_CONNECTOR_DOMAIN: z.string().min(1).optional(),
@@ -163,6 +166,8 @@ function initEnv() {
       NOTION_OAUTH_CLIENT_SECRET: process.env.NOTION_OAUTH_CLIENT_SECRET,
       GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
       GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+      LINEAR_OAUTH_CLIENT_ID: process.env.LINEAR_OAUTH_CLIENT_ID,
+      LINEAR_OAUTH_CLIENT_SECRET: process.env.LINEAR_OAUTH_CLIENT_SECRET,
       NGROK_API_KEY: process.env.NGROK_API_KEY,
       NGROK_COMPUTER_CONNECTOR_DOMAIN:
         process.env.NGROK_COMPUTER_CONNECTOR_DOMAIN,

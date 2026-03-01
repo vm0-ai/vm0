@@ -2,6 +2,7 @@ import { type ConnectorType } from "@vm0/core";
 import { type OAuthTokenResult, type ProviderHandler } from "./provider-types";
 import { githubHandler } from "./providers/github-handler";
 import { gmailHandler } from "./providers/gmail-handler";
+import { linearHandler } from "./providers/linear-handler";
 import { notionHandler } from "./providers/notion-handler";
 import { slackHandler } from "./providers/slack-handler";
 
@@ -13,6 +14,7 @@ export const PROVIDER_HANDLERS: Record<
 > = {
   github: githubHandler,
   gmail: gmailHandler,
+  linear: linearHandler,
   notion: notionHandler,
   slack: slackHandler,
 };
