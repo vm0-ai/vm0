@@ -14,6 +14,7 @@ import {
 import { cliTokens } from "../db/schema/cli-tokens";
 import { deviceCodes } from "../db/schema/device-codes";
 import { agentRuns } from "../db/schema/agent-run";
+import { runnerJobQueue } from "../db/schema/runner-job-queue";
 import { composeJobs } from "../db/schema/compose-job";
 import { storages, storageVersions } from "../db/schema/storage";
 import { usageDaily } from "../db/schema/usage-daily";
@@ -24,6 +25,8 @@ import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
 import { and, eq, like } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
+import { encryptSecrets } from "../lib/crypto/secrets-encryption";
+import type { StoredExecutionContext } from "@vm0/core";
 
 // Route handlers - imported here so callers don't need to pass them
 import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
@@ -1942,4 +1945,54 @@ export async function findTestComposeWithScope(composeId: string) {
     .where(eq(agentComposes.id, composeId))
     .limit(1);
   return row;
+}
+
+/**
+ * Create a runner job queue entry with an associated agent run.
+ *
+ * @param userId - The user who owns the run
+ * @param versionId - The agent compose version ID
+ * @param runnerGroup - The runner group (e.g., "scope-slug/default")
+ * @param contextOverrides - Optional overrides for the stored execution context
+ * @returns The created run ID
+ */
+export async function createTestRunnerJob(
+  userId: string,
+  versionId: string,
+  runnerGroup: string,
+  contextOverrides?: Partial<StoredExecutionContext>,
+): Promise<{ runId: string }> {
+  const [run] = await globalThis.services.db
+    .insert(agentRuns)
+    .values({
+      userId,
+      agentComposeVersionId: versionId,
+      status: "pending",
+      prompt: "test prompt",
+    })
+    .returning({ id: agentRuns.id });
+
+  const encryptedSecrets = encryptSecrets(
+    null,
+    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+  );
+
+  const storedContext: StoredExecutionContext = {
+    workingDir: "/home/user",
+    storageManifest: null,
+    environment: null,
+    resumeSession: null,
+    encryptedSecrets,
+    cliAgentType: "claude",
+    ...contextOverrides,
+  };
+
+  await globalThis.services.db.insert(runnerJobQueue).values({
+    runId: run!.id,
+    runnerGroup,
+    executionContext: storedContext,
+    expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+  });
+
+  return { runId: run!.id };
 }
