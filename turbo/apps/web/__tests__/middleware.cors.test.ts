@@ -23,7 +23,7 @@ describe("handleCors", () => {
   describe("Production Environment (VERCEL_ENV=production)", () => {
     it("should accept exact match: https://www.vm0.ai", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://www.vm0.ai" },
       });
 
@@ -39,7 +39,7 @@ describe("handleCors", () => {
 
     it("should accept exact match: https://vm0.ai", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://vm0.ai" },
       });
 
@@ -52,7 +52,7 @@ describe("handleCors", () => {
 
     it("should accept *.vm0.ai subdomain: https://platform.vm0.ai", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://platform.vm0.ai" },
       });
 
@@ -65,7 +65,7 @@ describe("handleCors", () => {
 
     it("should accept any *.vm0.ai subdomain", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://any-subdomain.vm0.ai" },
       });
 
@@ -78,7 +78,7 @@ describe("handleCors", () => {
 
     it("should reject *.vercel.app origin", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://example-app.vercel.app" },
       });
 
@@ -89,7 +89,7 @@ describe("handleCors", () => {
 
     it("should reject localhost origin", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "http://localhost:3000" },
       });
 
@@ -100,7 +100,7 @@ describe("handleCors", () => {
 
     it("should reject invalid origin", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://malicious.com" },
       });
 
@@ -113,7 +113,7 @@ describe("handleCors", () => {
   describe("Preview Environment (VERCEL_ENV=preview)", () => {
     it("should accept production domain: https://www.vm0.ai", async () => {
       const handleCors = await getHandleCors("preview");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://www.vm0.ai" },
       });
 
@@ -126,7 +126,7 @@ describe("handleCors", () => {
 
     it("should accept *.vm0.ai subdomain: https://platform.vm0.ai", async () => {
       const handleCors = await getHandleCors("preview");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://platform.vm0.ai" },
       });
 
@@ -139,7 +139,7 @@ describe("handleCors", () => {
 
     it("should accept *.vm6.ai origin: https://vm0-platform-abc123.vm6.ai", async () => {
       const handleCors = await getHandleCors("preview");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://vm0-platform-abc123.vm6.ai" },
       });
 
@@ -152,7 +152,7 @@ describe("handleCors", () => {
 
     it("should accept any *.vm6.ai subdomain", async () => {
       const handleCors = await getHandleCors("preview");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://any-app-xyz.vm6.ai" },
       });
 
@@ -165,7 +165,7 @@ describe("handleCors", () => {
 
     it("should reject localhost origin", async () => {
       const handleCors = await getHandleCors("preview");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "http://localhost:3000" },
       });
 
@@ -176,7 +176,7 @@ describe("handleCors", () => {
 
     it("should reject invalid origin", async () => {
       const handleCors = await getHandleCors("preview");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://malicious.com" },
       });
 
@@ -189,7 +189,7 @@ describe("handleCors", () => {
   describe("Development Environment (VERCEL_ENV=development)", () => {
     it("should accept production domain: https://www.vm0.ai", async () => {
       const handleCors = await getHandleCors("development");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://www.vm0.ai" },
       });
 
@@ -202,7 +202,7 @@ describe("handleCors", () => {
 
     it("should accept local dev domain: https://platform.vm7.ai", async () => {
       const handleCors = await getHandleCors("development");
-      const request = new NextRequest("https://www.vm7.ai:8443/v1/runs", {
+      const request = new NextRequest("https://www.vm7.ai:8443/api/runs", {
         headers: { origin: "https://platform.vm7.ai:8443" },
       });
 
@@ -215,7 +215,7 @@ describe("handleCors", () => {
 
     it("should accept localhost:3000", async () => {
       const handleCors = await getHandleCors("development");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "http://localhost:3000" },
       });
 
@@ -228,7 +228,7 @@ describe("handleCors", () => {
 
     it("should accept localhost:5173", async () => {
       const handleCors = await getHandleCors("development");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "http://localhost:5173" },
       });
 
@@ -241,7 +241,7 @@ describe("handleCors", () => {
 
     it("should accept localhost with any port", async () => {
       const handleCors = await getHandleCors("development");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "http://localhost:8080" },
       });
 
@@ -254,7 +254,7 @@ describe("handleCors", () => {
 
     it("should accept *.vm6.ai origin", async () => {
       const handleCors = await getHandleCors("development");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://vm0-platform-abc.vm6.ai" },
       });
 
@@ -267,7 +267,7 @@ describe("handleCors", () => {
 
     it("should reject invalid origin", async () => {
       const handleCors = await getHandleCors("development");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://malicious.com" },
       });
 
@@ -280,7 +280,7 @@ describe("handleCors", () => {
   describe("Undefined Environment (VERCEL_ENV=undefined, treats as development)", () => {
     it("should accept *.vm6.ai origin", async () => {
       const handleCors = await getHandleCors("preview");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://test-app.vm6.ai" },
       });
 
@@ -293,7 +293,7 @@ describe("handleCors", () => {
 
     it("should accept *.vm0.ai subdomain", async () => {
       const handleCors = await getHandleCors(undefined);
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://platform.vm0.ai" },
       });
 
@@ -308,7 +308,7 @@ describe("handleCors", () => {
   describe("Edge Cases", () => {
     it("should reject null origin", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs");
+      const request = new NextRequest("https://api.vm0.ai/api/runs");
 
       const response = handleCors(request);
 
@@ -317,7 +317,7 @@ describe("handleCors", () => {
 
     it("should reject undefined origin", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: {},
       });
 
@@ -328,7 +328,7 @@ describe("handleCors", () => {
 
     it("should handle malformed origin URL gracefully", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "not-a-valid-url" },
       });
 
@@ -339,7 +339,7 @@ describe("handleCors", () => {
 
     it("should handle origin with unusual port", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://platform.vm0.ai:8443" },
       });
 
@@ -352,7 +352,7 @@ describe("handleCors", () => {
 
     it("should handle HTTP vs HTTPS correctly", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "http://platform.vm0.ai" },
       });
 
@@ -366,7 +366,7 @@ describe("handleCors", () => {
     it("should handle case sensitivity in hostname (lowercase vm6.ai)", async () => {
       const handleCors = await getHandleCors("preview");
 
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         headers: { origin: "https://test-app.VM6.AI" },
       });
 
@@ -382,7 +382,7 @@ describe("handleCors", () => {
   describe("Preflight Request Tests (OPTIONS)", () => {
     it("should handle OPTIONS request with correct headers", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         method: "OPTIONS",
         headers: { origin: "https://platform.vm0.ai" },
       });
@@ -408,7 +408,7 @@ describe("handleCors", () => {
     it("should handle OPTIONS request in preview environment", async () => {
       const handleCors = await getHandleCors("preview");
 
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         method: "OPTIONS",
         headers: { origin: "https://test-app.vm6.ai" },
       });
@@ -424,7 +424,7 @@ describe("handleCors", () => {
     it("should handle OPTIONS request in development environment", async () => {
       const handleCors = await getHandleCors("development");
 
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         method: "OPTIONS",
         headers: { origin: "http://localhost:3000" },
       });
@@ -439,7 +439,7 @@ describe("handleCors", () => {
 
     it("should not set CORS headers for OPTIONS with disallowed origin", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         method: "OPTIONS",
         headers: { origin: "https://malicious.com" },
       });
@@ -454,7 +454,7 @@ describe("handleCors", () => {
   describe("GET Request Tests", () => {
     it("should set CORS headers for GET request with allowed origin", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         method: "GET",
         headers: { origin: "https://platform.vm0.ai" },
       });
@@ -471,7 +471,7 @@ describe("handleCors", () => {
 
     it("should not return preflight headers for GET request", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         method: "GET",
         headers: { origin: "https://platform.vm0.ai" },
       });
@@ -488,7 +488,7 @@ describe("handleCors", () => {
   describe("POST Request Tests", () => {
     it("should set CORS headers for POST request with allowed origin", async () => {
       const handleCors = await getHandleCors("production");
-      const request = new NextRequest("https://api.vm0.ai/v1/runs", {
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
         method: "POST",
         headers: { origin: "https://platform.vm0.ai" },
       });

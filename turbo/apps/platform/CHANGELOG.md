@@ -1,5 +1,223 @@
 # Changelog
 
+## [0.75.1](https://github.com/vm0-ai/vm0/compare/platform-v0.75.0...platform-v0.75.1) (2026-03-02)
+
+
+### Bug Fixes
+
+* **platform:** add bg-card to agent instructions container ([#3454](https://github.com/vm0-ai/vm0/issues/3454)) ([5319877](https://github.com/vm0-ai/vm0/commit/5319877e6071c47e779f4c8141be8c950f1a8014))
+
+## [0.75.0](https://github.com/vm0-ai/vm0/compare/platform-v0.74.0...platform-v0.75.0) (2026-03-02)
+
+
+### Features
+
+* **connector:** add deel oauth2 connector ([#3401](https://github.com/vm0-ai/vm0/issues/3401)) ([8128da7](https://github.com/vm0-ai/vm0/commit/8128da7cb693bdb51b006edc7ed8cc1aae14b9c2))
+* **connector:** add docusign oauth2 connector ([#3402](https://github.com/vm0-ai/vm0/issues/3402)) ([2273b1c](https://github.com/vm0-ai/vm0/commit/2273b1c3db937c8c2e5794c0348f2d5a063c724e))
+* **connector:** add google sheets, docs, and drive oauth2 connectors ([#3403](https://github.com/vm0-ai/vm0/issues/3403)) ([97cca63](https://github.com/vm0-ai/vm0/commit/97cca638861824b887feaa3d97372028e8affdba))
+* **connector:** add mercury oauth2 connector ([#3397](https://github.com/vm0-ai/vm0/issues/3397)) ([a5f4e79](https://github.com/vm0-ai/vm0/commit/a5f4e794fe12e6250d770fef1d8ec444a5cdcec3))
+* **connector:** add strava and garmin connect oauth2 connectors ([#3399](https://github.com/vm0-ai/vm0/issues/3399)) ([2aa431a](https://github.com/vm0-ai/vm0/commit/2aa431ae1142234ee0d2add1438249540dc91ad8))
+* **platform:** add agent log detail as nested sub-route ([#3418](https://github.com/vm0-ai/vm0/issues/3418)) ([f4bac30](https://github.com/vm0-ai/vm0/commit/f4bac30730979d345f0bc2d9dfbc36caf9b2459f))
+
+
+### Bug Fixes
+
+* **platform:** resolve empty logs page for scoped agents ([#3392](https://github.com/vm0-ai/vm0/issues/3392)) ([d611bd0](https://github.com/vm0-ai/vm0/commit/d611bd026a6f74a27707c3877c1c4f9cb19acb65))
+* **platform:** use existing schedule name when editing and fix error parsing ([#3421](https://github.com/vm0-ai/vm0/issues/3421)) ([810345b](https://github.com/vm0-ai/vm0/commit/810345b073a40712624cfd714010e13e615af688))
+* resolve double scrollbar on mobile safari in agent detail page ([#3386](https://github.com/vm0-ai/vm0/issues/3386)) ([2e75a81](https://github.com/vm0-ai/vm0/commit/2e75a818b1985ea607c64dd453512d0fbfe9c50a)), closes [#3229](https://github.com/vm0-ai/vm0/issues/3229)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.28.0
+
+## [0.74.0](https://github.com/vm0-ai/vm0/compare/platform-v0.73.0...platform-v0.74.0) (2026-03-02)
+
+
+### Features
+
+* **connectors:** remove linear connector feature flag ([#3394](https://github.com/vm0-ai/vm0/issues/3394)) ([bcb0266](https://github.com/vm0-ai/vm0/commit/bcb02665109aeda6e5c6052dcdaa8ebe261545e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.27.0
+
+## [0.73.0](https://github.com/vm0-ai/vm0/compare/platform-v0.72.2...platform-v0.73.0) (2026-03-02)
+
+
+### Features
+
+* **connector:** add gmail connector feature flag ([#3381](https://github.com/vm0-ai/vm0/issues/3381)) ([50b45eb](https://github.com/vm0-ai/vm0/commit/50b45eb00469afce5b433e03e590fa0070c77458))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.26.0
+
+## [0.72.2](https://github.com/vm0-ai/vm0/compare/platform-v0.72.1...platform-v0.72.2) (2026-03-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.25.0
+
+## [0.72.1](https://github.com/vm0-ai/vm0/compare/platform-v0.72.0...platform-v0.72.1) (2026-03-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.24.0
+
+## [0.72.0](https://github.com/vm0-ai/vm0/compare/platform-v0.71.0...platform-v0.72.0) (2026-03-01)
+
+
+### Features
+
+* **connectors:** add dropbox oauth connector ([#3368](https://github.com/vm0-ai/vm0/issues/3368)) ([1dc5d4c](https://github.com/vm0-ai/vm0/commit/1dc5d4c151f986ded68c169b19bd7c9c6a07f4b6))
+* **connectors:** add feature flag for linear connector visibility ([#3372](https://github.com/vm0-ai/vm0/issues/3372)) ([f6da04e](https://github.com/vm0-ai/vm0/commit/f6da04e4653c62103975cb43f44d7c70067e4dc1))
+* **connectors:** add figma oauth connector ([#3369](https://github.com/vm0-ai/vm0/issues/3369)) ([4d93f59](https://github.com/vm0-ai/vm0/commit/4d93f59827c3567ba83ef115d90decc4ca7fa294))
+* **connectors:** add linear oauth connector ([#3366](https://github.com/vm0-ai/vm0/issues/3366)) ([f943498](https://github.com/vm0-ai/vm0/commit/f94349842e5501fe487d078fa7138a3010d65635))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.23.0
+
+## [0.71.0](https://github.com/vm0-ai/vm0/compare/platform-v0.70.1...platform-v0.71.0) (2026-03-01)
+
+
+### Features
+
+* **connectors:** add gmail oauth connector ([#3332](https://github.com/vm0-ai/vm0/issues/3332)) ([ca303b7](https://github.com/vm0-ai/vm0/commit/ca303b71916095e799c22b975f71216ea89df021))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.22.0
+
+## [0.70.1](https://github.com/vm0-ai/vm0/compare/platform-v0.70.0...platform-v0.70.1) (2026-03-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.21.0
+
+## [0.70.0](https://github.com/vm0-ai/vm0/compare/platform-v0.69.1...platform-v0.70.0) (2026-02-28)
+
+
+### Features
+
+* **connectors:** add self-hosted slack connector ([#3281](https://github.com/vm0-ai/vm0/issues/3281)) ([13e92fd](https://github.com/vm0-ai/vm0/commit/13e92fde8468324ca7502fa8ded5eb60179eba05)), closes [#3279](https://github.com/vm0-ai/vm0/issues/3279)
+* **connectors:** add self-hosted slack connector ([#3286](https://github.com/vm0-ai/vm0/issues/3286)) ([6089289](https://github.com/vm0-ai/vm0/commit/608928923103497eadee7c832c9103d9545aa826))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.20.0
+
+## [0.69.1](https://github.com/vm0-ai/vm0/compare/platform-v0.69.0...platform-v0.69.1) (2026-02-23)
+
+
+### Bug Fixes
+
+* **slack:** preserve scope prefix in agent navigation and selection ([#3223](https://github.com/vm0-ai/vm0/issues/3223)) ([61bd643](https://github.com/vm0-ai/vm0/commit/61bd643a4e6b0f2977dddf881fd7f5718382e6a6))
+
+## [0.69.0](https://github.com/vm0-ai/vm0/compare/platform-v0.68.5...platform-v0.69.0) (2026-02-23)
+
+
+### Features
+
+* **platform:** add editable agent name and skills multi-select to config dialog ([#3216](https://github.com/vm0-ai/vm0/issues/3216)) ([50fc6f3](https://github.com/vm0-ai/vm0/commit/50fc6f3fc03d6595b9ee326df2dd88a1697eb837))
+* **platform:** add schedule management dialog and enhanced cron options ([#3211](https://github.com/vm0-ai/vm0/issues/3211)) ([d1f30aa](https://github.com/vm0-ai/vm0/commit/d1f30aa17651a80964296e3c1a677049586b9caa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.19.0
+
+## [0.68.5](https://github.com/vm0-ai/vm0/compare/platform-v0.68.4...platform-v0.68.5) (2026-02-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.18.1
+
+## [0.68.4](https://github.com/vm0-ai/vm0/compare/platform-v0.68.3...platform-v0.68.4) (2026-02-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.18.0
+
+## [0.68.3](https://github.com/vm0-ai/vm0/compare/platform-v0.68.2...platform-v0.68.3) (2026-02-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.17.0
+
+## [0.68.2](https://github.com/vm0-ai/vm0/compare/platform-v0.68.1...platform-v0.68.2) (2026-02-17)
+
+
+### Bug Fixes
+
+* hide connect button while polling ([#3107](https://github.com/vm0-ai/vm0/issues/3107)) ([be3af5d](https://github.com/vm0-ai/vm0/commit/be3af5da3a372d5f110410279e10db860dfabf75))
+
+## [0.68.1](https://github.com/vm0-ai/vm0/compare/platform-v0.68.0...platform-v0.68.1) (2026-02-17)
+
+
+### Bug Fixes
+
+* remove nango integration and simplify oauth flow ([#3105](https://github.com/vm0-ai/vm0/issues/3105)) ([a1c601e](https://github.com/vm0-ai/vm0/commit/a1c601e2217456d16b1e34de0a41fe61a0026e7a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.16.1
+
+## [0.68.0](https://github.com/vm0-ai/vm0/compare/platform-v0.67.0...platform-v0.68.0) (2026-02-16)
+
+
+### Features
+
+* add gmail connector with nango platform integration ([#3065](https://github.com/vm0-ai/vm0/issues/3065)) ([d43dfe1](https://github.com/vm0-ai/vm0/commit/d43dfe1a5a868c8413ffd2b8a250d48dafc791cb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.16.0
+
 ## [0.67.0](https://github.com/vm0-ai/vm0/compare/platform-v0.66.0...platform-v0.67.0) (2026-02-15)
 
 

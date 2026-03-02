@@ -6,8 +6,6 @@ import {
   Text,
   Link,
   Hr,
-  Preview,
-  Section,
 } from "@react-email/components";
 
 interface ScheduleFailedEmailProps {
@@ -24,16 +22,11 @@ export function ScheduleFailedEmail({
   return (
     <Html>
       <Head />
-      <Preview>VM0 - Scheduled run for &quot;{agentName}&quot; failed</Preview>
       <Body style={bodyStyle}>
         <Container style={containerStyle}>
-          <Text style={headingStyle}>
-            VM0 - Scheduled run for &quot;{agentName}&quot; failed
-          </Text>
-          <Section style={errorSectionStyle}>
-            <Text style={errorStyle}>{errorMessage}</Text>
-          </Section>
+          <Text style={errorStyle}>{errorMessage}</Text>
           <Hr style={hrStyle} />
+          <Text style={signatureStyle}>{agentName} from VM0</Text>
           <Text style={footerStyle}>
             <Link href={logsUrl} style={linkStyle}>
               View logs
@@ -59,20 +52,6 @@ const containerStyle = {
   borderRadius: "8px",
 };
 
-const headingStyle = {
-  fontSize: "18px",
-  fontWeight: "600" as const,
-  color: "#dc2626",
-  margin: "0 0 16px",
-};
-
-const errorSectionStyle = {
-  backgroundColor: "#fef2f2",
-  borderRadius: "6px",
-  padding: "12px 16px",
-  borderLeft: "3px solid #dc2626",
-};
-
 const errorStyle = {
   fontSize: "14px",
   color: "#991b1b",
@@ -84,6 +63,13 @@ const errorStyle = {
 const hrStyle = {
   borderColor: "#e5e7eb",
   margin: "20px 0",
+};
+
+const signatureStyle = {
+  fontSize: "13px",
+  fontWeight: "600" as const,
+  color: "#374151",
+  margin: "0 0 4px",
 };
 
 const footerStyle = {

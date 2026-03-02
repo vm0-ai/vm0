@@ -4,8 +4,7 @@ import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
-import { getPlatform } from "../../../../../src/lib/connector/platform/router";
-import { getUserScopeByClerkId } from "../../../../../src/lib/scope/scope-service";
+import { PROVIDER_HANDLERS } from "../../../../../src/lib/connector/provider-registry";
 
 /**
  * Connector OAuth Authorize Endpoint
@@ -90,15 +89,6 @@ export async function GET(
     );
   }
 
-  // Get user scope for building connection ID
-  const scope = await getUserScopeByClerkId(userId);
-  if (!scope) {
-    return NextResponse.json(
-      { error: "User scope not found" },
-      { status: 500 },
-    );
-  }
-
   // Generate state for CSRF protection
   const state = generateState();
 
@@ -108,17 +98,17 @@ export async function GET(
   // Check for session parameter (CLI device flow)
   const sessionId = url.searchParams.get("session");
 
-  // Build connection ID for platform abstraction
-  const connectionId = `${scope.id}:${connectorType}`;
-
-  // Use platform abstraction to build authorization URL
-  const platform = getPlatform(connectorType);
-  const authUrl = await platform.buildAuthorizationUrl({
-    type: connectorType,
-    connectionId,
-    redirectUri,
-    state,
-  });
+  // Build authorization URL via provider registry
+  const currentEnv = env();
+  const handler = PROVIDER_HANDLERS[connectorType];
+  const clientId = handler.getClientId(currentEnv);
+  if (!clientId) {
+    return NextResponse.json(
+      { error: `${connectorType} OAuth not configured` },
+      { status: 500 },
+    );
+  }
+  const authUrl = await handler.buildAuthUrl(clientId, redirectUri, state);
 
   // Create redirect response with state cookie
   const response = NextResponse.redirect(authUrl);

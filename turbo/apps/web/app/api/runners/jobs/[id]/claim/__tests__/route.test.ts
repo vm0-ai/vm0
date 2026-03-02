@@ -4,6 +4,9 @@ import { randomUUID } from "crypto";
 import {
   createTestRequest,
   createTestCliToken,
+  createTestCompose,
+  createTestRunnerJob,
+  findTestComposeWithScope,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -226,6 +229,83 @@ describe("POST /api/runners/jobs/:id/claim", () => {
         expect(response.status).toBe(401);
         expect(data.error.message).toContain("Not authenticated");
       });
+    });
+  });
+
+  describe("Claim flow - Agent metadata", () => {
+    it("should return agentName and agentScopeSlug in claim response", async () => {
+      // Create compose and look up scope slug
+      const { composeId, versionId } = await createTestCompose("test-agent");
+      const composeInfo = await findTestComposeWithScope(composeId);
+      const scopeSlug = composeInfo!.scopeSlug;
+
+      // Create runner job with agent metadata in stored context
+      const { runId } = await createTestRunnerJob(
+        user.userId,
+        versionId,
+        `${scopeSlug}/default`,
+        {
+          agentName: "test-agent",
+          agentScopeSlug: scopeSlug,
+        },
+      );
+
+      // Claim the job
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.agentName).toBe("test-agent");
+      expect(data.agentScopeSlug).toBe(scopeSlug);
+    });
+
+    it("should omit agentName and agentScopeSlug when not set in stored context", async () => {
+      // Create compose and look up scope slug
+      const { composeId, versionId } =
+        await createTestCompose("test-agent-no-meta");
+      const composeInfo = await findTestComposeWithScope(composeId);
+      const scopeSlug = composeInfo!.scopeSlug;
+
+      // Create runner job WITHOUT agent metadata
+      const { runId } = await createTestRunnerJob(
+        user.userId,
+        versionId,
+        `${scopeSlug}/default`,
+      );
+
+      // Claim the job
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.agentName).toBeUndefined();
+      expect(data.agentScopeSlug).toBeUndefined();
     });
   });
 });

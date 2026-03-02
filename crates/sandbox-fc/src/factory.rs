@@ -11,9 +11,27 @@ use crate::overlay::{
 use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
 use crate::sandbox::FirecrackerSandbox;
 
-/// Shell command executed during snapshot creation to pre-warm guest caches.
+/// Shell command executed during snapshot creation to pre-warm guest state.
 /// Changing this invalidates all cached snapshots (included in [`config_hash`]).
-pub const PREWARM_SCRIPT: &str = "su - user -c true";
+///
+/// **Note:** Do NOT wrap this in `su - user -c '...'` — the vsock-guest exec
+/// handler already wraps commands with `su - user -c` in release builds.
+/// Double-wrapping creates nested sessions where inner processes escape the
+/// process group, surviving SIGKILL on timeout as orphans frozen into the
+/// snapshot.
+///
+/// - `claude --print --verbose --output-format stream-json hi`:
+///   exercises the full CLI initialization path matching the real guest-agent
+///   invocation (module loading, config parsing, API client setup) so all
+///   relevant memory pages are captured in the snapshot. Fails with
+///   "Invalid API key" but still loads the complete module graph. The claude
+///   binary is a Bun-compiled executable (not Node.js), so
+///   `NODE_COMPILE_CACHE` has no effect.
+/// - `codex --help`: lightweight pre-warm for Codex (no `--print` equivalent).
+///   Also tolerated because codex may not be installed.
+pub const PREWARM_SCRIPT: &str = "\
+    (claude --print --verbose --output-format stream-json hi 2>/dev/null || true) && \
+    (codex --help >/dev/null 2>&1 || true)";
 
 /// SHA-256 fingerprint of all sandbox-fc internal configuration that affects
 /// snapshot output (boot args, guest network, pre-warm script, etc.).
@@ -33,6 +51,8 @@ pub fn config_hash() -> String {
     hasher.update(GUEST_NETWORK.guest_mac.as_bytes());
     hasher.update(b"tap_name:");
     hasher.update(GUEST_NETWORK.tap_name.as_bytes());
+    hasher.update(b"tap_mac:");
+    hasher.update(GUEST_NETWORK.tap_mac.as_bytes());
     hasher.update(b"prewarm:");
     hasher.update(PREWARM_SCRIPT.as_bytes());
     format!("{:x}", hasher.finalize())
@@ -216,32 +236,39 @@ impl SandboxFactory for FirecrackerFactory {
         };
 
         // Ensure the sandbox is killed before releasing pool resources.
+        // After kill(), `sandbox.process` is `None`, so the Drop impl's
+        // killpg becomes a no-op when `sandbox` is dropped below.
         let _ = sandbox.kill().await;
 
-        let sandbox_id = sandbox.id;
+        // Clone lightweight handles before dropping sandbox — Drop requires
+        // all fields intact, so we cannot move them out.
+        let sandbox_id = sandbox.id.clone();
+        let network = sandbox.network.clone();
+        let use_proxy = sandbox.config.use_proxy;
+        let overlay = sandbox.overlay.clone();
+        let sock_dir = sandbox.sock_paths.dir().to_owned();
+        let workspace = sandbox.sandbox_paths.workspace().to_owned();
+        drop(sandbox);
 
         // Return the network namespace to the pool.
         let mut netns_pool = self.netns_pool().lock().await;
-        if let Err(e) = netns_pool
-            .release(sandbox.network, sandbox.config.use_proxy)
-            .await
-        {
+        if let Err(e) = netns_pool.release(network, use_proxy).await {
             warn!(id = %sandbox_id, error = %e, "failed to release netns");
         }
         drop(netns_pool);
 
         // Delete the overlay file.
         let mut overlay_pool = self.overlay_pool().lock().await;
-        overlay_pool.release(sandbox.overlay).await;
+        overlay_pool.release(overlay).await;
         drop(overlay_pool);
 
         // Delete the socket directory.
-        if let Err(e) = tokio::fs::remove_dir_all(sandbox.sock_paths.dir()).await {
+        if let Err(e) = tokio::fs::remove_dir_all(&sock_dir).await {
             warn!(id = %sandbox_id, error = %e, "failed to delete sock dir");
         }
 
         // Delete the workspace directory.
-        if let Err(e) = tokio::fs::remove_dir_all(sandbox.sandbox_paths.workspace()).await {
+        if let Err(e) = tokio::fs::remove_dir_all(&workspace).await {
             warn!(id = %sandbox_id, error = %e, "failed to delete workspace");
         }
 

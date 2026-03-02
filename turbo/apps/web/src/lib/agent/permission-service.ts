@@ -11,9 +11,8 @@ const log = logger("agent:permission");
  *
  * Access is granted if:
  * 1. User is the owner of the compose
- * 2. Compose is in a system scope (public)
- * 3. Compose has a 'public' permission entry
- * 4. User's email matches an 'email' permission entry
+ * 2. Compose has a 'public' permission entry
+ * 3. User's email matches an 'email' permission entry
  */
 export async function canAccessCompose(
   userId: string,
@@ -23,35 +22,24 @@ export async function canAccessCompose(
   // 1. Owner always has access
   if (compose.userId === userId) return true;
 
-  // 2. Check scope and ACL in parallel (independent queries)
-  const [scopeResult, permissionResult] = await Promise.all([
-    globalThis.services.db
-      .select()
-      .from(scopes)
-      .where(eq(scopes.id, compose.scopeId))
-      .limit(1),
-    globalThis.services.db
-      .select()
-      .from(agentPermissions)
-      .where(
-        and(
-          eq(agentPermissions.agentComposeId, compose.id),
-          or(
-            eq(agentPermissions.granteeType, "public"),
-            and(
-              eq(agentPermissions.granteeType, "email"),
-              eq(agentPermissions.granteeEmail, userEmail),
-            ),
+  // 2. Check ACL
+  const permissionResult = await globalThis.services.db
+    .select()
+    .from(agentPermissions)
+    .where(
+      and(
+        eq(agentPermissions.agentComposeId, compose.id),
+        or(
+          eq(agentPermissions.granteeType, "public"),
+          and(
+            eq(agentPermissions.granteeType, "email"),
+            eq(agentPermissions.granteeEmail, userEmail),
           ),
         ),
-      )
-      .limit(1),
-  ]);
+      ),
+    )
+    .limit(1);
 
-  // 3. System scope = public access
-  if (scopeResult[0]?.type === "system") return true;
-
-  // 4. Check ACL table result
   return !!permissionResult[0];
 }
 

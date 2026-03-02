@@ -38,7 +38,6 @@ describe("runAgentForSlack", () => {
       userLinkId: uniqueId("link"),
       agentName: "test-agent",
       composeId,
-      reactionAdded: true,
     };
 
     // When runAgentForSlack is called

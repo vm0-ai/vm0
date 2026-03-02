@@ -25,39 +25,70 @@ import {
   setRunDialogTimeOption$,
   runDialogFrequency$,
   setRunDialogFrequency$,
+  runDialogMinute$,
+  setRunDialogMinute$,
+  runDialogDayOfWeek$,
+  setRunDialogDayOfWeek$,
+  runDialogDayOfMonth$,
+  setRunDialogDayOfMonth$,
   runDialogSaving$,
   runDialogSaveError$,
   submitRunDialog$,
 } from "../../../signals/agent-detail/run-dialog.ts";
+import { agentSchedule$ } from "../../../signals/agent-detail/schedule.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 
-function buildHourOptions() {
-  return Array.from({ length: 16 }, (_, i) => {
-    const hour = i + 6; // 6:00 am to 9:00 pm
-    const period = hour >= 12 ? "pm" : "am";
-    const displayHour = hour > 12 ? hour - 12 : hour;
-    return {
-      value: String(hour),
-      label: `${String(displayHour)}:00 ${period}`,
-    };
-  });
-}
+// ---------------------------------------------------------------------------
+// RunDialog
+// ---------------------------------------------------------------------------
 
 export function RunDialog() {
   const open = useGet(runDialogOpen$);
   const prompt = useGet(runDialogPrompt$);
   const timeOption = useGet(runDialogTimeOption$);
   const frequency = useGet(runDialogFrequency$);
+  const minute = useGet(runDialogMinute$);
+  const dayOfWeek = useGet(runDialogDayOfWeek$);
+  const dayOfMonth = useGet(runDialogDayOfMonth$);
   const saving = useGet(runDialogSaving$);
   const saveError = useGet(runDialogSaveError$);
   const close = useSet(closeRunDialog$);
   const setPrompt = useSet(setRunDialogPrompt$);
   const setTimeOption = useSet(setRunDialogTimeOption$);
   const setFrequency = useSet(setRunDialogFrequency$);
+  const setMinute = useSet(setRunDialogMinute$);
+  const setDayOfWeek = useSet(setRunDialogDayOfWeek$);
+  const setDayOfMonth = useSet(setRunDialogDayOfMonth$);
   const submit = useSet(submitRunDialog$);
+  const schedule = useGet(agentSchedule$);
 
-  const isSchedule = timeOption !== "now";
-  const hourOptions = buildHourOptions();
+  const weekdays = [
+    { value: "1", label: "Monday" },
+    { value: "2", label: "Tuesday" },
+    { value: "3", label: "Wednesday" },
+    { value: "4", label: "Thursday" },
+    { value: "5", label: "Friday" },
+    { value: "6", label: "Saturday" },
+    { value: "0", label: "Sunday" },
+  ];
+
+  const hours = Array.from({ length: 24 }, (_, i) => ({
+    value: String(i),
+    label: String(i).padStart(2, "0"),
+  }));
+
+  const minutes = Array.from({ length: 60 }, (_, i) => ({
+    value: String(i),
+    label: String(i).padStart(2, "0"),
+  }));
+
+  const dayOfMonthOptions = Array.from({ length: 31 }, (_, i) => ({
+    value: String(i + 1),
+    label: String(i + 1),
+  }));
+
+  const hasSchedule = schedule !== null;
+  const isSchedule = !hasSchedule && timeOption !== "now";
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && close()}>
@@ -69,55 +100,115 @@ export function RunDialog() {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-5">
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
+            <label className="text-sm font-medium text-foreground px-1">
               Prompt
             </label>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Describe your task in natural language."
-              className="w-full min-h-[120px] rounded-lg border border-border bg-input p-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-y"
+              className="w-full h-[100px] rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-y"
             />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground">Time</label>
-            <Select value={timeOption} onValueChange={setTimeOption}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="now">Now</SelectItem>
-                <SelectItem value="every-weekday">Every weekday</SelectItem>
-                <SelectItem value="every-day">Every day</SelectItem>
-                <SelectItem value="every-week">Every week</SelectItem>
-                <SelectItem value="every-month">Every month</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {isSchedule && (
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-foreground">
-                Frequency
+          {!hasSchedule && (
+            <div className="flex flex-col gap-3">
+              <label className="text-sm font-medium text-foreground px-1">
+                Time
               </label>
-              <Select value={frequency} onValueChange={setFrequency}>
+              <Select value={timeOption} onValueChange={setTimeOption}>
                 <SelectTrigger>
-                  <div className="flex items-center gap-2">
-                    <IconClock size={16} className="text-muted-foreground" />
-                    <SelectValue />
-                  </div>
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {hourOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
+                  <SelectItem value="now">Now</SelectItem>
+                  <SelectItem value="every-weekday">Every weekday</SelectItem>
+                  <SelectItem value="every-day">Every day</SelectItem>
+                  <SelectItem value="every-week">Every week</SelectItem>
+                  <SelectItem value="every-month">Every month</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {isSchedule && timeOption === "every-week" && (
+            <div className="flex flex-col gap-3">
+              <label className="text-sm font-medium text-foreground px-1">
+                Day of week
+              </label>
+              <Select value={dayOfWeek} onValueChange={setDayOfWeek}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {weekdays.map((d) => (
+                    <SelectItem key={d.value} value={d.value}>
+                      {d.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          )}
+
+          {isSchedule && timeOption === "every-month" && (
+            <div className="flex flex-col gap-3">
+              <label className="text-sm font-medium text-foreground px-1">
+                Day of month
+              </label>
+              <Select value={dayOfMonth} onValueChange={setDayOfMonth}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {dayOfMonthOptions.map((d) => (
+                    <SelectItem key={d.value} value={d.value}>
+                      {d.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {isSchedule && (
+            <div className="flex flex-col gap-3">
+              <label className="text-sm font-medium text-foreground px-1">
+                Frequency
+              </label>
+              <div className="flex items-center gap-2">
+                <IconClock
+                  size={16}
+                  className="text-muted-foreground shrink-0"
+                />
+                <Select value={frequency} onValueChange={setFrequency}>
+                  <SelectTrigger className="w-[80px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {hours.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-sm text-muted-foreground">:</span>
+                <Select value={minute} onValueChange={setMinute}>
+                  <SelectTrigger className="w-[80px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {minutes.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
         </div>

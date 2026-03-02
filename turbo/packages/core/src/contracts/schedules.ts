@@ -154,7 +154,6 @@ export const schedulesMainContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
-      409: apiErrorSchema, // Schedule limit reached
     },
     summary: "Deploy schedule (create or update)",
   },

@@ -343,6 +343,13 @@ function formatMessageWithMetadata(
   return parts.join("\n");
 }
 
+const CONTEXT_PREAMBLE = [
+  "The messages below are from a Slack conversation. When responding:",
+  "- Match the tone of the conversation — casual messages deserve casual replies.",
+  "- Only provide technical analysis when explicitly asked a technical question.",
+  "- Keep responses proportional to the message length and complexity.",
+].join("\n");
+
 /**
  * Format messages into context for agent prompt (sync version, metadata only)
  *
@@ -393,7 +400,7 @@ export function formatContextForAgent(
       ? "# Slack Thread Context"
       : "# Recent Channel Messages";
 
-  const result = `${header}\n\n${formattedMessages.join("\n\n")}\n\n---`;
+  const result = `${header}\n\n${CONTEXT_PREAMBLE}\n\n${formattedMessages.join("\n\n")}\n\n---`;
   log.debug("Formatted messages for context", {
     messageCount: formattedMessages.length,
     contextType,
@@ -464,7 +471,7 @@ export async function formatContextForAgentWithImages(
       ? "# Slack Thread Context"
       : "# Recent Channel Messages";
 
-  const result = `${header}\n\n${formattedMessages.join("\n\n")}\n\n---`;
+  const result = `${header}\n\n${CONTEXT_PREAMBLE}\n\n${formattedMessages.join("\n\n")}\n\n---`;
   log.debug("Formatted messages for context with images", {
     messageCount: formattedMessages.length,
     contextType,

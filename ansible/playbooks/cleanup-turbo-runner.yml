@@ -1,0 +1,50 @@
+# Cleanup Turbo Runner
+#
+# This playbook cleans up runner resources deployed by turbo.yml CI pipeline.
+# Stops transient systemd services and removes ephemeral directories.
+#
+# Usage:
+#   ansible-playbook -i "host1,host2," playbooks/cleanup-turbo-runner.yml \
+#     -e "ansible_user=ubuntu" \
+#     -e "job_ref=pr-123" \
+#     --private-key /path/to/key.pem
+#
+# Required Variables:
+#   - job_ref: The job reference identifier (e.g., pr-123)
+
+- name: Cleanup Turbo Runner
+  hosts: all
+
+  vars:
+    base_dir: "{{ ansible_facts['env']['HOME'] }}/.vm0-runner"
+    bin_dir: "{{ base_dir }}/bin/{{ job_ref }}"
+    runner_dir: "{{ base_dir }}/runners/{{ job_ref }}"
+
+  tasks:
+    - name: Check required variables
+      assert:
+        that:
+          - job_ref is defined
+        fail_msg: "Required variable: job_ref"
+
+    - name: Find running transient services
+      shell: systemctl list-units 'vm0-runner-{{ job_ref }}-*' --no-legend --plain | awk '{print $1}' | grep -E '^vm0-runner-{{ job_ref }}-[0-9]+\.service$' || true
+      register: running_services
+      changed_when: false
+      ignore_errors: true
+
+    - name: Stop transient services
+      command: systemctl stop {{ item }}
+      loop: "{{ running_services.stdout_lines | default([]) }}"
+      ignore_errors: true
+      become: true
+
+    - name: Remove binary directory
+      file:
+        path: "{{ bin_dir }}"
+        state: absent
+
+    - name: Remove runner directory
+      file:
+        path: "{{ runner_dir }}"
+        state: absent

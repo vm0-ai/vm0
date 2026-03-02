@@ -9,9 +9,9 @@
 #   bash build-rootfs.sh \
 #     --output-dir /path/to/output \
 #     --work-dir /path/to/workdir \
-#     --guest-init /path/to/guest-init \
-#     --guest-download /path/to/guest-download \
 #     --guest-agent /path/to/guest-agent \
+#     --guest-download /path/to/guest-download \
+#     --guest-init /path/to/guest-init \
 #     --guest-mock-claude /path/to/guest-mock-claude
 
 set -euo pipefail
@@ -22,24 +22,24 @@ set -euo pipefail
 
 OUTPUT_DIR=""
 WORK_DIR=""
-GUEST_INIT=""
-GUEST_DOWNLOAD=""
 GUEST_AGENT=""
+GUEST_DOWNLOAD=""
+GUEST_INIT=""
 GUEST_MOCK_CLAUDE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output-dir)       OUTPUT_DIR="$2";       shift 2 ;;
     --work-dir)   WORK_DIR="$2";   shift 2 ;;
-    --guest-init)       GUEST_INIT="$2";       shift 2 ;;
-    --guest-download)   GUEST_DOWNLOAD="$2";   shift 2 ;;
     --guest-agent)      GUEST_AGENT="$2";      shift 2 ;;
+    --guest-download)   GUEST_DOWNLOAD="$2";   shift 2 ;;
+    --guest-init)       GUEST_INIT="$2";       shift 2 ;;
     --guest-mock-claude) GUEST_MOCK_CLAUDE="$2"; shift 2 ;;
     *) echo "error: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
-for var in OUTPUT_DIR WORK_DIR GUEST_INIT GUEST_DOWNLOAD GUEST_AGENT GUEST_MOCK_CLAUDE; do
+for var in OUTPUT_DIR WORK_DIR GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE; do
   if [[ -z "${!var}" ]]; then
     echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
     exit 1

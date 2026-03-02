@@ -1,5 +1,3 @@
-import { Card } from "@vm0/ui/components/ui/card";
-import { CopyButton } from "@vm0/ui/components/ui/copy-button";
 import { Button } from "@vm0/ui/components/ui/button";
 import {
   Tooltip,
@@ -7,14 +5,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@vm0/ui/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -33,21 +23,12 @@ import {
   schedules$,
   agentsMissingItems$,
   getAgentScheduleStatus,
-  type AgentMissingItems,
 } from "../../signals/agents-page/agents-list.ts";
 import { defaultModelProvider$ } from "../../signals/external/model-providers.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { getUILabel } from "../settings-page/provider-ui-config.ts";
-import { IconAlertTriangle } from "@tabler/icons-react";
 import { Bed, Settings, Clock, AlertTriangle } from "lucide-react";
-import {
-  CONNECTOR_TYPES,
-  FeatureSwitchKey,
-  getConnectorProvidedSecretNames,
-  type ComposeListItem,
-  type ConnectorType,
-} from "@vm0/core";
+import type { ComposeListItem } from "@vm0/core";
 
 export function AgentsPage() {
   return (
@@ -70,9 +51,6 @@ function AgentsListSection() {
   const loading = useGet(agentsLoading$);
   const error = useGet(agentsError$);
   const defaultProvider = useResolved(defaultModelProvider$);
-  const featureSwitches = useLastResolved(featureSwitch$);
-  const detailPageEnabled =
-    featureSwitches?.[FeatureSwitchKey.AgentDetailPage] ?? false;
 
   // Create a map for quick lookup
   const missingMap = new Map(missingItems?.map((a) => [a.agentName, a]));
@@ -138,16 +116,18 @@ function AgentsListSection() {
         {agents.map((agent) => {
           const hasSchedule = getAgentScheduleStatus(agent.name, schedules);
           const missing = missingMap.get(agent.name);
+          const missingCount = missing
+            ? missing.missingSecrets.length + missing.missingVariables.length
+            : 0;
           return (
             <AgentRow
               key={agent.name}
               agent={agent}
               hasSchedule={hasSchedule}
-              missing={missing}
+              missingCount={missingCount}
               modelProviderLabel={
                 defaultProvider ? getUILabel(defaultProvider.type) : "N/A"
               }
-              detailPageEnabled={detailPageEnabled}
             />
           );
         })}
@@ -156,276 +136,97 @@ function AgentsListSection() {
   );
 }
 
-function getAllConnectorEnvVars(): Set<string> {
-  return getConnectorProvidedSecretNames(
-    Object.keys(CONNECTOR_TYPES) as ConnectorType[],
-  );
-}
-
-function MissingEnvBanner({ missing }: { missing: AgentMissingItems }) {
-  const navigate = useSet(navigateInReact$);
-  const envVars = getAllConnectorEnvVars();
-
-  const hasMissingConnectors = missing.missingSecrets.some((s) =>
-    envVars.has(s),
-  );
-  const hasMissingSecretsOrVars =
-    missing.missingSecrets.some((s) => !envVars.has(s)) ||
-    missing.missingVariables.length > 0;
-
-  if (!hasMissingConnectors && !hasMissingSecretsOrVars) {
-    return null;
-  }
-
-  return (
-    <div className="flex items-center gap-3 rounded-lg border border-amber-500 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950/30">
-      <IconAlertTriangle
-        size={20}
-        className="shrink-0 text-amber-500"
-        stroke={1.5}
-      />
-      <p className="text-sm">
-        {"Looks like this agent is missing some "}
-        {hasMissingConnectors && (
-          <button
-            className="font-medium text-amber-600 hover:underline dark:text-amber-500"
-            onClick={() =>
-              navigate("/settings", {
-                searchParams: new URLSearchParams({
-                  tab: "connectors",
-                }),
-              })
-            }
-          >
-            connectors
-          </button>
-        )}
-        {hasMissingConnectors && hasMissingSecretsOrVars && ", "}
-        {hasMissingSecretsOrVars && (
-          <button
-            className="font-medium text-amber-600 hover:underline dark:text-amber-500"
-            onClick={() =>
-              navigate("/settings", {
-                searchParams: new URLSearchParams({
-                  tab: "secrets-and-variables",
-                }),
-              })
-            }
-          >
-            secrets or variables
-          </button>
-        )}
-        {". Add them now so it can run without stopping."}
-      </p>
-    </div>
-  );
-}
-
-function getMissingCount(missing: AgentMissingItems): number {
-  return missing.missingSecrets.length + missing.missingVariables.length;
-}
-
 function AgentRow({
   agent,
   hasSchedule,
-  missing,
+  missingCount,
   modelProviderLabel,
-  detailPageEnabled,
 }: {
   agent: ComposeListItem;
   hasSchedule: boolean;
-  missing?: AgentMissingItems;
+  missingCount: number;
   modelProviderLabel: string;
-  detailPageEnabled: boolean;
 }) {
   const navigate = useSet(navigateInReact$);
-  const missingCount = missing ? getMissingCount(missing) : 0;
 
-  const handleRowClick = detailPageEnabled
-    ? () =>
-        navigate("/agents/:name", {
-          pathParams: { name: agent.name },
-        })
-    : undefined;
+  const handleRowClick = () =>
+    navigate("/agents/:name", {
+      pathParams: { name: agent.name },
+    });
 
-  const nameCell = (
-    <TableCell
-      className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]"
-      onClick={handleRowClick}
-    >
-      <div className="flex flex-col gap-1">
-        <span className="block truncate whitespace-nowrap font-medium">
-          {agent.name}
-        </span>
-        {missingCount > 0 && (
-          <span className="inline-flex items-center gap-1.5 text-xs text-destructive">
-            <AlertTriangle className="h-3 w-3 flex-shrink-0" />
-            <span className="truncate">
-              Missing {missingCount} environment variable
-              {missingCount > 1 ? "s" : ""}
+  return (
+    <TableRow className="h-[53px]">
+      <TableCell
+        className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]"
+        onClick={handleRowClick}
+      >
+        <div className="flex flex-col gap-1">
+          <span className="block truncate whitespace-nowrap font-medium">
+            {agent.name}
+          </span>
+          {missingCount > 0 && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-destructive">
+              <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">
+                Missing {missingCount} environment variable
+                {missingCount > 1 ? "s" : ""}
+              </span>
             </span>
-          </span>
-        )}
-      </div>
-    </TableCell>
-  );
-
-  const providerCell = (
-    <TableCell
-      className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]"
-      onClick={handleRowClick}
-    >
-      <span className="block truncate whitespace-nowrap text-sm">
-        {modelProviderLabel}
-      </span>
-    </TableCell>
-  );
-
-  const scheduleCell = (
-    <TableCell
-      className="px-3 py-2 cursor-pointer w-[20%] min-w-[120px]"
-      onClick={handleRowClick}
-    >
-      <div className="truncate whitespace-nowrap">
-        {hasSchedule ? (
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-            <Clock className="h-3 w-3 text-sky-600" />
-            Scheduled
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-            <Bed className="h-3 w-3 text-sky-600" />
-            No schedule
-          </span>
-        )}
-      </div>
-    </TableCell>
-  );
-
-  const dateCell = (
-    <TableCell
-      className="pl-3 pr-6 py-2 cursor-pointer w-[20%] min-w-[100px]"
-      onClick={handleRowClick}
-    >
-      <span className="block truncate whitespace-nowrap text-sm">
-        {new Date(agent.updatedAt).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })}
-      </span>
-    </TableCell>
-  );
-
-  if (detailPageEnabled) {
-    return (
-      <TableRow className="h-[53px]">
-        {nameCell}
-        {providerCell}
-        {scheduleCell}
-        {dateCell}
-        <TableCell className="pl-0 pr-4 py-2 w-12">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="sm" onClick={handleRowClick}>
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>View details</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </TableCell>
-      </TableRow>
-    );
-  }
-
-  return (
-    <Dialog>
-      <TableRow className="h-[53px]">
-        <DialogTrigger asChild>{nameCell}</DialogTrigger>
-        <DialogTrigger asChild>{providerCell}</DialogTrigger>
-        <DialogTrigger asChild>{scheduleCell}</DialogTrigger>
-        <DialogTrigger asChild>{dateCell}</DialogTrigger>
-        <TableCell className="pl-0 pr-4 py-2 w-12">
-          <TooltipProvider>
-            <Tooltip>
-              <DialogTrigger asChild>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="sm">
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-              </DialogTrigger>
-              <TooltipContent>
-                <p>Manage in Claude Code</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </TableCell>
-      </TableRow>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Manage {agent.name}</DialogTitle>
-          <DialogDescription>
-            How to manage this agent in Claude Code
-          </DialogDescription>
-        </DialogHeader>
-        {missing && <MissingEnvBanner missing={missing} />}
-        <AgentCommandsSection agent={agent} />
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function AgentCommandsSection({ agent }: { agent: ComposeListItem }) {
-  return (
-    <section className="flex flex-col gap-6">
-      <div>
-        <h2 className="text-base font-medium text-foreground mb-2">
-          1. Manage my agent
-        </h2>
-        <p className="text-sm text-muted-foreground mb-3">
-          Optimize and modify your agent in Claude Code:
-        </p>
-        <Card className="flex items-center justify-between p-4 font-mono">
-          <code className="text-sm overflow-x-auto text-muted-foreground">
-            /vm0-agent manage {agent.name}
-          </code>
-          <CopyButton text={`/vm0-agent manage ${agent.name}`} />
-        </Card>
-      </div>
-      <div>
-        <h2 className="text-base font-medium text-foreground mb-2">
-          2. Schedule my agent
-        </h2>
-        <p className="text-sm text-muted-foreground mb-3">
-          Configure schedule for your agent:
-        </p>
-        <Card className="flex items-center justify-between p-4 font-mono">
-          <code className="text-sm overflow-x-auto text-muted-foreground">
-            /vm0-agent schedule {agent.name}
-          </code>
-          <CopyButton text={`/vm0-agent schedule ${agent.name}`} />
-        </Card>
-      </div>
-      <div>
-        <h2 className="text-base font-medium text-foreground mb-2">
-          Troubleshooting
-        </h2>
-        <p className="text-sm text-muted-foreground mb-3">
-          If you encounter any issues, run this command in your terminal before
-          entering Claude Code to initialize the vm0-agent skill:
-        </p>
-        <Card className="flex items-center justify-between p-4 font-mono">
-          <code className="text-sm overflow-x-auto text-muted-foreground">
-            vm0 setup-claude
-          </code>
-          <CopyButton text="vm0 setup-claude" />
-        </Card>
-      </div>
-    </section>
+          )}
+        </div>
+      </TableCell>
+      <TableCell
+        className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]"
+        onClick={handleRowClick}
+      >
+        <span className="block truncate whitespace-nowrap text-sm">
+          {modelProviderLabel}
+        </span>
+      </TableCell>
+      <TableCell
+        className="px-3 py-2 cursor-pointer w-[20%] min-w-[120px]"
+        onClick={handleRowClick}
+      >
+        <div className="truncate whitespace-nowrap">
+          {hasSchedule ? (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+              <Clock className="h-3 w-3 text-sky-600" />
+              Scheduled
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+              <Bed className="h-3 w-3 text-sky-600" />
+              No schedule
+            </span>
+          )}
+        </div>
+      </TableCell>
+      <TableCell
+        className="pl-3 pr-6 py-2 cursor-pointer w-[20%] min-w-[100px]"
+        onClick={handleRowClick}
+      >
+        <span className="block truncate whitespace-nowrap text-sm">
+          {new Date(agent.updatedAt).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </span>
+      </TableCell>
+      <TableCell className="pl-0 pr-4 py-2 w-12">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" onClick={handleRowClick}>
+                <Settings className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>View details</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </TableCell>
+    </TableRow>
   );
 }

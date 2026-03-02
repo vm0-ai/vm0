@@ -1,28 +1,83 @@
 {
     "packages": {
         "turbo/packages/core": {
-            "releaseType": "node"
+            "release-type": "node"
         },
         "turbo/apps/cli": {
-            "releaseType": "node"
+            "release-type": "node"
         },
         "turbo/apps/web": {
-            "releaseType": "node"
+            "release-type": "node"
         },
         "turbo/apps/docs": {
-            "releaseType": "node"
-        },
-        "turbo/apps/runner": {
-            "releaseType": "node"
+            "release-type": "node"
         },
         "turbo/apps/platform": {
-            "releaseType": "node"
+            "release-type": "node"
+        },
+        "crates/ably-subscriber": {
+            "release-type": "rust"
+        },
+        "crates/guest-agent": {
+            "release-type": "rust"
+        },
+        "crates/guest-common": {
+            "release-type": "rust"
+        },
+        "crates/guest-download": {
+            "release-type": "rust"
+        },
+        "crates/guest-init": {
+            "release-type": "rust"
+        },
+        "crates/guest-mock-claude": {
+            "release-type": "rust"
+        },
+        "crates/reqeast": {
+            "release-type": "rust"
+        },
+        "crates/runner": {
+            "release-type": "rust",
+            "component": "runner-rs"
+        },
+        "crates/sandbox": {
+            "release-type": "rust"
+        },
+        "crates/sandbox-fc": {
+            "release-type": "rust"
+        },
+        "crates/vsock-guest": {
+            "release-type": "rust"
+        },
+        "crates/vsock-host": {
+            "release-type": "rust"
+        },
+        "crates/vsock-proto": {
+            "release-type": "rust"
+        },
+        "crates/vsock-test": {
+            "release-type": "rust"
         }
     },
     "plugins": [
         {
             "type": "node-workspace",
             "alwaysLinkLocal": true
+        },
+        {
+            "type": "cargo-workspace",
+            "cargoWorkspacePath": "crates"
+        },
+        {
+            "type": "linked-versions",
+            "groupName": "runner-guest",
+            "components": [
+                "runner-rs",
+                "guest-agent",
+                "guest-download",
+                "guest-init",
+                "guest-mock-claude"
+            ]
         }
     ]
 }

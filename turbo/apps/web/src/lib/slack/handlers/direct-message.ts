@@ -3,7 +3,7 @@ import { slackInstallations } from "../../../db/schema/slack-installation";
 import { slackUserLinks } from "../../../db/schema/slack-user-link";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
-import { createSlackClient, postMessage } from "../client";
+import { createSlackClient, postMessage, setThreadStatus } from "../client";
 import { buildLoginPromptMessage } from "../blocks";
 import { runAgentForSlack } from "./run-agent";
 import {
@@ -107,15 +107,8 @@ export async function handleDirectMessage(
   }
   let agentName = defaultAgent.name;
 
-  // 5. Add thinking reaction
-  const reactionAdded = await client.reactions
-    .add({
-      channel: context.channelId,
-      timestamp: context.messageTs,
-      name: "thought_balloon",
-    })
-    .then(() => true)
-    .catch(() => false);
+  // 5. Show assistant thinking status
+  await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
 
   // Use message text directly (no mention prefix to strip in DMs)
   const messageContent = context.messageText;
@@ -179,7 +172,6 @@ export async function handleDirectMessage(
       agentName,
       composeId,
       existingSessionId,
-      reactionAdded,
     },
   });
 
@@ -192,16 +184,10 @@ export async function handleDirectMessage(
       response ?? "Sorry, an error occurred. Please try again.",
       { threadTs },
     );
-    // Remove reaction on failure since callback won't be invoked
-    if (reactionAdded) {
-      await client.reactions
-        .remove({
-          channel: context.channelId,
-          timestamp: context.messageTs,
-          name: "thought_balloon",
-        })
-        .catch(() => {});
-    }
+    // Clear thinking status on failure since callback won't be invoked
+    await setThreadStatus(client, context.channelId, threadTs, "").catch(
+      (err) => log.warn("Failed to clear thread status", { error: err }),
+    );
   }
-  // For "dispatched" status, callback will handle response posting and reaction removal
+  // For "dispatched" status, callback will handle response posting and status clearing
 }

@@ -8,6 +8,7 @@ use sandbox::{
     ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig, SandboxError, SpawnHandle,
 };
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::Notify;
 use tracing::{info, warn};
 use vsock_host::VsockHost;
 
@@ -75,6 +76,9 @@ pub struct FirecrackerSandbox {
     /// Vsock guest connection, shared with background log tasks so they can
     /// drop the connection immediately when the process exits unexpectedly.
     guest: Arc<tokio::sync::Mutex<Option<VsockHost>>>,
+    /// Notified when the firecracker process exits unexpectedly.
+    /// Sandbox operations race against this to detect crashes promptly.
+    crash_notify: Arc<Notify>,
 }
 
 impl FirecrackerSandbox {
@@ -98,6 +102,7 @@ impl FirecrackerSandbox {
             process: None,
             state: Arc::new(AtomicU8::new(SandboxState::Created as u8)),
             guest: Arc::new(tokio::sync::Mutex::new(None)),
+            crash_notify: Arc::new(Notify::new()),
         }
     }
 
@@ -188,6 +193,8 @@ impl FirecrackerSandbox {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
+            .process_group(0)
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| SandboxError::StartFailed(format!("spawn firecracker: {e}")))?;
 
@@ -196,6 +203,7 @@ impl FirecrackerSandbox {
             &mut child,
             Arc::clone(&self.state),
             Arc::clone(&self.guest),
+            Arc::clone(&self.crash_notify),
         );
         self.process = Some(child);
         info!(id = %self.id, "firecracker started (fresh boot)");
@@ -255,6 +263,8 @@ impl FirecrackerSandbox {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
+            .process_group(0)
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| SandboxError::StartFailed(format!("spawn firecracker: {e}")))?;
 
@@ -263,6 +273,7 @@ impl FirecrackerSandbox {
             &mut child,
             Arc::clone(&self.state),
             Arc::clone(&self.guest),
+            Arc::clone(&self.crash_notify),
         );
         self.process = Some(child);
         info!(id = %self.id, "firecracker started (snapshot restore)");
@@ -296,13 +307,25 @@ impl FirecrackerSandbox {
             return;
         };
 
-        if let Some(pid) = child.id() {
-            crate::process::kill_process_tree(pid).await;
-        }
+        crate::process::kill_process_group(child);
 
         // Reap the zombie process.
         let _ = child.wait().await;
         self.process = None;
+    }
+}
+
+impl Drop for FirecrackerSandbox {
+    fn drop(&mut self) {
+        // If the process is still alive (e.g. owning task panicked before
+        // explicit cleanup), kill the entire process group synchronously.
+        // `kill_on_drop(true)` only sends SIGKILL to the direct child (`sudo`);
+        // `killpg` ensures the entire tree (including firecracker) is cleaned up.
+        if let Some(ref child) = self.process {
+            crate::process::kill_process_group(child);
+        }
+        // Dropping `self.process` (Option<Child>) will trigger kill_on_drop as
+        // a secondary safety net.
     }
 }
 
@@ -317,6 +340,7 @@ fn monitor_process(
     child: &mut tokio::process::Child,
     state: Arc<AtomicU8>,
     guest: Arc<tokio::sync::Mutex<Option<VsockHost>>>,
+    crash_notify: Arc<Notify>,
 ) {
     if let Some(stdout) = child.stdout.take() {
         let id = id.to_owned();
@@ -332,6 +356,11 @@ fn monitor_process(
                 SandboxState::from_u8(state.swap(SandboxState::Stopped as u8, Ordering::AcqRel));
             if prev == SandboxState::Running {
                 warn!(id = %id, "process exited unexpectedly");
+                // Notify before acquiring the lock — operations holding the
+                // lock can detect the crash via select! immediately.
+                // Uses notify_waiters (not notify_one) because at most one
+                // operation is waiting and we don't need stored permits.
+                crash_notify.notify_waiters();
                 guest.lock().await.take();
             }
         });
@@ -458,6 +487,13 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     // -- operations --
+    //
+    // Each operation races the vsock call against `crash_notify` via select!.
+    // `notify_waiters()` only wakes current waiters — if the notification
+    // fires in the brief window before select! polls `notified()`, it is
+    // lost. This is acceptable: `monitor_process` subsequently drops the
+    // guest connection, so the vsock call fails with a connection error
+    // anyway — just with a less specific message.
 
     async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
         let mut guard = self.guest.lock().await;
@@ -468,16 +504,19 @@ impl Sandbox for FirecrackerSandbox {
             )));
         };
 
-        let result = guest
-            .exec(request.cmd, request.timeout_ms(), request.env, request.sudo)
-            .await
-            .map_err(|e| SandboxError::ExecFailed(e.to_string()))?;
-
-        Ok(ExecResult {
-            exit_code: result.exit_code,
-            stdout: result.stdout,
-            stderr: result.stderr,
-        })
+        tokio::select! {
+            result = guest.exec(request.cmd, request.timeout_ms(), request.env, request.sudo) => {
+                let result = result.map_err(|e| SandboxError::ExecFailed(e.to_string()))?;
+                Ok(ExecResult {
+                    exit_code: result.exit_code,
+                    stdout: result.stdout,
+                    stderr: result.stderr,
+                })
+            }
+            _ = self.crash_notify.notified() => {
+                Err(SandboxError::ExecFailed("firecracker process crashed".into()))
+            }
+        }
     }
 
     async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
@@ -489,12 +528,14 @@ impl Sandbox for FirecrackerSandbox {
             )));
         };
 
-        guest
-            .write_file(path, content, false)
-            .await
-            .map_err(|e| SandboxError::ExecFailed(e.to_string()))?;
-
-        Ok(())
+        tokio::select! {
+            result = guest.write_file(path, content, false) => {
+                result.map_err(|e| SandboxError::ExecFailed(e.to_string()))
+            }
+            _ = self.crash_notify.notified() => {
+                Err(SandboxError::ExecFailed("firecracker process crashed".into()))
+            }
+        }
     }
 
     async fn spawn_watch(&self, request: &ExecRequest<'_>) -> sandbox::Result<SpawnHandle> {
@@ -506,12 +547,15 @@ impl Sandbox for FirecrackerSandbox {
             )));
         };
 
-        let pid = guest
-            .spawn_watch(request.cmd, request.timeout_ms(), request.env, request.sudo)
-            .await
-            .map_err(|e| SandboxError::ExecFailed(e.to_string()))?;
-
-        Ok(SpawnHandle { pid })
+        tokio::select! {
+            result = guest.spawn_watch(request.cmd, request.timeout_ms(), request.env, request.sudo) => {
+                let pid = result.map_err(|e| SandboxError::ExecFailed(e.to_string()))?;
+                Ok(SpawnHandle { pid })
+            }
+            _ = self.crash_notify.notified() => {
+                Err(SandboxError::ExecFailed("firecracker process crashed".into()))
+            }
+        }
     }
 
     async fn wait_exit(
@@ -527,16 +571,101 @@ impl Sandbox for FirecrackerSandbox {
             )));
         };
 
-        let event = guest
-            .wait_for_exit(handle.pid, timeout)
-            .await
-            .map_err(|e| SandboxError::ExecFailed(e.to_string()))?;
+        tokio::select! {
+            result = guest.wait_for_exit(handle.pid, timeout) => {
+                let event = result.map_err(|e| SandboxError::ExecFailed(e.to_string()))?;
+                Ok(ProcessExit {
+                    pid: event.pid,
+                    exit_code: event.exit_code,
+                    stdout: event.stdout,
+                    stderr: event.stderr,
+                })
+            }
+            _ = self.crash_notify.notified() => {
+                Err(SandboxError::ExecFailed("firecracker process crashed".into()))
+            }
+        }
+    }
+}
 
-        Ok(ProcessExit {
-            pid: event.pid,
-            exit_code: event.exit_code,
-            stdout: event.stdout,
-            stderr: event.stderr,
-        })
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Simulate the `monitor_process` crash detection flow:
+    /// swap state from Running → Stopped, then fire crash_notify.
+    /// Verify that a waiter on `crash_notify.notified()` resolves.
+    #[tokio::test]
+    async fn crash_notify_fires_on_unexpected_exit() {
+        let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
+        let crash_notify = Arc::new(Notify::new());
+
+        let notify_clone = Arc::clone(&crash_notify);
+        let state_clone = Arc::clone(&state);
+        tokio::spawn(async move {
+            // Simulate monitor_process detecting unexpected exit.
+            let prev = SandboxState::from_u8(
+                state_clone.swap(SandboxState::Stopped as u8, Ordering::AcqRel),
+            );
+            assert_eq!(prev, SandboxState::Running);
+            notify_clone.notify_waiters();
+        });
+
+        // Waiter should resolve promptly.
+        tokio::time::timeout(std::time::Duration::from_secs(1), crash_notify.notified())
+            .await
+            .unwrap();
+    }
+
+    /// When the process is stopped gracefully (state transitions to Stopping
+    /// before pipe close), crash_notify should NOT fire.
+    #[tokio::test]
+    async fn crash_notify_does_not_fire_on_graceful_stop() {
+        let state = Arc::new(AtomicU8::new(SandboxState::Stopping as u8));
+        let crash_notify = Arc::new(Notify::new());
+
+        // Simulate pipe close after graceful stop — state is Stopping, not Running.
+        let prev = SandboxState::from_u8(state.swap(SandboxState::Stopped as u8, Ordering::AcqRel));
+        assert_eq!(prev, SandboxState::Stopping);
+        // crash_notify is NOT fired (prev != Running).
+
+        // Verify notify does NOT resolve.
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            crash_notify.notified(),
+        )
+        .await;
+        assert!(result.is_err(), "notify should have timed out");
+    }
+
+    /// Verify that `killpg` kills the entire process group spawned with
+    /// `process_group(0)`.  This is the mechanism the `Drop` impl relies on.
+    #[tokio::test]
+    async fn killpg_kills_entire_process_group() {
+        // "bash -c 'sleep 60'" creates two processes in the same group:
+        //   bash (group leader, PGID = its PID) → sleep (inherits PGID).
+        let mut child = tokio::process::Command::new("bash")
+            .args(["-c", "sleep 60"])
+            .process_group(0)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+
+        let raw_pid = child.id().unwrap();
+        let pid = i32::try_from(raw_pid).unwrap();
+        let pgid = nix::unistd::Pid::from_raw(pid);
+
+        // killpg should kill both bash and sleep.
+        nix::sys::signal::killpg(pgid, nix::sys::signal::Signal::SIGKILL).unwrap();
+
+        // Reap the direct child.
+        let status = child.wait().await.unwrap();
+        assert!(!status.success(), "process should have been killed");
+
+        // Signal 0 checks existence — should fail with ESRCH.
+        let exists = nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None);
+        assert!(exists.is_err(), "process group leader should be dead");
     }
 }

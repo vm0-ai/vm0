@@ -188,6 +188,8 @@ async fn run_snapshot_workflow(
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        .process_group(0)
+        .kill_on_drop(true)
         .spawn()
         .map_err(|e| SnapshotError::Process(format!("spawn firecracker: {e}")))?;
 
@@ -216,10 +218,7 @@ async fn run_snapshot_workflow(
     // Guard: ensure process cleanup on any exit path.
     let result = run_with_firecracker(config, paths, sock_paths, output).await;
 
-    // Always kill the process tree.
-    if let Some(pid) = child.id() {
-        process::kill_process_tree(pid).await;
-    }
+    crate::process::kill_process_group(&child);
     let _ = child.wait().await;
 
     result
@@ -284,15 +283,22 @@ async fn run_with_firecracker(
 
     info!("guest connected");
 
-    // 9.5. Pre-warm PAM/nsswitch caches so post-restore `su` calls are fast.
-    //      The snapshot captures memory state, so caches populated here persist.
-    match guest
-        .exec(crate::factory::PREWARM_SCRIPT, 5000, &[], false)
+    // 9.5. Pre-warm caches (PAM/nsswitch, CLI modules) so post-restore calls
+    //      are fast. The snapshot captures memory + overlay state, so caches
+    //      populated here persist across restores.
+    let prewarm_result = guest
+        .exec(crate::factory::PREWARM_SCRIPT, 30_000, &[], false)
         .await
-    {
-        Ok(result) => info!(exit_code = result.exit_code, "pre-warm: su cache"),
-        Err(e) => tracing::warn!(error = %e, "pre-warm: su cache failed (non-fatal)"),
+        .map_err(|e| SnapshotError::Setup(format!("pre-warm exec: {e}")))?;
+    if prewarm_result.exit_code != 0 {
+        let stderr = String::from_utf8_lossy(&prewarm_result.stderr);
+        return Err(SnapshotError::Setup(format!(
+            "pre-warm failed (exit code {}): {}",
+            prewarm_result.exit_code,
+            stderr.trim(),
+        )));
     }
+    info!("pre-warm complete");
 
     // 10. Pause VM.
     client.pause().await?;

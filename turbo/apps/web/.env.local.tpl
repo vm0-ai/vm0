@@ -42,13 +42,45 @@ GH_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/gh_oauth_client_secret
 NOTION_OAUTH_CLIENT_ID=op://Development/vm0-env-local/notion_oauth_client_id
 NOTION_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/notion_oauth_client_secret
 
+# Optional: Google OAuth Connector (Gmail, Calendar, Drive, etc.)
+GOOGLE_OAUTH_CLIENT_ID=op://Development/vm0-env-local/GOOGLE_OAUTH_CLIENT_ID
+GOOGLE_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/GOOGLE_OAUTH_CLIENT_SECRET
+
+# Optional: Deel OAuth Connector
+DEEL_OAUTH_CLIENT_ID=op://Development/vm0-env-local/DEEL_OAUTH_CLIENT_ID
+DEEL_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/DEEL_OAUTH_CLIENT_SECRET
+
+# Optional: DocuSign OAuth Connector
+DOCUSIGN_OAUTH_CLIENT_ID=op://Development/vm0-env-local/DOCUSIGN_OAUTH_CLIENT_ID
+DOCUSIGN_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/DOCUSIGN_OAUTH_CLIENT_SECRET
+
+# Optional: Dropbox OAuth Connector
+DROPBOX_OAUTH_CLIENT_ID=op://Development/vm0-env-local/DROPBOX_OAUTH_CLIENT_ID
+DROPBOX_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/DROPBOX_OAUTH_CLIENT_SECRET
+
+# Optional: Linear OAuth Connector
+LINEAR_OAUTH_CLIENT_ID=op://Development/vm0-env-local/LINEAR_OAUTH_CLIENT_ID
+LINEAR_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/LINEAR_OAUTH_CLIENT_SECRET
+
+# Optional: Figma OAuth Connector
+FIGMA_OAUTH_CLIENT_ID=op://Development/vm0-env-local/FIGMA_OAUTH_CLIENT_ID
+FIGMA_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/FIGMA_OAUTH_CLIENT_SECRET
+
+# Optional: Mercury OAuth Connector
+MERCURY_OAUTH_CLIENT_ID=op://Development/vm0-env-local/MERCURY_OAUTH_CLIENT_ID
+MERCURY_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/MERCURY_OAUTH_CLIENT_SECRET
+
+# Optional: Strava OAuth Connector
+STRAVA_OAUTH_CLIENT_ID=op://Development/vm0-env-local/STRAVA_OAUTH_CLIENT_ID
+STRAVA_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/STRAVA_OAUTH_CLIENT_SECRET
+
+# Optional: Garmin Connect OAuth Connector
+GARMIN_CONNECT_OAUTH_CLIENT_ID=op://Development/vm0-env-local/GARMIN_CONNECT_OAUTH_CLIENT_ID
+GARMIN_CONNECT_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/GARMIN_CONNECT_OAUTH_CLIENT_SECRET
+
 # Optional: ngrok (Computer Connector)
 NGROK_API_KEY=op://Development/vm0-env-local/NGROK_API_KEY
 NGROK_COMPUTER_CONNECTOR_DOMAIN=computer.vm7.io
-
-# Optional: Nango OAuth Integration (for 100+ providers)
-NANGO_SECRET_KEY=op://Development/vm0-env-local/nango_secret_key
-FEATURE_NANGO_ENABLED=true
 
 # Required: Platform UI URL (for settings page links in error messages)
 PLATFORM_URL=op://Development/vm0-env-local/next_public_platform_url
@@ -65,3 +97,6 @@ SENTRY_DSN_WEB=
 SENTRY_AUTH_TOKEN=
 SENTRY_ORG=
 SENTRY_PROJECT=
+
+# Optional: VM0 Admin Users (comma-separated emails for super-admin access)
+# VM0_ADMIN_USERS=lancy@vm0.ai,ethan@vm0.ai

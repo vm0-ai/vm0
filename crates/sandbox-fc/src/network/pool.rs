@@ -178,11 +178,17 @@ async fn sudo_iptables(args: &[&str]) -> Result<()> {
 async fn create_netns_with_tap(
     ns_name: &str,
     tap_name: &str,
+    tap_mac: &str,
     gateway_ip_with_prefix: &str,
 ) -> Result<()> {
     sudo_ip(&["netns", "add", ns_name]).await?;
     sudo_ip(&[
         "netns", "exec", ns_name, "ip", "tuntap", "add", tap_name, "mode", "tap",
+    ])
+    .await?;
+    // Set a fixed MAC so guest ARP cache from snapshots stays valid after restore.
+    sudo_ip(&[
+        "netns", "exec", ns_name, "ip", "link", "set", tap_name, "address", tap_mac,
     ])
     .await?;
     sudo_ip(&[
@@ -845,7 +851,7 @@ async fn create_namespace_inner(
     default_iface: &str,
 ) -> Result<()> {
     let gw_with_prefix = format!("{}/{}", sn.gateway_ip, sn.prefix_len);
-    create_netns_with_tap(name, sn.tap_name, &gw_with_prefix).await?;
+    create_netns_with_tap(name, sn.tap_name, sn.tap_mac, &gw_with_prefix).await?;
     setup_veth_pair(name, host_device, host_ip, peer_ip).await?;
     setup_namespace_routing(name, host_ip, sn.gateway_ip, sn.prefix_len).await?;
     setup_host_iptables(name, host_device, peer_ip, default_iface).await?;

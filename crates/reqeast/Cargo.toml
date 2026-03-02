@@ -1,0 +1,11 @@
+[package]
+name = "reqeast"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+reqwest = { workspace = true, features = ["json", "rustls-no-provider"] }
+rustls = { workspace = true }
+
+[lints]
+workspace = true

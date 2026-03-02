@@ -1,5 +1,5 @@
 ---
-name: Query Axiom Logs
+name: query-axiom-logs
 description: Query logs from Axiom for debugging (read-only, no ingestion allowed)
 context: fork
 agent: Explore

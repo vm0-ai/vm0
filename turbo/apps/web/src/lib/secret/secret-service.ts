@@ -178,6 +178,48 @@ export async function getSecretValues(
 }
 
 /**
+ * Upsert a secret by scope ID, name, and type.
+ * Used internally by connector services for managing connector/model-provider secrets.
+ */
+export async function upsertSecretByScope(
+  scopeId: string,
+  name: string,
+  value: string,
+  type: SecretType,
+  description: string,
+): Promise<void> {
+  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+  const encryptedValue = encryptCredentialValue(value, encryptionKey);
+
+  const [existing] = await globalThis.services.db
+    .select({ id: secrets.id })
+    .from(secrets)
+    .where(
+      and(
+        eq(secrets.scopeId, scopeId),
+        eq(secrets.name, name),
+        eq(secrets.type, type),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    await globalThis.services.db
+      .update(secrets)
+      .set({ encryptedValue, updatedAt: new Date() })
+      .where(eq(secrets.id, existing.id));
+  } else {
+    await globalThis.services.db.insert(secrets).values({
+      scopeId,
+      name,
+      encryptedValue,
+      type,
+      description,
+    });
+  }
+}
+
+/**
  * Create or update a secret (upsert)
  */
 export async function setSecret(

@@ -12,12 +12,20 @@ import {
   IconList,
   IconLink,
   IconLoader2,
+  IconClockHour3,
+  IconEdit,
 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import { navigateInReact$ } from "../../signals/route.ts";
 import { openConfigDialog$ } from "../../signals/agent-detail/config-dialog.ts";
 import { openRunDialog$ } from "../../signals/agent-detail/run-dialog.ts";
 import { runButtonState$ } from "../../signals/agent-detail/inline-run.ts";
+import { agentName$ } from "../../signals/agent-detail/agent-detail.ts";
+import {
+  agentSchedule$,
+  agentScheduleSummary$,
+  openScheduleDialog$,
+} from "../../signals/agent-detail/schedule.ts";
 import { AgentAvatar } from "./agent-avatar.tsx";
 import type { AgentDetail } from "../../signals/agent-detail/types.ts";
 
@@ -32,6 +40,10 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
   const openRun = useSet(openRunDialog$);
   const buttonState = useGet(runButtonState$);
   const isBusy = buttonState !== "idle";
+  const schedule = useGet(agentSchedule$);
+  const scheduleSummary = useGet(agentScheduleSummary$);
+  const openSchedule = useSet(openScheduleDialog$);
+  const agentName = useGet(agentName$);
 
   // Extract description from the first agent definition
   const agentKeys = detail.content?.agents
@@ -42,8 +54,8 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
   const description = agentDef?.description;
 
   return (
-    <div className="sticky top-0 z-10 flex items-center gap-3.5 bg-background -mx-8 px-8 -mt-8 pt-8 pb-[22px]">
-      <AgentAvatar name={detail.name} size="lg" />
+    <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3.5 bg-background -mx-8 px-8 -mt-8 pt-8 pb-[22px]">
+      <AgentAvatar name={detail.name} size="lg" className="shrink-0" />
       <div className="flex-1 min-w-0 flex flex-col gap-1.5">
         <div className="flex items-center gap-2.5">
           <h1 className="text-2xl leading-8 font-normal text-foreground truncate">
@@ -64,6 +76,35 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <TooltipProvider delayDuration={100}>
+          {schedule && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="inline-flex h-9 shrink-0 items-center rounded-md border border-border bg-sidebar">
+                  <div className="flex items-center gap-1 pl-2.5 pr-2 py-0.5">
+                    <IconClockHour3
+                      size={12}
+                      className="shrink-0 text-sky-700"
+                    />
+                    <span className="text-xs font-medium leading-4 text-secondary-foreground max-sm:hidden">
+                      Scheduled
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openSchedule()}
+                    aria-label="Edit schedule"
+                    className="flex h-9 w-9 items-center justify-center border-l border-border text-secondary-foreground hover:bg-accent rounded-r-md cursor-pointer"
+                  >
+                    <IconEdit size={16} />
+                  </button>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="whitespace-pre-line">
+                {scheduleSummary ?? "Scheduled"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -117,8 +158,9 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
                 size="icon"
                 className="h-9 w-9"
                 onClick={() =>
+                  agentName &&
                   navigate("/agents/:name/connections", {
-                    pathParams: { name: detail.name },
+                    pathParams: { name: agentName },
                   })
                 }
               >
@@ -135,8 +177,9 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
                 size="icon"
                 className="h-9 w-9"
                 onClick={() =>
+                  agentName &&
                   navigate("/agents/:name/logs", {
-                    pathParams: { name: detail.name },
+                    pathParams: { name: agentName },
                   })
                 }
               >

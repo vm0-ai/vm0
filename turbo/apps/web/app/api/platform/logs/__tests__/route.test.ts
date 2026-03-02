@@ -277,6 +277,66 @@ describe("GET /api/platform/logs", () => {
     expect(returnedIds).not.toContain(otherRunId);
   });
 
+  describe("name and scope filter", () => {
+    let agentName: string;
+
+    beforeEach(async () => {
+      agentName = `scope-agent-${randomUUID().slice(0, 8)}`;
+      const { composeId } = await createTestCompose(agentName);
+
+      const { runId } = await createTestRun(composeId, "Scoped prompt");
+      await completeTestRun(user.userId, runId);
+    });
+
+    it("should filter by name param", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/platform/logs?name=${agentName}`,
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toHaveLength(1);
+      expect(data.data[0].agentName).toBe(agentName);
+    });
+
+    it("should return empty when name matches but scope does not", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/platform/logs?name=${agentName}&scope=nonexistent-scope`,
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toEqual([]);
+    });
+
+    it("should include scopeSlug in response", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/platform/logs?name=${agentName}`,
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toHaveLength(1);
+      expect(data.data[0].scopeSlug).toBeDefined();
+      expect(typeof data.data[0].scopeSlug).toBe("string");
+    });
+
+    it("name param should take precedence over agent param", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/platform/logs?name=${agentName}&agent=nonexistent`,
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toHaveLength(1);
+      expect(data.data[0].agentName).toBe(agentName);
+    });
+  });
+
   it("should return 400 for invalid limit", async () => {
     const request = createTestRequest(
       "http://localhost:3000/api/platform/logs?limit=0",

@@ -14,6 +14,7 @@ import {
 import { cliTokens } from "../db/schema/cli-tokens";
 import { deviceCodes } from "../db/schema/device-codes";
 import { agentRuns } from "../db/schema/agent-run";
+import { runnerJobQueue } from "../db/schema/runner-job-queue";
 import { composeJobs } from "../db/schema/compose-job";
 import { storages, storageVersions } from "../db/schema/storage";
 import { usageDaily } from "../db/schema/usage-daily";
@@ -22,15 +23,17 @@ import { slackInstallations } from "../db/schema/slack-installation";
 import { slackThreadSessions } from "../db/schema/slack-thread-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
+import { initServices } from "../lib/init-services";
+import { encryptSecrets } from "../lib/crypto/secrets-encryption";
+import type { StoredExecutionContext } from "@vm0/core";
 
 // Route handlers - imported here so callers don't need to pass them
 import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
 import { POST as createScopeRoute } from "../../app/api/scope/route";
 import { POST as createRunRoute } from "../../app/api/agent/runs/route";
-import { POST as createV1RunRoute } from "../../app/v1/runs/route";
-import { GET as getRunRoute } from "../../app/v1/runs/[id]/route";
+import { GET as getRunByIdRoute } from "../../app/api/agent/runs/[id]/route";
 import { PUT as upsertModelProviderRoute } from "../../app/api/model-providers/route";
 import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../app/api/webhooks/agent/complete/route";
@@ -59,7 +62,10 @@ import { POST as addPermissionRoute } from "../../app/api/agent/composes/[id]/pe
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
-import { encryptCredentialValue } from "../lib/crypto/secrets-encryption";
+import {
+  encryptCredentialValue,
+  decryptCredentialValue,
+} from "../lib/crypto/secrets-encryption";
 import type { ConnectorType } from "@vm0/core";
 import { agentSessions } from "../db/schema/agent-session";
 import {
@@ -67,7 +73,7 @@ import {
   agentComposeVersions,
 } from "../db/schema/agent-compose";
 import { agentPermissions } from "../db/schema/agent-permission";
-import { scopes } from "../db/schema/scope";
+import { scopes, type ScopeType } from "../db/schema/scope";
 import { conversations } from "../db/schema/conversation";
 import { uniqueId } from "./test-helpers";
 
@@ -549,33 +555,7 @@ export async function createTestRun(
 }
 
 /**
- * Create a test run via public v1 API route handler.
- *
- * @param agentId - The agent/compose ID to run
- * @param prompt - The prompt for the run
- * @returns The created run with id and status
- */
-export async function createTestV1Run(
-  agentId: string,
-  prompt: string,
-): Promise<{ id: string; status: string }> {
-  const request = createTestRequest("http://localhost:3000/v1/runs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agentId, prompt }),
-  });
-  const response = await createV1RunRoute(request);
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(
-      `Failed to create v1 run: ${data.error?.message || response.status}`,
-    );
-  }
-  return data;
-}
-
-/**
- * Get test run details via public API route handler.
+ * Get test run details via internal API route handler.
  *
  * @param runId - The run ID to fetch
  * @returns The run details including status, error, etc.
@@ -586,15 +566,23 @@ export async function getTestRun(runId: string): Promise<{
   error: string | null;
   completedAt: string | null;
 }> {
-  const request = createTestRequest(`http://localhost:3000/v1/runs/${runId}`);
-  const response = await getRunRoute(request);
+  const request = createTestRequest(
+    `http://localhost:3000/api/agent/runs/${runId}`,
+  );
+  const response = await getRunByIdRoute(request);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(
       `Failed to get run: ${error.error?.message || response.status}`,
     );
   }
-  return response.json();
+  const data = await response.json();
+  return {
+    id: data.runId,
+    status: data.status,
+    error: data.error ?? null,
+    completedAt: data.completedAt ?? null,
+  };
 }
 
 /**
@@ -1358,8 +1346,6 @@ export async function createTestConnector(
   options?: {
     type?: ConnectorType;
     authMethod?: "oauth" | "pat";
-    platform?: "self-hosted" | "nango";
-    nangoConnectionId?: string;
     externalId?: string;
     externalUsername?: string;
     externalEmail?: string;
@@ -1375,8 +1361,6 @@ export async function createTestConnector(
       scopeId,
       type,
       authMethod: options?.authMethod ?? "oauth",
-      platform: options?.platform ?? "self-hosted",
-      nangoConnectionId: options?.nangoConnectionId,
       externalId: options?.externalId ?? "12345",
       externalUsername: options?.externalUsername ?? "testuser",
       externalEmail: options?.externalEmail ?? "test@example.com",
@@ -1399,6 +1383,60 @@ export async function createTestConnector(
   });
 
   return connector!;
+}
+
+/**
+ * Find and decrypt a connector secret token from the database.
+ * Used for verifying that the correct token was stored during connector OAuth flow.
+ *
+ * @param scopeId - The scope ID to look up the secret for
+ * @param secretName - The secret name (e.g. "SLACK_ACCESS_TOKEN")
+ * @returns The decrypted token value, or undefined if not found
+ */
+export async function findTestConnectorSecret(
+  scopeId: string,
+  secretName: string,
+): Promise<string | undefined> {
+  const [storedSecret] = await globalThis.services.db
+    .select()
+    .from(secrets)
+    .where(
+      and(
+        eq(secrets.scopeId, scopeId),
+        eq(secrets.name, secretName),
+        eq(secrets.type, "connector"),
+      ),
+    )
+    .limit(1);
+
+  if (!storedSecret) return undefined;
+
+  return decryptCredentialValue(
+    storedSecret.encryptedValue,
+    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+  );
+}
+
+/**
+ * Get the tokenExpiresAt timestamp for a connector.
+ * Used for verifying that token expiry was correctly stored during OAuth flow.
+ *
+ * @param scopeId - The scope ID
+ * @param type - The connector type (e.g. "notion", "github")
+ * @returns The tokenExpiresAt Date, or null if not set, or undefined if connector not found
+ */
+export async function findTestConnectorTokenExpiresAt(
+  scopeId: string,
+  type: string,
+): Promise<Date | null | undefined> {
+  const [row] = await globalThis.services.db
+    .select({ tokenExpiresAt: connectors.tokenExpiresAt })
+    .from(connectors)
+    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.type, type)))
+    .limit(1);
+
+  if (!row) return undefined;
+  return row.tokenExpiresAt;
 }
 
 /**
@@ -1489,6 +1527,18 @@ export async function findTestComposeJob(
     .from(composeJobs)
     .where(eq(composeJobs.id, jobId));
   return row;
+}
+
+/**
+ * Delete all pending and running compose jobs.
+ * Used by cleanup cron tests to ensure test isolation, since the cron
+ * route queries all jobs globally regardless of user.
+ */
+export async function deleteStaleTestComposeJobs(): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .delete(composeJobs)
+    .where(inArray(composeJobs.status, ["pending", "running"]));
 }
 
 /**
@@ -1586,6 +1636,28 @@ export async function findTestArtifactStorage(scopeId: string) {
     : null;
 
   return { storage, version: version ?? null };
+}
+
+/**
+ * Find a storage volume by scope and name.
+ * Returns the storage id and name, or undefined if not found.
+ */
+export async function findTestStorageByName(
+  scopeId: string,
+  name: string,
+): Promise<{ id: string; name: string } | undefined> {
+  const [result] = await globalThis.services.db
+    .select({ id: storages.id, name: storages.name })
+    .from(storages)
+    .where(
+      and(
+        eq(storages.scopeId, scopeId),
+        eq(storages.name, name),
+        eq(storages.type, "volume"),
+      ),
+    )
+    .limit(1);
+  return result;
 }
 
 export async function findTestSlackComposeRequest(composeJobId: string) {
@@ -1705,6 +1777,25 @@ export async function findTestRunsByUserAndPrompt(
 }
 
 /**
+ * Find agent runs by user ID where prompt contains the given substring.
+ * Useful when the full prompt is not known (e.g., when attachments are appended).
+ */
+export async function findTestRunsByUserAndPromptContaining(
+  userId: string,
+  promptSubstring: string,
+) {
+  return globalThis.services.db
+    .select()
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.userId, userId),
+        like(agentRuns.prompt, `%${promptSubstring}%`),
+      ),
+    );
+}
+
+/**
  * Create a test callback record for agent run completion
  * Returns the callback ID and the plaintext secret for signing test requests
  */
@@ -1746,7 +1837,7 @@ export async function findTestCallbacksByRunId(runId: string) {
 /**
  * Look up a full agent run record by ID for verification in tests.
  *
- * Direct DB read is required because the public GET /v1/runs/:id endpoint
+ * Direct DB read is required because the GET /api/agent/runs/:id endpoint
  * does not expose internal fields like `vars`, `secretNames`, `scheduleId`,
  * or `lastHeartbeatAt` that integration tests need to verify.
  */
@@ -1774,23 +1865,6 @@ export async function findTestRunCallbacks(
     .select()
     .from(agentRunCallbacks)
     .where(eq(agentRunCallbacks.runId, runId));
-}
-
-/**
- * Find the first run that matches the given status for verification in tests.
- *
- * Direct DB read is required because no API endpoint supports filtering
- * runs by status — the public API only looks up by specific run ID.
- */
-export async function findTestRunByStatus(
-  status: string,
-): Promise<typeof agentRuns.$inferSelect | undefined> {
-  const [row] = await globalThis.services.db
-    .select()
-    .from(agentRuns)
-    .where(eq(agentRuns.status, status))
-    .limit(1);
-  return row;
 }
 
 export async function findTestSlackInstallation(workspaceId: string) {
@@ -1865,4 +1939,87 @@ export async function findTestComposeWithScope(composeId: string) {
     .where(eq(agentComposes.id, composeId))
     .limit(1);
   return row;
+}
+
+/**
+ * Create a runner job queue entry with an associated agent run.
+ *
+ * @param userId - The user who owns the run
+ * @param versionId - The agent compose version ID
+ * @param runnerGroup - The runner group (e.g., "scope-slug/default")
+ * @param contextOverrides - Optional overrides for the stored execution context
+ * @returns The created run ID
+ */
+export async function createTestRunnerJob(
+  userId: string,
+  versionId: string,
+  runnerGroup: string,
+  contextOverrides?: Partial<StoredExecutionContext>,
+): Promise<{ runId: string }> {
+  const [run] = await globalThis.services.db
+    .insert(agentRuns)
+    .values({
+      userId,
+      agentComposeVersionId: versionId,
+      status: "pending",
+      prompt: "test prompt",
+    })
+    .returning({ id: agentRuns.id });
+
+  const encryptedSecrets = encryptSecrets(
+    null,
+    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+  );
+
+  const storedContext: StoredExecutionContext = {
+    workingDir: "/home/user",
+    storageManifest: null,
+    environment: null,
+    resumeSession: null,
+    encryptedSecrets,
+    cliAgentType: "claude",
+    ...contextOverrides,
+  };
+
+  await globalThis.services.db.insert(runnerJobQueue).values({
+    runId: run!.id,
+    runnerGroup,
+    executionContext: storedContext,
+    expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+  });
+
+  return { runId: run!.id };
+}
+
+/**
+ * Create a compose under a specific scope type for testing.
+ * Useful for testing scope-based restrictions (e.g., org scope rejection).
+ *
+ * @param userId - The user ID to own the compose
+ * @param scopeType - The scope type ("personal", "organization", "system")
+ * @returns The created compose and scope IDs
+ */
+export async function createScopedCompose(
+  userId: string,
+  scopeType: ScopeType,
+): Promise<{ composeId: string; scopeId: string }> {
+  const [scope] = await globalThis.services.db
+    .insert(scopes)
+    .values({
+      slug: uniqueId(`test-${scopeType}`),
+      type: scopeType,
+      ownerId: userId,
+    })
+    .returning();
+
+  const [compose] = await globalThis.services.db
+    .insert(agentComposes)
+    .values({
+      userId,
+      scopeId: scope!.id,
+      name: uniqueId(`${scopeType}-agent`),
+    })
+    .returning();
+
+  return { composeId: compose!.id, scopeId: scope!.id };
 }

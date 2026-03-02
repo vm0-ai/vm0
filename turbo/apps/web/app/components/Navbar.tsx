@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
+import NextLink from "next/link";
 import { Link } from "../../navigation";
 import { useTranslations } from "next-intl";
 import { useTheme } from "./ThemeProvider";
@@ -112,10 +113,9 @@ export default function Navbar() {
                 >
                   {t("contact")}
                 </a>
-                {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-                <a href="/sign-up" className="btn-get-access">
+                <NextLink href="/sign-up" className="btn-get-access">
                   {t("joinWaitlist")}
-                </a>
+                </NextLink>
               </>
             )}
             {isSignedIn && (

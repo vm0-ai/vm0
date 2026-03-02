@@ -15,13 +15,115 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
+import { scopes } from "../../../../src/db/schema/scope";
 import { conversations } from "../../../../src/db/schema/conversation";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import { eq, and, desc, lt, or, ilike, count } from "drizzle-orm";
+import { eq, and, desc, lt, or, ilike, count, type SQL } from "drizzle-orm";
 
 // Minimal type for extracting framework from compose content
 interface AgentComposeContent {
   agents: Record<string, { framework: string }>;
+}
+
+interface LogsQuery {
+  name?: string;
+  scope?: string;
+  agent?: string;
+  search?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+/**
+ * Build agent name/scope filter conditions from query params.
+ * name+scope take precedence over legacy agent param, which takes precedence over search.
+ */
+function buildAgentFilterConditions(query: LogsQuery): SQL[] {
+  const conditions: SQL[] = [];
+
+  if (query.name) {
+    conditions.push(eq(agentComposes.name, query.name));
+    if (query.scope) {
+      conditions.push(eq(scopes.slug, query.scope));
+    }
+  } else if (query.agent) {
+    conditions.push(eq(agentComposes.name, query.agent));
+  } else if (query.search) {
+    conditions.push(ilike(agentComposes.name, `%${query.search}%`));
+  }
+
+  return conditions;
+}
+
+/**
+ * Build cursor pagination condition from cursor string.
+ * Cursor format: "createdAt|id" (ISO timestamp|uuid)
+ */
+function buildCursorCondition(cursor: string): SQL | null {
+  const separatorIndex = cursor.lastIndexOf("|");
+  if (separatorIndex <= 0) return null;
+
+  const cursorTime = cursor.slice(0, separatorIndex);
+  const cursorId = cursor.slice(separatorIndex + 1);
+  const cursorDate = new Date(cursorTime);
+
+  return or(
+    lt(agentRuns.createdAt, cursorDate),
+    and(eq(agentRuns.createdAt, cursorDate), lt(agentRuns.id, cursorId)),
+  )!;
+}
+
+/**
+ * Get total count of matching runs for pagination.
+ */
+async function getTotalCount(
+  userId: string,
+  query: LogsQuery,
+): Promise<number> {
+  const conditions: SQL[] = [eq(agentRuns.userId, userId)];
+  conditions.push(...buildAgentFilterConditions(query));
+
+  const needsComposeJoin = !!(query.name || query.agent || query.search);
+
+  let countQuery;
+  if (needsComposeJoin) {
+    let q = globalThis.services.db
+      .select({ count: count() })
+      .from(agentRuns)
+      .leftJoin(
+        agentComposeVersions,
+        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+      )
+      .leftJoin(
+        agentComposes,
+        eq(agentComposeVersions.composeId, agentComposes.id),
+      );
+
+    if (query.scope) {
+      q = q.leftJoin(scopes, eq(agentComposes.scopeId, scopes.id)) as typeof q;
+    }
+
+    countQuery = q.where(and(...conditions));
+  } else {
+    countQuery = globalThis.services.db
+      .select({ count: count() })
+      .from(agentRuns)
+      .where(and(...conditions));
+  }
+
+  const [result] = await countQuery;
+  return result?.count ?? 0;
+}
+
+/**
+ * Extract framework string from compose content.
+ */
+function extractFramework(composeContent: unknown): string | null {
+  const content = composeContent as AgentComposeContent | null;
+  const agentNames = content?.agents ? Object.keys(content.agents) : [];
+  const firstAgent =
+    agentNames.length > 0 ? content?.agents[agentNames[0]!] : null;
+  return firstAgent?.framework ?? null;
 }
 
 const router = tsr.router(platformLogsListContract, {
@@ -40,36 +142,17 @@ const router = tsr.router(platformLogsListContract, {
 
     const limit = query.limit ?? 20;
 
-    // Build base conditions - filter by user
-    const conditions = [eq(agentRuns.userId, userId)];
+    // Build conditions
+    const conditions: SQL[] = [eq(agentRuns.userId, userId)];
 
-    // Handle cursor-based pagination
-    // Cursor format: "createdAt|id" (ISO timestamp|uuid)
     if (query.cursor) {
-      const separatorIndex = query.cursor.lastIndexOf("|");
-      if (separatorIndex > 0) {
-        const cursorTime = query.cursor.slice(0, separatorIndex);
-        const cursorId = query.cursor.slice(separatorIndex + 1);
-        const cursorDate = new Date(cursorTime);
-        // Get records older than cursor, or same time but smaller id
-        conditions.push(
-          or(
-            lt(agentRuns.createdAt, cursorDate),
-            and(
-              eq(agentRuns.createdAt, cursorDate),
-              lt(agentRuns.id, cursorId),
-            ),
-          )!,
-        );
+      const cursorCondition = buildCursorCondition(query.cursor);
+      if (cursorCondition) {
+        conditions.push(cursorCondition);
       }
     }
 
-    // Agent name filter: exact match takes precedence over fuzzy search
-    if (query.agent) {
-      conditions.push(eq(agentComposes.name, query.agent));
-    } else if (query.search) {
-      conditions.push(ilike(agentComposes.name, `%${query.search}%`));
-    }
+    conditions.push(...buildAgentFilterConditions(query));
 
     const runs = await globalThis.services.db
       .select({
@@ -77,6 +160,7 @@ const router = tsr.router(platformLogsListContract, {
         status: agentRuns.status,
         createdAt: agentRuns.createdAt,
         composeName: agentComposes.name,
+        scopeSlug: scopes.slug,
         sessionId: conversations.cliAgentSessionId,
         composeContent: agentComposeVersions.content,
       })
@@ -89,41 +173,13 @@ const router = tsr.router(platformLogsListContract, {
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
+      .leftJoin(scopes, eq(agentComposes.scopeId, scopes.id))
       .leftJoin(conversations, eq(agentRuns.id, conversations.runId))
       .where(and(...conditions))
       .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
       .limit(limit + 1);
 
-    // Get total count for pagination
-    const countConditions = [eq(agentRuns.userId, userId)];
-    if (query.agent) {
-      countConditions.push(eq(agentComposes.name, query.agent));
-    } else if (query.search) {
-      countConditions.push(ilike(agentComposes.name, `%${query.search}%`));
-    }
-
-    let countQuery = globalThis.services.db
-      .select({ count: count() })
-      .from(agentRuns)
-      .where(and(...countConditions));
-
-    if (query.agent || query.search) {
-      countQuery = globalThis.services.db
-        .select({ count: count() })
-        .from(agentRuns)
-        .leftJoin(
-          agentComposeVersions,
-          eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-        )
-        .leftJoin(
-          agentComposes,
-          eq(agentComposeVersions.composeId, agentComposes.id),
-        )
-        .where(and(...countConditions));
-    }
-
-    const [countResult] = await countQuery;
-    const totalCount = countResult?.count ?? 0;
+    const totalCount = await getTotalCount(userId, query);
     const totalPages = Math.max(1, Math.ceil(totalCount / limit));
 
     // Determine pagination info
@@ -140,27 +196,19 @@ const router = tsr.router(platformLogsListContract, {
     return {
       status: 200 as const,
       body: {
-        data: data.map((run) => {
-          // Extract framework from compose content (first agent definition)
-          const content = run.composeContent as AgentComposeContent | null;
-          const agentNames = content?.agents ? Object.keys(content.agents) : [];
-          const firstAgent =
-            agentNames.length > 0 ? content?.agents[agentNames[0]!] : null;
-          const framework = firstAgent?.framework ?? null;
-
-          return {
-            id: run.id,
-            sessionId: run.sessionId ?? null,
-            agentName: run.composeName ?? "unknown",
-            framework,
-            status: run.status as PlatformLogStatus,
-            createdAt: run.createdAt.toISOString(),
-          };
-        }),
+        data: data.map((run) => ({
+          id: run.id,
+          sessionId: run.sessionId ?? null,
+          agentName: run.composeName ?? "unknown",
+          scopeSlug: run.scopeSlug ?? null,
+          framework: extractFramework(run.composeContent),
+          status: run.status as PlatformLogStatus,
+          createdAt: run.createdAt.toISOString(),
+        })),
         pagination: {
-          hasMore: hasMore,
-          nextCursor: nextCursor,
-          totalPages: totalPages,
+          hasMore,
+          nextCursor,
+          totalPages,
         },
       },
     };

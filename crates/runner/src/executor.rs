@@ -3,14 +3,16 @@ use std::time::{Duration, Instant};
 
 use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory};
 use tracing::{error, info, warn};
-use uuid::Uuid;
 
 /// Maximum wall-clock time for a single job (2 hours).
 const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
+/// Exit code when a process is killed by SIGKILL (128 + 9).
+const EXIT_SIGKILL: i32 = 137;
+/// Raw SIGKILL signal number.
+const EXIT_SIGNAL_KILL: i32 = 9;
 /// Default timeout for guest commands (5 minutes).
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 
-use crate::api::ApiClient;
 use crate::error::RunnerResult;
 use crate::http::HttpClient;
 use crate::paths::{LogPaths, guest};
@@ -31,14 +33,14 @@ pub struct ExecutorConfig {
 
 /// Execute a single job inside a Firecracker VM.
 ///
-/// On failure before agent spawn, reports completion with `exit_code = 1`.
-/// Always calls `factory.destroy()` on the sandbox when done.
+/// Returns `(exit_code, error_message)`. The caller is responsible for
+/// reporting completion to the API — this keeps `claim` and `complete`
+/// in the same function for structural pairing.
 pub async fn execute_job(
-    api: &ApiClient,
     factory: &dyn SandboxFactory,
     context: ExecutionContext,
     config: &ExecutorConfig,
-) {
+) -> (i32, Option<String>) {
     let run_id = context.run_id;
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
@@ -64,23 +66,10 @@ pub async fn execute_job(
         }
     };
 
-    info!(run_id = %run_id, exit_code, "job finished, reporting completion");
-
-    if let Err(e) = api
-        .complete(&context.sandbox_token, run_id, exit_code, err.as_deref())
-        .await
-    {
-        warn!(run_id = %run_id, error = %e, "completion report failed, retrying");
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        if let Err(e) = api
-            .complete(&context.sandbox_token, run_id, exit_code, err.as_deref())
-            .await
-        {
-            error!(run_id = %run_id, error = %e, "failed to report completion after retry");
-        }
-    }
-
+    info!(run_id = %run_id, exit_code, "job finished");
     telemetry.flush().await;
+
+    (exit_code, err)
 }
 
 async fn execute_inner(
@@ -89,7 +78,7 @@ async fn execute_inner(
     config: &ExecutorConfig,
     telemetry: &mut JobTelemetry,
 ) -> RunnerResult<(i32, Option<String>)> {
-    let sandbox_id = Uuid::new_v4();
+    let sandbox_id = context.run_id;
     let sandbox_config = SandboxConfig {
         id: sandbox_id,
         resources: sandbox::ResourceLimits {
@@ -145,6 +134,9 @@ async fn execute_inner(
     // Run job inside sandbox, then destroy regardless of outcome
     let result = run_in_sandbox(sandbox.as_ref(), context, config, telemetry).await;
 
+    // Copy guest logs to host log directory (best-effort).
+    copy_guest_logs(sandbox.as_ref(), context, &config.log_paths).await;
+
     // Unregister VM from proxy + upload network logs before cleanup timer.
     // Unregister first ensures the addon writes no more log entries.
     if firewall_enabled {
@@ -189,6 +181,9 @@ async fn run_in_sandbox(
     config: &ExecutorConfig,
     telemetry: &mut JobTelemetry,
 ) -> RunnerResult<(i32, Option<String>)> {
+    // System log file — all guest process output goes here for telemetry upload.
+    let log_file = format!("/tmp/vm0-system-{}.log", context.run_id);
+
     // 1. Fix guest clock after snapshot restore (must happen before HTTPS calls)
     if config.is_snapshot {
         fix_guest_clock(sandbox).await?;
@@ -197,7 +192,7 @@ async fn run_in_sandbox(
     // 2. Download storages
     if let Some(manifest) = &context.storage_manifest {
         let t = Instant::now();
-        let result = download_storages(sandbox, context, manifest).await;
+        let result = download_storages(sandbox, context, manifest, &log_file).await;
         let err = result.as_ref().err().map(|e| e.to_string());
         telemetry.record(
             "storage_download",
@@ -231,10 +226,9 @@ async fn run_in_sandbox(
         .collect();
     info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
-    // 5. Spawn agent — redirect stdout+stderr to system log file
+    // 5. Spawn agent — append stdout+stderr to system log file
     //    (guest-agent reads this back via telemetry for incremental upload)
-    let log_file = format!("/tmp/vm0-system-{}.log", context.run_id);
-    let agent_cmd = format!("{} > {log_file} 2>&1", guest::RUN_AGENT);
+    let agent_cmd = format!("{} >> {log_file} 2>&1", guest::RUN_AGENT);
     info!(run_id = %context.run_id, "spawning agent");
 
     // JOB_TIMEOUT is used for both spawn_watch (guest-side kill) and wait_exit
@@ -264,21 +258,93 @@ async fn run_in_sandbox(
     telemetry.record("agent_execute", t.elapsed(), success, err.as_deref());
     let exit = result?;
 
-    let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
-
     info!(
         run_id = %context.run_id,
         exit_code = exit.exit_code,
         "agent exited"
     );
 
+    // Check for OOM kill when process was terminated by SIGKILL
+    if exit.exit_code == EXIT_SIGKILL || exit.exit_code == EXIT_SIGNAL_KILL {
+        let dmesg_req = ExecRequest {
+            cmd: "dmesg | tail -20 2>/dev/null",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: true,
+        };
+        match sandbox.exec(&dmesg_req).await {
+            Ok(dmesg) if dmesg_indicates_oom(&String::from_utf8_lossy(&dmesg.stdout)) => {
+                warn!(run_id = %context.run_id, "OOM kill detected via dmesg");
+                // Return exit code 1 with descriptive message instead of raw 137,
+                // so callers see a clear error rather than an opaque signal code.
+                return Ok((1, Some("Agent process killed by OOM killer".into())));
+            }
+            Err(e) => {
+                warn!(run_id = %context.run_id, error = %e, "failed to exec dmesg for OOM check");
+            }
+            _ => {}
+        }
+    }
+
     let error_msg = if exit.exit_code != 0 {
+        let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
         Some(stderr).filter(|s| !s.is_empty())
     } else {
         None
     };
 
     Ok((exit.exit_code, error_msg))
+}
+
+/// Returns true if dmesg output indicates an OOM kill.
+fn dmesg_indicates_oom(stdout: &str) -> bool {
+    let lower = stdout.to_lowercase();
+    lower.contains("out of memory")
+        || lower.contains("oom-kill")
+        || lower.contains("oom_reaper")
+        || lower.contains("killed process")
+}
+
+/// Copy guest log files to the host log directory.
+///
+/// Best-effort: failures are logged but do not affect job outcome.
+async fn copy_guest_logs(sandbox: &dyn Sandbox, context: &ExecutionContext, log_paths: &LogPaths) {
+    let run_id = context.run_id;
+    let files = [
+        (
+            format!("/tmp/vm0-system-{run_id}.log"),
+            log_paths.system_log(run_id),
+        ),
+        (
+            format!("/tmp/vm0-metrics-{run_id}.jsonl"),
+            log_paths.metrics_log(run_id),
+        ),
+    ];
+
+    for (guest_path, host_path) in &files {
+        let cat_cmd = format!("cat {guest_path}");
+        let result = sandbox
+            .exec(&ExecRequest {
+                cmd: &cat_cmd,
+                timeout: DEFAULT_EXEC_TIMEOUT,
+                env: &[],
+                sudo: false,
+            })
+            .await;
+
+        let output = match result {
+            Ok(r) if r.exit_code == 0 => r.stdout,
+            Ok(_) => continue,
+            Err(e) => {
+                warn!(run_id = %run_id, error = %e, path = %guest_path, "failed to read guest log");
+                continue;
+            }
+        };
+
+        if let Err(e) = tokio::fs::write(host_path, &output).await {
+            warn!(run_id = %run_id, error = %e, path = %host_path.display(), "failed to write guest log to host");
+        }
+    }
 }
 
 /// Sync guest clock to host time after snapshot restore.
@@ -309,6 +375,7 @@ async fn download_storages(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     manifest: &crate::types::StorageManifest,
+    log_file: &str,
 ) -> RunnerResult<()> {
     let manifest_json = serde_json::to_vec(manifest)
         .map_err(|e| crate::error::RunnerError::Internal(format!("manifest json: {e}")))?;
@@ -316,7 +383,11 @@ async fn download_storages(
         .write_file(guest::STORAGE_MANIFEST, &manifest_json)
         .await?;
 
-    let download_cmd = format!("{} {}", guest::DOWNLOAD_BIN, guest::STORAGE_MANIFEST);
+    let download_cmd = format!(
+        "{} {} >> {log_file} 2>&1",
+        guest::DOWNLOAD_BIN,
+        guest::STORAGE_MANIFEST
+    );
     info!(run_id = %context.run_id, "downloading storages");
     let result = sandbox
         .exec(&ExecRequest {
@@ -329,8 +400,8 @@ async fn download_storages(
 
     if result.exit_code != 0 {
         return Err(crate::error::RunnerError::Internal(format!(
-            "storage download failed: {}",
-            String::from_utf8_lossy(&result.stderr)
+            "storage download failed (exit code {})",
+            result.exit_code
         )));
     }
     Ok(())
@@ -371,6 +442,9 @@ async fn restore_session(
     Ok(())
 }
 
+/// Proxy CA certificate path inside the guest rootfs (pre-baked at build time).
+const VM_PROXY_CA_PATH: &str = "/usr/local/share/ca-certificates/vm0-proxy-ca.crt";
+
 /// Build the environment variables JSON, matching the TS `buildEnvironmentVariables`.
 fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, String> {
     let mut env = HashMap::new();
@@ -400,6 +474,22 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     // Vercel bypass
     if let Ok(bypass) = std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET") {
         env.insert("VERCEL_PROTECTION_BYPASS".into(), bypass);
+    }
+
+    // Pass USE_MOCK_CLAUDE from host environment for testing
+    // (skip if debugNoMockClaude is set in execution context)
+    if let Ok(val) = std::env::var("USE_MOCK_CLAUDE")
+        && !context.debug_no_mock_claude.unwrap_or(false)
+    {
+        env.insert("USE_MOCK_CLAUDE".into(), val);
+    }
+
+    // Tell Node.js to trust the proxy CA when MITM mode is enabled.
+    // The certificate is pre-baked into the rootfs at build time.
+    if let Some(fw) = &context.experimental_firewall
+        && fw.experimental_mitm.unwrap_or(false)
+    {
+        env.insert("NODE_EXTRA_CA_CERTS".into(), VM_PROXY_CA_PATH.into());
     }
 
     // Artifact config
@@ -470,6 +560,7 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
 mod tests {
     use super::*;
     use crate::types::{ArtifactEntry, ResumeSession, StorageEntry, StorageManifest};
+    use uuid::Uuid;
 
     fn minimal_context() -> ExecutionContext {
         ExecutionContext {
@@ -685,5 +776,110 @@ mod tests {
 
         assert_eq!(ctx.api_start_time, Some(1700000000.5));
         assert_eq!(ctx.user_timezone.as_deref(), Some("Asia/Shanghai"));
+    }
+
+    /// SAFETY: set_var/remove_var are unsafe in edition 2024 due to potential
+    /// data races. These tests are acceptable because cargo test runs each
+    /// test in its own thread by default, and no other tests read this var.
+    #[test]
+    fn build_env_json_with_mock_claude() {
+        let saved = std::env::var("USE_MOCK_CLAUDE").ok();
+        // SAFETY: no concurrent tests read USE_MOCK_CLAUDE.
+        unsafe { std::env::set_var("USE_MOCK_CLAUDE", "true") };
+
+        let ctx = minimal_context();
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("USE_MOCK_CLAUDE").unwrap(), "true");
+
+        // Restore
+        match saved {
+            Some(v) => unsafe { std::env::set_var("USE_MOCK_CLAUDE", v) },
+            None => unsafe { std::env::remove_var("USE_MOCK_CLAUDE") },
+        }
+    }
+
+    #[test]
+    fn build_env_json_mock_claude_suppressed_by_debug_flag() {
+        let saved = std::env::var("USE_MOCK_CLAUDE").ok();
+        // SAFETY: no concurrent tests read USE_MOCK_CLAUDE.
+        unsafe { std::env::set_var("USE_MOCK_CLAUDE", "true") };
+
+        let mut ctx = minimal_context();
+        ctx.debug_no_mock_claude = Some(true);
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("USE_MOCK_CLAUDE"));
+
+        // Restore
+        match saved {
+            Some(v) => unsafe { std::env::set_var("USE_MOCK_CLAUDE", v) },
+            None => unsafe { std::env::remove_var("USE_MOCK_CLAUDE") },
+        }
+    }
+
+    #[test]
+    fn build_env_json_with_mitm_sets_ca_certs() {
+        let mut ctx = minimal_context();
+        ctx.experimental_firewall = Some(crate::types::ExperimentalFirewall {
+            enabled: true,
+            rules: None,
+            experimental_mitm: Some(true),
+            experimental_seal_secrets: None,
+        });
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("NODE_EXTRA_CA_CERTS").unwrap(), VM_PROXY_CA_PATH);
+    }
+
+    #[test]
+    fn build_env_json_without_mitm_no_ca_certs() {
+        let mut ctx = minimal_context();
+        ctx.experimental_firewall = Some(crate::types::ExperimentalFirewall {
+            enabled: true,
+            rules: None,
+            experimental_mitm: Some(false),
+            experimental_seal_secrets: None,
+        });
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
+    }
+
+    #[test]
+    fn build_env_json_mitm_none_no_ca_certs() {
+        let mut ctx = minimal_context();
+        ctx.experimental_firewall = Some(crate::types::ExperimentalFirewall {
+            enabled: true,
+            rules: None,
+            experimental_mitm: None,
+            experimental_seal_secrets: None,
+        });
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
+    }
+
+    #[test]
+    fn dmesg_oom_positive() {
+        assert!(dmesg_indicates_oom(
+            "[  12.345] Out of memory: Killed process 1234 (claude)"
+        ));
+        assert!(dmesg_indicates_oom("oom-kill:constraint=CONSTRAINT_MEMCG"));
+        assert!(dmesg_indicates_oom("oom_reaper: reaped process 42"));
+        assert!(dmesg_indicates_oom("Killed process 42 (node)"));
+    }
+
+    #[test]
+    fn dmesg_oom_negative() {
+        assert!(!dmesg_indicates_oom(""));
+        assert!(!dmesg_indicates_oom("normal kernel log output"));
+        assert!(!dmesg_indicates_oom("[  1.000] eth0: link up"));
+        // "killed" alone should not match — requires "killed process"
+        assert!(!dmesg_indicates_oom("task killed by signal 15"));
+        // substring "oom" in unrelated words should not match
+        assert!(!dmesg_indicates_oom("the room is full"));
+    }
+
+    #[test]
+    fn dmesg_oom_case_insensitive() {
+        assert!(dmesg_indicates_oom("Out Of Memory: killed process 99"));
+        assert!(dmesg_indicates_oom("Killed process 99 (agent)"));
+        assert!(dmesg_indicates_oom("OOM-kill: constraint=MEMCG"));
     }
 }

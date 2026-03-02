@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::Client;
+use reqeast::Client;
 use tracing::info;
 
 use crate::error::{RunnerError, RunnerResult};
@@ -24,7 +24,7 @@ struct Inner {
 
 impl HttpClient {
     pub fn new(api_url: String) -> RunnerResult<Self> {
-        let client = Client::builder()
+        let client = reqeast::builder()
             .timeout(DEFAULT_TIMEOUT)
             .build()
             .map_err(|e| RunnerError::Internal(format!("http client: {e}")))?;
@@ -51,10 +51,10 @@ impl HttpClient {
     /// `path` is appended to the base URL (e.g. `/api/runners/poll`).
     pub fn request(
         &self,
-        method: reqwest::Method,
+        method: reqeast::Method,
         path: &str,
         token: &str,
-    ) -> reqwest::RequestBuilder {
+    ) -> reqeast::RequestBuilder {
         let url = format!("{}{path}", self.inner.api_url);
         let mut req = self.inner.client.request(method, url).bearer_auth(token);
 

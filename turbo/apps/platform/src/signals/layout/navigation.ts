@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import type { NavGroup, NavItem } from "../../types/navigation.ts";
+import type { NavItem } from "../../types/navigation.ts";
 import { pathname$ } from "../route.ts";
 
 // Standalone "Get started" item (shown at the top, outside groups)
@@ -10,8 +10,6 @@ export const GET_STARTED_ITEM = {
   path: "/",
 } as const satisfies NavItem;
 
-// Static navigation configuration - no signal needed (YAGNI)
-// eslint-disable-next-line ccstate/no-package-variable -- static readonly config
 export const NAVIGATION_CONFIG = [
   {
     label: "Your agents",
@@ -28,7 +26,7 @@ export const NAVIGATION_CONFIG = [
     label: "Observation",
     items: [{ id: "logs", label: "Logs", icon: "List", path: "/logs" }],
   },
-] as const satisfies readonly NavGroup[];
+] as const;
 
 export const FOOTER_NAV_ITEMS = [
   {

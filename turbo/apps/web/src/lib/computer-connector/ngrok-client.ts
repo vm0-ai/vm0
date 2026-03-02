@@ -30,6 +30,13 @@ interface NgrokEndpoint {
   url: string;
 }
 
+interface NgrokDomain {
+  id: string;
+  domain: string;
+  region: string;
+  cname_target: string | null;
+}
+
 /**
  * Make an authenticated request to the ngrok API.
  */
@@ -168,6 +175,48 @@ export async function deleteCloudEndpoint(
   endpointId: string,
 ): Promise<void> {
   await ngrokFetch(apiKey, `/endpoints/${endpointId}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Create a reserved domain with ngrok-assigned subdomain.
+ * ngrok will automatically assign a subdomain like "abc123.ngrok-free.app"
+ *
+ * @param apiKey - ngrok API key
+ * @param name - Desired subdomain name (e.g., "vm0-user-abc123")
+ * @param region - Region (e.g., "us", "eu", "ap", "au", "sa", "jp", "in")
+ * @returns The created reserved domain
+ */
+export async function createReservedDomain(
+  apiKey: string,
+  name: string,
+  region: string = "us",
+): Promise<NgrokDomain> {
+  const response = await ngrokFetch(apiKey, "/reserved_domains", {
+    method: "POST",
+    body: JSON.stringify({
+      name, // ngrok will create: {name}.ngrok-free.app
+      region,
+    }),
+  });
+
+  const domain = (await response.json()) as NgrokDomain;
+  log.debug("Created ngrok reserved domain", {
+    id: domain.id,
+    domain: domain.domain,
+  });
+  return domain;
+}
+
+/**
+ * Delete a reserved domain by ID.
+ */
+export async function deleteReservedDomain(
+  apiKey: string,
+  domainId: string,
+): Promise<void> {
+  await ngrokFetch(apiKey, `/reserved_domains/${domainId}`, {
     method: "DELETE",
   });
 }

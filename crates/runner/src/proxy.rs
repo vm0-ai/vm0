@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncBufReadExt;
+use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
@@ -74,6 +77,7 @@ const READY_TIMEOUT: Duration = Duration::from_secs(10);
 const STOP_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Configuration for starting the proxy.
+#[derive(Clone)]
 pub struct ProxyConfig {
     /// Path to the mitmdump binary.
     pub mitmdump_bin: PathBuf,
@@ -94,11 +98,18 @@ pub struct MitmProxy {
     port: u16,
     config: ProxyConfig,
     child: Option<tokio::process::Child>,
+    /// Sender used by the stdout monitor task to signal unexpected exit.
+    crash_tx: mpsc::Sender<()>,
+    /// Set to `true` during graceful `stop()` / `Drop` to suppress crash notifications.
+    stopping: Arc<AtomicBool>,
 }
 
 impl MitmProxy {
     /// Prepare the proxy: allocate a port, write addon script and empty registry.
-    pub async fn new(config: ProxyConfig) -> RunnerResult<Self> {
+    ///
+    /// Returns `(proxy, crash_rx)`. The caller should select on `crash_rx` to
+    /// detect unexpected mitmdump exits and trigger a restart.
+    pub async fn new(config: ProxyConfig) -> RunnerResult<(Self, mpsc::Receiver<()>)> {
         let port = find_available_port()?;
 
         // Write addon script.
@@ -113,68 +124,23 @@ impl MitmProxy {
         };
         write_registry(&config.registry_path, &empty_registry).await?;
 
-        Ok(Self {
-            port,
-            config,
-            child: None,
-        })
+        let (crash_tx, crash_rx) = mpsc::channel(1);
+
+        Ok((
+            Self {
+                port,
+                config,
+                child: None,
+                crash_tx,
+                stopping: Arc::new(AtomicBool::new(false)),
+            },
+            crash_rx,
+        ))
     }
 
     /// Spawn the mitmdump process.
     pub async fn start(&mut self) -> RunnerResult<()> {
-        let mut cmd = tokio::process::Command::new(&self.config.mitmdump_bin);
-        cmd.arg("--mode")
-            .arg("transparent")
-            .arg("--listen-port")
-            .arg(self.port.to_string())
-            .arg("--set")
-            .arg(format!("confdir={}", self.config.ca_dir.display()))
-            .arg("--set")
-            .arg(format!(
-                "vm0_proxy_registry_path={}",
-                self.config.registry_path.display()
-            ))
-            .arg("--scripts")
-            .arg(&self.config.addon_path)
-            .arg("--quiet");
-        if let Some(url) = &self.config.api_url {
-            cmd.arg("--set").arg(format!("vm0_api_url={url}"));
-        }
-        cmd.stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
-
-        info!(port = self.port, bin = %self.config.mitmdump_bin.display(), "starting mitmdump");
-
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| RunnerError::Internal(format!("spawn mitmdump: {e}")))?;
-
-        // Stream stdout/stderr to tracing.
-        if let Some(stdout) = child.stdout.take() {
-            tokio::spawn(async move {
-                let mut lines = tokio::io::BufReader::new(stdout).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    if !line.is_empty() {
-                        info!(target: "mitmdump", "{line}");
-                    }
-                }
-            });
-        }
-        if let Some(stderr) = child.stderr.take() {
-            tokio::spawn(async move {
-                let mut lines = tokio::io::BufReader::new(stderr).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    if !line.is_empty() {
-                        warn!(target: "mitmdump", "stderr: {line}");
-                    }
-                }
-            });
-        }
-
-        // Wait for process to be alive (poll liveness).
-        wait_for_ready(&mut child, self.port, READY_TIMEOUT).await?;
-
+        let child = spawn_mitmdump(&self.config, self.port, &self.crash_tx, &self.stopping).await?;
         self.child = Some(child);
         info!(port = self.port, "mitmdump started");
         Ok(())
@@ -212,8 +178,34 @@ impl MitmProxy {
         self.registry_handle().unregister_vm(source_ip).await
     }
 
+    /// Prepare for restart: reset `stopping`, kill any lingering child, and
+    /// return the parameters needed for [`spawn_mitmdump`].
+    ///
+    /// The caller should spawn the mitmdump process (potentially in a
+    /// background task) and then call [`complete_restart`] with the result.
+    pub async fn begin_restart(&mut self) -> MitmRestartParams {
+        self.stopping.store(false, Ordering::Release);
+        // Kill old child if somehow still running.
+        if let Some(ref mut child) = self.child {
+            let _ = child.kill().await;
+            self.child = None;
+        }
+        MitmRestartParams {
+            config: self.config.clone(),
+            port: self.port,
+            crash_tx: self.crash_tx.clone(),
+            stopping: Arc::clone(&self.stopping),
+        }
+    }
+
+    /// Finish a restart by storing the newly spawned child process.
+    pub fn complete_restart(&mut self, child: tokio::process::Child) {
+        self.child = Some(child);
+    }
+
     /// Gracefully stop mitmdump (SIGTERM → timeout → SIGKILL).
     pub async fn stop(&mut self) -> RunnerResult<()> {
+        self.stopping.store(true, Ordering::Release);
         let Some(ref mut child) = self.child else {
             return Ok(());
         };
@@ -239,11 +231,101 @@ impl MitmProxy {
 
 impl Drop for MitmProxy {
     fn drop(&mut self) {
+        self.stopping.store(true, Ordering::Release);
         // Best-effort kill if still running.
         if let Some(ref mut child) = self.child {
             let _ = child.start_kill();
         }
     }
+}
+
+/// Parameters needed to spawn a mitmdump process, returned by
+/// [`MitmProxy::begin_restart`]. All fields are owned/cloned so the spawn
+/// can happen in a background task without borrowing `MitmProxy`.
+pub(crate) struct MitmRestartParams {
+    config: ProxyConfig,
+    port: u16,
+    crash_tx: mpsc::Sender<()>,
+    stopping: Arc<AtomicBool>,
+}
+
+impl MitmRestartParams {
+    /// Spawn mitmdump using these parameters. Suitable for `tokio::spawn`.
+    pub(crate) async fn spawn(self) -> RunnerResult<tokio::process::Child> {
+        spawn_mitmdump(&self.config, self.port, &self.crash_tx, &self.stopping).await
+    }
+}
+
+/// Spawn a mitmdump process, wire up stdout/stderr monitors, and wait for
+/// it to become ready. This is a free function so it can run in a
+/// `tokio::spawn` without borrowing `MitmProxy`.
+pub(crate) async fn spawn_mitmdump(
+    config: &ProxyConfig,
+    port: u16,
+    crash_tx: &mpsc::Sender<()>,
+    stopping: &Arc<AtomicBool>,
+) -> RunnerResult<tokio::process::Child> {
+    let mut cmd = tokio::process::Command::new(&config.mitmdump_bin);
+    cmd.arg("--mode")
+        .arg("transparent")
+        .arg("--listen-port")
+        .arg(port.to_string())
+        .arg("--set")
+        .arg(format!("confdir={}", config.ca_dir.display()))
+        .arg("--set")
+        .arg(format!(
+            "vm0_proxy_registry_path={}",
+            config.registry_path.display()
+        ))
+        .arg("--scripts")
+        .arg(&config.addon_path)
+        .arg("--quiet");
+    if let Some(url) = &config.api_url {
+        cmd.arg("--set").arg(format!("vm0_api_url={url}"));
+    }
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    info!(port, bin = %config.mitmdump_bin.display(), "starting mitmdump");
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| RunnerError::Internal(format!("spawn mitmdump: {e}")))?;
+
+    // Stream stdout to tracing; when the pipe closes (process exited),
+    // send a crash notification unless we're in a graceful stop.
+    if let Some(stdout) = child.stdout.take() {
+        let crash_tx = crash_tx.clone();
+        let stopping = Arc::clone(stopping);
+        tokio::spawn(async move {
+            let mut lines = tokio::io::BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if !line.is_empty() {
+                    info!(target: "mitmdump", "{line}");
+                }
+            }
+            // Pipe closed — process exited.
+            if !stopping.load(Ordering::Acquire) {
+                let _ = crash_tx.send(()).await;
+            }
+        });
+    }
+    if let Some(stderr) = child.stderr.take() {
+        tokio::spawn(async move {
+            let mut lines = tokio::io::BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if !line.is_empty() {
+                    warn!(target: "mitmdump", "stderr: {line}");
+                }
+            }
+        });
+    }
+
+    // Wait for process to be alive (poll liveness).
+    wait_for_ready(&mut child, port, READY_TIMEOUT).await?;
+
+    Ok(child)
 }
 
 /// Wait for mitmdump to start listening on `port` (TCP connect probe).

@@ -14,6 +14,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
+import { scopes } from "../../../../src/db/schema/scope";
 import { listSecrets } from "../../../../src/lib/secret/secret-service";
 import { listVariables } from "../../../../src/lib/variable/variable-service";
 import { listConnectors } from "../../../../src/lib/connector/connector-service";
@@ -26,7 +27,10 @@ import {
 import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
 import { removePermission } from "../../../../src/lib/agent/permission-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
-import { getUserScopeByClerkId } from "../../../../src/lib/scope/scope-service";
+import {
+  getScopeBySlug,
+  getUserScopeByClerkId,
+} from "../../../../src/lib/scope/scope-service";
 import { syncWorkspaceAgentPermissions } from "../../../../src/lib/slack/permission-sync";
 
 /**
@@ -85,14 +89,16 @@ export async function GET(request: Request) {
     );
   }
 
-  // Get workspace agent
+  // Get workspace agent with scope info for navigation
   const [compose] = await db
     .select({
       id: agentComposes.id,
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
+      scopeSlug: scopes.slug,
     })
     .from(agentComposes)
+    .innerJoin(scopes, eq(scopes.id, agentComposes.scopeId))
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
 
@@ -149,7 +155,9 @@ export async function GET(request: Request) {
       id: installation.slackWorkspaceId,
       name: installation.slackWorkspaceName,
     },
-    agent: compose ? { id: compose.id, name: compose.name } : null,
+    agent: compose
+      ? { id: compose.id, name: compose.name, scopeSlug: compose.scopeSlug }
+      : null,
     isAdmin,
     environment: {
       requiredSecrets,
@@ -300,23 +308,33 @@ export async function PATCH(request: Request) {
     );
   }
 
-  // Resolve user's scope to find the agent compose
-  const userScope = await getUserScopeByClerkId(userId);
-  if (!userScope) {
+  // Parse scope/agentName format (shared agents use "scopeSlug/agentName")
+  const slashIndex = body.agentName.indexOf("/");
+  const agentName =
+    slashIndex === -1 ? body.agentName : body.agentName.slice(slashIndex + 1);
+  const scopeSlug =
+    slashIndex === -1 ? null : body.agentName.slice(0, slashIndex);
+
+  // Resolve target scope
+  const targetScope = scopeSlug
+    ? await getScopeBySlug(scopeSlug)
+    : await getUserScopeByClerkId(userId);
+
+  if (!targetScope) {
     return NextResponse.json(
-      { error: { message: "User scope not found", code: "BAD_REQUEST" } },
+      { error: { message: "Scope not found", code: "BAD_REQUEST" } },
       { status: 400 },
     );
   }
 
-  // Find agent compose by name in user's scope
+  // Find agent compose by name in target scope
   const [compose] = await db
     .select({ id: agentComposes.id })
     .from(agentComposes)
     .where(
       and(
-        eq(agentComposes.scopeId, userScope.id),
-        eq(agentComposes.name, body.agentName),
+        eq(agentComposes.scopeId, targetScope.id),
+        eq(agentComposes.name, agentName),
       ),
     )
     .limit(1);

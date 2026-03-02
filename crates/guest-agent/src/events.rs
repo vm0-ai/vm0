@@ -26,6 +26,11 @@ pub async fn send_event(
     // Extract session ID from init event (must happen before masking)
     extract_session_id(event);
 
+    // No API token → local/test mode; skip posting events.
+    if !env::has_api() {
+        return Ok(());
+    }
+
     // Add sequence number
     if let Some(obj) = event.as_object_mut() {
         obj.insert("sequenceNumber".to_string(), json!(seq));

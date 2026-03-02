@@ -1,5 +1,313 @@
 # Changelog
 
+## [12.60.0](https://github.com/vm0-ai/vm0/compare/web-v12.59.0...web-v12.60.0) (2026-03-02)
+
+
+### Features
+
+* **web:** auto-upload skill storage on compose save from platform ([#3434](https://github.com/vm0-ai/vm0/issues/3434)) ([b591a23](https://github.com/vm0-ai/vm0/commit/b591a231e1ebfee1418fa1f1bb71e41514630fa1))
+
+
+### Bug Fixes
+
+* **db:** clean up fk references before deleting system scopes in migration 0093 ([#3455](https://github.com/vm0-ai/vm0/issues/3455)) ([ce9ed6a](https://github.com/vm0-ai/vm0/commit/ce9ed6a1ef3df2cdb9e1a813feec5f1ea7fc1ed6))
+* redirect to platform after sign-up and handle locale-prefixed auth paths ([#3438](https://github.com/vm0-ai/vm0/issues/3438)) ([28206ac](https://github.com/vm0-ai/vm0/commit/28206ac632eb65148d1fdb4b0829a3fd95c836cd)), closes [#3390](https://github.com/vm0-ai/vm0/issues/3390)
+* **web:** use next/link for sign-up to prevent locale prefix 404 ([#3444](https://github.com/vm0-ai/vm0/issues/3444)) ([2e7b471](https://github.com/vm0-ai/vm0/commit/2e7b471a7232ff21da01b4436dc6c958b59ebca7)), closes [#3390](https://github.com/vm0-ai/vm0/issues/3390)
+
+## [12.59.0](https://github.com/vm0-ai/vm0/compare/web-v12.58.2...web-v12.59.0) (2026-03-02)
+
+
+### Features
+
+* **connector:** add deel oauth2 connector ([#3401](https://github.com/vm0-ai/vm0/issues/3401)) ([8128da7](https://github.com/vm0-ai/vm0/commit/8128da7cb693bdb51b006edc7ed8cc1aae14b9c2))
+* **connector:** add docusign oauth2 connector ([#3402](https://github.com/vm0-ai/vm0/issues/3402)) ([2273b1c](https://github.com/vm0-ai/vm0/commit/2273b1c3db937c8c2e5794c0348f2d5a063c724e))
+* **connector:** add google sheets, docs, and drive oauth2 connectors ([#3403](https://github.com/vm0-ai/vm0/issues/3403)) ([97cca63](https://github.com/vm0-ai/vm0/commit/97cca638861824b887feaa3d97372028e8affdba))
+* **connector:** add mercury oauth2 connector ([#3397](https://github.com/vm0-ai/vm0/issues/3397)) ([a5f4e79](https://github.com/vm0-ai/vm0/commit/a5f4e794fe12e6250d770fef1d8ec444a5cdcec3))
+* **connector:** add strava and garmin connect oauth2 connectors ([#3399](https://github.com/vm0-ai/vm0/issues/3399)) ([2aa431a](https://github.com/vm0-ai/vm0/commit/2aa431ae1142234ee0d2add1438249540dc91ad8))
+* **email:** send error reply emails for inbound processing failures ([#3400](https://github.com/vm0-ai/vm0/issues/3400)) ([5d781fe](https://github.com/vm0-ai/vm0/commit/5d781fe0aaee3cfb29482f7140085a384d24a002))
+* **slack:** replace thinking reaction with assistant thread status ([#3410](https://github.com/vm0-ai/vm0/issues/3410)) ([08ebf8a](https://github.com/vm0-ai/vm0/commit/08ebf8ad2ed2b2e1c821040fd12f94c22532542c))
+
+
+### Bug Fixes
+
+* **platform:** resolve empty logs page for scoped agents ([#3392](https://github.com/vm0-ai/vm0/issues/3392)) ([d611bd0](https://github.com/vm0-ai/vm0/commit/d611bd026a6f74a27707c3877c1c4f9cb19acb65))
+* **schedule:** reject schedule creation for organization-scoped agents ([#3420](https://github.com/vm0-ai/vm0/issues/3420)) ([7945a10](https://github.com/vm0-ai/vm0/commit/7945a10ea3d2c21e8bde0516326f98804e61ea87))
+* unify variable resolution in build-context via caller-provided scope ([#3417](https://github.com/vm0-ai/vm0/issues/3417)) ([3563fb2](https://github.com/vm0-ai/vm0/commit/3563fb24962f10f9a4480ec9d7e69540af884398))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.28.0
+
+## [12.58.2](https://github.com/vm0-ai/vm0/compare/web-v12.58.1...web-v12.58.2) (2026-03-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.27.0
+
+## [12.58.1](https://github.com/vm0-ai/vm0/compare/web-v12.58.0...web-v12.58.1) (2026-03-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.26.0
+
+## [12.58.0](https://github.com/vm0-ai/vm0/compare/web-v12.57.0...web-v12.58.0) (2026-03-01)
+
+
+### Features
+
+* **scope:** enable vm0 admin users to activate system scope ([#3378](https://github.com/vm0-ai/vm0/issues/3378)) ([c4d05ac](https://github.com/vm0-ai/vm0/commit/c4d05acc257e7777dab8822362e07437add11511))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.25.0
+
+## [12.57.0](https://github.com/vm0-ai/vm0/compare/web-v12.56.0...web-v12.57.0) (2026-03-01)
+
+
+### Features
+
+* **runner:** inject agent name and scope env vars into sandbox runtime ([#3375](https://github.com/vm0-ai/vm0/issues/3375)) ([53a1d42](https://github.com/vm0-ai/vm0/commit/53a1d4211cf4dbb477b1fb92a2412b719d46d8a8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.24.0
+
+## [12.56.0](https://github.com/vm0-ai/vm0/compare/web-v12.55.0...web-v12.56.0) (2026-03-01)
+
+
+### Features
+
+* **connectors:** add dropbox oauth connector ([#3368](https://github.com/vm0-ai/vm0/issues/3368)) ([1dc5d4c](https://github.com/vm0-ai/vm0/commit/1dc5d4c151f986ded68c169b19bd7c9c6a07f4b6))
+* **connectors:** add feature flag for linear connector visibility ([#3372](https://github.com/vm0-ai/vm0/issues/3372)) ([f6da04e](https://github.com/vm0-ai/vm0/commit/f6da04e4653c62103975cb43f44d7c70067e4dc1))
+* **connectors:** add figma oauth connector ([#3369](https://github.com/vm0-ai/vm0/issues/3369)) ([4d93f59](https://github.com/vm0-ai/vm0/commit/4d93f59827c3567ba83ef115d90decc4ca7fa294))
+* **connectors:** add linear oauth connector ([#3366](https://github.com/vm0-ai/vm0/issues/3366)) ([f943498](https://github.com/vm0-ai/vm0/commit/f94349842e5501fe487d078fa7138a3010d65635))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.23.0
+
+## [12.55.0](https://github.com/vm0-ai/vm0/compare/web-v12.54.0...web-v12.55.0) (2026-03-01)
+
+
+### Features
+
+* **connectors:** add gmail oauth connector ([#3332](https://github.com/vm0-ai/vm0/issues/3332)) ([ca303b7](https://github.com/vm0-ai/vm0/commit/ca303b71916095e799c22b975f71216ea89df021))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.22.0
+
+## [12.54.0](https://github.com/vm0-ai/vm0/compare/web-v12.53.0...web-v12.54.0) (2026-03-01)
+
+
+### Features
+
+* **connectors:** add token expiry and refresh token storage (phase 0.5) ([#3326](https://github.com/vm0-ai/vm0/issues/3326)) ([d1f42f8](https://github.com/vm0-ai/vm0/commit/d1f42f87be4075be2c8d98051b7c91eddd07e959))
+
+## [12.53.0](https://github.com/vm0-ai/vm0/compare/web-v12.52.0...web-v12.53.0) (2026-03-01)
+
+
+### Features
+
+* add organization scope support with clerk integration ([#2863](https://github.com/vm0-ai/vm0/issues/2863)) ([ec821d7](https://github.com/vm0-ai/vm0/commit/ec821d79768153368aa3ff213b31e3e219baf320))
+
+
+### Bug Fixes
+
+* remove eslint-disable for no-explicit-any in global types ([#3292](https://github.com/vm0-ai/vm0/issues/3292)) ([d8dbc75](https://github.com/vm0-ai/vm0/commit/d8dbc75cf99ab682b7383cbd499320d2f281fb8d))
+* remove eslint-disable for no-html-link-for-pages in navbar ([#3293](https://github.com/vm0-ai/vm0/issues/3293)) ([55532c4](https://github.com/vm0-ai/vm0/commit/55532c453ff0d9afdb6684e4a58a2f6f2f4a330f))
+* remove eslint-disable suppressions in skills client ([#3294](https://github.com/vm0-ai/vm0/issues/3294)) ([42cf6e3](https://github.com/vm0-ai/vm0/commit/42cf6e3cd1348113807ad109f589e15eeda6c20f))
+* remove lint suppressions in test-helpers ([#3296](https://github.com/vm0-ai/vm0/issues/3296)) ([5c2d34f](https://github.com/vm0-ai/vm0/commit/5c2d34fe7d70ed89a31a72d5c4a337cc2fb7b739))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.21.0
+
+## [12.52.0](https://github.com/vm0-ai/vm0/compare/web-v12.51.0...web-v12.52.0) (2026-02-28)
+
+
+### Features
+
+* **connectors:** add self-hosted slack connector ([#3281](https://github.com/vm0-ai/vm0/issues/3281)) ([13e92fd](https://github.com/vm0-ai/vm0/commit/13e92fde8468324ca7502fa8ded5eb60179eba05)), closes [#3279](https://github.com/vm0-ai/vm0/issues/3279)
+* **connectors:** add self-hosted slack connector ([#3286](https://github.com/vm0-ai/vm0/issues/3286)) ([6089289](https://github.com/vm0-ai/vm0/commit/608928923103497eadee7c832c9103d9545aa826))
+* **web:** add instatus status popup widget ([#3285](https://github.com/vm0-ai/vm0/issues/3285)) ([c798155](https://github.com/vm0-ai/vm0/commit/c7981558cfba13848884c1f4548b2afcebe719be))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.20.0
+
+## [12.51.0](https://github.com/vm0-ai/vm0/compare/web-v12.50.1...web-v12.51.0) (2026-02-26)
+
+
+### Features
+
+* **email:** improve reply template with content-first layout ([#3261](https://github.com/vm0-ai/vm0/issues/3261)) ([3d28058](https://github.com/vm0-ai/vm0/commit/3d280583470605ff095f063424109e216a823c8e))
+
+## [12.50.1](https://github.com/vm0-ai/vm0/compare/web-v12.50.0...web-v12.50.1) (2026-02-25)
+
+
+### Bug Fixes
+
+* replace inline image data uris with placeholder in email body ([#3255](https://github.com/vm0-ai/vm0/issues/3255)) ([7bd85bf](https://github.com/vm0-ai/vm0/commit/7bd85bf91ee8b17504bd59615c53f1b2ea9919f9)), closes [#3254](https://github.com/vm0-ai/vm0/issues/3254)
+
+## [12.50.0](https://github.com/vm0-ai/vm0/compare/web-v12.49.1...web-v12.50.0) (2026-02-25)
+
+
+### Features
+
+* **email:** pass attachments to agent sessions via r2 presigned urls ([#3249](https://github.com/vm0-ai/vm0/issues/3249)) ([b524482](https://github.com/vm0-ai/vm0/commit/b524482998f31d443e65da1f211bf6479d478f81))
+
+## [12.49.1](https://github.com/vm0-ai/vm0/compare/web-v12.49.0...web-v12.49.1) (2026-02-25)
+
+
+### Bug Fixes
+
+* **email:** correct In-Reply-To and References headers for proper threading ([#3235](https://github.com/vm0-ai/vm0/issues/3235)) ([fe86f75](https://github.com/vm0-ai/vm0/commit/fe86f752d24b8f5497db6044ff1504bb93f54fee))
+
+## [12.49.0](https://github.com/vm0-ai/vm0/compare/web-v12.48.1...web-v12.49.0) (2026-02-23)
+
+
+### Features
+
+* **email:** add threading, mirrored from address, and original subject to trigger response ([#3227](https://github.com/vm0-ai/vm0/issues/3227)) ([21f7962](https://github.com/vm0-ai/vm0/commit/21f79620893424bdf8b9d465cf203354011f99c6))
+
+## [12.48.1](https://github.com/vm0-ai/vm0/compare/web-v12.48.0...web-v12.48.1) (2026-02-23)
+
+
+### Bug Fixes
+
+* **email:** prefer html body with text fallback for inbound email content ([#3220](https://github.com/vm0-ai/vm0/issues/3220)) ([d10236f](https://github.com/vm0-ai/vm0/commit/d10236ff20612560cd99f06cecb2a42b002dd741))
+
+## [12.48.0](https://github.com/vm0-ai/vm0/compare/web-v12.47.0...web-v12.48.0) (2026-02-23)
+
+
+### Features
+
+* **platform:** add editable agent name and skills multi-select to config dialog ([#3216](https://github.com/vm0-ai/vm0/issues/3216)) ([50fc6f3](https://github.com/vm0-ai/vm0/commit/50fc6f3fc03d6595b9ee326df2dd88a1697eb837))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.19.0
+
+## [12.47.0](https://github.com/vm0-ai/vm0/compare/web-v12.46.0...web-v12.47.0) (2026-02-22)
+
+
+### Features
+
+* **email:** auto-detect scope from sender for agent-only addresses ([#3198](https://github.com/vm0-ai/vm0/issues/3198)) ([ad0837d](https://github.com/vm0-ai/vm0/commit/ad0837dba470110ca1bd13840ff171e9feed8860))
+
+
+### Bug Fixes
+
+* **api:** use framework-based filename lookup in instructions api ([#3192](https://github.com/vm0-ai/vm0/issues/3192)) ([607608a](https://github.com/vm0-ai/vm0/commit/607608aa76b4237e2692dec598318a614e44ac02))
+* **email:** validate sender authenticity via dmarc for email triggers ([#3196](https://github.com/vm0-ai/vm0/issues/3196)) ([aec7039](https://github.com/vm0-ai/vm0/commit/aec703937eb780fdc5594ef600d92b13d9c579a7)), closes [#3194](https://github.com/vm0-ai/vm0/issues/3194)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.18.1
+
+## [12.46.0](https://github.com/vm0-ai/vm0/compare/web-v12.45.0...web-v12.46.0) (2026-02-22)
+
+
+### Features
+
+* **email:** add email-triggered agent runs ([#2959](https://github.com/vm0-ai/vm0/issues/2959)) ([a4ce976](https://github.com/vm0-ai/vm0/commit/a4ce976bd364744ef8f73bf575c5272d1682cb04))
+
+## [12.45.0](https://github.com/vm0-ai/vm0/compare/web-v12.44.0...web-v12.45.0) (2026-02-18)
+
+
+### Features
+
+* **cli:** add computer connector support ([#3124](https://github.com/vm0-ai/vm0/issues/3124)) ([a950821](https://github.com/vm0-ai/vm0/commit/a9508213014337b0a4a7effb4756ed7056e3cb0f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.18.0
+
+## [12.44.0](https://github.com/vm0-ai/vm0/compare/web-v12.43.1...web-v12.44.0) (2026-02-17)
+
+
+### Features
+
+* use ngrok reserved domains for computer connector ([#3116](https://github.com/vm0-ai/vm0/issues/3116)) ([7e30f2c](https://github.com/vm0-ai/vm0/commit/7e30f2c83f7fb4f82dd0b1e9aed38267ca5919f9))
+
+
+### Bug Fixes
+
+* improve validation error handler robustness ([#3114](https://github.com/vm0-ai/vm0/issues/3114)) ([6506d06](https://github.com/vm0-ai/vm0/commit/6506d066ab5dd01c4c33a3f1e6dbe6241ac662cb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.17.0
+
+## [12.43.1](https://github.com/vm0-ai/vm0/compare/web-v12.43.0...web-v12.43.1) (2026-02-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.16.1
+
+## [12.43.0](https://github.com/vm0-ai/vm0/compare/web-v12.42.2...web-v12.43.0) (2026-02-16)
+
+
+### Features
+
+* add gmail connector with nango platform integration ([#3065](https://github.com/vm0-ai/vm0/issues/3065)) ([d43dfe1](https://github.com/vm0-ai/vm0/commit/d43dfe1a5a868c8413ffd2b8a250d48dafc791cb))
+* **web:** add migration consistency testing ([#3066](https://github.com/vm0-ai/vm0/issues/3066)) ([cef8348](https://github.com/vm0-ai/vm0/commit/cef83484f87bfceacf03f1bfd185be49504080da))
+
+
+### Bug Fixes
+
+* **web:** rebuild migration snapshots for consistency ([#3070](https://github.com/vm0-ai/vm0/issues/3070)) ([c455382](https://github.com/vm0-ai/vm0/commit/c4553824116e78002f755bcdac28a8041055ac2e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.16.0
+
 ## [12.42.2](https://github.com/vm0-ai/vm0/compare/web-v12.42.1...web-v12.42.2) (2026-02-15)
 
 

@@ -1,4 +1,5 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
+import { z } from "zod";
 
 const GITHUB_API_BASE = "https://api.github.com";
 
@@ -63,12 +64,14 @@ export async function exchangeGitHubCode(
     throw new Error(`GitHub token exchange failed: ${response.status}`);
   }
 
-  const data = (await response.json()) as {
-    access_token?: string;
-    scope?: string;
-    error?: string;
-    error_description?: string;
-  };
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      scope: z.string().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
 
   if (data.error) {
     throw new Error(data.error_description || data.error);
@@ -102,11 +105,13 @@ export async function fetchGitHubUserInfo(
     throw new Error(`GitHub user API failed: ${response.status}`);
   }
 
-  const data = (await response.json()) as {
-    id: number;
-    login: string;
-    email: string | null;
-  };
+  const data = z
+    .object({
+      id: z.number(),
+      login: z.string(),
+      email: z.string().nullable(),
+    })
+    .parse(await response.json());
 
   return {
     id: String(data.id),

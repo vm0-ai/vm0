@@ -137,8 +137,7 @@ export const navigate$ = command(
     // abort the previous route's controller, which would poison any signal
     // derived from it — passing the caller's signal here causes the new
     // route's signal to be born-aborted.
-    // eslint-disable-next-line ccstate/no-get-signal
-    await set(loadRoute$, get(rootSignal$));
+    await set(loadRoute$, get(rootSignal$).signal);
     signal.throwIfAborted();
   },
 );
@@ -152,9 +151,7 @@ export const navigateInReact$ = command(
       searchParams?: URLSearchParams;
     },
   ) => {
-    // here is an exception case because we don't want use pass rootSignal$ in react component props
-    // eslint-disable-next-line ccstate/no-get-signal
-    const signal = get(rootSignal$);
+    const signal = get(rootSignal$).signal;
 
     detach(
       set(

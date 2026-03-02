@@ -132,6 +132,9 @@ export const storedExecutionContextSchema = z.object({
   apiStartTime: z.number().optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
+  // Agent metadata for VM0_AGENT_NAME and VM0_AGENT_SCOPE env vars
+  agentName: z.string().optional(),
+  agentScopeSlug: z.string().optional(),
 });
 
 /**
@@ -160,6 +163,9 @@ export const executionContextSchema = z.object({
   apiStartTime: z.number().optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
+  // Agent metadata
+  agentName: z.string().optional(),
+  agentScopeSlug: z.string().optional(),
 });
 
 /**

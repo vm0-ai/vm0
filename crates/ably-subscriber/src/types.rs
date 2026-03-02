@@ -194,7 +194,7 @@ pub enum Error {
     WebSocket(Box<tungstenite::Error>),
 
     #[error("Token exchange HTTP error: {0}")]
-    Http(#[from] reqwest::Error),
+    Http(#[from] reqeast::Error),
 
     #[error("MessagePack encode error: {0}")]
     MsgpackEncode(#[from] rmp_serde::encode::Error),

@@ -77,25 +77,11 @@ export async function getReceivedEmail(emailId: string): Promise<{
   subject: string;
   text: string;
   html: string;
+  headers: Record<string, string>;
 }> {
   const resend = getResendClient();
 
-  // Workaround: Resend SDK v4 has `emails.receiving.get()` at runtime but
-  // does not expose it in its TypeScript types. Track as tech debt.
-  const emails = resend.emails as unknown as Record<string, unknown>;
-  const receiving = emails?.receiving as
-    | {
-        get: (id: string) => Promise<{
-          data: Record<string, unknown> | null;
-          error: { message: string } | null;
-        }>;
-      }
-    | undefined;
-  if (!receiving?.get) {
-    throw new Error("Resend SDK does not support emails.receiving.get");
-  }
-
-  const { data, error } = await receiving.get(emailId);
+  const { data, error } = await resend.emails.receiving.get(emailId);
 
   if (error || !data) {
     throw new Error(
@@ -104,10 +90,49 @@ export async function getReceivedEmail(emailId: string): Promise<{
   }
 
   return {
-    from: String(data.from ?? ""),
-    to: Array.isArray(data.to) ? data.to.map(String) : [String(data.to ?? "")],
-    subject: String(data.subject ?? ""),
-    text: String(data.text ?? ""),
-    html: String(data.html ?? ""),
+    from: data.from,
+    to: data.to,
+    subject: data.subject,
+    text: data.text ?? "",
+    html: data.html ?? "",
+    headers: data.headers,
   };
+}
+
+export interface ReceivedEmailAttachment {
+  id: string;
+  filename: string;
+  size: number;
+  content_type: string;
+  content_disposition: string;
+  download_url: string;
+}
+
+/**
+ * List attachments for a received email with download URLs.
+ * Download URLs expire after 1 hour.
+ */
+export async function getReceivedEmailAttachments(
+  emailId: string,
+): Promise<ReceivedEmailAttachment[]> {
+  const resend = getResendClient();
+
+  const { data, error } = await resend.emails.receiving.attachments.list({
+    emailId,
+  });
+
+  if (error || !data) {
+    throw new Error(
+      `Failed to list email attachments: ${error?.message ?? "unknown"}`,
+    );
+  }
+
+  return data.data.map((a) => ({
+    id: a.id,
+    filename: a.filename ?? `attachment-${a.id}`,
+    size: a.size,
+    content_type: a.content_type,
+    content_disposition: a.content_disposition,
+    download_url: a.download_url,
+  }));
 }

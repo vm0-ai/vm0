@@ -87,7 +87,7 @@ Apply these thinking approaches during planning:
 2. **Structure the document:**
    - Chosen approach summary
    - Task breakdown with details
-   - Test strategy (unit tests and e2e tests)
+   - Test strategy (integration tests and e2e tests)
    - Dependency graph (if complex)
    - Risk assessment
    - Definition of done

@@ -1,43 +1,47 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use clap::Args;
 use sandbox::SandboxFactory;
 use sandbox_fc::FirecrackerFactory;
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use crate::api::ApiClient;
 use crate::config;
 use crate::deps;
 use crate::error::{RunnerError, RunnerResult};
 use crate::executor::{self, ExecutorConfig};
+use crate::lock;
 use crate::paths::{HomePaths, RunnerPaths};
-use crate::proxy::{self, ProxyRegistryHandle};
+use crate::provider::{ApiProvider, JobProvider, LocalProvider};
+use crate::proxy;
+use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::status::{RunnerMode, StatusTracker};
 
-/// Poll interval when Ably is connected (safety net).
-const POLL_SLOW: Duration = Duration::from_secs(30);
-/// Poll interval when Ably is disconnected or unavailable (primary mechanism).
-const POLL_FAST: Duration = Duration::from_secs(5);
-/// Initial backoff before retrying Ably connection.
-const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
-/// Maximum backoff between Ably reconnection attempts.
-const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
+/// Initial backoff before retrying mitmproxy after a crash.
+const MITM_BACKOFF_INITIAL: Duration = Duration::from_secs(1);
+/// Maximum backoff between mitmproxy restart attempts.
+const MITM_BACKOFF_MAX: Duration = Duration::from_secs(30);
+/// Stop retrying mitmproxy after this many consecutive failures.
+const MITM_MAX_CONSECUTIVE_FAILURES: u32 = 20;
 
 #[derive(Args)]
 pub struct StartArgs {
     /// Path to runner.yaml config file
     #[arg(long, short)]
-    config: PathBuf,
+    pub(crate) config: PathBuf,
     /// vm0 API URL (overrides config)
     #[arg(long, env = "VM0_API_URL")]
     api_url: Option<String>,
     /// Runner authentication token (overrides config)
     #[arg(long, env = "VM0_RUNNER_TOKEN")]
     token: Option<String>,
+    /// Use local file queue provider instead of API (for testing)
+    #[arg(long)]
+    local: bool,
 }
 
 /// Load config and run the main poll loop.
@@ -77,7 +81,42 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
             ))
         })?;
 
+    // Exclusive lock — prevents two runner processes from sharing the same base_dir.
+    // Canonicalize so that equivalent paths (e.g. with `..`) produce the same lock.
+    let base_dir_canonical = runner_config.base_dir.canonicalize().map_err(|e| {
+        RunnerError::Config(format!(
+            "canonicalize base_dir {}: {e}",
+            runner_config.base_dir.display()
+        ))
+    })?;
     let home = HomePaths::new()?;
+    let _base_dir_lock = lock::try_acquire(home.base_dir_lock(&base_dir_canonical))
+        .await
+        .map_err(|e| {
+            RunnerError::Config(format!(
+                "cannot lock base_dir {}: {e}",
+                runner_config.base_dir.display()
+            ))
+        })?;
+    // Shared locks on rootfs/snapshot — allows `runner gc` to detect in-use resources.
+    let _rootfs_lock =
+        if let Some(hash) = home.extract_rootfs_hash(&runner_config.firecracker.rootfs) {
+            let lock = lock::acquire_shared(home.rootfs_lock(&hash)).await?;
+            crate::paths::touch_mtime(&home.rootfs_dir().join(&hash));
+            Some(lock)
+        } else {
+            None
+        };
+    let _snapshot_lock = if let Some(ref snap) = runner_config.firecracker.snapshot
+        && let Some(hash) = home.extract_snapshot_hash(&snap.snapshot_path)
+    {
+        let lock = lock::acquire_shared(home.snapshot_lock(&hash)).await?;
+        crate::paths::touch_mtime(&home.snapshots_dir().join(&hash));
+        Some(lock)
+    } else {
+        None
+    };
+
     let log_paths = crate::paths::LogPaths::new(home.logs_dir());
     tokio::fs::create_dir_all(log_paths.dir())
         .await
@@ -88,9 +127,15 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
             ))
         })?;
 
+    // Start background prefetch so memory.bin is in page cache before the first VM.
+    if let Some(snapshot) = &runner_config.firecracker.snapshot {
+        let path = snapshot.memory_path.clone();
+        tokio::task::spawn_blocking(move || crate::prefetch::prefetch_memory(&path));
+    }
+
     // Start proxy before factory so proxy_port is available for netns pool.
     let paths = RunnerPaths::new(runner_config.base_dir.clone());
-    let mut mitm = proxy::MitmProxy::new(proxy::ProxyConfig {
+    let (mut mitm, mitm_crash_rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
         mitmdump_bin: home.mitmdump_bin(deps::MITMPROXY_VERSION),
         ca_dir: runner_config.ca_dir.clone(),
         addon_path: paths.mitm_addon(),
@@ -118,110 +163,111 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         vcpu,
         memory_mb,
     } = sandbox;
-    let config::ServerConfig {
-        url: api_url,
-        token,
-    } = server;
+    let mut status = StatusTracker::new(paths.status());
+    status.set_proxy_port(mitm.port()).await;
+    let status = Arc::new(status);
 
-    let status = Arc::new(StatusTracker::new(paths.status()));
+    // Create provider — handles discovery + claim + complete
+    let cancel = CancellationToken::new();
+    let http = crate::http::HttpClient::new(server.url.clone())?;
+    let (provider, group_name): (Arc<dyn JobProvider>, String) = if args.local {
+        let group_dir = home.groups_dir().join(&group);
+        std::fs::create_dir_all(&group_dir).map_err(|e| {
+            RunnerError::Config(format!("create group dir {}: {e}", group_dir.display()))
+        })?;
+        let provider = LocalProvider::new(group_dir, cancel.clone());
+        (provider, group)
+    } else {
+        let group_name = group.clone();
+        let provider = ApiProvider::new(http.clone(), server.token, group, cancel.clone()).await;
+        (provider, group_name)
+    };
+
+    let is_snapshot = fc_config.snapshot.is_some();
+    let exec_config = Arc::new(ExecutorConfig {
+        api_url: server.url,
+        vcpu,
+        memory_mb,
+        is_snapshot,
+        registry: registry_handle,
+        http,
+        log_paths,
+    });
 
     let config = RunConfig {
         name,
-        api_url,
-        token,
-        group,
+        group: group_name,
         fc_config,
         max_concurrent,
-        vcpu,
-        memory_mb,
         status,
-        registry: registry_handle,
-        log_paths,
+        mitm,
+        mitm_crash_rx,
+        provider,
+        cancel,
+        exec_config,
     };
 
-    let result = run(config).await;
-
-    // Stop proxy after all jobs have drained and factory is shut down.
-    if let Err(e) = mitm.stop().await {
-        warn!(error = %e, "proxy stop failed");
-    }
-
-    result
+    run(config).await
 }
 
 struct RunConfig {
     name: String,
-    api_url: String,
-    token: String,
     group: String,
     fc_config: sandbox_fc::FirecrackerConfig,
     max_concurrent: usize,
-    vcpu: u32,
-    memory_mb: u32,
     status: Arc<StatusTracker>,
-    registry: ProxyRegistryHandle,
-    log_paths: crate::paths::LogPaths,
+    mitm: proxy::MitmProxy,
+    mitm_crash_rx: tokio::sync::mpsc::Receiver<()>,
+    provider: Arc<dyn JobProvider>,
+    cancel: CancellationToken,
+    exec_config: Arc<ExecutorConfig>,
 }
 
-type AblyReconnectHandle =
-    tokio::task::JoinHandle<Result<ably_subscriber::Subscription, ably_subscriber::Error>>;
+type MitmRestartHandle = tokio::task::JoinHandle<RunnerResult<tokio::process::Child>>;
 
 async fn run(config: RunConfig) -> RunnerResult<()> {
-    let mut factory = FirecrackerFactory::new(config.fc_config.clone()).await?;
+    let RunConfig {
+        name,
+        group,
+        fc_config,
+        max_concurrent,
+        status,
+        mut mitm,
+        mut mitm_crash_rx,
+        provider,
+        cancel,
+        exec_config,
+    } = config;
+
+    let mut factory = FirecrackerFactory::new(fc_config).await?;
     factory.startup().await?;
     let factory = Arc::new(factory);
 
-    let http = crate::http::HttpClient::new(config.api_url.clone())?;
-    let api = ApiClient::new(http.clone(), config.token.clone());
-    let semaphore = Arc::new(Semaphore::new(config.max_concurrent));
+    let semaphore = Arc::new(Semaphore::new(max_concurrent));
     let mut jobs = JoinSet::new();
 
-    let is_snapshot = config.fc_config.snapshot.is_some();
-    let exec_config = Arc::new(ExecutorConfig {
-        api_url: config.api_url.clone(),
-        vcpu: config.vcpu,
-        memory_mb: config.memory_mb,
-        is_snapshot,
-        registry: config.registry.clone(),
-        http,
-        log_paths: config.log_paths.clone(),
-    });
-
-    config.status.write_initial().await;
+    status.write_initial().await;
     info!(
-        name = %config.name,
-        group = %config.group,
-        max_concurrent = config.max_concurrent,
+        name = %name,
+        group = %group,
+        max_concurrent,
         "runner started"
     );
 
     // -----------------------------------------------------------------------
-    // Ably subscription (non-fatal — poll-only mode if unavailable)
+    // Mitmproxy crash-restart state
     // -----------------------------------------------------------------------
-    let mut ably_backoff = ABLY_BACKOFF_INITIAL;
-    let mut ably_reconnect_at: Option<Instant> = None;
-    let mut ably_reconnecting: Option<AblyReconnectHandle> = None;
-    let mut ably_consecutive_failures: u32 = 0;
-
-    let ably_config = make_ably_config(&api, &config.group);
-    let mut ably = match ably_subscriber::subscribe(ably_config).await {
-        Ok(sub) => {
-            info!("ably connected");
-            Some(sub)
-        }
-        Err(e) => {
-            warn!(error = %e, "ably unavailable, will retry");
-            ably_reconnect_at = Some(Instant::now() + ably_backoff);
-            ably_consecutive_failures = 1;
-            None
-        }
-    };
-    let mut ably_connected = ably.is_some();
+    let mut mitm_retry: RetryState<MitmRestartHandle> = RetryState::new(
+        MITM_BACKOFF_INITIAL,
+        MITM_BACKOFF_MAX,
+        Some(MITM_MAX_CONSECUTIVE_FAILURES),
+    );
 
     // -----------------------------------------------------------------------
     // Signal handling
     // -----------------------------------------------------------------------
     let (mode_tx, mut mode_rx) = tokio::sync::watch::channel(RunnerMode::Running);
+    let signal_cancel = cancel.clone();
 
     tokio::spawn(async move {
         use tokio::signal::unix::{SignalKind, signal};
@@ -230,68 +276,38 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         let mut sigint = signal(SignalKind::interrupt()).ok();
         let mut sigusr1 = signal(SignalKind::user_defined1()).ok();
 
-        loop {
-            tokio::select! {
-                _ = recv_signal(&mut sigterm) => {
-                    info!("received SIGTERM, stopping");
-                    let _ = mode_tx.send(RunnerMode::Stopping);
-                    return;
-                }
-                _ = recv_signal(&mut sigint) => {
-                    info!("received SIGINT, stopping");
-                    let _ = mode_tx.send(RunnerMode::Stopping);
-                    return;
-                }
-                _ = recv_signal(&mut sigusr1) => {
-                    info!("received SIGUSR1, draining (no new jobs)");
-                    let _ = mode_tx.send(RunnerMode::Draining);
-                }
+        tokio::select! {
+            _ = recv_signal(&mut sigterm) => {
+                info!("received SIGTERM, draining");
+            }
+            _ = recv_signal(&mut sigint) => {
+                info!("received SIGINT, draining");
+            }
+            _ = recv_signal(&mut sigusr1) => {
+                info!("received SIGUSR1, draining");
             }
         }
+        let _ = mode_tx.send(RunnerMode::Draining);
+        signal_cancel.cancel();
     });
 
     // -----------------------------------------------------------------------
     // Main loop
     // -----------------------------------------------------------------------
-    let mut poll_now = true; // immediate first poll to clear any backlog
     let mut current_mode = RunnerMode::Running;
     loop {
         let mode = *mode_rx.borrow_and_update();
         if mode != current_mode {
             current_mode = mode;
-            config.status.set_mode(mode).await;
+            status.set_mode(mode).await;
         }
         match mode {
-            RunnerMode::Stopping | RunnerMode::Stopped => break,
-            RunnerMode::Draining => {
-                // Don't accept new jobs, wait for running ones to complete
-                if jobs.is_empty() {
-                    info!("all jobs drained");
-                    break;
-                }
-                tokio::select! {
-                    _ = mode_rx.changed() => {}
-                    result = jobs.join_next() => {
-                        if let Some(Err(e)) = result {
-                            error!(error = %e, "job task panicked");
-                        }
-                    }
-                }
-                continue;
-            }
+            RunnerMode::Draining | RunnerMode::Stopped => break,
             RunnerMode::Running => {}
         }
 
-        // Spawn a background Ably reconnection task when the timer fires
-        if ably.is_none()
-            && ably_reconnecting.is_none()
-            && let Some(at) = ably_reconnect_at
-            && Instant::now() >= at
-        {
-            ably_reconnect_at = None;
-            let ably_config = make_ably_config(&api, &config.group);
-            ably_reconnecting = Some(tokio::spawn(ably_subscriber::subscribe(ably_config)));
-        }
+        // Spawn background restart task when timer fires
+        maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
 
         // If all permits are taken, wait for a job to finish or mode change
         if semaphore.available_permits() == 0 {
@@ -302,136 +318,94 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         error!(error = %e, "job task panicked");
                     }
                 }
+                _ = mitm_crash_rx.recv() => {
+                    warn!("mitmproxy exited unexpectedly, scheduling restart");
+                    mitm_retry.schedule();
+                }
+                result = recv_retry(&mut mitm_retry.handle) => {
+                    handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry);
+                }
+                () = sleep_until_retry(&mitm_retry.restart_at) => {}
             }
             continue;
         }
 
-        // poll_now is only reset in the timer branch below so that Ably
-        // events never consume the immediate-poll intent (select! picks a
-        // random ready branch when Duration::ZERO races with a buffered event).
-        let sleep_dur = if poll_now {
-            Duration::ZERO
-        } else if ably_connected {
-            POLL_SLOW
-        } else {
-            POLL_FAST
-        };
-
         tokio::select! {
-            // Ably push notification
-            event = recv_ably(&mut ably) => {
-                match event {
-                    Some(ably_subscriber::Event::Message(msg)) => {
-                        if let Some(run_id) = parse_job_run_id(&msg) {
-                            info!(run_id = %run_id, "ably: job notification");
-                            claim_and_spawn(
-                                run_id, &api, &factory, &config, &exec_config,
-                                &semaphore, &mut jobs,
-                            ).await;
-                        }
+            // Job discovery via provider (Ably push + poll).
+            // discover() has no server-side side effects — safe to cancel.
+            discovered = provider.discover() => {
+                let Some(run_id) = discovered else { break }; // provider shutdown
+                // claim() runs in the branch handler — non-interruptible,
+                // so a successful claim is always paired with complete().
+                let Some(context) = provider.claim(run_id).await else {
+                    continue; // already claimed by another runner
+                };
+                info!(run_id = %run_id, "job claimed, acquiring permit");
+                // Acquire permit in the main loop *before* spawning. Permits are
+                // only acquired here and released by completing tasks, so since
+                // we checked available_permits() > 0 above, this succeeds
+                // immediately.
+                let permit = match Arc::clone(&semaphore).acquire_owned().await {
+                    Ok(p) => p,
+                    Err(_) => {
+                        error!(run_id = %run_id, "semaphore closed unexpectedly");
+                        provider.complete(run_id, 1, Some("runner internal error: semaphore closed")).await;
+                        break;
                     }
-                    Some(ably_subscriber::Event::Connected) => {
-                        if !ably_connected {
-                            ably_connected = true;
-                            info!("ably reconnected");
-                        }
-                    }
-                    Some(ably_subscriber::Event::Disconnected { reason }) => {
-                        ably_connected = false;
-                        warn!(
-                            reason = reason.as_deref().unwrap_or("unknown"),
-                            "ably disconnected, switching to fast poll"
-                        );
-                    }
-                    Some(ably_subscriber::Event::Error { code, message }) => {
-                        error!(code, message = %message, "ably fatal error, will reconnect");
-                        ably = None;
-                        ably_connected = false;
-                        ably_reconnect_at = Some(Instant::now() + ably_backoff);
-                    }
-                    None => {
-                        warn!("ably subscription closed, will reconnect");
-                        ably = None;
-                        ably_connected = false;
-                        ably_reconnect_at = Some(Instant::now() + ably_backoff);
-                    }
-                }
-                continue;
+                };
+                info!(run_id = %run_id, "spawning executor");
+                status.add_run(run_id).await;
+                spawn_job(
+                    context, &provider, &factory, &exec_config,
+                    permit, &mut jobs, &status,
+                );
             }
-            // Poll fallback (adaptive interval)
-            _ = tokio::time::sleep(sleep_dur) => {
-                poll_now = false;
-                match api.poll(&config.group).await {
-                    Ok(Some(job)) => {
-                        info!(run_id = %job.run_id, "poll: job found");
-                        claim_and_spawn(
-                            job.run_id, &api, &factory, &config, &exec_config,
-                            &semaphore, &mut jobs,
-                        ).await;
-                        poll_now = true;
-                    }
-                    Ok(None) => {}
-                    Err(e) => {
-                        error!(error = %e, "poll failed");
-                    }
-                }
+            // Mitmproxy crash detection
+            _ = mitm_crash_rx.recv() => {
+                warn!("mitmproxy exited unexpectedly, scheduling restart");
+                mitm_retry.schedule();
             }
-            // Ably reconnection result (background task)
-            result = recv_reconnect(&mut ably_reconnecting) => {
-                ably_reconnecting = None;
-                match result {
-                    Ok(sub) => {
-                        if ably_consecutive_failures > 0 {
-                            info!(attempts = ably_consecutive_failures, "ably reconnected after failures");
-                        } else {
-                            info!("ably reconnected");
-                        }
-                        ably = Some(sub);
-                        ably_connected = true;
-                        ably_backoff = ABLY_BACKOFF_INITIAL;
-                        ably_consecutive_failures = 0;
-                    }
-                    Err(e) => {
-                        ably_consecutive_failures += 1;
-                        let next_secs = ably_backoff.as_secs();
-                        if ably_consecutive_failures >= 10 {
-                            error!(
-                                error = %e,
-                                failures = ably_consecutive_failures,
-                                next_attempt_secs = next_secs,
-                                "ably reconnection failing persistently"
-                            );
-                        } else {
-                            warn!(error = %e, next_attempt_secs = next_secs, "ably reconnect failed");
-                        }
-                        ably_reconnect_at = Some(Instant::now() + ably_backoff);
-                        ably_backoff = (ably_backoff * 2).min(ABLY_BACKOFF_MAX);
-                    }
-                }
+            // Mitmproxy restart result (background task)
+            result = recv_retry(&mut mitm_retry.handle) => {
+                handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry);
             }
+            // Mitmproxy restart timer
+            () = sleep_until_retry(&mitm_retry.restart_at) => {}
             // Mode changes (signals)
             _ = mode_rx.changed() => {}
         }
     }
 
     // -----------------------------------------------------------------------
-    // Shutdown
+    // Shutdown — release discovery resources, then drain running jobs
     // -----------------------------------------------------------------------
-    // Close Ably subscription and cancel any in-flight reconnection
-    drop(ably);
-    if let Some(h) = ably_reconnecting {
-        h.abort();
-    }
+    provider.shutdown().await;
 
-    // Drain running jobs
     let remaining = jobs.len();
     if remaining > 0 {
         info!(remaining, "waiting for running jobs to finish");
-        while let Some(result) = jobs.join_next().await {
-            if let Err(e) = result {
-                error!(error = %e, "job task panicked during drain");
+        while !jobs.is_empty() {
+            maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
+
+            tokio::select! {
+                result = jobs.join_next() => {
+                    if let Some(Err(e)) = result {
+                        error!(error = %e, "job task panicked during drain");
+                    }
+                }
+                _ = mitm_crash_rx.recv() => {
+                    warn!("mitmproxy exited unexpectedly, scheduling restart");
+                    mitm_retry.schedule();
+                }
+                result = recv_retry(&mut mitm_retry.handle) => {
+                    handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry);
+                }
+                () = sleep_until_retry(&mitm_retry.restart_at) => {}
             }
         }
+    }
+    if let Some(h) = mitm_retry.handle {
+        h.abort();
     }
 
     info!("shutting down factory");
@@ -439,87 +413,58 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         .map_err(|_| RunnerError::Internal("factory still referenced at shutdown".into()))?;
     factory.shutdown().await;
 
-    config.status.set_mode(RunnerMode::Stopped).await;
+    // Stop proxy after all jobs have drained and factory is shut down.
+    if let Err(e) = mitm.stop().await {
+        warn!(error = %e, "proxy stop failed");
+    }
+
+    status.set_mode(RunnerMode::Stopped).await;
     info!("runner stopped");
 
     Ok(())
 }
 
-/// Claim a job and spawn an executor task.
-async fn claim_and_spawn(
-    run_id: uuid::Uuid,
-    api: &ApiClient,
+/// Spawn a job executor task.
+///
+/// The provider has already claimed the job and the caller has acquired
+/// a semaphore permit — this function spawns the executor and reports
+/// completion via the provider when done.
+fn spawn_job(
+    context: crate::types::ExecutionContext,
+    provider: &Arc<dyn JobProvider>,
     factory: &Arc<FirecrackerFactory>,
-    config: &RunConfig,
     exec_config: &Arc<ExecutorConfig>,
-    semaphore: &Arc<Semaphore>,
+    permit: OwnedSemaphorePermit,
     jobs: &mut JoinSet<()>,
+    status: &Arc<StatusTracker>,
 ) {
-    let context = match api.claim(run_id).await {
-        Ok(ctx) => ctx,
-        Err(RunnerError::AlreadyClaimed) => {
-            info!(run_id = %run_id, "already claimed, skipping");
-            return;
-        }
-        Err(e) => {
-            error!(run_id = %run_id, error = %e, "claim failed");
-            return;
-        }
-    };
+    let run_id = context.run_id;
 
-    info!(run_id = %run_id, "job claimed, spawning executor");
-
-    let permit = match semaphore.clone().acquire_owned().await {
-        Ok(p) => p,
-        Err(_) => {
-            error!("semaphore closed unexpectedly");
-            return;
-        }
-    };
-
-    config.status.add_run(run_id).await;
-
-    let api = api.clone();
+    let provider = Arc::clone(provider);
     let factory = Arc::clone(factory);
     let exec_config = Arc::clone(exec_config);
-    let status = Arc::clone(&config.status);
+    let status = Arc::clone(status);
 
     jobs.spawn(async move {
-        executor::execute_job(&api, factory.as_ref(), context, &exec_config).await;
+        // Inner spawn isolates panics: if execute_job panics, the outer task
+        // still reports completion and cleans up status/permit.
+        let inner = tokio::spawn(async move {
+            executor::execute_job(factory.as_ref(), context, &exec_config).await
+        });
+
+        let (exit_code, err) = match inner.await {
+            Ok((code, err)) => (code, err),
+            Err(e) => {
+                error!(run_id = %run_id, error = %e, "executor task panicked");
+                (1, Some(format!("internal error: {e}")))
+            }
+        };
+
+        // Structural guarantee: claim (in provider) is always paired with complete.
+        provider.complete(run_id, exit_code, err.as_deref()).await;
         status.remove_run(run_id).await;
         drop(permit);
     });
-}
-
-/// Parse `run_id` from an Ably job notification message.
-fn parse_job_run_id(msg: &ably_subscriber::Message) -> Option<uuid::Uuid> {
-    if msg.name.as_deref() != Some("job") {
-        return None;
-    }
-    let raw = msg.data.get("runId").and_then(|v| v.as_str());
-    match raw {
-        Some(s) => match s.parse() {
-            Ok(id) => Some(id),
-            Err(e) => {
-                warn!(value = %s, error = %e, "ably: invalid runId");
-                None
-            }
-        },
-        None => {
-            warn!(data = %msg.data, "ably: job message missing runId");
-            None
-        }
-    }
-}
-
-/// Receive from Ably subscription, or pend forever if not connected.
-async fn recv_ably(
-    ably: &mut Option<ably_subscriber::Subscription>,
-) -> Option<ably_subscriber::Event> {
-    match ably {
-        Some(sub) => sub.next().await,
-        None => std::future::pending().await,
-    }
 }
 
 /// Await a signal if registered, or pend forever if registration failed.
@@ -532,92 +477,170 @@ async fn recv_signal(sig: &mut Option<tokio::signal::unix::Signal>) {
     }
 }
 
-/// Await a background Ably reconnection task, or pend forever if none is running.
-async fn recv_reconnect(
-    handle: &mut Option<AblyReconnectHandle>,
-) -> Result<ably_subscriber::Subscription, String> {
-    match handle {
-        Some(h) => match h.await {
-            Ok(Ok(sub)) => Ok(sub),
-            Ok(Err(e)) => Err(e.to_string()),
-            Err(e) => Err(format!("reconnect task panicked: {e}")),
-        },
-        None => std::future::pending().await,
+/// Spawn a background mitm restart task when the backoff timer fires
+/// and no restart is already in flight.
+async fn maybe_spawn_mitm_restart(
+    mitm: &mut proxy::MitmProxy,
+    crash_rx: &mut tokio::sync::mpsc::Receiver<()>,
+    retry: &mut RetryState<MitmRestartHandle>,
+) {
+    if !retry.timer_ready() {
+        return;
     }
+    retry.clear_timer();
+    // Drain any stale crash notifications from the previous process to prevent
+    // a spurious restart cycle after this one completes.
+    while crash_rx.try_recv().is_ok() {}
+    let params = mitm.begin_restart().await;
+    retry.handle = Some(tokio::spawn(params.spawn()));
 }
 
-/// Create a fresh `SubscribeConfig` for Ably connection.
-///
-/// `SubscribeConfig` is consumed by `subscribe()` and is not `Clone`,
-/// so we recreate it for each connection attempt.
-fn make_ably_config(api: &ApiClient, group: &str) -> ably_subscriber::SubscribeConfig {
-    let api = api.clone();
-    let channel = format!("runner-group:{group}");
-    let group = group.to_owned();
-    let get_token: Box<dyn Fn() -> ably_subscriber::TokenFuture + Send + Sync> =
-        Box::new(move || {
-            let api = api.clone();
-            let group = group.clone();
-            Box::pin(async move {
-                api.realtime_token(&group)
-                    .await
-                    .map_err(|e| Box::new(e) as ably_subscriber::BoxError)
-            })
-        });
-    ably_subscriber::SubscribeConfig::new(get_token, channel)
+/// Handle the result of a background mitm restart task.
+fn handle_mitm_restart_result(
+    result: Result<tokio::process::Child, String>,
+    mitm: &mut proxy::MitmProxy,
+    retry: &mut RetryState<MitmRestartHandle>,
+) {
+    match result {
+        Ok(child) => {
+            if retry.consecutive_failures() > 0 {
+                info!(
+                    attempts = retry.consecutive_failures(),
+                    "mitmproxy restarted after failures"
+                );
+            } else {
+                info!("mitmproxy restarted");
+            }
+            mitm.complete_restart(child);
+            retry.on_success();
+        }
+        Err(e) => {
+            // Capture before on_failure() — matches the delay actually scheduled.
+            let next_secs = retry.backoff().as_secs();
+            if !retry.on_failure() {
+                error!(
+                    error = %e,
+                    failures = retry.consecutive_failures(),
+                    "mitmproxy restart abandoned after too many failures"
+                );
+                return;
+            }
+            if retry.consecutive_failures() >= 5 {
+                error!(
+                    error = %e,
+                    failures = retry.consecutive_failures(),
+                    next_attempt_secs = next_secs,
+                    "mitmproxy restart failing persistently"
+                );
+            } else {
+                warn!(
+                    error = %e,
+                    next_attempt_secs = next_secs,
+                    "mitmproxy restart failed"
+                );
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn make_message(name: Option<&str>, data: serde_json::Value) -> ably_subscriber::Message {
-        ably_subscriber::Message {
-            name: name.map(String::from),
-            data,
-            id: None,
-            client_id: None,
-            timestamp: None,
-        }
+    /// Create a MitmProxy for testing (does not start mitmdump).
+    async fn test_mitm() -> (
+        proxy::MitmProxy,
+        tokio::sync::mpsc::Receiver<()>,
+        tempfile::TempDir,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let (mitm, rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
+            mitmdump_bin: PathBuf::from("true"),
+            ca_dir: dir.path().to_path_buf(),
+            addon_path: dir.path().join("addon.py"),
+            registry_path: dir.path().join("registry.json"),
+            registry_lock_path: dir.path().join("registry.lock"),
+            api_url: None,
+        })
+        .await
+        .unwrap();
+        (mitm, rx, dir)
     }
 
-    #[test]
-    fn parse_job_run_id_valid() {
-        let msg = make_message(
-            Some("job"),
-            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000001" }),
+    #[tokio::test]
+    async fn mitm_restart_success_resets_backoff() {
+        let (mut mitm, _rx, _dir) = test_mitm().await;
+        let mut retry: RetryState<MitmRestartHandle> = RetryState::new(
+            MITM_BACKOFF_INITIAL,
+            MITM_BACKOFF_MAX,
+            Some(MITM_MAX_CONSECUTIVE_FAILURES),
         );
-        let id = parse_job_run_id(&msg).unwrap();
-        assert_eq!(id.to_string(), "00000000-0000-0000-0000-000000000001");
+        retry.backoff = Duration::from_secs(16);
+        retry.consecutive_failures = 5;
+
+        let child = tokio::process::Command::new("true")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+
+        handle_mitm_restart_result(Ok(child), &mut mitm, &mut retry);
+
+        assert_eq!(retry.backoff, MITM_BACKOFF_INITIAL);
+        assert_eq!(retry.consecutive_failures, 0);
     }
 
-    #[test]
-    fn parse_job_run_id_wrong_event_name() {
-        let msg = make_message(
-            Some("status"),
-            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000001" }),
+    #[tokio::test]
+    async fn mitm_restart_failure_schedules_retry_with_backoff() {
+        let (mut mitm, _rx, _dir) = test_mitm().await;
+        let mut retry: RetryState<MitmRestartHandle> = RetryState::new(
+            MITM_BACKOFF_INITIAL,
+            MITM_BACKOFF_MAX,
+            Some(MITM_MAX_CONSECUTIVE_FAILURES),
         );
-        assert!(parse_job_run_id(&msg).is_none());
+
+        handle_mitm_restart_result(Err("spawn failed".into()), &mut mitm, &mut retry);
+
+        assert_eq!(retry.consecutive_failures, 1);
+        assert!(retry.restart_at.is_some());
+        assert_eq!(retry.backoff, MITM_BACKOFF_INITIAL * 2);
     }
 
-    #[test]
-    fn parse_job_run_id_missing_name() {
-        let msg = make_message(
-            None,
-            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000001" }),
+    #[tokio::test]
+    async fn mitm_restart_backoff_caps_at_max() {
+        let (mut mitm, _rx, _dir) = test_mitm().await;
+        let mut retry: RetryState<MitmRestartHandle> = RetryState::new(
+            MITM_BACKOFF_INITIAL,
+            MITM_BACKOFF_MAX,
+            Some(MITM_MAX_CONSECUTIVE_FAILURES),
         );
-        assert!(parse_job_run_id(&msg).is_none());
+        retry.backoff = MITM_BACKOFF_MAX;
+        retry.consecutive_failures = 10;
+
+        handle_mitm_restart_result(Err("spawn failed".into()), &mut mitm, &mut retry);
+
+        assert_eq!(retry.backoff, MITM_BACKOFF_MAX);
+        assert!(retry.restart_at.is_some());
     }
 
-    #[test]
-    fn parse_job_run_id_invalid_uuid() {
-        let msg = make_message(Some("job"), serde_json::json!({ "runId": "not-a-uuid" }));
-        assert!(parse_job_run_id(&msg).is_none());
-    }
+    #[tokio::test]
+    async fn mitm_restart_circuit_breaker_stops_retrying() {
+        let (mut mitm, _rx, _dir) = test_mitm().await;
+        let mut retry: RetryState<MitmRestartHandle> = RetryState::new(
+            MITM_BACKOFF_INITIAL,
+            MITM_BACKOFF_MAX,
+            Some(MITM_MAX_CONSECUTIVE_FAILURES),
+        );
+        retry.backoff = MITM_BACKOFF_MAX;
+        retry.consecutive_failures = 19;
 
-    #[test]
-    fn parse_job_run_id_missing_field() {
-        let msg = make_message(Some("job"), serde_json::json!({ "other": "data" }));
-        assert!(parse_job_run_id(&msg).is_none());
+        handle_mitm_restart_result(Err("binary missing".into()), &mut mitm, &mut retry);
+
+        assert_eq!(retry.consecutive_failures, 20);
+        assert!(
+            retry.restart_at.is_none(),
+            "circuit breaker should prevent further retries"
+        );
     }
 }

@@ -9,7 +9,7 @@ import * as checkpointSchema from "./schema/checkpoint";
 import * as agentSessionSchema from "./schema/agent-session";
 import * as storageSchema from "./schema/storage";
 import * as blobSchema from "./schema/blob";
-import * as imageSchema from "./schema/image";
+
 import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as agentRunEventsLocalSchema from "./schema/agent-run-events-local";
 import * as scopeSchema from "./schema/scope";
@@ -28,6 +28,9 @@ import * as connectorSchema from "./schema/connector";
 import * as usageDailySchema from "./schema/usage-daily";
 import * as emailThreadSessionSchema from "./schema/email-thread-session";
 import * as emailReplyRequestSchema from "./schema/email-reply-request";
+import * as orgAccessTokenSchema from "./schema/org-access-token";
+import * as githubInstallationSchema from "./schema/github-installation";
+import * as githubIssueSessionSchema from "./schema/github-issue-session";
 
 export const schema = {
   ...userSchema,
@@ -41,7 +44,7 @@ export const schema = {
   ...agentSessionSchema,
   ...storageSchema,
   ...blobSchema,
-  ...imageSchema,
+
   ...sandboxTelemetrySchema,
   ...agentRunEventsLocalSchema,
   ...scopeSchema,
@@ -60,4 +63,7 @@ export const schema = {
   ...usageDailySchema,
   ...emailThreadSessionSchema,
   ...emailReplyRequestSchema,
+  ...orgAccessTokenSchema,
+  ...githubInstallationSchema,
+  ...githubIssueSessionSchema,
 };

@@ -5,16 +5,23 @@ import {
   connectorSessionsContract,
   connectorSessionByIdContract,
   connectorTypeSchema,
+  computerConnectorContract,
   type ApiErrorResponse,
+  type ComputerConnectorCreateResponse,
 } from "@vm0/core";
-import { getApiUrl, getToken } from "../../lib/api/config";
+import { getApiUrl, getActiveToken } from "../../lib/api/config";
+import { deleteConnector } from "../../lib/api";
+import {
+  checkComputerDependencies,
+  startComputerServices,
+} from "./lib/computer/start-services";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function getHeaders(): Promise<Record<string, string>> {
-  const token = await getToken();
+  const token = await getActiveToken();
   if (!token) {
     throw new Error("Not authenticated. Run: vm0 auth login");
   }
@@ -49,6 +56,42 @@ export const connectCommand = new Command()
       const connectorType = parseResult.data;
       const apiUrl = await getApiUrl();
       const headers = await getHeaders();
+
+      // Special flow for computer connector
+      if (connectorType === "computer") {
+        await checkComputerDependencies();
+        console.log(chalk.cyan("Setting up computer connector..."));
+
+        const computerClient = initClient(computerConnectorContract, {
+          baseUrl: apiUrl,
+          baseHeaders: headers,
+          jsonQuery: false,
+        });
+
+        const createResult = await computerClient.create({
+          body: {},
+        });
+
+        if (createResult.status !== 200) {
+          const errorBody = createResult.body as ApiErrorResponse;
+          console.error(
+            chalk.red(
+              `✗ Failed to create connector: ${errorBody.error?.message}`,
+            ),
+          );
+          process.exit(1);
+        }
+
+        const credentials =
+          createResult.body as ComputerConnectorCreateResponse;
+        await startComputerServices(credentials);
+
+        // Reached here after double Ctrl+C / SIGTERM — services already cleaned up
+        console.log(chalk.cyan("Disconnecting computer connector..."));
+        await deleteConnector("computer");
+        console.log(chalk.green("✓ Disconnected computer"));
+        process.exit(0);
+      }
 
       console.log(`Connecting ${chalk.cyan(type)}...`);
 

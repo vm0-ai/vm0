@@ -185,7 +185,7 @@ Firecracker is an open-source VMM (Virtual Machine Monitor) developed by AWS tha
 
 #### Architecture
 
-**Runner Application**: Separate Node.js application in `turbo/apps/runner/`
+**Runner Application**: Rust application in `crates/runner/`
 
 **VM Configuration**:
 ```yaml

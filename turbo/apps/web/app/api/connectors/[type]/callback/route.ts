@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { connectorTypeSchema } from "@vm0/core";
+import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
 import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
 import { connectorSessions } from "../../../../../src/db/schema/connector-session";
 import { logger } from "../../../../../src/lib/logger";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
-import { getPlatform } from "../../../../../src/lib/connector/platform/router";
-import { getUserScopeByClerkId } from "../../../../../src/lib/scope/scope-service";
+import {
+  PROVIDER_HANDLERS,
+  type OAuthTokenResult,
+} from "../../../../../src/lib/connector/provider-registry";
 
 const log = logger("api:connectors:callback");
 
@@ -49,6 +52,22 @@ function buildDeleteCookieHeader(name: string): string {
   return `${name}=; Max-Age=0; Path=/`;
 }
 
+async function exchangeTokenForConnector(
+  connectorType: keyof typeof PROVIDER_HANDLERS,
+  code: string,
+  redirectUri: string,
+  state?: string,
+): Promise<OAuthTokenResult> {
+  const currentEnv = env();
+  const handler = PROVIDER_HANDLERS[connectorType];
+  const clientId = handler.getClientId(currentEnv);
+  const clientSecret = handler.getClientSecret(currentEnv);
+  if (!clientId || !clientSecret) {
+    throw new Error(`${connectorType} OAuth not configured`);
+  }
+  return handler.exchangeCode(clientId, clientSecret, code, redirectUri, state);
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ type: string }> },
@@ -80,12 +99,6 @@ export async function GET(
       type,
       "Computer connector does not use OAuth",
     );
-  }
-
-  // Get user scope for building connection ID
-  const scope = await getUserScopeByClerkId(userId);
-  if (!scope) {
-    return redirectWithError(origin, type, "User scope not found");
   }
 
   // Get state and session from cookies
@@ -133,43 +146,47 @@ export async function GET(
     // Build redirect URI (must match authorize endpoint)
     const redirectUri = `${origin}/api/connectors/${type}/callback`;
 
-    // Build connection ID for platform abstraction
-    const connectionId = `${scope.id}:${connectorType}`;
-
-    // Use platform abstraction to handle OAuth callback
-    const platform = getPlatform(connectorType);
-    const result = await platform.handleCallback({
-      type: connectorType,
+    // Exchange code for token directly from provider
+    const {
+      accessToken,
+      refreshToken,
+      expiresIn,
+      userInfo,
+      scopes: oauthScopes,
+    } = await exchangeTokenForConnector(
+      connectorType,
       code,
-      state,
-      connectionId,
       redirectUri,
-    });
+      state ?? undefined,
+    );
 
     log.debug("Storing connector", {
       userId,
       type,
-      username: result.externalUsername,
+      username: userInfo.username,
     });
 
+    // Build refresh token options if provider supports it
+    const handler = PROVIDER_HANDLERS[connectorType];
+    const refreshSecretName = handler.getRefreshSecretName?.();
+
     // Store connector and secret
-    // For self-hosted platforms, accessToken is provided in result
-    // For Nango platforms, accessToken is managed by Nango (not in result)
     const { created } = await upsertOAuthConnector(
       userId,
       connectorType,
-      result.accessToken ?? "", // Empty string for Nango-managed connectors
+      accessToken,
       {
-        id: result.externalId,
-        username: result.externalUsername ?? "",
-        email: result.externalEmail,
+        id: userInfo.id,
+        username: userInfo.username ?? "",
+        email: userInfo.email,
       },
-      result.oauthScopes ?? [],
+      oauthScopes,
+      { refreshToken, refreshSecretName, expiresIn },
     );
 
     log.info("Connector OAuth completed", {
       type,
-      username: result.externalUsername,
+      username: userInfo.username,
       created,
       sessionId,
     });
@@ -190,7 +207,7 @@ export async function GET(
     // Redirect to success page
     const successUrl = new URL("/connector/success", origin);
     successUrl.searchParams.set("type", type);
-    successUrl.searchParams.set("username", result.externalUsername ?? "");
+    successUrl.searchParams.set("username", userInfo.username ?? "");
 
     const response = NextResponse.redirect(successUrl.toString());
     // Clear cookies

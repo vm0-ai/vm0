@@ -4,69 +4,139 @@ use clap::Args;
 use sha2::{Digest, Sha256};
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::paths::{HomePaths, LockPaths, RootfsPaths};
+use crate::paths::{HomePaths, RootfsPaths};
 
 const BUILD_SCRIPT: &str = include_str!("../../scripts/build-rootfs.sh");
 const VERIFY_SCRIPT: &str = include_str!("../../scripts/verify-rootfs.sh");
 const EMBEDDED_DOCKERFILE: &str = include_str!("../../scripts/rootfs.Dockerfile");
 
+#[cfg(bundled_guests)]
+mod embedded {
+    pub const GUEST_INIT: &[u8] = include_bytes!(env!("BUNDLED_GUEST_INIT"));
+    pub const GUEST_DOWNLOAD: &[u8] = include_bytes!(env!("BUNDLED_GUEST_DOWNLOAD"));
+    pub const GUEST_AGENT: &[u8] = include_bytes!(env!("BUNDLED_GUEST_AGENT"));
+    pub const GUEST_MOCK_CLAUDE: &[u8] = include_bytes!(env!("BUNDLED_GUEST_MOCK_CLAUDE"));
+}
+
+#[cfg(bundled_guests)]
+fn bundled_guest(name: &str) -> Option<&'static [u8]> {
+    match name {
+        "guest-agent" => Some(embedded::GUEST_AGENT),
+        "guest-download" => Some(embedded::GUEST_DOWNLOAD),
+        "guest-init" => Some(embedded::GUEST_INIT),
+        "guest-mock-claude" => Some(embedded::GUEST_MOCK_CLAUDE),
+        _ => None,
+    }
+}
+
+#[cfg(not(bundled_guests))]
+fn bundled_guest(_name: &str) -> Option<&'static [u8]> {
+    None
+}
+
 #[derive(Args)]
 pub struct RootfsArgs {
     #[arg(long)]
-    guest_init: PathBuf,
+    guest_agent: Option<PathBuf>,
     #[arg(long)]
-    guest_download: PathBuf,
+    guest_download: Option<PathBuf>,
     #[arg(long)]
-    guest_agent: PathBuf,
+    guest_init: Option<PathBuf>,
     #[arg(long)]
-    guest_mock_claude: PathBuf,
+    guest_mock_claude: Option<PathBuf>,
+    /// Compute and print the input hash without building
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
-impl RootfsArgs {
-    /// Returns (source_path, rootfs_dest) pairs sorted by name for deterministic hashing.
-    fn guest_bins(&self) -> [(&Path, &str); 4] {
-        [
-            (self.guest_agent.as_path(), "/usr/local/bin/guest-agent"),
-            (
-                self.guest_download.as_path(),
-                "/usr/local/bin/guest-download",
-            ),
-            (self.guest_init.as_path(), "/sbin/guest-init"),
-            (
-                self.guest_mock_claude.as_path(),
-                "/usr/local/bin/guest-mock-claude",
-            ),
-        ]
+/// Resolve a guest binary path: CLI arg takes priority, then bundled binary
+/// written to a temp file, otherwise error.
+async fn resolve_guest(
+    cli_path: Option<PathBuf>,
+    name: &str,
+    tmp_dir: &Path,
+) -> RunnerResult<PathBuf> {
+    if let Some(p) = cli_path {
+        return Ok(p);
     }
+    if let Some(bytes) = bundled_guest(name) {
+        let dest = tmp_dir.join(name);
+        tokio::fs::write(&dest, bytes)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("write bundled {name}: {e}")))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            tokio::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755))
+                .await
+                .map_err(|e| RunnerError::Internal(format!("chmod {name}: {e}")))?;
+        }
+        return Ok(dest);
+    }
+    Err(RunnerError::Internal(format!(
+        "missing --{} and no bundled binary available",
+        name
+    )))
 }
 
 /// Build rootfs and return the content hash of the inputs.
 pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
-    let guest_bins = args.guest_bins();
-    let paths = HomePaths::new()?;
+    let dry_run = args.dry_run;
+
+    // Create temp dir for any bundled guest binaries that need extracting.
+    // IMPORTANT: tmp_dir must outlive build script execution — dropping it deletes extracted guests.
+    let tmp_dir =
+        tempfile::tempdir().map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
+
+    // Resolve all guest binary paths (CLI arg → bundled → error).
+    let guest_agent = resolve_guest(args.guest_agent, "guest-agent", tmp_dir.path()).await?;
+    let guest_download =
+        resolve_guest(args.guest_download, "guest-download", tmp_dir.path()).await?;
+    let guest_init = resolve_guest(args.guest_init, "guest-init", tmp_dir.path()).await?;
+    let guest_mock_claude =
+        resolve_guest(args.guest_mock_claude, "guest-mock-claude", tmp_dir.path()).await?;
+
+    // Sorted by dest name for deterministic hashing.
+    let bins: [(&Path, &str); 4] = [
+        (guest_agent.as_path(), "/usr/local/bin/guest-agent"),
+        (guest_download.as_path(), "/usr/local/bin/guest-download"),
+        (guest_init.as_path(), "/sbin/guest-init"),
+        (
+            guest_mock_claude.as_path(),
+            "/usr/local/bin/guest-mock-claude",
+        ),
+    ];
 
     // Compute input hash: script + dockerfile + guest binaries.
     // The build script content is included so any logic change invalidates cache.
-    let hash = compute_input_hash(&guest_bins).await?;
+    let hash = compute_input_hash(&bins).await?;
     tracing::info!("rootfs input hash: {hash}");
+    // Machine-readable output — do not change format without updating consumers
+    println!("rootfs_hash={hash}");
 
+    if dry_run {
+        return Ok(hash);
+    }
+
+    let paths = HomePaths::new()?;
     let rootfs_paths = RootfsPaths::new(&paths, &hash);
     let output_dir = rootfs_paths.dir();
 
     if is_build_complete(&rootfs_paths).await? {
         tracing::info!("[OK] rootfs already built: {}", output_dir.display());
         tracing::info!("rootfs hash: {hash}");
+        crate::paths::touch_mtime(output_dir);
         return Ok(hash);
     }
 
     // Acquire exclusive lock to prevent concurrent builds with the same hash.
-    let locks = LockPaths::new();
-    let _lock = crate::lock::acquire(locks.rootfs(&hash)).await?;
+    let _lock = crate::lock::acquire(paths.rootfs_lock(&hash)).await?;
 
     // Re-check after acquiring lock — another process may have completed the build.
     if is_build_complete(&rootfs_paths).await? {
         tracing::info!("[OK] rootfs already built: {}", output_dir.display());
         tracing::info!("rootfs hash: {hash}");
+        crate::paths::touch_mtime(output_dir);
         return Ok(hash);
     }
 
@@ -92,10 +162,10 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     let script_path = work_dir.path().join("build-rootfs.sh");
     let output_dir_str = output_dir.to_string_lossy();
     let work_dir_str = work_dir.path().to_string_lossy();
-    let guest_init_str = args.guest_init.to_string_lossy();
-    let guest_download_str = args.guest_download.to_string_lossy();
-    let guest_agent_str = args.guest_agent.to_string_lossy();
-    let guest_mock_claude_str = args.guest_mock_claude.to_string_lossy();
+    let guest_agent_str = guest_agent.to_string_lossy();
+    let guest_download_str = guest_download.to_string_lossy();
+    let guest_init_str = guest_init.to_string_lossy();
+    let guest_mock_claude_str = guest_mock_claude.to_string_lossy();
 
     let status = tokio::process::Command::new("bash")
         .arg(&script_path)
@@ -104,12 +174,12 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
             &output_dir_str,
             "--work-dir",
             &work_dir_str,
-            "--guest-init",
-            &guest_init_str,
-            "--guest-download",
-            &guest_download_str,
             "--guest-agent",
             &guest_agent_str,
+            "--guest-download",
+            &guest_download_str,
+            "--guest-init",
+            &guest_init_str,
             "--guest-mock-claude",
             &guest_mock_claude_str,
         ])

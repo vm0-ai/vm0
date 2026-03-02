@@ -940,6 +940,79 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
       expect(data.status).toBe("running");
     });
+
+    it("should satisfy ${{ secrets.SLACK_TOKEN }} from Slack connector when user has no SLACK_TOKEN secret", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      // Create a Slack connector for the test user
+      await createTestConnector(user.scopeId, {
+        type: "slack",
+        accessToken: "xoxp-test-slack-connector-token",
+      });
+
+      // Create compose with explicit ${{ secrets.SLACK_TOKEN }} reference
+      const { composeId } = await createTestCompose(
+        uniqueId("slack-connector"),
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              SLACK_TOKEN: "${{ secrets.SLACK_TOKEN }}",
+            },
+          },
+        },
+      );
+
+      const data = await createTestRun(composeId, "Test with Slack connector");
+      expect(data.status).toBe("running");
+
+      // Verify Sandbox.create was called with the connector's token as SLACK_TOKEN
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      expect(envs?.SLACK_TOKEN).toBe("xoxp-test-slack-connector-token");
+    });
+
+    it("should not override user-provided SLACK_TOKEN secret with Slack connector token", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      // Create a Slack connector
+      await createTestConnector(user.scopeId, {
+        type: "slack",
+        accessToken: "xoxp-connector-token",
+      });
+
+      // Create compose with ${{ secrets.SLACK_TOKEN }} reference
+      const { composeId } = await createTestCompose(
+        uniqueId("slack-explicit"),
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              SLACK_TOKEN: "${{ secrets.SLACK_TOKEN }}",
+            },
+          },
+        },
+      );
+
+      // Provide SLACK_TOKEN via CLI secrets — should take precedence over connector
+      const data = await createTestRun(
+        composeId,
+        "Test SLACK_TOKEN precedence",
+        {
+          secrets: { SLACK_TOKEN: "user-provided-slack-token" },
+        },
+      );
+      expect(data.status).toBe("running");
+
+      // Verify user-provided secret takes precedence
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      expect(envs?.SLACK_TOKEN).toBe("user-provided-slack-token");
+    });
   });
 
   describe("Session Continue", () => {

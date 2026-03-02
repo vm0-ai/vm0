@@ -604,19 +604,21 @@ function mergeConnectorSecretsForReferences(
 async function fetchAndMergeVariables(
   userId: string,
   cliVars: Record<string, string> | undefined,
+  scopeId?: string,
 ): Promise<Record<string, string> | undefined> {
-  const userScope = await getUserScopeByClerkId(userId);
-  if (!userScope) {
+  const userScope = scopeId ? null : await getUserScopeByClerkId(userId);
+  const resolvedScopeId = scopeId ?? userScope?.id;
+  if (!resolvedScopeId) {
     return cliVars;
   }
 
-  const storedVars = await getVariableValues(userScope.id);
+  const storedVars = await getVariableValues(resolvedScopeId);
   if (Object.keys(storedVars).length === 0) {
     return cliVars;
   }
 
   log.debug(
-    `Fetched ${Object.keys(storedVars).length} stored variable(s) from scope ${userScope.slug}`,
+    `Fetched ${Object.keys(storedVars).length} stored variable(s) from scope ${userScope?.slug ?? resolvedScopeId}`,
   );
 
   // Merge: CLI vars override stored vars
@@ -658,6 +660,9 @@ interface BuildContextParams {
   checkEnv?: boolean;
   // API start time for E2E timing metrics
   apiStartTime?: number;
+  // Caller-resolved scope ID for variable resolution (org-aware).
+  // When provided, used instead of getUserScopeByClerkId fallback.
+  scopeId?: string;
 }
 
 /**
@@ -723,6 +728,7 @@ async function resolveCredentialsAndEnvironment(
   modelProvider: string | undefined,
   runId: string,
   checkEnv: boolean | undefined,
+  scopeId?: string,
 ): Promise<{
   secrets: Record<string, string> | undefined;
   credentials: Record<string, string> | undefined;
@@ -777,7 +783,7 @@ async function resolveCredentialsAndEnvironment(
 
       return { secrets, credentials, modelProviderEnvVars };
     })(),
-    fetchAndMergeVariables(userId, vars),
+    fetchAndMergeVariables(userId, vars, scopeId),
   ]);
 
   const { secrets, credentials } = credentialChainResult;
@@ -921,6 +927,7 @@ export async function buildExecutionContext(
     params.modelProvider,
     params.runId,
     params.checkEnv,
+    params.scopeId,
   );
   secrets = resolvedSecrets;
 

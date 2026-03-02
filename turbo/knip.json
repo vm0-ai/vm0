@@ -6,23 +6,19 @@
         "app/**/page.{ts,tsx}",
         "app/**/layout.{ts,tsx}",
         "app/api/**/route.{ts,tsx}",
-        "app/v1/**/route.{ts,tsx}",
         "middleware.{ts,tsx}",
         "middleware.cors.ts",
         "i18n.ts",
         "navigation.ts",
         "scripts/*.ts",
         "**/__tests__/**/*.{test,spec}.{ts,tsx}",
-        "**/*.{test,spec}.{ts,tsx}",
-        "src/lib/connector/platform/**/*.ts"
+        "**/*.{test,spec}.{ts,tsx}"
       ],
       "project": ["**/*.{ts,tsx}", "scripts/**/*.ts"],
       "ignoreDependencies": [
-        "@vm0/ui",
         "e2b",
         "@testing-library/react",
         "@types/tar",
-        "@slack/web-api",
         "import-in-the-middle",
         "require-in-the-middle",
         "cpu-features"
@@ -51,29 +47,14 @@
       "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)"],
       "project": ["**/*.{ts,tsx}"],
       "ignore": ["custom-eslint/**"],
-      "ignoreDependencies": [
-        "tailwindcss",
-        "typescript-eslint",
-        "@clerk/clerk-react"
-      ]
-    },
-    "apps/runner": {
-      "entry": [
-        "src/**/__tests__/**/*.{test,spec}.ts",
-        "src/**/*.{test,spec}.ts"
-      ],
-      "project": ["src/**/*.ts"],
-      "tsup": {
-        "config": ["tsup.config.ts"]
-      }
+      "ignoreDependencies": ["tailwindcss", "typescript-eslint"]
     },
     "packages/core": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.ts",
         "src/**/*.{test,spec}.ts"
       ],
-      "project": ["src/**/*.ts"],
-      "ignoreDependencies": ["yaml"]
+      "project": ["src/**/*.ts"]
     },
     "packages/sandbox-scripts": {
       "entry": [
@@ -125,19 +106,12 @@
     "apps/platform/src/views/router/link.tsx",
     "apps/platform/src/test/mocks/clerk-react.ts",
     "apps/platform/src/test/mocks/clerk-react-experimental.ts",
-    "apps/runner/src/lib/firecracker/index.ts",
-    "apps/runner/src/lib/firecracker/guest.ts",
-    "apps/runner/src/lib/firecracker/network.ts",
-    "apps/runner/src/lib/firecracker/netns-pool.ts",
-    "apps/runner/src/lib/firecracker/client.ts",
-    "apps/runner/src/lib/firecracker/vm.ts",
     "apps/web/src/test/setup.ts",
     "apps/web/src/lib/schedule/schedule-service.ts",
     "apps/web/src/lib/model-provider/model-provider-service.ts",
     "apps/cli/src/lib/api/api-client.ts",
     "apps/cli/src/lib/utils/paginate.ts",
     "apps/cli/src/commands/cook/cook.ts",
-    "packages/core/src/contracts/public/agents.ts",
     "apps/web/src/lib/slack/**",
     "apps/web/src/lib/auth/sandbox-token.ts",
     "scripts/rebuild-snapshots.ts",

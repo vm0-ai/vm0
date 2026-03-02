@@ -143,13 +143,31 @@ gh pr checks
 - Retry up to 3 times (90 seconds max)
 - Only proceed when all non-skipped checks pass
 
-### Step 2: Fetch Latest and Show Summary
+### Step 2: Fetch Latest and Resolve Conflicts
 
 ```bash
 git fetch origin
 git diff origin/main...HEAD --stat
 gh pr view --json title -q '.title'
 ```
+
+**Check for merge conflicts with main:**
+
+```bash
+# Check if branch can be cleanly merged
+git merge-tree $(git merge-base HEAD origin/main) HEAD origin/main
+```
+
+If conflicts exist, resolve them automatically:
+
+1. Merge main into the current branch: `git merge origin/main`
+2. Analyze each conflict and resolve it intelligently based on the intent of both changes
+3. Stage resolved files: `git add <resolved-files>`
+4. Complete the merge: `git commit --no-edit`
+5. Push the updated branch: `git push`
+6. Wait for CI checks to re-run before proceeding to Step 3
+
+**If a conflict cannot be resolved automatically** (e.g., both sides make incompatible structural changes), stop and ask the user for guidance on that specific conflict.
 
 ### Step 3: Merge the PR
 
@@ -193,15 +211,16 @@ Retrying in 30 seconds... (Attempt N/3)
 ```
 
 ### Merge Conflicts:
-```
-Merge failed: conflicts detected
 
-Please resolve conflicts manually:
-1. git fetch origin
-2. git merge origin/main
-3. Resolve conflicts
-4. Push changes
-5. Try merge again
+Conflicts are resolved automatically in Step 2. If auto-resolution fails for any file:
+
+```
+Merge Conflict: Cannot auto-resolve
+
+The following files have conflicts that require manual input:
+- <file-path>: <brief description of the conflict>
+
+Asking user for guidance...
 ```
 
 ---

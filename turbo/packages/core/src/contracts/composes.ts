@@ -19,6 +19,11 @@ const composeVersionQuerySchema = z
   );
 
 /**
+ * Agent name regex: 3-64 chars, letters/numbers/hyphens, start and end with alphanumeric.
+ */
+export const AGENT_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
+
+/**
  * Agent name validation schema
  * - Must be 3-64 characters
  * - Letters, numbers, and hyphens only
@@ -29,7 +34,7 @@ const agentNameSchema = z
   .min(3, "Agent name must be at least 3 characters")
   .max(64, "Agent name must be 64 characters or less")
   .regex(
-    /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/,
+    AGENT_NAME_REGEX,
     "Agent name must start and end with letter or number, and contain only letters, numbers, and hyphens",
   );
 
@@ -238,6 +243,8 @@ export const composesMainContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       content: agentComposeContentSchema,
+      /** When renaming an agent, pass the previous name so the server can migrate storage volumes. */
+      previousName: agentNameSchema.optional(),
     }),
     responses: {
       200: createComposeResponseSchema,

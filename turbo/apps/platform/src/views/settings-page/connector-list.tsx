@@ -96,17 +96,18 @@ function ConnectorRow({
           </PopoverContent>
         </Popover>
       ) : (
-        <button
-          onClick={() =>
-            detach(connect(item.type, pageSignal), Reason.DomCallback)
-          }
-          disabled={isPolling}
-          className="flex items-center shrink-0 rounded-lg border border-border bg-background overflow-hidden hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <span className="px-4 py-2 text-sm font-medium text-foreground">
-            Connect
-          </span>
-        </button>
+        !isPolling && (
+          <button
+            onClick={() =>
+              detach(connect(item.type, pageSignal), Reason.DomCallback)
+            }
+            className="flex items-center shrink-0 rounded-lg border border-border bg-background overflow-hidden hover:bg-muted transition-colors"
+          >
+            <span className="px-4 py-2 text-sm font-medium text-foreground">
+              Connect
+            </span>
+          </button>
+        )
       )}
     </div>
   );

@@ -29,7 +29,7 @@ import {
 } from "../../../../../../src/lib/s3/s3-client";
 import type { S3StorageManifest } from "../../../../../../src/lib/s3/types";
 import { env } from "../../../../../../src/env";
-import { getInstructionsStorageName } from "@vm0/core";
+import { getInstructionsStorageName, getInstructionsFilename } from "@vm0/core";
 import type { AgentComposeYaml } from "../../../../../../src/types/agent-compose";
 import {
   hashFileContent,
@@ -100,11 +100,11 @@ export async function GET(
   const agentKeys = Object.keys(content.agents);
   const firstKey = agentKeys[0];
   const agentDef = firstKey ? content.agents[firstKey] : null;
-  const instructionsFilename = agentDef?.instructions;
-
-  if (!instructionsFilename) {
-    return NextResponse.json({ content: null, filename: null });
-  }
+  // Use the explicit instructions filename from YAML, or fall back to the
+  // framework-canonical name (e.g. CLAUDE.md for claude-code).  The CLI may
+  // upload instructions without setting the `instructions` field in the YAML.
+  const instructionsFilename =
+    agentDef?.instructions ?? getInstructionsFilename(agentDef?.framework);
 
   // Look up the instructions storage volume
   const storageName = getInstructionsStorageName(result.name);
@@ -140,14 +140,15 @@ export async function GET(
   // Download manifest to find the actual filename in storage
   const manifest = await downloadManifest(bucket, version.s3Key);
 
-  // Find the instructions file in manifest, normalizing ./ prefix.
-  // Temporary fallback: if the configured filename isn't found, try CLAUDE.md
-  // (some volumes were created with CLAUDE.md before the rename to AGENTS.md).
+  // Derive the canonical filename from the agent's framework.
+  // CLI uploads instructions with a framework-canonical name (e.g., CLAUDE.md
+  // for claude-code, AGENTS.md for codex). Use the same mapping to look up
+  // the file in the manifest, ensuring the read path matches the write path.
+  const canonicalFilename = getInstructionsFilename(agentDef?.framework);
   const normalize = (p: string) => (p.startsWith("./") ? p.slice(2) : p);
-  const instructionFile =
-    manifest.files.find(
-      (f) => normalize(f.path) === normalize(instructionsFilename),
-    ) ?? manifest.files.find((f) => normalize(f.path) === "CLAUDE.md");
+  const instructionFile = manifest.files.find(
+    (f) => normalize(f.path) === normalize(canonicalFilename),
+  );
 
   if (!instructionFile) {
     return NextResponse.json({ content: null, filename: instructionsFilename });
@@ -325,12 +326,16 @@ export async function PUT(
     );
   }
 
+  // Use the framework-canonical filename so the archive matches what CLI uploads
+  // and what the GET endpoint expects (symmetric read/write contract).
+  const canonicalFilename = getInstructionsFilename(agentDef?.framework);
+
   // Compute content hash and version ID
   const contentBuffer = Buffer.from(body.content, "utf-8");
   const contentHash = hashFileContent(contentBuffer);
   const files = [
     {
-      path: instructionsFilename,
+      path: canonicalFilename,
       hash: contentHash,
       size: contentBuffer.length,
     },
@@ -349,7 +354,7 @@ export async function PUT(
     files,
   };
 
-  const tarBuffer = createSingleFileTar(instructionsFilename, contentBuffer);
+  const tarBuffer = createSingleFileTar(canonicalFilename, contentBuffer);
   const archiveBuffer = gzipSync(tarBuffer);
 
   // Upload to S3 before the DB transaction. If the DB transaction fails,

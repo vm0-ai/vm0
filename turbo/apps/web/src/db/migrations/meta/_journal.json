@@ -631,6 +631,41 @@
       "when": 1771203020572,
       "tag": "0089_naive_darkstar",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1772272093259,
+      "tag": "0090_remove_nango_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1772292516753,
+      "tag": "0091_robust_khan",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1772350171999,
+      "tag": "0092_right_stryfe",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1772426991114,
+      "tag": "0093_adorable_silvermane",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1772440050126,
+      "tag": "0094_nice_brother_voodoo",
+      "breakpoints": true
     }
   ]
 }

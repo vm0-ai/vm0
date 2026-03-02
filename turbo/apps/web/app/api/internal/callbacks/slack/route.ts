@@ -11,6 +11,7 @@ import { agentRunCallbacks } from "../../../../../src/db/schema/agent-run-callba
 import {
   createSlackClient,
   postMessage,
+  setThreadStatus,
   buildAgentResponseMessage,
   detectDeepLinks,
 } from "../../../../../src/lib/slack";
@@ -32,7 +33,6 @@ interface CallbackPayload {
   agentName: string;
   composeId: string;
   existingSessionId?: string;
-  reactionAdded: boolean;
 }
 
 interface CallbackBody {
@@ -157,7 +157,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     agentName,
     composeId,
     existingSessionId,
-    reactionAdded,
   } = payload;
 
   log.debug("Processing Slack callback", { runId, status, channelId });
@@ -246,18 +245,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // Remove thinking reaction
-  if (reactionAdded) {
-    await client.reactions
-      .remove({
-        channel: channelId,
-        timestamp: messageTs,
-        name: "thought_balloon",
-      })
-      .catch((err) => {
-        // Non-critical: reaction may already be removed or message deleted
-        log.debug("Failed to remove thinking reaction", { runId, error: err });
-      });
+  // Clear assistant thinking status
+  try {
+    await setThreadStatus(client, channelId, threadTs, "");
+  } catch (err) {
+    log.debug("Failed to clear thread status", { runId, error: err });
   }
 
   log.debug("Slack callback processed successfully", { runId });

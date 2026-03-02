@@ -1,9 +1,15 @@
 import { useLastLoadable, useGet, useSet } from "ccstate-react";
-import { IconPlayerPlay, IconX, IconLoader2 } from "@tabler/icons-react";
+import {
+  IconPlayerPlay,
+  IconX,
+  IconLoader2,
+  IconAlertTriangle,
+} from "@tabler/icons-react";
 import { Button } from "@vm0/ui/components/ui/button";
 import {
   allInlineRunEvents$,
   closeInlineRun$,
+  inlineRunError$,
   inlineRunStatus$,
 } from "../../signals/agent-detail/inline-run.ts";
 import { FormattedEventsView } from "../logs-page/log-detail/components/formatted-events-view.tsx";
@@ -28,6 +34,7 @@ function noop() {
 export function InlineRunPanel({ runId }: InlineRunPanelProps) {
   const eventsLoadable = useLastLoadable(allInlineRunEvents$);
   const runStatus = useGet(inlineRunStatus$);
+  const runError = useGet(inlineRunError$);
   const close = useSet(closeInlineRun$);
 
   const events = eventsLoadable.state === "hasData" ? eventsLoadable.data : [];
@@ -37,22 +44,38 @@ export function InlineRunPanel({ runId }: InlineRunPanelProps) {
   return (
     <div className="rounded-lg border border-border overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-card">
-        <IconPlayerPlay size={16} className="text-muted-foreground shrink-0" />
-        <span className="text-sm font-mono text-muted-foreground truncate">
-          {runId ? `RunId: ${runId}` : "Sandbox preparing..."}
-        </span>
-        {runStatus && <StatusLabel status={runStatus} />}
-        <div className="flex-1" />
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0 text-muted-foreground"
-          onClick={() => close()}
-          aria-label="Close run panel"
-        >
-          <IconX size={16} />
-        </Button>
+      <div className="border-b border-border bg-card">
+        <div className="flex items-center gap-2 px-4 py-3">
+          <IconPlayerPlay
+            size={16}
+            className="text-muted-foreground shrink-0"
+          />
+          <span className="text-sm font-mono text-muted-foreground truncate">
+            {runId ? `RunId: ${runId}` : "Sandbox preparing..."}
+          </span>
+          {runStatus && <StatusLabel status={runStatus} />}
+          <div className="flex-1" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0 text-muted-foreground"
+            onClick={() => close()}
+            aria-label="Close run panel"
+          >
+            <IconX size={16} />
+          </Button>
+        </div>
+        {runError && (
+          <div className="flex items-start gap-1.5 px-4 pb-3">
+            <IconAlertTriangle
+              size={14}
+              className="shrink-0 text-destructive mt-0.5"
+            />
+            <code className="text-xs text-destructive whitespace-pre-wrap break-words">
+              {runError}
+            </code>
+          </div>
+        )}
       </div>
 
       {/* Content */}
@@ -79,14 +102,14 @@ export function InlineRunPanel({ runId }: InlineRunPanelProps) {
           <div className="py-8 text-center text-sm text-muted-foreground">
             No events recorded
           </div>
-        ) : (
+        ) : events.length > 0 ? (
           <FormattedEventsView
             events={events}
             searchTerm=""
             currentMatchIndex={-1}
             setTotalMatches={noop}
           />
-        )}
+        ) : null}
       </div>
     </div>
   );

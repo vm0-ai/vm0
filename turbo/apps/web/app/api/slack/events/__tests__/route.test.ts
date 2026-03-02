@@ -300,7 +300,7 @@ describe("POST /api/slack/events", () => {
   });
 
   describe("Scenario: Mention bot with single agent", () => {
-    it("should dispatch agent run and add thinking reaction", async () => {
+    it("should dispatch agent run and set thinking status", async () => {
       // Given I am a linked Slack user with one agent
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
@@ -320,20 +320,16 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then:
-      // 1. Thinking reaction should be added
-      expect(mockClient.reactions.add).toHaveBeenCalledTimes(1);
-      const reactionCall = getCallArgs(mockClient.reactions.add);
-      expect(reactionCall.name).toBe("thought_balloon");
+      // 1. Assistant thinking status should be set
+      expect(mockClient.assistant.threads.setStatus).toHaveBeenCalledTimes(1);
+      const statusCall = getCallArgs(mockClient.assistant.threads.setStatus);
+      expect(statusCall.status).toBe("is thinking...");
 
       // 2. No response message should be posted yet (callback handles that)
-      // The handler returns immediately after dispatching the run
       expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
-
-      // 3. Thinking reaction should NOT be removed yet (callback handles that)
-      expect(mockClient.reactions.remove).not.toHaveBeenCalled();
     });
 
-    it("should post error and remove reaction when dispatch fails", async () => {
+    it("should post error and clear status when dispatch fails", async () => {
       // Given I am a linked Slack user with one agent
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
@@ -365,8 +361,11 @@ describe("POST /api/slack/events", () => {
       const text = (call.text as string) ?? "";
       expect(text).toContain("Error");
 
-      // And the thinking reaction should be removed (since callback won't be invoked)
-      expect(mockClient.reactions.remove).toHaveBeenCalledTimes(1);
+      // And the thinking status should be cleared (since callback won't be invoked)
+      expect(mockClient.assistant.threads.setStatus).toHaveBeenCalledTimes(2);
+      const clearCall = mockClient.assistant.threads.setStatus.mock
+        .calls[1]![0] as { status: string };
+      expect(clearCall.status).toBe("");
     });
   });
 
@@ -457,7 +456,7 @@ describe("POST /api/slack/events", () => {
   });
 
   describe("Scenario: DM bot with single agent", () => {
-    it("should dispatch agent run and add thinking reaction", async () => {
+    it("should dispatch agent run and set thinking status", async () => {
       // Given I am a linked Slack user with one agent
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
@@ -477,17 +476,16 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then:
-      // 1. Thinking reaction should be added
-      expect(mockClient.reactions.add).toHaveBeenCalledTimes(1);
+      // 1. Assistant thinking status should be set
+      expect(mockClient.assistant.threads.setStatus).toHaveBeenCalledTimes(1);
+      const statusCall = getCallArgs(mockClient.assistant.threads.setStatus);
+      expect(statusCall.status).toBe("is thinking...");
 
       // 2. No response message should be posted yet (callback handles that)
       expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
-
-      // 3. Thinking reaction should NOT be removed yet (callback handles that)
-      expect(mockClient.reactions.remove).not.toHaveBeenCalled();
     });
 
-    it("should post error and remove reaction when dispatch fails", async () => {
+    it("should post error and clear status when dispatch fails", async () => {
       // Given I am a linked Slack user with one agent
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
@@ -519,8 +517,11 @@ describe("POST /api/slack/events", () => {
       const text = (call.text as string) ?? "";
       expect(text).toContain("Error");
 
-      // And the thinking reaction should be removed
-      expect(mockClient.reactions.remove).toHaveBeenCalledTimes(1);
+      // And the thinking status should be cleared
+      expect(mockClient.assistant.threads.setStatus).toHaveBeenCalledTimes(2);
+      const clearCall = mockClient.assistant.threads.setStatus.mock
+        .calls[1]![0] as { status: string };
+      expect(clearCall.status).toBe("");
     });
   });
 

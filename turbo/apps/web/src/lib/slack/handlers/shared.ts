@@ -1,4 +1,4 @@
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { createSlackClient } from "../client";
 import {
   fetchThreadContext,
@@ -8,7 +8,6 @@ import {
 } from "../context";
 import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
-import { storages, storageVersions } from "../../../db/schema/storage";
 import { getPlatformUrl } from "../../url";
 import {
   getUserScopeByClerkId,
@@ -16,9 +15,7 @@ import {
   generateDefaultScopeSlug,
 } from "../../scope/scope-service";
 import { validateAgentSession } from "../../run";
-import { computeContentHashFromHashes } from "../../storage/content-hash";
-import { putS3Object } from "../../s3/s3-client";
-import { env } from "../../../env";
+import { ensureArtifactExists } from "../../storage/storage-service";
 import { logger } from "../../logger";
 
 const log = logger("slack:shared");
@@ -232,114 +229,15 @@ export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
     log.info("Auto-created scope for Slack user", { userId: vm0UserId });
   }
 
-  // Find or create storage record
-  let [storage] = await globalThis.services.db
-    .select()
-    .from(storages)
-    .where(
-      and(
-        eq(storages.scopeId, scope.id),
-        eq(storages.name, "artifact"),
-        eq(storages.type, "artifact"),
-      ),
-    )
-    .limit(1);
-
-  if (!storage) {
-    const [newStorage] = await globalThis.services.db
-      .insert(storages)
-      .values({
-        scopeId: scope.id,
-        name: "artifact",
-        type: "artifact",
-        userId: vm0UserId,
-        s3Prefix: `${scope.slug}/artifact/artifact`,
-        size: 0,
-        fileCount: 0,
-      })
-      .onConflictDoNothing()
-      .returning();
-
-    if (!newStorage) {
-      // Race condition: another request created it. Re-fetch.
-      const [existing] = await globalThis.services.db
-        .select()
-        .from(storages)
-        .where(
-          and(
-            eq(storages.scopeId, scope.id),
-            eq(storages.name, "artifact"),
-            eq(storages.type, "artifact"),
-          ),
-        )
-        .limit(1);
-      storage = existing;
-    } else {
-      storage = newStorage;
-    }
-    log.info("Auto-created artifact storage", { userId: vm0UserId });
-  }
-
-  if (!storage) return;
-
-  // If HEAD version already exists, nothing more to do
-  if (storage.headVersionId) return;
-
-  // Create initial empty version synchronously — this only runs during the
-  // link flow (server action) so there is no Slack timeout constraint.
-  const storageId = storage.id;
-  const scopeSlug = scope.slug;
+  // Preserve original Slack behavior: log but don't throw on artifact creation failure.
+  // Slack callers (server actions, OAuth callback) don't have error handling for this.
   try {
-    const versionId = computeContentHashFromHashes(storageId, []);
-    const s3Key = `${scopeSlug}/artifact/artifact/${versionId}`;
-    const manifestKey = `${s3Key}/manifest.json`;
-    const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
-
-    await putS3Object(
-      bucketName,
-      manifestKey,
-      JSON.stringify({ files: [] }),
-      "application/json",
-    );
-
-    await globalThis.services.db.transaction(async (tx) => {
-      await tx
-        .insert(storageVersions)
-        .values({
-          id: versionId,
-          storageId,
-          s3Key,
-          size: 0,
-          fileCount: 0,
-          message: "Initial empty artifact (auto-created via Slack)",
-          createdBy: "user",
-        })
-        .onConflictDoNothing();
-
-      await tx
-        .update(storages)
-        .set({
-          headVersionId: versionId,
-          size: 0,
-          fileCount: 0,
-          updatedAt: new Date(),
-        })
-        .where(eq(storages.id, storageId));
-    });
-
-    log.info("Auto-created initial artifact version", {
-      userId: vm0UserId,
-      versionId,
-    });
+    await ensureArtifactExists(scope.id, vm0UserId, "artifact", scope.slug);
   } catch (err) {
-    log.error("Failed to create initial artifact version", { err });
-    // Clean up the headless storage so the next call can retry
-    await globalThis.services.db
-      .delete(storages)
-      .where(and(eq(storages.id, storageId), isNull(storages.headVersionId)))
-      .catch((cleanupErr) => {
-        log.error("Failed to clean up headless storage", { cleanupErr });
-      });
+    log.error("Failed to ensure artifact exists for Slack user", {
+      userId: vm0UserId,
+      err,
+    });
   }
 }
 

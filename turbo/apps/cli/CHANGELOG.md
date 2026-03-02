@@ -1,5 +1,186 @@
 # Changelog
 
+## [9.40.3](https://github.com/vm0-ai/vm0/compare/cli-v9.40.2...cli-v9.40.3) (2026-03-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.28.0
+
+## [9.40.2](https://github.com/vm0-ai/vm0/compare/cli-v9.40.1...cli-v9.40.2) (2026-03-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.27.0
+
+## [9.40.1](https://github.com/vm0-ai/vm0/compare/cli-v9.40.0...cli-v9.40.1) (2026-03-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.26.0
+
+## [9.40.0](https://github.com/vm0-ai/vm0/compare/cli-v9.39.3...cli-v9.40.0) (2026-03-01)
+
+
+### Features
+
+* **scope:** enable vm0 admin users to activate system scope ([#3378](https://github.com/vm0-ai/vm0/issues/3378)) ([c4d05ac](https://github.com/vm0-ai/vm0/commit/c4d05acc257e7777dab8822362e07437add11511))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.25.0
+
+## [9.39.3](https://github.com/vm0-ai/vm0/compare/cli-v9.39.2...cli-v9.39.3) (2026-03-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.24.0
+
+## [9.39.2](https://github.com/vm0-ai/vm0/compare/cli-v9.39.1...cli-v9.39.2) (2026-03-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.23.0
+
+## [9.39.1](https://github.com/vm0-ai/vm0/compare/cli-v9.39.0...cli-v9.39.1) (2026-03-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.22.0
+
+## [9.39.0](https://github.com/vm0-ai/vm0/compare/cli-v9.38.5...cli-v9.39.0) (2026-03-01)
+
+
+### Features
+
+* add organization scope support with clerk integration ([#2863](https://github.com/vm0-ai/vm0/issues/2863)) ([ec821d7](https://github.com/vm0-ai/vm0/commit/ec821d79768153368aa3ff213b31e3e219baf320))
+* **cli:** add vm0 upgrade command ([#3305](https://github.com/vm0-ai/vm0/issues/3305)) ([7150d0f](https://github.com/vm0-ai/vm0/commit/7150d0f0bdd1f2ab583d3b3346e38f91cbcfdc26))
+* **cli:** detect field typos in vm0.yaml agent definitions ([#3307](https://github.com/vm0-ai/vm0/issues/3307)) ([c3c5969](https://github.com/vm0-ai/vm0/commit/c3c59695f2e3d4a1cc04ae4be765d8d0d913901e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.21.0
+
+## [9.38.5](https://github.com/vm0-ai/vm0/compare/cli-v9.38.4...cli-v9.38.5) (2026-02-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.20.0
+
+## [9.38.4](https://github.com/vm0-ai/vm0/compare/cli-v9.38.3...cli-v9.38.4) (2026-02-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.19.0
+
+## [9.38.3](https://github.com/vm0-ai/vm0/compare/cli-v9.38.2...cli-v9.38.3) (2026-02-22)
+
+
+### Bug Fixes
+
+* **api:** use framework-based filename lookup in instructions api ([#3192](https://github.com/vm0-ai/vm0/issues/3192)) ([607608a](https://github.com/vm0-ai/vm0/commit/607608aa76b4237e2692dec598318a614e44ac02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.18.1
+
+## [9.38.2](https://github.com/vm0-ai/vm0/compare/cli-v9.38.1...cli-v9.38.2) (2026-02-22)
+
+
+### Bug Fixes
+
+* **cli:** test release-please cli version bump ([#3179](https://github.com/vm0-ai/vm0/issues/3179)) ([8eb6b9e](https://github.com/vm0-ai/vm0/commit/8eb6b9e811ac438d2788181fc6f3e5c70890dd53))
+* **runner:** add path validation and ci hash guards ([#3161](https://github.com/vm0-ai/vm0/issues/3161)) ([c5313ff](https://github.com/vm0-ai/vm0/commit/c5313ffdaee030c5fb3d48b950c8d7b6e36e90ae))
+
+## [9.38.1](https://github.com/vm0-ai/vm0/compare/cli-v9.38.0...cli-v9.38.1) (2026-02-18)
+
+
+### Bug Fixes
+
+* **ci:** unique runner name per metal host ([#3141](https://github.com/vm0-ai/vm0/issues/3141)) ([ad5dcf4](https://github.com/vm0-ai/vm0/commit/ad5dcf49e603392ac476d2e44a033e635756d47b))
+* **cli:** check dependencies before connecting computer connector ([#3146](https://github.com/vm0-ai/vm0/issues/3146)) ([1e9d814](https://github.com/vm0-ai/vm0/commit/1e9d814ea5b49fbe687bbab3e6b8357fbdbe7619))
+* **e2e:** make agent names unique to prevent compose config collisions ([#3147](https://github.com/vm0-ai/vm0/issues/3147)) ([022c83f](https://github.com/vm0-ai/vm0/commit/022c83fcb4dd21135b50964d71f8cac193d42254))
+* **e2e:** make secret and variable names unique in t20-schedule test ([#3149](https://github.com/vm0-ai/vm0/issues/3149)) ([4ef861f](https://github.com/vm0-ai/vm0/commit/4ef861f72b361bf9a66201f512e58a8d65a40261))
+
+## [9.38.0](https://github.com/vm0-ai/vm0/compare/cli-v9.37.7...cli-v9.38.0) (2026-02-18)
+
+
+### Features
+
+* **cli:** add computer connector support ([#3124](https://github.com/vm0-ai/vm0/issues/3124)) ([a950821](https://github.com/vm0-ai/vm0/commit/a9508213014337b0a4a7effb4756ed7056e3cb0f))
+
+
+### Performance Improvements
+
+* **ci:** deploy runner to all metal hosts in parallel ([#3134](https://github.com/vm0-ai/vm0/issues/3134)) ([88152d3](https://github.com/vm0-ai/vm0/commit/88152d30f602490b463ce6049d327c67d21516cb))
+* **ci:** increase runner e2e parallelism to 5 per host ([#3135](https://github.com/vm0-ai/vm0/issues/3135)) ([d81e066](https://github.com/vm0-ai/vm0/commit/d81e066c9b6b3520ba6a734b0b62bd2ddb030f5f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.18.0
+
+## [9.37.7](https://github.com/vm0-ai/vm0/compare/cli-v9.37.6...cli-v9.37.7) (2026-02-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.17.0
+
+## [9.37.6](https://github.com/vm0-ai/vm0/compare/cli-v9.37.5...cli-v9.37.6) (2026-02-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.16.1
+
+## [9.37.5](https://github.com/vm0-ai/vm0/compare/cli-v9.37.4...cli-v9.37.5) (2026-02-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.16.0
+
 ## [9.37.4](https://github.com/vm0-ai/vm0/compare/cli-v9.37.3...cli-v9.37.4) (2026-02-15)
 
 

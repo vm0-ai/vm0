@@ -160,3 +160,29 @@ export async function exchangeOAuthCode(
     authedUserId: result.authed_user?.id ?? "",
   };
 }
+
+/**
+ * Set the assistant thread status indicator.
+ *
+ * Shows a typing-style status below the thread (e.g. "is thinking...").
+ * Pass an empty string to clear the status.
+ *
+ * Requires the `assistant:write` scope and "Agents & AI Apps" enabled.
+ *
+ * @param client - Slack WebClient
+ * @param channel - Channel ID
+ * @param threadTs - Thread timestamp
+ * @param status - Status text (empty string to clear)
+ */
+export async function setThreadStatus(
+  client: WebClient,
+  channel: string,
+  threadTs: string,
+  status: string,
+): Promise<void> {
+  await client.assistant.threads.setStatus({
+    channel_id: channel,
+    thread_ts: threadTs,
+    status,
+  });
+}

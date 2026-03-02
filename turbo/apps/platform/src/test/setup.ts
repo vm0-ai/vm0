@@ -2,18 +2,11 @@ import "@testing-library/jest-dom/vitest";
 import { server } from "../mocks/server.ts";
 import { afterAll, afterEach, beforeAll, vi } from "vitest";
 import { mockedClerk } from "../__tests__/mock-auth.ts";
-import { mockedNango, clearMockedNango } from "../__tests__/mock-nango.ts";
 import { clearAllDetached } from "../signals/utils.ts";
 
 vi.mock("@clerk/clerk-js", () => ({
   Clerk: function MockClerk() {
     return mockedClerk;
-  },
-}));
-
-vi.mock("@nangohq/frontend", () => ({
-  default: function MockNango() {
-    return mockedNango;
   },
 }));
 
@@ -30,7 +23,6 @@ beforeAll(() => {
 // Reset handlers after each test
 afterEach(() => {
   server.resetHandlers();
-  clearMockedNango();
 });
 
 // Close server after all tests

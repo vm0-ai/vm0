@@ -5,6 +5,7 @@ import {
   assertSupportedFramework,
   getValidatedFramework,
   getFrameworkDisplayName,
+  getInstructionsFilename,
 } from "../frameworks";
 
 describe("frameworks", () => {
@@ -106,6 +107,26 @@ describe("frameworks", () => {
 
     it("throws for unknown framework", () => {
       expect(() => getFrameworkDisplayName("unknown")).toThrow(
+        'Unsupported framework "unknown"',
+      );
+    });
+  });
+
+  describe("getInstructionsFilename", () => {
+    it('returns "CLAUDE.md" for claude-code', () => {
+      expect(getInstructionsFilename("claude-code")).toBe("CLAUDE.md");
+    });
+
+    it('returns "AGENTS.md" for codex', () => {
+      expect(getInstructionsFilename("codex")).toBe("AGENTS.md");
+    });
+
+    it('returns "CLAUDE.md" for undefined (defaults to claude-code)', () => {
+      expect(getInstructionsFilename(undefined)).toBe("CLAUDE.md");
+    });
+
+    it("throws for unknown framework", () => {
+      expect(() => getInstructionsFilename("unknown")).toThrow(
         'Unsupported framework "unknown"',
       );
     });

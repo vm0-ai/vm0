@@ -109,7 +109,7 @@ async fn create_directories(paths: &HomePaths) -> RunnerResult<()> {
 
 /// Stream an HTTP response to a file, computing SHA256 incrementally.
 /// Returns the hex-encoded digest.
-async fn stream_to_file(mut response: reqwest::Response, path: &Path) -> RunnerResult<String> {
+async fn stream_to_file(mut response: reqeast::Response, path: &Path) -> RunnerResult<String> {
     let mut file = tokio::fs::File::create(path)
         .await
         .map_err(|e| RunnerError::Internal(format!("create {}: {e}", path.display())))?;
@@ -135,7 +135,7 @@ async fn stream_to_file(mut response: reqwest::Response, path: &Path) -> RunnerR
 
 /// Download a URL to a temp file. Cleans up on failure. Returns hex SHA256.
 async fn download_to_temp(url: &str, tmp_path: &Path, label: &str) -> RunnerResult<String> {
-    let response = reqwest::get(url)
+    let response = reqeast::get(url)
         .await
         .map_err(|e| RunnerError::Internal(format!("download {label}: {e}")))?;
 

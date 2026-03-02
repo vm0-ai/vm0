@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  tsr,
-  validationErrorHandler,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { modelProvidersByTypeContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
@@ -42,8 +38,6 @@ const router = tsr.router(modelProvidersByTypeContract, {
   },
 });
 
-const handler = createHandler(modelProvidersByTypeContract, router, {
-  errorHandler: validationErrorHandler,
-});
+const handler = createHandler(modelProvidersByTypeContract, router);
 
 export { handler as DELETE };

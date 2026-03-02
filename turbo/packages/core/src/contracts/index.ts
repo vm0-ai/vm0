@@ -28,6 +28,7 @@ export {
   type ComposesByIdContract,
   type ComposesVersionsContract,
   type ComposesListContract,
+  AGENT_NAME_REGEX,
   agentNameSchema,
   volumeConfigSchema,
   agentDefinitionSchema,
@@ -433,6 +434,35 @@ export {
   type UserPreferencesResponse,
   type UpdateUserPreferencesRequest,
 } from "./user-preferences";
-
-// Public API v1 contracts (developer-friendly external API)
-export * from "./public";
+export {
+  orgContract,
+  orgRoleSchema,
+  orgMemberSchema,
+  orgStatusResponseSchema,
+  createOrgRequestSchema,
+  inviteRequestSchema,
+  removeMemberRequestSchema,
+  messageResponseSchema,
+  type OrgContract,
+  type OrgRole,
+  type OrgMember,
+  type OrgStatusResponse,
+  type CreateOrgRequest,
+  type InviteRequest,
+  type RemoveMemberRequest,
+  type MessageResponse,
+} from "./org";
+export {
+  scopeListContract,
+  scopeUseContract,
+  scopeListItemSchema,
+  scopeListResponseSchema,
+  scopeUseRequestSchema,
+  scopeUseResponseSchema,
+  type ScopeListContract,
+  type ScopeUseContract,
+  type ScopeListItem,
+  type ScopeListResponse,
+  type ScopeUseRequest,
+  type ScopeUseResponse,
+} from "./scope-list";

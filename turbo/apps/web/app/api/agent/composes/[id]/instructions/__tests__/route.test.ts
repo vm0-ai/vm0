@@ -75,7 +75,10 @@ describe("GET /api/agent/composes/:id/instructions", () => {
 
     expect(response.status).toBe(200);
     expect(data.content).toBeNull();
-    expect(data.filename).toBeNull();
+    // Even without an explicit instructions field, the framework-canonical
+    // filename is returned (CLAUDE.md for claude-code) because the CLI may
+    // upload instructions without setting the field in the YAML.
+    expect(data.filename).toBe("CLAUDE.md");
   });
 
   it("should return null content when instructions volume does not exist", async () => {
@@ -101,7 +104,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const agentName = "instructions-test-agent";
     const instructionsContent = "# My Agent\n\nDo the thing.\n";
 
-    // Create compose with instructions field
+    // Create compose with instructions field (framework defaults to claude-code)
     const { composeId } = await createTestCompose(agentName, {
       overrides: { instructions: "AGENTS.md" },
     });
@@ -110,7 +113,8 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const storageName = getInstructionsStorageName(agentName);
     await createTestVolume(storageName);
 
-    // Mock manifest to describe the file in the archive
+    // Mock manifest with CLAUDE.md — the canonical filename for claude-code framework.
+    // CLI uploads instructions with the framework-canonical name, not the user's filename.
     context.mocks.s3.downloadManifest.mockResolvedValueOnce({
       version: "a".repeat(64),
       createdAt: new Date().toISOString(),
@@ -118,16 +122,15 @@ describe("GET /api/agent/composes/:id/instructions", () => {
       fileCount: 1,
       files: [
         {
-          path: "AGENTS.md",
+          path: "CLAUDE.md",
           hash: "b".repeat(64),
           size: instructionsContent.length,
         },
       ],
     });
 
-    // Mock downloadS3Buffer to return a gzipped tar archive containing the instructions
     context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(
-      buildTarGz("AGENTS.md", instructionsContent),
+      buildTarGz("CLAUDE.md", instructionsContent),
     );
 
     const request = createTestRequest(
@@ -140,6 +143,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
 
     expect(response.status).toBe(200);
     expect(data.content).toBe(instructionsContent);
+    // filename in response is from compose YAML (what frontend displays)
     expect(data.filename).toBe("AGENTS.md");
   });
 
@@ -167,12 +171,11 @@ describe("GET /api/agent/composes/:id/instructions", () => {
       createdAt: new Date().toISOString(),
       totalSize: 50,
       fileCount: 1,
-      files: [{ path: "AGENTS.md", hash: "c".repeat(64), size: 50 }],
+      files: [{ path: "CLAUDE.md", hash: "c".repeat(64), size: 50 }],
     });
 
-    // Mock downloadS3Buffer to return a gzipped tar archive
     context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(
-      buildTarGz("AGENTS.md", "# Shared Instructions"),
+      buildTarGz("CLAUDE.md", "# Shared Instructions"),
     );
 
     const request = createTestRequest(
@@ -210,10 +213,13 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     expect(data.error.code).toBe("NOT_FOUND");
   });
 
-  it("should fall back to CLAUDE.md when configured filename not found in manifest", async () => {
-    const agentName = "fallback-agent";
-    const claudeContent = "# Legacy CLAUDE.md content\n";
+  it("should find instructions by framework canonical filename regardless of compose YAML filename", async () => {
+    const agentName = "framework-lookup-agent";
+    const claudeContent = "# Instructions via framework lookup\n";
 
+    // Compose YAML says "AGENTS.md" but framework is claude-code,
+    // so CLI uploaded as "CLAUDE.md". The API should derive the canonical
+    // filename from the framework and find it in the manifest.
     const { composeId } = await createTestCompose(agentName, {
       overrides: { instructions: "AGENTS.md" },
     });
@@ -221,7 +227,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const storageName = getInstructionsStorageName(agentName);
     await createTestVolume(storageName);
 
-    // Manifest only contains CLAUDE.md, not AGENTS.md
+    // Manifest contains CLAUDE.md (canonical for claude-code framework)
     context.mocks.s3.downloadManifest.mockResolvedValueOnce({
       version: "a".repeat(64),
       createdAt: new Date().toISOString(),
@@ -250,6 +256,50 @@ describe("GET /api/agent/composes/:id/instructions", () => {
 
     expect(response.status).toBe(200);
     expect(data.content).toBe(claudeContent);
+    // filename in response is still from compose YAML (what the frontend displays)
+    expect(data.filename).toBe("AGENTS.md");
+  });
+
+  it("should use AGENTS.md canonical filename for codex framework", async () => {
+    const agentName = "codex-agent";
+    const instructionsContent = "# Codex Instructions\n";
+
+    const { composeId } = await createTestCompose(agentName, {
+      overrides: { instructions: "AGENTS.md", framework: "codex" },
+    });
+
+    const storageName = getInstructionsStorageName(agentName);
+    await createTestVolume(storageName);
+
+    // Manifest contains AGENTS.md — the canonical filename for codex framework
+    context.mocks.s3.downloadManifest.mockResolvedValueOnce({
+      version: "a".repeat(64),
+      createdAt: new Date().toISOString(),
+      totalSize: instructionsContent.length,
+      fileCount: 1,
+      files: [
+        {
+          path: "AGENTS.md",
+          hash: "f".repeat(64),
+          size: instructionsContent.length,
+        },
+      ],
+    });
+
+    context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(
+      buildTarGz("AGENTS.md", instructionsContent),
+    );
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
+    );
+    const response = await GET(request, {
+      params: Promise.resolve({ id: composeId }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.content).toBe(instructionsContent);
     expect(data.filename).toBe("AGENTS.md");
   });
 
@@ -264,7 +314,8 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const storageName = getInstructionsStorageName(agentName);
     await createTestVolume(storageName);
 
-    // Manifest file has ./ prefix but config says "AGENTS.md" without prefix
+    // Manifest file has ./ prefix (e.g., ./CLAUDE.md) — should still match
+    // the canonical filename CLAUDE.md after normalization
     context.mocks.s3.downloadManifest.mockResolvedValueOnce({
       version: "a".repeat(64),
       createdAt: new Date().toISOString(),
@@ -272,7 +323,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
       fileCount: 1,
       files: [
         {
-          path: "./AGENTS.md",
+          path: "./CLAUDE.md",
           hash: "e".repeat(64),
           size: instructionsContent.length,
         },
@@ -280,7 +331,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     });
 
     context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(
-      buildTarGz("./AGENTS.md", instructionsContent),
+      buildTarGz("./CLAUDE.md", instructionsContent),
     );
 
     const request = createTestRequest(
@@ -517,10 +568,10 @@ describe("PUT /api/agent/composes/:id/instructions", () => {
     );
     const manifestBody = JSON.parse(manifestCall![2] as string);
 
-    // Mock GET to return what was PUT
+    // Mock GET to return what was PUT (PUT now stores with canonical filename CLAUDE.md)
     context.mocks.s3.downloadManifest.mockResolvedValueOnce(manifestBody);
     context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(
-      buildTarGz("AGENTS.md", newContent),
+      buildTarGz("CLAUDE.md", newContent),
     );
 
     // GET the instructions back

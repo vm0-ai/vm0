@@ -4,6 +4,7 @@ import { testContext } from "../../../../../src/__tests__/test-helpers";
 import {
   createTestComposeJob,
   findTestComposeJob,
+  deleteStaleTestComposeJobs,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 
@@ -21,10 +22,15 @@ function cronRequest(secret?: string) {
 }
 
 describe("GET /api/cron/cleanup-compose-jobs", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     context.setupMocks();
     vi.stubEnv("CRON_SECRET", "test-cron-secret");
     reloadEnv();
+
+    // Clean up stale compose jobs from other tests to ensure isolation.
+    // The cron route queries all pending/running jobs globally, so leftover
+    // data from other test suites would cause incorrect counts.
+    await deleteStaleTestComposeJobs();
   });
 
   it("should return 401 with invalid cron secret", async () => {

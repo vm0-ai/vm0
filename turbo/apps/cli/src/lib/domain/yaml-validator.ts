@@ -228,9 +228,84 @@ export function validateAgentName(name: string): boolean {
 }
 
 /**
- * Checks for deprecated 'provider' field and returns migration error message
+ * Known fields in agent definition schema, derived from the Zod schema shape.
+ * Used for typo detection against unknown fields in YAML config.
  */
-function checkForDeprecatedProvider(config: unknown): string | null {
+const KNOWN_AGENT_FIELDS = Object.keys(agentDefinitionSchema.shape);
+
+/**
+ * Computes Levenshtein edit distance between two strings.
+ * Uses single-row DP optimization for O(min(m,n)) space.
+ */
+function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  // Ensure a is the shorter string for space optimization
+  if (a.length > b.length) [a, b] = [b, a];
+
+  const row = Array.from({ length: a.length + 1 }, (_, i) => i);
+
+  for (let j = 1; j <= b.length; j++) {
+    let prev = j - 1;
+    row[0] = j;
+    for (let i = 1; i <= a.length; i++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const current = Math.min(
+        row[i]! + 1, // deletion
+        row[i - 1]! + 1, // insertion
+        prev + cost, // substitution
+      );
+      prev = row[i]!;
+      row[i] = current;
+    }
+  }
+
+  return row[a.length]!;
+}
+
+/**
+ * Finds the most similar known field for an unknown field name.
+ * Uses two strategies:
+ * 1. Levenshtein distance ≤ 2 for close typos (e.g., "environments" → "environment")
+ * 2. Prefix containment for abbreviations (e.g., "env" → "environment")
+ *
+ * Returns the best matching field name, or null if no match found.
+ */
+function findSimilarField(
+  unknown: string,
+  knownFields: string[],
+): string | null {
+  let bestMatch: string | null = null;
+  let bestDistance = Infinity;
+
+  for (const known of knownFields) {
+    if (unknown === known) continue;
+
+    // Check 1: Levenshtein distance ≤ 2
+    const distance = levenshteinDistance(unknown, known);
+    if (distance <= 2 && distance < bestDistance) {
+      bestDistance = distance;
+      bestMatch = known;
+    }
+
+    // Check 2: Prefix containment (unknown is a prefix of known, min 3 chars)
+    if (unknown.length >= 3 && known.startsWith(unknown) && !bestMatch) {
+      bestMatch = known;
+    }
+  }
+
+  return bestMatch;
+}
+
+/**
+ * Extracts agent entries from raw config, with type guards.
+ * Returns null if config structure is invalid for agent inspection.
+ */
+function extractAgentEntries(
+  config: unknown,
+): Record<string, Record<string, unknown>> | null {
   if (!config || typeof config !== "object") return null;
   const cfg = config as Record<string, unknown>;
   const agents = cfg.agents as
@@ -238,6 +313,43 @@ function checkForDeprecatedProvider(config: unknown): string | null {
     | undefined;
   if (!agents || typeof agents !== "object" || Array.isArray(agents))
     return null;
+  return agents;
+}
+
+/**
+ * Checks for unknown fields in agent definitions that look like typos.
+ * Returns an error message listing all detected typos, or null if none found.
+ */
+function checkForFieldTypos(config: unknown): string | null {
+  const agents = extractAgentEntries(config);
+  if (!agents) return null;
+
+  const errors: string[] = [];
+
+  for (const [agentName, agent] of Object.entries(agents)) {
+    if (!agent || typeof agent !== "object" || Array.isArray(agent)) continue;
+
+    for (const field of Object.keys(agent)) {
+      if (KNOWN_AGENT_FIELDS.includes(field)) continue;
+
+      const suggestion = findSimilarField(field, KNOWN_AGENT_FIELDS);
+      if (suggestion) {
+        errors.push(
+          `Unknown field "${field}" in agent "${agentName}". Did you mean "${suggestion}"?`,
+        );
+      }
+    }
+  }
+
+  return errors.length > 0 ? errors.join("\n") : null;
+}
+
+/**
+ * Checks for deprecated 'provider' field and returns migration error message
+ */
+function checkForDeprecatedProvider(config: unknown): string | null {
+  const agents = extractAgentEntries(config);
+  if (!agents) return null;
 
   for (const agent of Object.values(agents)) {
     if (agent && typeof agent === "object" && !Array.isArray(agent)) {
@@ -261,6 +373,12 @@ export function validateAgentCompose(config: unknown): {
   const deprecationError = checkForDeprecatedProvider(config);
   if (deprecationError) {
     return { valid: false, error: deprecationError };
+  }
+
+  // Pre-check: Detect likely typos in agent definition fields
+  const typoError = checkForFieldTypos(config);
+  if (typoError) {
+    return { valid: false, error: typoError };
   }
 
   // Pre-check: Better error for array agents (common mistake)

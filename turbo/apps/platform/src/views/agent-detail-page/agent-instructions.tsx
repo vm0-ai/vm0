@@ -39,7 +39,7 @@ export function AgentInstructions({
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-border p-4">
+      <div className="rounded-lg border border-border bg-card p-4">
         <Skeleton className="h-5 w-40 mb-6" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -48,7 +48,7 @@ export function AgentInstructions({
 
   if (!instructions?.content && !isOwner) {
     return (
-      <div className="rounded-lg border border-border p-4">
+      <div className="rounded-lg border border-border bg-card p-4">
         <h2 className="text-base font-medium text-foreground">
           Agent instructions
         </h2>
@@ -60,7 +60,7 @@ export function AgentInstructions({
   }
 
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className="rounded-lg border border-border bg-card p-4">
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-base font-medium text-foreground">
           Agent instructions

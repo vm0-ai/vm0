@@ -123,6 +123,11 @@ async fn upload_telemetry(masker: &SecretMasker) -> Result<(), AgentError> {
 
 /// Background loop uploading telemetry every `TELEMETRY_INTERVAL_SECS`.
 pub async fn telemetry_loop(shutdown: CancellationToken, masker: Arc<SecretMasker>) {
+    if !env::has_api() {
+        shutdown.cancelled().await;
+        return;
+    }
+
     let mut interval =
         tokio::time::interval(Duration::from_secs(constants::TELEMETRY_INTERVAL_SECS));
     loop {
@@ -137,6 +142,9 @@ pub async fn telemetry_loop(shutdown: CancellationToken, masker: Arc<SecretMaske
 
 /// Final telemetry upload before agent completion.
 pub async fn final_upload(masker: &SecretMasker) -> Result<(), AgentError> {
+    if !env::has_api() {
+        return Ok(());
+    }
     log_info!(LOG_TAG, "Performing final telemetry upload...");
     upload_telemetry(masker).await
 }

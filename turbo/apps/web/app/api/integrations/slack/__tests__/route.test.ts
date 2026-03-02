@@ -12,10 +12,12 @@ import {
 } from "../../../../../src/__tests__/slack/api-helpers";
 import {
   createTestCompose,
+  createTestScope,
   findTestAgentPermissions,
   findTestComposeWithScope,
   insertTestAgentPermission,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { uniqueId } from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 
 const context = testContext();
@@ -55,7 +57,7 @@ describe("/api/integrations/slack", () => {
       expect(data.installUrl).toContain(user.userId);
     });
 
-    it("returns workspace info for linked user", async () => {
+    it("returns workspace info for linked user including scopeSlug", async () => {
       const { userLink, installation } = await givenLinkedSlackUser();
 
       // Restore Clerk mock for the linked user
@@ -72,6 +74,8 @@ describe("/api/integrations/slack", () => {
       expect(data.workspace.name).toBe(installation.slackWorkspaceName);
       expect(data.agent).toBeDefined();
       expect(data.agent.name).toBeDefined();
+      expect(data.agent.scopeSlug).toBeDefined();
+      expect(typeof data.agent.scopeSlug).toBe("string");
       expect(data.environment).toBeDefined();
       expect(data.environment.requiredSecrets).toBeDefined();
       expect(data.environment.requiredVars).toBeDefined();
@@ -350,6 +354,69 @@ describe("/api/integrations/slack", () => {
         MOCK_USER_EMAIL,
       );
       expect(oldPermissions).toHaveLength(1);
+    });
+
+    it("updates the default agent with scoped name (scope/agentName)", async () => {
+      const { userLink } = await givenLinkedSlackUser({ isAdmin: true });
+
+      // Create a compose in a different scope (simulating a shared agent)
+      const otherUserId = uniqueId("other-user");
+      mockClerk({ userId: otherUserId });
+      await createTestScope(uniqueId("other-scope"));
+      const { composeId: otherComposeId } =
+        await createTestCompose("shared-agent");
+
+      // Switch back to admin user
+      mockClerk({ userId: userLink.vm0UserId });
+
+      // Look up the other scope's slug for the scoped name
+      const otherCompose = await findTestComposeWithScope(otherComposeId);
+
+      const request = new Request(
+        "http://localhost:3000/api/integrations/slack",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentName: `${otherCompose!.scopeSlug}/${otherCompose!.composeName}`,
+          }),
+        },
+      );
+      const response = await PATCH(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.ok).toBe(true);
+
+      // Verify the agent was updated by fetching the integration
+      const getResponse = await GET(
+        new Request("http://localhost:3000/api/integrations/slack"),
+      );
+      const getData = await getResponse.json();
+
+      expect(getData.agent.name).toBe(otherCompose!.composeName);
+      expect(getData.agent.scopeSlug).toBe(otherCompose!.scopeSlug);
+    });
+
+    it("returns 400 when scoped name has invalid scope slug", async () => {
+      const { userLink } = await givenLinkedSlackUser({ isAdmin: true });
+      mockClerk({ userId: userLink.vm0UserId });
+
+      const request = new Request(
+        "http://localhost:3000/api/integrations/slack",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentName: "nonexistent-scope/some-agent",
+          }),
+        },
+      );
+      const response = await PATCH(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.code).toBe("BAD_REQUEST");
     });
 
     it("handles duplicate permissions gracefully", async () => {

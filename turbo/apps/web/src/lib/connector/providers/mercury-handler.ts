@@ -1,0 +1,33 @@
+import { type ProviderHandler } from "../provider-types";
+import {
+  buildMercuryAuthorizationUrl,
+  exchangeMercuryCode,
+  getMercurySecretName,
+} from "./mercury";
+
+export const mercuryHandler: ProviderHandler = {
+  buildAuthUrl: buildMercuryAuthorizationUrl,
+  async exchangeCode(clientId, clientSecret, code, redirectUri) {
+    const result = await exchangeMercuryCode(
+      clientId,
+      clientSecret,
+      code,
+      redirectUri,
+    );
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn,
+      scopes: result.scopes,
+      userInfo: {
+        id: result.userInfo.id,
+        username: result.userInfo.username,
+        email: result.userInfo.email,
+      },
+    };
+  },
+  getClientId: (e) => e.MERCURY_OAUTH_CLIENT_ID,
+  getClientSecret: (e) => e.MERCURY_OAUTH_CLIENT_SECRET,
+  getSecretName: getMercurySecretName,
+  getRefreshSecretName: () => "MERCURY_REFRESH_TOKEN",
+};

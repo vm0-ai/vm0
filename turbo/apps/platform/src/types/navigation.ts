@@ -1,6 +1,6 @@
 import type { RoutePath } from "./route.ts";
 
-type NavIconName =
+export type NavIconName =
   | "Bot"
   | "CircleDot"
   | "Clock"
@@ -26,9 +26,4 @@ export interface NavItem {
   path?: RoutePath;
   url?: string;
   newTab?: boolean;
-}
-
-export interface NavGroup {
-  label: string;
-  items: NavItem[];
 }

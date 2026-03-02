@@ -18,51 +18,9 @@ import type { TsRestRequest } from "@ts-rest/serverless";
 import type { AppRouter } from "@ts-rest/core";
 import { flushLogs } from "./logger";
 import { ingestRequestLog } from "./axiom";
-import { ApiError } from "@vm0/core";
 
 // Re-export tsr and TsRestResponse for convenience
 export { tsr, TsRestResponse };
-
-/**
- * Standard error handler for ts-rest API routes.
- *
- * Handles ts-rest RequestValidationError and converts it to a proper
- * JSON error response with appropriate status code. Supports body,
- * query, and path parameter validation errors.
- *
- * Usage:
- *   import { createHandler, tsr, validationErrorHandler } from "@/lib/ts-rest-handler";
- *   const handler = createHandler(contract, router, { errorHandler: validationErrorHandler });
- */
-export function validationErrorHandler(err: unknown): TsRestResponse | void {
-  if (!err || typeof err !== "object") {
-    return undefined;
-  }
-
-  // Extract first validation issue from any error type
-  const errorObj = err as Record<string, unknown>;
-  const errorTypes = ["bodyError", "queryError", "pathParamsError"] as const;
-
-  for (const errorType of errorTypes) {
-    if (errorType in errorObj && errorObj[errorType]) {
-      const validationError = errorObj[errorType] as {
-        issues: Array<{ path: string[]; message: string }>;
-      };
-      const issue = validationError.issues[0];
-      if (issue) {
-        return TsRestResponse.fromJson(
-          {
-            error: { message: issue.message, code: ApiError.BAD_REQUEST.code },
-          },
-          { status: ApiError.BAD_REQUEST.status },
-        );
-      }
-    }
-  }
-
-  // Let other errors propagate
-  return undefined;
-}
 
 /**
  * Type alias for ts-rest router implementation.

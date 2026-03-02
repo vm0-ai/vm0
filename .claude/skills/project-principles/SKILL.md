@@ -1,5 +1,5 @@
 ---
-name: Project Principles
+name: project-principles
 description: Core architectural and code quality principles that guide all development decisions in the vm0 project
 ---
 

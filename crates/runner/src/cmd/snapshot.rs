@@ -6,7 +6,7 @@ use sandbox_fc::SnapshotOutputPaths;
 use crate::config::{DEFAULT_MEMORY_MB, DEFAULT_VCPU, SnapshotConfig};
 use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};
 use crate::error::{RunnerError, RunnerResult};
-use crate::paths::{HomePaths, LockPaths, RootfsPaths};
+use crate::paths::{HomePaths, RootfsPaths};
 
 #[derive(Args, Clone)]
 pub struct SnapshotArgs {
@@ -19,31 +19,42 @@ pub struct SnapshotArgs {
     /// Memory size in MiB for the snapshot VM.
     #[arg(long, default_value_t = DEFAULT_MEMORY_MB)]
     pub memory_mb: u32,
+    /// Compute and print the snapshot hash without building
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 /// Create a snapshot and return the complete snapshot path information.
-pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<SnapshotConfig> {
-    let paths = HomePaths::new()?;
-
+pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<(String, Option<SnapshotConfig>)> {
     let snapshot_hash = compute_snapshot_hash(&args);
     tracing::info!("snapshot hash: {snapshot_hash}");
+    // Machine-readable output — do not change format without updating consumers
+    println!("snapshot_hash={snapshot_hash}");
 
+    if args.dry_run {
+        return Ok((snapshot_hash, None));
+    }
+
+    let paths = HomePaths::new()?;
     let output_dir = paths.snapshots_dir().join(&snapshot_hash);
     let output = SnapshotOutputPaths::new(output_dir.clone());
 
     if is_snapshot_complete(&output).await? {
         tracing::info!("[OK] snapshot already exists: {}", output_dir.display());
-        return Ok(output.snapshot_config(&snapshot_hash).into());
+        crate::paths::touch_mtime(&output_dir);
+        let config = output.snapshot_config(&snapshot_hash).into();
+        return Ok((snapshot_hash, Some(config)));
     }
 
     // Acquire exclusive lock to prevent concurrent builds with the same hash.
-    let locks = LockPaths::new();
-    let _lock = crate::lock::acquire(locks.snapshot(&snapshot_hash)).await?;
+    let _lock = crate::lock::acquire(paths.snapshot_lock(&snapshot_hash)).await?;
 
     // Re-check after acquiring lock — another process may have completed the build.
     if is_snapshot_complete(&output).await? {
         tracing::info!("[OK] snapshot already exists: {}", output_dir.display());
-        return Ok(output.snapshot_config(&snapshot_hash).into());
+        crate::paths::touch_mtime(&output_dir);
+        let config = output.snapshot_config(&snapshot_hash).into();
+        return Ok((snapshot_hash, Some(config)));
     }
 
     // Clean up any partial output from a previous failed attempt.
@@ -95,7 +106,7 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<SnapshotConfig> {
         "snapshot creation complete"
     );
 
-    Ok(sc.into())
+    Ok((snapshot_hash, Some(sc.into())))
 }
 
 /// Check whether all expected snapshot outputs exist in the directory.
@@ -182,13 +193,14 @@ mod tests {
             rootfs_hash: "abc123".into(),
             vcpu: 2,
             memory_mb: 2048,
+            dry_run: false,
         };
         let hash = compute_snapshot_hash(&args);
 
         // Changing this assertion means ALL existing cached snapshots are
         // invalidated.  Only update deliberately.
         assert_eq!(
-            hash, "56c7e2d80112e9bbcaf6de63a8fbe90237f811bb3a144798dc47a633861b2c11",
+            hash, "8f1709d611d8120311e2d51dc4d4f630604b93dc0a24757197d20bc86042e826",
             "snapshot hash changed — this invalidates all cached snapshots"
         );
     }
@@ -199,6 +211,7 @@ mod tests {
             rootfs_hash: "abc123".into(),
             vcpu: 2,
             memory_mb: 2048,
+            dry_run: false,
         };
         let different_rootfs = SnapshotArgs {
             rootfs_hash: "def456".into(),
@@ -212,10 +225,16 @@ mod tests {
             memory_mb: 4096,
             ..base.clone()
         };
+        let different_dry_run = SnapshotArgs {
+            dry_run: true,
+            ..base.clone()
+        };
 
         let base_hash = compute_snapshot_hash(&base);
         assert_ne!(base_hash, compute_snapshot_hash(&different_rootfs));
         assert_ne!(base_hash, compute_snapshot_hash(&different_vcpu));
         assert_ne!(base_hash, compute_snapshot_hash(&different_memory));
+        // dry_run is not a build input — it must not change the hash.
+        assert_eq!(base_hash, compute_snapshot_hash(&different_dry_run));
     }
 }

@@ -20,11 +20,6 @@ import {
   schedulesByNameContract,
   schedulesEnableContract,
   scheduleRunsContract,
-  publicAgentsListContract,
-  publicArtifactsListContract,
-  publicArtifactByIdContract,
-  publicVolumesListContract,
-  publicVolumeByIdContract,
   credentialsMainContract,
   credentialsByNameContract,
   realtimeTokenContract,
@@ -34,17 +29,12 @@ import {
   type ScheduleListResponse,
   type DeployScheduleResponse,
   type ScheduleRunsResponse,
-  type PublicAgent,
-  type PublicArtifact,
-  type PublicArtifactDetail,
-  type PublicVolume,
-  type PublicVolumeDetail,
   type CredentialResponse,
   type CredentialListResponse,
   type AblyTokenRequest,
 } from "@vm0/core";
 import type { z } from "zod";
-import { getApiUrl, getToken } from "./config";
+import { getApiUrl, getActiveToken } from "./config";
 
 // Import types from @vm0/core contracts
 import type {
@@ -123,7 +113,7 @@ export interface GetComposeVersionResponse {
 
 class ApiClient {
   private async getHeaders(): Promise<Record<string, string>> {
-    const token = await getToken();
+    const token = await getActiveToken();
     if (!token) {
       throw new Error("Not authenticated. Run: vm0 auth login");
     }
@@ -1012,145 +1002,6 @@ class ApiClient {
   }
 
   /**
-   * List public agents
-   */
-  async listPublicAgents(query?: {
-    cursor?: string;
-    limit?: number;
-    name?: string;
-  }): Promise<{
-    data: PublicAgent[];
-    pagination: { nextCursor: string | null; hasMore: boolean };
-  }> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
-
-    const client = initClient(publicAgentsListContract, {
-      baseUrl,
-      baseHeaders: headers,
-      jsonQuery: false,
-    });
-
-    const result = await client.list({ query: query ?? {} });
-
-    if (result.status === 200) {
-      return result.body;
-    }
-
-    const errorBody = result.body as ApiErrorResponse;
-    const message = errorBody.error?.message || "Failed to list agents";
-    throw new Error(message);
-  }
-
-  /**
-   * List public artifacts
-   */
-  async listPublicArtifacts(query?: {
-    cursor?: string;
-    limit?: number;
-  }): Promise<{
-    data: PublicArtifact[];
-    pagination: { nextCursor: string | null; hasMore: boolean };
-  }> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
-
-    const client = initClient(publicArtifactsListContract, {
-      baseUrl,
-      baseHeaders: headers,
-      jsonQuery: false,
-    });
-
-    const result = await client.list({ query: query ?? {} });
-
-    if (result.status === 200) {
-      return result.body;
-    }
-
-    const errorBody = result.body as ApiErrorResponse;
-    const message = errorBody.error?.message || "Failed to list artifacts";
-    throw new Error(message);
-  }
-
-  /**
-   * Get public artifact by ID
-   */
-  async getPublicArtifact(id: string): Promise<PublicArtifactDetail> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
-
-    const client = initClient(publicArtifactByIdContract, {
-      baseUrl,
-      baseHeaders: headers,
-      jsonQuery: false,
-    });
-
-    const result = await client.get({ params: { id } });
-
-    if (result.status === 200) {
-      return result.body;
-    }
-
-    const errorBody = result.body as ApiErrorResponse;
-    const message = errorBody.error?.message || `Artifact "${id}" not found`;
-    throw new Error(message);
-  }
-
-  /**
-   * List public volumes
-   */
-  async listPublicVolumes(query?: {
-    cursor?: string;
-    limit?: number;
-  }): Promise<{
-    data: PublicVolume[];
-    pagination: { nextCursor: string | null; hasMore: boolean };
-  }> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
-
-    const client = initClient(publicVolumesListContract, {
-      baseUrl,
-      baseHeaders: headers,
-      jsonQuery: false,
-    });
-
-    const result = await client.list({ query: query ?? {} });
-
-    if (result.status === 200) {
-      return result.body;
-    }
-
-    const errorBody = result.body as ApiErrorResponse;
-    const message = errorBody.error?.message || "Failed to list volumes";
-    throw new Error(message);
-  }
-
-  /**
-   * Get public volume by ID
-   */
-  async getPublicVolume(id: string): Promise<PublicVolumeDetail> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
-
-    const client = initClient(publicVolumeByIdContract, {
-      baseUrl,
-      baseHeaders: headers,
-      jsonQuery: false,
-    });
-
-    const result = await client.get({ params: { id } });
-
-    if (result.status === 200) {
-      return result.body;
-    }
-
-    const errorBody = result.body as ApiErrorResponse;
-    const message = errorBody.error?.message || `Volume "${id}" not found`;
-    throw new Error(message);
-  }
-
-  /**
    * Get usage statistics
    */
   async getUsage(options: {
@@ -1315,7 +1166,7 @@ class ApiClient {
    */
   async get(path: string): Promise<Response> {
     const baseUrl = await this.getBaseUrl();
-    const token = await getToken();
+    const token = await getActiveToken();
     if (!token) {
       throw new Error("Not authenticated. Run: vm0 auth login");
     }
@@ -1344,7 +1195,7 @@ class ApiClient {
     options?: { body?: FormData | string },
   ): Promise<Response> {
     const baseUrl = await this.getBaseUrl();
-    const token = await getToken();
+    const token = await getActiveToken();
     if (!token) {
       throw new Error("Not authenticated. Run: vm0 auth login");
     }
@@ -1376,7 +1227,7 @@ class ApiClient {
    */
   async delete(path: string): Promise<Response> {
     const baseUrl = await this.getBaseUrl();
-    const token = await getToken();
+    const token = await getActiveToken();
     if (!token) {
       throw new Error("Not authenticated. Run: vm0 auth login");
     }

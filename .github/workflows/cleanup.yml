@@ -11,8 +11,6 @@ concurrency:
 jobs:
   cleanup-runner:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     steps:
       - uses: actions/checkout@v6
 
@@ -29,78 +27,52 @@ jobs:
             echo "should-cleanup=true" >> $GITHUB_OUTPUT
           fi
 
+      - name: Install Ansible
+        if: steps.check.outputs.should-cleanup == 'true'
+        run: |
+          apt-get update && apt-get install -y python3 python3-pip
+          pip3 install ansible
+
       - name: Setup SSH key
         if: steps.check.outputs.should-cleanup == 'true'
         env:
           SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
         run: |
-          SSH_DIR="$HOME/.ssh"
-          SSH_KEY_FILE="$SSH_DIR/metal.pem"
-          mkdir -p "$SSH_DIR"
-          echo "$SSH_KEY" > "$SSH_KEY_FILE"
-          chmod 600 "$SSH_KEY_FILE"
-          echo "SSH key file created at $SSH_KEY_FILE ($(wc -c < "$SSH_KEY_FILE") bytes)"
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
 
-      - name: Cleanup runner on metal hosts
+      - name: Cleanup turbo runner on all metal hosts
         if: steps.check.outputs.should-cleanup == 'true'
-        shell: bash
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
-          SSH_KEY_FILE="$HOME/.ssh/metal.pem"
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $SSH_KEY_FILE"
+          cd ansible
+          ansible-playbook \
+            -i "${METAL_HOSTS}," \
+            playbooks/cleanup-turbo-runner.yml \
+            --private-key "$HOME/.ssh/runner.pem" \
+            -e "ansible_user=${METAL_USER}" \
+            -e "job_ref=pr-${PR_NUMBER}" \
+            -v || true
 
-          # Parse hosts into array
-          IFS=',' read -ra HOSTS <<< "$METAL_HOSTS"
-          echo "Checking ${#HOSTS[@]} metal hosts for PR $PR_NUMBER..."
-
-          # Check each host for this PR's lock or runner directory
-          for host in "${HOSTS[@]}"; do
-            echo ""
-            echo "Checking host: $host"
-
-            # Check if lock exists for this PR
-            lock_pr=$(ssh $SSH_OPTS ${METAL_USER}@${host} "cat /opt/vm0-runner/.lock/pr 2>/dev/null" || echo "")
-
-            # Also check if runner directory exists for this PR
-            runner_exists=$(ssh $SSH_OPTS ${METAL_USER}@${host} "test -d /opt/vm0-runner/pr-${PR_NUMBER} && echo 'yes'" || echo "")
-
-            if [ "$lock_pr" = "$PR_NUMBER" ] || [ "$runner_exists" = "yes" ]; then
-              echo "Found PR $PR_NUMBER on $host, cleaning up..."
-
-              # Install Ansible if not present
-              if ! command -v ansible-playbook &> /dev/null; then
-                apt-get update && apt-get install -y python3 python3-pip
-                pip3 install ansible
-              fi
-
-              # Run Ansible cleanup
-              cd ansible
-              ansible-playbook \
-                -i "${host}," \
-                playbooks/cleanup-runner.yml \
-                --private-key "$SSH_KEY_FILE" \
-                -e "ansible_user=${METAL_USER}" \
-                -e "pr_number=${PR_NUMBER}" \
-                -v || true
-              cd ..
-
-              # Release lock if it belongs to this PR
-              if [ "$lock_pr" = "$PR_NUMBER" ]; then
-                ssh $SSH_OPTS ${METAL_USER}@${host} "rm -rf /opt/vm0-runner/.lock" || true
-                echo "Released lock on $host"
-              fi
-
-              echo "Cleanup complete on $host"
-            else
-              echo "PR $PR_NUMBER not found on $host (lock_pr='$lock_pr', runner_exists='$runner_exists')"
-            fi
-          done
-
-          echo ""
-          echo "Cleanup complete"
+      - name: Cleanup crates runner on all metal hosts
+        if: steps.check.outputs.should-cleanup == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+        run: |
+          cd ansible
+          ansible-playbook \
+            -i "${METAL_HOSTS}," \
+            playbooks/cleanup-crates-runner.yml \
+            --private-key "$HOME/.ssh/runner.pem" \
+            -e "ansible_user=${METAL_USER}" \
+            -e "job_ref=pr-${PR_NUMBER}-test" \
+            -v || true
 
   cleanup-database:
     runs-on: ubuntu-latest

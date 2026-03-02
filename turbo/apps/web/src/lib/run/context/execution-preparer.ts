@@ -6,7 +6,10 @@ import type {
 } from "../../../types/agent-compose";
 import type { ExecutionContext } from "../types";
 import type { PreparedContext } from "../executors/types";
-import { prepareStorageManifest } from "../../storage/storage-service";
+import {
+  prepareStorageManifest,
+  ensureArtifactExists,
+} from "../../storage/storage-service";
 import type { StorageManifest } from "../../storage/types";
 import { badRequest } from "../../errors";
 import { logger } from "../../logger";
@@ -15,6 +18,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
+import { scopes } from "../../../db/schema/scope";
 import type { ExperimentalFirewall as CoreExperimentalFirewall } from "@vm0/core";
 import { extractCliAgentType } from "../utils";
 
@@ -185,24 +189,39 @@ export async function prepareForExecution(
   );
 
   // Resolve runner's scope for artifact access
-  const runnerScope = await getUserScopeByClerkId(context.userId || "");
+  const userId = context.userId || "";
+  const runnerScope = await getUserScopeByClerkId(userId);
   if (!runnerScope) {
     throw badRequest("Runner scope not found");
   }
 
-  // Resolve owner's scope from compose for volume access
+  // Resolve owner's scope from compose for volume access and agent metadata
   const [composeInfo] = await globalThis.services.db
-    .select({ scopeId: agentComposes.scopeId })
+    .select({
+      scopeId: agentComposes.scopeId,
+      scopeSlug: scopes.slug,
+    })
     .from(agentComposeVersions)
     .innerJoin(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
+    .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
     .where(eq(agentComposeVersions.id, context.agentComposeVersionId))
     .limit(1);
 
   if (!composeInfo) {
     throw badRequest("Agent compose not found");
+  }
+
+  // Auto-create artifact if it doesn't exist yet
+  if (context.artifactName) {
+    await ensureArtifactExists(
+      runnerScope.id,
+      userId,
+      context.artifactName,
+      runnerScope.slug,
+    );
   }
 
   // Prepare storage manifest with dual scopes
@@ -232,6 +251,7 @@ export async function prepareForExecution(
     runnerGroup,
     storageManifest,
     experimentalFirewall,
+    composeInfo.scopeSlug,
   );
 
   log.debug(`PreparedContext built for run ${context.runId}`);
@@ -249,6 +269,7 @@ function buildPreparedContext(
   runnerGroup: string | null,
   storageManifest: StorageManifest,
   experimentalFirewall: CoreExperimentalFirewall | null,
+  agentScopeSlug: string | null,
 ): PreparedContext {
   return {
     // Identity
@@ -287,6 +308,7 @@ function buildPreparedContext(
 
     // Metadata
     agentName: context.agentName || null,
+    agentScopeSlug,
     resumedFromCheckpointId: context.resumedFromCheckpointId || null,
     continuedFromSessionId: context.continuedFromSessionId || null,
 

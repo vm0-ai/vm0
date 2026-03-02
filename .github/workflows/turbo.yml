@@ -7,6 +7,12 @@ on:
       - main
   merge_group:
 
+env:
+  # Sandbox VM parameters for runner build
+  RUNNER_VCPU: 2
+  RUNNER_MEMORY_MB: 2048
+  RUNNER_MAX_CONCURRENT: 4
+
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'merge_group' && format('merge-queue-{0}', github.run_id) || 'staging') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -24,13 +30,13 @@ jobs:
       web-changed: ${{ steps.detect.outputs.web-changed }}
       docs-changed: ${{ steps.detect.outputs.docs-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
-      runner-changed: ${{ steps.detect.outputs.runner-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
       e2b-changed: ${{ steps.detect-e2b.outputs.e2b-changed }}
       sandbox-changed: ${{ steps.detect-docker.outputs.sandbox-changed }}
       docker-web-changed: ${{ steps.detect-docker.outputs.docker-web-changed }}
       docker-platform-changed: ${{ steps.detect-docker.outputs.docker-platform-changed }}
       migration-changed: ${{ steps.detect-migration.outputs.migration-changed }}
+      crates-changed: ${{ steps.detect-crates.outputs.crates-changed }}
       cli-e2e-parallel-matrix: ${{ steps.cli-e2e-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
@@ -161,6 +167,26 @@ jobs:
           else
             echo "No migration or schema changes"
             echo "migration-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Detect crates changes
+        id: detect-crates
+        run: |
+          # Determine base ref based on event type
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            BASE_REF="${{ github.event.merge_group.base_sha }}"
+          else
+            BASE_REF="HEAD^"
+          fi
+
+          if git diff --name-only "$BASE_REF" HEAD | grep -q "^crates/"; then
+            echo "Crates changes detected"
+            echo "crates-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No crates changes"
+            echo "crates-changed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Set job-ref
@@ -464,11 +490,9 @@ jobs:
       - name: Build Sandbox Scripts
         working-directory: turbo
         run: pnpm turbo run build --filter=@vm0/sandbox-scripts
-      - name: Build vsock-guest example (for runner tests)
-        run: cargo build --manifest-path crates/Cargo.toml -p vsock-guest --example vsock-guest
       - name: Test Other Packages
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/runner --project=@vm0/core --project=@vm0/ui
+        run: pnpm vitest run --project=@vm0/core --project=@vm0/ui
 
   # Deploy web application with database
   deploy-web:
@@ -482,8 +506,8 @@ jobs:
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true' ||
-        needs.prepare.outputs.platform-changed == 'true'
+        needs.prepare.outputs.platform-changed == 'true' ||
+        needs.prepare.outputs.crates-changed == 'true'
       )
     outputs:
       preview-url: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
@@ -550,12 +574,23 @@ jobs:
             GH_OAUTH_CLIENT_SECRET=${{ secrets.GH_OAUTH_CLIENT_SECRET }}
             NOTION_OAUTH_CLIENT_ID=${{ vars.NOTION_OAUTH_CLIENT_ID }}
             NOTION_OAUTH_CLIENT_SECRET=${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
+            GOOGLE_OAUTH_CLIENT_ID=${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
+            GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+            LINEAR_OAUTH_CLIENT_ID=${{ vars.LINEAR_OAUTH_CLIENT_ID }}
+            LINEAR_OAUTH_CLIENT_SECRET=${{ secrets.LINEAR_OAUTH_CLIENT_SECRET }}
+            FIGMA_OAUTH_CLIENT_ID=${{ vars.FIGMA_OAUTH_CLIENT_ID }}
+            FIGMA_OAUTH_CLIENT_SECRET=${{ secrets.FIGMA_OAUTH_CLIENT_SECRET }}
+            DEEL_OAUTH_CLIENT_ID=${{ vars.DEEL_OAUTH_CLIENT_ID }}
+            DEEL_OAUTH_CLIENT_SECRET=${{ secrets.DEEL_OAUTH_CLIENT_SECRET }}
+            DOCUSIGN_OAUTH_CLIENT_ID=${{ vars.DOCUSIGN_OAUTH_CLIENT_ID }}
+            DOCUSIGN_OAUTH_CLIENT_SECRET=${{ secrets.DOCUSIGN_OAUTH_CLIENT_SECRET }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
             NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
             PLATFORM_URL=${{ needs.prepare.outputs.platform-preview-url }}
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             RESEND_WEBHOOK_SECRET=${{ secrets.RESEND_WEBHOOK_SECRET }}
             RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
+            VM0_ADMIN_USERS=${{ vars.VM0_ADMIN_USERS }}
             STRAPI_URL=${{ vars.STRAPI_URL }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
@@ -692,8 +727,7 @@ jobs:
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true'
+        needs.prepare.outputs.cli-changed == 'true'
       )
     steps:
       - uses: actions/checkout@v6
@@ -790,7 +824,7 @@ jobs:
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true'
+        needs.prepare.outputs.crates-changed == 'true'
       )
     timeout-minutes: 5
     permissions:
@@ -864,8 +898,7 @@ jobs:
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true'
+        needs.prepare.outputs.cli-changed == 'true'
       )
     strategy:
       fail-fast: false
@@ -935,6 +968,308 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
+  # Deploy runner prepare: cross-compile, deploy to all metal hosts, build rootfs/snapshot with mock URL
+  # Runs in parallel with deploy-web since rootfs/snapshot don't need the preview URL
+  # Skip on push to main - runner deployment is only needed for PRs
+  deploy-runner-prepare:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
+    needs: [prepare]
+    timeout-minutes: 10
+    if: |
+      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
+      github.event_name != 'push' &&
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.crates-changed == 'true'
+      )
+    outputs:
+      host-count: ${{ steps.host.outputs.host-count }}
+      bin-dir: ${{ steps.host.outputs.bin-dir }}
+      runner-dir: ${{ steps.host.outputs.runner-dir }}
+      runner-matrix: ${{ steps.runner-matrix.outputs.matrix }}
+      rootfs-hash: ${{ steps.deploy.outputs.rootfs-hash }}
+      snapshot-hash: ${{ steps.deploy.outputs.snapshot-hash }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates -> target
+          key: aarch64-musl
+
+      - name: Cross-compile guest binaries for ARM64
+        run: |
+          cd crates
+          cargo build --release --target aarch64-unknown-linux-musl \
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude
+
+      - name: Cross-compile runner with embedded guests for ARM64
+        run: |
+          cd crates
+          GUEST_AGENT_PATH=target/aarch64-unknown-linux-musl/release/guest-agent \
+          GUEST_DOWNLOAD_PATH=target/aarch64-unknown-linux-musl/release/guest-download \
+          GUEST_INIT_PATH=target/aarch64-unknown-linux-musl/release/guest-init \
+          GUEST_MOCK_CLAUDE_PATH=target/aarch64-unknown-linux-musl/release/guest-mock-claude \
+          cargo build --release --target aarch64-unknown-linux-musl -p runner
+
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      - name: Resolve metal hosts
+        id: host
+        env:
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+        run: |
+          echo "bin-dir=~/.vm0-runner/bin/${JOB_REF}" >> "$GITHUB_OUTPUT"
+          echo "runner-dir=~/.vm0-runner/runners/${JOB_REF}" >> "$GITHUB_OUTPUT"
+          NUM_HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | grep -c .)
+          if [ "$NUM_HOSTS" -lt 1 ]; then
+            echo "::error::AWS_METAL_RUNNER_HOSTS is empty"
+            exit 1
+          fi
+          echo "host-count=${NUM_HOSTS}" >> "$GITHUB_OUTPUT"
+          echo "Deploying to ${NUM_HOSTS} metal hosts"
+
+      - name: Generate runner E2E test matrix
+        id: runner-matrix
+        shell: bash
+        run: |
+          # Split test files across metal hosts, balanced by test count
+          NUM_CHUNKS=${{ steps.host.outputs.host-count }}
+
+          # Count tests per file, sort heaviest first
+          mapfile -t SORTED < <(
+            for f in e2e/tests/03-experimental-runner/*.bats; do
+              echo "$(grep -c "^@test" "$f" 2>/dev/null || echo 0) $f"
+            done | sort -rn
+          )
+          echo "Runner E2E: ${#SORTED[@]} files, $NUM_CHUNKS chunks"
+
+          # Greedy bin-packing: assign each file to the lightest chunk
+          declare -a CHUNK_FILES CHUNK_COUNTS
+          for ((i=0; i<NUM_CHUNKS; i++)); do CHUNK_FILES[$i]=""; CHUNK_COUNTS[$i]=0; done
+          for entry in "${SORTED[@]}"; do
+            tests=${entry%% *}; f=${entry#* }
+            min=0
+            for ((i=1; i<NUM_CHUNKS; i++)); do
+              [ ${CHUNK_COUNTS[$i]} -lt ${CHUNK_COUNTS[$min]} ] && min=$i
+            done
+            CHUNK_FILES[$min]="${CHUNK_FILES[$min]:+${CHUNK_FILES[$min]} }$f"
+            CHUNK_COUNTS[$min]=$((CHUNK_COUNTS[$min] + tests))
+          done
+
+          CHUNKS="["
+          for ((i=0; i<NUM_CHUNKS; i++)); do
+            [ $i -gt 0 ] && CHUNKS="$CHUNKS,"
+            CHUNKS="$CHUNKS{\"index\":$((i+1)),\"files\":\"${CHUNK_FILES[$i]}\"}"
+            echo "Chunk $((i+1)): ${CHUNK_COUNTS[$i]} tests"
+          done
+          echo "matrix=${CHUNKS}]" >> $GITHUB_OUTPUT
+
+      - name: Deploy binaries and build rootfs/snapshot on all metal hosts
+        id: deploy
+        shell: bash
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          BIN_DIR: ${{ steps.host.outputs.bin-dir }}
+          RUNNER_DIR: ${{ steps.host.outputs.runner-dir }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+          TARGET_DIR="crates/target/aarch64-unknown-linux-musl/release"
+
+          # Provision system dependencies on all hosts (idempotent)
+          echo "=== Provisioning system dependencies ==="
+          apt-get update && apt-get install -y python3 python3-pip
+          pip3 install ansible
+          cd ansible
+          ansible-playbook \
+            -i "${METAL_HOSTS}," \
+            playbooks/provision-metal.yml \
+            --private-key $HOME/.ssh/runner.pem \
+            -e "ansible_user=${METAL_USER}" \
+            -v
+          cd ..
+
+          deploy_to_host() {
+            local HOST=$1
+            local HOST_INDEX=$2
+            local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+            local REMOTE="${METAL_USER}@${HOST}"
+            echo "=== Deploying to ${HOST} (runner: ${RUNNER_NAME}) ==="
+
+            # Clean previous run artifacts and upload runner (guests are embedded)
+            ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR} && mkdir -p ${BIN_DIR}"
+            scp $SSH_OPTS "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
+
+            # Clean up old rootfs/snapshots, keep the 2 most recent
+            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 2"
+
+            # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
+            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner setup"
+
+            # Run build to create rootfs + snapshot (outputs hashes to stdout)
+            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
+              --vcpu ${RUNNER_VCPU} \
+              --memory-mb ${RUNNER_MEMORY_MB}"
+            echo "=== Done deploying to ${HOST} ==="
+          }
+
+          LOG_DIR=$(mktemp -d)
+          HOSTS=()
+          PIDS=()
+          HOST_INDEX=0
+          for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
+            HOST_INDEX=$((HOST_INDEX + 1))
+            deploy_to_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
+            PIDS+=($!)
+            HOSTS+=("$HOST")
+          done
+
+          FAILED=0
+          for i in "${!PIDS[@]}"; do
+            if ! wait "${PIDS[$i]}"; then
+              FAILED=1
+              echo "::error::Deployment failed on ${HOSTS[$i]}"
+            fi
+            echo "=== ${HOSTS[$i]} ==="
+            cat "${LOG_DIR}/${HOSTS[$i]}.log"
+          done
+          if [ "$FAILED" -ne 0 ]; then
+            rm -rf "$LOG_DIR"
+            exit 1
+          fi
+
+          # Extract build hashes from any host's log (all hosts produce identical hashes)
+          FIRST_LOG=$(ls ${LOG_DIR}/*.log | head -1)
+          ROOTFS_HASH=$(grep '^rootfs_hash=' "$FIRST_LOG" | cut -d= -f2)
+          SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$FIRST_LOG" | cut -d= -f2)
+          rm -rf "$LOG_DIR"
+          if [ -z "$ROOTFS_HASH" ] || [ -z "$SNAPSHOT_HASH" ]; then
+            echo "::error::Failed to extract build hashes from log"
+            exit 1
+          fi
+          echo "rootfs-hash=${ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
+          echo "snapshot-hash=${SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
+
+  # Deploy runner start: generate config with real preview URL and start service
+  # Waits for both deploy-runner-prepare (binaries + rootfs/snapshot) and deploy-web (preview URL)
+  deploy-runner-start:
+    runs-on: ubuntu-latest
+    needs: [prepare, deploy-runner-prepare, deploy-web]
+    timeout-minutes: 2
+    if: |
+      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
+      github.event_name != 'push' &&
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.crates-changed == 'true'
+      )
+    steps:
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      # Read METAL_HOSTS from secret directly — GitHub Actions masks secret values in job outputs
+      - name: Rebuild config and start runner service on all hosts
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
+          RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
+          ROOTFS_HASH: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash }}
+          SNAPSHOT_HASH: ${{ needs.deploy-runner-prepare.outputs.snapshot-hash }}
+          PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+
+          start_on_host() {
+            local HOST=$1
+            local HOST_INDEX=$2
+            local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+            local REMOTE="${METAL_USER}@${HOST}"
+            echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
+
+            # Generate runner.yaml with real preview URL (no build needed, uses cached hashes)
+            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+              --rootfs-hash ${ROOTFS_HASH} \
+              --snapshot-hash ${SNAPSHOT_HASH} \
+              --name ${RUNNER_NAME} \
+              --group vm0/development-${JOB_REF} \
+              --runner-dirname ${JOB_REF} \
+              --vcpu ${RUNNER_VCPU} \
+              --memory-mb ${RUNNER_MEMORY_MB} \
+              --max-concurrent ${RUNNER_MAX_CONCURRENT} \
+              --api-url ${PREVIEW_URL} \
+              --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+            # Start as systemd transient service
+            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner service start \
+              --name ${RUNNER_NAME} \
+              --config ${RUNNER_DIR}/runner.yaml \
+              --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
+              --env USE_MOCK_CLAUDE=true"
+
+            # Health check — wait for the runner to initialize (mitmdump, status.json).
+            # Retry up to 5 times with 2s intervals to handle slow cold starts.
+            for attempt in 1 2 3 4 5; do
+              sleep 2
+              if ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner doctor"; then
+                break
+              fi
+              if [ "$attempt" -eq 5 ]; then
+                echo "runner doctor failed after 5 attempts"
+                exit 1
+              fi
+              echo "runner doctor attempt $attempt failed, retrying..."
+            done
+            echo "=== Runner started on ${HOST} ==="
+          }
+
+          LOG_DIR=$(mktemp -d)
+          HOSTS=()
+          PIDS=()
+          HOST_INDEX=0
+          for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
+            HOST_INDEX=$((HOST_INDEX + 1))
+            start_on_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
+            PIDS+=($!)
+            HOSTS+=("$HOST")
+          done
+
+          FAILED=0
+          for i in "${!PIDS[@]}"; do
+            if ! wait "${PIDS[$i]}"; then
+              FAILED=1
+              echo "::error::Runner start failed on ${HOSTS[$i]}"
+            fi
+            echo "=== ${HOSTS[$i]} ==="
+            cat "${LOG_DIR}/${HOSTS[$i]}.log"
+          done
+          rm -rf "$LOG_DIR"
+          if [ "$FAILED" -ne 0 ]; then
+            exit 1
+          fi
+
   # Run CLI E2E tests - Phase 3: Runner tests (needs runner deployed)
   # Skip on push to main - runner tests are only needed for PRs
   cli-e2e-03-runner:
@@ -945,18 +1280,25 @@ jobs:
       [
         prepare,
         cli-e2e-01-serial,
+        cli-e2e-02-parallel,
         deploy-web,
+        deploy-runner-prepare,
         deploy-runner-start,
-        deploy-runner-benchmark,
       ]
     if: |
+      always() &&
+      (needs.cli-e2e-02-parallel.result == 'success' || needs.cli-e2e-02-parallel.result == 'skipped') &&
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true'
+        needs.prepare.outputs.crates-changed == 'true'
       )
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.deploy-runner-prepare.outputs.runner-matrix) }}
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v6
@@ -1001,11 +1343,13 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-      - name: Run Runner E2E Tests
+      - name: Run Runner E2E Tests (Chunk ${{ matrix.index }})
         run: |
-          echo "=== Running Runner E2E Tests (4 parallel) ==="
-          BATS_TEST_TIMEOUT=60 RUNNER_GROUP="vm0/development-${JOB_REF}" ./e2e/test/libs/bats/bin/bats -T -j 4 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats
-          echo "✅ Runner tests passed"
+          PARALLEL=${RUNNER_MAX_CONCURRENT}
+          echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel) ==="
+          echo "Files: ${{ matrix.files }}"
+          BATS_TEST_TIMEOUT=60 RUNNER_GROUP="vm0/development-${JOB_REF}" ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --no-parallelize-within-files ${{ matrix.files }}
+          echo "✅ Chunk ${{ matrix.index }} tests passed"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -1022,413 +1366,46 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
-  # Prepare runner: lock host, build bundle, install deps (runs parallel with deploy-web)
+  # Stop runner service and clean up after cli-e2e-03-runner completes (or fails/times out)
   # Skip on push to main - runner deployment is only needed for PRs
-  deploy-runner-prepare:
+  cleanup-runner:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
-    needs: [prepare]
+    needs: [prepare, deploy-runner-prepare, deploy-runner-start, cli-e2e-03-runner]
     if: |
+      always() &&
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
-      needs.prepare.outputs.job-ref != '' && (
-        needs.prepare.outputs.web-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true'
-      )
-    outputs:
-      runner-host: ${{ steps.lock.outputs.host }}
-      runner-dir: ${{ steps.prepare.outputs.runner-dir }}
-      proxy-port: ${{ steps.prepare.outputs.proxy-port }}
+      needs.deploy-runner-prepare.outputs.bin-dir != ''
     steps:
       - uses: actions/checkout@v6
-      - uses: ./.github/actions/toolchain-init
 
-      - name: Lock runner host
-        id: lock
-        shell: bash
+      - name: Install Ansible
+        run: |
+          apt-get update && apt-get install -y python3 python3-pip
+          pip3 install ansible
+
+      - name: Setup SSH key
         env:
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      - name: Cleanup runner on all metal hosts
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          # Parse hosts into array
-          IFS=',' read -ra HOSTS <<< "$METAL_HOSTS"
-          NUM_HOSTS=${#HOSTS[@]}
-          echo "Found $NUM_HOSTS runner hosts"
-
-          # Setup SSH (use $HOME instead of ~ for proper expansion in container)
-          SSH_DIR="$HOME/.ssh"
-          SSH_KEY_FILE="$SSH_DIR/runner.pem"
-          mkdir -p "$SSH_DIR"
-          if [ -z "$SSH_KEY" ]; then
-            echo "ERROR: SSH_KEY secret is empty!"
-            exit 1
-          fi
-          echo "$SSH_KEY" > "$SSH_KEY_FILE"
-          chmod 600 "$SSH_KEY_FILE"
-          echo "SSH key file created at $SSH_KEY_FILE ($(wc -c < "$SSH_KEY_FILE") bytes)"
-
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $SSH_KEY_FILE"
-
-          # Function to check if host is available (lock doesn't exist or is stale)
-          check_and_acquire() {
-            local host=$1
-
-            echo "  Checking lock state on $host..."
-            ssh $SSH_OPTS ${METAL_USER}@${host} "ls -la /opt/vm0-runner/.lock 2>&1 || echo '  (no lock directory)'" 2>/dev/null || echo "  (SSH failed)"
-
-            # Check if lock directory exists
-            lock_exists=$(ssh $SSH_OPTS ${METAL_USER}@${host} "test -d /opt/vm0-runner/.lock && echo 'yes'" 2>/dev/null || echo "")
-
-            if [ "$lock_exists" = "yes" ]; then
-              lock_time=$(ssh $SSH_OPTS ${METAL_USER}@${host} "cat /opt/vm0-runner/.lock/timestamp 2>/dev/null" || echo "")
-              lock_ref=$(ssh $SSH_OPTS ${METAL_USER}@${host} "cat /opt/vm0-runner/.lock/ref 2>/dev/null" || echo "unknown")
-
-              if [ -n "$lock_time" ]; then
-                now=$(date +%s)
-                age=$((now - lock_time))
-                if [ $age -gt 1800 ]; then
-                  echo "  Stale lock found ($lock_ref, ${age}s old), removing..."
-                  ssh $SSH_OPTS ${METAL_USER}@${host} "rm -rf /opt/vm0-runner/.lock" 2>/dev/null || true
-                else
-                  echo "  Host is locked by $lock_ref (lock age: ${age}s)"
-                  return 1
-                fi
-              else
-                echo "  Lock directory exists but no timestamp (corrupt lock?), removing..."
-                ssh $SSH_OPTS ${METAL_USER}@${host} "rm -rf /opt/vm0-runner/.lock" 2>/dev/null || true
-              fi
-            else
-              echo "  No existing lock found"
-            fi
-
-            # Ensure parent directory exists and try atomic mkdir to acquire lock
-            echo "  Attempting to create lock..."
-            if ! ssh $SSH_OPTS ${METAL_USER}@${host} "test -d /opt/vm0-runner" 2>/dev/null; then
-              echo "  Creating /opt/vm0-runner directory..."
-              ssh $SSH_OPTS ${METAL_USER}@${host} "sudo mkdir -p /opt/vm0-runner && sudo chown ${METAL_USER}:${METAL_USER} /opt/vm0-runner" 2>&1 || {
-                echo "  ERROR: Failed to create /opt/vm0-runner directory"
-                return 1
-              }
-            fi
-            mkdir_result=$(ssh $SSH_OPTS ${METAL_USER}@${host} "mkdir /opt/vm0-runner/.lock 2>&1 && echo 'SUCCESS'" || echo "FAILED")
-            if [ "$mkdir_result" = "SUCCESS" ]; then
-              ssh $SSH_OPTS ${METAL_USER}@${host} "echo ${JOB_REF} > /opt/vm0-runner/.lock/ref && date +%s > /opt/vm0-runner/.lock/timestamp"
-              echo "  Lock acquired!"
-              return 0
-            else
-              echo "  mkdir failed: $mkdir_result"
-              return 1
-            fi
-          }
-
-          # Preferred host based on job-ref (use hash for even distribution)
-          HASH=$(echo -n "$JOB_REF" | md5sum | cut -c1-8)
-          PREFERRED_INDEX=$((16#$HASH % NUM_HOSTS))
-          echo "Preferred host index: $PREFERRED_INDEX (hash of $JOB_REF % $NUM_HOSTS)"
-
-          # Exponential backoff: 0, 2min, 4min, 8min
-          BACKOFF_TIMES=(0 120 240 480)
-
-          for attempt in 0 1 2 3; do
-            if [ $attempt -gt 0 ]; then
-              wait_time=${BACKOFF_TIMES[$attempt]}
-              echo ""
-              echo "All hosts busy. Waiting ${wait_time} seconds before retry (attempt $((attempt+1))/4)..."
-              sleep $wait_time
-            fi
-
-            echo ""
-            echo "=== Attempt $((attempt+1))/4 ==="
-
-            # Try preferred host first
-            host=${HOSTS[$PREFERRED_INDEX]}
-            echo "Trying preferred host: $host"
-            if check_and_acquire "$host"; then
-              echo "host=$host" >> $GITHUB_OUTPUT
-              echo ""
-              echo "SUCCESS: Acquired lock on $host"
-              exit 0
-            fi
-
-            # Try other hosts in order
-            for i in $(seq 0 $((NUM_HOSTS-1))); do
-              if [ $i -eq $PREFERRED_INDEX ]; then
-                continue
-              fi
-              host=${HOSTS[$i]}
-              echo "Trying fallback host: $host"
-              if check_and_acquire "$host"; then
-                echo "host=$host" >> $GITHUB_OUTPUT
-                echo ""
-                echo "SUCCESS: Acquired lock on $host"
-                exit 0
-              fi
-            done
-          done
-
-          echo ""
-          echo "ERROR: Could not acquire lock on any host after 4 attempts (~14 minutes)"
-          echo "All runner hosts are busy. Please try again later or check for stale locks."
-          exit 1
-
-      - name: Build Sandbox Scripts
-        run: cd turbo && pnpm turbo run build --filter=@vm0/sandbox-scripts
-
-      # Cross-compile Rust binaries for ARM64 (metal runners are ARM64)
-      - name: Build guest binaries for ARM64
-        run: |
-          cd crates
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc \
-            cargo build --release --target aarch64-unknown-linux-musl -p guest-init -p guest-download -p guest-agent -p guest-mock-claude
-          ls -la target/aarch64-unknown-linux-musl/release/guest-init
-          ls -la target/aarch64-unknown-linux-musl/release/guest-download
-          ls -la target/aarch64-unknown-linux-musl/release/guest-agent
-          ls -la target/aarch64-unknown-linux-musl/release/guest-mock-claude
-
-      - name: Build runner bundle
-        run: |
-          cd turbo && pnpm --filter @vm0/runner build
-          cd ..
-
-          STAGING_DIR="/tmp/vm0-runner-bundle"
-          rm -rf "$STAGING_DIR"
-          mkdir -p "$STAGING_DIR"
-          cp -r turbo/apps/runner/dist/* "$STAGING_DIR/"
-
-          cd "$STAGING_DIR" && npm install --omit=dev
-          cd -
-
-          tar -czf /tmp/vm0-runner-bundle.tar.gz -C /tmp vm0-runner-bundle
-          echo "Bundle created: $(ls -lh /tmp/vm0-runner-bundle.tar.gz)"
-
-      - name: Install Python3 and Ansible
-        run: |
-          apt-get update && apt-get install -y python3 python3-pip
-          pip3 install ansible
-
-      - name: Prepare runner (deploy bundle, install deps)
-        id: prepare
-        env:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          RUNNER_HOST: ${{ steps.lock.outputs.host }}
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
         run: |
-          RUNNER_DIR="/opt/vm0-runner/${JOB_REF}"
-          # Use numeric hash of job-ref for proxy port to ensure consistency
-          PROXY_PORT=$(echo -n "${JOB_REF}" | md5sum | cut -c1-8 | sed 's/[a-f]//g' | cut -c1-3 | awk '{print 8080 + int($1)}')
-
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
-
-          echo "Preparing runner on host: ${RUNNER_HOST}"
-
           cd ansible
           ansible-playbook \
-            -i "${RUNNER_HOST}," \
-            playbooks/deploy-runner.yml \
-            --tags prepare \
+            -i "${METAL_HOSTS}," \
+            playbooks/cleanup-turbo-runner.yml \
             --private-key "$HOME/.ssh/runner.pem" \
             -e "ansible_user=${METAL_USER}" \
-            -e "runner_base_dir=${RUNNER_DIR}" \
-            -e "pm2_process_name=vm0-runner-${JOB_REF}" \
-            -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
-            -e "rootfs_path=${RUNNER_DIR}/rootfs.squashfs" \
-            -e "snapshot_path=${RUNNER_DIR}/snapshot" \
-            -e "force_rebuild_rootfs=true" \
-            -e "proxy_port=${PROXY_PORT}" \
-            -e '{"enable_drain": true, "drain_timeout": 300}' \
-            -v
-
-          echo "runner-dir=${RUNNER_DIR}" >> $GITHUB_OUTPUT
-          echo "proxy-port=${PROXY_PORT}" >> $GITHUB_OUTPUT
-          echo "Runner prepared at ${RUNNER_DIR} on ${RUNNER_HOST}"
-
-  # Run benchmark command to test VM boot performance (runs after start)
-  # Skip on push to main - runner benchmark is only needed for PRs
-  deploy-runner-benchmark:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
-    needs: [prepare, deploy-runner-prepare, deploy-runner-start]
-    if: |
-      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
-      github.event_name != 'push' &&
-      needs.prepare.outputs.job-ref != '' && (
-        needs.prepare.outputs.web-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true'
-      )
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Run benchmark command for VM performance testing
-        env:
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
-          RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
-          PROXY_PORT: ${{ needs.deploy-runner-prepare.outputs.proxy-port }}
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
-
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
-
-          echo "=== Running VM Benchmark on ${RUNNER_HOST} ==="
-          echo "Runner directory: ${RUNNER_DIR}"
-          echo "Proxy port: ${PROXY_PORT}"
-          echo ""
-
-          # Create benchmark config with proxy settings and snapshot (firewall + mitm enabled by default)
-          ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "
-            echo 'base_dir: ${RUNNER_DIR}/benchmark' > ${RUNNER_DIR}/benchmark.yaml
-            echo 'firecracker:' >> ${RUNNER_DIR}/benchmark.yaml
-            echo '  binary: /usr/local/bin/firecracker' >> ${RUNNER_DIR}/benchmark.yaml
-            echo '  kernel: /opt/firecracker/vmlinux' >> ${RUNNER_DIR}/benchmark.yaml
-            echo '  rootfs: ${RUNNER_DIR}/rootfs.squashfs' >> ${RUNNER_DIR}/benchmark.yaml
-            echo '  snapshot:' >> ${RUNNER_DIR}/benchmark.yaml
-            echo '    snapshot: ${RUNNER_DIR}/snapshot/snapshot.bin' >> ${RUNNER_DIR}/benchmark.yaml
-            echo '    memory: ${RUNNER_DIR}/snapshot/memory.bin' >> ${RUNNER_DIR}/benchmark.yaml
-            echo '    overlay: ${RUNNER_DIR}/snapshot/overlay.ext4' >> ${RUNNER_DIR}/benchmark.yaml
-            echo 'proxy:' >> ${RUNNER_DIR}/benchmark.yaml
-            echo '  port: ${PROXY_PORT}' >> ${RUNNER_DIR}/benchmark.yaml
-            echo '  ca_dir: ${RUNNER_DIR}/proxy' >> ${RUNNER_DIR}/benchmark.yaml
-          "
-
-          # Run benchmark command with curl test to verify HTTPS through proxy
-          ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "cd ${RUNNER_DIR} && node index.js benchmark --config benchmark.yaml 'curl -s https://httpbin.org/get | head -5'" 2>&1 || {
-            echo "Benchmark command failed (exit code: $?)"
-            echo "This may indicate issues with VM boot, proxy, or Firecracker setup"
-            exit 1
-          }
-
-          echo ""
-          echo "=== VM Benchmark Complete ==="
-
-  # Start runner after deploy-web provides preview URL
-  # Skip on push to main - runner deployment is only needed for PRs
-  deploy-runner-start:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
-    needs: [prepare, deploy-web, deploy-runner-prepare]
-    if: |
-      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
-      github.event_name != 'push' &&
-      needs.prepare.outputs.job-ref != '' && (
-        needs.prepare.outputs.web-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true'
-      )
-    outputs:
-      runner-deployed: ${{ steps.start.outputs.runner-deployed }}
-      runner-dir: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
-      runner-host: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Install Python3 and Ansible
-        run: |
-          apt-get update && apt-get install -y python3 python3-pip
-          pip3 install ansible
-
-      - name: Start runner (configure and launch)
-        id: start
-        env:
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
-          RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
-          PROXY_PORT: ${{ needs.deploy-runner-prepare.outputs.proxy-port }}
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
-
-          echo "Starting runner on host: ${RUNNER_HOST}"
-
-          cd ansible
-          ansible-playbook \
-            -i "${RUNNER_HOST}," \
-            playbooks/deploy-runner.yml \
-            --tags start \
-            --private-key "$HOME/.ssh/runner.pem" \
-            -e "ansible_user=${METAL_USER}" \
-            -e "runner_base_dir=${RUNNER_DIR}" \
-            -e "runner_group=vm0/development-${JOB_REF}" \
-            -e "runner_suffix=${JOB_REF}" \
-            -e "pm2_process_name=vm0-runner-${JOB_REF}" \
-            -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
-            -e "api_url=${PREVIEW_URL}" \
-            -e "rootfs_path=${RUNNER_DIR}/rootfs.squashfs" \
-            -e "snapshot_path=${RUNNER_DIR}/snapshot" \
-            -e "proxy_port=${PROXY_PORT}" \
-            -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true"}}' \
-            -v
-
-          echo "runner-deployed=true" >> $GITHUB_OUTPUT
-          echo "Runner started at ${RUNNER_DIR} on ${RUNNER_HOST}"
-
-  # Stop runner and release host lock after cli-e2e-03-runner completes (or fails/times out)
-  # Runner must be stopped to prevent stale runners from claiming jobs in subsequent CI runs
-  # Skip on push to main - runner deployment is only needed for PRs
-  unlock-runner-host:
-    runs-on: ubuntu-latest
-    needs: [deploy-runner-prepare, cli-e2e-03-runner]
-    if: always() && contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') && github.event_name != 'push' && needs.deploy-runner-prepare.outputs.runner-host != ''
-    steps:
-      - name: Stop runner and unlock host
-        env:
-          RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
-          RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
-
-          # Extract job ref from runner dir (e.g., /opt/vm0-runner/pr-1900 -> pr-1900)
-          JOB_REF=$(basename "$RUNNER_DIR")
-          if [ -n "$JOB_REF" ]; then
-            PM2_NAME="vm0-runner-${JOB_REF}"
-            echo "Stopping runner ${PM2_NAME} gracefully..."
-            # Use pm2 stop first to send SIGTERM and allow cleanup (TAP/IP release)
-            # --kill-timeout gives the process 10s to cleanup before SIGKILL
-            ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "pm2 stop ${PM2_NAME} --kill-timeout 10000 2>/dev/null || true"
-            # Wait for process to fully exit (pm2 stop is async)
-            # pm2 pid returns 0 when process is stopped, empty when deleted
-            echo "Waiting for runner to exit..."
-            for i in $(seq 1 15); do
-              pid=$(ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "pm2 pid ${PM2_NAME} 2>/dev/null" || true)
-              if [ -z "$pid" ] || [ "$pid" = "0" ]; then
-                echo "Runner exited"
-                break
-              fi
-              echo "  Still running (pid: $pid), waiting..."
-              sleep 1
-            done
-            # Remove from pm2 process list
-            ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "pm2 delete ${PM2_NAME} 2>/dev/null || true"
-            echo "Runner stopped and removed from pm2"
-          fi
-
-          # Release the host lock
-          ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "rm -rf /opt/vm0-runner/.lock" || true
-          echo "Unlocked runner host: $RUNNER_HOST"
+            -e "job_ref=${JOB_REF}" \
+            -v || true
 
   # Build E2B templates (development account)
   # Uses repository-level E2B_API_KEY secret

@@ -26,6 +26,8 @@ const mockResend = vi.mocked(new Resend(""), true);
 interface ReplyCallbackPayload {
   emailThreadSessionId: string;
   inboundEmailId: string;
+  inboundMessageId?: string;
+  inboundReferences?: string;
 }
 
 function createCallbackRequest(
@@ -129,6 +131,9 @@ describe("POST /api/internal/callbacks/email/reply", () => {
       const payload: ReplyCallbackPayload = {
         emailThreadSessionId: emailSession.id,
         inboundEmailId: "inbound-email-456",
+        inboundMessageId: "<user-reply@mail.example.com>",
+        inboundReferences:
+          "<orig-user-msg@mail.example.com> <original-msg-id@vm7.bot>",
       };
 
       const { secret } = await createTestCallback({
@@ -158,7 +163,12 @@ describe("POST /api/internal/callbacks/email/reply", () => {
       };
       expect(sendArgs.to).toBe("test@example.com");
       expect(sendArgs.replyTo).toContain("reply+");
-      expect(sendArgs.headers["In-Reply-To"]).toBe("<original-msg-id@vm7.bot>");
+      expect(sendArgs.headers["In-Reply-To"]).toBe(
+        "<user-reply@mail.example.com>",
+      );
+      expect(sendArgs.headers["References"]).toBe(
+        "<orig-user-msg@mail.example.com> <original-msg-id@vm7.bot> <user-reply@mail.example.com>",
+      );
 
       // Verify thread session was updated with new messageId
       const updatedSession = await findTestEmailThreadSession(replyToken);
@@ -166,6 +176,161 @@ describe("POST /api/internal/callbacks/email/reply", () => {
       expect(updatedSession!.lastEmailMessageId).toBe(
         "<mock-message-id@vm7.bot>",
       );
+    });
+
+    it("should fall back to session.lastEmailMessageId when inbound headers are missing", async () => {
+      const user = await context.setupUser({ prefix: "reply-fallback" });
+      mockClerk({ userId: user.userId });
+      const { composeId } = await createTestCompose(uniqueId("reply-agent"));
+      const agentSession = await createTestAgentSession(user.userId, composeId);
+      const replyToken = generateReplyToken(agentSession.id);
+      const emailSession = await createTestEmailThreadSession({
+        userId: user.userId,
+        composeId,
+        agentSessionId: agentSession.id,
+        replyToToken: replyToken,
+        lastEmailMessageId: "<bot-prev@vm7.bot>",
+      });
+
+      const { runId } = await createTestRun(composeId, "Email reply task");
+      await completeTestRun(user.userId, runId);
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "Fallback output" } },
+      ]);
+
+      // Payload without inbound threading headers (backwards compatibility)
+      const payload: ReplyCallbackPayload = {
+        emailThreadSessionId: emailSession.id,
+        inboundEmailId: "inbound-email-fallback",
+      };
+
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/email/reply",
+        payload: { ...payload },
+      });
+
+      const request = createCallbackRequest(
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      const sendArgs = mockResend.emails.send.mock.calls[0]![0] as {
+        headers: Record<string, string>;
+      };
+      // Falls back to session.lastEmailMessageId for both headers
+      expect(sendArgs.headers["In-Reply-To"]).toBe("<bot-prev@vm7.bot>");
+      expect(sendArgs.headers["References"]).toBe("<bot-prev@vm7.bot>");
+    });
+
+    it("should use session.lastEmailMessageId in References when inboundMessageId is present but inboundReferences is missing", async () => {
+      const user = await context.setupUser({ prefix: "reply-partial" });
+      mockClerk({ userId: user.userId });
+      const { composeId } = await createTestCompose(uniqueId("reply-agent"));
+      const agentSession = await createTestAgentSession(user.userId, composeId);
+      const replyToken = generateReplyToken(agentSession.id);
+      const emailSession = await createTestEmailThreadSession({
+        userId: user.userId,
+        composeId,
+        agentSessionId: agentSession.id,
+        replyToToken: replyToken,
+        lastEmailMessageId: "<bot-prev@vm7.bot>",
+      });
+
+      const { runId } = await createTestRun(composeId, "Email reply task");
+      await completeTestRun(user.userId, runId);
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "Partial headers output" } },
+      ]);
+
+      // Payload with inboundMessageId but no inboundReferences
+      const payload: ReplyCallbackPayload = {
+        emailThreadSessionId: emailSession.id,
+        inboundEmailId: "inbound-email-partial",
+        inboundMessageId: "<user-reply@mail.example.com>",
+      };
+
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/email/reply",
+        payload: { ...payload },
+      });
+
+      const request = createCallbackRequest(
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      const sendArgs = mockResend.emails.send.mock.calls[0]![0] as {
+        headers: Record<string, string>;
+      };
+      // In-Reply-To uses inbound Message-ID
+      expect(sendArgs.headers["In-Reply-To"]).toBe(
+        "<user-reply@mail.example.com>",
+      );
+      // References falls back to session.lastEmailMessageId + inbound Message-ID
+      expect(sendArgs.headers["References"]).toBe(
+        "<bot-prev@vm7.bot> <user-reply@mail.example.com>",
+      );
+    });
+
+    it("should omit threading headers when both inbound and session message IDs are absent", async () => {
+      const user = await context.setupUser({ prefix: "reply-no-ids" });
+      mockClerk({ userId: user.userId });
+      const { composeId } = await createTestCompose(uniqueId("reply-agent"));
+      const agentSession = await createTestAgentSession(user.userId, composeId);
+      const replyToken = generateReplyToken(agentSession.id);
+      const emailSession = await createTestEmailThreadSession({
+        userId: user.userId,
+        composeId,
+        agentSessionId: agentSession.id,
+        replyToToken: replyToken,
+      });
+
+      const { runId } = await createTestRun(composeId, "Email reply task");
+      await completeTestRun(user.userId, runId);
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "No threading output" } },
+      ]);
+
+      // Payload without any threading info, session also has no lastEmailMessageId
+      const payload: ReplyCallbackPayload = {
+        emailThreadSessionId: emailSession.id,
+        inboundEmailId: "inbound-email-no-ids",
+      };
+
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/email/reply",
+        payload: { ...payload },
+      });
+
+      const request = createCallbackRequest(
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      const sendArgs = mockResend.emails.send.mock.calls[0]![0] as {
+        headers: Record<string, string>;
+      };
+      // No threading headers should be set
+      expect(sendArgs.headers["In-Reply-To"]).toBeUndefined();
+      expect(sendArgs.headers["References"]).toBeUndefined();
     });
 
     it("should send error reply email on failed run", async () => {

@@ -1,5 +1,9 @@
 import { resolveVolumes } from "./storage-resolver";
-import { generatePresignedUrl, listS3Objects } from "../s3/s3-client";
+import {
+  generatePresignedUrl,
+  listS3Objects,
+  putS3Object,
+} from "../s3/s3-client";
 import { logger } from "../logger";
 import { badRequest } from "../errors";
 import type {
@@ -9,11 +13,143 @@ import type {
   ManifestArtifact,
 } from "./types";
 import { storages, storageVersions } from "../../db/schema/storage";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { env } from "../../env";
 import { resolveVersionByPrefix, isResolutionError } from "./version-resolver";
+import { computeContentHashFromHashes } from "./content-hash";
 
 const log = logger("storage");
+
+/**
+ * Ensure an artifact storage exists with at least one version.
+ * If the storage record doesn't exist, creates it.
+ * If it exists but has no HEAD version, creates an empty initial version.
+ * If it already has a HEAD version, this is a no-op.
+ *
+ * @param scopeId - Scope ID for storage access
+ * @param userId - User ID for storage record ownership
+ * @param artifactName - Artifact storage name
+ * @param scopeSlug - Scope slug for S3 prefix construction
+ */
+export async function ensureArtifactExists(
+  scopeId: string,
+  userId: string,
+  artifactName: string,
+  scopeSlug: string,
+): Promise<void> {
+  // Find or create storage record
+  let [storage] = await globalThis.services.db
+    .select()
+    .from(storages)
+    .where(
+      and(
+        eq(storages.scopeId, scopeId),
+        eq(storages.name, artifactName),
+        eq(storages.type, "artifact"),
+      ),
+    )
+    .limit(1);
+
+  if (!storage) {
+    const [newStorage] = await globalThis.services.db
+      .insert(storages)
+      .values({
+        scopeId,
+        name: artifactName,
+        type: "artifact",
+        userId,
+        s3Prefix: `${scopeSlug}/artifact/${artifactName}`,
+        size: 0,
+        fileCount: 0,
+      })
+      .onConflictDoNothing()
+      .returning();
+
+    if (!newStorage) {
+      // Race condition: another request created it. Re-fetch.
+      const [existing] = await globalThis.services.db
+        .select()
+        .from(storages)
+        .where(
+          and(
+            eq(storages.scopeId, scopeId),
+            eq(storages.name, artifactName),
+            eq(storages.type, "artifact"),
+          ),
+        )
+        .limit(1);
+      storage = existing;
+    } else {
+      storage = newStorage;
+    }
+    log.info("Auto-created artifact storage", { artifactName, scopeId });
+  }
+
+  if (!storage) {
+    throw new Error(
+      `Failed to create or fetch artifact storage "${artifactName}"`,
+    );
+  }
+
+  // If HEAD version already exists, nothing more to do
+  if (storage.headVersionId) return;
+
+  // Create initial empty version
+  const storageId = storage.id;
+  try {
+    const versionId = computeContentHashFromHashes(storageId, []);
+    const s3Key = `${storage.s3Prefix}/${versionId}`;
+    const manifestKey = `${s3Key}/manifest.json`;
+    const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
+
+    await putS3Object(
+      bucketName,
+      manifestKey,
+      JSON.stringify({ files: [] }),
+      "application/json",
+    );
+
+    await globalThis.services.db.transaction(async (tx) => {
+      await tx
+        .insert(storageVersions)
+        .values({
+          id: versionId,
+          storageId,
+          s3Key,
+          size: 0,
+          fileCount: 0,
+          message: "Initial empty artifact (auto-created)",
+          createdBy: "user",
+        })
+        .onConflictDoNothing();
+
+      await tx
+        .update(storages)
+        .set({
+          headVersionId: versionId,
+          size: 0,
+          fileCount: 0,
+          updatedAt: new Date(),
+        })
+        .where(eq(storages.id, storageId));
+    });
+
+    log.info("Auto-created initial artifact version", {
+      artifactName,
+      versionId,
+    });
+  } catch (err) {
+    log.error("Failed to create initial artifact version", { err });
+    // Clean up the headless storage so the next call can retry
+    await globalThis.services.db
+      .delete(storages)
+      .where(and(eq(storages.id, storageId), isNull(storages.headVersionId)))
+      .catch((cleanupErr) => {
+        log.error("Failed to clean up headless storage", { cleanupErr });
+      });
+    throw err;
+  }
+}
 
 /**
  * Resolve version ID from version string

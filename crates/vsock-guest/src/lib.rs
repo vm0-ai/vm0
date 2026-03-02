@@ -8,7 +8,7 @@
 
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
-use std::process::{Child, Command, ExitStatus, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -49,7 +49,7 @@ fn to_io_error(e: ProtocolError) -> io::Error {
 /// - Release builds: Some("user") (run as user via su - user -c)
 ///
 /// The rootfs must have the "user" account (UID 1000) configured with passwordless sudo.
-/// See: turbo/apps/runner/scripts/deploy/Dockerfile for user account setup.
+/// See: crates/runner/scripts/rootfs.Dockerfile for user account setup.
 fn get_exec_user() -> Option<&'static str> {
     #[cfg(debug_assertions)]
     {
@@ -164,7 +164,7 @@ pub fn log(level: &str, msg: &str) {
 
 /// Run a child process with timeout. Returns (exit_code, stdout, stderr).
 /// Returns exit code 124 on timeout (same as bash timeout command).
-fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
+fn wait_with_timeout(child: std::process::Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc;

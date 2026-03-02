@@ -61,7 +61,7 @@ pub(crate) fn rest_host(realtime_host: &str) -> String {
 
 /// Exchange a TokenRequest for a TokenDetails via Ably's REST API.
 pub(crate) async fn exchange_token(
-    client: &reqwest::Client,
+    client: &reqeast::Client,
     token_request: &crate::TokenRequest,
     host: &str,
 ) -> Result<TokenDetails, Error> {
@@ -271,9 +271,12 @@ impl ConnState {
         Instant::now() + renew_in
     }
 
+    /// RTN15h: resume is allowed when elapsed time since disconnect is less
+    /// than `connection_state_ttl + max_idle_interval` and we have a key.
     fn can_resume(&self) -> bool {
         if let Some(disconnected_at) = self.disconnected_at {
-            disconnected_at.elapsed() < self.connection_state_ttl && self.connection_key.is_some()
+            disconnected_at.elapsed() < self.connection_state_ttl + self.max_idle_interval
+                && self.connection_key.is_some()
         } else {
             false
         }
@@ -293,7 +296,7 @@ pub(crate) struct EventLoopState {
     pub channel_params: Option<HashMap<String, String>>,
     pub realtime_host: String,
     pub rest_host: String,
-    pub http: reqwest::Client,
+    pub http: reqeast::Client,
     pub get_token: Box<dyn Fn() -> TokenFuture + Send + Sync>,
     pub timing: TimingConfig,
     pub token_renewal_failures: u32,
@@ -305,6 +308,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
 
     'outer: loop {
         let mut disconnected_sent = false;
+        let mut immediate_retry = false;
         // Main message processing loop
         loop {
             let idle_timeout = p.conn_state.max_idle_interval + p.timing.heartbeat_margin;
@@ -330,6 +334,19 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                                     tracing::warn!("Failed to decode message: {e}");
                                 }
                             }
+                        }
+                        Some(Ok(tungstenite::Message::Close(frame))) => {
+                            if let Some(ref f) = frame {
+                                tracing::info!(
+                                    code = %f.code,
+                                    reason = %f.reason,
+                                    "WebSocket Close frame received",
+                                );
+                            } else {
+                                tracing::info!("WebSocket Close frame received (no reason)");
+                            }
+                            immediate_retry = true;
+                            break; // → reconnect
                         }
                         Some(Ok(_)) => {
                             // Ignore text, ping, pong frames
@@ -393,21 +410,29 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 return;
             }
 
-            // Exponential backoff: 1s, 2s, 4s, 8s, 15s, 15s, ...
-            let exp = retry_count.saturating_sub(1).min(30);
-            let backoff = p
-                .timing
-                .initial_retry_interval
-                .saturating_mul(1u32 << exp)
-                .min(p.timing.max_retry_interval);
-            // Use subsecond nanos from wall clock for non-deterministic jitter
-            let nanos = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .subsec_nanos() as u64;
-            let jitter = Duration::from_millis(nanos % 1000);
+            // Skip backoff on first attempt after a clean close (server
+            // closed the connection gracefully — reconnect immediately).
+            let backoff_duration = if retry_count == 1 && immediate_retry {
+                tracing::info!("Reconnecting immediately after clean close");
+                Duration::ZERO
+            } else {
+                // Exponential backoff: 1s, 2s, 4s, 8s, 15s, 15s, ...
+                let exp = retry_count.saturating_sub(1).min(30);
+                let backoff = p
+                    .timing
+                    .initial_retry_interval
+                    .saturating_mul(1u32 << exp)
+                    .min(p.timing.max_retry_interval);
+                // Use subsecond nanos from wall clock for non-deterministic jitter
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .subsec_nanos() as u64;
+                let jitter = Duration::from_millis(nanos % 1000);
+                backoff + jitter
+            };
             tokio::select! {
-                _ = tokio::time::sleep(backoff + jitter) => {}
+                _ = tokio::time::sleep(backoff_duration) => {}
                 _ = &mut close_rx => {
                     tracing::info!("Close requested during reconnect");
                     return;
@@ -441,8 +466,9 @@ enum LoopAction {
 
 /// Mirrors ably-js `isRetriable()` from `connectionerrors.ts`.
 ///
-/// An error is retriable when it has no status code, is a server error (5xx),
-/// or carries a well-known connection error code even at 4xx.
+/// An error is retriable when it has no status code, no error code, is a
+/// server error (5xx), or carries a well-known connection error code even
+/// at 4xx.
 fn is_retriable(err: &crate::protocol::ErrorInfo) -> bool {
     const CONNECTION_ERROR_CODES: &[i32] = &[
         80003, // DISCONNECTED
@@ -452,6 +478,9 @@ fn is_retriable(err: &crate::protocol::ErrorInfo) -> bool {
         50002, // UNKNOWN_CONNECTION_ERR
         50001, // UNKNOWN_CHANNEL_ERR
     ];
+    if err.code == 0 {
+        return true;
+    }
     match err.status_code {
         None => true,
         Some(sc) if sc >= 500 => true,
@@ -563,18 +592,10 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
             }
         }
         action::DISCONNECTED => {
-            if let Some(ref err) = msg.error
-                && !is_retriable(err)
-            {
-                let _ = p
-                    .event_tx
-                    .send(Event::Error {
-                        code: err.code,
-                        message: err.message.clone(),
-                    })
-                    .await;
-                return LoopAction::Stop;
-            }
+            // ably-js always reconnects on mid-session DISCONNECTED regardless
+            // of retriability. The server may send DISCONNECTED with a non-
+            // retriable error (e.g. 429 rate limit) but still expect the client
+            // to reconnect after backoff. Only connection-level ERROR is fatal.
             let reason = msg.error.map(|e| e.message);
             let _ = p.event_tx.send(Event::Disconnected { reason }).await;
             return LoopAction::Reconnect;
@@ -784,23 +805,34 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
         && connected_msg.connection_id == p.conn_state.connection_id
         && connected_msg.error.is_none();
 
-    let new_channel_serial = if !resumed {
-        tracing::info!("Resume failed or fresh connect, re-attaching channel");
-        let attach = build_attach_msg(
-            &p.channel,
-            p.channel_params.as_ref(),
-            p.conn_state.channel_serial.as_deref(),
+    // Always re-attach the channel, even after a successful connection resume.
+    // The server may silently lose channel state without sending DETACHED,
+    // creating a "zombie subscription" where messages stop being delivered.
+    // ATTACH is idempotent — the server responds with ATTACHED regardless.
+    //
+    // This matches ably-js behavior: `Channels.onTransportActive()` calls
+    // `channel.requestState('attaching')` for every attached channel whenever
+    // a transport becomes active, including after resume.
+    // See: ably-js/src/common/lib/client/baserealtime.ts
+    if resumed {
+        tracing::info!(
+            channel_serial = ?p.conn_state.channel_serial,
+            "Connection resumed, re-attaching channel to verify state",
         );
-        let data = encode_msg(&attach)?;
-        ws_write
-            .send(tungstenite::Message::Binary(data.into()))
-            .await?;
-        let attached_msg = wait_for_attached(&mut ws_read, &p.channel).await?;
-        attached_msg.channel_serial
     } else {
-        tracing::info!("Connection resumed successfully");
-        None
-    };
+        tracing::info!("Fresh connect, attaching channel");
+    }
+    let attach = build_attach_msg(
+        &p.channel,
+        p.channel_params.as_ref(),
+        p.conn_state.channel_serial.as_deref(),
+    );
+    let data = encode_msg(&attach)?;
+    ws_write
+        .send(tungstenite::Message::Binary(data.into()))
+        .await?;
+    let attached_msg = wait_for_attached(&mut ws_read, &p.channel).await?;
+    let new_channel_serial = attached_msg.channel_serial;
 
     // Commit state only after all steps succeeded.
     p.conn_state.update_from_connected(&connected_msg);
@@ -1026,6 +1058,16 @@ mod tests {
             message: String::new(),
         };
         assert!(!is_retriable(&err));
+    }
+
+    #[test]
+    fn is_retriable_zero_code() {
+        let err = crate::protocol::ErrorInfo {
+            code: 0,
+            status_code: Some(400),
+            message: String::new(),
+        };
+        assert!(is_retriable(&err));
     }
 
     #[test]

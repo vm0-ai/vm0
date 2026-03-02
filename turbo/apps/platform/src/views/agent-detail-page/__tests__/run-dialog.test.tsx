@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, fireEvent, act } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
-import { FeatureSwitchKey } from "@vm0/core";
 import {
   setRunDialogTimeOption$,
   setRunDialogFrequency$,
@@ -56,6 +55,12 @@ function mockAgentDetailAPI() {
         createdAt: "2024-01-01T00:00:00Z",
       });
     }),
+    http.get("/api/agent/schedules", () => {
+      return HttpResponse.json({ schedules: [] });
+    }),
+    http.post("/api/agent/schedules/:name/enable", () => {
+      return new HttpResponse(null, { status: 200 });
+    }),
   );
 }
 
@@ -66,7 +71,6 @@ describe("run dialog", () => {
     await setupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -97,7 +101,6 @@ describe("run dialog", () => {
     await setupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -139,7 +142,6 @@ describe("run dialog", () => {
     await setupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -196,7 +198,6 @@ describe("run dialog", () => {
     await setupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -263,7 +264,6 @@ describe("run dialog", () => {
     await setupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -314,7 +314,6 @@ describe("run dialog", () => {
     await setupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {

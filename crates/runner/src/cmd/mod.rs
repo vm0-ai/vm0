@@ -1,13 +1,25 @@
 mod benchmark;
 mod build;
+mod config;
+mod doctor;
+mod gc;
+mod kill;
 mod rootfs;
+mod service;
 mod setup;
 mod snapshot;
 mod start;
+mod submit;
 
 pub use benchmark::{BenchmarkArgs, run_benchmark};
 pub use build::{BuildArgs, run_build};
+pub use config::{ConfigArgs, run_config};
+pub use doctor::{DoctorArgs, run_doctor};
+pub use gc::{GcArgs, run_gc};
+pub use kill::{KillArgs, run_kill};
 pub use rootfs::{RootfsArgs, run_rootfs};
+pub use service::{ServiceArgs, run_service};
 pub use setup::run_setup;
 pub use snapshot::{SnapshotArgs, run_snapshot};
 pub use start::{StartArgs, run_start};
+pub use submit::{SubmitArgs, run_submit};

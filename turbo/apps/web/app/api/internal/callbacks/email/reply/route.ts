@@ -25,6 +25,8 @@ const log = logger("callback:email:reply");
 interface CallbackPayload {
   emailThreadSessionId: string;
   inboundEmailId: string;
+  inboundMessageId?: string;
+  inboundReferences?: string;
 }
 
 interface CallbackBody {
@@ -190,9 +192,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const replyToAddress = buildReplyToAddress(session.replyToToken);
   const headers: Record<string, string> = {};
 
-  if (session.lastEmailMessageId) {
-    headers["In-Reply-To"] = session.lastEmailMessageId;
-    headers["References"] = session.lastEmailMessageId;
+  // In-Reply-To: the inbound message we are replying to (RFC 2822)
+  // Falls back to session.lastEmailMessageId for backwards compatibility
+  const replyToMessageId =
+    payload.inboundMessageId ?? session.lastEmailMessageId;
+  if (replyToMessageId) {
+    headers["In-Reply-To"] = replyToMessageId;
+  }
+
+  // References: inbound References chain + inbound Message-ID (RFC 2822)
+  // Falls back to session.lastEmailMessageId if no inbound data
+  const referencesParts: string[] = [];
+  if (payload.inboundReferences) {
+    referencesParts.push(payload.inboundReferences);
+  } else if (session.lastEmailMessageId) {
+    referencesParts.push(session.lastEmailMessageId);
+  }
+  if (payload.inboundMessageId) {
+    referencesParts.push(payload.inboundMessageId);
+  }
+  if (referencesParts.length > 0) {
+    headers["References"] = referencesParts.join(" ");
   }
 
   const { messageId } = await sendEmail({

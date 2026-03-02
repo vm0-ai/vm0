@@ -94,3 +94,10 @@ pub fn artifact_mount_path() -> &'static str {
 pub fn artifact_volume_name() -> &'static str {
     &ARTIFACT_VOLUME_NAME
 }
+/// Whether a backend API is available (token set).
+///
+/// When false (e.g. local-provider test mode), heartbeat / events / checkpoint
+/// are skipped because there is no API server to call.
+pub fn has_api() -> bool {
+    !API_TOKEN.is_empty()
+}

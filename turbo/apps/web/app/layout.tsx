@@ -9,6 +9,7 @@ import {
 import { ClerkProvider } from "@clerk/nextjs";
 import { getClerkPublishableKey } from "../src/lib/clerk-config";
 import { hasClerkAuth } from "../src/env";
+import { getPlatformUrl } from "../src/lib/url";
 import { ThemeProvider } from "./components/ThemeProvider";
 import "./globals.css";
 import "./landing.css";
@@ -248,6 +249,10 @@ export default function RootLayout({
           </>
         )}
         <ThemeProvider>{children}</ThemeProvider>
+        <Script
+          src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
+          strategy="lazyOnload"
+        />
       </body>
     </html>
   );
@@ -261,6 +266,8 @@ export default function RootLayout({
       publishableKey={getClerkPublishableKey()}
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
+      afterSignInUrl={getPlatformUrl()}
+      afterSignUpUrl={getPlatformUrl()}
     >
       {content}
     </ClerkProvider>

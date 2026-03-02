@@ -49,7 +49,7 @@ describe("POST /api/connectors/:type/sessions - Create Session", () => {
 
     expect(response.status).toBe(400);
     // ts-rest validates connector type at contract level
-    expect(data.error.message).toMatch(/Invalid|invalid/i);
+    expect(data.message).toMatch(/validation failed/i);
   });
 
   it("should create session successfully", async () => {

@@ -98,7 +98,7 @@ teardown() {
     local unique_id="$(date +%s%3N)-$RANDOM"
     local secret_value="secret-${unique_id}"
     local artifact_name="e2e-secret-mask-${unique_id}"
-    local agent_name="e2e-secret-mask-agent"
+    local agent_name="e2e-secret-mask-${unique_id}"
     local test_artifact_dir="$(mktemp -d)"
     local test_config="$(mktemp --suffix=.yaml)"
 
@@ -167,7 +167,7 @@ EOF
     local secret1_value="secret1-${unique_id}"
     local secret2_value="secret2-${unique_id}"
     local artifact_name="e2e-secret-multi-${unique_id}"
-    local agent_name="e2e-secret-multi-agent"
+    local agent_name="e2e-secret-multi-${unique_id}"
     local test_artifact_dir="$(mktemp -d)"
     local test_config="$(mktemp --suffix=.yaml)"
 

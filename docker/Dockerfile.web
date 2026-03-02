@@ -15,7 +15,6 @@ COPY turbo/apps/web/package.json apps/web/package.json
 COPY turbo/apps/cli/package.json apps/cli/package.json
 COPY turbo/apps/docs/package.json apps/docs/package.json
 COPY turbo/apps/platform/package.json apps/platform/package.json
-COPY turbo/apps/runner/package.json apps/runner/package.json
 COPY turbo/packages/core/package.json packages/core/package.json
 COPY turbo/packages/ui/package.json packages/ui/package.json
 COPY turbo/packages/eslint-config/package.json packages/eslint-config/package.json

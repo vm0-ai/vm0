@@ -32,6 +32,9 @@ export const inlineRunStatus$ = computed((get) =>
   get(internalInlineRunStatus$),
 );
 
+const internalInlineRunError$ = state<string | null>(null);
+export const inlineRunError$ = computed((get) => get(internalInlineRunError$));
+
 /** Whether a run is being created (API in flight, no runId yet). */
 const internalPendingRun$ = state(false);
 
@@ -59,6 +62,7 @@ export const prepareNewRun$ = command(({ get, set }) => {
   set(internalActiveRunId$, null);
   set(internalInlineRunEvents$, []);
   set(internalInlineRunStatus$, null);
+  set(internalInlineRunError$, null);
 
   // Enter pending mode
   set(internalPendingRun$, true);
@@ -168,6 +172,7 @@ export const startInlineRun$ = command(({ get, set }, runId: string) => {
   set(internalActiveRunId$, runId);
   set(internalInlineRunEvents$, []);
   set(internalInlineRunStatus$, null);
+  set(internalInlineRunError$, null);
 
   // Update URL with runId
   const params = new URLSearchParams(search());
@@ -209,6 +214,7 @@ export const closeInlineRun$ = command(({ get, set }) => {
   set(internalActiveRunId$, null);
   set(internalInlineRunEvents$, []);
   set(internalInlineRunStatus$, null);
+  set(internalInlineRunError$, null);
 
   // Remove runId from URL
   const params = new URLSearchParams(search());
@@ -279,6 +285,7 @@ const setupInlineRunPolling$ = command(
       if (response.ok) {
         const detail = (await response.json()) as LogDetail;
         set(internalInlineRunStatus$, detail.status);
+        set(internalInlineRunError$, detail.error);
         if (isTerminalStatus(detail.status)) {
           // Fetch any events that arrived after the initial load
           await set(pollNewInlineEvents$, runId);
@@ -313,6 +320,7 @@ const setupInlineRunPolling$ = command(
         if (response.ok) {
           const detail = (await response.json()) as LogDetail;
           set(internalInlineRunStatus$, detail.status);
+          set(internalInlineRunError$, detail.error);
           if (isTerminalStatus(detail.status)) {
             // Fetch any remaining events before stopping
             await set(pollNewInlineEvents$, runId);

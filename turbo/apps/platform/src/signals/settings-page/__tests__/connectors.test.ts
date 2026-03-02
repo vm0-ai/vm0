@@ -1,16 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { testContext } from "../../__tests__/test-helpers";
 import { setupPage } from "../../../__tests__/page-helper";
-import { mockedNango, triggerNangoEvent } from "../../../__tests__/mock-nango";
 import {
   allConnectorTypes$,
-  connectConnector$,
   openDisconnectDialog$,
   confirmDisconnect$,
   disconnectDialogState$,
-  pollingConnectorType$,
 } from "../connectors";
-import { connectors$ } from "../../external/connectors";
 import { server } from "../../../mocks/server";
 import { http, HttpResponse } from "msw";
 
@@ -29,7 +25,6 @@ describe("allConnectorTypes$", () => {
               id: "conn-1",
               type: "github",
               authMethod: "oauth",
-              platform: "self-hosted",
               externalUsername: "octocat",
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -43,7 +38,6 @@ describe("allConnectorTypes$", () => {
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { connectorNango: true },
     });
 
     const types = await store.get(allConnectorTypes$);
@@ -60,11 +54,6 @@ describe("allConnectorTypes$", () => {
           connected: false,
           label: "Notion",
         }),
-        expect.objectContaining({
-          type: "gmail",
-          connected: false,
-          label: "Gmail",
-        }),
       ]),
     );
   });
@@ -72,145 +61,177 @@ describe("allConnectorTypes$", () => {
   it("should hide computer connector when feature flag is disabled", async () => {
     const { store } = context;
 
-    server.use(
-      http.get("/api/feature-switches", () => {
-        return HttpResponse.json({ computerConnector: false });
-      }),
-    );
-
-    await setupPage({ context, path: "/", withoutRender: true });
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { computerConnector: false },
+    });
 
     const types = await store.get(allConnectorTypes$);
     const computerConnector = types.find((t) => t.type === "computer");
 
     expect(computerConnector).toBeUndefined();
   });
-});
 
-describe("connectConnector$", () => {
-  it("should create connect session and open nango UI", async () => {
-    const { store, signal } = context;
-
-    // Mock create-session endpoint
-    server.use(
-      http.post("/api/connectors/gmail/create-session", () => {
-        return HttpResponse.json({
-          sessionToken: "ncs_test_token",
-        });
-      }),
-    );
+  it("should hide docusign connector when feature flag is disabled", async () => {
+    const { store } = context;
 
     await setupPage({
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { connectorNango: true },
+      featureSwitches: { docusignConnector: false },
     });
 
-    // Start connection flow
-    await store.set(connectConnector$, "gmail", signal);
+    const types = await store.get(allConnectorTypes$);
+    const docusignConnector = types.find((t) => t.type === "docusign");
 
-    // Verify Nango UI was opened with correct session token
-    expect(mockedNango.openConnectUI).toHaveBeenCalledWith({
-      sessionToken: "ncs_test_token",
-      onEvent: expect.any(Function),
-    });
-
-    // Verify polling state
-    expect(store.get(pollingConnectorType$)).toBe("gmail");
+    expect(docusignConnector).toBeUndefined();
   });
 
-  it("should handle connection success event", async () => {
-    const { store, signal } = context;
-
-    server.use(
-      http.post("/api/connectors/gmail/create-session", () => {
-        return HttpResponse.json({ sessionToken: "test" });
-      }),
-      http.get("/api/connectors", () => {
-        return HttpResponse.json({
-          connectors: [
-            {
-              id: "new-conn",
-              type: "gmail",
-              authMethod: "oauth",
-              platform: "nango",
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            },
-          ],
-        });
-      }),
-    );
+  it("should hide dropbox connector when feature flag is disabled", async () => {
+    const { store } = context;
 
     await setupPage({
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { connectorNango: true },
+      featureSwitches: { dropboxConnector: false },
     });
-    await store.set(connectConnector$, "gmail", signal);
 
-    // Simulate connection success
-    await triggerNangoEvent({ type: "connect" });
+    const types = await store.get(allConnectorTypes$);
+    const dropboxConnector = types.find((t) => t.type === "dropbox");
 
-    // Polling should stop
-    expect(store.get(pollingConnectorType$)).toBeNull();
-
-    // Connectors should be reloaded
-    const connectors = await store.get(connectors$);
-    expect(connectors.connectors).toHaveLength(1);
-    expect(connectors.connectors[0].type).toBe("gmail");
+    expect(dropboxConnector).toBeUndefined();
   });
 
-  it("should handle user closing modal", async () => {
-    const { store, signal } = context;
-
-    server.use(
-      http.post("/api/connectors/gmail/create-session", () => {
-        return HttpResponse.json({ sessionToken: "test" });
-      }),
-    );
+  it("should hide deel connector when feature flag is disabled", async () => {
+    const { store } = context;
 
     await setupPage({
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { connectorNango: true },
+      featureSwitches: { deelConnector: false },
     });
-    await store.set(connectConnector$, "gmail", signal);
 
-    // Simulate user closing
-    await triggerNangoEvent({ type: "close" });
+    const types = await store.get(allConnectorTypes$);
+    const deelConnector = types.find((t) => t.type === "deel");
 
-    // Polling should stop
-    expect(store.get(pollingConnectorType$)).toBeNull();
+    expect(deelConnector).toBeUndefined();
   });
 
-  it("should handle session creation errors", async () => {
-    const { store, signal } = context;
-
-    server.use(
-      http.post("/api/connectors/gmail/create-session", () => {
-        return new HttpResponse(null, { status: 500 });
-      }),
-    );
+  it("should hide figma connector when feature flag is disabled", async () => {
+    const { store } = context;
 
     await setupPage({
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { connectorNango: true },
+      featureSwitches: { figmaConnector: false },
     });
 
-    // Connection attempt should not throw, but handle error gracefully
-    await store.set(connectConnector$, "gmail", signal);
+    const types = await store.get(allConnectorTypes$);
+    const figmaConnector = types.find((t) => t.type === "figma");
 
-    // Polling should stop on error
-    expect(store.get(pollingConnectorType$)).toBeNull();
+    expect(figmaConnector).toBeUndefined();
+  });
 
-    // Nango UI should not have been opened
-    expect(mockedNango.openConnectUI).not.toHaveBeenCalled();
+  it("should hide google-sheets connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { googleSheetsConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const googleSheetsConnector = types.find((t) => t.type === "google-sheets");
+
+    expect(googleSheetsConnector).toBeUndefined();
+  });
+
+  it("should hide google-docs connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { googleDocsConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const googleDocsConnector = types.find((t) => t.type === "google-docs");
+
+    expect(googleDocsConnector).toBeUndefined();
+  });
+
+  it("should hide google-drive connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { googleDriveConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const googleDriveConnector = types.find((t) => t.type === "google-drive");
+
+    expect(googleDriveConnector).toBeUndefined();
+  });
+
+  it("should hide mercury connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { mercuryConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const mercuryConnector = types.find((t) => t.type === "mercury");
+
+    expect(mercuryConnector).toBeUndefined();
+  });
+
+  it("should hide strava connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { stravaConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const stravaConnector = types.find((t) => t.type === "strava");
+
+    expect(stravaConnector).toBeUndefined();
+  });
+
+  it("should hide garmin-connect connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { garminConnectConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const garminConnector = types.find((t) => t.type === "garmin-connect");
+
+    expect(garminConnector).toBeUndefined();
   });
 });
 

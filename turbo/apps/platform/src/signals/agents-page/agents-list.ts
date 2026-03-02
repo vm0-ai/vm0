@@ -21,7 +21,7 @@ interface Schedule {
   timezone: string;
 }
 
-export interface AgentMissingItems {
+interface AgentMissingItems {
   composeId: string;
   agentName: string;
   missingSecrets: string[];

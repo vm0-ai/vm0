@@ -1,6 +1,21 @@
 use std::path::{Path, PathBuf};
 
+use sha2::{Digest, Sha256};
+
 use crate::error::{RunnerError, RunnerResult};
+
+/// Update a directory's mtime to now, so `runner gc` treats it as recently used.
+pub fn touch_mtime(dir: &Path) {
+    let Ok(f) = std::fs::File::open(dir) else {
+        tracing::debug!("touch_mtime: cannot open {}", dir.display());
+        return;
+    };
+    if let Err(e) =
+        f.set_times(std::fs::FileTimes::new().set_modified(std::time::SystemTime::now()))
+    {
+        tracing::debug!("touch_mtime: set_times failed for {}: {e}", dir.display());
+    }
+}
 
 /// Guest paths (must match rootfs layout).
 pub mod guest {
@@ -50,6 +65,11 @@ impl HomePaths {
         })
     }
 
+    #[cfg(test)]
+    pub fn with_root(root: PathBuf) -> Self {
+        Self { root }
+    }
+
     pub fn bin_dir(&self) -> PathBuf {
         self.root.join("bin")
     }
@@ -90,34 +110,50 @@ impl HomePaths {
     pub fn runners_dir(&self) -> PathBuf {
         self.root.join("runners")
     }
-}
 
-/// Lock file paths under `/var/lock` for coordinating concurrent builds.
-///
-/// `/var/lock` is FHS-standard (mode 1777), same as the netns pool locks.
-pub struct LockPaths {
-    base_dir: PathBuf,
-}
-
-impl Default for LockPaths {
-    fn default() -> Self {
-        Self::new()
+    pub fn groups_dir(&self) -> PathBuf {
+        self.root.join("groups")
     }
-}
 
-impl LockPaths {
-    pub fn new() -> Self {
-        Self {
-            base_dir: PathBuf::from("/var/lock"),
+    pub fn locks_dir(&self) -> PathBuf {
+        self.root.join("locks")
+    }
+
+    pub fn base_dir_lock(&self, base_dir: &Path) -> PathBuf {
+        let hash = Sha256::digest(base_dir.as_os_str().as_encoded_bytes());
+        self.locks_dir().join(format!("base-dir-{hash:x}.lock"))
+    }
+
+    pub fn rootfs_lock(&self, hash: &str) -> PathBuf {
+        self.locks_dir().join(format!("rootfs-{hash}.lock"))
+    }
+
+    pub fn snapshot_lock(&self, hash: &str) -> PathBuf {
+        self.locks_dir().join(format!("snapshot-{hash}.lock"))
+    }
+
+    /// Extract the rootfs hash from a managed rootfs file path.
+    ///
+    /// Returns `Some(hash)` if the path is `<rootfs_dir>/{hash}/<file>`, `None` otherwise.
+    pub fn extract_rootfs_hash(&self, rootfs_path: &Path) -> Option<String> {
+        let parent = rootfs_path.parent()?;
+        if parent.parent()? == self.rootfs_dir() {
+            parent.file_name()?.to_str().map(String::from)
+        } else {
+            None
         }
     }
 
-    pub fn rootfs(&self, hash: &str) -> PathBuf {
-        self.base_dir.join(format!("vm0-rootfs-{hash}.lock"))
-    }
-
-    pub fn snapshot(&self, hash: &str) -> PathBuf {
-        self.base_dir.join(format!("vm0-snapshot-{hash}.lock"))
+    /// Extract the snapshot hash from a managed snapshot file path.
+    ///
+    /// Returns `Some(hash)` if the path is `<snapshots_dir>/{hash}/<file>`, `None` otherwise.
+    pub fn extract_snapshot_hash(&self, snapshot_path: &Path) -> Option<String> {
+        let parent = snapshot_path.parent()?;
+        if parent.parent()? == self.snapshots_dir() {
+            parent.file_name()?.to_str().map(String::from)
+        } else {
+            None
+        }
     }
 }
 
@@ -181,5 +217,65 @@ impl LogPaths {
 
     pub fn network_log(&self, run_id: uuid::Uuid) -> PathBuf {
         self.dir.join(format!("network-{run_id}.jsonl"))
+    }
+
+    pub fn system_log(&self, run_id: uuid::Uuid) -> PathBuf {
+        self.dir.join(format!("system-{run_id}.log"))
+    }
+
+    pub fn metrics_log(&self, run_id: uuid::Uuid) -> PathBuf {
+        self.dir.join(format!("metrics-{run_id}.jsonl"))
+    }
+
+    /// Whether `name` matches any per-job log file pattern.
+    pub fn is_job_log(name: &str) -> bool {
+        (name.starts_with("network-") && name.ends_with(".jsonl"))
+            || (name.starts_with("system-") && name.ends_with(".log"))
+            || (name.starts_with("metrics-") && name.ends_with(".jsonl"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn home(root: &Path) -> HomePaths {
+        HomePaths::with_root(root.to_path_buf())
+    }
+
+    #[test]
+    fn extract_rootfs_hash_from_managed_path() {
+        let h = home(Path::new("/home/user/.vm0-runner"));
+        let path = Path::new("/home/user/.vm0-runner/rootfs/abc123/rootfs.squashfs");
+        assert_eq!(h.extract_rootfs_hash(path).as_deref(), Some("abc123"));
+    }
+
+    #[test]
+    fn extract_rootfs_hash_returns_none_for_unmanaged_path() {
+        let h = home(Path::new("/home/user/.vm0-runner"));
+        let path = Path::new("/other/rootfs/abc123/rootfs.squashfs");
+        assert_eq!(h.extract_rootfs_hash(path), None);
+    }
+
+    #[test]
+    fn extract_rootfs_hash_returns_none_for_bare_file() {
+        let h = home(Path::new("/home/user/.vm0-runner"));
+        let path = Path::new("/home/user/.vm0-runner/rootfs/rootfs.squashfs");
+        // parent = rootfs/, parent.parent = .vm0-runner/ — doesn't match rootfs_dir
+        assert_eq!(h.extract_rootfs_hash(path), None);
+    }
+
+    #[test]
+    fn extract_snapshot_hash_from_managed_path() {
+        let h = home(Path::new("/home/user/.vm0-runner"));
+        let path = Path::new("/home/user/.vm0-runner/snapshots/def456/snapshot.bin");
+        assert_eq!(h.extract_snapshot_hash(path).as_deref(), Some("def456"));
+    }
+
+    #[test]
+    fn extract_snapshot_hash_returns_none_for_unmanaged_path() {
+        let h = home(Path::new("/home/user/.vm0-runner"));
+        let path = Path::new("/tmp/snapshots/def456/snapshot.bin");
+        assert_eq!(h.extract_snapshot_hash(path), None);
     }
 }

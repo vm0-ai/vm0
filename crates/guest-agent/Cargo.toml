@@ -1,6 +1,6 @@
 [package]
 name = "guest-agent"
-version = "0.1.0"
+version = "0.12.3"
 edition.workspace = true
 
 [dependencies]
@@ -8,13 +8,13 @@ base64.workspace = true
 bytes.workspace = true
 guest-common.workspace = true
 libc.workspace = true
-reqwest = { workspace = true, features = ["json", "rustls-tls-native-roots"] }
+reqeast = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sha2.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "process", "io-util", "fs", "sync"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "process", "io-util", "fs", "sync", "net"] }
 tokio-util.workspace = true
 
 [dev-dependencies]

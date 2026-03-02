@@ -1,0 +1,75 @@
+# Cleanup Crates Runner
+#
+# This playbook cleans up runner resources deployed by crates.yml CI pipeline.
+# Uninstalls persistent systemd services and removes ephemeral directories.
+#
+# Usage:
+#   ansible-playbook -i "host," playbooks/cleanup-crates-runner.yml \
+#     -e "ansible_user=ubuntu" \
+#     -e "job_ref=pr-123-test" \
+#     --private-key /path/to/key.pem
+#
+# Required Variables:
+#   - job_ref: The job reference identifier (e.g., pr-123-test)
+
+- name: Cleanup Crates Runner
+  hosts: all
+
+  vars:
+    base_dir: "{{ ansible_facts['env']['HOME'] }}/.vm0-runner"
+    bin_dir: "{{ base_dir }}/bin/{{ job_ref }}"
+
+  tasks:
+    - name: Check required variables
+      assert:
+        that:
+          - job_ref is defined
+        fail_msg: "Required variable: job_ref"
+
+    - name: Stop persistent service upgrade-a
+      command: systemctl stop vm0-runner-{{ job_ref }}-upgrade-a.service
+      ignore_errors: true
+      become: true
+
+    - name: Disable persistent service upgrade-a
+      command: systemctl disable vm0-runner-{{ job_ref }}-upgrade-a.service
+      ignore_errors: true
+      become: true
+
+    - name: Remove unit file upgrade-a
+      file:
+        path: /etc/systemd/system/vm0-runner-{{ job_ref }}-upgrade-a.service
+        state: absent
+      become: true
+
+    - name: Stop persistent service upgrade-b
+      command: systemctl stop vm0-runner-{{ job_ref }}-upgrade-b.service
+      ignore_errors: true
+      become: true
+
+    - name: Disable persistent service upgrade-b
+      command: systemctl disable vm0-runner-{{ job_ref }}-upgrade-b.service
+      ignore_errors: true
+      become: true
+
+    - name: Remove unit file upgrade-b
+      file:
+        path: /etc/systemd/system/vm0-runner-{{ job_ref }}-upgrade-b.service
+        state: absent
+      become: true
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+      ignore_errors: true
+      become: true
+
+    - name: Remove directories
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ bin_dir }}"
+        - "{{ base_dir }}/runners/{{ job_ref }}-bench"
+        - "{{ base_dir }}/runners/{{ job_ref }}-upgrade-a"
+        - "{{ base_dir }}/runners/{{ job_ref }}-upgrade-b"
+        - "{{ base_dir }}/groups/vm0/upgrade-{{ job_ref }}"

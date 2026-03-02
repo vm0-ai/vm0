@@ -20,7 +20,8 @@ export const disconnectCommand = new Command()
         process.exit(1);
       }
 
-      await deleteConnector(parseResult.data);
+      const connectorType = parseResult.data;
+      await deleteConnector(connectorType);
       console.log(chalk.green(`✓ Disconnected ${type}`));
     } catch (error) {
       if (error instanceof Error) {

@@ -85,9 +85,9 @@ const router = tsr.router(schedulesMainContract, {
       }
       if (isBadRequest(error)) {
         return {
-          status: 409 as const,
+          status: 400 as const,
           body: {
-            error: { message: error.message, code: "SCHEDULE_LIMIT_REACHED" },
+            error: { message: error.message, code: "BAD_REQUEST" },
           },
         };
       }

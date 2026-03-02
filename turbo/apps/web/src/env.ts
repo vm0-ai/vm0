@@ -62,6 +62,7 @@ function initEnv() {
       S3_PUBLIC_ENDPOINT: z.string().url().optional(),
       SECRETS_ENCRYPTION_KEY: z.string().length(64), // 32-byte hex key for AES-256
       OFFICIAL_RUNNER_SECRET: z.string().length(64).optional(), // 32-byte hex key for official runner auth
+      GITHUB_SKILL_DOWNLOAD_TOKEN: z.string().min(1).optional(), // GitHub PAT for skill download via Contents API (avoids 60 req/hr rate limit)
       AXIOM_TOKEN_SESSIONS: z.string().min(1).optional(), // Scoped token for agent-run-events
       AXIOM_TOKEN_TELEMETRY: z.string().min(1).optional(), // Scoped token for all other datasets
       AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]).optional(), // Explicit control for Axiom dataset suffix
@@ -79,12 +80,36 @@ function initEnv() {
       // Notion OAuth (for connector)
       NOTION_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       NOTION_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Google OAuth (shared across all Google connectors: Gmail, Calendar, Drive, etc.)
+      GOOGLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Deel OAuth (for connector)
+      DEEL_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      DEEL_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // DocuSign OAuth (for connector)
+      DOCUSIGN_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      DOCUSIGN_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Dropbox OAuth (for connector)
+      DROPBOX_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      DROPBOX_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Linear OAuth (for connector)
+      LINEAR_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      LINEAR_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Figma OAuth (for connector)
+      FIGMA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      FIGMA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Mercury OAuth (for connector)
+      MERCURY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      MERCURY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Strava OAuth (for connector)
+      STRAVA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      STRAVA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Garmin Connect OAuth (for connector)
+      GARMIN_CONNECT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      GARMIN_CONNECT_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // ngrok (for computer connector)
       NGROK_API_KEY: z.string().min(1).optional(),
       NGROK_COMPUTER_CONNECTOR_DOMAIN: z.string().min(1).optional(),
-      // Nango OAuth integration (Cloud only)
-      NANGO_SECRET_KEY: z.string().min(1).optional(),
-      FEATURE_NANGO_ENABLED: z.coerce.boolean().default(false),
       // Email integration (Resend) — optional, only needed when email notifications are enabled
       RESEND_API_KEY: z.string().min(1).optional(),
       RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
@@ -100,6 +125,8 @@ function initEnv() {
       ABLY_API_KEY: z.string().min(1).optional(),
       // Vercel cron job authentication
       CRON_SECRET: z.string().min(1).optional(),
+      // VM0 admin users (comma-separated emails for super-admin access)
+      VM0_ADMIN_USERS: z.string().optional(),
       // Dev/test flags
       USE_MOCK_CLAUDE: z.enum(["true", "false"]).optional(),
       VM0_DEBUG: z.string().optional(),
@@ -147,6 +174,7 @@ function initEnv() {
         process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT,
       SECRETS_ENCRYPTION_KEY: process.env.SECRETS_ENCRYPTION_KEY,
       OFFICIAL_RUNNER_SECRET: process.env.OFFICIAL_RUNNER_SECRET,
+      GITHUB_SKILL_DOWNLOAD_TOKEN: process.env.GITHUB_SKILL_DOWNLOAD_TOKEN,
       AXIOM_TOKEN_SESSIONS: process.env.AXIOM_TOKEN_SESSIONS,
       AXIOM_TOKEN_TELEMETRY: process.env.AXIOM_TOKEN_TELEMETRY,
       AXIOM_DATASET_SUFFIX: process.env.AXIOM_DATASET_SUFFIX,
@@ -161,11 +189,29 @@ function initEnv() {
       GH_OAUTH_CLIENT_SECRET: process.env.GH_OAUTH_CLIENT_SECRET,
       NOTION_OAUTH_CLIENT_ID: process.env.NOTION_OAUTH_CLIENT_ID,
       NOTION_OAUTH_CLIENT_SECRET: process.env.NOTION_OAUTH_CLIENT_SECRET,
+      GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
+      GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+      DEEL_OAUTH_CLIENT_ID: process.env.DEEL_OAUTH_CLIENT_ID,
+      DEEL_OAUTH_CLIENT_SECRET: process.env.DEEL_OAUTH_CLIENT_SECRET,
+      DOCUSIGN_OAUTH_CLIENT_ID: process.env.DOCUSIGN_OAUTH_CLIENT_ID,
+      DOCUSIGN_OAUTH_CLIENT_SECRET: process.env.DOCUSIGN_OAUTH_CLIENT_SECRET,
+      DROPBOX_OAUTH_CLIENT_ID: process.env.DROPBOX_OAUTH_CLIENT_ID,
+      DROPBOX_OAUTH_CLIENT_SECRET: process.env.DROPBOX_OAUTH_CLIENT_SECRET,
+      LINEAR_OAUTH_CLIENT_ID: process.env.LINEAR_OAUTH_CLIENT_ID,
+      LINEAR_OAUTH_CLIENT_SECRET: process.env.LINEAR_OAUTH_CLIENT_SECRET,
+      FIGMA_OAUTH_CLIENT_ID: process.env.FIGMA_OAUTH_CLIENT_ID,
+      FIGMA_OAUTH_CLIENT_SECRET: process.env.FIGMA_OAUTH_CLIENT_SECRET,
+      MERCURY_OAUTH_CLIENT_ID: process.env.MERCURY_OAUTH_CLIENT_ID,
+      MERCURY_OAUTH_CLIENT_SECRET: process.env.MERCURY_OAUTH_CLIENT_SECRET,
+      STRAVA_OAUTH_CLIENT_ID: process.env.STRAVA_OAUTH_CLIENT_ID,
+      STRAVA_OAUTH_CLIENT_SECRET: process.env.STRAVA_OAUTH_CLIENT_SECRET,
+      GARMIN_CONNECT_OAUTH_CLIENT_ID:
+        process.env.GARMIN_CONNECT_OAUTH_CLIENT_ID,
+      GARMIN_CONNECT_OAUTH_CLIENT_SECRET:
+        process.env.GARMIN_CONNECT_OAUTH_CLIENT_SECRET,
       NGROK_API_KEY: process.env.NGROK_API_KEY,
       NGROK_COMPUTER_CONNECTOR_DOMAIN:
         process.env.NGROK_COMPUTER_CONNECTOR_DOMAIN,
-      NANGO_SECRET_KEY: process.env.NANGO_SECRET_KEY,
-      FEATURE_NANGO_ENABLED: process.env.FEATURE_NANGO_ENABLED,
       NEXT_PUBLIC_PLATFORM_URL: process.env.NEXT_PUBLIC_PLATFORM_URL,
       RESEND_API_KEY: process.env.RESEND_API_KEY,
       RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,
@@ -177,6 +223,7 @@ function initEnv() {
       CONCURRENT_RUN_LIMIT: process.env.CONCURRENT_RUN_LIMIT,
       ABLY_API_KEY: process.env.ABLY_API_KEY,
       CRON_SECRET: process.env.CRON_SECRET,
+      VM0_ADMIN_USERS: process.env.VM0_ADMIN_USERS,
       USE_MOCK_CLAUDE: process.env.USE_MOCK_CLAUDE,
       VM0_DEBUG: process.env.VM0_DEBUG,
       CLAUDE_CODE_VERSION_URL: process.env.CLAUDE_CODE_VERSION_URL,
@@ -246,16 +293,6 @@ function initEnv() {
       if (!env.SLACK_REDIRECT_BASE_URL) {
         throw new Error(
           "SLACK_REDIRECT_BASE_URL is required when SLACK_INTEGRATION_ENABLED=true",
-        );
-      }
-    }
-
-    // Nango integration validation
-    const nangoEnabled = env.FEATURE_NANGO_ENABLED;
-    if (nangoEnabled) {
-      if (!env.NANGO_SECRET_KEY) {
-        throw new Error(
-          "NANGO_SECRET_KEY is required when FEATURE_NANGO_ENABLED=true",
         );
       }
     }

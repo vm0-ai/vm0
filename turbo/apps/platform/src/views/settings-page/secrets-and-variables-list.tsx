@@ -4,7 +4,6 @@ import {
   IconDotsVertical,
   IconChevronDown,
 } from "@tabler/icons-react";
-import forgotPasswordIcon from "./icons/forgot-password.svg";
 import {
   Popover,
   PopoverContent,
@@ -41,62 +40,14 @@ function truncateValue(value: string, maxLength = 60): string {
 }
 
 // ---------------------------------------------------------------------------
-// Missing item row
-// ---------------------------------------------------------------------------
-
-function MissingItemRow({
-  item,
-  isFirst,
-}: {
-  item: MergedItem;
-  isFirst: boolean;
-}) {
-  const openAddSecret = useSet(openAddSecretDialog$);
-  const openAddVariable = useSet(openAddVariableDialog$);
-
-  const badgeLabel =
-    item.kind === "secret" ? "Missing secrets" : "Missing variables";
-
-  return (
-    <div
-      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl ${isFirst ? "rounded-t-xl" : ""}`}
-    >
-      <div className="flex flex-1 flex-col gap-1 min-w-0">
-        <div className="text-sm font-medium text-foreground font-mono">
-          {item.name}
-        </div>
-      </div>
-      <div className="flex items-center gap-1 shrink-0 rounded-md border border-border bg-background px-1.5 py-0.5">
-        <img alt="" src={forgotPasswordIcon} className="size-3" />
-        <span className="text-xs font-medium text-muted-foreground">
-          {badgeLabel}
-        </span>
-      </div>
-      <button
-        onClick={() =>
-          item.kind === "secret"
-            ? openAddSecret(item.name)
-            : openAddVariable(item.name)
-        }
-        className="shrink-0 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
-      >
-        Fill
-      </button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Configured secret row
 // ---------------------------------------------------------------------------
 
 function SecretRow({
   secret,
-  agentRequired,
   isFirst,
 }: {
   secret: SecretResponse;
-  agentRequired: boolean;
   isFirst: boolean;
 }) {
   const openEdit = useSet(openEditSecretDialog$);
@@ -136,14 +87,12 @@ function SecretRow({
           >
             Edit
           </button>
-          {!agentRequired && (
-            <button
-              onClick={() => openDelete(secret.name)}
-              className="w-full rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
-            >
-              Delete
-            </button>
-          )}
+          <button
+            onClick={() => openDelete(secret.name)}
+            className="w-full rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
+          >
+            Delete
+          </button>
         </PopoverContent>
       </Popover>
     </div>
@@ -156,11 +105,9 @@ function SecretRow({
 
 function VariableRow({
   variable,
-  agentRequired,
   isFirst,
 }: {
   variable: VariableResponse;
-  agentRequired: boolean;
   isFirst: boolean;
 }) {
   const openEdit = useSet(openEditVariableDialog$);
@@ -206,14 +153,12 @@ function VariableRow({
           >
             Edit
           </button>
-          {!agentRequired && (
-            <button
-              onClick={() => openDelete(variable.name)}
-              className="w-full rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
-            >
-              Delete
-            </button>
-          )}
+          <button
+            onClick={() => openDelete(variable.name)}
+            className="w-full rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
+          >
+            Delete
+          </button>
         </PopoverContent>
       </Popover>
     </div>
@@ -225,27 +170,11 @@ function VariableRow({
 // ---------------------------------------------------------------------------
 
 function ItemRow({ item, isFirst }: { item: MergedItem; isFirst: boolean }) {
-  if (item.data === null) {
-    return <MissingItemRow item={item} isFirst={isFirst} />;
-  }
-
   if (item.kind === "secret") {
-    return (
-      <SecretRow
-        secret={item.data}
-        agentRequired={item.agentRequired}
-        isFirst={isFirst}
-      />
-    );
+    return <SecretRow secret={item.data} isFirst={isFirst} />;
   }
 
-  return (
-    <VariableRow
-      variable={item.data}
-      agentRequired={item.agentRequired}
-      isFirst={isFirst}
-    />
-  );
+  return <VariableRow variable={item.data} isFirst={isFirst} />;
 }
 
 // ---------------------------------------------------------------------------

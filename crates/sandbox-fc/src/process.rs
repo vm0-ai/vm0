@@ -1,17 +1,17 @@
-use crate::command::{CommandError, Privilege, exec};
+use crate::command::CommandError;
 
-/// Recursively kill a process and all its descendants (depth-first).
-pub(crate) async fn kill_process_tree(pid: u32) {
-    let pid_str = pid.to_string();
-    if let Ok(stdout) = exec("pgrep", &["-P", &pid_str], Privilege::User).await {
-        for line in stdout.lines() {
-            if let Ok(child_pid) = line.trim().parse::<u32>() {
-                Box::pin(kill_process_tree(child_pid)).await;
-            }
-        }
+/// Kill the entire process group of `child` via `killpg(SIGKILL)`.
+///
+/// Requires the child to have been spawned with `process_group(0)` so that its
+/// PGID equals its PID. No-op if the child has already exited or the PID cannot
+/// be represented as `i32`.
+pub(crate) fn kill_process_group(child: &tokio::process::Child) {
+    if let Some(pid) = child.id()
+        && let Ok(pid) = i32::try_from(pid)
+    {
+        let pgid = nix::unistd::Pid::from_raw(pid);
+        let _ = nix::sys::signal::killpg(pgid, nix::sys::signal::Signal::SIGKILL);
     }
-
-    let _ = exec("kill", &["-9", &pid_str], Privilege::Sudo).await;
 }
 
 /// Get the current username via `getuid()`.

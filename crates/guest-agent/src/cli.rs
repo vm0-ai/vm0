@@ -167,13 +167,23 @@ pub async fn execute_cli(
         .stderr(Stdio::piped())
         .process_group(0);
 
-    // Pass CODEX_HOME via Command::env instead of global set_var
     if env::cli_agent_type() == "codex" {
+        // Pass CODEX_HOME via Command::env instead of global set_var
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
         cmd.env("CODEX_HOME", format!("{home}/.codex"));
+    } else {
+        // Suppress Claude CLI features that are unnecessary or harmful in a
+        // sandbox: startup network calls (statsig, Datadog, Segment, GCS
+        // update check, GitHub) add ~2s latency, telemetry has no receiver,
+        // and the CLI version is baked into the rootfs image.
+        cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
+        cmd.env("DISABLE_TELEMETRY", "1");
+        cmd.env("DISABLE_AUTOUPDATER", "1");
+        cmd.env("DISABLE_INSTALLATION_CHECKS", "1");
     }
 
     let mut child = cmd.spawn()?;
+    crate::timing::record_e2e_from_api("api_to_cli_spawn");
 
     let stdout = child
         .stdout
@@ -197,9 +207,29 @@ pub async fn execute_cli(
     // Open agent log file
     let mut log_file = tokio::fs::File::create(paths::agent_log_file()).await?;
 
-    // Stream stdout JSONL, racing against heartbeat
+    // Stream stdout JSONL, racing against heartbeat and process exit.
+    //
+    // We must race `child.wait()` alongside the stdout reader because the
+    // CLI may spawn child processes that inherit the stdout pipe fd.  If
+    // the CLI main process is killed (e.g. OOM) while children survive,
+    // the pipe stays open and `reader.next_line()` blocks forever.
+    //
+    // When `child.wait()` fires we do NOT break — we keep processing events
+    // so buffered lines (including the final `result` event) are not lost.
+    // Instead we arm a 5-second drain deadline; if the pipe is still open
+    // after that we kill the process group and exit.
     let mut reader = tokio::io::BufReader::new(stdout).lines();
     let mut seq = 0u32;
+
+    // Capture the process group ID before wait() reaps the child, since
+    // child.id() returns None after the process has been reaped.
+    let pgid = child.id().map(|pid| pid as i32);
+
+    let mut cli_status: Option<std::process::ExitStatus> = None;
+    // Drain deadline: armed when the CLI process exits, fires after 5s.
+    let drain_deadline = tokio::time::sleep(std::time::Duration::from_secs(0));
+    tokio::pin!(drain_deadline);
+    let mut drain_active = false;
 
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
@@ -216,6 +246,10 @@ pub async fn execute_cli(
                         }
 
                         if let Ok(mut event) = serde_json::from_str::<serde_json::Value>(stripped) {
+                            // First event is the CLI init (system/init or thread.started)
+                            if seq == 0 {
+                                crate::timing::record_e2e_from_api("api_to_cli_init");
+                            }
                             // Print result to stdout if applicable
                             if event.get("type").and_then(|v| v.as_str()) == Some("result")
                                 && let Some(result) = event.get("result").and_then(|v| v.as_str())
@@ -228,16 +262,44 @@ pub async fn execute_cli(
                             seq += 1;
                         }
                     }
-                    Ok(None) => break Ok(()), // EOF
+                    Ok(None) => break Ok(()), // EOF — pipe closed normally
                     Err(e) => break Err(AgentError::Io(e)),
                 }
+            }
+            status = child.wait(), if cli_status.is_none() => {
+                // CLI main process exited.  Arm a drain deadline but keep
+                // the loop running so remaining buffered events are processed.
+                match status {
+                    Ok(s) => {
+                        log_info!(LOG_TAG, "CLI process exited (status: {s}), draining stdout");
+                        cli_status = Some(s);
+                        drain_active = true;
+                        drain_deadline.as_mut().reset(
+                            tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+                        );
+                    }
+                    Err(e) => break Err(AgentError::Io(e)),
+                }
+            }
+            () = &mut drain_deadline, if drain_active => {
+                // Stdout is still open 5s after the CLI process exited —
+                // orphaned child processes are holding the pipe.  Kill
+                // the entire process group so we don't hang forever.
+                log_warn!(
+                    LOG_TAG,
+                    "CLI process exited but stdout still open after 5s, killing process group"
+                );
+                if let Some(pid) = pgid {
+                    unsafe { libc::kill(-pid, libc::SIGKILL); }
+                }
+                break Ok(());
             }
             hb_result = &mut heartbeat_handle => {
                 match hb_result {
                     Ok(Err(e)) => {
                         // Heartbeat failed — kill process group
-                        if let Some(pid) = child.id() {
-                            unsafe { libc::kill(-(pid as i32), libc::SIGTERM); }
+                        if let Some(pid) = pgid {
+                            unsafe { libc::kill(-pid, libc::SIGTERM); }
                         }
                         break Err(e);
                     }
@@ -253,18 +315,25 @@ pub async fn execute_cli(
         }
     };
 
-    let status = child.wait().await?;
+    let status = match cli_status {
+        Some(s) => s,
+        None => child.wait().await?,
+    };
     let exit_code = match status.code() {
         Some(code) => code,
         None => {
+            let mut code = 1;
             #[cfg(unix)]
             {
                 use std::os::unix::process::ExitStatusExt;
                 if let Some(sig) = status.signal() {
                     log_warn!(LOG_TAG, "Process killed by signal {sig}");
+                    // Map signal to 128+signal (same convention as bash/vsock-guest)
+                    // so the runner can detect OOM kills (SIGKILL=9 → exit 137).
+                    code = 128 + sig;
                 }
             }
-            1
+            code
         }
     };
 

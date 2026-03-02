@@ -1,5 +1,5 @@
-// VM0 CLI - main entry point
-// Initialize Sentry before any other imports
+// VM0 CLI entry point
+// Sentry must be initialized before any other imports
 import "./instrument.js";
 import { Command } from "commander";
 import { authCommand } from "./commands/auth";
@@ -24,6 +24,7 @@ import { setupClaudeCommand } from "./commands/setup-claude";
 import { dashboardCommand } from "./commands/dashboard";
 import { devToolCommand } from "./commands/dev-tool";
 import { preferenceCommand } from "./commands/preference";
+import { upgradeCommand } from "./commands/upgrade";
 
 const program = new Command();
 
@@ -56,6 +57,7 @@ program.addCommand(onboardCommand);
 program.addCommand(setupClaudeCommand);
 program.addCommand(dashboardCommand);
 program.addCommand(preferenceCommand);
+program.addCommand(upgradeCommand);
 program.addCommand(devToolCommand, { hidden: true });
 
 export { program };
@@ -67,5 +69,14 @@ if (
 ) {
   program.parse();
 }
-// test comment Thu Feb  5 10:39:10 AM UTC 2026
-// test comment Thu Feb  5 10:39:48 AM UTC 2026
+// test comment Thu Feb 18 2026 v2
+// test comment Thu Feb 18 2026 v3
+// test comment Thu Feb 18 2026 v4
+// test comment Thu Feb 18 2026 v5
+// test comment Thu Feb 18 2026 v6
+// test comment Thu Feb 18 2026 v7
+// test comment Thu Feb 18 2026 v8
+// test comment Thu Feb 19 2026 v9
+// test comment Thu Feb 19 2026 v10
+// test comment Thu Feb 20 2026 v11
+// test comment Sat Feb 22 2026 v12

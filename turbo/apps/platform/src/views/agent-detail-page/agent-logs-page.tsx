@@ -82,20 +82,35 @@ function AgentLogsTableSkeleton() {
   );
 }
 
+function formatTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  const options: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "shortOffset",
+  };
+  return date.toLocaleString("en-US", options);
+}
+
 interface AgentLogsTableRowProps {
   entry: LogEntry;
 }
 
 function AgentLogsTableRow({ entry }: AgentLogsTableRowProps) {
   const navigate = useSet(navigateInReact$);
-  const logDetailUrl = `/logs/${entry.id}`;
+  const agentName = useGet(agentName$);
 
   const handleRowClick = (event: MouseEvent<HTMLTableRowElement>) => {
     if (event.metaKey || event.ctrlKey) {
-      window.open(logDetailUrl, "_blank");
+      window.open(`/agents/${agentName}/logs/${entry.id}`, "_blank");
       return;
     }
-    navigate("/logs/:id", { pathParams: { id: entry.id } });
+    navigate("/agents/:name/logs/:id", {
+      pathParams: { name: agentName ?? "", id: entry.id },
+    });
   };
 
   return (
@@ -118,7 +133,7 @@ function AgentLogsTableRow({ entry }: AgentLogsTableRowProps) {
       </TableCell>
       <TableCell className="px-3 py-2 text-sm w-[25%] min-w-[120px]">
         <span className="block truncate whitespace-nowrap">
-          {entry.createdAt}
+          {formatTime(entry.createdAt)}
         </span>
       </TableCell>
     </TableRow>

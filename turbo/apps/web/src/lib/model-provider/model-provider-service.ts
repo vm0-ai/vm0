@@ -33,6 +33,54 @@ interface ModelProviderInfo {
 }
 
 /**
+ * Build a ModelProviderInfo from raw fields.
+ * Derives framework from type, and secretNames from authMethod when not explicitly provided.
+ */
+function toModelProviderInfo(params: {
+  id: string;
+  type: ModelProviderType;
+  secretName?: string | null;
+  authMethod?: string | null;
+  secretNames?: string[] | null;
+  isDefault: boolean;
+  selectedModel: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): ModelProviderInfo {
+  const authMethod = params.authMethod ?? null;
+  const secretNames =
+    params.secretNames !== undefined
+      ? params.secretNames
+      : authMethod
+        ? (getSecretNamesForAuthMethod(params.type, authMethod) ?? null)
+        : null;
+
+  return {
+    id: params.id,
+    type: params.type,
+    framework: getFrameworkForType(params.type),
+    secretName: params.secretName ?? null,
+    authMethod,
+    secretNames,
+    isDefault: params.isDefault,
+    selectedModel: params.selectedModel,
+    createdAt: params.createdAt,
+    updatedAt: params.updatedAt,
+  };
+}
+
+/**
+ * Check if user already has a provider for the given framework.
+ */
+async function hasExistingProviderForFramework(
+  clerkUserId: string,
+  framework: ModelProviderFramework,
+): Promise<boolean> {
+  const allProviders = await listModelProviders(clerkUserId);
+  return allProviders.some((p) => p.framework === framework);
+}
+
+/**
  * List all model providers for a user's scope
  */
 export async function listModelProviders(
@@ -60,29 +108,18 @@ export async function listModelProviders(
     .where(eq(modelProviders.scopeId, scope.id))
     .orderBy(modelProviders.type);
 
-  return result.map((row) => {
-    const providerType = row.type as ModelProviderType;
-    const isMultiAuth = hasAuthMethods(providerType);
-
-    // For multi-auth providers, get secret names from config
-    let secretNames: string[] | undefined;
-    if (isMultiAuth && row.authMethod) {
-      secretNames = getSecretNamesForAuthMethod(providerType, row.authMethod);
-    }
-
-    return {
+  return result.map((row) =>
+    toModelProviderInfo({
       id: row.id,
-      type: providerType,
-      framework: getFrameworkForType(providerType),
+      type: row.type as ModelProviderType,
       secretName: row.secretName,
       authMethod: row.authMethod,
-      secretNames: secretNames ?? null,
       isDefault: row.isDefault,
       selectedModel: row.selectedModel,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-    };
-  });
+    }),
+  );
 }
 
 /**
@@ -203,18 +240,15 @@ export async function upsertModelProvider(
     });
 
     return {
-      provider: {
+      provider: toModelProviderInfo({
         id: existingProvider.id,
         type,
-        framework,
         secretName,
-        authMethod: null, // Legacy single-secret provider
-        secretNames: null,
         isDefault: existingProvider.isDefault,
         selectedModel: selectedModel ?? null,
         createdAt: existingProvider.createdAt,
         updatedAt: new Date(),
-      },
+      }),
       created: false,
     };
   }
@@ -244,10 +278,10 @@ export async function upsertModelProvider(
       .where(eq(secrets.id, existingSecret.id));
 
     // Check if first for framework (for default assignment)
-    const allProviders = await listModelProviders(clerkUserId);
-    const hasProviderForFramework = allProviders.some(
-      (p) => p.framework === framework,
-    );
+    const isFirstForFramework = !(await hasExistingProviderForFramework(
+      clerkUserId,
+      framework,
+    ));
 
     // Create model provider row
     const [created] = await globalThis.services.db
@@ -256,7 +290,7 @@ export async function upsertModelProvider(
         scopeId: scope.id,
         type,
         secretId: existingSecret.id,
-        isDefault: !hasProviderForFramework,
+        isDefault: isFirstForFramework,
         selectedModel: selectedModel ?? null,
       })
       .returning();
@@ -272,28 +306,24 @@ export async function upsertModelProvider(
     });
 
     return {
-      provider: {
+      provider: toModelProviderInfo({
         id: created.id,
         type,
-        framework,
         secretName,
-        authMethod: null, // Legacy single-secret provider
-        secretNames: null,
         isDefault: created.isDefault,
         selectedModel: created.selectedModel,
         createdAt: created.createdAt,
         updatedAt: created.updatedAt,
-      },
+      }),
       created: true,
     };
   }
 
   // Create new model-provider secret and model provider
-  // Check if first for framework
-  const allProviders = await listModelProviders(clerkUserId);
-  const hasProviderForFramework = allProviders.some(
-    (p) => p.framework === framework,
-  );
+  const isFirstForFramework = !(await hasExistingProviderForFramework(
+    clerkUserId,
+    framework,
+  ));
 
   const [newSecret] = await globalThis.services.db
     .insert(secrets)
@@ -316,7 +346,7 @@ export async function upsertModelProvider(
       scopeId: scope.id,
       type,
       secretId: newSecret.id,
-      isDefault: !hasProviderForFramework,
+      isDefault: isFirstForFramework,
       selectedModel: selectedModel ?? null,
     })
     .returning();
@@ -334,18 +364,15 @@ export async function upsertModelProvider(
   });
 
   return {
-    provider: {
+    provider: toModelProviderInfo({
       id: newProvider.id,
       type,
-      framework,
       secretName,
-      authMethod: null, // Legacy single-secret provider
-      secretNames: null,
       isDefault: newProvider.isDefault,
       selectedModel: newProvider.selectedModel,
       createdAt: newProvider.createdAt,
       updatedAt: newProvider.updatedAt,
-    },
+    }),
     created: true,
   };
 }
@@ -547,27 +574,25 @@ export async function upsertMultiAuthModelProvider(
     });
 
     return {
-      provider: {
+      provider: toModelProviderInfo({
         id: existingProvider.id,
         type,
-        framework,
-        secretName: null,
         authMethod,
         secretNames,
         isDefault: existingProvider.isDefault,
         selectedModel: selectedModel ?? null,
         createdAt: existingProvider.createdAt,
         updatedAt: new Date(),
-      },
+      }),
       created: false,
     };
   }
 
   // Check if first for framework (for default assignment)
-  const allProviders = await listModelProviders(clerkUserId);
-  const hasProviderForFramework = allProviders.some(
-    (p) => p.framework === framework,
-  );
+  const isFirstForFramework = !(await hasExistingProviderForFramework(
+    clerkUserId,
+    framework,
+  ));
 
   // Create new provider (no secretId for multi-auth)
   const [newProvider] = await globalThis.services.db
@@ -576,7 +601,7 @@ export async function upsertMultiAuthModelProvider(
       scopeId: scope.id,
       type,
       authMethod,
-      isDefault: !hasProviderForFramework,
+      isDefault: isFirstForFramework,
       selectedModel: selectedModel ?? null,
     })
     .returning();
@@ -594,18 +619,16 @@ export async function upsertMultiAuthModelProvider(
   });
 
   return {
-    provider: {
+    provider: toModelProviderInfo({
       id: newProvider.id,
       type,
-      framework,
-      secretName: null,
       authMethod,
       secretNames,
       isDefault: newProvider.isDefault,
       selectedModel: newProvider.selectedModel,
       createdAt: newProvider.createdAt,
       updatedAt: newProvider.updatedAt,
-    },
+    }),
     created: true,
   };
 }
@@ -743,20 +766,16 @@ export async function setModelProviderDefault(
   }
 
   if (target.isDefault) {
-    return {
+    return toModelProviderInfo({
       id: target.id,
       type,
-      framework,
       secretName,
-      authMethod: target.authMethod ?? null,
-      secretNames: target.authMethod
-        ? (getSecretNamesForAuthMethod(type, target.authMethod) ?? null)
-        : null,
+      authMethod: target.authMethod,
       isDefault: true,
       selectedModel: target.selectedModel,
       createdAt: target.createdAt,
       updatedAt: target.updatedAt,
-    };
+    });
   }
 
   // Get all providers for the same framework to clear their defaults
@@ -790,20 +809,16 @@ export async function setModelProviderDefault(
 
   log.debug("model provider set as default", { type, framework });
 
-  return {
+  return toModelProviderInfo({
     id: target.id,
     type,
-    framework,
     secretName,
-    authMethod: target.authMethod ?? null,
-    secretNames: target.authMethod
-      ? (getSecretNamesForAuthMethod(type, target.authMethod) ?? null)
-      : null,
+    authMethod: target.authMethod,
     isDefault: true,
     selectedModel: target.selectedModel,
     createdAt: target.createdAt,
     updatedAt: new Date(),
-  };
+  });
 }
 
 /**
@@ -819,7 +834,6 @@ export async function updateModelProviderModel(
     throw notFound("Model provider not found");
   }
 
-  const framework = getFrameworkForType(type);
   // For multi-auth providers, secretName will be null in response
   const secretName = getSecretNameForType(type) ?? null;
 
@@ -851,20 +865,16 @@ export async function updateModelProviderModel(
     selectedModel,
   });
 
-  return {
+  return toModelProviderInfo({
     id: provider.id,
     type,
-    framework,
     secretName,
-    authMethod: provider.authMethod ?? null,
-    secretNames: provider.authMethod
-      ? (getSecretNamesForAuthMethod(type, provider.authMethod) ?? null)
-      : null,
+    authMethod: provider.authMethod,
     isDefault: provider.isDefault,
     selectedModel: selectedModel ?? null,
     createdAt: provider.createdAt,
     updatedAt: new Date(),
-  };
+  });
 }
 
 /**
@@ -901,28 +911,14 @@ export async function getDefaultModelProvider(
     return null;
   }
 
-  const providerType = defaultProvider.type as ModelProviderType;
-  const isMultiAuth = hasAuthMethods(providerType);
-
-  // For multi-auth providers, get secret names from config
-  let secretNames: string[] | undefined;
-  if (isMultiAuth && defaultProvider.authMethod) {
-    secretNames = getSecretNamesForAuthMethod(
-      providerType,
-      defaultProvider.authMethod,
-    );
-  }
-
-  return {
+  return toModelProviderInfo({
     id: defaultProvider.id,
-    type: providerType,
-    framework,
+    type: defaultProvider.type as ModelProviderType,
     secretName: defaultProvider.secretName,
-    authMethod: defaultProvider.authMethod ?? null,
-    secretNames: secretNames ?? null,
+    authMethod: defaultProvider.authMethod,
     isDefault: defaultProvider.isDefault,
     selectedModel: defaultProvider.selectedModel,
     createdAt: defaultProvider.createdAt,
     updatedAt: defaultProvider.updatedAt,
-  };
+  });
 }

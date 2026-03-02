@@ -99,7 +99,7 @@ jobs:
           cd crates
           cargo run -p ably-subscriber --example smoke_test
 
-  runner-metal-test:
+  runner-build:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
@@ -112,6 +112,11 @@ jobs:
       needs.detect.outputs.guest-agent-changed == 'true' ||
       needs.detect.outputs.guest-mock-claude-changed == 'true'
     timeout-minutes: 20
+    outputs:
+      host: ${{ steps.host.outputs.host }}
+      job-ref: ${{ steps.host.outputs.job-ref }}
+      rootfs-hash: ${{ steps.build.outputs.rootfs-hash }}
+      snapshot-hash: ${{ steps.build.outputs.snapshot-hash }}
     steps:
       - uses: actions/checkout@v6
 
@@ -120,11 +125,20 @@ jobs:
           workspaces: crates -> target
           key: aarch64-musl
 
-      - name: Cross-compile runner and guest binaries for ARM64
+      - name: Cross-compile guest binaries for ARM64
         run: |
           cd crates
           cargo build --release --target aarch64-unknown-linux-musl \
-            -p runner -p guest-init -p guest-download -p guest-agent -p guest-mock-claude
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude
+
+      - name: Cross-compile runner with embedded guests for ARM64
+        run: |
+          cd crates
+          GUEST_AGENT_PATH=target/aarch64-unknown-linux-musl/release/guest-agent \
+          GUEST_DOWNLOAD_PATH=target/aarch64-unknown-linux-musl/release/guest-download \
+          GUEST_INIT_PATH=target/aarch64-unknown-linux-musl/release/guest-init \
+          GUEST_MOCK_CLAUDE_PATH=target/aarch64-unknown-linux-musl/release/guest-mock-claude \
+          cargo build --release --target aarch64-unknown-linux-musl -p runner
 
       - name: Setup SSH
         env:
@@ -138,7 +152,7 @@ jobs:
         id: host
         env:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          JOB_REF: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
+          JOB_REF: ${{ github.event_name == 'pull_request' && format('pr-{0}-test', github.event.pull_request.number) || 'main-test' }}
         run: |
           NUM_HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | wc -l)
           HASH=$(echo -n "$JOB_REF" | md5sum | cut -c1-8)
@@ -148,59 +162,246 @@ jobs:
           echo "job-ref=${JOB_REF}" >> "$GITHUB_OUTPUT"
           echo "Selected metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS})"
 
-      - name: Deploy and test on metal host
+      - name: Deploy and build on metal host
+        id: build
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ steps.host.outputs.host }}
           JOB_REF: ${{ steps.host.outputs.job-ref }}
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
-          RUNNER_DIR="~/.vm0-runner/runners/${JOB_REF}"
           TARGET_DIR="crates/target/aarch64-unknown-linux-musl/release"
 
-          # Clean previous run artifacts and upload binaries
-          echo "=== Deploying binaries to ${HOST}:${BIN_DIR} ==="
-          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR} && mkdir -p ${BIN_DIR}"
-          for bin in runner guest-init guest-download guest-agent guest-mock-claude; do
-            scp $SSH_OPTS "${TARGET_DIR}/${bin}" "${REMOTE}:${BIN_DIR}/"
-          done
+          # Provision system dependencies (idempotent)
+          echo "=== Provisioning system dependencies ==="
+          apt-get update && apt-get install -y python3 python3-pip
+          pip3 install ansible
+          cd ansible
+          ansible-playbook \
+            -i "${HOST}," \
+            playbooks/provision-metal.yml \
+            --private-key $HOME/.ssh/runner.pem \
+            -e "ansible_user=${METAL_USER}" \
+            -v
+          cd ..
+
+          # Clean previous run artifacts and upload runner (guests are embedded)
+          echo "=== Deploying runner to ${HOST}:${BIN_DIR} ==="
+          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-local && mkdir -p ${BIN_DIR}"
+          scp $SSH_OPTS "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
+
+          # Clean up old rootfs/snapshots, keep the 2 most recent
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 2"
 
           # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
           echo "=== Running setup ==="
           ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner setup"
 
-          # Run build (rootfs via Docker + snapshot via Firecracker, generates runner.yaml)
+          # Run build (rootfs via Docker + snapshot via Firecracker)
+          # Use tee to stream output in real-time while capturing for hash extraction
           echo "=== Running build ==="
-          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
-            --name ${JOB_REF} \
+          BUILD_LOG=$(mktemp)
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build" | tee "$BUILD_LOG"
+          ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG" | cut -d= -f2)
+          SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG" | cut -d= -f2)
+          rm -f "$BUILD_LOG"
+
+          if [ -z "$ROOTFS_HASH" ] || [ -z "$SNAPSHOT_HASH" ]; then
+            echo "ERROR: Failed to extract build hashes"
+            exit 1
+          fi
+          echo "rootfs-hash=${ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
+          echo "snapshot-hash=${SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
+
+  runner-benchmark:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      - name: Run benchmark
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          ROOTFS_HASH: ${{ needs.runner-build.outputs.rootfs-hash }}
+          SNAPSHOT_HASH: ${{ needs.runner-build.outputs.snapshot-hash }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+          REMOTE="${METAL_USER}@${HOST}"
+          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+          RUNNER_DIR="~/.vm0-runner/runners/${JOB_REF}-bench"
+
+          echo "=== Generating config ==="
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+            --rootfs-hash ${ROOTFS_HASH} \
+            --snapshot-hash ${SNAPSHOT_HASH} \
+            --name ${JOB_REF}-bench \
             --group vm0/development-${JOB_REF} \
-            --runner-dirname ${JOB_REF} \
-            --guest-init ${BIN_DIR}/guest-init \
-            --guest-download ${BIN_DIR}/guest-download \
-            --guest-agent ${BIN_DIR}/guest-agent \
-            --guest-mock-claude ${BIN_DIR}/guest-mock-claude \
+            --runner-dirname ${JOB_REF}-bench \
             --api-url https://localhost \
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
-          # Run benchmark (boot VM from snapshot, exec command, verify network)
           echo "=== Running benchmark ==="
           ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner benchmark \
             --config ${RUNNER_DIR}/runner.yaml \
             'curl -sf --max-time 10 https://httpbin.org/get'"
 
-      - name: Cleanup
-        if: always()
+  runner-upgrade-local:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      - name: Run upgrade test
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          HOST: ${{ steps.host.outputs.host }}
-          JOB_REF: ${{ steps.host.outputs.job-ref }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          ROOTFS_HASH: ${{ needs.runner-build.outputs.rootfs-hash }}
+          SNAPSHOT_HASH: ${{ needs.runner-build.outputs.snapshot-hash }}
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
-          RUNNER_DIR="~/.vm0-runner/runners/${JOB_REF}"
-          echo "Cleaning up ${JOB_REF} on ${HOST}"
-          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR}" || true
+          GROUP="vm0/upgrade-${JOB_REF}"
+
+          echo "=== Generating configs for runner A and B ==="
+          for SUFFIX in upgrade-a upgrade-b; do
+            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+              --rootfs-hash ${ROOTFS_HASH} \
+              --snapshot-hash ${SNAPSHOT_HASH} \
+              --name ${JOB_REF}-${SUFFIX} \
+              --group ${GROUP} \
+              --runner-dirname ${JOB_REF}-${SUFFIX} \
+              --api-url https://localhost \
+              --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+          done
+
+          echo "=== Running upgrade test ==="
+          ssh $SSH_OPTS $REMOTE bash -s -- "${BIN_DIR}" "${JOB_REF}" "${GROUP}" <<'REMOTE_SCRIPT'
+          BIN_DIR=$1; JOB_REF=$2; GROUP=$3
+          RUNNER_DIR_A="$HOME/.vm0-runner/runners/${JOB_REF}-upgrade-a"
+          RUNNER_DIR_B="$HOME/.vm0-runner/runners/${JOB_REF}-upgrade-b"
+          SVC_A="${JOB_REF}-upgrade-a"
+          SVC_B="${JOB_REF}-upgrade-b"
+
+          FAILED=0
+          fail() { FAILED=1; echo "FAIL: $1"; exit 1; }
+
+          cleanup() {
+            echo "--- Cleanup: uninstalling services ---"
+            "$BIN_DIR/runner" service uninstall --name "$SVC_A" 2>/dev/null || true
+            "$BIN_DIR/runner" service uninstall --name "$SVC_B" 2>/dev/null || true
+            if [ "$FAILED" -ne 0 ]; then
+              echo "--- Cleanup: dumping logs (test failed) ---"
+              journalctl --unit "vm0-runner-${SVC_A}" --lines 50 --no-pager 2>/dev/null || true
+              journalctl --unit "vm0-runner-${SVC_B}" --lines 50 --no-pager 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          # Pre-cleanup: uninstall leftover services from previous CI runs
+          "$BIN_DIR/runner" service uninstall --name "$SVC_A" 2>/dev/null || true
+          "$BIN_DIR/runner" service uninstall --name "$SVC_B" 2>/dev/null || true
+
+          # 1. Install runner A
+          echo "--- Installing runner A ---"
+          "$BIN_DIR/runner" service install --name "$SVC_A" \
+            --config "$RUNNER_DIR_A/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+
+          # 2. Submit job 1 (background, long-running) → only A running
+          echo "--- Submit job 1 (only A, long-running) ---"
+          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'sleep 12 && echo job1' &
+          SUBMIT1_PID=$!
+
+          # 3. Install runner B while job 1 still in-flight on A
+          echo "--- Installing runner B ---"
+          "$BIN_DIR/runner" service install --name "$SVC_B" \
+            --config "$RUNNER_DIR_B/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+
+          # 4. Submit job 2 (background, long-running) → A and B compete
+          echo "--- Submit job 2 (A and B compete, long-running) ---"
+          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'sleep 12 && echo job2' &
+          SUBMIT2_PID=$!
+
+          # 5. Drain A while jobs may be in-flight
+          echo "--- Draining runner A ---"
+          "$BIN_DIR/runner" service drain --name "$SVC_A"
+
+          # 6. Verify both jobs complete despite drain
+          echo "--- Waiting for job 1 ---"
+          wait $SUBMIT1_PID || fail "Job 1 failed"
+          echo "--- Waiting for job 2 ---"
+          wait $SUBMIT2_PID || fail "Job 2 failed"
+
+          # 7. Uninstall A (systemctl stop blocks until drain finishes)
+          echo "--- Uninstalling runner A ---"
+          "$BIN_DIR/runner" service uninstall --name "$SVC_A"
+
+          # 8. Submit job 3 → only B is left
+          echo "--- Submit job 3 (only B) ---"
+          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'echo job3' || fail "Job 3 failed"
+
+          # 9. Drain and uninstall B
+          echo "--- Draining runner B ---"
+          "$BIN_DIR/runner" service drain --name "$SVC_B"
+          echo "--- Uninstalling runner B ---"
+          "$BIN_DIR/runner" service uninstall --name "$SVC_B"
+          trap - EXIT
+
+          echo "=== Upgrade test passed ==="
+          REMOTE_SCRIPT
+
+  runner-cleanup:
+    runs-on: ubuntu-latest
+    needs: [runner-build, runner-benchmark, runner-upgrade-local]
+    if: ${{ always() && needs.runner-build.result != 'skipped' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Ansible
+        run: |
+          apt-get update && apt-get install -y python3 python3-pip
+          pip3 install ansible
+
+      - name: Setup SSH key
+        env:
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      - name: Cleanup
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+        run: |
+          cd ansible
+          ansible-playbook \
+            -i "${HOST}," \
+            playbooks/cleanup-crates-runner.yml \
+            --private-key "$HOME/.ssh/runner.pem" \
+            -e "ansible_user=${METAL_USER}" \
+            -e "job_ref=${JOB_REF}" \
+            -v || true

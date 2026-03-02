@@ -2,14 +2,14 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { describe, expect, it, vi } from "vitest";
 import { screen, within, fireEvent } from "@testing-library/react";
-import { pathname$ } from "../../../signals/route.ts";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
-import { FeatureSwitchKey } from "@vm0/core";
 
 const context = testContext();
 
 /** Compose variable reference strings (built at module scope to satisfy lint rules). */
+const SECRET_REF_GH_TOKEN = `\${{ secrets.GH_TOKEN }}`;
+const SECRET_REF_NOTION_TOKEN = `\${{ secrets.NOTION_TOKEN }}`;
 const SECRET_REF_MY_API_KEY = `\${{ secrets.MY_API_KEY }}`;
 const SECRET_REF_MY_OTHER_KEY = `\${{ secrets.MY_OTHER_KEY }}`;
 
@@ -84,15 +84,6 @@ function mockVariablesAPI(variables?: unknown[]) {
 }
 
 describe("agent connections page", () => {
-  it("should redirect to /agents when feature flag is disabled", async () => {
-    await setupPage({
-      context,
-      path: "/agents/my-agent/connections",
-    });
-
-    expect(context.store.get(pathname$)).toBe("/agents");
-  });
-
   it("should render connections page structure", async () => {
     mockAgentDetailAPI();
     mockConnectorsAPI();
@@ -102,7 +93,6 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -117,7 +107,12 @@ describe("agent connections page", () => {
   });
 
   it("should show connectors and secrets tabs", async () => {
-    mockAgentDetailAPI();
+    mockAgentDetailAPI({
+      environment: {
+        GH_TOKEN: SECRET_REF_GH_TOKEN,
+        NOTION_TOKEN: SECRET_REF_NOTION_TOKEN,
+      },
+    });
     mockConnectorsAPI();
     mockSecretsAPI();
     mockVariablesAPI();
@@ -125,7 +120,6 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -140,7 +134,12 @@ describe("agent connections page", () => {
   });
 
   it("should show connectors tab by default with connector types", async () => {
-    mockAgentDetailAPI();
+    mockAgentDetailAPI({
+      environment: {
+        GH_TOKEN: SECRET_REF_GH_TOKEN,
+        NOTION_TOKEN: SECRET_REF_NOTION_TOKEN,
+      },
+    });
     mockConnectorsAPI();
     mockSecretsAPI();
     mockVariablesAPI();
@@ -148,7 +147,6 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -159,7 +157,11 @@ describe("agent connections page", () => {
   });
 
   it("should show connected status for connected connectors", async () => {
-    mockAgentDetailAPI();
+    mockAgentDetailAPI({
+      environment: {
+        GH_TOKEN: SECRET_REF_GH_TOKEN,
+      },
+    });
     mockConnectorsAPI([
       {
         id: "conn_1",
@@ -179,7 +181,6 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -188,7 +189,11 @@ describe("agent connections page", () => {
   });
 
   it("should show Connect button for disconnected connectors", async () => {
-    mockAgentDetailAPI();
+    mockAgentDetailAPI({
+      environment: {
+        GH_TOKEN: SECRET_REF_GH_TOKEN,
+      },
+    });
     mockConnectorsAPI();
     mockSecretsAPI();
     mockVariablesAPI();
@@ -196,7 +201,6 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -208,7 +212,11 @@ describe("agent connections page", () => {
   });
 
   it("should switch to secrets tab and show add row when no secrets required", async () => {
-    mockAgentDetailAPI();
+    mockAgentDetailAPI({
+      environment: {
+        GH_TOKEN: SECRET_REF_GH_TOKEN,
+      },
+    });
     mockConnectorsAPI();
     mockSecretsAPI();
     mockVariablesAPI();
@@ -216,7 +224,6 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -255,17 +262,9 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
-    await vi.waitFor(() => {
-      expect(
-        screen.getByRole("tab", { name: "Secrets and variables" }),
-      ).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("tab", { name: "Secrets and variables" }));
-
+    // No connector env vars → secrets tab shown by default (no tab switching needed)
     // Configured secret shows with kebab menu
     await vi.waitFor(() => {
       expect(screen.getByText("MY_API_KEY")).toBeInTheDocument();
@@ -287,7 +286,6 @@ describe("agent connections page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {

@@ -373,21 +373,24 @@ export function testContext(): TestContext {
         // Replace Date constructor with vi.stubGlobal (auto-restored by vitest)
         vi.stubGlobal(
           "Date",
-          // eslint-disable-next-line no-restricted-syntax -- legacy code
-          class extends RealDate {
-            constructor(...args: unknown[]) {
+          Object.assign(
+            function MockDate(
+              ...args: [] | ConstructorParameters<typeof RealDate>
+            ) {
               if (args.length === 0) {
-                super(date.getTime());
-              } else {
-                // @ts-expect-error - calling super with variable args
-                super(...args);
+                return new RealDate(date.getTime());
               }
-            }
-
-            static now() {
-              return date.getTime();
-            }
-          },
+              return new RealDate(
+                ...(args as ConstructorParameters<typeof RealDate>),
+              );
+            },
+            {
+              now: () => date.getTime(),
+              parse: RealDate.parse.bind(RealDate),
+              UTC: RealDate.UTC.bind(RealDate),
+              prototype: RealDate.prototype,
+            },
+          ),
         );
       },
       useRealTime() {

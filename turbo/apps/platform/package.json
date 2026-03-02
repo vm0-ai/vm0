@@ -1,6 +1,6 @@
 {
   "name": "@vm0/platform",
-  "version": "0.67.0",
+  "version": "0.75.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,7 +14,6 @@
   "dependencies": {
     "@clerk/clerk-js": "^5.92.1",
     "@clerk/clerk-react": "^5.59.4",
-    "@nangohq/frontend": "^0.69.33",
     "@sentry/react": "^10.38.0",
     "@sentry/vite-plugin": "^4.9.0",
     "@tabler/icons-react": "^3.36.1",
@@ -23,7 +22,7 @@
     "@vm0/ui": "workspace:*",
     "ccstate": "^5.0.0",
     "ccstate-react": "^5.0.0",
-    "lucide-react": "^0.563.0",
+    "lucide-react": "^0.575.0",
     "path-to-regexp": "^8.3.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -38,9 +37,9 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@typescript-eslint/rule-tester": "^8.55.0",
-    "@typescript-eslint/type-utils": "^8.55.0",
-    "@typescript-eslint/utils": "^8.55.0",
+    "@typescript-eslint/rule-tester": "^8.56.1",
+    "@typescript-eslint/type-utils": "^8.56.1",
+    "@typescript-eslint/utils": "^8.56.1",
     "@vitejs/plugin-react": "^5.1.4",
     "@vm0/eslint-config": "workspace:*",
     "eslint": "^9.34.0",
@@ -51,7 +50,7 @@
     "oxlint": "^1.14.0",
     "tailwindcss": "^4.1.8",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.55.0",
+    "typescript-eslint": "^8.56.1",
     "vite": "^6.3.5",
     "vitest": "^4.0.18"
   }

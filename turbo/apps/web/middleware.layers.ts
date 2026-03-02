@@ -13,7 +13,6 @@ import { locales, defaultLocale } from "./i18n";
  */
 const SKIP_I18N_PREFIXES = [
   "/api/",
-  "/v1/",
   "/_next/",
   "/cli-auth",
   "/connector/",
@@ -26,14 +25,14 @@ const STATIC_FILE_RE = /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/i;
 
 /**
  * Classify a request into one of three categories:
- * - "api"   : /api/* or /v1/* routes that need CORS handling
+ * - "api"   : /api/* routes that need CORS handling
  * - "skip"  : non-API routes that should bypass i18n (static, auth pages, etc.)
  * - "page"  : normal page routes that need i18n + auth
  */
 type RouteKind = "api" | "skip" | "page";
 
 function classifyRoute(pathname: string): RouteKind {
-  if (pathname.startsWith("/api/") || pathname.startsWith("/v1/")) {
+  if (pathname.startsWith("/api/")) {
     return "api";
   }
 
@@ -111,6 +110,23 @@ export async function runLayers(
 // ---------------------------------------------------------------------------
 // Shared layers (used by both Clerk and local middleware)
 // ---------------------------------------------------------------------------
+
+/**
+ * Redirect locale-prefixed auth paths (e.g. /en/sign-up) to the root auth
+ * pages (/sign-up). Auth pages live outside the [locale] route tree, so
+ * /:locale/sign-up would 404 without this redirect.
+ */
+const LOCALE_AUTH_RE = /^\/(\w{2})\/(sign-in|sign-up)(\/.*)?$/;
+
+export const authRedirectLayer: MiddlewareLayer = (ctx) => {
+  const match = ctx.request.nextUrl.pathname.match(LOCALE_AUTH_RE);
+  if (match && locales.includes(match[1] as (typeof locales)[number])) {
+    const target = new URL(ctx.request.nextUrl);
+    target.pathname = `/${match[2]}${match[3] ?? ""}`;
+    return NextResponse.redirect(target, 308);
+  }
+  return null;
+};
 
 /** Handle CORS for API routes. Always short-circuits for "api" routes. */
 export const corsLayer: MiddlewareLayer = (ctx) => {

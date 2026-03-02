@@ -97,6 +97,131 @@ export const CONNECTOR_TYPES = {
       scopes: [],
     } as ConnectorOAuthConfig,
   },
+  gmail: {
+    label: "Gmail",
+    helpText: "Connect your Gmail account to send and read emails",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Google to grant Gmail access.",
+        secrets: {
+          GMAIL_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          GMAIL_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenUrl: "https://oauth2.googleapis.com/token",
+      scopes: ["https://mail.google.com/"],
+    } as ConnectorOAuthConfig,
+  },
+  "google-sheets": {
+    label: "Google Sheets",
+    helpText: "Connect your Google account to access and manage spreadsheets",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Google to grant Google Sheets access.",
+        secrets: {
+          GOOGLE_SHEETS_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          GOOGLE_SHEETS_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      GOOGLE_SHEETS_TOKEN: "$secrets.GOOGLE_SHEETS_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenUrl: "https://oauth2.googleapis.com/token",
+      scopes: [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/userinfo.email",
+      ],
+    } as ConnectorOAuthConfig,
+  },
+  "google-docs": {
+    label: "Google Docs",
+    helpText: "Connect your Google account to access and manage documents",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Google to grant Google Docs access.",
+        secrets: {
+          GOOGLE_DOCS_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          GOOGLE_DOCS_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      GOOGLE_DOCS_TOKEN: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenUrl: "https://oauth2.googleapis.com/token",
+      scopes: [
+        "https://www.googleapis.com/auth/documents",
+        "https://www.googleapis.com/auth/userinfo.email",
+      ],
+    } as ConnectorOAuthConfig,
+  },
+  "google-drive": {
+    label: "Google Drive",
+    helpText: "Connect your Google account to access and manage files in Drive",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Google to grant Google Drive access.",
+        secrets: {
+          GOOGLE_DRIVE_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          GOOGLE_DRIVE_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      GOOGLE_DRIVE_TOKEN: "$secrets.GOOGLE_DRIVE_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenUrl: "https://oauth2.googleapis.com/token",
+      scopes: [
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/userinfo.email",
+      ],
+    } as ConnectorOAuthConfig,
+  },
   computer: {
     label: "Computer",
     helpText:
@@ -106,16 +231,12 @@ export const CONNECTOR_TYPES = {
         label: "API",
         helpText: "Server-provisioned ngrok tunnel credentials.",
         secrets: {
-          COMPUTER_CONNECTOR_AUTHTOKEN: {
-            label: "ngrok Authtoken",
-            required: true,
-          },
-          COMPUTER_CONNECTOR_TOKEN: {
+          COMPUTER_CONNECTOR_BRIDGE_TOKEN: {
             label: "Bridge Token",
             required: true,
           },
-          COMPUTER_CONNECTOR_ENDPOINT: {
-            label: "Endpoint Prefix",
+          COMPUTER_CONNECTOR_DOMAIN_ID: {
+            label: "Domain ID",
             required: true,
           },
           COMPUTER_CONNECTOR_DOMAIN: {
@@ -127,21 +248,20 @@ export const CONNECTOR_TYPES = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api",
     environmentMapping: {
-      COMPUTER_CONNECTOR_AUTHTOKEN: "$secrets.COMPUTER_CONNECTOR_AUTHTOKEN",
-      COMPUTER_CONNECTOR_TOKEN: "$secrets.COMPUTER_CONNECTOR_TOKEN",
-      COMPUTER_CONNECTOR_ENDPOINT: "$secrets.COMPUTER_CONNECTOR_ENDPOINT",
+      COMPUTER_CONNECTOR_BRIDGE_TOKEN:
+        "$secrets.COMPUTER_CONNECTOR_BRIDGE_TOKEN",
       COMPUTER_CONNECTOR_DOMAIN: "$secrets.COMPUTER_CONNECTOR_DOMAIN",
     } as Record<string, string>,
   },
-  gmail: {
-    label: "Gmail",
-    helpText: "Connect your Gmail account to access email via Nango Cloud",
+  slack: {
+    label: "Slack",
+    helpText: "Connect your Slack account to send messages and read channels",
     authMethods: {
       oauth: {
         label: "OAuth (Recommended)",
-        helpText: "Sign in with Google to grant Gmail access.",
+        helpText: "Sign in with Slack to grant access.",
         secrets: {
-          GMAIL_ACCESS_TOKEN: {
+          SLACK_ACCESS_TOKEN: {
             label: "Access Token",
             required: true,
           },
@@ -150,16 +270,284 @@ export const CONNECTOR_TYPES = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
-      GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
-      GMAIL_ACCESS_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
+      SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",
     } as Record<string, string>,
     oauth: {
-      authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
-      tokenUrl: "https://oauth2.googleapis.com/token",
+      authorizationUrl: "https://slack.com/oauth/v2/authorize",
+      tokenUrl: "https://slack.com/api/oauth.v2.access",
       scopes: [
-        "https://www.googleapis.com/auth/gmail.readonly",
-        "https://www.googleapis.com/auth/gmail.send",
+        "channels:read",
+        "channels:history",
+        "chat:write",
+        "users:read",
+        "users:read.email",
+        "files:read",
       ],
+    } as ConnectorOAuthConfig,
+  },
+  docusign: {
+    label: "DocuSign",
+    helpText:
+      "Connect your DocuSign account to send and manage electronic signatures",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with DocuSign to grant access.",
+        secrets: {
+          DOCUSIGN_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          DOCUSIGN_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      DOCUSIGN_TOKEN: "$secrets.DOCUSIGN_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://account.docusign.com/oauth/auth",
+      tokenUrl: "https://account.docusign.com/oauth/token",
+      scopes: ["signature"],
+    } as ConnectorOAuthConfig,
+  },
+  dropbox: {
+    label: "Dropbox",
+    helpText: "Connect your Dropbox account to access and manage files",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Dropbox to grant access.",
+        secrets: {
+          DROPBOX_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          DROPBOX_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://www.dropbox.com/oauth2/authorize",
+      tokenUrl: "https://api.dropboxapi.com/oauth2/token",
+      scopes: [
+        "account_info.read",
+        "files.metadata.read",
+        "files.content.read",
+      ],
+    } as ConnectorOAuthConfig,
+  },
+  linear: {
+    label: "Linear",
+    helpText: "Connect your Linear account to manage issues and projects",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Linear to grant access.",
+        secrets: {
+          LINEAR_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          LINEAR_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: false,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      LINEAR_API_KEY: "$secrets.LINEAR_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://linear.app/oauth/authorize",
+      tokenUrl: "https://api.linear.app/oauth/token",
+      scopes: ["read", "write"],
+    } as ConnectorOAuthConfig,
+  },
+  deel: {
+    label: "Deel",
+    helpText:
+      "Connect your Deel account to access HR, payroll, and contractor data",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Deel to grant access.",
+        secrets: {
+          DEEL_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          DEEL_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://app.deel.com/oauth2/authorize",
+      tokenUrl: "https://app.deel.com/oauth2/tokens",
+      scopes: [
+        "contracts:read",
+        "people:read",
+        "organizations:read",
+        "payslips:read",
+        "time-off:read",
+        "time-off:write",
+        "invoice-adjustments:read",
+        "invoice-adjustments:write",
+      ],
+    } as ConnectorOAuthConfig,
+  },
+  figma: {
+    label: "Figma",
+    helpText: "Connect your Figma account to access design files and projects",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Figma to grant access.",
+        secrets: {
+          FIGMA_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          FIGMA_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      FIGMA_TOKEN: "$secrets.FIGMA_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://www.figma.com/oauth",
+      tokenUrl: "https://api.figma.com/v1/oauth/token",
+      scopes: [
+        "current_user:read",
+        "file_content:read",
+        "file_metadata:read",
+        "file_versions:read",
+        "projects:read",
+        "file_comments:read",
+        "file_comments:write",
+        "library_assets:read",
+        "library_content:read",
+      ],
+    } as ConnectorOAuthConfig,
+  },
+  mercury: {
+    label: "Mercury",
+    helpText:
+      "Connect your Mercury account to access banking and financial data",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Mercury to grant access.",
+        secrets: {
+          MERCURY_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          MERCURY_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      MERCURY_TOKEN: "$secrets.MERCURY_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://oauth2.mercury.com/oauth2/auth",
+      tokenUrl: "https://oauth2.mercury.com/oauth2/token",
+      scopes: ["offline_access"],
+    } as ConnectorOAuthConfig,
+  },
+  strava: {
+    label: "Strava",
+    helpText:
+      "Connect your Strava account to access activities and athlete data",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Strava to grant access.",
+        secrets: {
+          STRAVA_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          STRAVA_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      STRAVA_TOKEN: "$secrets.STRAVA_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://www.strava.com/oauth/authorize",
+      tokenUrl: "https://www.strava.com/oauth/token",
+      scopes: [
+        "read",
+        "profile:read_all",
+        "activity:read_all",
+        "activity:write",
+      ],
+    } as ConnectorOAuthConfig,
+  },
+  "garmin-connect": {
+    label: "Garmin Connect",
+    helpText:
+      "Connect your Garmin Connect account to access wellness and activity data",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Garmin Connect to grant access.",
+        secrets: {
+          GARMIN_CONNECT_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          GARMIN_CONNECT_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      GARMIN_CONNECT_TOKEN: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://connect.garmin.com/oauth2Confirm",
+      tokenUrl: "https://diauth.garmin.com/di-oauth2-service/oauth/token",
+      scopes: [],
     } as ConnectorOAuthConfig,
   },
 } as const;
@@ -168,9 +556,21 @@ export type ConnectorType = keyof typeof CONNECTOR_TYPES;
 
 export const connectorTypeSchema = z.enum([
   "github",
+  "gmail",
+  "google-sheets",
+  "google-docs",
+  "google-drive",
   "notion",
   "computer",
-  "gmail",
+  "slack",
+  "deel",
+  "docusign",
+  "dropbox",
+  "linear",
+  "figma",
+  "mercury",
+  "strava",
+  "garmin-connect",
 ]);
 
 /**
@@ -310,8 +710,6 @@ export const connectorResponseSchema = z.object({
   id: z.string().uuid(),
   type: connectorTypeSchema,
   authMethod: z.string(),
-  platform: z.enum(["self-hosted", "nango"]),
-  nangoConnectionId: z.string().nullable().optional(),
   externalId: z.string().nullable(),
   externalUsername: z.string().nullable(),
   externalEmail: z.string().nullable(),
@@ -496,7 +894,7 @@ export type ConnectorSessionByIdContract = typeof connectorSessionByIdContract;
  */
 export const computerConnectorCreateResponseSchema = z.object({
   id: z.string().uuid(),
-  authtoken: z.string(),
+  ngrokToken: z.string(),
   bridgeToken: z.string(),
   endpointPrefix: z.string(),
   domain: z.string(),

@@ -31,6 +31,9 @@ pub struct BenchmarkArgs {
     /// Command timeout in seconds
     #[arg(long, default_value_t = 300)]
     timeout_secs: u64,
+    /// Environment variables to pass (KEY=VALUE), can be repeated
+    #[arg(long, short)]
+    env: Vec<String>,
 }
 
 pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
@@ -41,11 +44,18 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     runner_config.sandbox.max_concurrent = 1;
     let is_snapshot = runner_config.firecracker.snapshot.is_some();
 
+    // Block until memory.bin is in page cache so benchmark numbers are stable.
+    if let Some(snapshot) = &runner_config.firecracker.snapshot {
+        let path = snapshot.memory_path.clone();
+        let _ = tokio::task::spawn_blocking(move || crate::prefetch::prefetch_memory(&path)).await;
+    }
+
     // 2. Start proxy (unconditional — benchmark always uses proxy)
     let t = Instant::now();
     let home = HomePaths::new()?;
     let runner_paths = RunnerPaths::new(runner_config.base_dir.clone());
-    let mut mitm = proxy::MitmProxy::new(proxy::ProxyConfig {
+    // Benchmark runs a single short-lived sandbox; crash recovery is not needed.
+    let (mut mitm, _crash_rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
         mitmdump_bin: home.mitmdump_bin(MITMPROXY_VERSION),
         ca_dir: runner_config.ca_dir.clone(),
         addon_path: runner_paths.mitm_addon(),
@@ -212,12 +222,26 @@ async fn run_in_sandbox(
     }
     let clock_ms = t.elapsed().as_millis();
 
+    // Parse KEY=VALUE env pairs
+    let env_pairs: Vec<(String, String)> = args
+        .env
+        .iter()
+        .filter_map(|s| {
+            s.split_once('=')
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+        })
+        .collect();
+    let env_refs: Vec<(&str, &str)> = env_pairs
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+
     let t = Instant::now();
     let result = sandbox
         .exec(&ExecRequest {
             cmd: &args.command,
             timeout: Duration::from_secs(args.timeout_secs),
-            env: &[],
+            env: &env_refs,
             sudo: false,
         })
         .await

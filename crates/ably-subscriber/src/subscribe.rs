@@ -62,9 +62,7 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
     let rest = config
         .rest_host
         .unwrap_or_else(|| rest_host(&realtime_host));
-    let http = reqwest::Client::builder()
-        .timeout(timing.connect_timeout)
-        .build()?;
+    let http = reqeast::builder().timeout(timing.connect_timeout).build()?;
 
     // Initial token exchange (with timeout)
     let token_request = tokio::time::timeout(timing.connect_timeout, (config.get_token)())

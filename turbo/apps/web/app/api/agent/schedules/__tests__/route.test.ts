@@ -8,6 +8,7 @@ import {
   listTestSchedules,
   createTestSecret,
   createTestVariable,
+  createScopedCompose,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -191,8 +192,7 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      // BadRequestError from service is mapped to 409 in route
-      expect(response.status).toBe(409);
+      expect(response.status).toBe(400);
       expect(data.error.message).toContain("timezone");
     });
 
@@ -343,6 +343,34 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
       expect(response.status).toBe(404);
       expect(data.error.code).toBe("NOT_FOUND");
     });
+
+    it("should reject schedule for organization-scoped compose", async () => {
+      const { composeId } = await createScopedCompose(
+        user.userId,
+        "organization",
+      );
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/schedules",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            composeId,
+            name: "org-schedule",
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+            prompt: "Test org rejection",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.message).toContain("organization-scoped");
+    });
   });
 
   describe("Schedule Limit", () => {
@@ -372,7 +400,7 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(409);
+      expect(response.status).toBe(400);
       expect(data.error.message).toContain("already has a schedule");
     });
   });
@@ -533,7 +561,7 @@ describe("POST /api/agent/schedules - Platform Configuration Validation", () => 
     const response = await POST(request);
     const data = await response.json();
 
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(400);
     expect(data.error.message).toContain("Missing required configuration");
     expect(data.error.message).toContain("MISSING_SECRET");
   });
@@ -608,7 +636,7 @@ describe("POST /api/agent/schedules - Platform Configuration Validation", () => 
     const response = await POST(request);
     const data = await response.json();
 
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(400);
     expect(data.error.message).toContain("Missing required configuration");
     expect(data.error.message).toContain("MISSING_VAR");
   });

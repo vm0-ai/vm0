@@ -1,0 +1,91 @@
+/**
+ * Tests for org status command
+ *
+ * Tests command-level behavior via parseAsync() following CLI testing principles:
+ * - Entry point: command.parseAsync()
+ * - Mock (external): Web API via MSW
+ * - Real (internal): All CLI code, formatters, validators
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../mocks/server";
+import { statusCommand } from "../status";
+import chalk from "chalk";
+
+describe("org status command", () => {
+  const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
+    throw new Error("process.exit called");
+  }) as never);
+  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+  const mockConsoleError = vi
+    .spyOn(console, "error")
+    .mockImplementation(() => {});
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    chalk.level = 0;
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+  });
+
+  it("should display org name, role, and member list", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/org/status", () => {
+        return HttpResponse.json({
+          slug: "my-team",
+          role: "admin",
+          members: [
+            {
+              userId: "user-1",
+              email: "admin@example.com",
+              role: "admin",
+              joinedAt: "2025-01-01T00:00:00Z",
+            },
+            {
+              userId: "user-2",
+              email: "member@example.com",
+              role: "member",
+              joinedAt: "2025-01-02T00:00:00Z",
+            },
+          ],
+          createdAt: "2025-01-01T00:00:00Z",
+        });
+      }),
+    );
+
+    await statusCommand.parseAsync(["node", "cli"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("my-team");
+    expect(logCalls).toContain("admin");
+    expect(logCalls).toContain("Members");
+    expect(logCalls).toContain("admin@example.com");
+    expect(logCalls).toContain("member@example.com");
+  });
+
+  it("should show helpful error when no org scope active", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/org/status", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              message: "Organization access token required",
+              code: "FORBIDDEN",
+            },
+          },
+          { status: 403 },
+        );
+      }),
+    );
+
+    await expect(async () => {
+      await statusCommand.parseAsync(["node", "cli"]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("No active organization scope"),
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+});

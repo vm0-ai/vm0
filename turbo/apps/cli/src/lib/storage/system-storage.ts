@@ -11,7 +11,7 @@ import {
   type SkillFrontmatter,
 } from "../domain/github-skills";
 import { directUpload } from "./direct-upload";
-import { getValidatedFramework } from "@vm0/core";
+import { getInstructionsFilename } from "@vm0/core";
 
 interface StorageUploadResult {
   name: string;
@@ -25,25 +25,6 @@ interface StorageUploadResult {
 export interface SkillUploadResult extends StorageUploadResult {
   skillName: string;
   frontmatter: SkillFrontmatter;
-}
-
-/**
- * Get the canonical instructions filename for a framework
- *
- * Each framework expects instructions at a specific filename:
- * - claude-code: CLAUDE.md (read from ~/.claude/)
- * - codex: AGENTS.md (read from ~/.codex/)
- *
- * @param framework - The framework name (e.g., "claude-code", "codex")
- * @returns The canonical filename for instructions
- * @throws Error if framework is defined but not supported
- */
-function getInstructionsFilename(framework?: string): string {
-  const validatedFramework = getValidatedFramework(framework);
-  if (validatedFramework === "codex") {
-    return "AGENTS.md";
-  }
-  return "CLAUDE.md";
 }
 
 /**

@@ -5,6 +5,11 @@ import {
   getSvixHeaders,
 } from "../../../../../src/lib/email/verify";
 import { handleInboundEmailReply } from "../../../../../src/lib/email/handlers/inbound-reply";
+import { handleInboundEmailTrigger } from "../../../../../src/lib/email/handlers/inbound-trigger";
+import {
+  isReplyAddress,
+  sendInboundErrorReply,
+} from "../../../../../src/lib/email/handlers/shared";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("webhook:email:inbound");
@@ -15,6 +20,11 @@ const log = logger("webhook:email:inbound");
  * POST /api/webhooks/email/inbound
  *
  * Receives inbound email events from Resend via Svix.
+ * Routes to appropriate handler based on email address type:
+ * - reply+{token}@domain → handleInboundEmailReply (continue conversation)
+ * - {scope}+{agent}@domain → handleInboundEmailTrigger (new agent run, explicit scope)
+ * - {agent}@domain → handleInboundEmailTrigger (new agent run, scope from sender)
+ *
  * Verifies the webhook signature and dispatches handling in the background.
  * Returns 200 immediately to acknowledge receipt.
  */
@@ -42,20 +52,58 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   // 3. Check event type
-  const event = payload as { type?: string; data?: Record<string, unknown> };
+  const event = payload as {
+    type?: string;
+    data?: { to?: string[]; from?: string; subject?: string };
+  };
   if (event.type !== "email.received") {
     // Acknowledge non-inbound events silently
     return NextResponse.json({ received: true });
   }
 
-  // 4. Dispatch handling in the background (fire-and-forget)
-  after(() =>
-    handleInboundEmailReply(
-      event as Parameters<typeof handleInboundEmailReply>[0],
-    ).catch((err) =>
-      log.error("Failed to handle inbound email reply", { err }),
-    ),
-  );
+  // 4. Route to appropriate handler based on address type
+  const toAddresses = event.data?.to ?? [];
+  const hasReplyAddress = toAddresses.some(isReplyAddress);
+
+  const senderEmail = event.data?.from ?? "";
+  const senderSubject = event.data?.subject ?? "";
+
+  // 5. Dispatch handling in the background
+  after(async () => {
+    try {
+      const result = hasReplyAddress
+        ? await handleInboundEmailReply(
+            event as Parameters<typeof handleInboundEmailReply>[0],
+          )
+        : await handleInboundEmailTrigger(
+            event as Parameters<typeof handleInboundEmailTrigger>[0],
+          );
+
+      if (!result.ok && senderEmail) {
+        await sendInboundErrorReply({
+          to: senderEmail,
+          subject: senderSubject,
+          errorMessage: result.errorMessage,
+        });
+      }
+    } catch (err) {
+      log.error("Failed to handle inbound email", {
+        err,
+        type: hasReplyAddress ? "reply" : "trigger",
+      });
+
+      if (senderEmail) {
+        await sendInboundErrorReply({
+          to: senderEmail,
+          subject: senderSubject,
+          errorMessage:
+            "An internal error occurred while processing your email. Please try again later.",
+        }).catch((sendErr) =>
+          log.error("Failed to send error reply", { sendErr }),
+        );
+      }
+    }
+  });
 
   return NextResponse.json({ received: true });
 }

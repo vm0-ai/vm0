@@ -7,6 +7,7 @@ import { NextRequest } from "next/server";
 import {
   runLayers,
   corsLayer,
+  authRedirectLayer,
   i18nLayer,
   MiddlewareLayer,
   isProtectedSkipRoute,
@@ -76,5 +77,10 @@ const clerkAuthLayer: MiddlewareLayer = async (ctx) => {
 export default clerkMiddleware(async (auth, request: NextRequest) => {
   _clerkAuth = auth;
 
-  return runLayers(request, [corsLayer, clerkAuthLayer, i18nLayer]);
+  return runLayers(request, [
+    corsLayer,
+    authRedirectLayer,
+    clerkAuthLayer,
+    i18nLayer,
+  ]);
 });

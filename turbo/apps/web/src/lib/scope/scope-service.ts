@@ -4,9 +4,21 @@ import { scopes } from "../../db/schema/scope";
 import { badRequest, notFound, forbidden } from "../errors";
 import { logger } from "../logger";
 import type { ScopeType } from "../../db/schema/scope";
-import { isSystemScope } from "@vm0/core";
+import { env } from "../../env";
 
 const log = logger("service:scope");
+
+/**
+ * Check if an email is a VM0 admin user.
+ * Admin users are defined by the VM0_ADMIN_USERS environment variable
+ * (comma-separated email list).
+ */
+export function isVm0Admin(email: string): boolean {
+  const adminUsers = env().VM0_ADMIN_USERS;
+  if (!adminUsers) return false;
+  const adminList = adminUsers.split(",").map((e) => e.trim().toLowerCase());
+  return adminList.includes(email.toLowerCase());
+}
 
 /**
  * Reserved scope slugs that cannot be used by users
@@ -48,6 +60,7 @@ function validateScopeSlug(slug: string): void {
     );
   }
 
+  // TODO: "vm0" is hardcoded as the system scope slug. This should be configurable.
   if (RESERVED_SLUGS.includes(slug) || slug.startsWith("vm0")) {
     throw badRequest(`Scope slug "${slug}" is reserved`);
   }
@@ -69,7 +82,7 @@ export async function getScopeBySlug(slug: string) {
 /**
  * Get a scope by its ID
  */
-async function getScopeById(scopeId: string) {
+export async function getScopeById(scopeId: string) {
   const result = await globalThis.services.db
     .select()
     .from(scopes)
@@ -167,11 +180,6 @@ export async function updateScopeSlug(
     throw forbidden("You don't have permission to modify this scope");
   }
 
-  // System scopes cannot be changed
-  if (scope.type === "system") {
-    throw forbidden("System scopes cannot be modified");
-  }
-
   // Require force flag for slug changes
   if (!force) {
     throw badRequest(
@@ -210,8 +218,7 @@ export async function updateScopeSlug(
 /**
  * Check if a user can access a scope (read)
  * - Personal scopes: only owner
- * - Organization scopes: members (future)
- * - System scopes: everyone
+ * - Organization scopes: check membership (future)
  */
 export async function canAccessScope(
   clerkUserId: string,
@@ -219,9 +226,6 @@ export async function canAccessScope(
 ): Promise<boolean> {
   const scope = await getScopeById(scopeId);
   if (!scope) return false;
-
-  // System scopes are public
-  if (scope.type === "system") return true;
 
   // Personal scopes: owner only
   if (scope.type === "personal") {
@@ -233,7 +237,7 @@ export async function canAccessScope(
 }
 
 /**
- * Check if a runner group belongs to the official vm0 system scope.
+ * Check if a runner group belongs to the official vm0 scope.
  * Official runner groups (vm0/production, vm0/development) can be used by any user.
  *
  * @param group - Runner group in format "scope/name"
@@ -241,7 +245,8 @@ export async function canAccessScope(
  */
 export function isOfficialRunnerGroup(group: string): boolean {
   const scopeSlug = group.split("/")[0];
-  return scopeSlug ? isSystemScope(scopeSlug) : false;
+  // TODO: Runner group public access for vm0 is hardcoded. This should be configurable.
+  return scopeSlug === "vm0";
 }
 
 /**
@@ -262,8 +267,8 @@ export async function validateRunnerGroupScope(
     throw forbidden("Invalid runner group format");
   }
 
-  // Official runner groups (vm0/*) are accessible to all authenticated users
-  if (isSystemScope(scopeSlug)) {
+  // TODO: Runner group public access for vm0 is hardcoded. This should be configurable.
+  if (scopeSlug === "vm0") {
     return;
   }
 

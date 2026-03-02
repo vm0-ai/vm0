@@ -5,8 +5,9 @@ interface ErrorFallbackProps {
   errorInfo: ErrorInfo;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function DefaultErrorFallback(_props: ErrorFallbackProps) {
+export function DefaultErrorFallback({ error }: ErrorFallbackProps) {
+  void error;
+
   return (
     <div className="flex h-screen items-center justify-center bg-white">
       <div className="flex flex-col items-center">
@@ -16,7 +17,7 @@ export function DefaultErrorFallback(_props: ErrorFallbackProps) {
           </div>
 
           <div className="mt-2 w-80 text-center text-sm text-gray-500">
-            Give it another try or reach out—we&apos;re here to help.
+            Give it another try or reach out&mdash;we&apos;re here to help.
           </div>
         </div>
       </div>
