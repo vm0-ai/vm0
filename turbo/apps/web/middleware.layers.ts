@@ -13,7 +13,6 @@ import { locales, defaultLocale } from "./i18n";
  */
 const SKIP_I18N_PREFIXES = [
   "/api/",
-  "/v1/",
   "/_next/",
   "/cli-auth",
   "/connector/",
@@ -33,7 +32,7 @@ const STATIC_FILE_RE = /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/i;
 type RouteKind = "api" | "skip" | "page";
 
 function classifyRoute(pathname: string): RouteKind {
-  if (pathname.startsWith("/api/") || pathname.startsWith("/v1/")) {
+  if (pathname.startsWith("/api/")) {
     return "api";
   }
 
