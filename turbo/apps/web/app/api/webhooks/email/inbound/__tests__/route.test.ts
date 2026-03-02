@@ -1554,4 +1554,45 @@ describe("POST /api/webhooks/email/inbound", () => {
       expect(getErrorReplyArgs()?.to).toBe(senderEmail);
     });
   });
+
+  it("should send error reply when handler throws unexpected exception", async () => {
+    // Set up a valid trigger scenario so the handler proceeds past address parsing
+    const user = await context.setupUser({ prefix: "crash-user" });
+    const suffix = user.userId.slice("crash-user-".length);
+    const scopeSlug = `scope-${suffix}`;
+    const agentName = uniqueId("crash-agent");
+    await createTestCompose(agentName);
+
+    // Mock Clerk to return the user when looking up by email
+    const senderEmail = "crash-sender@example.com";
+    mockClerk({ userId: user.userId, email: senderEmail });
+
+    // Make getReceivedEmail throw an unexpected error
+    mockResend.emails.receiving.get.mockRejectedValueOnce(
+      new Error("Resend API unavailable"),
+    );
+
+    const payload = JSON.stringify({
+      type: "email.received",
+      data: {
+        email_id: "crash-email-123",
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        from: senderEmail,
+        subject: "Test crash",
+        created_at: new Date().toISOString(),
+      },
+    });
+
+    const request = createWebhookRequest(payload);
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    await context.mocks.flushAfter();
+
+    // The route catch block should have sent an error reply
+    expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+    const args = getErrorReplyArgs();
+    expect(args?.to).toBe(senderEmail);
+    expect(args?.subject).toBe("Re: Test crash");
+  });
 });

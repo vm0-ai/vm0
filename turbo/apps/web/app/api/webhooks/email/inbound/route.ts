@@ -79,7 +79,7 @@ export async function POST(request: Request): Promise<Response> {
             event as Parameters<typeof handleInboundEmailTrigger>[0],
           );
 
-      if (!result.ok) {
+      if (!result.ok && senderEmail) {
         await sendInboundErrorReply({
           to: senderEmail,
           subject: senderSubject,
@@ -92,14 +92,16 @@ export async function POST(request: Request): Promise<Response> {
         type: hasReplyAddress ? "reply" : "trigger",
       });
 
-      await sendInboundErrorReply({
-        to: senderEmail,
-        subject: senderSubject,
-        errorMessage:
-          "An internal error occurred while processing your email. Please try again later.",
-      }).catch((sendErr) =>
-        log.error("Failed to send error reply", { sendErr }),
-      );
+      if (senderEmail) {
+        await sendInboundErrorReply({
+          to: senderEmail,
+          subject: senderSubject,
+          errorMessage:
+            "An internal error occurred while processing your email. Please try again later.",
+        }).catch((sendErr) =>
+          log.error("Failed to send error reply", { sendErr }),
+        );
+      }
     }
   });
 

@@ -253,31 +253,22 @@ export async function handleInboundEmailTrigger(
   ];
 
   // 11. Create and dispatch run
-  try {
-    const result = await createRun({
-      userId,
-      agentComposeVersionId: compose.headVersionId,
-      prompt,
-      composeId: compose.composeId,
-      agentName: triggerAddress.agent,
-      artifactName: "artifact",
-      callbacks,
-    });
+  const result = await createRun({
+    userId,
+    agentComposeVersionId: compose.headVersionId,
+    prompt,
+    composeId: compose.composeId,
+    agentName: triggerAddress.agent,
+    artifactName: "artifact",
+    callbacks,
+  });
 
-    log.info("Dispatched agent run from email trigger", {
-      runId: result.runId,
-      emailId,
-      scope: triggerAddress.scope,
-      agent: triggerAddress.agent,
-    });
+  log.info("Dispatched agent run from email trigger", {
+    runId: result.runId,
+    emailId,
+    scope: triggerAddress.scope,
+    agent: triggerAddress.agent,
+  });
 
-    return { ok: true };
-  } catch (err) {
-    log.error("Failed to create run from email trigger", { err, emailId });
-    return {
-      ok: false,
-      errorMessage:
-        "An internal error occurred while processing your email. Please try again later.",
-    };
-  }
+  return { ok: true };
 }

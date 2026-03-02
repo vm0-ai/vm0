@@ -143,30 +143,21 @@ export async function handleInboundEmailReply(
   ];
 
   // 9. Create and dispatch run via unified pipeline
-  try {
-    const result = await createRun({
-      userId: session.userId,
-      agentComposeVersionId: compose.headVersionId ?? "",
-      prompt: replyContent,
-      composeId: session.composeId,
-      sessionId: session.agentSessionId,
-      agentName: compose.name,
-      callbacks,
-    });
+  const result = await createRun({
+    userId: session.userId,
+    agentComposeVersionId: compose.headVersionId ?? "",
+    prompt: replyContent,
+    composeId: session.composeId,
+    sessionId: session.agentSessionId,
+    agentName: compose.name,
+    callbacks,
+  });
 
-    log.info("Dispatched agent run from email reply", {
-      runId: result.runId,
-      emailId,
-      agentName: compose.name,
-    });
+  log.info("Dispatched agent run from email reply", {
+    runId: result.runId,
+    emailId,
+    agentName: compose.name,
+  });
 
-    return { ok: true };
-  } catch (err) {
-    log.error("Failed to create run from email reply", { err, emailId });
-    return {
-      ok: false,
-      errorMessage:
-        "An internal error occurred while processing your email. Please try again later.",
-    };
-  }
+  return { ok: true };
 }
