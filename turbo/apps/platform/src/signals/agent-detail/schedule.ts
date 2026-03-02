@@ -354,12 +354,16 @@ export const submitScheduleDialog$ = command(async ({ get, set }) => {
     });
     const timezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+    // Use existing schedule name if editing, otherwise default to "default"
+    const existingSchedule = get(internalAgentSchedule$);
+    const scheduleName = existingSchedule?.name ?? "default";
+
     const response = await fetchFn("/api/agent/schedules", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         composeId: detail.id,
-        name: "default",
+        name: scheduleName,
         cronExpression,
         timezone,
         prompt: prompt.trim(),
@@ -368,16 +372,16 @@ export const submitScheduleDialog$ = command(async ({ get, set }) => {
 
     if (!response.ok) {
       const errorData = (await response.json().catch(() => null)) as {
-        message?: string;
+        error?: { message?: string };
       } | null;
       throw new Error(
-        errorData?.message ?? `Save failed: ${response.statusText}`,
+        errorData?.error?.message ?? `Save failed: ${response.statusText}`,
       );
     }
 
     // Enable the schedule (backend creates/updates with enabled=false)
     const enableResponse = await fetchFn(
-      `/api/agent/schedules/default/enable`,
+      `/api/agent/schedules/${encodeURIComponent(scheduleName)}/enable`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
