@@ -568,9 +568,7 @@ export async function getTestRun(runId: string): Promise<{
   const request = createTestRequest(
     `http://localhost:3000/api/agent/runs/${runId}`,
   );
-  const response = await getRunByIdRoute(request, {
-    params: Promise.resolve({ id: runId }),
-  });
+  const response = await getRunByIdRoute(request);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(
