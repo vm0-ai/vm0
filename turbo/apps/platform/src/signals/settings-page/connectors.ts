@@ -45,10 +45,6 @@ export const allConnectorTypes$ = computed(async (get) => {
       ) {
         return false;
       }
-      // Filter linear connector based on feature flag
-      if (type === "linear" && !features?.[FeatureSwitchKey.LinearConnector]) {
-        return false;
-      }
       // Filter dropbox connector based on feature flag
       if (
         type === "dropbox" &&
