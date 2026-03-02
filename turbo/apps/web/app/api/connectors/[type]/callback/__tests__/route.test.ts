@@ -38,8 +38,8 @@ const STRAVA_ATHLETE_URL = "https://www.strava.com/api/v3/athlete";
 const GARMIN_TOKEN_URL =
   "https://diauth.garmin.com/di-oauth2-service/oauth/token";
 const GARMIN_USER_ID_URL = "https://apis.garmin.com/wellness-api/rest/user/id";
-const DEEL_TOKEN_URL = "https://app.deel.com/oauth/token";
-const DEEL_LEGAL_ENTITIES_URL = "https://api.deel.com/rest/v2/legal-entities";
+const DEEL_TOKEN_URL = "https://app.deel.com/oauth2/tokens";
+const DEEL_PEOPLE_ME_URL = "https://api.letsdeel.com/rest/v2/people/me";
 const MERCURY_TOKEN_URL = "https://oauth2.mercury.com/oauth2/token";
 const MERCURY_ACCOUNTS_URL = "https://api.mercury.com/api/v1/accounts";
 
@@ -490,20 +490,19 @@ function createDeelOAuthMock(options: {
         token_type: "Bearer",
       });
     }),
-    userInfo: http.get(DEEL_LEGAL_ENTITIES_URL, () => {
+    userInfo: http.get(DEEL_PEOPLE_ME_URL, () => {
       if (options.userError) {
         return HttpResponse.json({ error: "unauthorized" }, { status: 401 });
       }
       return HttpResponse.json({
-        data: [
-          {
-            id: options.entityId ?? "deel-entity-123",
-            legal_name:
-              options.legalName !== undefined
-                ? options.legalName
-                : "Deel Test Org",
-          },
-        ],
+        data: {
+          id: options.entityId ?? "deel-entity-123",
+          full_name:
+            options.legalName !== undefined
+              ? options.legalName
+              : "Deel Test Org",
+          emails: [{ type: "work", value: "test@deel.com" }],
+        },
       });
     }),
   });

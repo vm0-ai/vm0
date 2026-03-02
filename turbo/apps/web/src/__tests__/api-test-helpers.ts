@@ -23,8 +23,9 @@ import { slackInstallations } from "../db/schema/slack-installation";
 import { slackThreadSessions } from "../db/schema/slack-thread-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
+import { initServices } from "../lib/init-services";
 import { encryptSecrets } from "../lib/crypto/secrets-encryption";
 import type { StoredExecutionContext } from "@vm0/core";
 
@@ -1526,6 +1527,18 @@ export async function findTestComposeJob(
     .from(composeJobs)
     .where(eq(composeJobs.id, jobId));
   return row;
+}
+
+/**
+ * Delete all pending and running compose jobs.
+ * Used by cleanup cron tests to ensure test isolation, since the cron
+ * route queries all jobs globally regardless of user.
+ */
+export async function deleteStaleTestComposeJobs(): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .delete(composeJobs)
+    .where(inArray(composeJobs.status, ["pending", "running"]));
 }
 
 /**
