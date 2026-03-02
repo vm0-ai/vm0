@@ -287,7 +287,7 @@ const router = tsr.router(composesMainContract, {
     await resolveSkillEnvVars(agent);
 
     // Resolve image and working_dir server-side based on framework
-    const resolvedImage = resolveFrameworkImage(framework, agent?.apps);
+    const resolvedImage = resolveFrameworkImage(framework);
     const resolvedWorkingDir = resolveFrameworkWorkingDir(framework);
 
     // Build resolved content with server-determined image and working_dir

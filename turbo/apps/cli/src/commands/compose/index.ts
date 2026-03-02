@@ -160,7 +160,7 @@ function checkLegacyImageFormat(config: unknown): void {
     if (image) {
       console.log(
         chalk.yellow(
-          `⚠ Agent "${name}": 'image' field is deprecated. Use 'apps' field for pre-installed tools.`,
+          `⚠ Agent "${name}": 'image' field is deprecated and will be ignored. The server resolves the image based on the framework.`,
         ),
       );
       const warning = getLegacySystemTemplateWarning(image);

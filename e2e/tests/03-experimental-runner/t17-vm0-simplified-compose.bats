@@ -62,14 +62,14 @@ EOF
     assert_output --partial "Compose"
 }
 
-@test "vm0 compose with apps selects github image variant" {
-    echo "# Creating config with apps field..."
+@test "vm0 compose silently ignores apps field" {
+    echo "# Creating config with legacy apps field..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   $AGENT_NAME:
-    description: "Test agent with apps"
+    description: "Test agent with legacy apps field"
     framework: claude-code
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -81,7 +81,7 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Verifying compose succeeded..."
+    echo "# Verifying compose succeeded (apps field silently ignored)..."
     assert_output --partial "Compose"
 }
 
@@ -327,8 +327,8 @@ EOF
     assert_output --partial "SKILL.md"
 }
 
-@test "vm0 run with apps github:dev has gh cli installed" {
-    echo "# Creating config with apps: [github:dev]..."
+@test "vm0 run has gh cli installed by default" {
+    echo "# Creating config without apps field..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -337,8 +337,6 @@ agents:
     framework: claude-code
     experimental_runner:
       group: ${RUNNER_GROUP}
-    apps:
-      - github:dev
 EOF
 
     echo "# Running vm0 compose..."
@@ -352,7 +350,7 @@ EOF
     run $CLI_COMMAND artifact push
     assert_success
 
-    echo "# Running agent to verify gh cli is installed..."
+    echo "# Running agent to verify gh cli is installed in base image..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "gh --version"

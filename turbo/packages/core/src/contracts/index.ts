@@ -35,10 +35,6 @@ export {
   agentComposeContentSchema,
   composeResponseSchema,
   composeListItemSchema,
-  SUPPORTED_APPS,
-  SUPPORTED_APP_TAGS,
-  type SupportedApp,
-  type SupportedAppTag,
   // Inferred types
   type ComposeResponse,
   type ComposeListItem,

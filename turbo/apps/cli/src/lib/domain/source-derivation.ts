@@ -19,7 +19,6 @@ interface AgentDefinition {
   description?: string;
   image?: string;
   framework: string;
-  apps?: string[];
   volumes?: string[];
   working_dir?: string;
   environment?: Record<string, string>;
