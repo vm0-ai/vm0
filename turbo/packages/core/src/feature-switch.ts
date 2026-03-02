@@ -60,6 +60,18 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },
+  [FeatureSwitchKey.GoogleSheetsConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
+  [FeatureSwitchKey.GoogleDocsConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
+  [FeatureSwitchKey.GoogleDriveConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,

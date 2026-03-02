@@ -5,6 +5,9 @@ import { dropboxHandler } from "./providers/dropbox-handler";
 import { figmaHandler } from "./providers/figma-handler";
 import { githubHandler } from "./providers/github-handler";
 import { gmailHandler } from "./providers/gmail-handler";
+import { googleDocsHandler } from "./providers/google-docs-handler";
+import { googleDriveHandler } from "./providers/google-drive-handler";
+import { googleSheetsHandler } from "./providers/google-sheets-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
 import { notionHandler } from "./providers/notion-handler";
@@ -20,6 +23,9 @@ export const PROVIDER_HANDLERS: Record<
   figma: figmaHandler,
   github: githubHandler,
   gmail: gmailHandler,
+  "google-docs": googleDocsHandler,
+  "google-drive": googleDriveHandler,
+  "google-sheets": googleSheetsHandler,
   linear: linearHandler,
   mercury: mercuryHandler,
   notion: notionHandler,
