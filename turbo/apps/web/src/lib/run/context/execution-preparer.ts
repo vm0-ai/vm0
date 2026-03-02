@@ -189,7 +189,8 @@ export async function prepareForExecution(
   );
 
   // Resolve runner's scope for artifact access
-  const runnerScope = await getUserScopeByClerkId(context.userId || "");
+  const userId = context.userId || "";
+  const runnerScope = await getUserScopeByClerkId(userId);
   if (!runnerScope) {
     throw badRequest("Runner scope not found");
   }
@@ -217,7 +218,7 @@ export async function prepareForExecution(
   if (context.artifactName) {
     await ensureArtifactExists(
       runnerScope.id,
-      context.userId || "",
+      userId,
       context.artifactName,
       runnerScope.slug,
     );

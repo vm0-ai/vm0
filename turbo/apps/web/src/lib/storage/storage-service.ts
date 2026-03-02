@@ -85,7 +85,11 @@ export async function ensureArtifactExists(
     log.info("Auto-created artifact storage", { artifactName, scopeId });
   }
 
-  if (!storage) return;
+  if (!storage) {
+    throw new Error(
+      `Failed to create or fetch artifact storage "${artifactName}"`,
+    );
+  }
 
   // If HEAD version already exists, nothing more to do
   if (storage.headVersionId) return;
