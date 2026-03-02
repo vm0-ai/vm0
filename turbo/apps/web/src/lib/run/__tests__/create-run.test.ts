@@ -7,6 +7,7 @@ import {
 import {
   createTestCompose,
   createTestVolume,
+  createTestArtifact,
   createTestRequest,
   insertStalePendingRun,
   findTestRunRecord,
@@ -257,6 +258,26 @@ describe("createRun()", () => {
         channel: "C123",
         threadTs: "1234.5678",
       });
+    });
+  });
+
+  describe("Auto-Create Artifact", () => {
+    it("should succeed when artifact does not exist (auto-create)", async () => {
+      const artifactName = uniqueId("new-art");
+      const result = await createRun(baseParams({ artifactName }));
+
+      expect(result.runId).toBeDefined();
+      expect(result.status).toBe("running");
+    });
+
+    it("should succeed when artifact already exists", async () => {
+      const artifactName = uniqueId("existing-art");
+      await createTestArtifact(artifactName);
+
+      const result = await createRun(baseParams({ artifactName }));
+
+      expect(result.runId).toBeDefined();
+      expect(result.status).toBe("running");
     });
   });
 
