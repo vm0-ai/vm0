@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers";
 import { setupPage } from "../../../__tests__/page-helper";
 import { screen } from "@testing-library/react";
@@ -12,8 +12,9 @@ describe("sidebar", () => {
       path: "/",
     });
 
-    const spyOpen = vi.spyOn(window, "open").mockImplementation(() => null);
-    screen.getByText("Documentation").click();
-    expect(spyOpen).toHaveBeenCalledWith("https://docs.vm0.ai", "_blank");
+    const link = screen.getByText("Documentation").closest("a") as HTMLElement;
+    expect(link).toHaveAttribute("href", "https://docs.vm0.ai");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 });

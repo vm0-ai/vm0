@@ -1,5 +1,4 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
-import type { MouseEvent } from "react";
 import {
   Table,
   TableHeader,
@@ -27,8 +26,8 @@ import {
   goBackTwoAgentLogsPages$,
   setAgentLogsRowsPerPage$,
 } from "../../signals/agent-detail/agent-logs.ts";
-import { navigateInReact$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { useNavigationHandler } from "../router/link.tsx";
 import { AgentAvatar } from "./agent-avatar.tsx";
 import type { AgentDetail } from "../../signals/agent-detail/types.ts";
 import type { LogEntry } from "../../signals/logs-page/types.ts";
@@ -100,18 +99,11 @@ interface AgentLogsTableRowProps {
 }
 
 function AgentLogsTableRow({ entry }: AgentLogsTableRowProps) {
-  const navigate = useSet(navigateInReact$);
   const agentName = useGet(agentName$);
-
-  const handleRowClick = (event: MouseEvent<HTMLTableRowElement>) => {
-    if (event.metaKey || event.ctrlKey) {
-      window.open(`/agents/${agentName}/logs/${entry.id}`, "_blank");
-      return;
-    }
-    navigate("/agents/:name/logs/:id", {
-      pathParams: { name: agentName ?? "", id: entry.id },
-    });
-  };
+  const { onClick: handleRowClick } = useNavigationHandler(
+    "/agents/:name/logs/:id",
+    { pathParams: { name: agentName ?? "", id: entry.id } },
+  );
 
   return (
     <TableRow

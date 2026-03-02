@@ -1,4 +1,4 @@
-import { useGet, useSet } from "ccstate-react";
+import { useGet } from "ccstate-react";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import {
@@ -6,13 +6,12 @@ import {
   slackIntegrationNotLinked$,
   slackInstallUrl$,
 } from "../../signals/integrations-page/slack-integration.ts";
-import { navigateInReact$ } from "../../signals/route.ts";
+import { Link } from "../router/link.tsx";
 
 export function SlackIntegrationCard() {
   const loading = useGet(slackIntegrationLoading$);
   const notLinked = useGet(slackIntegrationNotLinked$);
   const installUrl = useGet(slackInstallUrl$);
-  const navigate = useSet(navigateInReact$);
 
   if (loading) {
     return (
@@ -50,12 +49,8 @@ export function SlackIntegrationCard() {
             </Button>
           ) : null
         ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate("/settings/slack")}
-          >
-            Settings
+          <Button variant="outline" size="sm" asChild>
+            <Link pathname="/settings/slack">Settings</Link>
           </Button>
         )}
       </div>

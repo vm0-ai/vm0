@@ -16,7 +16,6 @@ import {
   IconEdit,
 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
-import { navigateInReact$ } from "../../signals/route.ts";
 import { openConfigDialog$ } from "../../signals/agent-detail/config-dialog.ts";
 import { openRunDialog$ } from "../../signals/agent-detail/run-dialog.ts";
 import { runButtonState$ } from "../../signals/agent-detail/inline-run.ts";
@@ -28,6 +27,7 @@ import {
 } from "../../signals/agent-detail/schedule.ts";
 import { AgentAvatar } from "./agent-avatar.tsx";
 import type { AgentDetail } from "../../signals/agent-detail/types.ts";
+import { Link } from "../router/link.tsx";
 
 interface AgentHeaderProps {
   detail: AgentDetail;
@@ -35,7 +35,6 @@ interface AgentHeaderProps {
 }
 
 export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
-  const navigate = useSet(navigateInReact$);
   const openConfig = useSet(openConfigDialog$);
   const openRun = useSet(openRunDialog$);
   const buttonState = useGet(runButtonState$);
@@ -151,43 +150,47 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
             </Tooltip>
           )}
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-9 w-9"
-                onClick={() =>
-                  agentName &&
-                  navigate("/agents/:name/connections", {
-                    pathParams: { name: agentName },
-                  })
-                }
-              >
-                <IconPlug size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Connections</TooltipContent>
-          </Tooltip>
+          {agentName && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9"
+                  asChild
+                >
+                  <Link
+                    pathname="/agents/:name/connections"
+                    options={{ pathParams: { name: agentName } }}
+                  >
+                    <IconPlug size={18} />
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Connections</TooltipContent>
+            </Tooltip>
+          )}
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-9 w-9"
-                onClick={() =>
-                  agentName &&
-                  navigate("/agents/:name/logs", {
-                    pathParams: { name: agentName },
-                  })
-                }
-              >
-                <IconList size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Logs</TooltipContent>
-          </Tooltip>
+          {agentName && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9"
+                  asChild
+                >
+                  <Link
+                    pathname="/agents/:name/logs"
+                    options={{ pathParams: { name: agentName } }}
+                  >
+                    <IconList size={18} />
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Logs</TooltipContent>
+            </Tooltip>
+          )}
         </TooltipProvider>
       </div>
     </div>
