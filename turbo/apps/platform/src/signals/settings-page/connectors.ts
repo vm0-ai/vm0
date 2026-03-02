@@ -38,7 +38,7 @@ export const allConnectorTypes$ = computed(async (get) => {
 
   const featureFlags: Partial<Record<ConnectorType, FeatureSwitchKey>> = {
     computer: FeatureSwitchKey.ComputerConnector,
-    linear: FeatureSwitchKey.LinearConnector,
+    deel: FeatureSwitchKey.DeelConnector,
     dropbox: FeatureSwitchKey.DropboxConnector,
     figma: FeatureSwitchKey.FigmaConnector,
     gmail: FeatureSwitchKey.GmailConnector,

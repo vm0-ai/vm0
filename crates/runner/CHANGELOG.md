@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.12.1...runner-rs-v0.12.2) (2026-03-02)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** use full cli invocation for snapshot pre-warm ([#3395](https://github.com/vm0-ai/vm0/issues/3395)) ([318deaa](https://github.com/vm0-ai/vm0/commit/318deaa20216059e92c1702a10ef0203c98af00e))
+
 ## [0.12.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.12.0...runner-rs-v0.12.1) (2026-03-01)
 
 

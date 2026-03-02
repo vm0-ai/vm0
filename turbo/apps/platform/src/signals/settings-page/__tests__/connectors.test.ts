@@ -74,22 +74,6 @@ describe("allConnectorTypes$", () => {
     expect(computerConnector).toBeUndefined();
   });
 
-  it("should hide linear connector when feature flag is disabled", async () => {
-    const { store } = context;
-
-    await setupPage({
-      context,
-      path: "/",
-      withoutRender: true,
-      featureSwitches: { linearConnector: false },
-    });
-
-    const types = await store.get(allConnectorTypes$);
-    const linearConnector = types.find((t) => t.type === "linear");
-
-    expect(linearConnector).toBeUndefined();
-  });
-
   it("should hide dropbox connector when feature flag is disabled", async () => {
     const { store } = context;
 
@@ -104,6 +88,22 @@ describe("allConnectorTypes$", () => {
     const dropboxConnector = types.find((t) => t.type === "dropbox");
 
     expect(dropboxConnector).toBeUndefined();
+  });
+
+  it("should hide deel connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { deelConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const deelConnector = types.find((t) => t.type === "deel");
+
+    expect(deelConnector).toBeUndefined();
   });
 
   it("should hide figma connector when feature flag is disabled", async () => {

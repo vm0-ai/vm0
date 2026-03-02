@@ -1,6 +1,7 @@
 import type { ConnectorType } from "@vm0/core";
 
 import computerIcon from "./icons/computer.svg";
+import deelIcon from "./icons/deel.svg";
 import dropboxIcon from "./icons/dropbox.svg";
 import figmaIcon from "./icons/figma.svg";
 import garminConnectIcon from "./icons/garmin-connect.svg";
@@ -13,6 +14,7 @@ import stravaIcon from "./icons/strava.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   computer: computerIcon,
+  deel: deelIcon,
   dropbox: dropboxIcon,
   figma: figmaIcon,
   "garmin-connect": garminConnectIcon,

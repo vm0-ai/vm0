@@ -44,7 +44,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },
-  [FeatureSwitchKey.LinearConnector]: {
+  [FeatureSwitchKey.DeelConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },

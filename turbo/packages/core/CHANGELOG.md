@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.27.0](https://github.com/vm0-ai/vm0/compare/core-v8.26.0...core-v8.27.0) (2026-03-02)
+
+
+### Features
+
+* **connectors:** remove linear connector feature flag ([#3394](https://github.com/vm0-ai/vm0/issues/3394)) ([bcb0266](https://github.com/vm0-ai/vm0/commit/bcb02665109aeda6e5c6052dcdaa8ebe261545e3))
+
 ## [8.26.0](https://github.com/vm0-ai/vm0/compare/core-v8.25.0...core-v8.26.0) (2026-03-02)
 
 

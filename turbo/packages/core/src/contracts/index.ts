@@ -466,6 +466,3 @@ export {
   type ScopeUseRequest,
   type ScopeUseResponse,
 } from "./scope-list";
-
-// Public API v1 contracts (developer-friendly external API)
-export * from "./public";
