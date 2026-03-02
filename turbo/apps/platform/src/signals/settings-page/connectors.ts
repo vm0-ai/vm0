@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   CONNECTOR_TYPES,
-  FeatureSwitchKey,
+  CONNECTOR_FEATURE_FLAGS,
   type ConnectorType,
   type ConnectorResponse,
 } from "@vm0/core";
@@ -31,27 +31,6 @@ export interface ConnectorTypeWithStatus {
   connector: ConnectorResponse | null;
 }
 
-/**
- * Maps connector types that are gated behind a feature flag to their
- * corresponding feature switch key.  Connectors not listed here are
- * always visible.
- */
-const CONNECTOR_FEATURE_FLAGS = Object.freeze<
-  Partial<Record<ConnectorType, FeatureSwitchKey>>
->({
-  computer: FeatureSwitchKey.ComputerConnector,
-  deel: FeatureSwitchKey.DeelConnector,
-  docusign: FeatureSwitchKey.DocuSignConnector,
-  dropbox: FeatureSwitchKey.DropboxConnector,
-  figma: FeatureSwitchKey.FigmaConnector,
-  gmail: FeatureSwitchKey.GmailConnector,
-  "google-sheets": FeatureSwitchKey.GoogleSheetsConnector,
-  "google-docs": FeatureSwitchKey.GoogleDocsConnector,
-  "google-drive": FeatureSwitchKey.GoogleDriveConnector,
-  strava: FeatureSwitchKey.StravaConnector,
-  "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
-});
-
 export const allConnectorTypes$ = computed(async (get) => {
   const { connectors } = await get(connectors$);
   const connectorMap = new Map(connectors.map((c) => [c.type, c]));
@@ -61,13 +40,6 @@ export const allConnectorTypes$ = computed(async (get) => {
     .filter((type) => {
       const flag = CONNECTOR_FEATURE_FLAGS[type];
       if (flag && !features?.[flag]) {
-        return false;
-      }
-      // Filter mercury connector based on feature flag
-      if (
-        type === "mercury" &&
-        !features?.[FeatureSwitchKey.MercuryConnector]
-      ) {
         return false;
       }
       return true;

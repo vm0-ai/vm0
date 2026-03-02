@@ -6,6 +6,7 @@
  */
 
 import { FeatureSwitchKey } from "./feature-switch-key";
+import type { ConnectorType } from "./contracts/connectors";
 
 export interface FeatureSwitch {
   readonly maintainer: string;
@@ -19,6 +20,15 @@ async function sha1(input: string): Promise<string> {
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+const STAFF_USER_HASHES: readonly string[] = [
+  "afc25aa601481d794372ed765038148d3a160e2a",
+  "1e7de00267c699185653df499f68e8383013ca08",
+  "b397fa9b0330b421a5113ac88dd2b01ca2067cfe",
+  "d938bb6e49cb8ccfaa962942d69c9ccd1ee239af",
+  "67a65740246389d7fecf7702f8b7d6914ad38dc5",
+  "55651a8b2c85b35ff0629fa3d4718b9476069d0f",
+];
 
 /**
  * Registry of all feature switches
@@ -51,51 +61,84 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ComputerConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
   },
   [FeatureSwitchKey.DeelConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
   },
   [FeatureSwitchKey.DocuSignConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
   },
   [FeatureSwitchKey.DropboxConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
   },
   [FeatureSwitchKey.FigmaConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
   },
   [FeatureSwitchKey.GmailConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
   },
   [FeatureSwitchKey.GoogleSheetsConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
   },
   [FeatureSwitchKey.GoogleDocsConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
   },
   [FeatureSwitchKey.GoogleDriveConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
   },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
   },
   [FeatureSwitchKey.StravaConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
   },
   [FeatureSwitchKey.GarminConnectConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
   },
+};
+
+/**
+ * Maps connector types to their feature switch keys.
+ * Connectors not listed here are always visible.
+ */
+export const CONNECTOR_FEATURE_FLAGS: Partial<
+  Record<ConnectorType, FeatureSwitchKey>
+> = {
+  computer: FeatureSwitchKey.ComputerConnector,
+  deel: FeatureSwitchKey.DeelConnector,
+  docusign: FeatureSwitchKey.DocuSignConnector,
+  dropbox: FeatureSwitchKey.DropboxConnector,
+  figma: FeatureSwitchKey.FigmaConnector,
+  gmail: FeatureSwitchKey.GmailConnector,
+  "google-sheets": FeatureSwitchKey.GoogleSheetsConnector,
+  "google-docs": FeatureSwitchKey.GoogleDocsConnector,
+  "google-drive": FeatureSwitchKey.GoogleDriveConnector,
+  mercury: FeatureSwitchKey.MercuryConnector,
+  strava: FeatureSwitchKey.StravaConnector,
+  "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
 };
 
 /**
