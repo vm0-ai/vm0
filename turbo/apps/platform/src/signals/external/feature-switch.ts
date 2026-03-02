@@ -3,6 +3,7 @@ import { logger } from "../log";
 import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { localStorageSignals } from "./local-storage";
 import { throwIfAbort } from "../utils";
+import { user$ } from "../auth";
 
 const L = logger("FeatureSwitch");
 const { get$, set$ } = localStorageSignals("featureSwitch");
@@ -14,9 +15,12 @@ export const featureSwitch$ = computed(async (get) => {
 
   await Promise.resolve();
 
+  const user = await get(user$);
+  const userId = user?.id;
+
   const result: Partial<Record<FeatureSwitchKey, boolean>> = {};
   for (const key of Object.values(FeatureSwitchKey)) {
-    result[key] = Boolean(await isFeatureEnabled(key));
+    result[key] = Boolean(await isFeatureEnabled(key, userId));
   }
 
   const override = get(get$);
