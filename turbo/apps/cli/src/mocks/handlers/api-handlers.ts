@@ -54,7 +54,10 @@ export const apiHandlers = [
 
   // GET /api/connectors - listConnectors
   http.get("http://localhost:3000/api/connectors", () => {
-    return HttpResponse.json({ connectors: [] }, { status: 200 });
+    return HttpResponse.json(
+      { connectors: [], configuredTypes: [] },
+      { status: 200 },
+    );
   }),
 
   // GET /api/scope - getScope

@@ -98,7 +98,7 @@ describe("agents page", () => {
         return HttpResponse.json({ variables: [] });
       }),
       http.get("/api/connectors", () => {
-        return HttpResponse.json({ connectors: [] });
+        return HttpResponse.json({ connectors: [], configuredTypes: [] });
       }),
     );
 
@@ -148,7 +148,7 @@ describe("agents page", () => {
         return HttpResponse.json({ variables: [] });
       }),
       http.get("/api/connectors", () => {
-        return HttpResponse.json({ connectors: [] });
+        return HttpResponse.json({ connectors: [], configuredTypes: [] });
       }),
     );
 
@@ -215,7 +215,7 @@ describe("agents page", () => {
         });
       }),
       http.get("/api/connectors", () => {
-        return HttpResponse.json({ connectors: [] });
+        return HttpResponse.json({ connectors: [], configuredTypes: [] });
       }),
     );
 

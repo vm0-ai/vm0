@@ -1,4 +1,5 @@
 import { type ConnectorType } from "@vm0/core";
+import { type Env } from "../../env";
 import { type OAuthTokenResult, type ProviderHandler } from "./provider-types";
 import { deelHandler } from "./providers/deel-handler";
 import { docusignHandler } from "./providers/docusign-handler";
@@ -38,3 +39,27 @@ export const PROVIDER_HANDLERS: Record<
   slack: slackHandler,
   strava: stravaHandler,
 };
+
+/**
+ * Returns connector types whose OAuth credentials (or equivalent) are
+ * configured in the current environment.
+ */
+export function getConfiguredConnectorTypes(currentEnv: Env): ConnectorType[] {
+  const configured: ConnectorType[] = [];
+
+  for (const [type, handler] of Object.entries(PROVIDER_HANDLERS)) {
+    if (
+      handler.getClientId(currentEnv) &&
+      handler.getClientSecret(currentEnv)
+    ) {
+      configured.push(type as ConnectorType);
+    }
+  }
+
+  // computer connector: no OAuth — uses ngrok credentials instead
+  if (currentEnv.NGROK_API_KEY && currentEnv.NGROK_COMPUTER_CONNECTOR_DOMAIN) {
+    configured.push("computer");
+  }
+
+  return configured;
+}

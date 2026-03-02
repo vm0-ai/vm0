@@ -53,12 +53,16 @@ const CONNECTOR_FEATURE_FLAGS = Object.freeze<
 });
 
 export const allConnectorTypes$ = computed(async (get) => {
-  const { connectors } = await get(connectors$);
+  const { connectors, configuredTypes } = await get(connectors$);
   const connectorMap = new Map(connectors.map((c) => [c.type, c]));
   const features = await get(featureSwitch$);
+  const configuredSet = new Set(configuredTypes);
 
   return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
+      if (!configuredSet.has(type)) {
+        return false;
+      }
       const flag = CONNECTOR_FEATURE_FLAGS[type];
       if (flag && !features?.[flag]) {
         return false;

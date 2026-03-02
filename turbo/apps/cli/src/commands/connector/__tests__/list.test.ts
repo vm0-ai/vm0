@@ -49,6 +49,7 @@ describe("connector list command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
+            configuredTypes: ["github"],
           });
         }),
       );
@@ -67,7 +68,7 @@ describe("connector list command", () => {
     it("should show not-connected status when no connectors", async () => {
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({ connectors: [] });
+          return HttpResponse.json({ connectors: [], configuredTypes: [] });
         }),
       );
 
@@ -96,6 +97,7 @@ describe("connector list command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
+            configuredTypes: ["github"],
           });
         }),
       );

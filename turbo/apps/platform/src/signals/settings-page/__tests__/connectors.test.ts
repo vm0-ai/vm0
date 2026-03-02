@@ -9,6 +9,7 @@ import {
 } from "../connectors";
 import { server } from "../../../mocks/server";
 import { http, HttpResponse } from "msw";
+import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 
 const context = testContext();
 
@@ -30,6 +31,7 @@ describe("allConnectorTypes$", () => {
               updatedAt: new Date().toISOString(),
             },
           ],
+          configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
         });
       }),
     );
@@ -257,7 +259,10 @@ describe("disconnect dialog", () => {
         return new HttpResponse(null, { status: 204 });
       }),
       http.get("/api/connectors", () => {
-        return HttpResponse.json({ connectors: [] });
+        return HttpResponse.json({
+          connectors: [],
+          configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
+        });
       }),
     );
 
