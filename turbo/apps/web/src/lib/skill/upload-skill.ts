@@ -10,11 +10,7 @@
 
 import { gzipSync } from "node:zlib";
 import { eq, and } from "drizzle-orm";
-import {
-  parseGitHubTreeUrl,
-  getSkillStorageName,
-  resolveSkillRef,
-} from "@vm0/core";
+import { parseGitHubTreeUrl, getSkillStorageName } from "@vm0/core";
 import { storages, storageVersions } from "../../db/schema/storage";
 import {
   hashFileContent,
@@ -39,20 +35,17 @@ interface UploadSkillContext {
  * - If a storage with a HEAD version already exists, skip entirely.
  * - If the computed version already exists in S3, skip the upload.
  *
- * @param skillUrl - GitHub tree URL (e.g. https://github.com/owner/repo/tree/main/path)
+ * @param skillUrl - Resolved GitHub tree URL (already normalized by caller)
  * @param ctx - User/scope context for DB records
  */
 export async function uploadSkillFromGitHub(
   skillUrl: string,
   ctx: UploadSkillContext,
 ): Promise<void> {
-  // Normalize bare skill names to full GitHub URLs
-  const resolvedUrl = resolveSkillRef(skillUrl);
-
-  const parsed = parseGitHubTreeUrl(resolvedUrl);
+  const parsed = parseGitHubTreeUrl(skillUrl);
   if (!parsed) {
     throw new Error(
-      `Invalid skill URL: ${skillUrl}. Expected a bare skill name (e.g. "slack") or a GitHub URL (https://github.com/{owner}/{repo}/tree/{branch}/{path})`,
+      `Invalid skill URL: ${skillUrl}. Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}`,
     );
   }
 

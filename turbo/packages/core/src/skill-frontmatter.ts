@@ -1,5 +1,5 @@
 import { parse as parseYaml } from "yaml";
-import { resolveSkillRef } from "./github-url";
+import { resolveSkillRef, parseGitHubTreeUrl } from "./github-url";
 
 /**
  * Parsed skill frontmatter from SKILL.md
@@ -140,14 +140,11 @@ function buildSkillMdUrl(url: string): string | null {
     return null;
   }
 
-  const match = resolved
-    .replace(/\/+$/, "")
-    .match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/);
-  if (!match) {
+  const parsed = parseGitHubTreeUrl(resolved);
+  if (!parsed) {
     return null;
   }
-  const [, owner, repo, branch, path] = match;
-  return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}/SKILL.md`;
+  return `https://raw.githubusercontent.com/${parsed.owner}/${parsed.repo}/${parsed.branch}/${parsed.path}/SKILL.md`;
 }
 
 /**

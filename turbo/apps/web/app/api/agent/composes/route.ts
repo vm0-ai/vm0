@@ -64,10 +64,8 @@ async function uploadSkills(
   if (!agent?.skills || agent.skills.length === 0) {
     return;
   }
-  // Skills are already normalized by resolveSkillEnvVars, but normalize again for safety
-  const resolvedSkills = agent.skills.map(resolveSkillRef);
   await Promise.all(
-    resolvedSkills.map((skillUrl) => uploadSkillFromGitHub(skillUrl, ctx)),
+    agent.skills.map((skillUrl) => uploadSkillFromGitHub(skillUrl, ctx)),
   );
 }
 
