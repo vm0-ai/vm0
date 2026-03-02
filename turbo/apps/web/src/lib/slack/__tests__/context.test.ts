@@ -337,6 +337,36 @@ describe("Feature: Format Context For Agent", () => {
     });
   });
 
+  describe("Scenario: Include context preamble with interpretation guidelines", () => {
+    it("should include preamble between header and messages for thread context", () => {
+      const messages = [{ user: "U123", text: "Hello", ts: "1234567890.001" }];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("Match the tone of the conversation");
+      expect(result).toContain(
+        "Only provide technical analysis when explicitly asked",
+      );
+      expect(result).toContain(
+        "Keep responses proportional to the message length",
+      );
+    });
+
+    it("should include preamble for channel context", () => {
+      const messages = [{ user: "U123", text: "Hello", ts: "1234567890.001" }];
+
+      const result = formatContextForAgent(messages, undefined, "channel");
+
+      expect(result).toContain("Match the tone of the conversation");
+    });
+
+    it("should not include preamble for empty messages", () => {
+      const result = formatContextForAgent([]);
+
+      expect(result).toBe("");
+    });
+  });
+
   describe("Scenario: Relative index calculation", () => {
     it("should calculate relative index from the end of messages", () => {
       const messages = [
@@ -820,6 +850,32 @@ describe("Feature: Format Context With Image Upload", () => {
       expect(result).toContain("[file]: img2.png");
       // Both should have presigned URLs
       expect((result.match(/Image URL:/g) || []).length).toBe(2);
+    });
+  });
+
+  describe("Scenario: Include context preamble in image context", () => {
+    it("should include preamble between header and messages", async () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Hello",
+          ts: "1234567890.001",
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+      );
+
+      expect(result).toContain("Match the tone of the conversation");
+      expect(result).toContain(
+        "Only provide technical analysis when explicitly asked",
+      );
+      expect(result).toContain(
+        "Keep responses proportional to the message length",
+      );
     });
   });
 
