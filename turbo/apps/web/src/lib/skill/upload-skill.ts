@@ -10,7 +10,11 @@
 
 import { gzipSync } from "node:zlib";
 import { eq, and } from "drizzle-orm";
-import { parseGitHubTreeUrl, getSkillStorageName } from "@vm0/core";
+import {
+  parseGitHubTreeUrl,
+  getSkillStorageName,
+  resolveSkillRef,
+} from "@vm0/core";
 import { storages, storageVersions } from "../../db/schema/storage";
 import {
   hashFileContent,
@@ -42,10 +46,13 @@ export async function uploadSkillFromGitHub(
   skillUrl: string,
   ctx: UploadSkillContext,
 ): Promise<void> {
-  const parsed = parseGitHubTreeUrl(skillUrl);
+  // Normalize bare skill names to full GitHub URLs
+  const resolvedUrl = resolveSkillRef(skillUrl);
+
+  const parsed = parseGitHubTreeUrl(resolvedUrl);
   if (!parsed) {
     throw new Error(
-      `Invalid skill URL: ${skillUrl}. Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}`,
+      `Invalid skill URL: ${skillUrl}. Expected a bare skill name (e.g. "slack") or a GitHub URL (https://github.com/{owner}/{repo}/tree/{branch}/{path})`,
     );
   }
 

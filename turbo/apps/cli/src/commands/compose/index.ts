@@ -9,6 +9,7 @@ import {
   extractVariableReferences,
   groupVariablesBySource,
   getConnectorProvidedSecretNames,
+  resolveSkillRef,
 } from "@vm0/core";
 import {
   getComposeByName,
@@ -201,6 +202,9 @@ async function uploadAssets(
 
   const skillResults: SkillUploadResult[] = [];
   if (agent.skills && Array.isArray(agent.skills)) {
+    // Normalize bare skill names to full GitHub URLs before upload
+    agent.skills = agent.skills.map(resolveSkillRef);
+
     if (!jsonMode) {
       console.log(`Uploading ${agent.skills.length} skill(s)...`);
     }
