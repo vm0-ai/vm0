@@ -517,10 +517,7 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     {
         env.insert("VM0_MEMORY_DRIVER".into(), "vas".into());
         env.insert("VM0_MEMORY_MOUNT_PATH".into(), memory.mount_path.clone());
-        env.insert(
-            "VM0_MEMORY_VOLUME_NAME".into(),
-            memory.vas_storage_name.clone(),
-        );
+        env.insert("VM0_MEMORY_NAME".into(), memory.vas_storage_name.clone());
         env.insert(
             "VM0_MEMORY_VERSION_ID".into(),
             memory.vas_version_id.clone(),
@@ -532,7 +529,7 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
             "VM0_MEMORY_MOUNT_PATH".into(),
             "/home/user/.vm0/memory".into(),
         );
-        env.insert("VM0_MEMORY_VOLUME_NAME".into(), name.clone());
+        env.insert("VM0_MEMORY_NAME".into(), name.clone());
     }
 
     // Resume session ID

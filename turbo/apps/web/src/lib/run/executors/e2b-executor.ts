@@ -266,13 +266,13 @@ function addStorageEnvVars(
     const memory = context.storageManifest.memory;
     envVars.VM0_MEMORY_DRIVER = "vas";
     envVars.VM0_MEMORY_MOUNT_PATH = memory.mountPath;
-    envVars.VM0_MEMORY_VOLUME_NAME = memory.vasStorageName;
+    envVars.VM0_MEMORY_NAME = memory.vasStorageName;
     envVars.VM0_MEMORY_VERSION_ID = memory.vasVersionId;
   } else if (context.memoryName) {
     // First run: memory doesn't exist yet, but we still need env vars for upload
     envVars.VM0_MEMORY_DRIVER = "vas";
     envVars.VM0_MEMORY_MOUNT_PATH = "/home/user/.vm0/memory";
-    envVars.VM0_MEMORY_VOLUME_NAME = context.memoryName;
+    envVars.VM0_MEMORY_NAME = context.memoryName;
   }
 }
 

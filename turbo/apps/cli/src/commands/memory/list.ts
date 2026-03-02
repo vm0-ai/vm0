@@ -10,8 +10,7 @@ export const listCommand = new Command()
   .description("List all remote memory storages")
   .action(
     withErrorHandler(async () => {
-      // Memory uses artifact storage type
-      const items = await listStorages({ type: "artifact" });
+      const items = await listStorages({ type: "memory" });
 
       if (items.length === 0) {
         console.log(chalk.dim("No memory storages found"));

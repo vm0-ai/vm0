@@ -277,13 +277,13 @@ async function buildSandboxEnvVars(
     const memory = context.storageManifest.memory;
     sandboxEnvVars.VM0_MEMORY_DRIVER = "vas";
     sandboxEnvVars.VM0_MEMORY_MOUNT_PATH = memory.mountPath;
-    sandboxEnvVars.VM0_MEMORY_VOLUME_NAME = memory.vasStorageName;
+    sandboxEnvVars.VM0_MEMORY_NAME = memory.vasStorageName;
     sandboxEnvVars.VM0_MEMORY_VERSION_ID = memory.vasVersionId;
   } else if (context.memoryName) {
     // First run: memory doesn't exist yet, but we still need env vars for upload
     sandboxEnvVars.VM0_MEMORY_DRIVER = "vas";
     sandboxEnvVars.VM0_MEMORY_MOUNT_PATH = "/home/user/.vm0/memory";
-    sandboxEnvVars.VM0_MEMORY_VOLUME_NAME = context.memoryName;
+    sandboxEnvVars.VM0_MEMORY_NAME = context.memoryName;
   }
 
   // Inject user timezone as TZ environment variable (if not already set in environment)

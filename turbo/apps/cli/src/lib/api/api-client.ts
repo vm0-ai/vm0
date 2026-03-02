@@ -632,7 +632,7 @@ class ApiClient {
    */
   async prepareStorage(body: {
     storageName: string;
-    storageType: "volume" | "artifact";
+    storageType: "volume" | "artifact" | "memory";
     files: Array<{ path: string; hash: string; size: number }>;
     force?: boolean;
   }): Promise<{
@@ -668,7 +668,7 @@ class ApiClient {
    */
   async commitStorage(body: {
     storageName: string;
-    storageType: "volume" | "artifact";
+    storageType: "volume" | "artifact" | "memory";
     versionId: string;
     files: Array<{ path: string; hash: string; size: number }>;
   }): Promise<{
@@ -704,7 +704,7 @@ class ApiClient {
    */
   async getStorageDownload(query: {
     name: string;
-    type: "volume" | "artifact";
+    type: "volume" | "artifact" | "memory";
     version?: string;
   }): Promise<
     | {
@@ -750,7 +750,9 @@ class ApiClient {
   /**
    * List storages (volumes or artifacts)
    */
-  async listStorages(query: { type: "volume" | "artifact" }): Promise<
+  async listStorages(query: {
+    type: "volume" | "artifact" | "memory";
+  }): Promise<
     Array<{
       name: string;
       size: number;

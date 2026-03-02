@@ -7,7 +7,7 @@ const c = initContract();
 /**
  * Storage type enum
  */
-const storageTypeSchema = z.enum(["volume", "artifact"]);
+const storageTypeSchema = z.enum(["volume", "artifact", "memory"]);
 
 /**
  * Version ID query parameter schema

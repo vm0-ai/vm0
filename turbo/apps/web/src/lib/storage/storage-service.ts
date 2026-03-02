@@ -158,7 +158,7 @@ export async function ensureArtifactExists(
 async function resolveVersion(
   scopeId: string,
   storageName: string,
-  storageType: "volume" | "artifact",
+  storageType: "volume" | "artifact" | "memory",
   version: string,
 ): Promise<{ versionId: string; s3Key: string }> {
   // Query database for storage
@@ -390,7 +390,7 @@ export async function prepareStorageManifest(
           const { versionId, s3Key } = await resolveVersion(
             artifactScopeId,
             memoryName,
-            "artifact",
+            "memory",
             "latest",
           );
 

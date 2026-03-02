@@ -14,8 +14,7 @@ export const pullCommand = new Command()
 
       console.log(`Pulling memory: ${name}`);
 
-      // Memory uses artifact storage type
-      const result = await cloneStorage(name, "artifact", targetDir);
+      const result = await cloneStorage(name, "memory", targetDir);
 
       console.log(chalk.green(`\n✓ Successfully pulled memory: ${name}`));
       console.log(chalk.dim(`  Location: ${targetDir}/`));

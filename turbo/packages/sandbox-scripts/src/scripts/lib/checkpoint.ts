@@ -15,7 +15,7 @@ import {
   ARTIFACT_VOLUME_NAME,
   MEMORY_DRIVER,
   MEMORY_MOUNT_PATH,
-  MEMORY_VOLUME_NAME,
+  MEMORY_NAME,
   CLI_AGENT_TYPE,
   recordSandboxOp,
 } from "./common.js";
@@ -120,6 +120,7 @@ async function createVasSnapshot(
   volumeName: string,
   mountPath: string,
   label: string,
+  storageType: "artifact" | "memory",
 ): Promise<StorageSnapshot | null> {
   logInfo(`Processing ${label} with driver: ${driver}`);
 
@@ -138,7 +139,7 @@ async function createVasSnapshot(
   const snapshot = await createDirectUploadSnapshot(
     mountPath,
     volumeName,
-    "artifact",
+    storageType,
     RUN_ID,
     `${label} checkpoint from run ${RUN_ID}`,
   );
@@ -296,6 +297,7 @@ export async function createCheckpoint(): Promise<boolean> {
       ARTIFACT_VOLUME_NAME,
       ARTIFACT_MOUNT_PATH,
       "artifact",
+      "artifact",
     );
     if (snap) {
       artifactSnapshot = {
@@ -316,11 +318,12 @@ export async function createCheckpoint(): Promise<boolean> {
   // Create memory snapshot (VAS only, optional — same pattern as artifact)
   let memorySnapshot: { memoryName: string; memoryVersion: string } | null =
     null;
-  if (MEMORY_DRIVER && MEMORY_VOLUME_NAME) {
+  if (MEMORY_DRIVER && MEMORY_NAME) {
     const snap = await createVasSnapshot(
       MEMORY_DRIVER,
-      MEMORY_VOLUME_NAME,
+      MEMORY_NAME,
       MEMORY_MOUNT_PATH,
+      "memory",
       "memory",
     );
     if (snap) {

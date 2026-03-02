@@ -8,7 +8,7 @@ import path from "path";
  * - "volume": Static storage that doesn't auto-version after runs
  * - "artifact": Work products that auto-version after runs
  */
-export type StorageType = "volume" | "artifact";
+export type StorageType = "volume" | "artifact" | "memory";
 
 interface StorageConfig {
   name: string;

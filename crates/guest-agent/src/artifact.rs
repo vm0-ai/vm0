@@ -63,6 +63,7 @@ pub struct SnapshotResult {
 pub async fn create_snapshot(
     mount_path: &str,
     storage_name: &str,
+    storage_type: &str,
     run_id: &str,
     message: &str,
 ) -> Result<SnapshotResult, AgentError> {
@@ -86,7 +87,7 @@ pub async fn create_snapshot(
     let prep_start = std::time::Instant::now();
     let prep_payload = json!({
         "storageName": storage_name,
-        "storageType": "artifact",
+        "storageType": storage_type,
         "files": files,
         "runId": run_id,
     });
@@ -225,7 +226,7 @@ pub async fn create_snapshot(
     let commit_start = std::time::Instant::now();
     let commit_payload = json!({
         "storageName": storage_name,
-        "storageType": "artifact",
+        "storageType": storage_type,
         "versionId": version_id,
         "files": files,
         "runId": run_id,

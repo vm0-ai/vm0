@@ -248,7 +248,7 @@ interface DirectUploadOptions {
  */
 export async function directUpload(
   storageName: string,
-  storageType: "volume" | "artifact",
+  storageType: "volume" | "artifact" | "memory",
   cwd: string,
   options?: DirectUploadOptions,
 ): Promise<DirectUploadResult> {
