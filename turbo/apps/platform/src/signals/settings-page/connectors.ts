@@ -56,6 +56,10 @@ export const allConnectorTypes$ = computed(async (get) => {
       if (type === "figma" && !features?.[FeatureSwitchKey.FigmaConnector]) {
         return false;
       }
+      // Filter gmail connector based on feature flag
+      if (type === "gmail" && !features?.[FeatureSwitchKey.GmailConnector]) {
+        return false;
+      }
       return true;
     })
     .map((type) => {

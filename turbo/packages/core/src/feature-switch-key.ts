@@ -13,4 +13,5 @@ export enum FeatureSwitchKey {
   ComputerConnector = "computerConnector",
   DropboxConnector = "dropboxConnector",
   FigmaConnector = "figmaConnector",
+  GmailConnector = "gmailConnector",
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.26.0](https://github.com/vm0-ai/vm0/compare/core-v8.25.0...core-v8.26.0) (2026-03-02)
+
+
+### Features
+
+* **connector:** add gmail connector feature flag ([#3381](https://github.com/vm0-ai/vm0/issues/3381)) ([50b45eb](https://github.com/vm0-ai/vm0/commit/50b45eb00469afce5b433e03e590fa0070c77458))
+
 ## [8.25.0](https://github.com/vm0-ai/vm0/compare/core-v8.24.0...core-v8.25.0) (2026-03-01)
 
 

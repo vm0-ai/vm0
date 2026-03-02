@@ -34,7 +34,7 @@ describe("connectors tab", () => {
     await setupPage({
       context,
       path: "/settings?tab=connectors",
-      featureSwitches: { dropboxConnector: true },
+      featureSwitches: { dropboxConnector: true, gmailConnector: true },
     });
 
     expect(screen.getByText("Dropbox")).toBeInTheDocument();
