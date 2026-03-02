@@ -666,6 +666,13 @@
       "when": 1772440050126,
       "tag": "0094_nice_brother_voodoo",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1772437413122,
+      "tag": "0095_illegal_nighthawk",
+      "breakpoints": true
     }
   ]
 }

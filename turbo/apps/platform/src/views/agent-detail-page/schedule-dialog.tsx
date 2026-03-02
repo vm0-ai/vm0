@@ -30,6 +30,8 @@ import {
   setScheduleDialogDayOfWeek$,
   scheduleDialogDayOfMonth$,
   setScheduleDialogDayOfMonth$,
+  scheduleDialogIntervalSeconds$,
+  setScheduleDialogIntervalSeconds$,
   scheduleDialogSaving$,
   scheduleDialogSaveError$,
   submitScheduleDialog$,
@@ -68,6 +70,7 @@ export function ScheduleDialog() {
   const minute = useGet(scheduleDialogMinute$);
   const dayOfWeek = useGet(scheduleDialogDayOfWeek$);
   const dayOfMonth = useGet(scheduleDialogDayOfMonth$);
+  const intervalSeconds = useGet(scheduleDialogIntervalSeconds$);
   const saving = useGet(scheduleDialogSaving$);
   const saveError = useGet(scheduleDialogSaveError$);
   const close = useSet(closeScheduleDialog$);
@@ -77,6 +80,7 @@ export function ScheduleDialog() {
   const setMinute = useSet(setScheduleDialogMinute$);
   const setDayOfWeek = useSet(setScheduleDialogDayOfWeek$);
   const setDayOfMonth = useSet(setScheduleDialogDayOfMonth$);
+  const setIntervalSeconds = useSet(setScheduleDialogIntervalSeconds$);
   const submit = useSet(submitScheduleDialog$);
   const deleteSchedule = useSet(deleteScheduleFromDialog$);
 
@@ -118,6 +122,7 @@ export function ScheduleDialog() {
                 <SelectItem value="every-day">Every day</SelectItem>
                 <SelectItem value="every-week">Every week</SelectItem>
                 <SelectItem value="every-month">Every month</SelectItem>
+                <SelectItem value="loop">Loop</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -162,39 +167,68 @@ export function ScheduleDialog() {
             </div>
           )}
 
-          <div className="flex flex-col gap-3">
-            <label className="text-sm font-medium text-foreground px-1">
-              Frequency
-            </label>
-            <div className="flex items-center gap-2">
-              <IconClock size={16} className="text-muted-foreground shrink-0" />
-              <Select value={hour} onValueChange={setHour}>
-                <SelectTrigger className="w-[80px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {hours.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <span className="text-sm text-muted-foreground">:</span>
-              <Select value={minute} onValueChange={setMinute}>
-                <SelectTrigger className="w-[80px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {minutes.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {timeOption === "loop" ? (
+            <div className="flex flex-col gap-3">
+              <label className="text-sm font-medium text-foreground px-1">
+                Interval (seconds)
+              </label>
+              <div className="flex items-center gap-2">
+                <IconClock
+                  size={16}
+                  className="text-muted-foreground shrink-0"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  value={intervalSeconds}
+                  onChange={(e) => setIntervalSeconds(e.target.value)}
+                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="300"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground px-1">
+                Time between the end of one run and the start of the next. Use 0
+                for immediate restart.
+              </p>
             </div>
-          </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <label className="text-sm font-medium text-foreground px-1">
+                Frequency
+              </label>
+              <div className="flex items-center gap-2">
+                <IconClock
+                  size={16}
+                  className="text-muted-foreground shrink-0"
+                />
+                <Select value={hour} onValueChange={setHour}>
+                  <SelectTrigger className="w-[80px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {hours.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-sm text-muted-foreground">:</span>
+                <Select value={minute} onValueChange={setMinute}>
+                  <SelectTrigger className="w-[80px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {minutes.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
         </div>
 
         {saveError && <p className="text-sm text-destructive">{saveError}</p>}

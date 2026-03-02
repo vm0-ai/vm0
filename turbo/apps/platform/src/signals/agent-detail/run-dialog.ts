@@ -10,7 +10,7 @@ import {
   cancelPendingRun$,
 } from "./inline-run.ts";
 import { fetchAgentSchedule$ } from "./schedule.ts";
-import { type ScheduleTimeOption, buildCronExpression } from "./cron.ts";
+import { type CronTimeOption, buildCronExpression } from "./cron.ts";
 
 const L = logger("RunDialog");
 
@@ -32,7 +32,7 @@ export const setRunDialogPrompt$ = command(({ set }, value: string) => {
   set(internalPrompt$, value);
 });
 
-type TimeOption = "now" | ScheduleTimeOption;
+type TimeOption = "now" | CronTimeOption;
 
 const internalTimeOption$ = state<TimeOption>("now");
 export const runDialogTimeOption$ = computed((get) => get(internalTimeOption$));

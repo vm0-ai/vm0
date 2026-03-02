@@ -23,6 +23,7 @@ import { slackInstallations } from "../db/schema/slack-installation";
 import { slackThreadSessions } from "../db/schema/slack-thread-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
+import { agentSchedules } from "../db/schema/agent-schedule";
 import { and, eq, inArray, like } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
@@ -696,14 +697,17 @@ export async function createTestSchedule(
   options?: {
     cronExpression?: string;
     atTime?: string;
+    intervalSeconds?: number;
     timezone?: string;
     prompt?: string;
     // vars and secrets removed - now managed via platform tables
   },
 ): Promise<ScheduleResponse> {
-  // Default to cron if neither trigger specified
+  // Default to cron if no trigger specified
   const trigger =
-    options?.cronExpression || options?.atTime
+    options?.cronExpression ||
+    options?.atTime ||
+    options?.intervalSeconds !== undefined
       ? {}
       : { cronExpression: "0 0 * * *" };
 
@@ -719,6 +723,7 @@ export async function createTestSchedule(
         prompt: options?.prompt ?? "Test schedule prompt",
         cronExpression: options?.cronExpression,
         atTime: options?.atTime,
+        intervalSeconds: options?.intervalSeconds,
         // vars and secrets no longer sent - managed via platform tables
         ...trigger,
       }),
@@ -2022,4 +2027,37 @@ export async function createScopedCompose(
     .returning();
 
   return { composeId: compose!.id, scopeId: scope!.id };
+}
+
+/**
+ * Update internal schedule state for testing edge cases.
+ *
+ * Direct DB write is required because the schedule API does not expose
+ * an endpoint to set internal fields like consecutiveFailures — these
+ * are managed by the callback system, not user actions.
+ */
+export async function updateTestScheduleState(
+  scheduleId: string,
+  state: { consecutiveFailures?: number; enabled?: boolean },
+): Promise<void> {
+  await globalThis.services.db
+    .update(agentSchedules)
+    .set(state)
+    .where(eq(agentSchedules.id, scheduleId));
+}
+
+/**
+ * Get internal schedule state by ID for verifying callback side-effects.
+ *
+ * Direct DB read is required because the schedule GET API requires
+ * composeId + name, but callback tests only have the schedule ID from
+ * the payload. Also exposes internal fields not in the API response.
+ */
+export async function findTestScheduleById(scheduleId: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(agentSchedules)
+    .where(eq(agentSchedules.id, scheduleId))
+    .limit(1);
+  return row;
 }

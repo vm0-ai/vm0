@@ -1,0 +1,244 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
+import { POST } from "../route";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../../../src/__tests__/test-helpers";
+import {
+  createTestCompose,
+  createTestRun,
+  createTestCallback,
+  createTestRequest,
+  createTestSchedule,
+  enableTestSchedule,
+  disableTestSchedule,
+  deleteTestSchedule,
+  updateTestScheduleState,
+  findTestScheduleById,
+} from "../../../../../../../src/__tests__/api-test-helpers";
+import { computeHmacSignature } from "../../../../../../../src/lib/callback/hmac";
+
+const context = testContext();
+
+interface LoopCallbackPayload {
+  scheduleId: string;
+  intervalSeconds: number;
+}
+
+function createCallbackRequest(
+  body: {
+    runId: string;
+    status: "completed" | "failed";
+    error?: string;
+    payload: LoopCallbackPayload;
+  },
+  secret: string,
+  options?: { invalidSignature?: boolean },
+): NextRequest {
+  const bodyString = JSON.stringify(body);
+  const timestamp = Math.floor(Date.now() / 1000);
+
+  const signature = options?.invalidSignature
+    ? "invalid-signature"
+    : computeHmacSignature(bodyString, secret, timestamp);
+
+  return createTestRequest(
+    "http://localhost/api/internal/callbacks/schedule/loop",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-VM0-Signature": signature,
+        "X-VM0-Timestamp": timestamp.toString(),
+      },
+      body: bodyString,
+    },
+  );
+}
+
+describe("POST /api/internal/callbacks/schedule/loop", () => {
+  let composeId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    await context.setupUser();
+    composeId = (await createTestCompose(uniqueId("agent"))).composeId;
+  });
+
+  async function setupLoopSchedule() {
+    const schedule = await createTestSchedule(composeId, uniqueId("loop"), {
+      intervalSeconds: 300,
+    });
+    await enableTestSchedule(composeId, schedule.name);
+    const { runId } = await createTestRun(composeId, "Loop task");
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/schedule/loop",
+      payload: {
+        scheduleId: schedule.id,
+        intervalSeconds: 300,
+      },
+    });
+    return { schedule, runId, secret };
+  }
+
+  describe("Signature Verification", () => {
+    it("should reject request with invalid signature", async () => {
+      const { schedule, runId, secret } = await setupLoopSchedule();
+
+      const request = createCallbackRequest(
+        {
+          runId,
+          status: "completed",
+          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+        },
+        secret,
+        { invalidSignature: true },
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(401);
+    });
+
+    it("should reject request with unknown runId", async () => {
+      const request = createCallbackRequest(
+        {
+          runId: "00000000-0000-0000-0000-000000000000",
+          status: "completed",
+          payload: {
+            scheduleId: "00000000-0000-0000-0000-000000000000",
+            intervalSeconds: 300,
+          },
+        },
+        "fake-secret",
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe("Success Callback", () => {
+    it("should reset failure counter and schedule next run", async () => {
+      const { schedule, runId, secret } = await setupLoopSchedule();
+
+      // Simulate prior consecutive failures
+      await updateTestScheduleState(schedule.id, { consecutiveFailures: 2 });
+
+      const request = createCallbackRequest(
+        {
+          runId,
+          status: "completed",
+          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      // Verify DB state
+      const updated = await findTestScheduleById(schedule.id);
+      expect(updated!.consecutiveFailures).toBe(0);
+      expect(updated!.nextRunAt).not.toBeNull();
+      expect(updated!.enabled).toBe(true);
+    });
+  });
+
+  describe("Failure Callback", () => {
+    it("should increment failure counter on first failure", async () => {
+      const { schedule, runId, secret } = await setupLoopSchedule();
+
+      const request = createCallbackRequest(
+        {
+          runId,
+          status: "failed",
+          error: "Agent crashed",
+          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      const updated = await findTestScheduleById(schedule.id);
+      expect(updated!.consecutiveFailures).toBe(1);
+      expect(updated!.enabled).toBe(true);
+      // Should still schedule next run
+      expect(updated!.nextRunAt).not.toBeNull();
+    });
+
+    it("should auto-disable after 3 consecutive failures", async () => {
+      const { schedule, runId, secret } = await setupLoopSchedule();
+
+      // Set to 2 consecutive failures already
+      await updateTestScheduleState(schedule.id, { consecutiveFailures: 2 });
+
+      const request = createCallbackRequest(
+        {
+          runId,
+          status: "failed",
+          error: "Third failure",
+          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      const updated = await findTestScheduleById(schedule.id);
+      expect(updated!.consecutiveFailures).toBe(3);
+      expect(updated!.enabled).toBe(false);
+      expect(updated!.nextRunAt).toBeNull();
+    });
+  });
+
+  describe("Edge Cases", () => {
+    it("should skip callback for deleted schedule", async () => {
+      const { schedule, runId, secret } = await setupLoopSchedule();
+
+      // Delete the schedule via API helper
+      await deleteTestSchedule(composeId, schedule.name);
+
+      const request = createCallbackRequest(
+        {
+          runId,
+          status: "completed",
+          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.skipped).toBe(true);
+    });
+
+    it("should skip callback for disabled schedule", async () => {
+      const { schedule, runId, secret } = await setupLoopSchedule();
+
+      // Disable the schedule via API helper
+      await disableTestSchedule(composeId, schedule.name);
+
+      const request = createCallbackRequest(
+        {
+          runId,
+          status: "completed",
+          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.skipped).toBe(true);
+    });
+  });
+});

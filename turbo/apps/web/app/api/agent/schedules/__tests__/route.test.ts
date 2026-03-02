@@ -404,6 +404,91 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
       expect(data.error.message).toContain("already has a schedule");
     });
   });
+
+  describe("Loop Schedule", () => {
+    it("should create loop schedule with intervalSeconds", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/schedules",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            composeId: testComposeId,
+            name: "loop-schedule",
+            intervalSeconds: 300,
+            timezone: "UTC",
+            prompt: "Loop every 5 minutes",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.created).toBe(true);
+      expect(data.schedule.triggerType).toBe("loop");
+      expect(data.schedule.intervalSeconds).toBe(300);
+      expect(data.schedule.cronExpression).toBeNull();
+      expect(data.schedule.atTime).toBeNull();
+      // Loop schedules don't set nextRunAt until enabled
+      expect(data.schedule.nextRunAt).toBeNull();
+    });
+
+    it("should update cron schedule to loop schedule", async () => {
+      // Create initial cron schedule
+      await createTestSchedule(testComposeId, "my-schedule", {
+        cronExpression: "0 9 * * *",
+      });
+
+      // Update to loop
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/schedules",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            composeId: testComposeId,
+            name: "my-schedule",
+            intervalSeconds: 60,
+            timezone: "UTC",
+            prompt: "Now looping",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.created).toBe(false);
+      expect(data.schedule.triggerType).toBe("loop");
+      expect(data.schedule.intervalSeconds).toBe(60);
+      expect(data.schedule.cronExpression).toBeNull();
+    });
+
+    it("should reject when both cronExpression and intervalSeconds are specified", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/schedules",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            composeId: testComposeId,
+            name: "bad-schedule",
+            cronExpression: "0 9 * * *",
+            intervalSeconds: 300,
+            timezone: "UTC",
+            prompt: "Should fail",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+    });
+  });
 });
 
 describe("GET /api/agent/schedules - List Schedules", () => {

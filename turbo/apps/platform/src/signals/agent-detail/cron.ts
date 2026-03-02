@@ -6,10 +6,13 @@ export type ScheduleTimeOption =
   | "every-weekday"
   | "every-day"
   | "every-week"
-  | "every-month";
+  | "every-month"
+  | "loop";
+
+export type CronTimeOption = Exclude<ScheduleTimeOption, "loop">;
 
 export function buildCronExpression(opts: {
-  timeOption: ScheduleTimeOption;
+  timeOption: CronTimeOption;
   hour: string;
   minute?: string;
   dayOfWeek?: string;

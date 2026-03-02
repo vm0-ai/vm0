@@ -96,7 +96,12 @@ export function formatDateTime(dateStr: string | null): string {
 /**
  * Frequency type for schedule wizard
  */
-export type ScheduleFrequency = "daily" | "weekly" | "monthly" | "once";
+export type ScheduleFrequency =
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "once"
+  | "loop";
 
 /**
  * Generate cron expression from user-friendly inputs
@@ -106,7 +111,7 @@ export type ScheduleFrequency = "daily" | "weekly" | "monthly" | "once";
  * @returns Cron expression string
  */
 export function generateCronExpression(
-  frequency: Exclude<ScheduleFrequency, "once">,
+  frequency: Exclude<ScheduleFrequency, "once" | "loop">,
   time: string,
   day?: number,
 ): string {

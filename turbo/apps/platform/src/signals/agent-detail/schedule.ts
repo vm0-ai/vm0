@@ -4,7 +4,11 @@ import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { agentDetail$ } from "./agent-detail.ts";
-import { buildCronExpression, type ScheduleTimeOption } from "./cron.ts";
+import {
+  buildCronExpression,
+  type CronTimeOption,
+  type ScheduleTimeOption,
+} from "./cron.ts";
 
 const L = logger("Schedule");
 
@@ -18,8 +22,10 @@ interface ScheduleResponse {
   composeName: string;
   scopeSlug: string;
   name: string;
+  triggerType: "cron" | "once" | "loop";
   cronExpression: string | null;
   atTime: string | null;
+  intervalSeconds: number | null;
   timezone: string;
   prompt: string;
   vars: Record<string, string> | null;
@@ -31,6 +37,7 @@ interface ScheduleResponse {
   nextRunAt: string | null;
   lastRunAt: string | null;
   retryStartedAt: string | null;
+  consecutiveFailures: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,7 +58,9 @@ export const agentScheduleSummary$ = computed((get) => {
 
   const parts: string[] = [];
 
-  if (schedule.cronExpression) {
+  if (schedule.triggerType === "loop" && schedule.intervalSeconds !== null) {
+    parts.push(describeLoop(schedule.intervalSeconds));
+  } else if (schedule.cronExpression) {
     parts.push(describeCron(schedule.cronExpression));
   }
 
@@ -68,6 +77,25 @@ export const agentScheduleSummary$ = computed((get) => {
 
   return parts.join("\n");
 });
+
+function describeLoop(intervalSeconds: number): string {
+  if (intervalSeconds === 0) {
+    return "Loop (immediate)";
+  }
+  if (intervalSeconds < 60) {
+    return `Loop every ${intervalSeconds}s`;
+  }
+  if (intervalSeconds < 3600) {
+    const m = Math.floor(intervalSeconds / 60);
+    return `Loop every ${m}m`;
+  }
+  const h = Math.floor(intervalSeconds / 3600);
+  const remainMin = Math.floor((intervalSeconds % 3600) / 60);
+  if (remainMin === 0) {
+    return `Loop every ${h}h`;
+  }
+  return `Loop every ${h}h ${remainMin}m`;
+}
 
 function describeCron(cron: string): string {
   const dayNames: Record<string, string> = {
@@ -173,7 +201,7 @@ const deleteAgentSchedule$ = command(async ({ get, set }) => {
 function parseCronExpression(cron: string): {
   minute: string;
   hour: string;
-  timeOption: ScheduleTimeOption;
+  timeOption: CronTimeOption;
   dayOfWeek: string;
   dayOfMonth: string;
 } {
@@ -183,7 +211,7 @@ function parseCronExpression(cron: string): {
   const dayOfMonth = parts[2] ?? "*";
   const dayOfWeek = parts[4] ?? "*";
 
-  let timeOption: ScheduleTimeOption = "every-day";
+  let timeOption: CronTimeOption = "every-day";
 
   if (dayOfMonth !== "*") {
     timeOption = "every-month";
@@ -238,9 +266,21 @@ function isScheduleTimeOption(v: string): v is ScheduleTimeOption {
     v === "every-weekday" ||
     v === "every-day" ||
     v === "every-week" ||
-    v === "every-month"
+    v === "every-month" ||
+    v === "loop"
   );
 }
+
+const internalDialogIntervalSeconds$ = state("300");
+export const scheduleDialogIntervalSeconds$ = computed((get) =>
+  get(internalDialogIntervalSeconds$),
+);
+
+export const setScheduleDialogIntervalSeconds$ = command(
+  ({ set }, value: string) => {
+    set(internalDialogIntervalSeconds$, value);
+  },
+);
 
 const internalDialogHour$ = state("9");
 export const scheduleDialogHour$ = computed((get) => get(internalDialogHour$));
@@ -301,7 +341,10 @@ export const openScheduleDialog$ = command(({ get, set }) => {
   set(internalDialogPrompt$, schedule.prompt);
   set(internalDialogSaveError$, null);
 
-  if (schedule.cronExpression) {
+  if (schedule.triggerType === "loop" && schedule.intervalSeconds !== null) {
+    set(internalDialogTimeOption$, "loop");
+    set(internalDialogIntervalSeconds$, String(schedule.intervalSeconds));
+  } else if (schedule.cronExpression) {
     const parsed = parseCronExpression(schedule.cronExpression);
     set(internalDialogTimeOption$, parsed.timeOption);
     set(internalDialogHour$, parsed.hour);
@@ -335,6 +378,7 @@ export const submitScheduleDialog$ = command(async ({ get, set }) => {
   const minute = get(internalDialogMinute$);
   const dayOfWeek = get(internalDialogDayOfWeek$);
   const dayOfMonth = get(internalDialogDayOfMonth$);
+  const intervalSecondsStr = get(internalDialogIntervalSeconds$);
 
   if (!detail || !prompt.trim()) {
     return;
@@ -345,29 +389,41 @@ export const submitScheduleDialog$ = command(async ({ get, set }) => {
 
   try {
     const fetchFn = get(fetch$);
-    const cronExpression = buildCronExpression({
-      timeOption,
-      hour,
-      minute,
-      dayOfWeek,
-      dayOfMonth,
-    });
     const timezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     // Use existing schedule name if editing, otherwise default to "default"
     const existingSchedule = get(internalAgentSchedule$);
     const scheduleName = existingSchedule?.name ?? "default";
 
+    // Build request body based on trigger type
+    const base = {
+      composeId: detail.id,
+      name: scheduleName,
+      timezone,
+      prompt: prompt.trim(),
+    };
+
+    const requestBody =
+      timeOption === "loop"
+        ? {
+            ...base,
+            intervalSeconds: Number.parseInt(intervalSecondsStr, 10) || 0,
+          }
+        : {
+            ...base,
+            cronExpression: buildCronExpression({
+              timeOption,
+              hour,
+              minute,
+              dayOfWeek,
+              dayOfMonth,
+            }),
+          };
+
     const response = await fetchFn("/api/agent/schedules", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        composeId: detail.id,
-        name: scheduleName,
-        cronExpression,
-        timezone,
-        prompt: prompt.trim(),
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
