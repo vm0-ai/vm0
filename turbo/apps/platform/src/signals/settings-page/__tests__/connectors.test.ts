@@ -90,6 +90,22 @@ describe("allConnectorTypes$", () => {
     expect(dropboxConnector).toBeUndefined();
   });
 
+  it("should hide deel connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { deelConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const deelConnector = types.find((t) => t.type === "deel");
+
+    expect(deelConnector).toBeUndefined();
+  });
+
   it("should hide figma connector when feature flag is disabled", async () => {
     const { store } = context;
 

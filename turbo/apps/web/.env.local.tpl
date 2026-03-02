@@ -46,6 +46,10 @@ NOTION_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/notion_oauth_client_se
 GOOGLE_OAUTH_CLIENT_ID=op://Development/vm0-env-local/GOOGLE_OAUTH_CLIENT_ID
 GOOGLE_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/GOOGLE_OAUTH_CLIENT_SECRET
 
+# Optional: Deel OAuth Connector
+DEEL_OAUTH_CLIENT_ID=op://Development/vm0-env-local/DEEL_OAUTH_CLIENT_ID
+DEEL_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/DEEL_OAUTH_CLIENT_SECRET
+
 # Optional: Dropbox OAuth Connector
 DROPBOX_OAUTH_CLIENT_ID=op://Development/vm0-env-local/DROPBOX_OAUTH_CLIENT_ID
 DROPBOX_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/DROPBOX_OAUTH_CLIENT_SECRET
