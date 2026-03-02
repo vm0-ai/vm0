@@ -25,7 +25,9 @@ export type SystemValidTag = (typeof SYSTEM_VALID_TAGS)[number];
  * Now that gh CLI is included in the base images, these aliases ensure
  * backward compatibility for already-stored compose versions.
  */
-const IMAGE_ALIASES: Record<string, string> = {
+type SystemImage = (typeof SYSTEM_IMAGES)[number];
+
+const IMAGE_ALIASES: Record<string, SystemImage> = {
   "claude-code-github": "claude-code",
   "codex-github": "codex",
 };
