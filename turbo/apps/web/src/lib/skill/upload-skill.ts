@@ -44,7 +44,9 @@ export async function uploadSkillFromGitHub(
 ): Promise<void> {
   const parsed = parseGitHubTreeUrl(skillUrl);
   if (!parsed) {
-    return; // Silently skip non-GitHub URLs
+    throw new Error(
+      `Invalid skill URL: ${skillUrl}. Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}`,
+    );
   }
 
   const storageName = getSkillStorageName(parsed.fullPath);

@@ -6,6 +6,7 @@
  */
 
 import type { ParsedGitHubTreeUrl } from "@vm0/core";
+import { env } from "../../env";
 
 /**
  * A downloaded file from GitHub.
@@ -93,9 +94,14 @@ async function listDirectoryRecursive(
   rootPath: string,
 ): Promise<FileEntry[]> {
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${dirPath}?ref=${branch}`;
-  const res = await fetch(apiUrl, {
-    headers: { Accept: "application/vnd.github.v3+json" },
-  });
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github.v3+json",
+  };
+  const token = env().GITHUB_TOKEN;
+  if (token) {
+    headers["Authorization"] = `token ${token}`;
+  }
+  const res = await fetch(apiUrl, { headers });
 
   if (!res.ok) {
     throw new Error(

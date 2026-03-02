@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../../src/mocks/server";
 import { POST } from "../route";
+import { GET } from "../[id]/route";
 import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { getSkillStorageName } from "@vm0/core";
@@ -214,7 +215,6 @@ describe("Skill Upload on Compose Save", () => {
     expect(response.status).toBe(201);
 
     // Fetch the compose to check the stored environment
-    const { GET } = await import("../[id]/route");
     const getRequest = createTestRequest(
       `http://localhost:3000/api/agent/composes/${data.composeId}`,
       { method: "GET" },
