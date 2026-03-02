@@ -17,7 +17,10 @@ import { SecretDialog } from "./secret-dialog.tsx";
 import { DeleteSecretDialog } from "./delete-secret-dialog.tsx";
 import { VariableDialog } from "./variable-dialog.tsx";
 import { DeleteVariableDialog } from "./delete-variable-dialog.tsx";
-import { SlackIntegrationCard } from "../integrations-page/integrations-page.tsx";
+import {
+  SlackIntegrationCard,
+  GitHubIntegrationCard,
+} from "../integrations-page/integrations-page.tsx";
 
 export function SettingsPage() {
   const tab = useGet(activeTab$);
@@ -70,7 +73,12 @@ export function SettingsPage() {
           </>
         )}
 
-        {tab === "integrations" && <SlackIntegrationCard />}
+        {tab === "integrations" && (
+          <div className="flex flex-col gap-4">
+            <SlackIntegrationCard />
+            <GitHubIntegrationCard />
+          </div>
+        )}
       </div>
     </AppShell>
   );

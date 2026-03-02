@@ -20,6 +20,7 @@ import { storages, storageVersions } from "../db/schema/storage";
 import { usageDaily } from "../db/schema/usage-daily";
 import { slackComposeRequests } from "../db/schema/slack-compose-request";
 import { slackInstallations } from "../db/schema/slack-installation";
+import { githubInstallations } from "../db/schema/github-installation";
 import { slackThreadSessions } from "../db/schema/slack-thread-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
@@ -2022,4 +2023,62 @@ export async function createScopedCompose(
     .returning();
 
   return { composeId: compose!.id, scopeId: scope!.id };
+}
+
+/**
+ * Insert a GitHub App installation record directly in the database.
+ *
+ * Direct DB insert is required because installations are created by the
+ * GitHub OAuth callback route, which requires real GitHub API interaction.
+ */
+export async function insertTestGitHubInstallation(
+  userId: string,
+  composeId: string,
+  installationId?: string,
+) {
+  const id = installationId ?? uniqueId("gh-install");
+  const encryptedToken = encryptCredentialValue(
+    "ghs_test_token",
+    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+  );
+
+  const [row] = await globalThis.services.db
+    .insert(githubInstallations)
+    .values({
+      userId,
+      installationId: id,
+      encryptedAccessToken: encryptedToken,
+      defaultComposeId: composeId,
+    })
+    .returning();
+
+  return row!;
+}
+
+/**
+ * Find GitHub installations by installation ID.
+ *
+ * Direct DB read is required because the GET endpoint filters by userId
+ * (authenticated user) and does not support querying by installation ID.
+ */
+export async function findTestGitHubInstallations(installationId: string) {
+  return globalThis.services.db
+    .select()
+    .from(githubInstallations)
+    .where(eq(githubInstallations.installationId, installationId));
+}
+
+/**
+ * Find a GitHub installation by its primary key.
+ *
+ * Direct DB read is required because the DELETE endpoint removes the record,
+ * and we need to verify deletion by checking the row no longer exists.
+ */
+export async function findTestGitHubInstallationById(id: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(githubInstallations)
+    .where(eq(githubInstallations.id, id))
+    .limit(1);
+  return row;
 }

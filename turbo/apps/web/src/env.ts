@@ -107,6 +107,11 @@ function initEnv() {
       // Garmin Connect OAuth (for connector)
       GARMIN_CONNECT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       GARMIN_CONNECT_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // GitHub App (for issue integration)
+      GITHUB_APP_ID: z.string().min(1).optional(),
+      GITHUB_APP_SLUG: z.string().min(1).optional(),
+      GITHUB_APP_PRIVATE_KEY: z.string().min(1).optional(), // Base64-encoded PEM private key
+      GITHUB_APP_WEBHOOK_SECRET: z.string().min(1).optional(),
       // ngrok (for computer connector)
       NGROK_API_KEY: z.string().min(1).optional(),
       NGROK_COMPUTER_CONNECTOR_DOMAIN: z.string().min(1).optional(),
@@ -209,6 +214,10 @@ function initEnv() {
         process.env.GARMIN_CONNECT_OAUTH_CLIENT_ID,
       GARMIN_CONNECT_OAUTH_CLIENT_SECRET:
         process.env.GARMIN_CONNECT_OAUTH_CLIENT_SECRET,
+      GITHUB_APP_ID: process.env.GITHUB_APP_ID,
+      GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
+      GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,
+      GITHUB_APP_WEBHOOK_SECRET: process.env.GITHUB_APP_WEBHOOK_SECRET,
       NGROK_API_KEY: process.env.NGROK_API_KEY,
       NGROK_COMPUTER_CONNECTOR_DOMAIN:
         process.env.NGROK_COMPUTER_CONNECTOR_DOMAIN,
