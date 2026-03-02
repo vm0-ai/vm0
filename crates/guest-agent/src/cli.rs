@@ -262,6 +262,7 @@ pub async fn execute_cli(
                 // the loop running so remaining buffered events are processed.
                 match status {
                     Ok(s) => {
+                        log_info!(LOG_TAG, "CLI process exited (status: {s}), draining stdout");
                         cli_status = Some(s);
                         drain_active = true;
                         drain_deadline.as_mut().reset(
@@ -312,14 +313,18 @@ pub async fn execute_cli(
     let exit_code = match status.code() {
         Some(code) => code,
         None => {
+            let mut code = 1;
             #[cfg(unix)]
             {
                 use std::os::unix::process::ExitStatusExt;
                 if let Some(sig) = status.signal() {
                     log_warn!(LOG_TAG, "Process killed by signal {sig}");
+                    // Map signal to 128+signal (same convention as bash/vsock-guest)
+                    // so the runner can detect OOM kills (SIGKILL=9 → exit 137).
+                    code = 128 + sig;
                 }
             }
-            1
+            code
         }
     };
 
