@@ -2,6 +2,7 @@ import type { ConnectorType } from "@vm0/core";
 
 import computerIcon from "./icons/computer.svg";
 import deelIcon from "./icons/deel.svg";
+import docusignIcon from "./icons/docusign.svg";
 import dropboxIcon from "./icons/dropbox.svg";
 import figmaIcon from "./icons/figma.svg";
 import githubIcon from "./icons/github.svg";
@@ -17,6 +18,7 @@ import slackIcon from "./icons/slack.svg";
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   computer: computerIcon,
   deel: deelIcon,
+  docusign: docusignIcon,
   dropbox: dropboxIcon,
   figma: figmaIcon,
   github: githubIcon,

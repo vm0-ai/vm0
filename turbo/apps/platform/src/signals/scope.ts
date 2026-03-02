@@ -17,7 +17,7 @@ const internalReloadScope$ = state(0);
 export interface Scope {
   id: string;
   slug: string;
-  type: "personal" | "organization" | "system";
+  type: "personal" | "organization";
   createdAt: string;
   updatedAt: string;
 }

@@ -75,10 +75,17 @@ function createWebhookRequest(body: string, headers?: Record<string, string>) {
   });
 }
 
+/** Extract the first emails.send call args (error reply email) */
+function getErrorReplyArgs() {
+  const call = mockResend.emails.send.mock.calls[0];
+  return call?.[0] as { from: string; to: string; subject: string } | undefined;
+}
+
 describe("POST /api/webhooks/email/inbound", () => {
   beforeEach(() => {
     context.setupMocks();
     mockClerk({ userId: null });
+    mockResend.emails.send.mockClear();
   });
 
   it("should return 401 when Svix headers are missing", async () => {
@@ -192,16 +199,17 @@ describe("POST /api/webhooks/email/inbound", () => {
     });
   });
 
-  it("should ignore emails with invalid HMAC reply token", async () => {
+  it("should send error reply for emails with invalid HMAC reply token", async () => {
     mockResend.emails.receiving.get.mockClear();
 
     // Send an inbound email with a reply+ address but a tampered HMAC
+    const senderEmail = "user@example.com";
     const payload = JSON.stringify({
       type: "email.received",
       data: {
         email_id: "tampered-email",
         to: ["reply+fake-session-id.badhmac0@vm7.bot"],
-        from: "user@example.com",
+        from: senderEmail,
         subject: "Re: test",
         created_at: new Date().toISOString(),
       },
@@ -217,9 +225,15 @@ describe("POST /api/webhooks/email/inbound", () => {
 
     // Handler should have returned early after HMAC verification failed
     expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
+
+    // Error reply should have been sent
+    expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+    const args = getErrorReplyArgs();
+    expect(args?.to).toBe(senderEmail);
+    expect(args?.subject).toBe("Re: test");
   });
 
-  it("should ignore emails with empty content after quote stripping", async () => {
+  it("should send error reply for emails with empty content after quote stripping", async () => {
     // Given a user with a compose and email thread session
     const user = await context.setupUser({ prefix: "empty-reply" });
     const { composeId } = await createTestCompose(uniqueId("empty-agent"));
@@ -235,9 +249,11 @@ describe("POST /api/webhooks/email/inbound", () => {
 
     mockClerk({ userId: null });
 
+    const senderEmail = "user@example.com";
+
     // Mock Resend to return empty text (e.g., email with only quoted content)
     mockReceivedEmailGet({
-      from: "user@example.com",
+      from: senderEmail,
       to: [`reply+${replyToken}@vm7.bot`],
       subject: "Re: test",
       text: "   ",
@@ -250,7 +266,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       data: {
         email_id: "empty-reply-email",
         to: [`reply+${replyToken}@vm7.bot`],
-        from: "user@example.com",
+        from: senderEmail,
         subject: "Re: test",
         created_at: new Date().toISOString(),
       },
@@ -265,10 +281,20 @@ describe("POST /api/webhooks/email/inbound", () => {
     // No run should have been created
     const runs = await findTestRunsByUserAndPrompt(user.userId, "   ");
     expect(runs).toHaveLength(0);
+
+    // Error reply should have been sent
+    expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+    expect(getErrorReplyArgs()?.to).toBe(senderEmail);
   });
 
-  it("should ignore emails without reply+ address", async () => {
+  // Note: "compose deleted" (inbound-reply.ts line 121-128) is unreachable in practice.
+  // email_thread_sessions.compose_id has onDelete: cascade, so deleting a compose
+  // also deletes all its thread sessions. The handler hits "session not found" first.
+
+  it("should send error reply for emails without reply+ address", async () => {
     mockResend.emails.receiving.get.mockClear();
+
+    const senderEmail = "user@example.com";
 
     // Send an inbound email that doesn't contain a reply+ address
     const payload = JSON.stringify({
@@ -276,7 +302,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       data: {
         email_id: "no-reply-email",
         to: ["someone@example.com"],
-        from: "user@example.com",
+        from: senderEmail,
         subject: "Hello",
         created_at: new Date().toISOString(),
       },
@@ -293,6 +319,10 @@ describe("POST /api/webhooks/email/inbound", () => {
 
     // The handler should have returned early — Resend receiving.get not called
     expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
+
+    // Error reply should have been sent
+    expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+    expect(getErrorReplyArgs()?.to).toBe(senderEmail);
   });
 
   describe("Email Trigger (scope+agent@domain)", () => {
@@ -366,7 +396,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       });
     });
 
-    it("should ignore trigger email from unregistered sender", async () => {
+    it("should send error reply for trigger email from unregistered sender", async () => {
       mockResend.emails.receiving.get.mockClear();
 
       // Mock Clerk to return user only for registered email
@@ -392,9 +422,15 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       // No email should have been fetched (early return)
       expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
+
+      // Error reply should have been sent
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      const args = getErrorReplyArgs();
+      expect(args?.to).toBe("unregistered@example.com");
+      expect(args?.subject).toBe("Re: Test");
     });
 
-    it("should ignore trigger email for non-existent agent", async () => {
+    it("should send error reply for trigger email to non-existent agent", async () => {
       mockResend.emails.receiving.get.mockClear();
 
       const senderEmail = "sender@example.com";
@@ -420,9 +456,57 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       // Resend should not have been called (early return after agent lookup failed)
       expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
+
+      // Error reply should have been sent
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      const args = getErrorReplyArgs();
+      expect(args?.to).toBe(senderEmail);
+      expect(args?.subject).toBe("Re: Test");
     });
 
-    it("should reject trigger email when DMARC fails", async () => {
+    it("should send error reply when user has no permission to access agent", async () => {
+      mockResend.emails.receiving.get.mockClear();
+
+      // Create a compose owned by user A
+      const ownerUser = await context.setupUser({ prefix: "perm-owner" });
+      const suffix = ownerUser.userId.slice("perm-owner-".length);
+      const scopeSlug = `scope-${suffix}`;
+      const agentName = uniqueId("perm-agent");
+      await createTestCompose(agentName);
+
+      // Mock Clerk to return a DIFFERENT user when looking up sender email.
+      // This user is not the compose owner, not in the scope, and has no ACL entry.
+      const senderEmail = "unauthorized@example.com";
+      mockClerk({ userId: "unauthorized-user-id", email: senderEmail });
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "no-perm-email",
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          from: senderEmail,
+          subject: "Forbidden",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // No email should have been fetched (early return after permission check)
+      expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
+
+      // Error reply should have been sent
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      const args = getErrorReplyArgs();
+      expect(args?.to).toBe(senderEmail);
+      expect(args?.subject).toBe("Re: Forbidden");
+    });
+
+    it("should send error reply when DMARC fails", async () => {
       const user = await context.setupUser({ prefix: "dmarc-fail" });
       const suffix = user.userId.slice("dmarc-fail-".length);
       const scopeSlug = `scope-${suffix}`;
@@ -468,9 +552,15 @@ describe("POST /api/webhooks/email/inbound", () => {
         "Spoofed email\n\nI am pretending to be someone else",
       );
       expect(runs).toHaveLength(0);
+
+      // Error reply should have been sent
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      const args = getErrorReplyArgs();
+      expect(args?.to).toBe(senderEmail);
+      expect(args?.subject).toBe("Re: Spoofed email");
     });
 
-    it("should reject trigger email when DMARC is none even if DKIM passes", async () => {
+    it("should send error reply when DMARC is none even if DKIM passes", async () => {
       const user = await context.setupUser({ prefix: "dkim-pass" });
       const suffix = user.userId.slice("dkim-pass-".length);
       const scopeSlug = `scope-${suffix}`;
@@ -516,9 +606,13 @@ describe("POST /api/webhooks/email/inbound", () => {
         "DKIM Only\n\nMy domain has no DMARC but DKIM is valid",
       );
       expect(runs).toHaveLength(0);
+
+      // Error reply should have been sent
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      expect(getErrorReplyArgs()?.to).toBe(senderEmail);
     });
 
-    it("should reject trigger email when authentication-results header is missing", async () => {
+    it("should send error reply when authentication-results header is missing", async () => {
       const user = await context.setupUser({ prefix: "no-auth" });
       const suffix = user.userId.slice("no-auth-".length);
       const scopeSlug = `scope-${suffix}`;
@@ -561,9 +655,13 @@ describe("POST /api/webhooks/email/inbound", () => {
         "No Auth Headers\n\nEmail without authentication results",
       );
       expect(runs).toHaveLength(0);
+
+      // Error reply should have been sent
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      expect(getErrorReplyArgs()?.to).toBe(senderEmail);
     });
 
-    it("should reject trigger email when all authentication methods fail", async () => {
+    it("should send error reply when all authentication methods fail", async () => {
       const user = await context.setupUser({ prefix: "all-fail" });
       const suffix = user.userId.slice("all-fail-".length);
       const scopeSlug = `scope-${suffix}`;
@@ -609,6 +707,57 @@ describe("POST /api/webhooks/email/inbound", () => {
         "All Fail\n\nEverything failed",
       );
       expect(runs).toHaveLength(0);
+
+      // Error reply should have been sent
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      expect(getErrorReplyArgs()?.to).toBe(senderEmail);
+    });
+
+    it("should send error reply when email body is empty", async () => {
+      const user = await context.setupUser({ prefix: "empty-trigger" });
+      const suffix = user.userId.slice("empty-trigger-".length);
+      const scopeSlug = `scope-${suffix}`;
+      const agentName = uniqueId("empty-body-agent");
+      await createTestCompose(agentName);
+
+      const senderEmail = "sender@example.com";
+      mockClerk({ userId: user.userId, email: senderEmail });
+
+      // Return an email with empty text and empty HTML, DMARC passes
+      mockReceivedEmailGet({
+        from: senderEmail,
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        subject: "",
+        text: "",
+        html: "",
+        headers: {
+          "authentication-results":
+            "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
+        },
+      });
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "empty-body-email",
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          from: senderEmail,
+          subject: "",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // Error reply should have been sent
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      const args = getErrorReplyArgs();
+      expect(args?.to).toBe(senderEmail);
+      expect(args?.subject).toBe("Email delivery failed");
     });
 
     it("should extract content from HTML when text is empty", async () => {
@@ -1355,16 +1504,17 @@ describe("POST /api/webhooks/email/inbound", () => {
       });
     });
 
-    it("should ignore agent-only email from unregistered sender", async () => {
+    it("should send error reply for agent-only email from unregistered sender", async () => {
       mockResend.emails.receiving.get.mockClear();
       mockClerk({ userId: "some-user-id", email: "registered@example.com" });
 
+      const senderEmail = "unregistered@example.com";
       const payload = JSON.stringify({
         type: "email.received",
         data: {
           email_id: "unreg-auto-email",
           to: ["someagent@vm7.bot"],
-          from: "unregistered@example.com",
+          from: senderEmail,
           subject: "Test",
           created_at: new Date().toISOString(),
         },
@@ -1377,9 +1527,13 @@ describe("POST /api/webhooks/email/inbound", () => {
       await context.mocks.flushAfter();
 
       expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
+
+      // Error reply should have been sent
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      expect(getErrorReplyArgs()?.to).toBe(senderEmail);
     });
 
-    it("should ignore agent-only email when sender has no scope", async () => {
+    it("should send error reply for agent-only email when sender has no scope", async () => {
       mockResend.emails.receiving.get.mockClear();
 
       // Mock Clerk to return a userId that has no scope in the database
@@ -1405,9 +1559,13 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       // No email fetch should have happened (early return after scope lookup failed)
       expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
+
+      // Error reply should have been sent
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      expect(getErrorReplyArgs()?.to).toBe(senderEmail);
     });
 
-    it("should ignore agent-only email for non-existent agent", async () => {
+    it("should send error reply for agent-only email to non-existent agent", async () => {
       mockResend.emails.receiving.get.mockClear();
 
       const user = await context.setupUser({ prefix: "no-agent" });
@@ -1433,9 +1591,13 @@ describe("POST /api/webhooks/email/inbound", () => {
       await context.mocks.flushAfter();
 
       expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
+
+      // Error reply should have been sent
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      expect(getErrorReplyArgs()?.to).toBe(senderEmail);
     });
 
-    it("should reject agent-only email when DMARC fails", async () => {
+    it("should send error reply for agent-only email when DMARC fails", async () => {
       const user = await context.setupUser({ prefix: "auto-dmarc" });
       const agentName = uniqueId("auto-dmarc-agent");
       await createTestCompose(agentName);
@@ -1479,6 +1641,84 @@ describe("POST /api/webhooks/email/inbound", () => {
         "Spoofed auto-scope\n\nI am pretending to be someone else",
       );
       expect(runs).toHaveLength(0);
+
+      // Error reply should have been sent
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      expect(getErrorReplyArgs()?.to).toBe(senderEmail);
     });
+  });
+
+  it("should send error reply when trigger address is not recognized", async () => {
+    mockResend.emails.receiving.get.mockClear();
+
+    // Send to an address with a + prefix that doesn't match scope+agent format
+    // and parseAgentOnlyAddress returns null because it contains a "+"
+    const senderEmail = "user@example.com";
+    const payload = JSON.stringify({
+      type: "email.received",
+      data: {
+        email_id: "bad-addr-email",
+        to: ["+invalid@vm7.bot"],
+        from: senderEmail,
+        subject: "Bad Address",
+        created_at: new Date().toISOString(),
+      },
+    });
+
+    const request = createWebhookRequest(payload);
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    await context.mocks.flushAfter();
+
+    // No email should have been fetched
+    expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
+
+    // Error reply should have been sent
+    expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+    const args = getErrorReplyArgs();
+    expect(args?.to).toBe(senderEmail);
+    expect(args?.subject).toBe("Re: Bad Address");
+  });
+
+  it("should send error reply when handler throws unexpected exception", async () => {
+    // Set up a valid trigger scenario so the handler proceeds past address parsing
+    const user = await context.setupUser({ prefix: "crash-user" });
+    const suffix = user.userId.slice("crash-user-".length);
+    const scopeSlug = `scope-${suffix}`;
+    const agentName = uniqueId("crash-agent");
+    await createTestCompose(agentName);
+
+    // Mock Clerk to return the user when looking up by email
+    const senderEmail = "crash-sender@example.com";
+    mockClerk({ userId: user.userId, email: senderEmail });
+
+    // Make getReceivedEmail throw an unexpected error
+    mockResend.emails.receiving.get.mockRejectedValueOnce(
+      new Error("Resend API unavailable"),
+    );
+
+    const payload = JSON.stringify({
+      type: "email.received",
+      data: {
+        email_id: "crash-email-123",
+        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        from: senderEmail,
+        subject: "Test crash",
+        created_at: new Date().toISOString(),
+      },
+    });
+
+    const request = createWebhookRequest(payload);
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    await context.mocks.flushAfter();
+
+    // The route catch block should have sent an error reply
+    expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+    const args = getErrorReplyArgs();
+    expect(args?.to).toBe(senderEmail);
+    expect(args?.subject).toBe("Re: Test crash");
   });
 });

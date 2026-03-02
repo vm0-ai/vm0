@@ -73,9 +73,9 @@ function mockLogsAPI(options?: {
   server.use(
     http.get("/api/platform/logs", ({ request }) => {
       const url = new URL(request.url);
-      const queryAgent = url.searchParams.get("agent");
+      const queryName = url.searchParams.get("name");
 
-      if (queryAgent !== agentName) {
+      if (queryName !== agentName) {
         return HttpResponse.json({
           data: [],
           pagination: { hasMore: false, nextCursor: null, totalPages: 1 },

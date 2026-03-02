@@ -5,6 +5,14 @@ import { agentComposes } from "../../../db/schema/agent-compose";
 import { scopes } from "../../../db/schema/scope";
 import { env } from "../../../env";
 import { getPlatformUrl } from "../../url";
+import { sendEmail } from "../client";
+import { InboundErrorEmail } from "../templates/inbound-error";
+
+// ============================================================================
+// Handler Result Type
+// ============================================================================
+
+export type HandlerResult = { ok: true } | { ok: false; errorMessage: string };
 
 // ============================================================================
 // Email Address Parsing
@@ -203,6 +211,37 @@ export function buildFromAddress(localPart: string): string {
 export function buildLogsUrl(runId: string): string {
   return `${getPlatformUrl()}/logs/${runId}`;
 }
+
+// ============================================================================
+// Error Reply
+// ============================================================================
+
+/**
+ * Send an error reply email to the sender when inbound processing fails.
+ * No-ops when Resend is not configured.
+ */
+export async function sendInboundErrorReply(opts: {
+  to: string;
+  subject: string;
+  errorMessage: string;
+}): Promise<void> {
+  if (!env().RESEND_API_KEY) return;
+
+  const reSubject = opts.subject
+    ? `Re: ${opts.subject.replace(/^Re:\s*/i, "")}`
+    : "Email delivery failed";
+
+  await sendEmail({
+    from: buildFromAddress("vm0"),
+    to: opts.to,
+    subject: reSubject,
+    react: InboundErrorEmail({ errorMessage: opts.errorMessage }),
+  });
+}
+
+// ============================================================================
+// Email Thread Session
+// ============================================================================
 
 /**
  * Look up an email thread session by its reply-to token.

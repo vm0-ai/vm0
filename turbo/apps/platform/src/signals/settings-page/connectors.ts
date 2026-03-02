@@ -41,6 +41,7 @@ const CONNECTOR_FEATURE_FLAGS = Object.freeze<
 >({
   computer: FeatureSwitchKey.ComputerConnector,
   deel: FeatureSwitchKey.DeelConnector,
+  docusign: FeatureSwitchKey.DocuSignConnector,
   dropbox: FeatureSwitchKey.DropboxConnector,
   figma: FeatureSwitchKey.FigmaConnector,
   gmail: FeatureSwitchKey.GmailConnector,

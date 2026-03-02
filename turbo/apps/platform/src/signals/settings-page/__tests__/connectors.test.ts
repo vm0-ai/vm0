@@ -74,6 +74,22 @@ describe("allConnectorTypes$", () => {
     expect(computerConnector).toBeUndefined();
   });
 
+  it("should hide docusign connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { docusignConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const docusignConnector = types.find((t) => t.type === "docusign");
+
+    expect(docusignConnector).toBeUndefined();
+  });
+
   it("should hide dropbox connector when feature flag is disabled", async () => {
     const { store } = context;
 

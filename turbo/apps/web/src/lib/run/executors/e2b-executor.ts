@@ -1,8 +1,8 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import { env } from "../../../env";
 import { e2bConfig } from "../../e2b/config";
-import { resolveImageAlias } from "../../image/image-service";
 import { badRequest } from "../../errors";
+import { resolveSystemImageToE2b } from "@vm0/core";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
 import type { PreparedArtifact, StorageManifest } from "../../storage/types";
 import {
@@ -120,7 +120,7 @@ export async function executeE2bRun(
     // Create sandbox
     currentStep = "vm_create";
     sandbox = await withSandboxMetrics("vm_create", () =>
-      createSandbox(sandboxEnvVars, agentComposeYaml, context.userId),
+      createSandbox(sandboxEnvVars, agentComposeYaml),
     );
     log.debug(`Sandbox created: ${sandbox.sandboxId}`);
 
@@ -326,7 +326,6 @@ function buildSandboxEnvVars(
 async function createSandbox(
   envVars: Record<string, string>,
   agentCompose: AgentComposeYaml | undefined,
-  userId: string,
 ): Promise<Sandbox> {
   const isVercelProduction = env().VERCEL_ENV === "production";
   const timeoutMs = isVercelProduction ? 7_200_000 : 3_600_000;
@@ -340,16 +339,46 @@ async function createSandbox(
     );
   }
 
-  const resolved = await resolveImageAlias(userId, imageAlias);
+  const templateName = resolveTemplateName(imageAlias);
 
-  log.debug(`Using template: ${resolved.templateName}`);
+  log.debug(`Using template: ${templateName}`);
 
-  const sandbox = await Sandbox.create(resolved.templateName, {
+  const sandbox = await Sandbox.create(templateName, {
     timeoutMs,
     envs: envVars,
   });
 
   return sandbox;
+}
+
+/**
+ * Resolve an image alias to an E2B template name.
+ *
+ * Supported formats:
+ * - Legacy vm0-* prefix: passthrough directly (e.g. "vm0-claude-code")
+ * - vm0/name[:tag] format: system image mapping (e.g. "vm0/claude-code" → "vm0-claude-code")
+ */
+function resolveTemplateName(imageAlias: string): string {
+  // Legacy vm0-* format: passthrough directly
+  if (imageAlias.startsWith("vm0-")) {
+    return imageAlias;
+  }
+
+  // TODO: "vm0" is hardcoded as the system scope slug. This should be configurable.
+  // System image format: vm0/name[:tag]
+  if (imageAlias.startsWith("vm0/")) {
+    const afterSlash = imageAlias.slice(4);
+    const colonIndex = afterSlash.indexOf(":");
+    const name =
+      colonIndex !== -1 ? afterSlash.slice(0, colonIndex) : afterSlash;
+    const tag =
+      colonIndex !== -1 ? afterSlash.slice(colonIndex + 1) : undefined;
+    const { e2bTemplate } = resolveSystemImageToE2b(name, tag);
+    return e2bTemplate;
+  }
+
+  // Unrecognized format — pass through as-is (framework config already resolves to vm0/* format)
+  return imageAlias;
 }
 
 /**
