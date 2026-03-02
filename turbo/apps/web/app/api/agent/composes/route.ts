@@ -28,6 +28,7 @@ import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
 import { getInstructionsStorageName } from "@vm0/core";
+import { uploadSkillFromGitHub } from "../../../../src/lib/skill/upload-skill";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 
 /**
@@ -47,6 +48,22 @@ async function resolveSkillEnvVars(
   if (Object.keys(environment).length > 0) {
     agent.environment = environment;
   }
+}
+
+/**
+ * Download skill files from GitHub and upload them to storage.
+ * Runs in parallel for all skills; skips if already uploaded.
+ */
+async function uploadSkills(
+  agent: AgentComposeYaml["agents"][string],
+  ctx: { userId: string; scopeId: string; scopeSlug: string },
+): Promise<void> {
+  if (!agent?.skills || agent.skills.length === 0) {
+    return;
+  }
+  await Promise.all(
+    agent.skills.map((skillUrl) => uploadSkillFromGitHub(skillUrl, ctx)),
+  );
 }
 
 const router = tsr.router(composesMainContract, {
@@ -302,6 +319,13 @@ const router = tsr.router(composesMainContract, {
         },
       };
     }
+
+    // Download skill files from GitHub and upload to storage
+    await uploadSkills(agent, {
+      userId,
+      scopeId: userScope.id,
+      scopeSlug: userScope.slug,
+    });
 
     // Check compose and version existence in parallel
     const [existingComposes, existingVersions] = await Promise.all([
