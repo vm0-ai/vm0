@@ -1,7 +1,24 @@
 import { z } from "zod";
 import { initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { listQuerySchema } from "./public/common";
+
+/**
+ * Cursor-based pagination schema
+ */
+export const paginationSchema = z.object({
+  hasMore: z.boolean(),
+  nextCursor: z.string().nullable(),
+});
+
+export type Pagination = z.infer<typeof paginationSchema>;
+
+/**
+ * Common query parameters for list endpoints
+ */
+const listQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().min(1).max(100).default(20),
+});
 
 const c = initContract();
 
@@ -157,9 +174,6 @@ export {
   artifactDownloadResponseSchema,
 };
 
-// Re-export pagination schema from common
-export { paginationSchema } from "./public/common";
-
 // Inferred type exports
 export type PlatformLogStatus = z.infer<typeof platformLogStatusSchema>;
 export type PlatformLogEntry = z.infer<typeof platformLogEntrySchema>;
@@ -171,6 +185,3 @@ export type PlatformLogDetail = z.infer<typeof platformLogDetailSchema>;
 export type ArtifactDownloadResponse = z.infer<
   typeof artifactDownloadResponseSchema
 >;
-
-// Re-export Pagination type from common
-export type { Pagination } from "./public/common";

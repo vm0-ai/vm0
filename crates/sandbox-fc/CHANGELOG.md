@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.6.6...sandbox-fc-v0.6.7) (2026-03-02)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** use full cli invocation for snapshot pre-warm ([#3395](https://github.com/vm0-ai/vm0/issues/3395)) ([318deaa](https://github.com/vm0-ai/vm0/commit/318deaa20216059e92c1702a10ef0203c98af00e))
+
 ## [0.6.6](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.6.5...sandbox-fc-v0.6.6) (2026-03-01)
 
 

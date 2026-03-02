@@ -45,8 +45,8 @@ export const allConnectorTypes$ = computed(async (get) => {
       ) {
         return false;
       }
-      // Filter linear connector based on feature flag
-      if (type === "linear" && !features?.[FeatureSwitchKey.LinearConnector]) {
+      // Filter deel connector based on feature flag
+      if (type === "deel" && !features?.[FeatureSwitchKey.DeelConnector]) {
         return false;
       }
       // Filter dropbox connector based on feature flag
@@ -58,6 +58,10 @@ export const allConnectorTypes$ = computed(async (get) => {
       }
       // Filter figma connector based on feature flag
       if (type === "figma" && !features?.[FeatureSwitchKey.FigmaConnector]) {
+        return false;
+      }
+      // Filter gmail connector based on feature flag
+      if (type === "gmail" && !features?.[FeatureSwitchKey.GmailConnector]) {
         return false;
       }
       // Filter google-sheets connector based on feature flag
