@@ -309,6 +309,15 @@ describe("createRun()", () => {
     });
   });
 
+  describe("Memory", () => {
+    it("should accept memoryName and dispatch successfully", async () => {
+      const result = await createRun(baseParams({ memoryName: "my-memory" }));
+
+      expect(result.runId).toBeDefined();
+      expect(result.status).toBe("running");
+    });
+  });
+
   describe("Auto-Create Artifact", () => {
     it("should succeed when artifact does not exist (auto-create)", async () => {
       const artifactName = uniqueId("new-art");
