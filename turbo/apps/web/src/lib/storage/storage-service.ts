@@ -98,7 +98,7 @@ export async function ensureArtifactExists(
   const storageId = storage.id;
   try {
     const versionId = computeContentHashFromHashes(storageId, []);
-    const s3Key = `${scopeSlug}/artifact/${artifactName}/${versionId}`;
+    const s3Key = `${storage.s3Prefix}/${versionId}`;
     const manifestKey = `${s3Key}/manifest.json`;
     const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
 
