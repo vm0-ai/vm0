@@ -4,6 +4,7 @@ import { z } from "zod";
 /**
  * Whether Clerk authentication is configured.
  *
+ *
  * Derived from the presence of NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY.
  * When false, the app falls back to single-user local auth.
  *
