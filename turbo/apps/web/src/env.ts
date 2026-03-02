@@ -91,6 +91,12 @@ function initEnv() {
       // Figma OAuth (for connector)
       FIGMA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       FIGMA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Strava OAuth (for connector)
+      STRAVA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      STRAVA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Garmin Connect OAuth (for connector)
+      GARMIN_CONNECT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      GARMIN_CONNECT_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // ngrok (for computer connector)
       NGROK_API_KEY: z.string().min(1).optional(),
       NGROK_COMPUTER_CONNECTOR_DOMAIN: z.string().min(1).optional(),
@@ -180,6 +186,12 @@ function initEnv() {
       LINEAR_OAUTH_CLIENT_SECRET: process.env.LINEAR_OAUTH_CLIENT_SECRET,
       FIGMA_OAUTH_CLIENT_ID: process.env.FIGMA_OAUTH_CLIENT_ID,
       FIGMA_OAUTH_CLIENT_SECRET: process.env.FIGMA_OAUTH_CLIENT_SECRET,
+      STRAVA_OAUTH_CLIENT_ID: process.env.STRAVA_OAUTH_CLIENT_ID,
+      STRAVA_OAUTH_CLIENT_SECRET: process.env.STRAVA_OAUTH_CLIENT_SECRET,
+      GARMIN_CONNECT_OAUTH_CLIENT_ID:
+        process.env.GARMIN_CONNECT_OAUTH_CLIENT_ID,
+      GARMIN_CONNECT_OAUTH_CLIENT_SECRET:
+        process.env.GARMIN_CONNECT_OAUTH_CLIENT_SECRET,
       NGROK_API_KEY: process.env.NGROK_API_KEY,
       NGROK_COMPUTER_CONNECTOR_DOMAIN:
         process.env.NGROK_COMPUTER_CONNECTOR_DOMAIN,

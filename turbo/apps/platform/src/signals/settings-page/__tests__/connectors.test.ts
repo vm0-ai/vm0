@@ -121,6 +121,38 @@ describe("allConnectorTypes$", () => {
 
     expect(figmaConnector).toBeUndefined();
   });
+
+  it("should hide strava connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { stravaConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const stravaConnector = types.find((t) => t.type === "strava");
+
+    expect(stravaConnector).toBeUndefined();
+  });
+
+  it("should hide garmin-connect connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { garminConnectConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const garminConnector = types.find((t) => t.type === "garmin-connect");
+
+    expect(garminConnector).toBeUndefined();
+  });
 });
 
 describe("disconnect dialog", () => {

@@ -280,6 +280,66 @@ export const CONNECTOR_TYPES = {
       scopes: ["files:read"],
     } as ConnectorOAuthConfig,
   },
+  strava: {
+    label: "Strava",
+    helpText:
+      "Connect your Strava account to access activities and athlete data",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Strava to grant access.",
+        secrets: {
+          STRAVA_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          STRAVA_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      STRAVA_TOKEN: "$secrets.STRAVA_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://www.strava.com/oauth/authorize",
+      tokenUrl: "https://www.strava.com/oauth/token",
+      scopes: ["read", "activity:read_all"],
+    } as ConnectorOAuthConfig,
+  },
+  "garmin-connect": {
+    label: "Garmin Connect",
+    helpText:
+      "Connect your Garmin Connect account to access wellness and activity data",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Garmin Connect to grant access.",
+        secrets: {
+          GARMIN_CONNECT_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          GARMIN_CONNECT_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      GARMIN_CONNECT_TOKEN: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://connect.garmin.com/oauth2Confirm",
+      tokenUrl: "https://diauth.garmin.com/di-oauth2-service/oauth/token",
+      scopes: [],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -293,6 +353,8 @@ export const connectorTypeSchema = z.enum([
   "dropbox",
   "linear",
   "figma",
+  "strava",
+  "garmin-connect",
 ]);
 
 /**

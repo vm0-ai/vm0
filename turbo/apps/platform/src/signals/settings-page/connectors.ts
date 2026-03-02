@@ -36,32 +36,20 @@ export const allConnectorTypes$ = computed(async (get) => {
   const connectorMap = new Map(connectors.map((c) => [c.type, c]));
   const features = await get(featureSwitch$);
 
+  const featureFlags: Partial<Record<ConnectorType, FeatureSwitchKey>> = {
+    computer: FeatureSwitchKey.ComputerConnector,
+    linear: FeatureSwitchKey.LinearConnector,
+    dropbox: FeatureSwitchKey.DropboxConnector,
+    figma: FeatureSwitchKey.FigmaConnector,
+    gmail: FeatureSwitchKey.GmailConnector,
+    strava: FeatureSwitchKey.StravaConnector,
+    "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
+  };
+
   return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
-      // Filter computer connector based on feature flag
-      if (
-        type === "computer" &&
-        !features?.[FeatureSwitchKey.ComputerConnector]
-      ) {
-        return false;
-      }
-      // Filter linear connector based on feature flag
-      if (type === "linear" && !features?.[FeatureSwitchKey.LinearConnector]) {
-        return false;
-      }
-      // Filter dropbox connector based on feature flag
-      if (
-        type === "dropbox" &&
-        !features?.[FeatureSwitchKey.DropboxConnector]
-      ) {
-        return false;
-      }
-      // Filter figma connector based on feature flag
-      if (type === "figma" && !features?.[FeatureSwitchKey.FigmaConnector]) {
-        return false;
-      }
-      // Filter gmail connector based on feature flag
-      if (type === "gmail" && !features?.[FeatureSwitchKey.GmailConnector]) {
+      const flagKey = featureFlags[type];
+      if (flagKey && !features?.[flagKey]) {
         return false;
       }
       return true;

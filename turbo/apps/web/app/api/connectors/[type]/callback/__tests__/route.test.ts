@@ -29,6 +29,11 @@ const SLACK_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_USER_INFO_URL = "https://slack.com/api/users.info";
 const FIGMA_TOKEN_URL = "https://api.figma.com/v1/oauth/token";
 const FIGMA_ME_URL = "https://api.figma.com/v1/me";
+const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
+const STRAVA_ATHLETE_URL = "https://www.strava.com/api/v3/athlete";
+const GARMIN_TOKEN_URL =
+  "https://diauth.garmin.com/di-oauth2-service/oauth/token";
+const GARMIN_USER_ID_URL = "https://apis.garmin.com/wellness-api/rest/user/id";
 
 /**
  * Create MSW handlers for GitHub OAuth API
@@ -248,6 +253,106 @@ function createFigmaOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for Strava OAuth API
+ */
+function createStravaOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  athleteId?: number;
+  firstName?: string | null;
+  lastName?: string | null;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(STRAVA_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json(
+          { error: "invalid_grant", error_description: options.tokenError },
+          { status: 400 },
+        );
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "strava-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "strava-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "Bearer",
+        athlete: {
+          id: options.athleteId ?? 12345678,
+          firstname:
+            options.firstName !== undefined ? options.firstName : "Strava",
+          lastname:
+            options.lastName !== undefined ? options.lastName : "Athlete",
+        },
+      });
+    }),
+    userInfo: http.get(STRAVA_ATHLETE_URL, () => {
+      if (options.userError) {
+        return HttpResponse.json(
+          { message: "Authorization Error" },
+          { status: 401 },
+        );
+      }
+      return HttpResponse.json({
+        id: options.athleteId ?? 12345678,
+        firstname:
+          options.firstName !== undefined ? options.firstName : "Strava",
+        lastname: options.lastName !== undefined ? options.lastName : "Athlete",
+      });
+    }),
+  });
+}
+
+/**
+ * Create MSW handlers for Garmin Connect OAuth API
+ */
+function createGarminConnectOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  displayName?: string | null;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(GARMIN_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json(
+          { error: "invalid_grant", error_description: options.tokenError },
+          { status: 400 },
+        );
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "garmin-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "garmin-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "Bearer",
+      });
+    }),
+    userInfo: http.get(GARMIN_USER_ID_URL, () => {
+      if (options.userError) {
+        return HttpResponse.json({ message: "Unauthorized" }, { status: 401 });
+      }
+      return HttpResponse.json({
+        userId: options.userId ?? "garmin-user-123",
+        displayName:
+          options.displayName !== undefined
+            ? options.displayName
+            : "Garmin User",
+      });
+    }),
+  });
+}
+
+/**
  * Create MSW handlers for Linear OAuth API
  */
 function createLinearOAuthMock(options: {
@@ -351,6 +456,13 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("LINEAR_OAUTH_CLIENT_SECRET", "linear-test-client-secret");
     vi.stubEnv("FIGMA_OAUTH_CLIENT_ID", "figma-test-client-id");
     vi.stubEnv("FIGMA_OAUTH_CLIENT_SECRET", "figma-test-client-secret");
+    vi.stubEnv("STRAVA_OAUTH_CLIENT_ID", "strava-test-client-id");
+    vi.stubEnv("STRAVA_OAUTH_CLIENT_SECRET", "strava-test-client-secret");
+    vi.stubEnv("GARMIN_CONNECT_OAUTH_CLIENT_ID", "garmin-test-client-id");
+    vi.stubEnv(
+      "GARMIN_CONNECT_OAUTH_CLIENT_SECRET",
+      "garmin-test-client-secret",
+    );
     reloadEnv();
   });
 
@@ -1387,6 +1499,310 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       });
       const response = await GET(request, {
         params: Promise.resolve({ type: "figma" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Strava OAuth Flow", () => {
+    it("should store Strava connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createStravaOAuthMock({
+        accessToken: "strava-access-token",
+        refreshToken: "strava-refresh-token",
+        athleteId: 87654321,
+        firstName: "Strava",
+        lastName: "Runner",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "strava",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "strava" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=strava");
+      expect(location).toContain("username=Strava+Runner");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/strava",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("strava");
+      expect(connector.externalUsername).toBe("Strava Runner");
+      expect(connector.externalId).toBe("87654321");
+    });
+
+    it("should redirect with error when Strava token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createStravaOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "strava",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "strava" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Strava returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createStravaOAuthMock({
+        accessToken: "strava-access-token",
+        refreshToken: "strava-refresh-token-stored",
+        athleteId: 87654321,
+        firstName: "Strava",
+        lastName: "Runner",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "strava",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "strava" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "STRAVA_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("strava-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Strava returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 21600;
+      const { handlers: mswHandlers } = createStravaOAuthMock({
+        accessToken: "strava-access-token",
+        refreshToken: "strava-refresh-token",
+        expiresIn,
+        athleteId: 87654321,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "strava",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "strava" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "strava",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Strava athlete info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createStravaOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "strava",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "strava" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Garmin Connect OAuth Flow", () => {
+    it("should store Garmin Connect connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGarminConnectOAuthMock({
+        accessToken: "garmin-access-token",
+        refreshToken: "garmin-refresh-token",
+        userId: "garmin-user-456",
+        displayName: "Garmin User",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "garmin-connect",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "garmin-connect" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=garmin-connect");
+      expect(location).toContain("username=Garmin+User");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/garmin-connect",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("garmin-connect");
+      expect(connector.externalUsername).toBe("Garmin User");
+      expect(connector.externalId).toBe("garmin-user-456");
+    });
+
+    it("should redirect with error when Garmin Connect token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGarminConnectOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "garmin-connect",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "garmin-connect" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Garmin Connect returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createGarminConnectOAuthMock({
+        accessToken: "garmin-access-token",
+        refreshToken: "garmin-refresh-token-stored",
+        userId: "garmin-user-456",
+        displayName: "Garmin User",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "garmin-connect",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "garmin-connect" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "GARMIN_CONNECT_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("garmin-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Garmin Connect returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 7776000;
+      const { handlers: mswHandlers } = createGarminConnectOAuthMock({
+        accessToken: "garmin-access-token",
+        refreshToken: "garmin-refresh-token",
+        expiresIn,
+        userId: "garmin-user-exp",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "garmin-connect",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "garmin-connect" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "garmin-connect",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Garmin Connect user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGarminConnectOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "garmin-connect",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "garmin-connect" }),
       });
 
       expect(response.status).toBe(307);
