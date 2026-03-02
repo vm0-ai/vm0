@@ -305,6 +305,9 @@ export interface CreateRunParams {
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
   apiStartTime?: number;
+  // Caller-resolved scope ID for variable resolution (org-aware).
+  // When provided, used instead of getUserScopeByClerkId fallback.
+  scopeId?: string;
 }
 
 export interface CreateRunResult {
@@ -385,6 +388,7 @@ async function validateComposeRequirements(
   composeContent: AgentComposeYaml,
   vars?: Record<string, string>,
   checkEnv?: boolean,
+  scopeId?: string,
 ): Promise<void> {
   if (!composeContent?.agents) {
     return;
@@ -394,8 +398,11 @@ async function validateComposeRequirements(
   if (checkEnv) {
     const requiredVars = extractTemplateVars(composeContent);
     if (requiredVars.length > 0) {
-      const scope = await getUserScopeByClerkId(userId);
-      const storedVars = scope ? await getVariableValues(scope.id) : {};
+      const resolvedScopeId =
+        scopeId ?? (await getUserScopeByClerkId(userId))?.id;
+      const storedVars = resolvedScopeId
+        ? await getVariableValues(resolvedScopeId)
+        : {};
       const allVars = { ...storedVars, ...vars };
       const missingVars = requiredVars.filter(
         (varName) => allVars[varName] === undefined,
@@ -515,6 +522,7 @@ export async function createRun(
       composeContent,
       params.vars,
       params.checkEnv,
+      params.scopeId,
     );
   }
 
@@ -580,6 +588,7 @@ export async function createRun(
       modelProvider: params.modelProvider,
       checkEnv: params.checkEnv,
       apiStartTime: params.apiStartTime,
+      scopeId: params.scopeId,
     });
 
     // Step 10: Dispatch to executor
