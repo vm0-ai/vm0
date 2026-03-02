@@ -117,4 +117,5 @@ export interface ManifestArtifact {
 export interface StorageManifest {
   storages: ManifestStorage[];
   artifact: ManifestArtifact | null;
+  memory: ManifestArtifact | null;
 }

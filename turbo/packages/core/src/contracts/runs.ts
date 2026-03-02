@@ -38,6 +38,7 @@ const unifiedRunRequestSchema = z.object({
   vars: z.record(z.string(), z.string()).optional(),
   secrets: z.record(z.string(), z.string()).optional(),
   volumeVersions: z.record(z.string(), z.string()).optional(),
+  memoryName: z.string().optional(),
 
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
@@ -106,6 +107,7 @@ const runResultSchema = z.object({
   conversationId: z.string(),
   artifact: z.record(z.string(), z.string()).optional(), // optional when run has no artifact
   volumes: z.record(z.string(), z.string()).optional(),
+  memory: z.record(z.string(), z.string()).optional(),
 });
 
 /**

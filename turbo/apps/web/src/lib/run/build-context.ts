@@ -644,6 +644,7 @@ interface BuildContextParams {
   conversationId?: string;
   artifactName?: string;
   artifactVersion?: string;
+  memoryName?: string;
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   volumeVersions?: Record<string, string>;
@@ -996,6 +997,7 @@ export async function buildExecutionContext(
       sandboxToken: params.sandboxToken,
       artifactName,
       artifactVersion,
+      memoryName: params.memoryName,
       volumeVersions,
       environment,
       userTimezone,

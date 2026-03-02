@@ -232,6 +232,7 @@ async function resolveVersion(
  * @param volumeVersionOverrides - Optional volume version overrides
  * @param resumeArtifact - Optional artifact snapshot for resume (overrides artifactName/artifactVersion)
  * @param resumeArtifactMountPath - Mount path for resume artifact
+ * @param memoryName - Optional memory storage name (mounted at /home/user/.vm0/memory)
  * @returns Storage manifest with presigned URLs
  */
 export async function prepareStorageManifest(
@@ -244,6 +245,7 @@ export async function prepareStorageManifest(
   volumeVersionOverrides?: Record<string, string>,
   resumeArtifact?: { artifactName: string; artifactVersion: string },
   resumeArtifactMountPath?: string,
+  memoryName?: string,
 ): Promise<StorageManifest> {
   log.debug("Preparing storage manifest with presigned URLs...");
 
@@ -256,9 +258,9 @@ export async function prepareStorageManifest(
   // Skip artifact in resolveVolumes if we're using resumeArtifact (we'll handle it separately)
   const skipArtifact = !!resumeArtifact;
 
-  // If no agent config and no resume artifact, return empty manifest
-  if (!agentConfig && !resumeArtifact) {
-    return { storages: [], artifact: null };
+  // If no agent config and no resume artifact and no memory, return empty manifest
+  if (!agentConfig && !resumeArtifact && !memoryName) {
+    return { storages: [], artifact: null, memory: null };
   }
 
   // Resolve volumes from agent config
@@ -380,10 +382,46 @@ export async function prepareStorageManifest(
       })()
     : Promise.resolve(null);
 
+  // Resolve memory artifact (uses runner's scope, same as artifact)
+  // Memory is mounted at a fixed path: /home/user/.vm0/memory
+  const memoryPromise = memoryName
+    ? (async (): Promise<ManifestArtifact | null> => {
+        try {
+          const { versionId, s3Key } = await resolveVersion(
+            artifactScopeId,
+            memoryName,
+            "artifact",
+            "latest",
+          );
+
+          const archiveKey = `${s3Key}/archive.tar.gz`;
+          const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
+
+          const memoryArtifact: ManifestArtifact = {
+            mountPath: "/home/user/.vm0/memory",
+            vasStorageName: memoryName,
+            vasVersionId: versionId,
+            archiveUrl,
+          };
+
+          log.debug(`Generated archive URL for memory "${memoryName}"`);
+          return memoryArtifact;
+        } catch (error) {
+          // First run: memory storage doesn't exist yet, gracefully return null
+          if (error instanceof Error && error.message.includes("not found")) {
+            log.debug(`Memory "${memoryName}" not found (first run), skipping`);
+            return null;
+          }
+          throw error;
+        }
+      })()
+    : Promise.resolve(null);
+
   // Wait for all URL generation to complete in parallel
-  const [storageResults, artifact] = await Promise.all([
+  const [storageResults, artifact, memory] = await Promise.all([
     Promise.all(volumePromises),
     artifactPromise,
+    memoryPromise,
   ]);
 
   // Filter out null results (skipped optional volumes)
@@ -392,11 +430,12 @@ export async function prepareStorageManifest(
   );
 
   log.debug(
-    `Storage manifest prepared: ${filteredStorages.length} storages, ${artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared: ${filteredStorages.length} storages, ${artifact ? "1 artifact" : "no artifact"}, ${memory ? "1 memory" : "no memory"}`,
   );
 
   return {
     storages: filteredStorages,
     artifact,
+    memory,
   };
 }

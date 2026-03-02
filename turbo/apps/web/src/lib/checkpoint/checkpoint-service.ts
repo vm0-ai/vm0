@@ -139,6 +139,9 @@ export async function createCheckpoint(
         artifactSnapshot: request.artifactSnapshot
           ? (request.artifactSnapshot as unknown as Record<string, unknown>)
           : null,
+        memorySnapshot: request.memorySnapshot
+          ? (request.memorySnapshot as unknown as Record<string, unknown>)
+          : null,
         volumeVersionsSnapshot: request.volumeVersionsSnapshot
           ? (request.volumeVersionsSnapshot as unknown as Record<
               string,
@@ -162,6 +165,9 @@ export async function createCheckpoint(
         >,
         artifactSnapshot: request.artifactSnapshot
           ? (request.artifactSnapshot as unknown as Record<string, unknown>)
+          : null,
+        memorySnapshot: request.memorySnapshot
+          ? (request.memorySnapshot as unknown as Record<string, unknown>)
           : null,
         volumeVersionsSnapshot: request.volumeVersionsSnapshot
           ? (request.volumeVersionsSnapshot as unknown as Record<

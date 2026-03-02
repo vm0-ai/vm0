@@ -272,6 +272,20 @@ async function buildSandboxEnvVars(
     sandboxEnvVars.VM0_ARTIFACT_VERSION_ID = artifactForCommand.vasVersionId;
   }
 
+  // Add memory information for checkpoint
+  if (context.storageManifest?.memory) {
+    const memory = context.storageManifest.memory;
+    sandboxEnvVars.VM0_MEMORY_DRIVER = "vas";
+    sandboxEnvVars.VM0_MEMORY_MOUNT_PATH = memory.mountPath;
+    sandboxEnvVars.VM0_MEMORY_VOLUME_NAME = memory.vasStorageName;
+    sandboxEnvVars.VM0_MEMORY_VERSION_ID = memory.vasVersionId;
+  } else if (context.memoryName) {
+    // First run: memory doesn't exist yet, but we still need env vars for upload
+    sandboxEnvVars.VM0_MEMORY_DRIVER = "vas";
+    sandboxEnvVars.VM0_MEMORY_MOUNT_PATH = "/home/user/.vm0/memory";
+    sandboxEnvVars.VM0_MEMORY_VOLUME_NAME = context.memoryName;
+  }
+
   // Inject user timezone as TZ environment variable (if not already set in environment)
   if (context.userTimezone && !context.environment?.["TZ"]) {
     sandboxEnvVars.TZ = context.userTimezone;

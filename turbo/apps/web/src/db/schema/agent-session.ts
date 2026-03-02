@@ -38,6 +38,7 @@ export const agentSessions = pgTable(
       onDelete: "set null",
     }),
     artifactName: varchar("artifact_name", { length: 255 }),
+    memoryName: varchar("memory_name", { length: 255 }),
     chatMessages: jsonb("chat_messages")
       .$type<StoredChatMessage[]>()
       .default([]),

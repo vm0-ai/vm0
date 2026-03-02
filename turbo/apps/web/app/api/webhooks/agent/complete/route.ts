@@ -11,7 +11,10 @@ import { agentSessions } from "../../../../../src/db/schema/agent-session";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { killSandbox } from "../../../../../src/lib/sandbox/sandbox-service";
-import type { ArtifactSnapshot } from "../../../../../src/lib/checkpoint";
+import type {
+  ArtifactSnapshot,
+  MemorySnapshot,
+} from "../../../../../src/lib/checkpoint";
 import type { RunResult } from "../../../../../src/lib/run/types";
 import { logger } from "../../../../../src/lib/logger";
 import { dispatchCallbacks } from "../../../../../src/lib/callback";
@@ -120,9 +123,10 @@ const router = tsr.router(webhookCompleteContract, {
         .where(eq(agentSessions.conversationId, checkpoint.conversationId))
         .limit(1);
 
-      // Extract artifact info from checkpoint (may be null for runs without artifact)
+      // Extract artifact and memory info from checkpoint (may be null for runs without them)
       const artifactSnapshot =
         checkpoint.artifactSnapshot as ArtifactSnapshot | null;
+      const memorySnapshot = checkpoint.memorySnapshot as MemorySnapshot | null;
       const volumeVersions = checkpoint.volumeVersionsSnapshot as
         | { versions: Record<string, string> }
         | undefined;
@@ -139,6 +143,13 @@ const router = tsr.router(webhookCompleteContract, {
       if (artifactSnapshot) {
         result.artifact = {
           [artifactSnapshot.artifactName]: artifactSnapshot.artifactVersion,
+        };
+      }
+
+      // Only add memory if present in checkpoint
+      if (memorySnapshot) {
+        result.memory = {
+          [memorySnapshot.memoryName]: memorySnapshot.memoryVersion,
         };
       }
 

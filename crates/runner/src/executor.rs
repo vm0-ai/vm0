@@ -511,6 +511,30 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         );
     }
 
+    // Memory config
+    if let Some(manifest) = &context.storage_manifest
+        && let Some(memory) = &manifest.memory
+    {
+        env.insert("VM0_MEMORY_DRIVER".into(), "vas".into());
+        env.insert("VM0_MEMORY_MOUNT_PATH".into(), memory.mount_path.clone());
+        env.insert(
+            "VM0_MEMORY_VOLUME_NAME".into(),
+            memory.vas_storage_name.clone(),
+        );
+        env.insert(
+            "VM0_MEMORY_VERSION_ID".into(),
+            memory.vas_version_id.clone(),
+        );
+    } else if let Some(name) = &context.memory_name {
+        // First run: memory doesn't exist yet, but we still need env vars for upload
+        env.insert("VM0_MEMORY_DRIVER".into(), "vas".into());
+        env.insert(
+            "VM0_MEMORY_MOUNT_PATH".into(),
+            "/home/user/.vm0/memory".into(),
+        );
+        env.insert("VM0_MEMORY_VOLUME_NAME".into(), name.clone());
+    }
+
     // Resume session ID
     if let Some(session) = &context.resume_session {
         env.insert("VM0_RESUME_SESSION_ID".into(), session.session_id.clone());
@@ -572,6 +596,7 @@ mod tests {
             checkpoint_id: None,
             sandbox_token: "tok".into(),
             working_dir: "/workspace".into(),
+            memory_name: None,
             storage_manifest: None,
             environment: None,
             resume_session: None,
@@ -625,6 +650,7 @@ mod tests {
                 vas_storage_name: "my-vol".into(),
                 vas_version_id: "v1".into(),
             }),
+            memory: None,
         });
 
         let env = build_env_json(&ctx, "http://localhost");

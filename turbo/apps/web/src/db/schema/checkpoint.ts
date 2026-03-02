@@ -17,6 +17,7 @@ export const checkpoints = pgTable("checkpoints", {
     .notNull(),
   agentComposeSnapshot: jsonb("agent_compose_snapshot").notNull(),
   artifactSnapshot: jsonb("artifact_snapshot"),
+  memorySnapshot: jsonb("memory_snapshot"),
   volumeVersionsSnapshot: jsonb("volume_versions_snapshot"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -46,6 +46,16 @@ static ARTIFACT_VOLUME_NAME: LazyLock<String> =
     LazyLock::new(|| env_or_empty("VM0_ARTIFACT_VOLUME_NAME"));
 
 // ---------------------------------------------------------------------------
+// Memory
+// ---------------------------------------------------------------------------
+
+static MEMORY_DRIVER: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_MEMORY_DRIVER"));
+static MEMORY_MOUNT_PATH: LazyLock<String> =
+    LazyLock::new(|| env_or_empty("VM0_MEMORY_MOUNT_PATH"));
+static MEMORY_VOLUME_NAME: LazyLock<String> =
+    LazyLock::new(|| env_or_empty("VM0_MEMORY_VOLUME_NAME"));
+
+// ---------------------------------------------------------------------------
 // Public accessors
 // ---------------------------------------------------------------------------
 
@@ -93,6 +103,15 @@ pub fn artifact_mount_path() -> &'static str {
 }
 pub fn artifact_volume_name() -> &'static str {
     &ARTIFACT_VOLUME_NAME
+}
+pub fn memory_driver() -> &'static str {
+    &MEMORY_DRIVER
+}
+pub fn memory_mount_path() -> &'static str {
+    &MEMORY_MOUNT_PATH
+}
+pub fn memory_volume_name() -> &'static str {
+    &MEMORY_VOLUME_NAME
 }
 /// Whether a backend API is available (token set).
 ///

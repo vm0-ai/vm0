@@ -248,6 +248,35 @@ function resolveApiUrl(): string {
 }
 
 /**
+ * Add artifact and memory storage env vars to sandbox environment
+ */
+function addStorageEnvVars(
+  envVars: Record<string, string>,
+  context: PreparedContext,
+  artifactForCommand: PreparedArtifact | null,
+): void {
+  if (artifactForCommand) {
+    envVars.VM0_ARTIFACT_DRIVER = "vas";
+    envVars.VM0_ARTIFACT_MOUNT_PATH = artifactForCommand.mountPath;
+    envVars.VM0_ARTIFACT_VOLUME_NAME = artifactForCommand.vasStorageName;
+    envVars.VM0_ARTIFACT_VERSION_ID = artifactForCommand.vasVersionId;
+  }
+
+  if (context.storageManifest?.memory) {
+    const memory = context.storageManifest.memory;
+    envVars.VM0_MEMORY_DRIVER = "vas";
+    envVars.VM0_MEMORY_MOUNT_PATH = memory.mountPath;
+    envVars.VM0_MEMORY_VOLUME_NAME = memory.vasStorageName;
+    envVars.VM0_MEMORY_VERSION_ID = memory.vasVersionId;
+  } else if (context.memoryName) {
+    // First run: memory doesn't exist yet, but we still need env vars for upload
+    envVars.VM0_MEMORY_DRIVER = "vas";
+    envVars.VM0_MEMORY_MOUNT_PATH = "/home/user/.vm0/memory";
+    envVars.VM0_MEMORY_VOLUME_NAME = context.memoryName;
+  }
+}
+
+/**
  * Build environment variables for sandbox
  */
 function buildSandboxEnvVars(
@@ -289,13 +318,8 @@ function buildSandboxEnvVars(
     sandboxEnvVars.USE_MOCK_CLAUDE = "true";
   }
 
-  // Add artifact information for checkpoint
-  if (artifactForCommand) {
-    sandboxEnvVars.VM0_ARTIFACT_DRIVER = "vas";
-    sandboxEnvVars.VM0_ARTIFACT_MOUNT_PATH = artifactForCommand.mountPath;
-    sandboxEnvVars.VM0_ARTIFACT_VOLUME_NAME = artifactForCommand.vasStorageName;
-    sandboxEnvVars.VM0_ARTIFACT_VERSION_ID = artifactForCommand.vasVersionId;
-  }
+  // Add storage env vars (artifact + memory)
+  addStorageEnvVars(sandboxEnvVars, context, artifactForCommand);
 
   // Inject user timezone as TZ environment variable (if not already set in environment)
   if (context.userTimezone && !context.environment?.["TZ"]) {

@@ -103,6 +103,7 @@ export const artifactEntrySchema = z.object({
 export const storageManifestSchema = z.object({
   storages: z.array(storageEntrySchema),
   artifact: artifactEntrySchema.nullable(),
+  memory: artifactEntrySchema.nullable(),
 });
 
 /**
@@ -135,6 +136,8 @@ export const storedExecutionContextSchema = z.object({
   // Agent metadata for VM0_AGENT_NAME and VM0_AGENT_SCOPE env vars
   agentName: z.string().optional(),
   agentScopeSlug: z.string().optional(),
+  // Memory storage name (for first-run when manifest.memory is null)
+  memoryName: z.string().optional(),
 });
 
 /**
@@ -166,6 +169,8 @@ export const executionContextSchema = z.object({
   // Agent metadata
   agentName: z.string().optional(),
   agentScopeSlug: z.string().optional(),
+  // Memory storage name (for first-run when manifest.memory is null)
+  memoryName: z.string().optional(),
 });
 
 /**

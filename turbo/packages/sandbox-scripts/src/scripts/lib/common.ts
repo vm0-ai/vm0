@@ -30,6 +30,11 @@ export const ARTIFACT_MOUNT_PATH = process.env.VM0_ARTIFACT_MOUNT_PATH ?? "";
 export const ARTIFACT_VOLUME_NAME = process.env.VM0_ARTIFACT_VOLUME_NAME ?? "";
 export const ARTIFACT_VERSION_ID = process.env.VM0_ARTIFACT_VERSION_ID ?? "";
 
+// Memory configuration
+export const MEMORY_DRIVER = process.env.VM0_MEMORY_DRIVER ?? "";
+export const MEMORY_MOUNT_PATH = process.env.VM0_MEMORY_MOUNT_PATH ?? "";
+export const MEMORY_VOLUME_NAME = process.env.VM0_MEMORY_VOLUME_NAME ?? "";
+
 // Construct webhook endpoint URLs
 export const WEBHOOK_URL = `${API_URL}/api/webhooks/agent/events`;
 export const CHECKPOINT_URL = `${API_URL}/api/webhooks/agent/checkpoints`;

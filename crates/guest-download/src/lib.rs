@@ -20,6 +20,8 @@ struct Manifest {
     #[serde(default)]
     storages: Vec<Storage>,
     artifact: Option<Artifact>,
+    #[serde(default)]
+    memory: Option<Artifact>,
 }
 
 /// Check if archive URL is valid (not None and not string "null").
@@ -126,6 +128,36 @@ pub fn run(manifest_path: &str) -> bool {
                     Some(&e.message),
                 );
                 log_error!(LOG_TAG, "Artifact download failed: {e}");
+                all_success = false;
+            }
+        }
+    }
+
+    // Download memory if present (same pattern as artifact, 404 is non-fatal)
+    if let Some(memory) = &manifest.memory
+        && is_valid_url(&memory.archive_url)
+        && let Some(url) = memory.archive_url.as_deref()
+    {
+        let start = Instant::now();
+        log_info!(
+            LOG_TAG,
+            "Downloading memory from {url} to {}",
+            memory.mount_path
+        );
+
+        match download_with_retry(url, &memory.mount_path) {
+            Ok(()) => {
+                let elapsed = start.elapsed();
+                record_sandbox_op("memory_download", elapsed, true, None);
+                log_info!(LOG_TAG, "Memory downloaded in {}ms", elapsed.as_millis());
+            }
+            Err(e) if e.status_code == Some(404) => {
+                record_sandbox_op("memory_download", start.elapsed(), false, Some(&e.message));
+                log_info!(LOG_TAG, "Memory not found, skipping (first run)");
+            }
+            Err(e) => {
+                record_sandbox_op("memory_download", start.elapsed(), false, Some(&e.message));
+                log_error!(LOG_TAG, "Memory download failed: {e}");
                 all_success = false;
             }
         }

@@ -468,6 +468,7 @@ const router = tsr.router(runsMainContract, {
         secrets: body.secrets,
         artifactName: body.artifactName,
         artifactVersion: body.artifactVersion,
+        memoryName: body.memoryName,
         volumeVersions: body.volumeVersions,
         resumedFromCheckpointId: body.checkpointId,
         agentName: resolved.agentComposeName,

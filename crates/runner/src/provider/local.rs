@@ -146,6 +146,7 @@ impl JobProvider for LocalProvider {
             checkpoint_id: None,
             sandbox_token: String::new(),
             working_dir: req.working_dir,
+            memory_name: None,
             storage_manifest: None,
             environment: req.environment,
             resume_session: None,

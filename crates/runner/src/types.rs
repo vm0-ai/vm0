@@ -61,6 +61,8 @@ pub struct ExecutionContext {
     pub api_start_time: Option<f64>,
     #[serde(default)]
     pub user_timezone: Option<String>,
+    #[serde(default)]
+    pub memory_name: Option<String>,
 }
 
 /// Firewall and proxy configuration attached to each execution.
@@ -83,6 +85,8 @@ pub struct StorageManifest {
     pub storages: Vec<StorageEntry>,
     #[serde(default)]
     pub artifact: Option<ArtifactEntry>,
+    #[serde(default)]
+    pub memory: Option<ArtifactEntry>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

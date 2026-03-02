@@ -253,6 +253,7 @@ export async function prepareForExecution(
     context.volumeVersions,
     context.resumeArtifact,
     workingDir,
+    context.memoryName,
   );
   const storageEnd = Date.now();
 
@@ -324,6 +325,9 @@ function buildPreparedContext(
     // Artifact settings
     artifactName: context.artifactName || null,
     artifactVersion: context.artifactVersion || null,
+
+    // Memory storage name
+    memoryName: context.memoryName || null,
 
     // Experimental firewall configuration (processed with auto-injected rules)
     experimentalFirewall,

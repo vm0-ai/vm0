@@ -310,6 +310,7 @@ export interface CreateRunParams {
   secrets?: Record<string, string>;
   artifactName?: string;
   artifactVersion?: string;
+  memoryName?: string;
   volumeVersions?: Record<string, string>;
   scheduleId?: string;
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
@@ -527,6 +528,7 @@ async function buildAndDispatchRun(opts: {
       agentComposeVersionId,
       artifactName: params.artifactName,
       artifactVersion: params.artifactVersion,
+      memoryName: params.memoryName,
       vars: params.vars,
       secrets: params.secrets,
       volumeVersions: params.volumeVersions,
