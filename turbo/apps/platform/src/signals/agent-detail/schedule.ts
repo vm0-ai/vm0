@@ -156,10 +156,10 @@ const deleteAgentSchedule$ = command(async ({ get, set }) => {
 
   if (!response.ok && response.status !== 204) {
     const errorData = (await response.json().catch(() => null)) as {
-      message?: string;
+      error?: { message?: string };
     } | null;
     throw new Error(
-      errorData?.message ?? `Delete failed: ${response.statusText}`,
+      errorData?.error?.message ?? `Delete failed: ${response.statusText}`,
     );
   }
 
