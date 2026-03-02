@@ -1,5 +1,10 @@
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
-import { IconDotsVertical, IconUser, IconLogout } from "@tabler/icons-react";
+import {
+  IconAdjustmentsHorizontal,
+  IconDotsVertical,
+  IconLogout,
+  IconUser,
+} from "@tabler/icons-react";
 import {
   NAVIGATION_CONFIG,
   FOOTER_NAV_ITEMS,
@@ -29,6 +34,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
+import { navigateInReact$ } from "../../signals/route.ts";
 
 function SidebarContent({ collapsed }: { collapsed: boolean }) {
   const activeItem = useGet(activeNavItem$);
@@ -178,6 +184,7 @@ function UserProfile({ collapsed }: UserProfileProps) {
   const isMenuOpen = useGet(userMenuOpen$);
   const toggleMenu = useSet(toggleUserMenu$);
   const closeMenu = useSet(closeUserMenu$);
+  const navigate = useSet(navigateInReact$);
 
   if (userLoadable.state !== "hasData" || !userLoadable.data) {
     return null;
@@ -185,6 +192,11 @@ function UserProfile({ collapsed }: UserProfileProps) {
 
   const user = userLoadable.data;
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
+
+  const handlePreferences = () => {
+    closeMenu();
+    navigate("/preferences");
+  };
 
   const handleManageAccount = () => {
     closeMenu();
@@ -280,6 +292,23 @@ function UserProfile({ collapsed }: UserProfileProps) {
                 </div>
               </div>
             </div>
+
+            {/* Preferences */}
+            <button
+              onClick={handlePreferences}
+              className="w-full flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-muted transition-colors text-left"
+            >
+              <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
+                <IconAdjustmentsHorizontal
+                  size={20}
+                  stroke={1.5}
+                  className="text-foreground"
+                />
+              </div>
+              <span className="text-sm leading-5 text-foreground">
+                Preferences
+              </span>
+            </button>
 
             {/* Manage Account (Clerk-only, hidden in self-hosted) */}
             {hasClerkAuth && (
