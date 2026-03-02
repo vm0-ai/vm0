@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -98,7 +98,12 @@ export async function GET(request: Request) {
     .update(expectedPayload)
     .digest("hex");
 
-  if (!state.sig || state.sig !== expectedSig) {
+  const sigValid =
+    state.sig !== null &&
+    state.sig.length === expectedSig.length &&
+    timingSafeEqual(Buffer.from(state.sig), Buffer.from(expectedSig));
+
+  if (!sigValid) {
     return NextResponse.redirect(
       `${platformUrl}/settings?tab=integrations&error=${encodeURIComponent("Invalid state signature. Please try installing again from the Platform.")}`,
     );
