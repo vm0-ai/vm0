@@ -192,7 +192,6 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      // BadRequestError from service is mapped to 409 in route
       expect(response.status).toBe(400);
       expect(data.error.message).toContain("timezone");
     });
