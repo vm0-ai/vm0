@@ -32,41 +32,6 @@
 
   tasks:
     # ========================================
-    # Phase 0: Stop legacy TS runner
-    # ========================================
-    - name: List pm2 processes
-      command: pm2 list
-      changed_when: false
-      ignore_errors: true
-
-    - name: Stop pm2 daemon
-      command: pm2 kill
-      ignore_errors: true
-
-    # Kill orphan firecracker/mitmproxy processes whose parent is PID 1
-    # (reparented to init after their runner crashed). This avoids killing
-    # processes that belong to the currently active runner.
-    - name: Find orphan firecracker processes
-      shell: pgrep -x firecracker | xargs -I{} sh -c 'test "$(ps -o ppid= -p {})" -eq 1 && echo {}'
-      register: orphan_fc
-      changed_when: false
-      failed_when: false
-
-    - name: Kill orphan firecracker processes
-      command: kill {{ orphan_fc.stdout_lines | join(' ') }}
-      when: orphan_fc.stdout_lines | length > 0
-
-    - name: Find orphan mitmproxy processes
-      shell: pgrep -x mitmdump | xargs -I{} sh -c 'test "$(ps -o ppid= -p {})" -eq 1 && echo {}'
-      register: orphan_mitm
-      changed_when: false
-      failed_when: false
-
-    - name: Kill orphan mitmproxy processes
-      command: kill {{ orphan_mitm.stdout_lines | join(' ') }}
-      when: orphan_mitm.stdout_lines | length > 0
-
-    # ========================================
     # Phase 1: Deploy binaries
     # ========================================
     - name: Ensure bin directory exists
