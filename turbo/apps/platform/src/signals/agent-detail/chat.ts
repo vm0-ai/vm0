@@ -1,14 +1,37 @@
 import { command, computed, state, type Computed } from "ccstate";
-import type { AgentEvent, LogStatus } from "../logs-page/types.ts";
+import type { LogStatus } from "../logs-page/types.ts";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
-import { agentDetail$, fetchAgentInstructions$ } from "./agent-detail.ts";
-import { collaborateAgentName } from "../../env.ts";
+import { agentDetail$, refreshAgentInstructions$ } from "./agent-detail.ts";
 import { closeInlineRun$ } from "./inline-run.ts";
 import { setupPollingLoop$, type PageResult } from "./polling.ts";
 
-const L = logger("Collaborate");
+const L = logger("Chat");
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Scan telemetry event pages for the last "result" event content. */
+async function extractResultFromEvents(
+  pages: Computed<Promise<PageResult>>[],
+  get: (c: Computed<Promise<PageResult>>) => Promise<PageResult>,
+): Promise<string> {
+  let result = "";
+  for (const page$ of pages) {
+    const page = await get(page$);
+    for (const event of page.events) {
+      if (event.eventType === "result") {
+        const data = event.eventData as { result?: string };
+        if (data.result) {
+          result = data.result;
+        }
+      }
+    }
+  }
+  return result;
+}
 
 // ---------------------------------------------------------------------------
 // Chat message types
@@ -26,89 +49,49 @@ export interface ChatMessage {
 // Per-agent persistent state (survives navigation)
 // ---------------------------------------------------------------------------
 
-interface PerAgentCollaborateState {
+interface PerAgentChatState {
   messages: ChatMessage[];
   sessionId: string | null;
 }
 
-const agentCollaborateCache$ = state<Map<string, PerAgentCollaborateState>>(
-  new Map(),
-);
+const agentChatCache$ = state<Map<string, PerAgentChatState>>(new Map());
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
 const internalPanelOpen$ = state(false);
-export const isCollaboratePanelOpen$ = computed((get) =>
-  get(internalPanelOpen$),
-);
+export const isChatPanelOpen$ = computed((get) => get(internalPanelOpen$));
 
 const internalMessages$ = state<ChatMessage[]>([]);
-export const collaborateMessages$ = computed((get) => get(internalMessages$));
+export const chatMessages$ = computed((get) => get(internalMessages$));
 
 const internalSessionId$ = state<string | null>(null);
 
 const internalActiveRunId$ = state<string | null>(null);
-export const collaborateActiveRunId$ = computed((get) =>
-  get(internalActiveRunId$),
-);
 
 const internalRunStatus$ = state<LogStatus | null>(null);
-export const collaborateRunStatus$ = computed((get) => get(internalRunStatus$));
 
 const internalRunEvents$ = state<Computed<Promise<PageResult>>[]>([]);
 
 const internalSending$ = state(false);
-export const collaborateSending$ = computed((get) => get(internalSending$));
-
-const internalOrchestratorComposeId$ = state<string | null>(null);
+export const chatSending$ = computed((get) => get(internalSending$));
 
 const pollingAbortController$ = state<AbortController | null>(null);
 
 // ---------------------------------------------------------------------------
-// Feature availability
-// ---------------------------------------------------------------------------
-
-export const isCollaborateAvailable$ = computed(() => {
-  return collaborateAgentName.length > 0;
-});
-
-// ---------------------------------------------------------------------------
-// Chat input (used by CollaboratePanel view)
+// Chat input (used by ChatPanel view)
 // ---------------------------------------------------------------------------
 
 const internalChatInput$ = state("");
-export const collaborateChatInput$ = computed((get) => get(internalChatInput$));
+export const chatInput$ = computed((get) => get(internalChatInput$));
 
-export const setCollaborateChatInput$ = command(({ set }, value: string) => {
+export const setChatInput$ = command(({ set }, value: string) => {
   set(internalChatInput$, value);
 });
 
-export const clearCollaborateChatInput$ = command(({ set }) => {
+export const clearChatInput$ = command(({ set }) => {
   set(internalChatInput$, "");
-});
-
-// ---------------------------------------------------------------------------
-// Derived: flatten current run events
-// ---------------------------------------------------------------------------
-
-export const allCollaborateRunEvents$ = computed(async (get) => {
-  const pages = get(internalRunEvents$);
-  if (pages.length === 0) {
-    return [] as AgentEvent[];
-  }
-  const results = await Promise.all(pages.map((p) => get(p)));
-  const all = results.flatMap((r) => r.events);
-
-  const seen = new Set<number>();
-  return all.filter((e) => {
-    if (seen.has(e.sequenceNumber)) {
-      return false;
-    }
-    seen.add(e.sequenceNumber);
-    return true;
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -120,20 +103,20 @@ const saveToCache$ = command(({ get, set }) => {
   if (!detail) {
     return;
   }
-  const cache = new Map(get(agentCollaborateCache$));
+  const cache = new Map(get(agentChatCache$));
   cache.set(detail.name, {
     messages: get(internalMessages$),
     sessionId: get(internalSessionId$),
   });
-  set(agentCollaborateCache$, cache);
+  set(agentChatCache$, cache);
 });
 
-export const initCollaborateFromCache$ = command(({ get, set }) => {
+export const initChatFromCache$ = command(({ get, set }) => {
   const detail = get(agentDetail$);
   if (!detail) {
     return;
   }
-  const cache = get(agentCollaborateCache$);
+  const cache = get(agentChatCache$);
   const cached = cache.get(detail.name);
   if (cached) {
     set(internalMessages$, cached.messages);
@@ -151,45 +134,16 @@ export const initCollaborateFromCache$ = command(({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Orchestrator resolution
-// ---------------------------------------------------------------------------
-
-const resolveOrchestratorAgent$ = command(async ({ get, set }) => {
-  const existing = get(internalOrchestratorComposeId$);
-  if (existing) {
-    return existing;
-  }
-
-  if (!collaborateAgentName) {
-    throw new Error("VITE_COLLABORATE_AGENT is not configured");
-  }
-
-  const fetchFn = get(fetch$);
-  const params = new URLSearchParams({ name: collaborateAgentName });
-  const response = await fetchFn(`/api/agent/composes?${params.toString()}`);
-
-  if (!response.ok) {
-    throw new Error(
-      `Failed to resolve orchestrator agent "${collaborateAgentName}": ${response.statusText}`,
-    );
-  }
-
-  const data = (await response.json()) as { id: string };
-  set(internalOrchestratorComposeId$, data.id);
-  return data.id;
-});
-
-// ---------------------------------------------------------------------------
 // Commands: open / close
 // ---------------------------------------------------------------------------
 
-export const openCollaboratePanel$ = command(({ set }) => {
+export const openChatPanel$ = command(({ set }) => {
   // Close inline run panel first (mutually exclusive)
   set(closeInlineRun$);
   set(internalPanelOpen$, true);
 });
 
-export const closeCollaboratePanel$ = command(({ get, set }) => {
+export const closeChatPanel$ = command(({ get, set }) => {
   // Abort active polling
   const controller = get(pollingAbortController$);
   if (controller) {
@@ -207,7 +161,7 @@ export const closeCollaboratePanel$ = command(({ get, set }) => {
 // Commands: send message
 // ---------------------------------------------------------------------------
 
-export const sendCollaborateMessage$ = command(
+export const sendChatMessage$ = command(
   async ({ get, set }, prompt: string) => {
     const detail = get(agentDetail$);
     if (!detail || !prompt.trim()) {
@@ -228,18 +182,12 @@ export const sendCollaborateMessage$ = command(
     set(internalMessages$, (prev) => [...prev, assistantPlaceholder]);
 
     try {
-      const orchestratorComposeId = await set(resolveOrchestratorAgent$);
-
       const fetchFn = get(fetch$);
       const sessionId = get(internalSessionId$);
 
       const body: Record<string, unknown> = {
-        agentComposeId: orchestratorComposeId,
+        agentComposeId: detail.id,
         prompt: prompt.trim(),
-        vars: {
-          TARGET_AGENT_COMPOSE_ID: detail.id,
-          TARGET_AGENT_NAME: detail.name,
-        },
       };
       if (sessionId) {
         body.sessionId = sessionId;
@@ -313,12 +261,15 @@ export const sendCollaborateMessage$ = command(
           },
         },
         onTerminal: (completedRunId) => {
-          set(onRunComplete$, completedRunId);
+          set(onRunComplete$, completedRunId).catch((error: unknown) => {
+            throwIfAbort(error);
+            L.error("onRunComplete error:", error);
+          });
         },
       });
     } catch (error) {
       throwIfAbort(error);
-      L.error("Collaborate send error:", error);
+      L.error("Chat send error:", error);
       set(internalMessages$, (prev) => {
         const updated = [...prev];
         updated[updated.length - 1] = {
@@ -339,8 +290,7 @@ export const sendCollaborateMessage$ = command(
 // On run complete: extract session, update message, refresh instructions
 // ---------------------------------------------------------------------------
 
-const onRunComplete$ = command(({ get, set }, runId: string) => {
-  // Extract session from run status for next turn
+const onRunComplete$ = command(async ({ get, set }, runId: string) => {
   const status = get(internalRunStatus$);
   const messages = get(internalMessages$);
 
@@ -360,29 +310,50 @@ const onRunComplete$ = command(({ get, set }, runId: string) => {
 
   // Clear active run
   set(internalActiveRunId$, null);
-
-  // Fetch session info from run result to get agentSessionId
-  const fetchFn = get(fetch$);
-  fetchFn(`/api/agent/runs/${runId}`)
-    .then(async (res) => {
-      if (res.ok) {
-        const data = (await res.json()) as {
-          result?: { agentSessionId?: string };
-        };
-        if (data.result?.agentSessionId) {
-          set(internalSessionId$, data.result.agentSessionId);
-          set(saveToCache$);
-        }
-      }
-    })
-    .catch((error: unknown) => {
-      L.error("Failed to extract session:", error);
-    });
-
-  // Refresh instructions (orchestrator may have modified them)
-  set(fetchAgentInstructions$).catch((error: unknown) => {
-    L.error("Failed to refresh instructions:", error);
-  });
-
   set(saveToCache$);
+
+  // Fetch run details to extract sessionId and result
+  try {
+    const fetchFn = get(fetch$);
+    const res = await fetchFn(`/api/agent/runs/${runId}`);
+    if (res.ok) {
+      const data = (await res.json()) as {
+        result?: { output?: string; agentSessionId?: string };
+      };
+      if (data.result?.agentSessionId) {
+        set(internalSessionId$, data.result.agentSessionId);
+      }
+    }
+
+    // Extract result content from telemetry events (primary source)
+    const pages = get(internalRunEvents$);
+    const resultContent = await extractResultFromEvents(pages, get);
+
+    if (resultContent) {
+      set(internalMessages$, (prev) => {
+        const idx = prev.findIndex(
+          (m) => m.role === "assistant" && m.runId === runId,
+        );
+        if (idx === -1) {
+          return prev;
+        }
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], content: resultContent };
+        return updated;
+      });
+    }
+
+    set(saveToCache$);
+  } catch (error) {
+    throwIfAbort(error);
+    L.error("Failed to extract run result:", error);
+  }
+
+  // Silently refresh instructions (agent may have modified them)
+  try {
+    await set(refreshAgentInstructions$);
+  } catch (error) {
+    throwIfAbort(error);
+    L.error("Failed to refresh instructions:", error);
+  }
 });

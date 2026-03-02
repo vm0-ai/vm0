@@ -26,10 +26,7 @@ import {
   agentScheduleSummary$,
   openScheduleDialog$,
 } from "../../signals/agent-detail/schedule.ts";
-import {
-  isCollaborateAvailable$,
-  openCollaboratePanel$,
-} from "../../signals/agent-detail/collaborate.ts";
+import { openChatPanel$ } from "../../signals/agent-detail/chat.ts";
 import { AgentAvatar } from "./agent-avatar.tsx";
 import type { AgentDetail } from "../../signals/agent-detail/types.ts";
 import { Link } from "../router/link.tsx";
@@ -42,9 +39,8 @@ interface AgentHeaderProps {
 export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
   const openConfig = useSet(openConfigDialog$);
   const openRun = useSet(openRunDialog$);
-  const openCollaborate = useSet(openCollaboratePanel$);
+  const openChat = useSet(openChatPanel$);
   const buttonState = useGet(runButtonState$);
-  const collaborateAvailable = useGet(isCollaborateAvailable$);
   const isBusy = buttonState !== "idle";
   const schedule = useGet(agentSchedule$);
   const scheduleSummary = useGet(agentScheduleSummary$);
@@ -60,7 +56,7 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
   const description = agentDef?.description;
 
   return (
-    <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3.5 bg-background -mx-8 px-8 -mt-8 pt-8 pb-[22px]">
+    <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3.5 bg-background -mx-4 px-4 -mt-4 pt-4 pb-4 md:-mx-8 md:px-8 md:-mt-8 md:pt-8 md:pb-[22px]">
       <AgentAvatar name={detail.name} size="lg" className="shrink-0" />
       <div className="flex-1 min-w-0 flex flex-col gap-1.5">
         <div className="flex items-center gap-2.5">
@@ -140,20 +136,20 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
             </TooltipContent>
           </Tooltip>
 
-          {isOwner && collaborateAvailable && (
+          {isOwner && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="outline"
                   size="icon"
                   className="h-9 w-9"
-                  onClick={() => openCollaborate()}
-                  aria-label="Collaborate"
+                  onClick={() => openChat()}
+                  aria-label="Chat"
                 >
                   <IconMessageChatbot size={18} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Collaborate</TooltipContent>
+              <TooltipContent>Chat</TooltipContent>
             </Tooltip>
           )}
 

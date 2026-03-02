@@ -9,7 +9,7 @@ import {
 } from "./agent-detail.ts";
 import { initInlineRunFromUrl$ } from "./inline-run.ts";
 import { fetchAgentSchedule$ } from "./schedule.ts";
-import { initCollaborateFromCache$ } from "./collaborate.ts";
+import { initChatFromCache$ } from "./chat.ts";
 
 export const setupAgentDetailPage$ = command(async ({ set }) => {
   set(updatePage$, createElement(AgentDetailPage));
@@ -17,5 +17,5 @@ export const setupAgentDetailPage$ = command(async ({ set }) => {
   set(initInlineRunFromUrl$);
   await set(fetchAgentDetail$);
   await Promise.all([set(fetchAgentInstructions$), set(fetchAgentSchedule$)]);
-  set(initCollaborateFromCache$);
+  set(initChatFromCache$);
 });

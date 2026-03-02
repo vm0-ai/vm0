@@ -11,7 +11,7 @@ import {
 } from "./inline-run.ts";
 import { fetchAgentSchedule$ } from "./schedule.ts";
 import { type ScheduleTimeOption, buildCronExpression } from "./cron.ts";
-import { closeCollaboratePanel$ } from "./collaborate.ts";
+import { closeChatPanel$ } from "./chat.ts";
 
 const L = logger("RunDialog");
 
@@ -146,7 +146,7 @@ export const submitRunDialog$ = command(async ({ get, set }) => {
       // Close dialog immediately — API continues in background
       set(internalOpen$, false);
       set(internalSaving$, false);
-      set(closeCollaboratePanel$);
+      set(closeChatPanel$);
       set(prepareNewRun$);
       toast.success("Starting agent run...");
 

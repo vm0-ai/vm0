@@ -263,13 +263,12 @@ describe("agent detail page", () => {
     expect(screen.getByRole("textbox")).toBeInTheDocument();
   });
 
-  it("should show Collaborate button for owned agents", async () => {
+  it("should show Chat button for owned agents", async () => {
     mockAgentDetailAPI();
 
     await setupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -278,18 +277,15 @@ describe("agent detail page", () => {
       ).toBeInTheDocument();
     });
 
-    expect(
-      screen.getByRole("button", { name: "Collaborate" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chat" })).toBeInTheDocument();
   });
 
-  it("should open collaborate panel when Collaborate button is clicked", async () => {
+  it("should open chat panel when Chat button is clicked", async () => {
     mockAgentDetailAPI();
 
     await setupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -298,22 +294,21 @@ describe("agent detail page", () => {
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Collaborate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
 
     await vi.waitFor(() => {
       expect(
-        screen.getByText("Send a message to start collaborating"),
+        screen.getByText("Send a message to start chatting"),
       ).toBeInTheDocument();
     });
   });
 
-  it("should close collaborate panel when close button is clicked", async () => {
+  it("should close chat panel when close button is clicked", async () => {
     mockAgentDetailAPI();
 
     await setupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -322,59 +317,26 @@ describe("agent detail page", () => {
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Collaborate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
 
     await vi.waitFor(() => {
       expect(
-        screen.getByText("Send a message to start collaborating"),
+        screen.getByText("Send a message to start chatting"),
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Close collaborate panel" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Close chat panel" }));
 
     await vi.waitFor(() => {
-      expect(
-        screen.queryByText("Send a message to start collaborating"),
-      ).toBeNull();
+      expect(screen.queryByText("Send a message to start chatting")).toBeNull();
     });
   });
 
   it("should show user message bubble after sending a message", async () => {
     mockAgentDetailAPI();
 
-    // Mock orchestrator resolution and run creation
+    // Mock run creation and polling
     server.use(
-      http.get("/api/agent/composes", ({ request }) => {
-        const url = new URL(request.url);
-        const queryName = url.searchParams.get("name");
-
-        if (queryName === "test-collaborate-agent") {
-          return HttpResponse.json({ id: "orchestrator_1" });
-        }
-
-        if (queryName === "my-agent") {
-          return HttpResponse.json({
-            id: "compose_1",
-            name: "my-agent",
-            headVersionId: "version_1",
-            content: {
-              version: "1",
-              agents: {
-                "my-agent": {
-                  description: "A test agent",
-                  framework: "claude-code",
-                },
-              },
-            },
-            createdAt: "2024-01-01T00:00:00Z",
-            updatedAt: "2024-01-01T00:00:00Z",
-          });
-        }
-
-        return new HttpResponse(null, { status: 404 });
-      }),
       http.post("/api/agent/runs", () => {
         return HttpResponse.json({ runId: "run_123" });
       }),
@@ -393,7 +355,6 @@ describe("agent detail page", () => {
     await setupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -402,12 +363,12 @@ describe("agent detail page", () => {
       ).toBeInTheDocument();
     });
 
-    // Open collaborate panel
-    fireEvent.click(screen.getByRole("button", { name: "Collaborate" }));
+    // Open chat panel
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
 
     await vi.waitFor(() => {
       expect(
-        screen.getByText("Send a message to start collaborating"),
+        screen.getByText("Send a message to start chatting"),
       ).toBeInTheDocument();
     });
 
@@ -422,46 +383,19 @@ describe("agent detail page", () => {
     });
   });
 
-  it("should show error when collaborate message send fails", async () => {
+  it("should show error when chat message send fails", async () => {
     mockAgentDetailAPI();
 
-    // Mock orchestrator resolution to fail
+    // Mock run API to fail
     server.use(
-      http.get("/api/agent/composes", ({ request }) => {
-        const url = new URL(request.url);
-        const queryName = url.searchParams.get("name");
-
-        if (queryName === "test-collaborate-agent") {
-          return new HttpResponse(null, { status: 500 });
-        }
-
-        if (queryName === "my-agent") {
-          return HttpResponse.json({
-            id: "compose_1",
-            name: "my-agent",
-            headVersionId: "version_1",
-            content: {
-              version: "1",
-              agents: {
-                "my-agent": {
-                  description: "A test agent",
-                  framework: "claude-code",
-                },
-              },
-            },
-            createdAt: "2024-01-01T00:00:00Z",
-            updatedAt: "2024-01-01T00:00:00Z",
-          });
-        }
-
-        return new HttpResponse(null, { status: 404 });
+      http.post("/api/agent/runs", () => {
+        return HttpResponse.json({ message: "Run failed" }, { status: 500 });
       }),
     );
 
     await setupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -470,12 +404,12 @@ describe("agent detail page", () => {
       ).toBeInTheDocument();
     });
 
-    // Open collaborate panel
-    fireEvent.click(screen.getByRole("button", { name: "Collaborate" }));
+    // Open chat panel
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
 
     await vi.waitFor(() => {
       expect(
-        screen.getByText("Send a message to start collaborating"),
+        screen.getByText("Send a message to start chatting"),
       ).toBeInTheDocument();
     });
 
@@ -486,13 +420,11 @@ describe("agent detail page", () => {
 
     // Error message should appear
     await vi.waitFor(() => {
-      expect(
-        screen.getByText(/Failed to resolve orchestrator/),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Run failed/)).toBeInTheDocument();
     });
   });
 
-  it("should not show Collaborate button for shared (non-owner) agents", async () => {
+  it("should not show Chat button for shared (non-owner) agents", async () => {
     server.use(
       http.get("/api/agent/composes", ({ request }) => {
         const url = new URL(request.url);
@@ -528,7 +460,6 @@ describe("agent detail page", () => {
     await setupPage({
       context,
       path: `/agents/${encodeURIComponent("other-scope/shared-agent")}`,
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
     });
 
     await vi.waitFor(() => {
@@ -537,7 +468,7 @@ describe("agent detail page", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole("button", { name: "Collaborate" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Chat" })).toBeNull();
   });
 
   it("should show read-only pre for shared (non-owner) agents", async () => {

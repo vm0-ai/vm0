@@ -34,9 +34,9 @@ export function InlineRunPanel({ runId }: InlineRunPanelProps) {
   const terminal = isTerminalStatus(runStatus);
 
   return (
-    <div className="rounded-lg border border-border overflow-hidden">
+    <div className="rounded-lg border border-border overflow-hidden flex flex-col h-full">
       {/* Header */}
-      <div className="border-b border-border bg-card">
+      <div className="border-b border-border bg-card shrink-0">
         <div className="flex items-center gap-2 px-4 py-3">
           <IconPlayerPlay
             size={16}
@@ -71,7 +71,7 @@ export function InlineRunPanel({ runId }: InlineRunPanelProps) {
       </div>
 
       {/* Content */}
-      <div className="bg-muted/50 p-4">
+      <div className="bg-muted/50 p-4 flex-1 overflow-y-auto min-h-0">
         {!runId ? (
           <div className="flex items-center justify-center py-8">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">

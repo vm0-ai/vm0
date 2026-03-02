@@ -15,22 +15,22 @@ import {
   isInlineRunInitializing$,
   isRunPanelVisible$,
 } from "../../signals/agent-detail/inline-run.ts";
-import { isCollaboratePanelOpen$ } from "../../signals/agent-detail/collaborate.ts";
+import { isChatPanelOpen$ } from "../../signals/agent-detail/chat.ts";
 import { AgentHeader } from "./agent-header.tsx";
 import { AgentInstructions } from "./agent-instructions.tsx";
 import { InlineRunPanel } from "./inline-run-panel.tsx";
-import { CollaboratePanel } from "./collaborate-panel.tsx";
+import { ChatPanel } from "./chat-panel.tsx";
 import { ConfigDialog } from "./config-dialog/config-dialog.tsx";
 import { RunDialog } from "./run-dialog/run-dialog.tsx";
 import { ScheduleDialog } from "./schedule-dialog.tsx";
 
-type RightPanelType = "none" | "run" | "collaborate";
+type RightPanelType = "none" | "run" | "chat";
 
 function useActiveRightPanel(): RightPanelType {
   const runPanelVisible = useGet(isRunPanelVisible$);
-  const collaborateOpen = useGet(isCollaboratePanelOpen$);
-  if (collaborateOpen) {
-    return "collaborate";
+  const chatOpen = useGet(isChatPanelOpen$);
+  if (chatOpen) {
+    return "chat";
   }
   if (runPanelVisible) {
     return "run";
@@ -58,7 +58,7 @@ export function AgentDetailPage() {
         agentName ?? "Loading...",
       ]}
     >
-      <div className="flex flex-col gap-[22px] p-8 min-h-full">
+      <div className="flex flex-col gap-4 md:gap-[22px] p-4 md:p-8 h-full">
         {showSkeleton ? (
           <AgentDetailSkeleton />
         ) : error ? (
@@ -69,28 +69,31 @@ export function AgentDetailPage() {
           <>
             <AgentHeader detail={detail} isOwner={isOwner} />
             {rightPanel !== "none" ? (
-              <div className="flex gap-4">
-                <div className="w-1/2">
+              <div className="flex md:flex-row gap-4 flex-1 min-h-0">
+                {/* Mobile: hide instructions, show only active panel */}
+                <div className="hidden md:block md:w-1/2 min-h-0">
                   <AgentInstructions
                     instructions={instructions}
                     loading={instructionsLoading}
                     isOwner={isOwner}
                   />
                 </div>
-                <div className="w-1/2">
+                <div className="flex-1 md:w-1/2 min-h-0">
                   {rightPanel === "run" ? (
                     <InlineRunPanel runId={activeRunId} />
                   ) : (
-                    <CollaboratePanel />
+                    <ChatPanel />
                   )}
                 </div>
               </div>
             ) : (
-              <AgentInstructions
-                instructions={instructions}
-                loading={instructionsLoading}
-                isOwner={isOwner}
-              />
+              <div className="flex-1 min-h-0">
+                <AgentInstructions
+                  instructions={instructions}
+                  loading={instructionsLoading}
+                  isOwner={isOwner}
+                />
+              </div>
             )}
             <ConfigDialog />
             <RunDialog />
