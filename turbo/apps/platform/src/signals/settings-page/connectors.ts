@@ -31,6 +31,24 @@ export interface ConnectorTypeWithStatus {
   connector: ConnectorResponse | null;
 }
 
+/**
+ * Maps connector types that are gated behind a feature flag to their
+ * corresponding feature switch key.  Connectors not listed here are
+ * always visible.
+ */
+const CONNECTOR_FEATURE_FLAGS = Object.freeze<
+  Partial<Record<ConnectorType, FeatureSwitchKey>>
+>({
+  computer: FeatureSwitchKey.ComputerConnector,
+  deel: FeatureSwitchKey.DeelConnector,
+  dropbox: FeatureSwitchKey.DropboxConnector,
+  figma: FeatureSwitchKey.FigmaConnector,
+  gmail: FeatureSwitchKey.GmailConnector,
+  "google-sheets": FeatureSwitchKey.GoogleSheetsConnector,
+  "google-docs": FeatureSwitchKey.GoogleDocsConnector,
+  "google-drive": FeatureSwitchKey.GoogleDriveConnector,
+});
+
 export const allConnectorTypes$ = computed(async (get) => {
   const { connectors } = await get(connectors$);
   const connectorMap = new Map(connectors.map((c) => [c.type, c]));
@@ -38,51 +56,8 @@ export const allConnectorTypes$ = computed(async (get) => {
 
   return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
-      // Filter computer connector based on feature flag
-      if (
-        type === "computer" &&
-        !features?.[FeatureSwitchKey.ComputerConnector]
-      ) {
-        return false;
-      }
-      // Filter deel connector based on feature flag
-      if (type === "deel" && !features?.[FeatureSwitchKey.DeelConnector]) {
-        return false;
-      }
-      // Filter dropbox connector based on feature flag
-      if (
-        type === "dropbox" &&
-        !features?.[FeatureSwitchKey.DropboxConnector]
-      ) {
-        return false;
-      }
-      // Filter figma connector based on feature flag
-      if (type === "figma" && !features?.[FeatureSwitchKey.FigmaConnector]) {
-        return false;
-      }
-      // Filter gmail connector based on feature flag
-      if (type === "gmail" && !features?.[FeatureSwitchKey.GmailConnector]) {
-        return false;
-      }
-      // Filter google-sheets connector based on feature flag
-      if (
-        type === "google-sheets" &&
-        !features?.[FeatureSwitchKey.GoogleSheetsConnector]
-      ) {
-        return false;
-      }
-      // Filter google-docs connector based on feature flag
-      if (
-        type === "google-docs" &&
-        !features?.[FeatureSwitchKey.GoogleDocsConnector]
-      ) {
-        return false;
-      }
-      // Filter google-drive connector based on feature flag
-      if (
-        type === "google-drive" &&
-        !features?.[FeatureSwitchKey.GoogleDriveConnector]
-      ) {
+      const flag = CONNECTOR_FEATURE_FLAGS[type];
+      if (flag && !features?.[flag]) {
         return false;
       }
       return true;
