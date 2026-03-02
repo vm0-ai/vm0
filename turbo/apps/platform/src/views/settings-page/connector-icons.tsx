@@ -6,18 +6,20 @@ import figmaIcon from "./icons/figma.svg";
 import githubIcon from "./icons/github.svg";
 import gmailIcon from "./icons/gmail.svg";
 import linearIcon from "./icons/linear.svg";
+import mercuryIcon from "./icons/mercury.svg";
 import notionIcon from "./icons/notion.svg";
 import slackIcon from "./icons/slack.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   computer: computerIcon,
+  dropbox: dropboxIcon,
   figma: figmaIcon,
   github: githubIcon,
   gmail: gmailIcon,
   linear: linearIcon,
+  mercury: mercuryIcon,
   notion: notionIcon,
   slack: slackIcon,
-  dropbox: dropboxIcon,
 });
 
 export function ConnectorIcon({
