@@ -33,7 +33,7 @@ export function AppShell({
   const normalizedBreadcrumb = normalizeBreadcrumb(breadcrumb);
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-dvh">
       <Sidebar />
       <div className="flex flex-1 flex-col min-w-0">
         <Navbar breadcrumb={normalizedBreadcrumb} />
