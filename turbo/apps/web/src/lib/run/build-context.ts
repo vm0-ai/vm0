@@ -606,7 +606,8 @@ async function fetchAndMergeVariables(
   cliVars: Record<string, string> | undefined,
   scopeId?: string,
 ): Promise<Record<string, string> | undefined> {
-  const resolvedScopeId = scopeId ?? (await getUserScopeByClerkId(userId))?.id;
+  const userScope = scopeId ? null : await getUserScopeByClerkId(userId);
+  const resolvedScopeId = scopeId ?? userScope?.id;
   if (!resolvedScopeId) {
     return cliVars;
   }
@@ -617,7 +618,7 @@ async function fetchAndMergeVariables(
   }
 
   log.debug(
-    `Fetched ${Object.keys(storedVars).length} stored variable(s) for scope ${resolvedScopeId}`,
+    `Fetched ${Object.keys(storedVars).length} stored variable(s) from scope ${userScope?.slug ?? resolvedScopeId}`,
   );
 
   // Merge: CLI vars override stored vars
