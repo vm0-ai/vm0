@@ -27,6 +27,8 @@ const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
 const NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
 const SLACK_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_USER_INFO_URL = "https://slack.com/api/users.info";
+const DOCUSIGN_TOKEN_URL = "https://account.docusign.com/oauth/token";
+const DOCUSIGN_USERINFO_URL = "https://account.docusign.com/oauth/userinfo";
 const FIGMA_TOKEN_URL = "https://api.figma.com/v1/oauth/token";
 const FIGMA_ME_URL = "https://api.figma.com/v1/me";
 
@@ -302,6 +304,50 @@ function createLinearOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for DocuSign OAuth API
+ */
+function createDocuSignOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  userName?: string | null;
+  email?: string | null;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(DOCUSIGN_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "docusign-test-access-token",
+        refresh_token: options.refreshToken ?? "docusign-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "Bearer",
+        scope: "signature",
+      });
+    }),
+    userInfo: http.get(DOCUSIGN_USERINFO_URL, () => {
+      if (options.userError) {
+        return HttpResponse.json({ error: "invalid_token" }, { status: 401 });
+      }
+      return HttpResponse.json({
+        sub: options.userId ?? "docusign-user-123",
+        name:
+          options.userName !== undefined ? options.userName : "DocuSign User",
+        email:
+          options.email !== undefined ? options.email : "user@docusign.com",
+      });
+    }),
+  });
+}
+
+/**
  * Create a test request with OAuth callback parameters and cookies
  */
 function createCallbackRequest(options: {
@@ -349,6 +395,8 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-test-client-secret");
     vi.stubEnv("LINEAR_OAUTH_CLIENT_ID", "linear-test-client-id");
     vi.stubEnv("LINEAR_OAUTH_CLIENT_SECRET", "linear-test-client-secret");
+    vi.stubEnv("DOCUSIGN_OAUTH_CLIENT_ID", "docusign-test-client-id");
+    vi.stubEnv("DOCUSIGN_OAUTH_CLIENT_SECRET", "docusign-test-client-secret");
     vi.stubEnv("FIGMA_OAUTH_CLIENT_ID", "figma-test-client-id");
     vi.stubEnv("FIGMA_OAUTH_CLIENT_SECRET", "figma-test-client-secret");
     reloadEnv();
@@ -1235,6 +1283,160 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       });
       const response = await GET(request, {
         params: Promise.resolve({ type: "linear" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("DocuSign OAuth Flow", () => {
+    it("should store DocuSign connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createDocuSignOAuthMock({
+        accessToken: "docusign-access-token",
+        refreshToken: "docusign-refresh-token",
+        userId: "docusign-user-456",
+        userName: "DocuSign User",
+        email: "testuser@docusign.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "docusign",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "docusign" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=docusign");
+      expect(location).toContain("username=DocuSign+User");
+
+      // Verify connector was stored via API
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/docusign",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("docusign");
+      expect(connector.externalUsername).toBe("DocuSign User");
+      expect(connector.externalId).toBe("docusign-user-456");
+      expect(connector.externalEmail).toBe("testuser@docusign.com");
+    });
+
+    it("should redirect with error when DocuSign token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createDocuSignOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "docusign",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "docusign" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when DocuSign returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createDocuSignOAuthMock({
+        accessToken: "docusign-access-token",
+        refreshToken: "docusign-refresh-token-stored",
+        email: "testuser@docusign.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "docusign",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "docusign" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      // Verify refresh token was stored as a secret
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "DOCUSIGN_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("docusign-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when DocuSign returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 28800; // DocuSign tokens typically expire in 8 hours
+      const { handlers: mswHandlers } = createDocuSignOAuthMock({
+        accessToken: "docusign-access-token",
+        refreshToken: "docusign-refresh-token",
+        expiresIn,
+        email: "exp@docusign.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "docusign",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "docusign" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "docusign",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when DocuSign user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createDocuSignOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "docusign",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "docusign" }),
       });
 
       expect(response.status).toBe(307);

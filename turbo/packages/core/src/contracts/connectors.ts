@@ -189,6 +189,36 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  docusign: {
+    label: "DocuSign",
+    helpText:
+      "Connect your DocuSign account to send and manage electronic signatures",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with DocuSign to grant access.",
+        secrets: {
+          DOCUSIGN_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          DOCUSIGN_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      DOCUSIGN_TOKEN: "$secrets.DOCUSIGN_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://account.docusign.com/oauth/auth",
+      tokenUrl: "https://account.docusign.com/oauth/token",
+      scopes: ["signature"],
+    } as ConnectorOAuthConfig,
+  },
   dropbox: {
     label: "Dropbox",
     helpText: "Connect your Dropbox account to access and manage files",
@@ -290,6 +320,7 @@ export const connectorTypeSchema = z.enum([
   "notion",
   "computer",
   "slack",
+  "docusign",
   "dropbox",
   "linear",
   "figma",

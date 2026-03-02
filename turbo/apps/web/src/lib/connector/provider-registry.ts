@@ -1,5 +1,6 @@
 import { type ConnectorType } from "@vm0/core";
 import { type OAuthTokenResult, type ProviderHandler } from "./provider-types";
+import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
 import { figmaHandler } from "./providers/figma-handler";
 import { githubHandler } from "./providers/github-handler";
@@ -14,11 +15,12 @@ export const PROVIDER_HANDLERS: Record<
   Exclude<ConnectorType, "computer">,
   ProviderHandler
 > = {
+  docusign: docusignHandler,
+  dropbox: dropboxHandler,
   figma: figmaHandler,
   github: githubHandler,
   gmail: gmailHandler,
   linear: linearHandler,
   notion: notionHandler,
   slack: slackHandler,
-  dropbox: dropboxHandler,
 };
