@@ -6,7 +6,6 @@ import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { githubInstallations } from "../../../../src/db/schema/github-installation";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { scopes } from "../../../../src/db/schema/scope";
-import { getPlatformUrl } from "../../../../src/lib/url";
 
 /**
  * GET /api/integrations/github
@@ -38,9 +37,10 @@ export async function GET(request: Request) {
 
   if (!installation) {
     const { GITHUB_APP_SLUG } = env();
-    const platformUrl = getPlatformUrl();
+    const reqUrl = new URL(request.url);
+    const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
     const installUrl = GITHUB_APP_SLUG
-      ? `${platformUrl}/api/github/oauth/install?vm0UserId=${encodeURIComponent(userId)}`
+      ? `${baseUrl}/api/github/oauth/install?vm0UserId=${encodeURIComponent(userId)}`
       : null;
 
     return NextResponse.json(

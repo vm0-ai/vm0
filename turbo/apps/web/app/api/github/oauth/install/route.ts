@@ -1,6 +1,7 @@
+import { createHmac } from "node:crypto";
 import { NextResponse } from "next/server";
+import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
-import { getPlatformUrl } from "../../../../../src/lib/url";
 
 /**
  * GitHub App Install Endpoint
@@ -9,9 +10,14 @@ import { getPlatformUrl } from "../../../../../src/lib/url";
  *
  * Redirects users to GitHub's App installation page where they can
  * select an organization/account and grant repository access.
+ *
+ * The state parameter is HMAC-signed so the callback can verify
+ * it was not tampered with (prevents userId spoofing).
  */
 export async function GET(request: Request) {
-  const { GITHUB_APP_SLUG } = env();
+  initServices();
+
+  const { GITHUB_APP_SLUG, SECRETS_ENCRYPTION_KEY } = env();
 
   if (!GITHUB_APP_SLUG) {
     return NextResponse.json(
@@ -25,12 +31,24 @@ export async function GET(request: Request) {
   const composeId = url.searchParams.get("composeId");
 
   // Build state to pass through the installation flow
-  const stateObj: { vm0UserId?: string; composeId?: string } = {};
+  const stateObj: {
+    vm0UserId?: string;
+    composeId?: string;
+    sig?: string;
+  } = {};
   if (vm0UserId) {
     stateObj.vm0UserId = vm0UserId;
   }
   if (composeId) {
     stateObj.composeId = composeId;
+  }
+
+  // Sign the state with HMAC to prevent tampering
+  if (stateObj.vm0UserId) {
+    const payload = `${stateObj.vm0UserId}:${stateObj.composeId ?? ""}`;
+    stateObj.sig = createHmac("sha256", SECRETS_ENCRYPTION_KEY)
+      .update(payload)
+      .digest("hex");
   }
 
   const state =
@@ -44,9 +62,9 @@ export async function GET(request: Request) {
     installUrl.searchParams.set("state", state);
   }
 
-  // Set the redirect URL so GitHub sends user back to our callback
-  const platformUrl = getPlatformUrl();
-  installUrl.searchParams.set("redirect_uri", `${platformUrl}/github/callback`);
+  // Derive redirect URI from request URL (web app origin, not platform)
+  const redirectUri = `${url.protocol}//${url.host}/api/github/oauth/callback`;
+  installUrl.searchParams.set("redirect_uri", redirectUri);
 
   return NextResponse.redirect(installUrl.toString());
 }

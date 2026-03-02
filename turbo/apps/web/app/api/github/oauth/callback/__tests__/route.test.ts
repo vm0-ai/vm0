@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { describe, it, expect, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../../../src/mocks/server";
@@ -13,6 +14,7 @@ import {
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { env } from "../../../../../../src/env";
 
 const context = testContext();
 
@@ -28,6 +30,18 @@ function setupGitHubTokenMock(installationId: string) {
       },
     ),
   );
+}
+
+/**
+ * Build a signed OAuth state string matching the install route's HMAC format.
+ */
+function buildSignedState(vm0UserId: string, composeId: string): string {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const payload = `${vm0UserId}:${composeId}`;
+  const sig = createHmac("sha256", SECRETS_ENCRYPTION_KEY)
+    .update(payload)
+    .digest("hex");
+  return JSON.stringify({ vm0UserId, composeId, sig });
 }
 
 describe("/api/github/oauth/callback", () => {
@@ -73,6 +87,35 @@ describe("/api/github/oauth/callback", () => {
     expect(location).toContain("Missing%20default%20agent");
   });
 
+  it("should redirect with error when state signature is invalid", async () => {
+    const state = JSON.stringify({
+      vm0UserId: "user-123",
+      composeId: "compose-123",
+      sig: "invalid-signature",
+    });
+    const request = createTestRequest(
+      `http://localhost:3000/api/github/oauth/callback?installation_id=12345&setup_action=install&state=${encodeURIComponent(state)}`,
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("Location");
+    expect(location).toContain("error=");
+    expect(location).toContain("Invalid%20state%20signature");
+  });
+
+  it("should redirect without error for update action", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/github/oauth/callback?installation_id=12345&setup_action=update",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("Location");
+    expect(location).toContain("settings?tab=integrations");
+    expect(location).not.toContain("error=");
+  });
+
   it("should create installation on valid callback", async () => {
     const userId = uniqueId("gh-user");
     mockClerk({ userId });
@@ -82,7 +125,7 @@ describe("/api/github/oauth/callback", () => {
     const installationId = uniqueId("install");
     setupGitHubTokenMock(installationId);
 
-    const state = JSON.stringify({ vm0UserId: userId, composeId });
+    const state = buildSignedState(userId, composeId);
     const request = createTestRequest(
       `http://localhost:3000/api/github/oauth/callback?installation_id=${installationId}&setup_action=install&state=${encodeURIComponent(state)}`,
     );
@@ -112,7 +155,7 @@ describe("/api/github/oauth/callback", () => {
     setupGitHubTokenMock(installationId);
 
     // First callback — creates installation
-    const state = JSON.stringify({ vm0UserId: userId, composeId });
+    const state = buildSignedState(userId, composeId);
     const request1 = createTestRequest(
       `http://localhost:3000/api/github/oauth/callback?installation_id=${installationId}&setup_action=install&state=${encodeURIComponent(state)}`,
     );

@@ -5,23 +5,14 @@ import { logger } from "../log.ts";
 
 const L = logger("GitHubIntegration");
 
-interface GitHubIntegrationData {
-  installation: { id: string; installationId: string };
-  agent: { id: string; name: string; scopeSlug: string } | null;
-}
-
 interface GitHubIntegrationState {
-  data: GitHubIntegrationData | null;
   loading: boolean;
-  error: string | null;
   notLinked: boolean;
   installUrl: string | null;
 }
 
 const githubIntegrationState$ = state<GitHubIntegrationState>({
-  data: null,
   loading: false,
-  error: null,
   notLinked: false,
   installUrl: null,
 });
@@ -40,7 +31,6 @@ export const fetchGitHubIntegration$ = command(async ({ get, set }) => {
   set(githubIntegrationState$, (prev) => ({
     ...prev,
     loading: true,
-    error: null,
   }));
 
   try {
@@ -52,9 +42,7 @@ export const fetchGitHubIntegration$ = command(async ({ get, set }) => {
         installUrl?: string | null;
       };
       set(githubIntegrationState$, {
-        data: null,
         loading: false,
-        error: null,
         notLinked: true,
         installUrl: body.installUrl ?? null,
       });
@@ -67,11 +55,9 @@ export const fetchGitHubIntegration$ = command(async ({ get, set }) => {
       );
     }
 
-    const data = (await response.json()) as GitHubIntegrationData;
+    await response.json();
     set(githubIntegrationState$, {
-      data,
       loading: false,
-      error: null,
       notLinked: false,
       installUrl: null,
     });
@@ -81,7 +67,6 @@ export const fetchGitHubIntegration$ = command(async ({ get, set }) => {
     set(githubIntegrationState$, (prev) => ({
       ...prev,
       loading: false,
-      error: error instanceof Error ? error.message : "Unknown error",
     }));
   }
 });
