@@ -52,7 +52,16 @@ const router = tsr.router(orgContract, {
       }
       const message =
         error instanceof Error ? error.message : "Internal server error";
-      log.error("Failed to create organization", { error: message });
+      const err = error as Record<string, unknown>;
+      if ("clerkError" in err) {
+        log.error("Failed to create organization (Clerk API)", {
+          status: err.status,
+          errors: err.errors,
+          clerkTraceId: err.clerkTraceId,
+        });
+      } else {
+        log.error("Failed to create organization", { error: message });
+      }
       return {
         status: 500 as const,
         body: {
