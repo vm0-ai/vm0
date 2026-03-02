@@ -7,7 +7,7 @@ import {
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
-import { scopes } from "../../db/schema/scope";
+import { scopes, type ScopeType } from "../../db/schema/scope";
 import { decryptSecretsMap } from "../crypto";
 import {
   notFound,
@@ -209,6 +209,7 @@ async function verifyComposeOwnership(
 ): Promise<{
   compose: typeof agentComposes.$inferSelect;
   scopeSlug: string;
+  scopeType: ScopeType;
 }> {
   const [compose] = await globalThis.services.db
     .select()
@@ -222,7 +223,7 @@ async function verifyComposeOwnership(
     throw notFound("Agent compose not found or not owned by user");
   }
 
-  // Get scope slug for response
+  // Get scope slug and type for response
   const [scope] = await globalThis.services.db
     .select()
     .from(scopes)
@@ -232,6 +233,7 @@ async function verifyComposeOwnership(
   return {
     compose,
     scopeSlug: scope?.slug ?? "default",
+    scopeType: scope?.type ?? "personal",
   };
 }
 
@@ -304,10 +306,17 @@ export async function deploySchedule(
   );
 
   // Verify user owns the compose
-  const { compose, scopeSlug } = await verifyComposeOwnership(
+  const { compose, scopeSlug, scopeType } = await verifyComposeOwnership(
     userId,
     request.composeId,
   );
+
+  // Reject organization-scoped agents (schedules resolve secrets from personal scope)
+  if (scopeType === "organization") {
+    throw badRequest(
+      "Schedules are not supported for organization-scoped agents",
+    );
+  }
 
   // Validate timezone
   if (!isValidTimezone(request.timezone)) {
