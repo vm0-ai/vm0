@@ -25,7 +25,7 @@ const STATIC_FILE_RE = /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/i;
 
 /**
  * Classify a request into one of three categories:
- * - "api"   : /api/* or /v1/* routes that need CORS handling
+ * - "api"   : /api/* routes that need CORS handling
  * - "skip"  : non-API routes that should bypass i18n (static, auth pages, etc.)
  * - "page"  : normal page routes that need i18n + auth
  */
