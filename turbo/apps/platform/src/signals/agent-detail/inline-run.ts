@@ -149,6 +149,9 @@ export const startInlineRun$ = command(({ get, set }, runId: string) => {
       setStatus: (status) => {
         set(internalInlineRunStatus$, status);
       },
+      setError: (error) => {
+        set(internalInlineRunError$, error);
+      },
     },
     onPhase2Done: () => {
       set(internalInitFromUrl$, false);

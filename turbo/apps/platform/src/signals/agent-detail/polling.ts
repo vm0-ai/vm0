@@ -71,6 +71,7 @@ interface PollableRunState {
     ) => Computed<Promise<PageResult>>[],
   ) => void;
   setStatus: (status: LogStatus) => void;
+  setError?: (error: string | null) => void;
 }
 
 const pollNewEvents$ = command(
@@ -141,6 +142,7 @@ export const setupPollingLoop$ = command(
       if (response.ok) {
         const detail = (await response.json()) as LogDetail;
         runState.setStatus(detail.status);
+        runState.setError?.(detail.error);
         if (isTerminalStatus(detail.status)) {
           await set(pollNewEvents$, { runId, state: runState });
           signal.throwIfAborted();
@@ -174,6 +176,7 @@ export const setupPollingLoop$ = command(
         if (response.ok) {
           const detail = (await response.json()) as LogDetail;
           runState.setStatus(detail.status);
+          runState.setError?.(detail.error);
           if (isTerminalStatus(detail.status)) {
             await set(pollNewEvents$, { runId, state: runState });
             signal.throwIfAborted();

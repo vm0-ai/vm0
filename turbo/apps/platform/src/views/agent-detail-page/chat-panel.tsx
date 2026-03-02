@@ -74,9 +74,9 @@ export function ChatPanel() {
             </p>
           </div>
         ) : (
-          messages.map((msg) => (
-            <ChatMessage
-              key={msg.runId ?? `${msg.role}-${msg.content.slice(0, 32)}`}
+          messages.map((msg, idx) => (
+            <ChatMessageRow
+              key={msg.runId ?? `${msg.role}-${idx}`}
               message={msg}
             />
           ))
@@ -115,7 +115,7 @@ export function ChatPanel() {
 // ChatMessage — renders a single user or assistant message (logs-detail style)
 // ---------------------------------------------------------------------------
 
-function ChatMessage({ message }: { message: ChatMessage }) {
+function ChatMessageRow({ message }: { message: ChatMessage }) {
   if (message.role === "user") {
     return <UserMessage content={message.content} />;
   }
