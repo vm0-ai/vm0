@@ -13,7 +13,6 @@ import { locales, defaultLocale } from "./i18n";
  */
 const SKIP_I18N_PREFIXES = [
   "/api/",
-  "/v1/",
   "/_next/",
   "/cli-auth",
   "/connector/",
@@ -26,14 +25,14 @@ const STATIC_FILE_RE = /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/i;
 
 /**
  * Classify a request into one of three categories:
- * - "api"   : /api/* or /v1/* routes that need CORS handling
+ * - "api"   : /api/* routes that need CORS handling
  * - "skip"  : non-API routes that should bypass i18n (static, auth pages, etc.)
  * - "page"  : normal page routes that need i18n + auth
  */
 type RouteKind = "api" | "skip" | "page";
 
 function classifyRoute(pathname: string): RouteKind {
-  if (pathname.startsWith("/api/") || pathname.startsWith("/v1/")) {
+  if (pathname.startsWith("/api/")) {
     return "api";
   }
 
