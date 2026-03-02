@@ -200,7 +200,7 @@ mod tests {
         // Changing this assertion means ALL existing cached snapshots are
         // invalidated.  Only update deliberately.
         assert_eq!(
-            hash, "510a2022ff4b7c42febdc447b81935a622f4fc6a3e8429111b3abbc5b4d3bdf5",
+            hash, "8f1709d611d8120311e2d51dc4d4f630604b93dc0a24757197d20bc86042e826",
             "snapshot hash changed — this invalidates all cached snapshots"
         );
     }

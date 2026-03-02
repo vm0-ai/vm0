@@ -74,22 +74,6 @@ describe("allConnectorTypes$", () => {
     expect(computerConnector).toBeUndefined();
   });
 
-  it("should hide linear connector when feature flag is disabled", async () => {
-    const { store } = context;
-
-    await setupPage({
-      context,
-      path: "/",
-      withoutRender: true,
-      featureSwitches: { linearConnector: false },
-    });
-
-    const types = await store.get(allConnectorTypes$);
-    const linearConnector = types.find((t) => t.type === "linear");
-
-    expect(linearConnector).toBeUndefined();
-  });
-
   it("should hide dropbox connector when feature flag is disabled", async () => {
     const { store } = context;
 

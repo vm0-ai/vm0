@@ -44,15 +44,15 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },
-  [FeatureSwitchKey.LinearConnector]: {
-    maintainer: "ethan@vm0.ai",
-    enabled: false,
-  },
   [FeatureSwitchKey.DropboxConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },
   [FeatureSwitchKey.FigmaConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
+  [FeatureSwitchKey.GmailConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },

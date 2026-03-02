@@ -32,8 +32,7 @@ import type { StoredExecutionContext } from "@vm0/core";
 import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
 import { POST as createScopeRoute } from "../../app/api/scope/route";
 import { POST as createRunRoute } from "../../app/api/agent/runs/route";
-import { POST as createV1RunRoute } from "../../app/v1/runs/route";
-import { GET as getRunRoute } from "../../app/v1/runs/[id]/route";
+import { GET as getRunByIdRoute } from "../../app/api/agent/runs/[id]/route";
 import { PUT as upsertModelProviderRoute } from "../../app/api/model-providers/route";
 import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../app/api/webhooks/agent/complete/route";
@@ -555,33 +554,7 @@ export async function createTestRun(
 }
 
 /**
- * Create a test run via public v1 API route handler.
- *
- * @param agentId - The agent/compose ID to run
- * @param prompt - The prompt for the run
- * @returns The created run with id and status
- */
-export async function createTestV1Run(
-  agentId: string,
-  prompt: string,
-): Promise<{ id: string; status: string }> {
-  const request = createTestRequest("http://localhost:3000/v1/runs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agentId, prompt }),
-  });
-  const response = await createV1RunRoute(request);
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(
-      `Failed to create v1 run: ${data.error?.message || response.status}`,
-    );
-  }
-  return data;
-}
-
-/**
- * Get test run details via public API route handler.
+ * Get test run details via internal API route handler.
  *
  * @param runId - The run ID to fetch
  * @returns The run details including status, error, etc.
@@ -592,15 +565,23 @@ export async function getTestRun(runId: string): Promise<{
   error: string | null;
   completedAt: string | null;
 }> {
-  const request = createTestRequest(`http://localhost:3000/v1/runs/${runId}`);
-  const response = await getRunRoute(request);
+  const request = createTestRequest(
+    `http://localhost:3000/api/agent/runs/${runId}`,
+  );
+  const response = await getRunByIdRoute(request);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(
       `Failed to get run: ${error.error?.message || response.status}`,
     );
   }
-  return response.json();
+  const data = await response.json();
+  return {
+    id: data.runId,
+    status: data.status,
+    error: data.error ?? null,
+    completedAt: data.completedAt ?? null,
+  };
 }
 
 /**
@@ -1843,7 +1824,7 @@ export async function findTestCallbacksByRunId(runId: string) {
 /**
  * Look up a full agent run record by ID for verification in tests.
  *
- * Direct DB read is required because the public GET /v1/runs/:id endpoint
+ * Direct DB read is required because the GET /api/agent/runs/:id endpoint
  * does not expose internal fields like `vars`, `secretNames`, `scheduleId`,
  * or `lastHeartbeatAt` that integration tests need to verify.
  */

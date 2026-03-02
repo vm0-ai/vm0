@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.74.0](https://github.com/vm0-ai/vm0/compare/platform-v0.73.0...platform-v0.74.0) (2026-03-02)
+
+
+### Features
+
+* **connectors:** remove linear connector feature flag ([#3394](https://github.com/vm0-ai/vm0/issues/3394)) ([bcb0266](https://github.com/vm0-ai/vm0/commit/bcb02665109aeda6e5c6052dcdaa8ebe261545e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.27.0
+
+## [0.73.0](https://github.com/vm0-ai/vm0/compare/platform-v0.72.2...platform-v0.73.0) (2026-03-02)
+
+
+### Features
+
+* **connector:** add gmail connector feature flag ([#3381](https://github.com/vm0-ai/vm0/issues/3381)) ([50b45eb](https://github.com/vm0-ai/vm0/commit/50b45eb00469afce5b433e03e590fa0070c77458))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.26.0
+
 ## [0.72.2](https://github.com/vm0-ai/vm0/compare/platform-v0.72.1...platform-v0.72.2) (2026-03-01)
 
 
