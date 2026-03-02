@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.12.2...runner-rs-v0.12.3) (2026-03-02)
+
+
+### Miscellaneous Chores
+
+* **runner-rs:** Synchronize runner-guest versions
+
 ## [0.12.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.12.1...runner-rs-v0.12.2) (2026-03-02)
 
 

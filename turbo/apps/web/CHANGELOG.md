@@ -1,5 +1,32 @@
 # Changelog
 
+## [12.59.0](https://github.com/vm0-ai/vm0/compare/web-v12.58.2...web-v12.59.0) (2026-03-02)
+
+
+### Features
+
+* **connector:** add deel oauth2 connector ([#3401](https://github.com/vm0-ai/vm0/issues/3401)) ([8128da7](https://github.com/vm0-ai/vm0/commit/8128da7cb693bdb51b006edc7ed8cc1aae14b9c2))
+* **connector:** add docusign oauth2 connector ([#3402](https://github.com/vm0-ai/vm0/issues/3402)) ([2273b1c](https://github.com/vm0-ai/vm0/commit/2273b1c3db937c8c2e5794c0348f2d5a063c724e))
+* **connector:** add google sheets, docs, and drive oauth2 connectors ([#3403](https://github.com/vm0-ai/vm0/issues/3403)) ([97cca63](https://github.com/vm0-ai/vm0/commit/97cca638861824b887feaa3d97372028e8affdba))
+* **connector:** add mercury oauth2 connector ([#3397](https://github.com/vm0-ai/vm0/issues/3397)) ([a5f4e79](https://github.com/vm0-ai/vm0/commit/a5f4e794fe12e6250d770fef1d8ec444a5cdcec3))
+* **connector:** add strava and garmin connect oauth2 connectors ([#3399](https://github.com/vm0-ai/vm0/issues/3399)) ([2aa431a](https://github.com/vm0-ai/vm0/commit/2aa431ae1142234ee0d2add1438249540dc91ad8))
+* **email:** send error reply emails for inbound processing failures ([#3400](https://github.com/vm0-ai/vm0/issues/3400)) ([5d781fe](https://github.com/vm0-ai/vm0/commit/5d781fe0aaee3cfb29482f7140085a384d24a002))
+* **slack:** replace thinking reaction with assistant thread status ([#3410](https://github.com/vm0-ai/vm0/issues/3410)) ([08ebf8a](https://github.com/vm0-ai/vm0/commit/08ebf8ad2ed2b2e1c821040fd12f94c22532542c))
+
+
+### Bug Fixes
+
+* **platform:** resolve empty logs page for scoped agents ([#3392](https://github.com/vm0-ai/vm0/issues/3392)) ([d611bd0](https://github.com/vm0-ai/vm0/commit/d611bd026a6f74a27707c3877c1c4f9cb19acb65))
+* **schedule:** reject schedule creation for organization-scoped agents ([#3420](https://github.com/vm0-ai/vm0/issues/3420)) ([7945a10](https://github.com/vm0-ai/vm0/commit/7945a10ea3d2c21e8bde0516326f98804e61ea87))
+* unify variable resolution in build-context via caller-provided scope ([#3417](https://github.com/vm0-ai/vm0/issues/3417)) ([3563fb2](https://github.com/vm0-ai/vm0/commit/3563fb24962f10f9a4480ec9d7e69540af884398))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.28.0
+
 ## [12.58.2](https://github.com/vm0-ai/vm0/compare/web-v12.58.1...web-v12.58.2) (2026-03-02)
 
 
