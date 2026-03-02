@@ -116,6 +116,35 @@ describe("/api/github/oauth/callback", () => {
     expect(location).not.toContain("error=");
   });
 
+  it("should propagate error when GitHub API fails", async () => {
+    const userId = uniqueId("gh-user");
+    mockClerk({ userId });
+    await createTestScope(uniqueId("gh-scope"));
+    const { composeId } = await createTestCompose("gh-test-agent");
+
+    const installationId = uniqueId("install");
+    server.use(
+      http.post(
+        `https://api.github.com/app/installations/${installationId}/access_tokens`,
+        () => {
+          return HttpResponse.json(
+            { message: "Bad credentials" },
+            { status: 401 },
+          );
+        },
+      ),
+    );
+
+    const state = buildSignedState(userId, composeId);
+    const request = createTestRequest(
+      `http://localhost:3000/api/github/oauth/callback?installation_id=${installationId}&setup_action=install&state=${encodeURIComponent(state)}`,
+    );
+
+    await expect(GET(request)).rejects.toThrow(
+      "Failed to get installation access token: 401",
+    );
+  });
+
   it("should create installation on valid callback", async () => {
     const userId = uniqueId("gh-user");
     mockClerk({ userId });
