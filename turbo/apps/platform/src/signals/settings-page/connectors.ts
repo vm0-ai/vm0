@@ -49,6 +49,13 @@ export const allConnectorTypes$ = computed(async (get) => {
       if (type === "linear" && !features?.[FeatureSwitchKey.LinearConnector]) {
         return false;
       }
+      // Filter docusign connector based on feature flag
+      if (
+        type === "docusign" &&
+        !features?.[FeatureSwitchKey.DocuSignConnector]
+      ) {
+        return false;
+      }
       // Filter dropbox connector based on feature flag
       if (
         type === "dropbox" &&

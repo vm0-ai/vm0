@@ -12,6 +12,7 @@ export enum FeatureSwitchKey {
   PlatformApiKeys = "platformApiKeys",
   ComputerConnector = "computerConnector",
   LinearConnector = "linearConnector",
+  DocuSignConnector = "docusignConnector",
   DropboxConnector = "dropboxConnector",
   FigmaConnector = "figmaConnector",
 }
