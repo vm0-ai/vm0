@@ -467,6 +467,38 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
       expect(data.schedule.cronExpression).toBeNull();
     });
 
+    it("should update loop schedule to cron schedule", async () => {
+      // Create initial loop schedule
+      await createTestSchedule(testComposeId, "my-schedule", {
+        intervalSeconds: 300,
+      });
+
+      // Update to cron
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/schedules",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            composeId: testComposeId,
+            name: "my-schedule",
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+            prompt: "Now cron",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.created).toBe(false);
+      expect(data.schedule.triggerType).toBe("cron");
+      expect(data.schedule.cronExpression).toBe("0 9 * * *");
+      expect(data.schedule.intervalSeconds).toBeNull();
+    });
+
     it("should reject when both cronExpression and intervalSeconds are specified", async () => {
       const request = createTestRequest(
         "http://localhost:3000/api/agent/schedules",
@@ -552,6 +584,22 @@ describe("GET /api/agent/schedules - List Schedules", () => {
 
     expect(schedules.length).toBe(1);
     expect(schedules[0]!.name).toBe("my-schedule");
+  });
+
+  it("should include loop schedule in list with correct fields", async () => {
+    const { composeId } = await createTestCompose(uniqueId("loop-list-agent"));
+    await createTestSchedule(composeId, "loop-list-test", {
+      intervalSeconds: 120,
+      prompt: "Loop list test",
+    });
+
+    const schedules = await listTestSchedules();
+
+    const loopSchedule = schedules.find((s) => s.name === "loop-list-test");
+    expect(loopSchedule).toBeDefined();
+    expect(loopSchedule!.triggerType).toBe("loop");
+    expect(loopSchedule!.intervalSeconds).toBe(120);
+    expect(loopSchedule!.cronExpression).toBeNull();
   });
 
   it("should reject unauthenticated request", async () => {

@@ -125,6 +125,26 @@ describe("POST /api/agent/schedules/:name/disable", () => {
     expect(data.error.code).toBe("NOT_FOUND");
   });
 
+  it("should disable an enabled loop schedule", async () => {
+    // Create and enable a loop schedule
+    await createTestSchedule(testComposeId, "loop-schedule", {
+      intervalSeconds: 300,
+      prompt: "Loop task",
+    });
+    await enableTestSchedule(testComposeId, "loop-schedule");
+
+    // Verify it's enabled
+    const before = await getTestSchedule(testComposeId, "loop-schedule");
+    expect(before.enabled).toBe(true);
+    expect(before.triggerType).toBe("loop");
+
+    // Disable it
+    const disabled = await disableTestSchedule(testComposeId, "loop-schedule");
+
+    expect(disabled.enabled).toBe(false);
+    expect(disabled.triggerType).toBe("loop");
+  });
+
   it("should reject unauthenticated request", async () => {
     mockClerk({ userId: null });
 
