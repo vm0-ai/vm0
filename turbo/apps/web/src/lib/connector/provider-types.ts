@@ -9,12 +9,17 @@ export interface OAuthTokenResult {
 }
 
 export interface ProviderHandler {
-  buildAuthUrl(clientId: string, redirectUri: string, state: string): string;
+  buildAuthUrl(
+    clientId: string,
+    redirectUri: string,
+    state: string,
+  ): string | Promise<string>;
   exchangeCode(
     clientId: string,
     clientSecret: string,
     code: string,
     redirectUri: string,
+    state?: string,
   ): Promise<OAuthTokenResult>;
   getClientId(currentEnv: Env): string | undefined;
   getClientSecret(currentEnv: Env): string | undefined;

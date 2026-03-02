@@ -56,6 +56,7 @@ async function exchangeTokenForConnector(
   connectorType: keyof typeof PROVIDER_HANDLERS,
   code: string,
   redirectUri: string,
+  state?: string,
 ): Promise<OAuthTokenResult> {
   const currentEnv = env();
   const handler = PROVIDER_HANDLERS[connectorType];
@@ -64,7 +65,7 @@ async function exchangeTokenForConnector(
   if (!clientId || !clientSecret) {
     throw new Error(`${connectorType} OAuth not configured`);
   }
-  return handler.exchangeCode(clientId, clientSecret, code, redirectUri);
+  return handler.exchangeCode(clientId, clientSecret, code, redirectUri, state);
 }
 
 export async function GET(
@@ -152,7 +153,12 @@ export async function GET(
       expiresIn,
       userInfo,
       scopes: oauthScopes,
-    } = await exchangeTokenForConnector(connectorType, code, redirectUri);
+    } = await exchangeTokenForConnector(
+      connectorType,
+      code,
+      redirectUri,
+      state ?? undefined,
+    );
 
     log.debug("Storing connector", {
       userId,

@@ -108,7 +108,7 @@ export async function GET(
       { status: 500 },
     );
   }
-  const authUrl = handler.buildAuthUrl(clientId, redirectUri, state);
+  const authUrl = await handler.buildAuthUrl(clientId, redirectUri, state);
 
   // Create redirect response with state cookie
   const response = NextResponse.redirect(authUrl);

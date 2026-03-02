@@ -48,6 +48,8 @@ const CONNECTOR_FEATURE_FLAGS = Object.freeze<
   "google-sheets": FeatureSwitchKey.GoogleSheetsConnector,
   "google-docs": FeatureSwitchKey.GoogleDocsConnector,
   "google-drive": FeatureSwitchKey.GoogleDriveConnector,
+  strava: FeatureSwitchKey.StravaConnector,
+  "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
 });
 
 export const allConnectorTypes$ = computed(async (get) => {

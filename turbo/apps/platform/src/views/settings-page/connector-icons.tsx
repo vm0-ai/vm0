@@ -5,6 +5,7 @@ import deelIcon from "./icons/deel.svg";
 import docusignIcon from "./icons/docusign.svg";
 import dropboxIcon from "./icons/dropbox.svg";
 import figmaIcon from "./icons/figma.svg";
+import garminConnectIcon from "./icons/garmin-connect.svg";
 import githubIcon from "./icons/github.svg";
 import gmailIcon from "./icons/gmail.svg";
 import googleDocsIcon from "./icons/google-docs.svg";
@@ -14,6 +15,7 @@ import linearIcon from "./icons/linear.svg";
 import mercuryIcon from "./icons/mercury.svg";
 import notionIcon from "./icons/notion.svg";
 import slackIcon from "./icons/slack.svg";
+import stravaIcon from "./icons/strava.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   computer: computerIcon,
@@ -21,6 +23,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   docusign: docusignIcon,
   dropbox: dropboxIcon,
   figma: figmaIcon,
+  "garmin-connect": garminConnectIcon,
   github: githubIcon,
   gmail: gmailIcon,
   "google-docs": googleDocsIcon,
@@ -30,6 +33,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   mercury: mercuryIcon,
   notion: notionIcon,
   slack: slackIcon,
+  strava: stravaIcon,
 });
 
 export function ConnectorIcon({
