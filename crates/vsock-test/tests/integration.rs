@@ -426,9 +426,10 @@ async fn test_spawn_watch_concurrent() {
 async fn test_exec_while_waiting_for_exit() {
     let h = Harness::new().await;
 
-    // Spawn a long-running process.
+    // Spawn a long-running process. Use `exec` to replace the shell so the
+    // PID we get is the actual sleep process (same pattern as sigterm/sigkill tests).
     let pid = h
-        .spawn_watch("sleep 60", 0, &[], false)
+        .spawn_watch("exec sleep 60", 0, &[], false)
         .await
         .expect("spawn_watch failed");
 
@@ -447,10 +448,15 @@ async fn test_exec_while_waiting_for_exit() {
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.stdout, b"alive\n");
 
-        // Kill the long-running process so wait_for_exit resolves.
-        h.exec(&format!("kill {pid}"), 5000, &[], false)
-            .await
-            .expect("kill failed");
+        // Kill the process group so wait_for_exit resolves.
+        h.exec(
+            &format!("kill -15 -{pid} 2>/dev/null || kill -15 {pid}"),
+            5000,
+            &[],
+            false,
+        )
+        .await
+        .expect("kill failed");
     });
 
     let event = wait_result.expect("wait_for_exit failed");

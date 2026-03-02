@@ -102,10 +102,22 @@ impl Shared {
 pub struct VsockHost {
     shared: Arc<Shared>,
     _reader: JoinHandle<()>,
+    /// Raw fd of the underlying socket, used for shutdown on Drop.
+    ///
+    /// `shutdown(SHUT_RDWR)` does NOT close the fd — it only signals EOF,
+    /// unblocking the reader_loop's async read and any remote peer's
+    /// blocking read. The fd itself is still owned by the read/write halves
+    /// and is closed normally when they are dropped.
+    fd: std::os::unix::io::RawFd,
 }
 
 impl Drop for VsockHost {
     fn drop(&mut self) {
+        // Signal EOF on the socket so the reader_loop's `read()` and the
+        // remote peer's blocking `read()` return immediately. Without this,
+        // the split stream halves keep the fd alive until the reader task is
+        // cancelled, which requires an async yield — not possible in Drop.
+        let _ = nix::sys::socket::shutdown(self.fd, nix::sys::socket::Shutdown::Both);
         self._reader.abort();
     }
 }
@@ -209,6 +221,14 @@ impl VsockHost {
         // Handshake on the unsplit stream (reader task not running yet).
         let (stream, handshake_decoder) = Self::handshake(stream, deadline).await?;
 
+        // Grab the raw fd BEFORE splitting — used by Drop to shutdown the
+        // socket and unblock any pending reads (both our reader_loop and the
+        // remote peer).
+        let fd = {
+            use std::os::unix::io::AsRawFd;
+            stream.as_raw_fd()
+        };
+
         // Split the stream and spawn the reader task.
         let (read_half, write_half) = stream.into_split();
 
@@ -228,6 +248,7 @@ impl VsockHost {
         Ok(Self {
             shared,
             _reader: reader,
+            fd,
         })
     }
 
