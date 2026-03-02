@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.75.1](https://github.com/vm0-ai/vm0/compare/platform-v0.75.0...platform-v0.75.1) (2026-03-02)
+
+
+### Bug Fixes
+
+* **platform:** add bg-card to agent instructions container ([#3454](https://github.com/vm0-ai/vm0/issues/3454)) ([5319877](https://github.com/vm0-ai/vm0/commit/5319877e6071c47e779f4c8141be8c950f1a8014))
+
 ## [0.75.0](https://github.com/vm0-ai/vm0/compare/platform-v0.74.0...platform-v0.75.0) (2026-03-02)
 
 

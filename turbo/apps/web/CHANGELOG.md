@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.60.0](https://github.com/vm0-ai/vm0/compare/web-v12.59.0...web-v12.60.0) (2026-03-02)
+
+
+### Features
+
+* **web:** auto-upload skill storage on compose save from platform ([#3434](https://github.com/vm0-ai/vm0/issues/3434)) ([b591a23](https://github.com/vm0-ai/vm0/commit/b591a231e1ebfee1418fa1f1bb71e41514630fa1))
+
+
+### Bug Fixes
+
+* **db:** clean up fk references before deleting system scopes in migration 0093 ([#3455](https://github.com/vm0-ai/vm0/issues/3455)) ([ce9ed6a](https://github.com/vm0-ai/vm0/commit/ce9ed6a1ef3df2cdb9e1a813feec5f1ea7fc1ed6))
+* redirect to platform after sign-up and handle locale-prefixed auth paths ([#3438](https://github.com/vm0-ai/vm0/issues/3438)) ([28206ac](https://github.com/vm0-ai/vm0/commit/28206ac632eb65148d1fdb4b0829a3fd95c836cd)), closes [#3390](https://github.com/vm0-ai/vm0/issues/3390)
+* **web:** use next/link for sign-up to prevent locale prefix 404 ([#3444](https://github.com/vm0-ai/vm0/issues/3444)) ([2e7b471](https://github.com/vm0-ai/vm0/commit/2e7b471a7232ff21da01b4436dc6c958b59ebca7)), closes [#3390](https://github.com/vm0-ai/vm0/issues/3390)
+
 ## [12.59.0](https://github.com/vm0-ai/vm0/compare/web-v12.58.2...web-v12.59.0) (2026-03-02)
 
 
