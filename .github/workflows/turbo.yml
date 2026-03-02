@@ -11,7 +11,7 @@ env:
   # Sandbox VM parameters for runner build
   RUNNER_VCPU: 2
   RUNNER_MEMORY_MB: 2048
-  RUNNER_MAX_CONCURRENT: 6
+  RUNNER_MAX_CONCURRENT: 4
 
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'merge_group' && format('merge-queue-{0}', github.run_id) || 'staging') }}
