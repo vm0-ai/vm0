@@ -5,6 +5,7 @@ import { figmaHandler } from "./providers/figma-handler";
 import { githubHandler } from "./providers/github-handler";
 import { gmailHandler } from "./providers/gmail-handler";
 import { linearHandler } from "./providers/linear-handler";
+import { mercuryHandler } from "./providers/mercury-handler";
 import { notionHandler } from "./providers/notion-handler";
 import { slackHandler } from "./providers/slack-handler";
 
@@ -18,6 +19,7 @@ export const PROVIDER_HANDLERS: Record<
   github: githubHandler,
   gmail: gmailHandler,
   linear: linearHandler,
+  mercury: mercuryHandler,
   notion: notionHandler,
   slack: slackHandler,
   dropbox: dropboxHandler,

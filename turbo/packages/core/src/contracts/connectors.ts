@@ -280,6 +280,36 @@ export const CONNECTOR_TYPES = {
       scopes: ["files:read"],
     } as ConnectorOAuthConfig,
   },
+  mercury: {
+    label: "Mercury",
+    helpText:
+      "Connect your Mercury account to access banking and financial data",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Mercury to grant access.",
+        secrets: {
+          MERCURY_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          MERCURY_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      MERCURY_TOKEN: "$secrets.MERCURY_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://oauth2.mercury.com/oauth2/auth",
+      tokenUrl: "https://oauth2.mercury.com/oauth2/token",
+      scopes: ["offline_access"],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -293,6 +323,7 @@ export const connectorTypeSchema = z.enum([
   "dropbox",
   "linear",
   "figma",
+  "mercury",
 ]);
 
 /**
