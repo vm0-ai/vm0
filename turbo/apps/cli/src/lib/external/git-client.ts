@@ -44,8 +44,11 @@ export async function downloadGitHubSkill(
     await execAsync(`git config core.sparseCheckout true`, { cwd: tempDir });
 
     // Configure sparse checkout to only fetch the skill path
+    // For root: use "/*" to get all root-level files
+    // For path: use the path directly
+    const sparsePattern = parsed.path || "/*";
     const sparseFile = path.join(tempDir, ".git", "info", "sparse-checkout");
-    await fs.writeFile(sparseFile, parsed.path + "\n");
+    await fs.writeFile(sparseFile, sparsePattern + "\n");
 
     // Fetch only the required branch
     await execAsync(`git fetch --depth 1 origin "${parsed.branch}"`, {
@@ -54,9 +57,20 @@ export async function downloadGitHubSkill(
     await execAsync(`git checkout "${parsed.branch}"`, { cwd: tempDir });
 
     // Move the skill directory to destination
-    const fetchedPath = path.join(tempDir, parsed.path);
     await fs.mkdir(path.dirname(skillDir), { recursive: true });
-    await fs.rename(fetchedPath, skillDir);
+    if (parsed.path) {
+      // Subdirectory: move the fetched subdirectory
+      const fetchedPath = path.join(tempDir, parsed.path);
+      await fs.rename(fetchedPath, skillDir);
+    } else {
+      // Root: move all entries except .git from tempDir
+      await fs.mkdir(skillDir, { recursive: true });
+      const entries = await fs.readdir(tempDir);
+      for (const entry of entries) {
+        if (entry === ".git") continue;
+        await fs.rename(path.join(tempDir, entry), path.join(skillDir, entry));
+      }
+    }
 
     return skillDir;
   } finally {

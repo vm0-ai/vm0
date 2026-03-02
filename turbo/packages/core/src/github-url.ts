@@ -38,7 +38,7 @@ export function parseGitHubTreeUrl(url: string): ParsedGitHubTreeUrl | null {
 
   // Parse components (may be incorrect for branches with slashes)
   const regex =
-    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/;
+    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)(?:\/(.+))?$/;
   const match = normalizedUrl.match(regex);
 
   if (!match) {
@@ -46,14 +46,15 @@ export function parseGitHubTreeUrl(url: string): ParsedGitHubTreeUrl | null {
   }
 
   const [, owner, repo, branch, pathPart] = match;
-  const pathSegments = pathPart!.split("/").filter(Boolean);
-  const skillName = pathSegments[pathSegments.length - 1] || pathPart!;
+  const resolvedPath = pathPart ?? "";
+  const pathSegments = resolvedPath.split("/").filter(Boolean);
+  const skillName = pathSegments[pathSegments.length - 1] || repo!;
 
   return {
     owner: owner!,
     repo: repo!,
     branch: branch!,
-    path: pathPart!,
+    path: resolvedPath,
     skillName,
     fullPath,
   };
@@ -173,6 +174,11 @@ export function resolveSkillRef(input: string): string {
     throw new Error(
       `Invalid skill URL: ${trimmed}. Expected a bare skill name (e.g. "slack") or a GitHub URL (https://github.com/{owner}/{repo}[/tree/{branch}[/path]])`,
     );
+  }
+
+  // Plain repo URL (no branch): normalize to tree URL with default branch
+  if (!parsed.branch) {
+    return `https://github.com/${parsed.owner}/${parsed.repo}/tree/${DEFAULT_SKILLS_BRANCH}`;
   }
 
   return trimmed;

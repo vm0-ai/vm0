@@ -144,7 +144,8 @@ function buildSkillMdUrl(url: string): string | null {
   if (!parsed) {
     return null;
   }
-  return `https://raw.githubusercontent.com/${parsed.owner}/${parsed.repo}/${parsed.branch}/${parsed.path}/SKILL.md`;
+  const pathPrefix = parsed.path ? `${parsed.path}/` : "";
+  return `https://raw.githubusercontent.com/${parsed.owner}/${parsed.repo}/${parsed.branch}/${pathPrefix}SKILL.md`;
 }
 
 /**
