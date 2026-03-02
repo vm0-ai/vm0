@@ -1089,6 +1089,19 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           TARGET_DIR="crates/target/aarch64-unknown-linux-musl/release"
 
+          # Provision system dependencies on all hosts (idempotent)
+          echo "=== Provisioning system dependencies ==="
+          apt-get update && apt-get install -y python3 python3-pip
+          pip3 install ansible
+          cd ansible
+          ansible-playbook \
+            -i "${METAL_HOSTS}," \
+            playbooks/provision-metal.yml \
+            --private-key $HOME/.ssh/runner.pem \
+            -e "ansible_user=${METAL_USER}" \
+            -v
+          cd ..
+
           deploy_to_host() {
             local HOST=$1
             local HOST_INDEX=$2

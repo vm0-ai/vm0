@@ -593,6 +593,12 @@ jobs:
           cd ansible
           ansible-playbook \
             -i "${AWS_METAL_RUNNER_HOSTS}," \
+            playbooks/provision-metal.yml \
+            --private-key ~/.ssh/prod-runner.pem \
+            -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
+            -v
+          ansible-playbook \
+            -i "${AWS_METAL_RUNNER_HOSTS}," \
             playbooks/deploy-runner.yml \
             --private-key ~/.ssh/prod-runner.pem \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \

@@ -87,13 +87,6 @@
     - name: Download dependencies (Firecracker, kernel, mitmproxy)
       command: "{{ bin_dir }}/runner setup"
 
-    - name: Ensure kvm group membership
-      user:
-        name: "{{ ansible_user }}"
-        groups: kvm
-        append: true
-      become: true
-
     - name: Build rootfs and snapshot
       command: >
         {{ bin_dir }}/runner build

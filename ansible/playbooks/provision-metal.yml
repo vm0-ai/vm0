@@ -1,0 +1,52 @@
+# Provision Metal Host Dependencies
+#
+# Idempotent playbook that installs all system-level dependencies required by
+# the VM0 runner on bare-metal hosts. Safe to run repeatedly — all tasks use
+# idempotent operations (apt state=present, group append, chmod).
+#
+# Usage:
+#   ansible-playbook -i "host1,host2," playbooks/provision-metal.yml \
+#     -e "ansible_user=ubuntu"
+
+- name: Provision metal host dependencies
+  hosts: all
+
+  tasks:
+    - name: Install system packages
+      apt:
+        name:
+          - squashfs-tools
+          - e2fsprogs
+          - openssl
+          - iproute2
+          - iptables
+          - procps
+        state: present
+        update_cache: true
+      become: true
+
+    - name: Check if Docker is installed
+      command: docker --version
+      register: docker_check
+      changed_when: false
+      failed_when: false
+
+    - name: Install Docker
+      shell: curl -fsSL https://get.docker.com | sh
+      when: docker_check.rc != 0
+      become: true
+
+    - name: Add user to docker and kvm groups
+      user:
+        name: "{{ ansible_user }}"
+        groups:
+          - docker
+          - kvm
+        append: true
+      become: true
+
+    - name: Ensure /dev/kvm is accessible
+      file:
+        path: /dev/kvm
+        mode: '0666'
+      become: true
