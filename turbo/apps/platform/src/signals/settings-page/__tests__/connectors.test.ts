@@ -121,6 +121,54 @@ describe("allConnectorTypes$", () => {
 
     expect(figmaConnector).toBeUndefined();
   });
+
+  it("should hide google-sheets connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { googleSheetsConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const googleSheetsConnector = types.find((t) => t.type === "google-sheets");
+
+    expect(googleSheetsConnector).toBeUndefined();
+  });
+
+  it("should hide google-docs connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { googleDocsConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const googleDocsConnector = types.find((t) => t.type === "google-docs");
+
+    expect(googleDocsConnector).toBeUndefined();
+  });
+
+  it("should hide google-drive connector when feature flag is disabled", async () => {
+    const { store } = context;
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { googleDriveConnector: false },
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const googleDriveConnector = types.find((t) => t.type === "google-drive");
+
+    expect(googleDriveConnector).toBeUndefined();
+  });
 });
 
 describe("disconnect dialog", () => {

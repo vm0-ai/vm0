@@ -60,6 +60,27 @@ export const allConnectorTypes$ = computed(async (get) => {
       if (type === "figma" && !features?.[FeatureSwitchKey.FigmaConnector]) {
         return false;
       }
+      // Filter google-sheets connector based on feature flag
+      if (
+        type === "google-sheets" &&
+        !features?.[FeatureSwitchKey.GoogleSheetsConnector]
+      ) {
+        return false;
+      }
+      // Filter google-docs connector based on feature flag
+      if (
+        type === "google-docs" &&
+        !features?.[FeatureSwitchKey.GoogleDocsConnector]
+      ) {
+        return false;
+      }
+      // Filter google-drive connector based on feature flag
+      if (
+        type === "google-drive" &&
+        !features?.[FeatureSwitchKey.GoogleDriveConnector]
+      ) {
+        return false;
+      }
       return true;
     })
     .map((type) => {
