@@ -30,7 +30,6 @@ interface CallbackPayload {
   agentName: string;
   composeId: string;
   existingSessionId?: string;
-  reactionAdded: boolean;
 }
 
 /**
@@ -71,7 +70,7 @@ describe("POST /api/internal/callbacks/slack", () => {
   beforeEach(() => {
     context.setupMocks();
     mockClient.chat.postMessage.mockClear();
-    mockClient.reactions.remove.mockClear();
+    mockClient.assistant.threads.setStatus.mockClear();
   });
 
   describe("Signature Verification", () => {
@@ -96,7 +95,6 @@ describe("POST /api/internal/callbacks/slack", () => {
           userLinkId: userLink.id,
           agentName: "test-agent",
           composeId: binding.composeId,
-          reactionAdded: true,
         },
       });
 
@@ -113,7 +111,6 @@ describe("POST /api/internal/callbacks/slack", () => {
             userLinkId: userLink.id,
             agentName: "test-agent",
             composeId: binding.composeId,
-            reactionAdded: true,
           },
         },
         secret,
@@ -148,7 +145,6 @@ describe("POST /api/internal/callbacks/slack", () => {
           userLinkId: userLink.id,
           agentName: "test-agent",
           composeId: binding.composeId,
-          reactionAdded: true,
         },
       });
 
@@ -165,7 +161,6 @@ describe("POST /api/internal/callbacks/slack", () => {
             userLinkId: userLink.id,
             agentName: "test-agent",
             composeId: binding.composeId,
-            reactionAdded: true,
           },
         },
         secret,
@@ -203,7 +198,6 @@ describe("POST /api/internal/callbacks/slack", () => {
               userLinkId: "link-123",
               agentName: "test-agent",
               composeId: "compose-123",
-              reactionAdded: false,
             },
           }),
         },
@@ -238,7 +232,6 @@ describe("POST /api/internal/callbacks/slack", () => {
               userLinkId: "link-123",
               agentName: "test-agent",
               composeId: "compose-123",
-              reactionAdded: false,
             },
           }),
         },
@@ -275,7 +268,6 @@ describe("POST /api/internal/callbacks/slack", () => {
           userLinkId: userLink.id,
           agentName: "test-agent",
           composeId: binding.composeId,
-          reactionAdded: true,
         },
       });
 
@@ -292,7 +284,6 @@ describe("POST /api/internal/callbacks/slack", () => {
             userLinkId: userLink.id,
             agentName: "test-agent",
             composeId: binding.composeId,
-            reactionAdded: true,
           },
         },
         secret,
@@ -313,8 +304,11 @@ describe("POST /api/internal/callbacks/slack", () => {
       expect(callArgs.channel).toBe(channelId);
       expect(callArgs.thread_ts).toBe("1234567890.000000");
 
-      // And the thinking reaction should be removed
-      expect(mockClient.reactions.remove).toHaveBeenCalledTimes(1);
+      // And the thinking status should be cleared
+      expect(mockClient.assistant.threads.setStatus).toHaveBeenCalledTimes(1);
+      const statusCall = mockClient.assistant.threads.setStatus.mock
+        .calls[0]![0] as { status: string };
+      expect(statusCall.status).toBe("");
     });
 
     it("should post error message on failed run", async () => {
@@ -339,7 +333,6 @@ describe("POST /api/internal/callbacks/slack", () => {
           userLinkId: userLink.id,
           agentName: "test-agent",
           composeId: binding.composeId,
-          reactionAdded: true,
         },
       });
 
@@ -357,7 +350,6 @@ describe("POST /api/internal/callbacks/slack", () => {
             userLinkId: userLink.id,
             agentName: "test-agent",
             composeId: binding.composeId,
-            reactionAdded: true,
           },
         },
         secret,
@@ -374,59 +366,6 @@ describe("POST /api/internal/callbacks/slack", () => {
       };
       expect(callArgs.text).toContain("Error");
       expect(callArgs.text).toContain("Agent crashed unexpectedly");
-    });
-
-    it("should not remove reaction when reactionAdded is false", async () => {
-      // Given a linked Slack user with an agent
-      const { userLink, installation } = await givenLinkedSlackUser();
-      const { binding } = await givenUserHasAgent(userLink, {
-        agentName: "test-agent",
-      });
-
-      // And a run with callback where reactionAdded is false
-      mockClerk({ userId: userLink.vm0UserId });
-      const { runId } = await createTestRun(binding.composeId, "Test prompt");
-      const channelId = `C-noreact-${Date.now()}`;
-      const { secret } = await createTestCallback({
-        runId,
-        url: "http://localhost/api/internal/callbacks/slack",
-        payload: {
-          workspaceId: installation.slackWorkspaceId,
-          channelId,
-          threadTs: "1234567890.000000",
-          messageTs: "1234567890.123456",
-          userLinkId: userLink.id,
-          agentName: "test-agent",
-          composeId: binding.composeId,
-          reactionAdded: false, // No reaction was added
-        },
-      });
-
-      // When the callback is invoked
-      const request = createCallbackRequest(
-        {
-          runId,
-          status: "completed",
-          payload: {
-            workspaceId: installation.slackWorkspaceId,
-            channelId,
-            threadTs: "1234567890.000000",
-            messageTs: "1234567890.123456",
-            userLinkId: userLink.id,
-            agentName: "test-agent",
-            composeId: binding.composeId,
-            reactionAdded: false,
-          },
-        },
-        secret,
-      );
-      const response = await POST(request);
-
-      // Then the request should succeed
-      expect(response.status).toBe(200);
-
-      // And no reaction removal should be attempted
-      expect(mockClient.reactions.remove).not.toHaveBeenCalled();
     });
   });
 
@@ -458,7 +397,6 @@ describe("POST /api/internal/callbacks/slack", () => {
           userLinkId: userLink.id,
           agentName: "test-agent",
           composeId: binding.composeId,
-          reactionAdded: true,
         },
       });
 
@@ -479,7 +417,6 @@ describe("POST /api/internal/callbacks/slack", () => {
             userLinkId: userLink.id,
             agentName: "test-agent",
             composeId: binding.composeId,
-            reactionAdded: true,
           },
         },
         secret,
@@ -519,7 +456,6 @@ describe("POST /api/internal/callbacks/slack", () => {
           agentName: "test-agent",
           composeId: binding.composeId,
           existingSessionId, // Existing session
-          reactionAdded: true,
         },
       });
 
@@ -537,7 +473,6 @@ describe("POST /api/internal/callbacks/slack", () => {
             agentName: "test-agent",
             composeId: binding.composeId,
             existingSessionId,
-            reactionAdded: true,
           },
         },
         secret,
@@ -572,7 +507,6 @@ describe("POST /api/internal/callbacks/slack", () => {
               userLinkId: "link-123",
               agentName: "test-agent",
               composeId: "compose-123",
-              reactionAdded: false,
             },
           }),
         },
@@ -605,7 +539,6 @@ describe("POST /api/internal/callbacks/slack", () => {
           userLinkId: userLink.id,
           agentName: "test-agent",
           composeId: binding.composeId,
-          reactionAdded: true,
         },
       });
 
