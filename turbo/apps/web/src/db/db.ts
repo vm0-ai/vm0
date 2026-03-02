@@ -29,6 +29,8 @@ import * as usageDailySchema from "./schema/usage-daily";
 import * as emailThreadSessionSchema from "./schema/email-thread-session";
 import * as emailReplyRequestSchema from "./schema/email-reply-request";
 import * as orgAccessTokenSchema from "./schema/org-access-token";
+import * as githubInstallationSchema from "./schema/github-installation";
+import * as githubIssueSessionSchema from "./schema/github-issue-session";
 
 export const schema = {
   ...userSchema,
@@ -62,4 +64,6 @@ export const schema = {
   ...emailThreadSessionSchema,
   ...emailReplyRequestSchema,
   ...orgAccessTokenSchema,
+  ...githubInstallationSchema,
+  ...githubIssueSessionSchema,
 };
