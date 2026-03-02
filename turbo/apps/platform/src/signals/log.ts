@@ -57,9 +57,32 @@ export enum Level {
   Fatal = "fatal",
 }
 
-// LOGGERS is mutable on purpose
-// eslint-disable-next-line ccstate/no-package-variable
-const LOGGERS: Partial<Record<string, ConsoleLogger>> = {};
+class LoggerRegistry {
+  private store: Partial<Record<string, ConsoleLogger>> = {};
+
+  get(name: string): ConsoleLogger | undefined {
+    return this.store[name];
+  }
+
+  set(name: string, instance: ConsoleLogger): void {
+    this.store[name] = instance;
+  }
+
+  reset(): void {
+    for (const key of Object.keys(this.store)) {
+      const inst = this.store[key];
+      if (inst) {
+        inst.level = Level.Info;
+      }
+    }
+  }
+
+  getAll(): Partial<Record<string, ConsoleLogger>> {
+    return this.store;
+  }
+}
+
+const loggerRegistry = new LoggerRegistry();
 
 /**
  * Create a logger instance with the given name.
@@ -67,8 +90,9 @@ const LOGGERS: Partial<Record<string, ConsoleLogger>> = {};
  * @returns Logger instance
  */
 export function logger(name: string): ConsoleLogger {
-  if (LOGGERS[name]) {
-    return LOGGERS[name];
+  const existing = loggerRegistry.get(name);
+  if (existing) {
+    return existing;
   }
 
   const loggerInstance: ConsoleLogger = {
@@ -186,19 +210,15 @@ export function logger(name: string): ConsoleLogger {
     };
   }
 
-  LOGGERS[name] = loggerInstance;
+  loggerRegistry.set(name, loggerInstance);
 
   return loggerInstance;
 }
 
 export function resetLoggerForTest() {
-  for (const key in LOGGERS) {
-    if (LOGGERS[key]) {
-      LOGGERS[key].level = Level.Info;
-    }
-  }
+  loggerRegistry.reset();
 }
 
 export function getLoggers(): Partial<Record<string, ConsoleLogger>> {
-  return LOGGERS;
+  return loggerRegistry.getAll();
 }

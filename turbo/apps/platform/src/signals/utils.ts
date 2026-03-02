@@ -12,17 +12,13 @@ export enum Reason {
   Daemon = "daemon",
 }
 
-// we use dynamic set to collect detached promises in vitest environment
-// eslint-disable-next-line ccstate/no-package-variable
-const collectedPromise = new Set<Promise<unknown>>();
+class PromiseTracker {
+  collected = new Set<Promise<unknown>>();
+  reasons = new Map<Promise<unknown>, Reason>();
+  descriptions = new Map<Promise<unknown>, string>();
+}
 
-// we use dynamic set to collect detached promises in vitest environment
-// eslint-disable-next-line ccstate/no-package-variable
-const promiseReason = new Map<Promise<unknown>, Reason>();
-
-// we use dynamic set to collect detached promises in vitest environment
-// eslint-disable-next-line ccstate/no-package-variable
-const promiseDescription = new Map<Promise<unknown>, string>();
+const tracker = new PromiseTracker();
 
 export function detach<T>(
   promise: T | Promise<T>,
@@ -35,68 +31,71 @@ export function detach<T>(
   let silencePromise: Promise<void> | undefined;
 
   if (isPromise) {
-    silencePromise = (async () => {
-      try {
-        await promise;
-        // here is an allow case for no-catch-abort because we want to rethrow non-abort errors
-        // eslint-disable-next-line ccstate/no-catch-abort
-      } catch (error) {
+    silencePromise = Promise.resolve(promise).then(
+      () => {},
+      (error: unknown) => {
         throwIfNotAbort(error);
-      }
-    })();
+      },
+    );
   }
 
   if (IN_VITEST && silencePromise) {
-    collectedPromise.add(silencePromise);
-    promiseReason.set(silencePromise, reason);
+    tracker.collected.add(silencePromise);
+    tracker.reasons.set(silencePromise, reason);
     if (description) {
-      promiseDescription.set(silencePromise, description);
+      tracker.descriptions.set(silencePromise, description);
     }
   }
 }
 
 export async function clearAllDetached() {
   if (!IN_VITEST) {
-    collectedPromise.clear();
-    promiseReason.clear();
-    promiseDescription.clear();
+    tracker.collected.clear();
+    tracker.reasons.clear();
+    tracker.descriptions.clear();
     return [];
   }
 
   L.debug("Clear all detached promises");
 
-  const settledResult = [];
+  const settledResult: {
+    promise: Promise<unknown>;
+    reason: Reason | undefined;
+    description: string | undefined;
+    result?: unknown;
+    error?: unknown;
+  }[] = [];
 
   L.debugGroup("Detached promises");
-  for (const promise of collectedPromise) {
-    const reason = promiseReason.get(promise);
-    const description = promiseDescription.get(promise);
+  for (const promise of tracker.collected) {
+    const reason = tracker.reasons.get(promise);
+    const description = tracker.descriptions.get(promise);
     L.debug(`Await promise: ${reason ?? "unknown"} ${description ?? ""}`);
-    try {
-      const result = await promise;
-      settledResult.push({
-        promise,
-        reason,
-        description: promiseDescription.get(promise),
-        result,
-      });
-      // we only want to collect abort abort errors here
-      // eslint-disable-next-line ccstate/no-catch-abort
-    } catch (error) {
-      throwIfNotAbort(error);
-      settledResult.push({
-        promise,
-        reason,
-        description: promiseDescription.get(promise),
-        error,
-      });
-    }
+    await promise.then(
+      (result) => {
+        settledResult.push({
+          promise,
+          reason,
+          description: tracker.descriptions.get(promise),
+          result,
+        });
+      },
+      (error: unknown) => {
+        throwIfNotAbort(error);
+        settledResult.push({
+          promise,
+          reason,
+          description: tracker.descriptions.get(promise),
+          error,
+        });
+      },
+    );
   }
   L.debugGroupEnd();
 
-  collectedPromise.clear();
-  promiseReason.clear();
-  promiseDescription.clear();
+  tracker.collected.clear();
+  tracker.reasons.clear();
+  tracker.descriptions.clear();
 
   return settledResult;
 }

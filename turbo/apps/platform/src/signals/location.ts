@@ -1,29 +1,22 @@
-// we use mutable package variables to mock location properties
-// eslint-disable-next-line ccstate/no-package-variable
-let _pathname: string | undefined = undefined;
+class LocationOverrides {
+  pathname: string | undefined = undefined;
+  search: string | undefined = undefined;
+  origin: string | undefined = undefined;
+  pushState: typeof window.history.pushState | undefined = undefined;
+}
 
-// we use mutable package variables to mock location properties
-// eslint-disable-next-line ccstate/no-package-variable
-let _search: string | undefined = undefined;
-
-// we use mutable package variables to mock location properties
-// eslint-disable-next-line ccstate/no-package-variable
-let _origin: string | undefined = undefined;
-
-// we use mutable package variables to mock location properties
-// eslint-disable-next-line ccstate/no-package-variable
-let _pushState: typeof window.history.pushState | undefined = undefined;
+const overrides = new LocationOverrides();
 
 export const setPathname = (pathname: string) => {
-  _pathname = pathname;
+  overrides.pathname = pathname;
 };
 
 export const setSearch = (search: string) => {
-  _search = search;
+  overrides.search = search;
 };
 
 export const setOrigin = (origin: string) => {
-  _origin = origin;
+  overrides.origin = origin;
 };
 
 export function mockLocation(
@@ -36,25 +29,25 @@ export function mockLocation(
   },
   signal: AbortSignal,
 ) {
-  _pathname = pathname;
-  _search = search;
+  overrides.pathname = pathname;
+  overrides.search = search;
 
   signal.addEventListener("abort", () => {
-    _pathname = undefined;
-    _search = undefined;
+    overrides.pathname = undefined;
+    overrides.search = undefined;
   });
 }
 
 export const pathname = () => {
-  return _pathname ?? location.pathname;
+  return overrides.pathname ?? location.pathname;
 };
 
 export const search = () => {
-  return _search ?? location.search;
+  return overrides.search ?? location.search;
 };
 
 export const origin = () => {
-  return _origin ?? location.origin;
+  return overrides.origin ?? location.origin;
 };
 
 export const pushState = (
@@ -62,8 +55,8 @@ export const pushState = (
   unused: Parameters<typeof window.history.pushState>[1],
   url: Parameters<typeof window.history.pushState>[2],
 ) => {
-  if (_pushState) {
-    _pushState.call(window.history, data, unused, url);
+  if (overrides.pushState) {
+    overrides.pushState.call(window.history, data, unused, url);
   } else {
     window.history.pushState(data, unused, url);
   }
@@ -73,8 +66,8 @@ export function mockPushState(
   fn: typeof window.history.pushState | undefined,
   signal: AbortSignal,
 ) {
-  _pushState = fn;
+  overrides.pushState = fn;
   signal.addEventListener("abort", () => {
-    _pushState = undefined;
+    overrides.pushState = undefined;
   });
 }

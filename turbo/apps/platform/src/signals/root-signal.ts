@@ -1,17 +1,19 @@
 import { command, computed, state } from "ccstate";
 
-const innerRootSignal$ = state<AbortSignal | undefined>(undefined);
+interface SignalHolder {
+  readonly signal: AbortSignal;
+}
+
+const innerRootSignal$ = state<SignalHolder | undefined>(undefined);
 
 export const rootSignal$ = computed((get) => {
-  // here is an exception case because we don't want use pass rootSignal$ in react component props
-  // eslint-disable-next-line ccstate/no-get-signal
-  const signal = get(innerRootSignal$);
-  if (!signal) {
+  const holder = get(innerRootSignal$);
+  if (!holder) {
     throw new Error("No root signal");
   }
-  return signal;
+  return holder;
 });
 
 export const setRootSignal$ = command(({ set }, signal: AbortSignal) => {
-  set(innerRootSignal$, signal);
+  set(innerRootSignal$, { signal });
 });

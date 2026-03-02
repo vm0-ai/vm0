@@ -25,29 +25,31 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
-import type { NavItem } from "../../types/navigation.ts";
+import type { NavIconName, NavItem } from "../../types/navigation.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
 
-// eslint-disable-next-line ccstate/no-package-variable -- static readonly icon mapping
-const ICON_MAP = {
-  Bot: IconRobot,
-  CircleDot: IconCircleDotFilled,
-  Clock: IconClock,
-  Database: IconDatabase,
-  FileBarChart: IconChartBar,
-  LayoutDashboard: IconLayoutDashboard,
-  List: IconList,
-  KeyRound: IconKey,
-  Receipt: IconReceipt,
-  HelpCircle: IconHelpCircle,
-  Rocket: IconRocket,
-  Lock: IconLock,
-  File: IconFile,
-  Files: IconFiles,
-  SquareKey: IconSquareKey,
-  Sparkles: IconSparkles,
-  Settings: IconSettings,
-} as const satisfies Record<string, Icon>;
+function getIconComponent(name: NavIconName): Icon {
+  const map: Record<NavIconName, Icon> = {
+    Bot: IconRobot,
+    CircleDot: IconCircleDotFilled,
+    Clock: IconClock,
+    Database: IconDatabase,
+    FileBarChart: IconChartBar,
+    LayoutDashboard: IconLayoutDashboard,
+    List: IconList,
+    KeyRound: IconKey,
+    Receipt: IconReceipt,
+    HelpCircle: IconHelpCircle,
+    Rocket: IconRocket,
+    Lock: IconLock,
+    File: IconFile,
+    Files: IconFiles,
+    SquareKey: IconSquareKey,
+    Sparkles: IconSparkles,
+    Settings: IconSettings,
+  };
+  return map[name];
+}
 
 interface NavLinkProps {
   item: NavItem;
@@ -57,7 +59,7 @@ interface NavLinkProps {
 
 export function NavLink({ item, isActive, collapsed }: NavLinkProps) {
   const navigate = useSet(navigateInReact$);
-  const IconComponent = ICON_MAP[item.icon];
+  const IconComponent = getIconComponent(item.icon);
 
   const handleClick = () => {
     if (item.path) {
