@@ -101,8 +101,8 @@ export const bootstrap$ = command(
     set(setRootSignal$, signal);
 
     set(setupLoggers$);
-    set(setupGlobalMethod$, signal).catch(() => {
-      // Global method setup runs in background, errors are non-fatal
+    const globalMethodDone = set(setupGlobalMethod$, signal).catch(() => {
+      // Global method setup errors are non-fatal
     });
 
     render();
@@ -112,6 +112,8 @@ export const bootstrap$ = command(
 
     await set(setupRoutes$, signal);
     signal.throwIfAborted();
+
+    await globalMethodDone;
   },
 );
 

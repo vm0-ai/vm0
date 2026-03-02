@@ -14,11 +14,18 @@ export interface FeatureSwitch {
   readonly enabledUserHashes?: readonly string[];
 }
 
+const sha1Cache = new Map<string, string>();
+
 async function sha1(input: string): Promise<string> {
+  const cached = sha1Cache.get(input);
+  if (cached) return cached;
+
   const data = new TextEncoder().encode(input);
   const hashBuffer = await crypto.subtle.digest("SHA-1", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  const hex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  sha1Cache.set(input, hex);
+  return hex;
 }
 
 const STAFF_USER_HASHES: readonly string[] = [
@@ -140,6 +147,35 @@ export const CONNECTOR_FEATURE_FLAGS: Partial<
   strava: FeatureSwitchKey.StravaConnector,
   "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
 };
+
+/**
+ * Evaluate all feature switches at once for the given user.
+ *
+ * Computes the user hash once and checks all switches synchronously,
+ * avoiding per-key async overhead.
+ */
+export async function getAllFeatureStates(
+  userId?: string,
+): Promise<Record<FeatureSwitchKey, boolean>> {
+  const userHash =
+    userId &&
+    Object.values(FEATURE_SWITCHES).some((s) => s.enabledUserHashes?.length)
+      ? await sha1(userId)
+      : undefined;
+
+  const result = {} as Record<FeatureSwitchKey, boolean>;
+  for (const key of Object.values(FeatureSwitchKey)) {
+    const fs = FEATURE_SWITCHES[key];
+    if (fs.enabled) {
+      result[key] = true;
+    } else if (userHash && fs.enabledUserHashes?.length) {
+      result[key] = fs.enabledUserHashes.includes(userHash);
+    } else {
+      result[key] = false;
+    }
+  }
+  return result;
+}
 
 /**
  * Check if a feature is enabled for the given user.
