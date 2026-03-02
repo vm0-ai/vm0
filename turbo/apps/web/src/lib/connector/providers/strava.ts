@@ -106,7 +106,7 @@ export async function exchangeStravaCode(
   const lastName = data.athlete?.lastname ?? null;
   const displayName = [firstName, lastName].filter(Boolean).join(" ") || null;
 
-  // Fetch email separately since token response doesn't include it
+  // Fetch full athlete profile for additional info
   const userInfo = await fetchStravaAthleteInfo(
     data.access_token,
     athleteId,
