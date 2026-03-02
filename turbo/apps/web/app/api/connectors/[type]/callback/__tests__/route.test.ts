@@ -27,6 +27,8 @@ const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
 const NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
 const SLACK_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_USER_INFO_URL = "https://slack.com/api/users.info";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 const FIGMA_TOKEN_URL = "https://api.figma.com/v1/oauth/token";
 const FIGMA_ME_URL = "https://api.figma.com/v1/me";
 const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
@@ -208,6 +210,52 @@ function createGmailOAuthMock(options: {
         messagesTotal: 1000,
         threadsTotal: 500,
         historyId: "123456",
+      });
+    }),
+  });
+}
+
+/**
+ * Create MSW handlers for Google OAuth API (Sheets, Docs, Drive).
+ * These connectors share the same Google token URL and userinfo endpoint.
+ */
+function createGoogleOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  scope?: string;
+  tokenError?: string;
+  userId?: string;
+  email?: string | null;
+  name?: string | null;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(GOOGLE_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "google-test-access-token",
+        refresh_token: options.refreshToken ?? "google-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "Bearer",
+        scope:
+          options.scope ??
+          "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email",
+      });
+    }),
+    userInfo: http.get(GOOGLE_USERINFO_URL, () => {
+      if (options.userError) {
+        return HttpResponse.json({ error: "invalid_token" }, { status: 401 });
+      }
+      return HttpResponse.json({
+        id: options.userId ?? "google-user-123",
+        email: options.email !== undefined ? options.email : "user@gmail.com",
+        name: options.name !== undefined ? options.name : "Google User",
       });
     }),
   });
@@ -1245,6 +1293,397 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       });
       const response = await GET(request, {
         params: Promise.resolve({ type: "gmail" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Google Sheets OAuth Flow", () => {
+    it("should store Google Sheets connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        accessToken: "sheets-access-token",
+        refreshToken: "sheets-refresh-token",
+        scope:
+          "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email",
+        email: "testuser@gmail.com",
+        name: "Sheets User",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-sheets",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-sheets" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=google-sheets");
+      expect(location).toContain("username=Sheets+User");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/google-sheets",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("google-sheets");
+      expect(connector.externalUsername).toBe("Sheets User");
+      expect(connector.externalId).toBe("google-user-123");
+      expect(connector.externalEmail).toBe("testuser@gmail.com");
+    });
+
+    it("should redirect with error when Google Sheets token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-sheets",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-sheets" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Google Sheets returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        accessToken: "sheets-access-token",
+        refreshToken: "sheets-refresh-token-stored",
+        email: "testuser@gmail.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-sheets",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-sheets" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "GOOGLE_SHEETS_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("sheets-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Google Sheets returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 3600;
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        accessToken: "sheets-access-token",
+        refreshToken: "sheets-refresh-token",
+        expiresIn,
+        email: "exp@gmail.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-sheets",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-sheets" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "google-sheets",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Google Sheets user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-sheets",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-sheets" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Google Docs OAuth Flow", () => {
+    it("should store Google Docs connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        accessToken: "docs-access-token",
+        refreshToken: "docs-refresh-token",
+        scope:
+          "https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/userinfo.email",
+        email: "testuser@gmail.com",
+        name: "Docs User",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-docs",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-docs" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=google-docs");
+      expect(location).toContain("username=Docs+User");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/google-docs",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("google-docs");
+      expect(connector.externalUsername).toBe("Docs User");
+      expect(connector.externalId).toBe("google-user-123");
+      expect(connector.externalEmail).toBe("testuser@gmail.com");
+    });
+
+    it("should redirect with error when Google Docs token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-docs",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-docs" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Google Docs returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        accessToken: "docs-access-token",
+        refreshToken: "docs-refresh-token-stored",
+        email: "testuser@gmail.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-docs",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-docs" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "GOOGLE_DOCS_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("docs-refresh-token-stored");
+    });
+
+    it("should redirect with error when Google Docs user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-docs",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-docs" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Google Drive OAuth Flow", () => {
+    it("should store Google Drive connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        accessToken: "drive-access-token",
+        refreshToken: "drive-refresh-token",
+        scope:
+          "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email",
+        email: "testuser@gmail.com",
+        name: "Drive User",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-drive",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-drive" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=google-drive");
+      expect(location).toContain("username=Drive+User");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/google-drive",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("google-drive");
+      expect(connector.externalUsername).toBe("Drive User");
+      expect(connector.externalId).toBe("google-user-123");
+      expect(connector.externalEmail).toBe("testuser@gmail.com");
+    });
+
+    it("should redirect with error when Google Drive token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-drive",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-drive" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Google Drive returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        accessToken: "drive-access-token",
+        refreshToken: "drive-refresh-token-stored",
+        email: "testuser@gmail.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-drive",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-drive" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "GOOGLE_DRIVE_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("drive-refresh-token-stored");
+    });
+
+    it("should redirect with error when Google Drive user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-drive",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-drive" }),
       });
 
       expect(response.status).toBe(307);
