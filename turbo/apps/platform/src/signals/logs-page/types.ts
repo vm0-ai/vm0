@@ -14,6 +14,7 @@ export interface LogEntry {
   id: string;
   sessionId: string | null;
   agentName: string;
+  scopeSlug: string | null;
   framework: string | null;
   status: LogStatus;
   createdAt: string;
