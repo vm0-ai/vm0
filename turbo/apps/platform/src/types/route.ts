@@ -7,6 +7,7 @@ export type RoutePath =
   | "/agents"
   | "/agents/:name"
   | "/agents/:name/logs"
+  | "/agents/:name/logs/:id"
   | "/agents/:name/connections"
   | "/environment-variables-setup"
   | "/provider-setup"

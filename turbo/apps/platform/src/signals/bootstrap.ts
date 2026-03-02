@@ -14,6 +14,7 @@ import { setupSettingsPage$ } from "./settings-page/settings-page.ts";
 import { setupAgentsPage$ } from "./agents-page/agents-page.ts";
 import { setupAgentDetailPage$ } from "./agent-detail/agent-detail-page.ts";
 import { setupAgentLogsPage$ } from "./agent-detail/agent-logs-page.ts";
+import { setupAgentLogDetailPage$ } from "./agent-detail/agent-log-detail-page.ts";
 import { setupAgentConnectionsPage$ } from "./agent-detail/agent-connections-page.ts";
 import { hasScope$ } from "./scope.ts";
 import { logger } from "./log.ts";
@@ -44,6 +45,10 @@ const ROUTE_CONFIG = [
   {
     path: "/settings",
     setup: setupScopeRequiredPageWrapper(setupSettingsPage$),
+  },
+  {
+    path: "/agents/:name/logs/:id",
+    setup: setupScopeRequiredPageWrapper(setupAgentLogDetailPage$),
   },
   {
     path: "/agents/:name/logs",
