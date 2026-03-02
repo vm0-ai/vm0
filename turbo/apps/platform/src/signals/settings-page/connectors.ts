@@ -45,10 +45,6 @@ export const allConnectorTypes$ = computed(async (get) => {
       ) {
         return false;
       }
-      // Filter linear connector based on feature flag
-      if (type === "linear" && !features?.[FeatureSwitchKey.LinearConnector]) {
-        return false;
-      }
       // Filter docusign connector based on feature flag
       if (
         type === "docusign" &&
@@ -65,6 +61,10 @@ export const allConnectorTypes$ = computed(async (get) => {
       }
       // Filter figma connector based on feature flag
       if (type === "figma" && !features?.[FeatureSwitchKey.FigmaConnector]) {
+        return false;
+      }
+      // Filter gmail connector based on feature flag
+      if (type === "gmail" && !features?.[FeatureSwitchKey.GmailConnector]) {
         return false;
       }
       return true;

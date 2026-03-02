@@ -20,13 +20,17 @@ use crate::sandbox::FirecrackerSandbox;
 /// process group, surviving SIGKILL on timeout as orphans frozen into the
 /// snapshot.
 ///
-/// - `claude --version`: exercises the Bun/JSC runtime startup path so the
-///   OS page cache is warm. The claude binary is a Bun-compiled executable
-///   (not Node.js), so `NODE_COMPILE_CACHE` has no effect.
+/// - `claude --print --verbose --output-format stream-json hi`:
+///   exercises the full CLI initialization path matching the real guest-agent
+///   invocation (module loading, config parsing, API client setup) so all
+///   relevant memory pages are captured in the snapshot. Fails with
+///   "Invalid API key" but still loads the complete module graph. The claude
+///   binary is a Bun-compiled executable (not Node.js), so
+///   `NODE_COMPILE_CACHE` has no effect.
 /// - `codex --help`: lightweight pre-warm for Codex (no `--print` equivalent).
 ///   Also tolerated because codex may not be installed.
 pub const PREWARM_SCRIPT: &str = "\
-    (claude --version >/dev/null 2>&1 || true) && \
+    (claude --print --verbose --output-format stream-json hi 2>/dev/null || true) && \
     (codex --help >/dev/null 2>&1 || true)";
 
 /// SHA-256 fingerprint of all sandbox-fc internal configuration that affects

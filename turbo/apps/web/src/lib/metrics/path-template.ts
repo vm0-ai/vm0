@@ -4,13 +4,6 @@ const UUID_PATTERN =
 
 // Known route patterns
 const ROUTE_PATTERNS: Array<{ pattern: RegExp; template: string }> = [
-  // Public API v1
-  { pattern: /^\/v1\/runs\/[^/]+$/, template: "/v1/runs/:id" },
-  { pattern: /^\/v1\/runs\/[^/]+\/events$/, template: "/v1/runs/:id/events" },
-  { pattern: /^\/v1\/runs\/[^/]+\/metrics$/, template: "/v1/runs/:id/metrics" },
-  { pattern: /^\/v1\/agents\/[^/]+$/, template: "/v1/agents/:id" },
-  { pattern: /^\/v1\/artifacts\/[^/]+$/, template: "/v1/artifacts/:id" },
-  { pattern: /^\/v1\/volumes\/[^/]+$/, template: "/v1/volumes/:id" },
   // Internal API
   { pattern: /^\/api\/agent\/runs\/[^/]+$/, template: "/api/agent/runs/:id" },
   {
