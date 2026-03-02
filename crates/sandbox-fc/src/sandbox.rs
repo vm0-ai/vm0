@@ -75,7 +75,9 @@ pub struct FirecrackerSandbox {
     state: Arc<AtomicU8>,
     /// Vsock guest connection, shared with background log tasks so they can
     /// drop the connection immediately when the process exits unexpectedly.
-    guest: Arc<tokio::sync::Mutex<Option<VsockHost>>>,
+    /// Wrapped in `Arc` so operations can clone the handle and release the
+    /// mutex immediately, allowing concurrent vsock operations.
+    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
     /// Notified when the firecracker process exits unexpectedly.
     /// Sandbox operations race against this to detect crashes promptly.
     crash_notify: Arc<Notify>,
@@ -101,7 +103,7 @@ impl FirecrackerSandbox {
             overlay,
             process: None,
             state: Arc::new(AtomicU8::new(SandboxState::Created as u8)),
-            guest: Arc::new(tokio::sync::Mutex::new(None)),
+            guest: Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>)),
             crash_notify: Arc::new(Notify::new()),
         }
     }
@@ -339,7 +341,7 @@ fn monitor_process(
     id: &str,
     child: &mut tokio::process::Child,
     state: Arc<AtomicU8>,
-    guest: Arc<tokio::sync::Mutex<Option<VsockHost>>>,
+    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
     crash_notify: Arc<Notify>,
 ) {
     if let Some(stdout) = child.stdout.take() {
@@ -434,7 +436,7 @@ impl Sandbox for FirecrackerSandbox {
             }
         };
 
-        *self.guest.lock().await = Some(vsock_guest);
+        *self.guest.lock().await = Some(Arc::new(vsock_guest));
 
         // Use CAS to avoid overwriting Stopped if the process crashed between
         // spawn and vsock connect (the background log task may have already
@@ -458,13 +460,12 @@ impl Sandbox for FirecrackerSandbox {
 
         // Try graceful shutdown via vsock.
         {
-            let mut guard = self.guest.lock().await;
-            if let Some(ref mut guest) = *guard
+            let guest = self.guest.lock().await.take();
+            if let Some(guest) = guest
                 && !guest.shutdown(SHUTDOWN_TIMEOUT).await
             {
                 warn!(id = %self.id, "graceful shutdown timed out");
             }
-            guard.take();
         }
 
         self.kill_process().await;
@@ -496,13 +497,12 @@ impl Sandbox for FirecrackerSandbox {
     // anyway — just with a less specific message.
 
     async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
-        let mut guard = self.guest.lock().await;
-        let Some(ref mut guest) = *guard else {
-            return Err(SandboxError::ExecFailed(format!(
+        let guest = self.guest.lock().await.as_ref().cloned().ok_or_else(|| {
+            SandboxError::ExecFailed(format!(
                 "sandbox not running (state: {})",
                 self.current_state()
-            )));
-        };
+            ))
+        })?;
 
         tokio::select! {
             result = guest.exec(request.cmd, request.timeout_ms(), request.env, request.sudo) => {
@@ -520,13 +520,12 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
-        let mut guard = self.guest.lock().await;
-        let Some(ref mut guest) = *guard else {
-            return Err(SandboxError::ExecFailed(format!(
+        let guest = self.guest.lock().await.as_ref().cloned().ok_or_else(|| {
+            SandboxError::ExecFailed(format!(
                 "sandbox not running (state: {})",
                 self.current_state()
-            )));
-        };
+            ))
+        })?;
 
         tokio::select! {
             result = guest.write_file(path, content, false) => {
@@ -539,13 +538,12 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     async fn spawn_watch(&self, request: &ExecRequest<'_>) -> sandbox::Result<SpawnHandle> {
-        let mut guard = self.guest.lock().await;
-        let Some(ref mut guest) = *guard else {
-            return Err(SandboxError::ExecFailed(format!(
+        let guest = self.guest.lock().await.as_ref().cloned().ok_or_else(|| {
+            SandboxError::ExecFailed(format!(
                 "sandbox not running (state: {})",
                 self.current_state()
-            )));
-        };
+            ))
+        })?;
 
         tokio::select! {
             result = guest.spawn_watch(request.cmd, request.timeout_ms(), request.env, request.sudo) => {
@@ -563,13 +561,12 @@ impl Sandbox for FirecrackerSandbox {
         handle: SpawnHandle,
         timeout: Duration,
     ) -> sandbox::Result<ProcessExit> {
-        let mut guard = self.guest.lock().await;
-        let Some(ref mut guest) = *guard else {
-            return Err(SandboxError::ExecFailed(format!(
+        let guest = self.guest.lock().await.as_ref().cloned().ok_or_else(|| {
+            SandboxError::ExecFailed(format!(
                 "sandbox not running (state: {})",
                 self.current_state()
-            )));
-        };
+            ))
+        })?;
 
         tokio::select! {
             result = guest.wait_for_exit(handle.pid, timeout) => {
