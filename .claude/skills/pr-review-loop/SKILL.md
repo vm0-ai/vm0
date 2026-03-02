@@ -6,32 +6,31 @@ context: fork
 
 You are a PR review-and-fix specialist for the vm0 project. Your role is to iteratively review a pull request, fix all high-priority issues found, and re-review until no high-priority issues remain.
 
-## Workflow Overview
+## Architecture
+
+Loop control is handled by a **bash driver script**, not by your memory. You MUST follow the ACTION output from the driver script at every step. The driver script is deterministic — it enforces the review-fix-review cycle and prevents skipping re-review after fixes.
 
 ```
-1. Identify Target PR
-   └── From args or current branch
-
-2. Run /pr-review (without posting comment)
-   └── Collect findings
-
-3. Check for high-priority issues (P0 / P1)
-   ├── None found → Post final review comment → Done
-   └── Found → Proceed to step 4
-
-4. Fix high-priority issues
-   └── Apply fixes to source code
-
-5. Run pre-commit checks
-   └── Ensure fixes don't break anything
-
-6. Commit and push fixes
-   └── Back to step 2 (re-review)
+┌──────────┐     ACTION: REVIEW      ┌─────────┐
+│  Driver   │ ──────────────────────→ │   LLM   │
+│  Script   │ ←────────────────────── │ (you)   │
+│           │   review-done {p0} {p1} │         │
+│           │                         │         │
+│           │     ACTION: FIX         │         │
+│           │ ──────────────────────→ │         │
+│           │ ←────────────────────── │         │
+│           │       fix-done          │         │
+│           │                         │         │
+│           │     ACTION: FINALIZE    │         │
+│           │ ──────────────────────→ │         │
+└──────────┘                          └─────────┘
 ```
 
 ---
 
-## Step 1: Identify Target PR
+## Phase 1: Setup
+
+### 1a: Identify PR
 
 ```bash
 if [ -n "$PR_ID" ]; then
@@ -39,25 +38,67 @@ if [ -n "$PR_ID" ]; then
 else
     CURRENT_BRANCH=$(git branch --show-current)
     PR_NUMBER=$(gh pr list --head "$CURRENT_BRANCH" --json number --jq '.[0].number')
-
-    if [ -z "$PR_NUMBER" ]; then
-        echo "No PR found for current branch. Please specify a PR number."
-        exit 1
-    fi
 fi
 ```
 
-Display PR metadata:
+### 1b: Create Driver Script
+
+Write this script to `/tmp/pr-review-loop-driver.sh` and make it executable:
 
 ```bash
-gh pr view "$PR_NUMBER" --json title,body,author,url
+cat > /tmp/pr-review-loop-driver.sh << 'DRIVER'
+#!/bin/bash
+set -euo pipefail
+
+PR="$1"
+CMD="$2"
+STATE="/tmp/pr-review-loop-${PR}.state"
+
+case "$CMD" in
+  init)
+    echo "0" > "$STATE"
+    echo "ACTION: REVIEW"
+    ;;
+  review-done)
+    P0="${3:-0}"
+    P1="${4:-0}"
+    ITER=$(cat "$STATE")
+    ITER=$((ITER + 1))
+    echo "$ITER" > "$STATE"
+    if [ "$P0" -eq 0 ] && [ "$P1" -eq 0 ]; then
+      echo "ACTION: FINALIZE"
+    elif [ "$ITER" -ge 5 ]; then
+      echo "ACTION: FINALIZE_WITH_REMAINING"
+    else
+      echo "ACTION: FIX"
+    fi
+    ;;
+  fix-done)
+    echo "ACTION: REVIEW"
+    ;;
+esac
+DRIVER
+chmod +x /tmp/pr-review-loop-driver.sh
 ```
+
+### 1c: Initialize
+
+```bash
+ACTION=$(/tmp/pr-review-loop-driver.sh "$PR_NUMBER" init)
+# Output: ACTION: REVIEW
+```
+
+Display PR metadata, then proceed to Phase 2 following the ACTION.
 
 ---
 
-## Step 2: Run Code Review (Analysis Only)
+## Phase 2: Action Loop
 
-Invoke the `code-quality` skill to perform comprehensive code review:
+Read the ACTION output from the driver script and execute the corresponding action. **Always call the driver script after completing an action to get the next ACTION.**
+
+### On `ACTION: REVIEW`
+
+1. Run the `code-quality` skill (analysis only, do NOT post a comment):
 
 ```typescript
 await Skill({
@@ -66,84 +107,50 @@ await Skill({
 });
 ```
 
-Then perform the same testing coverage and convention review as `/pr-review`:
+2. Perform testing coverage and convention review (same checks as `/pr-review`):
+   - Identify changed source files from PR diff
+   - Check test coverage for new features and bug fixes
+   - Check testing conventions against project standards
 
-1. Identify changed source files from the PR diff
-2. Check test coverage for new features and bug fixes
-3. Check testing conventions against project standards
-4. Generate testing verdict
-
-Read the generated review files:
+3. Read review results:
 
 ```bash
 REVIEW_DIR="codereviews/$(date +%Y%m%d)"
 cat "$REVIEW_DIR/commit-list.md"
 ```
 
-Collect all findings into two categories:
-- **High-priority issues**: All P0 (Critical) and P1 (High Priority) findings
-- **Low-priority issues**: Everything else (suggestions, nice-to-haves)
+4. Count P0 and P1 issues from the findings.
+
+5. **Report the counts to the driver script:**
+
+```bash
+ACTION=$(/tmp/pr-review-loop-driver.sh "$PR_NUMBER" review-done "$P0_COUNT" "$P1_COUNT")
+```
+
+6. Follow the returned ACTION.
 
 ---
 
-## Step 3: Check for High-Priority Issues
+### On `ACTION: FIX`
 
-Evaluate the collected findings:
+1. Fix all P0 issues first, then P1 issues:
 
-- **If NO high-priority issues (P0/P1) exist**: Go to Step 7 (post final review and finish)
-- **If high-priority issues exist**: Proceed to Step 4
+| Category | Fix Approach |
+|----------|--------------|
+| Missing test coverage | Write integration tests following project conventions |
+| Mock convention violations | Refactor to mock at boundary only (MSW, real DB) |
+| Type safety issues | Add proper types |
+| Error handling anti-patterns | Remove unnecessary try/catch |
+| Unused code | Remove dead imports/variables |
+| Testing anti-patterns | Rewrite tests to follow conventions |
 
-### Loop Guard
+   Mark unfixable issues (ambiguous requirements, design trade-offs, out of scope) as **skipped**.
 
-Track the current iteration count. **Maximum 5 iterations** to prevent infinite loops.
+   Rules:
+   - Only modify files that are part of the PR diff
+   - Minimal changes — fix the issue, nothing more
 
-If the maximum is reached and high-priority issues still remain:
-- Post a review comment listing the remaining unfixed issues
-- Report to the user that manual intervention is needed
-- Exit
-
----
-
-## Step 4: Fix High-Priority Issues
-
-For each high-priority issue found, apply the fix directly to the source code.
-
-### Fix Strategy
-
-Address issues in priority order: P0 first, then P1.
-
-#### Fixable Issues (Apply Automatically)
-
-| Category | Example | Fix Approach |
-|----------|---------|--------------|
-| Missing test coverage | New feature without tests | Write integration tests following project conventions |
-| Mock convention violations | `vi.mock("../../internal")` | Refactor to mock at boundary only (use MSW, real DB, etc.) |
-| Type safety issues | Use of `any`, missing types | Add proper types |
-| Error handling anti-patterns | Defensive try/catch | Remove unnecessary try/catch, let errors propagate |
-| Unused code | Dead imports, unused variables | Remove them |
-| Testing anti-patterns | Fake timers, unit tests for internals | Rewrite tests to follow conventions |
-
-#### Unfixable Issues (Report and Skip)
-
-Some issues require architectural decisions or clarification:
-- Ambiguous requirements
-- Design trade-offs that need discussion
-- Issues outside the scope of the PR
-
-Mark these as **skipped** and include them in the final report.
-
-### Important Rules
-
-- **Only modify files that are part of the PR diff** — do not touch unrelated files
-- **Follow project conventions** — refer to `docs/testing.md` for test patterns
-- **Minimal changes** — fix the issue, nothing more
-- **No new lint violations** — all fixes must pass linting
-
----
-
-## Step 5: Run Pre-Commit Checks
-
-After applying fixes, verify nothing is broken:
+2. Run pre-commit checks:
 
 ```bash
 cd turbo && pnpm format
@@ -152,37 +159,36 @@ cd turbo && pnpm check-types
 cd turbo && pnpm vitest
 ```
 
-If any check fails:
-1. Attempt to fix the failure (e.g., format issues are auto-fixable)
-2. If the failure is caused by the fix itself, revert the problematic fix and mark the issue as **skipped**
-3. Re-run checks until they pass
+   If a fix breaks checks: revert that fix, mark the issue as skipped.
 
----
-
-## Step 6: Commit and Push
-
-Stage and commit all fixes:
+3. Commit and push:
 
 ```bash
 git add <fixed-files>
-git commit -m "fix: address PR review findings (P0/P1 issues)"
+git commit -m "fix: address PR review findings"
 git push
 ```
 
-Report what was fixed in this iteration:
-```
-Iteration <N>: Fixed <count> issues
-- <issue 1 summary>
-- <issue 2 summary>
+4. **Report completion to the driver script:**
+
+```bash
+ACTION=$(/tmp/pr-review-loop-driver.sh "$PR_NUMBER" fix-done)
+# Output is ALWAYS: ACTION: REVIEW
 ```
 
-**Return to Step 2** to re-review with fresh analysis.
+5. Follow the returned ACTION (which is always REVIEW — this is how the loop is enforced).
 
 ---
 
-## Step 7: Post Final Review Comment
+### On `ACTION: FINALIZE` or `ACTION: FINALIZE_WITH_REMAINING`
 
-When no high-priority issues remain, run the full `/pr-review` to post the final review comment:
+Go to Phase 3.
+
+---
+
+## Phase 3: Finalize
+
+1. Run `/pr-review` to post the final review comment:
 
 ```typescript
 await Skill({
@@ -191,69 +197,19 @@ await Skill({
 });
 ```
 
-This posts the standard review comment to the PR.
-
----
-
-## Final Report
-
-Display a summary to the user:
+2. Display summary:
 
 ```
 PR Review Loop Complete
 
-PR: #<number> - <title>
-Branch: <branch>
+PR: #{number} - {title}
+Iterations: {count}
+Issues fixed: {count}
 
-Iterations: <count>
-Total issues fixed: <count>
-  P0 (Critical): <count> fixed, <count> skipped
-  P1 (High Priority): <count> fixed, <count> skipped
+[If FINALIZE_WITH_REMAINING]
+Max iterations reached. Remaining issues need manual intervention:
+- {issue}
 
-[If skipped issues exist]
-Remaining issues (manual intervention needed):
-- <issue description>
-
-Final review posted to PR.
-Comment URL: <comment-url>
+Final review posted.
+Comment URL: {url}
 ```
-
----
-
-## Error Handling
-
-### No PR Found
-```
-Error: No PR found for current branch.
-Please create a PR first or specify a PR number.
-```
-
-### Max Iterations Reached
-```
-Review Loop Limit Reached (5 iterations)
-
-The following high-priority issues could not be resolved automatically:
-- <issue 1>
-- <issue 2>
-
-Please fix manually and re-run /pr-review-loop
-```
-
-### Pre-Commit Check Failure
-If a fix introduces new failures that cannot be resolved:
-- Revert the problematic fix
-- Mark the original issue as skipped
-- Continue with remaining fixes
-
----
-
-## Best Practices
-
-1. **Fix in priority order** — P0 before P1
-2. **Minimal, targeted fixes** — Only change what's needed to resolve the issue
-3. **Verify after each iteration** — Always re-review to catch regressions
-4. **Respect the loop limit** — Don't fight issues that need human judgment
-5. **Preserve PR intent** — Fixes should align with the original PR purpose
-6. **No scope creep** — Only fix issues identified in the review, don't refactor unrelated code
-
-Your goal is to automate the review-fix-review cycle until the PR is clean of high-priority issues, minimizing manual intervention while maintaining code quality.
