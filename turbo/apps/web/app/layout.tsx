@@ -9,6 +9,7 @@ import {
 import { ClerkProvider } from "@clerk/nextjs";
 import { getClerkPublishableKey } from "../src/lib/clerk-config";
 import { hasClerkAuth } from "../src/env";
+import { getPlatformUrl } from "../src/lib/url";
 import { ThemeProvider } from "./components/ThemeProvider";
 import "./globals.css";
 import "./landing.css";
@@ -265,6 +266,8 @@ export default function RootLayout({
       publishableKey={getClerkPublishableKey()}
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
+      afterSignInUrl={getPlatformUrl()}
+      afterSignUpUrl={getPlatformUrl()}
     >
       {content}
     </ClerkProvider>

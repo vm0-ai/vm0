@@ -111,6 +111,23 @@ export async function runLayers(
 // Shared layers (used by both Clerk and local middleware)
 // ---------------------------------------------------------------------------
 
+/**
+ * Redirect locale-prefixed auth paths (e.g. /en/sign-up) to the root auth
+ * pages (/sign-up). Auth pages live outside the [locale] route tree, so
+ * /:locale/sign-up would 404 without this redirect.
+ */
+const LOCALE_AUTH_RE = /^\/(\w{2})\/(sign-in|sign-up)(\/.*)?$/;
+
+export const authRedirectLayer: MiddlewareLayer = (ctx) => {
+  const match = ctx.request.nextUrl.pathname.match(LOCALE_AUTH_RE);
+  if (match && locales.includes(match[1] as (typeof locales)[number])) {
+    const target = new URL(ctx.request.nextUrl);
+    target.pathname = `/${match[2]}${match[3] ?? ""}`;
+    return NextResponse.redirect(target, 308);
+  }
+  return null;
+};
+
 /** Handle CORS for API routes. Always short-circuits for "api" routes. */
 export const corsLayer: MiddlewareLayer = (ctx) => {
   if (ctx.routeKind === "api") {
