@@ -1,6 +1,7 @@
 import type { ConnectorType } from "@vm0/core";
 
 import computerIcon from "./icons/computer.svg";
+import deelIcon from "./icons/deel.svg";
 import dropboxIcon from "./icons/dropbox.svg";
 import figmaIcon from "./icons/figma.svg";
 import githubIcon from "./icons/github.svg";
@@ -11,6 +12,7 @@ import slackIcon from "./icons/slack.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   computer: computerIcon,
+  deel: deelIcon,
   figma: figmaIcon,
   github: githubIcon,
   gmail: gmailIcon,

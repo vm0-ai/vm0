@@ -251,6 +251,36 @@ export const CONNECTOR_TYPES = {
       scopes: ["read", "write"],
     } as ConnectorOAuthConfig,
   },
+  deel: {
+    label: "Deel",
+    helpText:
+      "Connect your Deel account to access HR, payroll, and contractor data",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Deel to grant access.",
+        secrets: {
+          DEEL_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          DEEL_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://app.deel.com/oauth/authorize",
+      tokenUrl: "https://app.deel.com/oauth/token",
+      scopes: [],
+    } as ConnectorOAuthConfig,
+  },
   figma: {
     label: "Figma",
     helpText: "Connect your Figma account to access design files and projects",
@@ -290,6 +320,7 @@ export const connectorTypeSchema = z.enum([
   "notion",
   "computer",
   "slack",
+  "deel",
   "dropbox",
   "linear",
   "figma",

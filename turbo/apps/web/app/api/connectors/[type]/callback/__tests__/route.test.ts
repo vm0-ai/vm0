@@ -29,6 +29,8 @@ const SLACK_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_USER_INFO_URL = "https://slack.com/api/users.info";
 const FIGMA_TOKEN_URL = "https://api.figma.com/v1/oauth/token";
 const FIGMA_ME_URL = "https://api.figma.com/v1/me";
+const DEEL_TOKEN_URL = "https://app.deel.com/oauth/token";
+const DEEL_LEGAL_ENTITIES_URL = "https://api.deel.com/rest/v2/legal-entities";
 
 /**
  * Create MSW handlers for GitHub OAuth API
@@ -302,6 +304,55 @@ function createLinearOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for Deel OAuth API
+ */
+function createDeelOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  entityId?: string;
+  legalName?: string | null;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(DEEL_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "deel-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "deel-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "Bearer",
+      });
+    }),
+    userInfo: http.get(DEEL_LEGAL_ENTITIES_URL, () => {
+      if (options.userError) {
+        return HttpResponse.json({ error: "unauthorized" }, { status: 401 });
+      }
+      return HttpResponse.json({
+        data: [
+          {
+            id: options.entityId ?? "deel-entity-123",
+            legal_name:
+              options.legalName !== undefined
+                ? options.legalName
+                : "Deel Test Org",
+          },
+        ],
+      });
+    }),
+  });
+}
+
+/**
  * Create a test request with OAuth callback parameters and cookies
  */
 function createCallbackRequest(options: {
@@ -351,6 +402,8 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("LINEAR_OAUTH_CLIENT_SECRET", "linear-test-client-secret");
     vi.stubEnv("FIGMA_OAUTH_CLIENT_ID", "figma-test-client-id");
     vi.stubEnv("FIGMA_OAUTH_CLIENT_SECRET", "figma-test-client-secret");
+    vi.stubEnv("DEEL_OAUTH_CLIENT_ID", "deel-test-client-id");
+    vi.stubEnv("DEEL_OAUTH_CLIENT_SECRET", "deel-test-client-secret");
     reloadEnv();
   });
 
@@ -1387,6 +1440,159 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       });
       const response = await GET(request, {
         params: Promise.resolve({ type: "figma" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Deel OAuth Flow", () => {
+    it("should store Deel connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createDeelOAuthMock({
+        accessToken: "deel-access-token",
+        refreshToken: "deel-refresh-token",
+        entityId: "deel-entity-456",
+        legalName: "Deel Test Org",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "deel",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "deel" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=deel");
+      expect(location).toContain("username=Deel+Test+Org");
+
+      // Verify connector was stored via API
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/deel",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("deel");
+      expect(connector.externalUsername).toBe("Deel Test Org");
+      expect(connector.externalId).toBe("deel-entity-456");
+    });
+
+    it("should redirect with error when Deel token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createDeelOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "deel",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "deel" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Deel returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createDeelOAuthMock({
+        accessToken: "deel-access-token",
+        refreshToken: "deel-refresh-token-stored",
+        entityId: "deel-entity-456",
+        legalName: "Deel Test Org",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "deel",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "deel" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      // Verify refresh token was stored as a secret
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "DEEL_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("deel-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Deel returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 2592000;
+      const { handlers: mswHandlers } = createDeelOAuthMock({
+        accessToken: "deel-access-token",
+        refreshToken: "deel-refresh-token",
+        expiresIn,
+        legalName: "Expiring Org",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "deel",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "deel" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "deel",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Deel user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createDeelOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "deel",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "deel" }),
       });
 
       expect(response.status).toBe(307);
