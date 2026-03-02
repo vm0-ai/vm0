@@ -34,7 +34,7 @@ export function SettingsPage() {
     <AppShell
       breadcrumb={["Settings"]}
       title="Settings"
-      subtitle="Configure your model providers, connectors, secrets, and variables"
+      subtitle="Configure your model providers, connectors, secrets, variables, and notifications"
     >
       <div className="flex flex-col gap-6 px-6 pb-8">
         <Tabs
