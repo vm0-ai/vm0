@@ -85,6 +85,9 @@ function initEnv() {
       // Deel OAuth (for connector)
       DEEL_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       DEEL_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // DocuSign OAuth (for connector)
+      DOCUSIGN_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      DOCUSIGN_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Dropbox OAuth (for connector)
       DROPBOX_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       DROPBOX_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -185,6 +188,8 @@ function initEnv() {
       GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
       DEEL_OAUTH_CLIENT_ID: process.env.DEEL_OAUTH_CLIENT_ID,
       DEEL_OAUTH_CLIENT_SECRET: process.env.DEEL_OAUTH_CLIENT_SECRET,
+      DOCUSIGN_OAUTH_CLIENT_ID: process.env.DOCUSIGN_OAUTH_CLIENT_ID,
+      DOCUSIGN_OAUTH_CLIENT_SECRET: process.env.DOCUSIGN_OAUTH_CLIENT_SECRET,
       DROPBOX_OAUTH_CLIENT_ID: process.env.DROPBOX_OAUTH_CLIENT_ID,
       DROPBOX_OAUTH_CLIENT_SECRET: process.env.DROPBOX_OAUTH_CLIENT_SECRET,
       LINEAR_OAUTH_CLIENT_ID: process.env.LINEAR_OAUTH_CLIENT_ID,

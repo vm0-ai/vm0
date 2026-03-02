@@ -167,6 +167,13 @@ pub async fn execute_cli(
         .stderr(Stdio::piped())
         .process_group(0);
 
+    // Disable non-essential network traffic during CLI startup to reduce
+    // latency. Claude CLI makes synchronous requests to statsig, Datadog,
+    // Segment, GCS (update check), and GitHub on startup — these add ~2s
+    // of idle waiting in the guest network environment.
+    cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
+    cmd.env("DISABLE_TELEMETRY", "1");
+
     // Pass CODEX_HOME via Command::env instead of global set_var
     if env::cli_agent_type() == "codex" {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());

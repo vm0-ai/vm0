@@ -23,7 +23,6 @@ export interface SlackCallbackContext {
   agentName: string;
   composeId: string;
   existingSessionId?: string;
-  reactionAdded: boolean;
 }
 
 interface RunAgentParams {

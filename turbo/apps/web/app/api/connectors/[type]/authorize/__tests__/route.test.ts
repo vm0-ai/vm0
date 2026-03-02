@@ -17,6 +17,8 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     vi.stubEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-test-client-secret");
     vi.stubEnv("SLACK_CLIENT_ID", "test-slack-client-id");
     vi.stubEnv("SLACK_CLIENT_SECRET", "test-slack-client-secret");
+    vi.stubEnv("DOCUSIGN_OAUTH_CLIENT_ID", "docusign-test-client-id");
+    vi.stubEnv("DOCUSIGN_OAUTH_CLIENT_SECRET", "docusign-test-client-secret");
     reloadEnv();
   });
 
@@ -159,6 +161,28 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
       const url = new URL(location!);
       expect(url.searchParams.get("user_scope")).toContain("channels:read");
       expect(url.searchParams.get("scope")).toBeNull();
+    });
+  });
+
+  describe("DocuSign connector", () => {
+    it("should redirect to DocuSign OAuth with correct parameters", async () => {
+      await context.setupUser();
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/connectors/docusign/authorize",
+      );
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "docusign" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("https://account.docusign.com/oauth/auth");
+      expect(location).toContain("client_id=docusign-test-client-id");
+      expect(location).toContain("redirect_uri=");
+      expect(location).toContain("response_type=code");
+      expect(location).toContain("scope=signature");
+      expect(location).toContain("state=");
     });
   });
 

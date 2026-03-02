@@ -147,6 +147,11 @@ vi.mock("@slack/web-api", () => {
       add: vi.fn().mockResolvedValue({ ok: true }),
       remove: vi.fn().mockResolvedValue({ ok: true }),
     },
+    assistant: {
+      threads: {
+        setStatus: vi.fn().mockResolvedValue({ ok: true }),
+      },
+    },
   };
   return {
     WebClient: vi.fn().mockImplementation(function () {

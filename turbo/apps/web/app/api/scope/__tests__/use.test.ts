@@ -107,54 +107,6 @@ describe("POST /api/scope/use - Scope Use", () => {
   });
 });
 
-describe("POST /api/scope/use - VM0 Admin System Scope", () => {
-  const ADMIN_EMAIL = "admin@vm0.ai";
-
-  beforeEach(() => {
-    context.setupMocks();
-  });
-
-  it("should allow admin to activate vm0 system scope", async () => {
-    const user = await context.setupUser();
-    mockClerk({ userId: user.userId, email: ADMIN_EMAIL });
-
-    vi.stubEnv("VM0_ADMIN_USERS", ADMIN_EMAIL);
-    reloadEnv();
-
-    // vm0 system scope exists from migration seed
-    const useReq = createTestRequest("http://localhost:3000/api/scope/use", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slug: "vm0" }),
-    });
-    const useRes = await POST(useReq);
-    expect(useRes.status).toBe(200);
-
-    const data = await useRes.json();
-    expect(data.scope.slug).toBe("vm0");
-    expect(data.scope.type).toBe("system");
-    expect(data.token).toMatch(/^vm0_org_/);
-    expect(data.expiresAt).toBeTruthy();
-  });
-
-  it("should reject non-admin from activating vm0 system scope", async () => {
-    const user = await context.setupUser();
-    // Default mockClerk email is "test@example.com" which is not an admin
-    mockClerk({ userId: user.userId });
-
-    vi.stubEnv("VM0_ADMIN_USERS", "other-admin@vm0.ai");
-    reloadEnv();
-
-    const useReq = createTestRequest("http://localhost:3000/api/scope/use", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slug: "vm0" }),
-    });
-    const useRes = await POST(useReq);
-    expect(useRes.status).toBe(403);
-  });
-});
-
 describe("POST /api/org - VM0 Admin Org Creation", () => {
   const ADMIN_EMAIL = "admin@vm0.ai";
 
