@@ -108,16 +108,7 @@ export async function handleDirectMessage(
   let agentName = defaultAgent.name;
 
   // 5. Show assistant thinking status
-  try {
-    await setThreadStatus(
-      client,
-      context.channelId,
-      threadTs,
-      "is thinking...",
-    );
-  } catch (err) {
-    log.warn("Failed to set thread status", { error: err });
-  }
+  await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
 
   // Use message text directly (no mention prefix to strip in DMs)
   const messageContent = context.messageText;
@@ -194,11 +185,9 @@ export async function handleDirectMessage(
       { threadTs },
     );
     // Clear thinking status on failure since callback won't be invoked
-    try {
-      await setThreadStatus(client, context.channelId, threadTs, "");
-    } catch {
-      // Non-critical
-    }
+    await setThreadStatus(client, context.channelId, threadTs, "").catch(
+      (err) => log.warn("Failed to clear thread status", { error: err }),
+    );
   }
   // For "dispatched" status, callback will handle response posting and status clearing
 }

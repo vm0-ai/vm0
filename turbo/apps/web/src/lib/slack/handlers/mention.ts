@@ -35,7 +35,7 @@ interface MentionContext {
  * 2. Check if user is linked
  * 3. If not linked, post link message
  * 4. Resolve workspace agent name
- * 5. Add thinking reaction
+ * 5. Set assistant thinking status
  * 6. Look up existing thread session
  * 7. Fetch conversation context
  * 8. Dispatch agent run with callback
@@ -114,16 +114,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
   let agentName = defaultAgent.name;
 
   // 5. Show assistant thinking status
-  try {
-    await setThreadStatus(
-      client,
-      context.channelId,
-      threadTs,
-      "is thinking...",
-    );
-  } catch (err) {
-    log.warn("Failed to set thread status", { error: err });
-  }
+  await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
 
   // Extract message content (remove bot mention)
   const messageContent = extractMessageContent(context.messageText, botUserId);
@@ -200,11 +191,9 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       { threadTs },
     );
     // Clear thinking status on failure since callback won't be invoked
-    try {
-      await setThreadStatus(client, context.channelId, threadTs, "");
-    } catch {
-      // Non-critical
-    }
+    await setThreadStatus(client, context.channelId, threadTs, "").catch(
+      (err) => log.warn("Failed to clear thread status", { error: err }),
+    );
   }
   // For "dispatched" status, callback will handle response posting and status clearing
 }
