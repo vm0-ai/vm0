@@ -604,6 +604,7 @@ export async function createTestRun(
     checkpointId?: string;
     modelProvider?: string;
     checkEnv?: boolean;
+    memoryName?: string;
   },
 ): Promise<{ runId: string; status: string }> {
   const request = createTestRequest("http://localhost:3000/api/agent/runs", {

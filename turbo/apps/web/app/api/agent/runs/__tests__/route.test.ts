@@ -81,6 +81,15 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(run.error).toContain("Sandbox creation failed");
       expect(run.completedAt).toBeDefined();
     });
+
+    it("should accept memoryName parameter", async () => {
+      const data = await createTestRun(testComposeId, "Test with memory", {
+        memoryName: "my-memory",
+      });
+
+      expect(data.runId).toBeDefined();
+      expect(data.status).toBe("running");
+    });
   });
 
   describe("Validation", () => {

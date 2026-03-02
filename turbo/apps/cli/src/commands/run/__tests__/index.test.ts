@@ -760,6 +760,36 @@ describe("run command", () => {
     });
   });
 
+  describe("--memory flag", () => {
+    it("should pass custom memory name", async () => {
+      let capturedBody: unknown;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--artifact-name",
+        "test-artifact",
+        "--memory",
+        "my-custom-memory",
+      ]);
+
+      expect(capturedBody).toMatchObject({
+        memoryName: "my-custom-memory",
+      });
+    });
+  });
+
   describe("error handling", () => {
     it("should handle authentication errors", async () => {
       server.use(
