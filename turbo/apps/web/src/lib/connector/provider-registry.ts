@@ -1,5 +1,6 @@
 import { type ConnectorType } from "@vm0/core";
 import { type OAuthTokenResult, type ProviderHandler } from "./provider-types";
+import { deelHandler } from "./providers/deel-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
 import { figmaHandler } from "./providers/figma-handler";
@@ -15,6 +16,7 @@ export const PROVIDER_HANDLERS: Record<
   Exclude<ConnectorType, "computer">,
   ProviderHandler
 > = {
+  deel: deelHandler,
   docusign: docusignHandler,
   dropbox: dropboxHandler,
   figma: figmaHandler,

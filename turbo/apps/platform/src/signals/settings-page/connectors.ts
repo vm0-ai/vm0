@@ -45,6 +45,10 @@ export const allConnectorTypes$ = computed(async (get) => {
       ) {
         return false;
       }
+      // Filter deel connector based on feature flag
+      if (type === "deel" && !features?.[FeatureSwitchKey.DeelConnector]) {
+        return false;
+      }
       // Filter docusign connector based on feature flag
       if (
         type === "docusign" &&
