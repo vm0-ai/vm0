@@ -97,7 +97,7 @@ async function listDirectoryRecursive(
   const headers: Record<string, string> = {
     Accept: "application/vnd.github.v3+json",
   };
-  const token = env().GITHUB_TOKEN;
+  const token = env().GITHUB_SKILL_DOWNLOAD_TOKEN;
   if (token) {
     headers["Authorization"] = `token ${token}`;
   }
