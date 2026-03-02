@@ -402,9 +402,18 @@ export const CONNECTOR_TYPES = {
       DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
     } as Record<string, string>,
     oauth: {
-      authorizationUrl: "https://app.deel.com/oauth/authorize",
-      tokenUrl: "https://app.deel.com/oauth/token",
-      scopes: [],
+      authorizationUrl: "https://app.deel.com/oauth2/authorize",
+      tokenUrl: "https://app.deel.com/oauth2/tokens",
+      scopes: [
+        "contracts:read",
+        "people:read",
+        "organizations:read",
+        "payslips:read",
+        "time-off:read",
+        "time-off:write",
+        "invoice-adjustments:read",
+        "invoice-adjustments:write",
+      ],
     } as ConnectorOAuthConfig,
   },
   figma: {
@@ -433,7 +442,17 @@ export const CONNECTOR_TYPES = {
     oauth: {
       authorizationUrl: "https://www.figma.com/oauth",
       tokenUrl: "https://api.figma.com/v1/oauth/token",
-      scopes: ["files:read"],
+      scopes: [
+        "current_user:read",
+        "file_content:read",
+        "file_metadata:read",
+        "file_versions:read",
+        "projects:read",
+        "file_comments:read",
+        "file_comments:write",
+        "library_assets:read",
+        "library_content:read",
+      ],
     } as ConnectorOAuthConfig,
   },
   mercury: {
@@ -493,7 +512,12 @@ export const CONNECTOR_TYPES = {
     oauth: {
       authorizationUrl: "https://www.strava.com/oauth/authorize",
       tokenUrl: "https://www.strava.com/oauth/token",
-      scopes: ["read", "activity:read_all"],
+      scopes: [
+        "read",
+        "profile:read_all",
+        "activity:read_all",
+        "activity:write",
+      ],
     } as ConnectorOAuthConfig,
   },
   "garmin-connect": {

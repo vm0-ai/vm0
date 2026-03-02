@@ -1,7 +1,7 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
 
-const DEEL_LEGAL_ENTITIES_URL = "https://api.deel.com/rest/v2/legal-entities";
+const DEEL_PEOPLE_ME_URL = "https://api.letsdeel.com/rest/v2/people/me";
 
 interface DeelUserInfo {
   id: string;
@@ -18,51 +18,94 @@ interface DeelTokenResult {
 }
 
 /**
- * Build Deel OAuth authorization URL.
+ * Derive a PKCE code_verifier deterministically from the OAuth state.
  */
-export function buildDeelAuthorizationUrl(
+async function deriveCodeVerifier(state: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(state + ":deel-pkce-verifier");
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return base64UrlEncode(new Uint8Array(hash));
+}
+
+/**
+ * Compute the PKCE code_challenge from a code_verifier using S256.
+ */
+async function computeCodeChallenge(codeVerifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(codeVerifier);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return base64UrlEncode(new Uint8Array(hash));
+}
+
+/**
+ * Base64url encode a byte array (RFC 7636).
+ */
+function base64UrlEncode(bytes: Uint8Array): string {
+  const binString = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
+  return btoa(binString)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/**
+ * Build Deel OAuth authorization URL with PKCE code_challenge.
+ */
+export async function buildDeelAuthorizationUrl(
   clientId: string,
   redirectUri: string,
   state: string,
-): string {
+): Promise<string> {
   const oauthConfig = getConnectorOAuthConfig("deel");
   if (!oauthConfig) {
     throw new Error("Deel OAuth config not found");
   }
 
+  const codeVerifier = await deriveCodeVerifier(state);
+  const codeChallenge = await computeCodeChallenge(codeVerifier);
+
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
+    scope: oauthConfig.scopes.join(" "),
     state,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
   });
 
   return `${oauthConfig.authorizationUrl}?${params.toString()}`;
 }
 
 /**
- * Exchange authorization code for access token and user info.
+ * Exchange authorization code for access token and user info with PKCE code_verifier.
  */
 export async function exchangeDeelCode(
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
+  state: string,
 ): Promise<DeelTokenResult> {
   const oauthConfig = getConnectorOAuthConfig("deel");
   if (!oauthConfig) {
     throw new Error("Deel OAuth config not found");
   }
 
+  const codeVerifier = await deriveCodeVerifier(state);
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
+    "base64",
+  );
+
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
+      Authorization: `Basic ${credentials}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
       code,
+      code_verifier: codeVerifier,
       redirect_uri: redirectUri,
       grant_type: "authorization_code",
     }),
@@ -91,7 +134,7 @@ export async function exchangeDeelCode(
     throw new Error("No access token in Deel response");
   }
 
-  const userInfo = await fetchDeelUserInfo(data.access_token);
+  const userInfo = await fetchDeelUserInfo(clientId, data.access_token);
 
   return {
     accessToken: data.access_token,
@@ -103,15 +146,18 @@ export async function exchangeDeelCode(
 }
 
 /**
- * Fetch Deel user info using the legal-entities endpoint.
- * Deel does not expose a /me endpoint, so we use legal-entities
- * as a lightweight way to identify the connected organization.
+ * Fetch the current Deel user's personal profile via /rest/v2/people/me.
+ * Requires the people:read scope.
  */
-async function fetchDeelUserInfo(accessToken: string): Promise<DeelUserInfo> {
-  const response = await fetch(DEEL_LEGAL_ENTITIES_URL, {
+async function fetchDeelUserInfo(
+  clientId: string,
+  accessToken: string,
+): Promise<DeelUserInfo> {
+  const response = await fetch(DEEL_PEOPLE_ME_URL, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${accessToken}`,
+      "x-client-id": clientId,
       Accept: "application/json",
     },
   });
@@ -123,22 +169,37 @@ async function fetchDeelUserInfo(accessToken: string): Promise<DeelUserInfo> {
   const data = z
     .object({
       data: z
-        .array(
-          z.object({
-            id: z.string().optional(),
-            legal_name: z.string().nullable().optional(),
-          }),
-        )
+        .object({
+          id: z.string().optional(),
+          full_name: z.string().nullable().optional(),
+          first_name: z.string().nullable().optional(),
+          last_name: z.string().nullable().optional(),
+          emails: z
+            .array(
+              z.object({
+                type: z.string().optional(),
+                value: z.string().nullable().optional(),
+              }),
+            )
+            .optional(),
+        })
+        .passthrough()
         .optional(),
     })
+    .passthrough()
     .parse(await response.json());
 
-  const entity = data.data?.[0];
+  const person = data.data;
+  const name =
+    person?.full_name ??
+    [person?.first_name, person?.last_name].filter(Boolean).join(" ") ??
+    null;
+  const email = person?.emails?.[0]?.value ?? null;
 
   return {
-    id: entity?.id ?? "",
-    username: entity?.legal_name ?? null,
-    email: null,
+    id: person?.id ?? "",
+    username: name || null,
+    email,
   };
 }
 

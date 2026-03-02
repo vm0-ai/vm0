@@ -101,7 +101,7 @@ export async function exchangeFigmaCode(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: ["files:read"],
+    scopes: ["file_content:read"],
     userInfo,
   };
 }

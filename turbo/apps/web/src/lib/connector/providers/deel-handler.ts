@@ -7,12 +7,16 @@ import {
 
 export const deelHandler: ProviderHandler = {
   buildAuthUrl: buildDeelAuthorizationUrl,
-  async exchangeCode(clientId, clientSecret, code, redirectUri) {
+  async exchangeCode(clientId, clientSecret, code, redirectUri, state) {
+    if (!state) {
+      throw new Error("Deel PKCE requires state for code_verifier derivation");
+    }
     const result = await exchangeDeelCode(
       clientId,
       clientSecret,
       code,
       redirectUri,
+      state,
     );
     return {
       accessToken: result.accessToken,
