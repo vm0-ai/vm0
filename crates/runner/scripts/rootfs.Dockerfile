@@ -63,8 +63,8 @@ RUN ARCH=$(dpkg --print-architecture) \
 # See: turbo/scripts/e2b/vm0-codex/template.ts
 RUN npm install -g @openai/codex@latest
 
-# Install GitHub CLI (for apps: [github])
-# See: turbo/scripts/e2b/vm0-claude-code-github/template.ts
+# Install GitHub CLI (included in base image)
+# See: turbo/scripts/e2b/vm0-claude-code/template.ts
 # https://github.com/cli/cli/blob/trunk/docs/install_linux.md
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
