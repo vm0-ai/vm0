@@ -19,7 +19,7 @@ describe("isFeatureEnabled", () => {
     );
   });
 
-  it("should return false for disabled switch with userId when no enabledUserIds configured", async () => {
+  it("should return false for disabled switch with userId when no enabledUserHashes configured", async () => {
     await expect(
       isFeatureEnabled(FeatureSwitchKey.Pricing, "some-user"),
     ).resolves.toBe(false);
