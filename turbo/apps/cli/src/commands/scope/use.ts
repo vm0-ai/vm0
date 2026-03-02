@@ -29,10 +29,10 @@ export const useCommand = new Command()
 
       if (result.token) {
         await setOrgToken(result.token, result.expiresAt, result.scope.slug);
-        const label =
-          result.scope.type === "system" ? "system" : "organization";
         console.log(
-          chalk.green(`✓ Switched to scope: ${result.scope.slug} (${label})`),
+          chalk.green(
+            `✓ Switched to scope: ${result.scope.slug} (organization)`,
+          ),
         );
       } else {
         await clearOrgToken();

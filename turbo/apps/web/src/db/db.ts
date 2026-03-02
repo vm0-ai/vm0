@@ -9,7 +9,7 @@ import * as checkpointSchema from "./schema/checkpoint";
 import * as agentSessionSchema from "./schema/agent-session";
 import * as storageSchema from "./schema/storage";
 import * as blobSchema from "./schema/blob";
-import * as imageSchema from "./schema/image";
+
 import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as agentRunEventsLocalSchema from "./schema/agent-run-events-local";
 import * as scopeSchema from "./schema/scope";
@@ -42,7 +42,7 @@ export const schema = {
   ...agentSessionSchema,
   ...storageSchema,
   ...blobSchema,
-  ...imageSchema,
+
   ...sandboxTelemetrySchema,
   ...agentRunEventsLocalSchema,
   ...scopeSchema,

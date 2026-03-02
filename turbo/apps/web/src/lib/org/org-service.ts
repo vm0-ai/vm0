@@ -13,7 +13,7 @@ import {
 } from "./org-token-service";
 import { getUserEmail } from "../auth/get-user-email";
 import { logger } from "../logger";
-import { isSystemScope, SYSTEM_SCOPE_SLUG, type OrgRole } from "@vm0/core";
+import type { OrgRole } from "@vm0/core";
 
 const log = logger("service:org");
 
@@ -47,8 +47,8 @@ async function getOrgScope(scopeId: string) {
  * Creates a Clerk Organization and a local scope with type=organization.
  */
 export async function createOrganization(clerkUserId: string, slug: string) {
-  // Enforce vm0-prefix restriction: only admin users can create vm0-prefixed orgs
-  if (slug.startsWith(SYSTEM_SCOPE_SLUG)) {
+  // TODO: "vm0" is hardcoded as the system scope slug. This should be configurable.
+  if (slug.startsWith("vm0")) {
     const email = await getUserEmail(clerkUserId);
     if (!isVm0Admin(email)) {
       throw badRequest(`Scope slug "${slug}" is reserved`);
@@ -396,27 +396,5 @@ export async function verifyAndActivateScope(
     };
   }
 
-  // System scope: only vm0 admin users can activate
-  if (scope.type === "system" && isSystemScope(scope.slug)) {
-    const email = await getUserEmail(clerkUserId);
-
-    if (!isVm0Admin(email)) {
-      throw forbidden("System scopes cannot be activated");
-    }
-
-    const { token, expiresAt } = await generateOrgAccessToken(
-      clerkUserId,
-      scope.id,
-      "admin",
-    );
-
-    return {
-      scope,
-      token,
-      expiresAt: expiresAt.toISOString(),
-    };
-  }
-
-  // Other system scopes cannot be activated
-  throw forbidden("System scopes cannot be activated");
+  throw forbidden("Scope cannot be activated");
 }

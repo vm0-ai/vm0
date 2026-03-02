@@ -29,7 +29,7 @@ import { generateSandboxToken } from "../auth/sandbox-token";
 import { canAccessCompose } from "../agent/permission-service";
 import { getUserEmail } from "../auth/get-user-email";
 import { extractTemplateVars } from "../config-validator";
-import { assertImageAccess } from "../image/image-service";
+
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import { getVariableValues } from "../variable/variable-service";
 import { encryptCredentialValue } from "../crypto/secrets-encryption";
@@ -406,16 +406,6 @@ async function validateComposeRequirements(
         );
       }
     }
-  }
-
-  // Image access validation always runs (not affected by checkEnv)
-  const agentKeys = Object.keys(composeContent.agents);
-  const firstAgentKey = agentKeys[0];
-  const agent = firstAgentKey
-    ? composeContent.agents[firstAgentKey]
-    : undefined;
-  if (agent?.image) {
-    await assertImageAccess(userId, agent.image);
   }
 }
 

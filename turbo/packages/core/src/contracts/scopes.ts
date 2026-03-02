@@ -7,7 +7,7 @@ const c = initContract();
 /**
  * Scope type enum
  */
-export const scopeTypeSchema = z.enum(["personal", "organization", "system"]);
+export const scopeTypeSchema = z.enum(["personal", "organization"]);
 export type ScopeTypeContract = z.infer<typeof scopeTypeSchema>;
 
 /**
