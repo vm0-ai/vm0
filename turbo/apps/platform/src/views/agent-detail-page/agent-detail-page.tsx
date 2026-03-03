@@ -57,6 +57,7 @@ export function AgentDetailPage() {
         { label: "Agents", path: "/agents" },
         agentName ?? "Loading...",
       ]}
+      contentClassName="mx-auto w-full max-w-[1200px]"
     >
       <div className="flex flex-col gap-4 md:gap-[22px] p-4 md:p-8 h-full">
         {showSkeleton ? (

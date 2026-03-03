@@ -36,6 +36,7 @@ export function AgentsPage() {
       breadcrumb={["Agents"]}
       title="Agents"
       subtitle="Your agents, their schedules, and when they were last updated"
+      contentClassName="mx-auto w-full max-w-[1200px]"
     >
       <div className="flex flex-col gap-5 px-4 sm:px-6 pb-8">
         <AgentsListSection />

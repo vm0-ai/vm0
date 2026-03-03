@@ -25,6 +25,7 @@ export function AgentLogDetailPage() {
         },
         { label: logId ? `Run ID - ${logId}` : "Detail" },
       ]}
+      contentClassName="mx-auto w-full max-w-[1200px]"
     >
       <div className="h-full flex flex-col">
         {logId ? (

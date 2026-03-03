@@ -35,6 +35,7 @@ export function SettingsPage() {
       breadcrumb={["Settings"]}
       title="Settings"
       subtitle="Configure your model providers, connectors, secrets, variables, and notifications"
+      contentClassName="mx-auto w-full max-w-[1200px]"
     >
       <div className="flex flex-col gap-6 px-6 pb-8">
         <Tabs

@@ -254,6 +254,7 @@ export function SlackSettingsPage() {
       breadcrumb={breadcrumb}
       title="VM0 in Slack"
       subtitle="Configure your settings how to run VM0 in Slack Workspace."
+      contentClassName="mx-auto w-full max-w-[1200px]"
     >
       <div className="flex flex-col gap-6 px-6 pb-8">
         {loading ? (

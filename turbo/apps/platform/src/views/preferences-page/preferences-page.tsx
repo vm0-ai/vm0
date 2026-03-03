@@ -18,6 +18,7 @@ export function PreferencesPage() {
       breadcrumb={["Preferences"]}
       title="Preferences"
       subtitle="Manage your personal preferences and notification settings"
+      contentClassName="mx-auto w-full max-w-[1200px]"
     >
       <div className="flex flex-col gap-6 px-6 pb-8">
         <Tabs
@@ -30,17 +31,9 @@ export function PreferencesPage() {
           </TabsList>
         </Tabs>
 
-        {tab === "notifications" && (
-          <div className="max-w-6xl mx-auto w-full">
-            <NotificationSettings />
-          </div>
-        )}
+        {tab === "notifications" && <NotificationSettings />}
 
-        {tab === "timezone" && (
-          <div className="max-w-6xl mx-auto w-full">
-            <TimezoneSettings />
-          </div>
-        )}
+        {tab === "timezone" && <TimezoneSettings />}
       </div>
     </AppShell>
   );
