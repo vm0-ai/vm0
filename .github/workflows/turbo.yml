@@ -678,7 +678,7 @@ jobs:
       - name: Deploy Web to Vercel
         id: deploy
         run: |
-          DEPLOY_CMD="vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}"
+          DEPLOY_CMD="vercel deploy --prebuilt --archive=tgz --token=${{ secrets.VERCEL_TOKEN }}"
           DEPLOY_CMD="$DEPLOY_CMD --meta branch=${{ github.head_ref || github.ref_name }}"
           DEPLOY_CMD="$DEPLOY_CMD --meta pr=${{ needs.prepare.outputs.job-ref }}"
 
