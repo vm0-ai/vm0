@@ -51,7 +51,8 @@ test("sign-in flow", async ({ page, baseURL }) => {
   // Enter OTP — wait for Clerk to finish preparing the verification session
   const otpInput = page.locator('input[data-input-otp="true"]');
   await expect(otpInput).toBeEditable({ timeout: 10_000 });
-  await otpInput.pressSequentially(TEST_OTP, { delay: 150 });
+  await expect(page.getByText(/Resend/)).toBeVisible({ timeout: 10_000 });
+  await otpInput.pressSequentially(TEST_OTP);
 
   // Wait for redirect away from auth pages
   await page.waitForURL(
