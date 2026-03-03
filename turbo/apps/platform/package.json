@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "lint": "oxlint && eslint .",
+    "lint": "oxlint && eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
