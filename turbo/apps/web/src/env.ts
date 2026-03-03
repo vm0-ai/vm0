@@ -101,6 +101,9 @@ function initEnv() {
       // Mercury OAuth (for connector)
       MERCURY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       MERCURY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Reddit OAuth (for connector)
+      REDDIT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      REDDIT_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Strava OAuth (for connector)
       STRAVA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       STRAVA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -203,6 +206,8 @@ function initEnv() {
       FIGMA_OAUTH_CLIENT_SECRET: process.env.FIGMA_OAUTH_CLIENT_SECRET,
       MERCURY_OAUTH_CLIENT_ID: process.env.MERCURY_OAUTH_CLIENT_ID,
       MERCURY_OAUTH_CLIENT_SECRET: process.env.MERCURY_OAUTH_CLIENT_SECRET,
+      REDDIT_OAUTH_CLIENT_ID: process.env.REDDIT_OAUTH_CLIENT_ID,
+      REDDIT_OAUTH_CLIENT_SECRET: process.env.REDDIT_OAUTH_CLIENT_SECRET,
       STRAVA_OAUTH_CLIENT_ID: process.env.STRAVA_OAUTH_CLIENT_ID,
       STRAVA_OAUTH_CLIENT_SECRET: process.env.STRAVA_OAUTH_CLIENT_SECRET,
       GARMIN_CONNECT_OAUTH_CLIENT_ID:
