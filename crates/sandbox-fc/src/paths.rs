@@ -130,6 +130,10 @@ impl SockPaths {
     pub fn vsock(&self) -> PathBuf {
         self.vsock_dir().join("vsock.sock")
     }
+
+    pub fn control_sock(&self) -> PathBuf {
+        self.dir.join("control.sock")
+    }
 }
 
 /// Paths for snapshot output artifacts within an output directory.
@@ -204,6 +208,21 @@ mod tests {
             "vsock.sock path too long: {} bytes ({})",
             vsock.as_os_str().len(),
             vsock.display()
+        );
+    }
+
+    #[test]
+    fn control_socket_path_fits_sun_path_limit() {
+        let runtime = RuntimePaths::new();
+        let uuid = "550e8400-e29b-41d4-a716-446655440000";
+        let sock = SockPaths::new(runtime.sock_dir(uuid));
+
+        let control = sock.control_sock();
+        assert!(
+            control.as_os_str().len() <= 107,
+            "control.sock path too long: {} bytes ({})",
+            control.as_os_str().len(),
+            control.display()
         );
     }
 

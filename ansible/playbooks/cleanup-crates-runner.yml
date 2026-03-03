@@ -58,6 +58,11 @@
         state: absent
       become: true
 
+    - name: Stop transient service exec
+      command: systemctl stop vm0-runner-{{ job_ref }}-exec.service
+      ignore_errors: true
+      become: true
+
     - name: Reload systemd daemon
       command: systemctl daemon-reload
       ignore_errors: true
@@ -70,6 +75,8 @@
       loop:
         - "{{ bin_dir }}"
         - "{{ base_dir }}/runners/{{ job_ref }}-bench"
+        - "{{ base_dir }}/runners/{{ job_ref }}-exec"
         - "{{ base_dir }}/runners/{{ job_ref }}-upgrade-a"
         - "{{ base_dir }}/runners/{{ job_ref }}-upgrade-b"
+        - "{{ base_dir }}/groups/vm0/exec-{{ job_ref }}"
         - "{{ base_dir }}/groups/vm0/upgrade-{{ job_ref }}"

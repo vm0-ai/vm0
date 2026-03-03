@@ -1613,10 +1613,12 @@ name = "sandbox-fc"
 version = "0.6.7"
 dependencies = [
  "async-trait",
+ "base64",
  "clap",
  "libc",
  "nix",
  "sandbox",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",
