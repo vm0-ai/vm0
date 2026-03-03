@@ -543,58 +543,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
-      # Step 1: Start Neon branch creation in background (parallel with build)
-      - name: Start Neon branch creation
-        run: |
-          (
-            set -euo pipefail
-
-            # Install neonctl if needed
-            if ! command -v neonctl &> /dev/null; then
-              npm install -g neonctl@2.15.0
-            fi
-
-            BRANCH_NAME="preview/${{ needs.prepare.outputs.job-ref }}"
-
-            # Create or reset branch
-            if neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
-              echo "Branch $BRANCH_NAME already exists, resetting..."
-              neonctl branches reset "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --parent
-
-              for i in {1..30}; do
-                CURRENT_STATE=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .current_state")
-                if [ "$CURRENT_STATE" = "ready" ]; then
-                  echo "Branch reset complete"
-                  break
-                fi
-                echo "Branch state: $CURRENT_STATE (attempt $i/30)"
-                sleep 2
-              done
-            else
-              echo "Creating branch $BRANCH_NAME"
-              neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
-            fi
-
-            # Get connection string
-            DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --pooled)
-            if [ -z "$DATABASE_URL" ]; then
-              DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb)
-            fi
-            echo "$DATABASE_URL" > /tmp/neon-database-url
-
-            # Run migrations
-            cd turbo && DATABASE_URL="$DATABASE_URL" pnpm -F web db:migrate
-            echo "Migration complete"
-
-            touch /tmp/neon-done
-          ) > /tmp/neon-log 2>&1 &
-          echo $! > /tmp/neon-pid
-          echo "Neon branch creation started in background (PID: $(cat /tmp/neon-pid))"
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
-
-      # Step 2: Build web in foreground (parallel with Neon)
+      # Step 1: Setup Vercel CLI and project config (needed by build)
       - name: Setup Vercel
         uses: ./.github/actions/vercel-setup
         with:
@@ -602,8 +551,13 @@ jobs:
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
 
-      - name: Build Web
+      # Step 2: Create Neon branch + Build web in parallel
+      - name: Create Neon Branch and Build Web
+        id: neon
         env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           SKIP_ENV_VALIDATION: "true"
           BLOG_BASE_URL: ${{ needs.prepare.outputs.web-preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
@@ -655,26 +609,57 @@ jobs:
           RESEND_FROM_DOMAIN: ${{ vars.RESEND_FROM_DOMAIN }}
           VM0_ADMIN_USERS: ${{ vars.VM0_ADMIN_USERS }}
           STRAPI_URL: ${{ vars.STRAPI_URL }}
-        run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
-
-      # Step 3: Wait for Neon branch to be ready
-      - name: Wait for Neon branch
-        id: neon
         run: |
-          PID=$(cat /tmp/neon-pid)
-          echo "Waiting for Neon branch creation (PID: $PID)..."
-          while kill -0 "$PID" 2>/dev/null; do
-            sleep 2
-          done
+          # --- Start Neon branch creation in background ---
+          (
+            if ! command -v neonctl &> /dev/null; then
+              npm install -g neonctl@2.15.0
+            fi
 
-          if [ ! -f /tmp/neon-done ]; then
+            BRANCH_NAME="preview/${{ needs.prepare.outputs.job-ref }}"
+
+            if neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
+              echo "Branch $BRANCH_NAME already exists, resetting..."
+              neonctl branches reset "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --parent
+
+              for i in {1..30}; do
+                CURRENT_STATE=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .current_state")
+                if [ "$CURRENT_STATE" = "ready" ]; then
+                  echo "Branch reset complete"
+                  break
+                fi
+                echo "Branch state: $CURRENT_STATE (attempt $i/30)"
+                sleep 2
+              done
+            else
+              echo "Creating branch $BRANCH_NAME"
+              neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
+            fi
+
+            DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --pooled)
+            if [ -z "$DATABASE_URL" ]; then
+              DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb)
+            fi
+            echo "$DATABASE_URL" > /tmp/neon-database-url
+
+            cd turbo && DATABASE_URL="$DATABASE_URL" pnpm -F web db:migrate
+            echo "Neon branch ready"
+          ) 2>&1 | sed 's/^/[neon] /' &
+          NEON_PID=$!
+
+          # --- Build web in foreground ---
+          echo "::group::Vercel Build"
+          vercel build --token="$VERCEL_TOKEN"
+          echo "::endgroup::"
+
+          # --- Wait for Neon (child process, so wait works) ---
+          echo "::group::Neon Branch"
+          if ! wait $NEON_PID; then
             echo "::error::Neon branch creation failed"
-            cat /tmp/neon-log
             exit 1
           fi
+          echo "::endgroup::"
 
-          echo "Neon branch ready"
-          cat /tmp/neon-log
           echo "database-url=$(cat /tmp/neon-database-url)" >> "$GITHUB_OUTPUT"
 
       # Step 4: Deploy prebuilt artifacts with database URL
