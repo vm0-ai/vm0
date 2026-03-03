@@ -774,18 +774,37 @@ jobs:
           deployment-id: ${{ steps.deployment.outputs.deployment_id }}
           deployment-env: ${{ steps.deployment.outputs.env }}
 
-      # Step 6: Generate test token for E2E tests (runs in parallel with e2e-auth)
-      - name: Generate E2E test token
-        run: e2e/scripts/generate-test-token.sh
+      # Step 6: Generate test tokens for E2E tests (one per test user)
+      - name: Generate E2E test tokens
+        run: |
+          for variant in serial parallel runner; do
+            e2e/scripts/generate-test-token.sh "$variant"
+            cp ~/.vm0/config.json "/tmp/e2e-token-${variant}.json"
+          done
         env:
           VM0_API_URL: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-      - name: Save test token to cache
+      - run: cp /tmp/e2e-token-serial.json ~/.vm0/config.json
+      - name: Save serial token to cache
         uses: actions/cache/save@v5
         with:
           path: ~/.vm0
-          key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          key: e2e-token-serial-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - run: cp /tmp/e2e-token-parallel.json ~/.vm0/config.json
+      - name: Save parallel token to cache
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.vm0
+          key: e2e-token-parallel-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - run: cp /tmp/e2e-token-runner.json ~/.vm0/config.json
+      - name: Save runner token to cache
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.vm0
+          key: e2e-token-runner-${{ github.run_id }}-${{ github.run_attempt }}
 
   # Deploy docs application
   deploy-docs:
@@ -959,9 +978,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.vm0
-          key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          key: e2e-token-parallel-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            e2e-token-${{ github.run_id }}-
+            e2e-token-parallel-${{ github.run_id }}-
           fail-on-cache-miss: true
 
       - name: Run API E2E Tests
@@ -972,7 +991,7 @@ jobs:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-  # Run CLI E2E tests - Phase 1: Serial tests (establishes e2e-stable scope)
+  # Run CLI E2E tests - Phase 1: Serial tests (scope/provider CRUD)
   cli-e2e-01-serial:
     runs-on: ubuntu-latest
     container:
@@ -1026,9 +1045,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.vm0
-          key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          key: e2e-token-serial-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            e2e-token-${{ github.run_id }}-
+            e2e-token-serial-${{ github.run_id }}-
           fail-on-cache-miss: true
 
       - name: Start Cron Simulator
@@ -1065,7 +1084,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260203
-    needs: [prepare, cli-e2e-01-serial, deploy-web]
+    needs: [prepare, deploy-web]
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
@@ -1106,10 +1125,18 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.vm0
-          key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          key: e2e-token-parallel-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            e2e-token-${{ github.run_id }}-
+            e2e-token-parallel-${{ github.run_id }}-
           fail-on-cache-miss: true
+
+      - name: Bootstrap test account
+        run: |
+          vm0 scope set "e2e-stable" --force
+          vm0 model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Start Cron Simulator
         run: |
@@ -1452,15 +1479,11 @@ jobs:
     needs:
       [
         prepare,
-        cli-e2e-01-serial,
-        cli-e2e-02-parallel,
         deploy-web,
         deploy-runner-prepare,
         deploy-runner-start,
       ]
     if: |
-      always() &&
-      (needs.cli-e2e-02-parallel.result == 'success' || needs.cli-e2e-02-parallel.result == 'skipped') &&
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
@@ -1501,10 +1524,18 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.vm0
-          key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          key: e2e-token-runner-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            e2e-token-${{ github.run_id }}-
+            e2e-token-runner-${{ github.run_id }}-
           fail-on-cache-miss: true
+
+      - name: Bootstrap test account
+        run: |
+          vm0 scope set "e2e-stable" --force
+          vm0 model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Start Cron Simulator
         run: |

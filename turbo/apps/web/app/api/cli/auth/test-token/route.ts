@@ -51,7 +51,9 @@ export async function POST(request: Request) {
 
   initServices();
 
-  const userId = await resolveTestUserId();
+  const url = new URL(request.url);
+  const variant = url.searchParams.get("variant") ?? "serial";
+  const userId = await resolveTestUserId(variant);
   if (!userId) {
     return NextResponse.json({ error: "Test user not found" }, { status: 500 });
   }
