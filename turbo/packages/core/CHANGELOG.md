@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.30.0](https://github.com/vm0-ai/vm0/compare/core-v8.29.0...core-v8.30.0) (2026-03-03)
+
+
+### Features
+
+* **github:** add oauth installation flow for github app ([#3466](https://github.com/vm0-ai/vm0/issues/3466)) ([5e07a31](https://github.com/vm0-ai/vm0/commit/5e07a3154da03b64d6e5553ee0cecc05ebc43a7a))
+* support bare skill names in vm0.yaml with default registry ([#3465](https://github.com/vm0-ai/vm0/issues/3465)) ([353d295](https://github.com/vm0-ai/vm0/commit/353d29501a569620118203b71dc1b1a99f891b3a))
+
 ## [8.29.0](https://github.com/vm0-ai/vm0/compare/core-v8.28.0...core-v8.29.0) (2026-03-03)
 
 

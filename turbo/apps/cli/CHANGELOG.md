@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.42.0](https://github.com/vm0-ai/vm0/compare/cli-v9.41.0...cli-v9.42.0) (2026-03-03)
+
+
+### Features
+
+* support bare skill names in vm0.yaml with default registry ([#3465](https://github.com/vm0-ai/vm0/issues/3465)) ([353d295](https://github.com/vm0-ai/vm0/commit/353d29501a569620118203b71dc1b1a99f891b3a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.30.0
+
 ## [9.41.0](https://github.com/vm0-ai/vm0/compare/cli-v9.40.3...cli-v9.41.0) (2026-03-03)
 
 
