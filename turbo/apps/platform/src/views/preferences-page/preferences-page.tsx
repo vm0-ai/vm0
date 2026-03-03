@@ -17,7 +17,7 @@ export function PreferencesPage() {
     <AppShell
       breadcrumb={["Preferences"]}
       title="Preferences"
-      subtitle="Manage your personal preferences and notification settings"
+      subtitle="Manage your notification and agent runtime preferences"
       contentClassName="mx-auto w-full max-w-[1200px]"
     >
       <div className="flex flex-col gap-6 px-6 pb-8">

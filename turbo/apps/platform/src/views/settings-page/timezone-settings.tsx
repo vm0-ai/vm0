@@ -1,4 +1,4 @@
-import { useGet, useSet } from "ccstate-react";
+import { useLastResolved, useSet } from "ccstate-react";
 import {
   Select,
   SelectContent,
@@ -6,11 +6,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui/components/ui/select";
+import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { IconClock } from "@tabler/icons-react";
 import {
-  timezone$,
-  setTimezone$,
-} from "../../signals/preferences-page/preferences-tabs.ts";
+  notificationPreferences$,
+  updateNotificationPreference$,
+} from "../../signals/settings-page/notification-settings.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 
 function getCommonTimezones() {
   return [
@@ -35,15 +37,27 @@ function getCommonTimezones() {
 }
 
 export function TimezoneSettings() {
-  const timezone = useGet(timezone$);
-  const setTimezone = useSet(setTimezone$);
+  const preferences = useLastResolved(notificationPreferences$);
+  const updatePreference = useSet(updateNotificationPreference$);
+
+  if (!preferences) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <Skeleton className="h-5 w-32 rounded" />
+          <Skeleton className="h-4 w-80 rounded" />
+        </div>
+        <Skeleton className="h-[76px] w-full rounded-xl" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <h3 className="text-base font-medium text-foreground">Time Zone</h3>
         <p className="text-sm text-muted-foreground">
-          Your time zone affects timestamp display in logs and schedule times.
+          Sets the TZ environment variable for your agent sandbox at runtime.
         </p>
       </div>
 
@@ -56,11 +70,16 @@ export function TimezoneSettings() {
         <div className="flex flex-1 flex-col gap-1 min-w-0">
           <div className="text-sm font-medium text-foreground">Time zone</div>
           <div className="text-sm text-muted-foreground">
-            Select your local time zone for log timestamps and scheduled runs
+            Your agents will use this time zone during runs
           </div>
         </div>
         <div className="shrink-0 w-64">
-          <Select value={timezone} onValueChange={setTimezone}>
+          <Select
+            value={preferences.timezone ?? "UTC"}
+            onValueChange={(value) =>
+              detach(updatePreference({ timezone: value }), Reason.DomCallback)
+            }
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>

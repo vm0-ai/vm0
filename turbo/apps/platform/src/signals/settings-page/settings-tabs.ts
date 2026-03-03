@@ -5,11 +5,7 @@ import { searchParams$, updateSearchParams$ } from "../route.ts";
 // Tab types
 // ---------------------------------------------------------------------------
 
-export type SettingsTab =
-  | "providers"
-  | "connections"
-  | "integrations"
-  | "notifications";
+export type SettingsTab = "providers" | "connections" | "integrations";
 
 // ---------------------------------------------------------------------------
 // Internal state
@@ -29,10 +25,7 @@ export const activeTab$ = computed((get) => get(internalActiveTab$));
 
 function isValidTab(value: string): value is SettingsTab {
   return (
-    value === "providers" ||
-    value === "connections" ||
-    value === "integrations" ||
-    value === "notifications"
+    value === "providers" || value === "connections" || value === "integrations"
   );
 }
 
@@ -60,6 +53,9 @@ export const initSettingsTabs$ = command(({ get, set }) => {
       set(internalActiveTab$, tab);
     } else if (isLegacyConnectionsTab(tab)) {
       set(internalActiveTab$, "connections");
+    } else if (tab === "notifications") {
+      // Notifications moved to /preferences; fall back to default tab.
+      set(internalActiveTab$, "providers");
     }
   }
 });

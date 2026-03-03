@@ -77,14 +77,13 @@ export function GitHubIntegrationCard() {
   const loading = useGet(githubIntegrationLoading$);
   const notLinked = useGet(githubIntegrationNotLinked$);
   const installUrl = useGet(githubInstallUrl$);
-  const navigate = useSet(navigateInReact$);
 
   if (loading) {
     return <IntegrationCardSkeleton />;
   }
 
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
+    <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/50">
       <div className="shrink-0">
         <img src={githubIcon} alt="GitHub" className="h-7 w-7" />
       </div>
@@ -104,12 +103,8 @@ export function GitHubIntegrationCard() {
             </Button>
           ) : null
         ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate("/settings/github")}
-          >
-            Settings
+          <Button variant="outline" size="sm" disabled>
+            Installed
           </Button>
         )}
       </div>
