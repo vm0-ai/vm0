@@ -1473,7 +1473,7 @@ jobs:
 
           # Read auto-detected max_concurrent from first host's status.json
           FIRST_HOST=$(echo "$METAL_HOSTS" | tr ',' ' ' | awk '{print $1}')
-          MAX_CONCURRENT=$(ssh $SSH_OPTS "${METAL_USER}@${FIRST_HOST}" "jq -r '.max_concurrent' ${RUNNER_DIR}/status.json")
+          MAX_CONCURRENT=$(ssh $SSH_OPTS "${METAL_USER}@${FIRST_HOST}" "grep -o '\"max_concurrent\": [0-9]*' ${RUNNER_DIR}/status.json | grep -o '[0-9]*'")
           echo "max-concurrent=${MAX_CONCURRENT}" >> "$GITHUB_OUTPUT"
           echo "Runner max_concurrent: ${MAX_CONCURRENT}"
 
