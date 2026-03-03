@@ -19,34 +19,6 @@ const ablyTokenRequestSchema = z.object({
 });
 
 /**
- * Realtime token contract for /api/realtime/token
- */
-export const realtimeTokenContract = c.router({
-  /**
-   * POST /api/realtime/token
-   * Get an Ably token to subscribe to a run's events channel
-   */
-  create: {
-    method: "POST",
-    path: "/api/realtime/token",
-    headers: authHeadersSchema,
-    body: z.object({
-      runId: z.string().uuid("runId must be a valid UUID"),
-    }),
-    responses: {
-      200: ablyTokenRequestSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Get Ably token for run event subscription",
-  },
-});
-
-export type RealtimeTokenContract = typeof realtimeTokenContract;
-
-/**
  * Runner realtime token contract for /api/runners/realtime/token
  */
 export const runnerRealtimeTokenContract = c.router({
@@ -72,6 +44,3 @@ export const runnerRealtimeTokenContract = c.router({
 });
 
 export type RunnerRealtimeTokenContract = typeof runnerRealtimeTokenContract;
-
-// Inferred types
-export type AblyTokenRequest = z.infer<typeof ablyTokenRequestSchema>;
