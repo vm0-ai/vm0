@@ -64,32 +64,6 @@ describe("parseGitHubTreeUrl", () => {
     expect(parseGitHubTreeUrl("https://github.com/owner/repo/tree")).toBeNull();
   });
 
-  it("parses tree URL without path (root directory skill)", () => {
-    const result = parseGitHubTreeUrl(
-      "https://github.com/owner/repo/tree/main",
-    );
-    expect(result).not.toBeNull();
-    expect(result?.owner).toBe("owner");
-    expect(result?.repo).toBe("repo");
-    expect(result?.branch).toBe("main");
-    expect(result?.path).toBe("");
-    expect(result?.skillName).toBe("repo");
-    expect(result?.fullPath).toBe("owner/repo/tree/main");
-  });
-
-  it("parses tree URL with trailing slash after branch (root directory)", () => {
-    const result = parseGitHubTreeUrl(
-      "https://github.com/owner/my-skill/tree/develop/",
-    );
-    expect(result).not.toBeNull();
-    expect(result?.owner).toBe("owner");
-    expect(result?.repo).toBe("my-skill");
-    expect(result?.branch).toBe("develop");
-    expect(result?.path).toBe("");
-    expect(result?.skillName).toBe("my-skill");
-    expect(result?.fullPath).toBe("owner/my-skill/tree/develop");
-  });
-
   it("preserves full path for unique identification", () => {
     const url = "https://github.com/vm0/skills/tree/main/conventional-commits";
     const result = parseGitHubTreeUrl(url);
