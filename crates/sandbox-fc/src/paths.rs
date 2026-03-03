@@ -22,9 +22,14 @@ impl RuntimePaths {
         }
     }
 
+    /// Socket base directory: `/run/vm0/sock/`.
+    pub fn sock_base(&self) -> PathBuf {
+        self.base_dir.join("sock")
+    }
+
     /// Socket directory: `/run/vm0/sock/<id>/`.
     pub fn sock_dir(&self, id: &str) -> PathBuf {
-        self.base_dir.join("sock").join(id)
+        self.sock_base().join(id)
     }
 }
 
