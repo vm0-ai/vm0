@@ -1374,6 +1374,31 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      - name: Verify runners are deployed
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+          for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
+            echo "Checking runner on ${HOST}..."
+            if ! ssh $SSH_OPTS "${METAL_USER}@${HOST}" "test -x ${BIN_DIR}/runner && ${BIN_DIR}/runner doctor"; then
+              echo ""
+              echo "::error::Runner not healthy on ${HOST}. This typically happens when 'Re-run failed jobs' is used after the cleanup step has already run. Use 'Re-run all jobs' to redeploy the runner first."
+              exit 1
+            fi
+          done
+          echo "All runners healthy"
+
       - name: Run Runner E2E Tests (Chunk ${{ matrix.index }})
         run: |
           PARALLEL=${RUNNER_MAX_CONCURRENT}
