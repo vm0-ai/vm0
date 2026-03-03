@@ -459,38 +459,41 @@ const onRunComplete$ = command(async ({ get, set }, runId: string) => {
       });
     }
 
-    // Persist messages to server (fire and forget)
+    // Persist messages to server, then refresh session list
     const sessionId = get(internalSessionId$);
-    if (sessionId) {
-      const currentMessages = get(internalMessages$);
-      const assistantIdx = currentMessages.findIndex(
-        (m) => m.role === "assistant" && m.runId === runId,
-      );
-      if (assistantIdx > 0) {
-        const userMsg = currentMessages[assistantIdx - 1];
-        const assistantMsg = currentMessages[assistantIdx];
-        if (userMsg?.role === "user" && assistantMsg) {
-          fetchFn(`/api/agent/sessions/${sessionId}/messages`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              messages: [
-                { role: "user", content: userMsg.content },
-                { role: "assistant", content: assistantMsg.content, runId },
-              ],
-            }),
-          }).catch((error: unknown) => {
-            throwIfAbort(error);
-            L.error("Failed to persist messages:", error);
-          });
+    const currentMessages = get(internalMessages$);
+    const assistantIdx = sessionId
+      ? currentMessages.findIndex(
+          (m) => m.role === "assistant" && m.runId === runId,
+        )
+      : -1;
+    const userMsg =
+      assistantIdx > 0 ? currentMessages[assistantIdx - 1] : undefined;
+    const assistantMsg =
+      assistantIdx > 0 ? currentMessages[assistantIdx] : undefined;
 
-          // Refresh session list in background
-          set(fetchSessionList$).catch((error: unknown) => {
-            throwIfAbort(error);
-            L.error("Failed to refresh session list:", error);
-          });
-        }
+    if (sessionId && userMsg?.role === "user" && assistantMsg) {
+      try {
+        await fetchFn(`/api/agent/sessions/${sessionId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [
+              { role: "user", content: userMsg.content },
+              { role: "assistant", content: assistantMsg.content, runId },
+            ],
+          }),
+        });
+      } catch (error) {
+        throwIfAbort(error);
+        L.error("Failed to persist messages:", error);
       }
+
+      // Refresh session list after messages are persisted
+      set(fetchSessionList$).catch((error: unknown) => {
+        throwIfAbort(error);
+        L.error("Failed to refresh session list:", error);
+      });
     }
 
     set(saveToCache$);
