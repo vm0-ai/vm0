@@ -1,5 +1,4 @@
 import { useGet, useLastResolved, useSet } from "ccstate-react";
-import { FeatureSwitchKey } from "@vm0/core";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { AppShell } from "../layout/app-shell.tsx";
 import {
@@ -7,7 +6,6 @@ import {
   setActiveTab$,
   type SettingsTab,
 } from "../../signals/settings-page/settings-tabs.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { DefaultProviderCard } from "./default-provider-card.tsx";
 import { ProviderList } from "./provider-list.tsx";
 import { ProviderDialog } from "./provider-dialog.tsx";
@@ -19,17 +17,13 @@ import { SecretDialog } from "./secret-dialog.tsx";
 import { DeleteSecretDialog } from "./delete-secret-dialog.tsx";
 import { VariableDialog } from "./variable-dialog.tsx";
 import { DeleteVariableDialog } from "./delete-variable-dialog.tsx";
-import {
-  SlackIntegrationCard,
-  GitHubIntegrationCard,
-} from "../integrations-page/integrations-page.tsx";
+import { SlackIntegrationCard } from "../integrations-page/integrations-page.tsx";
 import { NotificationSettings } from "./notification-settings.tsx";
 import { mergedItems$ } from "../../signals/settings-page/secrets-and-variables.ts";
 
 export function SettingsPage() {
   const tab = useGet(activeTab$);
   const setTab = useSet(setActiveTab$);
-  const featureSwitches = useLastResolved(featureSwitch$);
   const mergedItems = useLastResolved(mergedItems$);
 
   return (
@@ -85,9 +79,6 @@ export function SettingsPage() {
         {tab === "integrations" && (
           <div className="flex flex-col gap-4">
             <SlackIntegrationCard />
-            {featureSwitches?.[FeatureSwitchKey.GitHubIntegration] && (
-              <GitHubIntegrationCard />
-            )}
           </div>
         )}
 
