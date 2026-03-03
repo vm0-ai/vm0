@@ -10,7 +10,13 @@ import {
   cancelPendingRun$,
 } from "./inline-run.ts";
 import { fetchAgentSchedule$ } from "./schedule.ts";
-import { type ScheduleTimeOption, buildCronExpression } from "./cron.ts";
+import {
+  type ScheduleTimeOption,
+  buildCronExpression,
+  buildAtTime,
+  isAtTimePast,
+  getTomorrowDateLocal,
+} from "./cron.ts";
 import { closeChatPanel$ } from "./chat.ts";
 
 const L = logger("RunDialog");
@@ -33,7 +39,7 @@ export const setRunDialogPrompt$ = command(({ set }, value: string) => {
   set(internalPrompt$, value);
 });
 
-type TimeOption = "now" | ScheduleTimeOption;
+type TimeOption = "now" | "once" | ScheduleTimeOption;
 
 const internalTimeOption$ = state<TimeOption>("now");
 export const runDialogTimeOption$ = computed((get) => get(internalTimeOption$));
@@ -41,12 +47,21 @@ export const runDialogTimeOption$ = computed((get) => get(internalTimeOption$));
 function isTimeOption(v: string): v is TimeOption {
   return (
     v === "now" ||
+    v === "once" ||
     v === "every-weekday" ||
     v === "every-day" ||
     v === "every-week" ||
     v === "every-month"
   );
 }
+
+// Date for one-time schedule (YYYY-MM-DD)
+const internalDate$ = state(getTomorrowDateLocal());
+export const runDialogDate$ = computed((get) => get(internalDate$));
+
+export const setRunDialogDate$ = command(({ set }, value: string) => {
+  set(internalDate$, value);
+});
 
 export const setRunDialogTimeOption$ = command(({ set }, value: string) => {
   if (isTimeOption(value)) {
@@ -111,6 +126,7 @@ export const openRunDialog$ = command(({ set }) => {
   set(internalMinute$, "0");
   set(internalDayOfWeek$, "1");
   set(internalDayOfMonth$, "1");
+  set(internalDate$, getTomorrowDateLocal());
   set(internalSaveError$, null);
   set(internalOpen$, true);
 });
@@ -183,26 +199,46 @@ export const submitRunDialog$ = command(async ({ get, set }) => {
       return;
     }
 
-    // Schedule creation
-    const cronExpression = buildCronExpression({
-      timeOption,
-      hour: frequency,
-      minute,
-      dayOfWeek,
-      dayOfMonth,
-    });
+    // Schedule creation (recurring or one-time)
     const timezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    let scheduleBody: Record<string, unknown>;
 
-    const response = await fetchFn("/api/agent/schedules", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    if (timeOption === "once") {
+      const date = get(internalDate$);
+      if (isAtTimePast(date, frequency, minute)) {
+        set(internalSaveError$, "Scheduled time must be in the future");
+        set(internalSaving$, false);
+        return;
+      }
+      const atTime = buildAtTime(date, frequency, minute);
+      scheduleBody = {
+        composeId: detail.id,
+        name: "default",
+        atTime,
+        timezone,
+        prompt: prompt.trim(),
+      };
+    } else {
+      const cronExpression = buildCronExpression({
+        timeOption,
+        hour: frequency,
+        minute,
+        dayOfWeek,
+        dayOfMonth,
+      });
+      scheduleBody = {
         composeId: detail.id,
         name: "default",
         cronExpression,
         timezone,
         prompt: prompt.trim(),
-      }),
+      };
+    }
+
+    const response = await fetchFn("/api/agent/schedules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(scheduleBody),
     });
 
     if (!response.ok) {
