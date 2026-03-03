@@ -58,7 +58,7 @@ describe("connectors tab", () => {
     // "Not connected" status has been removed from the UI
   });
 
-  it("can disconnect a connector via kebab menu", async () => {
+  it("can uninstall a connector via kebab menu", async () => {
     setMockConnectors([makeConnector("github")]);
 
     let deletedType: string | null = null;
@@ -77,18 +77,18 @@ describe("connectors tab", () => {
     });
     await user.click(optionsButton);
 
-    // Click Disconnect
-    const disconnectButton = await screen.findByText("Disconnect");
-    await user.click(disconnectButton);
+    // Click Uninstall
+    const uninstallButton = await screen.findByText("Uninstall");
+    await user.click(uninstallButton);
 
     // Confirm in dialog
     const dialog = await screen.findByRole("dialog");
     expect(
-      within(dialog).getByText(/are you sure you want to disconnect github/i),
+      within(dialog).getByText(/are you sure you want to uninstall github/i),
     ).toBeInTheDocument();
 
     const confirmButton = within(dialog).getByRole("button", {
-      name: /^disconnect$/i,
+      name: /^uninstall$/i,
     });
     await user.click(confirmButton);
 
