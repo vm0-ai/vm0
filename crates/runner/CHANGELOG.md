@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.12.3...runner-rs-v0.13.0) (2026-03-03)
+
+
+### Features
+
+* **runner:** add exec command for live vm debugging ([#3502](https://github.com/vm0-ai/vm0/issues/3502)) ([0453c3b](https://github.com/vm0-ai/vm0/commit/0453c3bd7a32f9b9e2760ff30e4aea192a9b0836))
+
 ## [0.12.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.12.2...runner-rs-v0.12.3) (2026-03-02)
 
 

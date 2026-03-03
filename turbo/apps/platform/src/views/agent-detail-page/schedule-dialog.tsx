@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
+import { Input } from "@vm0/ui/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -32,11 +33,14 @@ import {
   setScheduleDialogDayOfMonth$,
   scheduleDialogIntervalSeconds$,
   setScheduleDialogIntervalSeconds$,
+  scheduleDialogDate$,
+  setScheduleDialogDate$,
   scheduleDialogSaving$,
   scheduleDialogSaveError$,
   submitScheduleDialog$,
   deleteScheduleFromDialog$,
 } from "../../signals/agent-detail/schedule.ts";
+import { getTodayDateLocal } from "../../signals/agent-detail/cron.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -71,6 +75,7 @@ export function ScheduleDialog() {
   const dayOfWeek = useGet(scheduleDialogDayOfWeek$);
   const dayOfMonth = useGet(scheduleDialogDayOfMonth$);
   const intervalSeconds = useGet(scheduleDialogIntervalSeconds$);
+  const date = useGet(scheduleDialogDate$);
   const saving = useGet(scheduleDialogSaving$);
   const saveError = useGet(scheduleDialogSaveError$);
   const close = useSet(closeScheduleDialog$);
@@ -81,6 +86,7 @@ export function ScheduleDialog() {
   const setDayOfWeek = useSet(setScheduleDialogDayOfWeek$);
   const setDayOfMonth = useSet(setScheduleDialogDayOfMonth$);
   const setIntervalSeconds = useSet(setScheduleDialogIntervalSeconds$);
+  const setDate = useSet(setScheduleDialogDate$);
   const submit = useSet(submitScheduleDialog$);
   const deleteSchedule = useSet(deleteScheduleFromDialog$);
 
@@ -88,6 +94,8 @@ export function ScheduleDialog() {
     value: String(i + 1),
     label: String(i + 1),
   }));
+
+  const isOnce = timeOption === "once";
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && close()}>
@@ -118,6 +126,7 @@ export function ScheduleDialog() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="once">Once</SelectItem>
                 <SelectItem value="every-weekday">Every weekday</SelectItem>
                 <SelectItem value="every-day">Every day</SelectItem>
                 <SelectItem value="every-week">Every week</SelectItem>
@@ -126,6 +135,20 @@ export function ScheduleDialog() {
               </SelectContent>
             </Select>
           </div>
+
+          {isOnce && (
+            <div className="flex flex-col gap-3">
+              <label className="text-sm font-medium text-foreground px-1">
+                Date
+              </label>
+              <Input
+                type="date"
+                value={date}
+                min={getTodayDateLocal()}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
+          )}
 
           {timeOption === "every-week" && (
             <div className="flex flex-col gap-3">
@@ -194,7 +217,7 @@ export function ScheduleDialog() {
           ) : (
             <div className="flex flex-col gap-3">
               <label className="text-sm font-medium text-foreground px-1">
-                Frequency
+                {isOnce ? "Time" : "Frequency"}
               </label>
               <div className="flex items-center gap-2">
                 <IconClock

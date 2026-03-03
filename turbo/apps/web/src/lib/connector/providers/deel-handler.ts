@@ -3,6 +3,7 @@ import {
   buildDeelAuthorizationUrl,
   exchangeDeelCode,
   getDeelSecretName,
+  refreshDeelToken,
 } from "./deel";
 
 export const deelHandler: ProviderHandler = {
@@ -34,4 +35,5 @@ export const deelHandler: ProviderHandler = {
   getClientSecret: (e) => e.DEEL_OAUTH_CLIENT_SECRET,
   getSecretName: getDeelSecretName,
   getRefreshSecretName: () => "DEEL_REFRESH_TOKEN",
+  refreshToken: refreshDeelToken,
 };

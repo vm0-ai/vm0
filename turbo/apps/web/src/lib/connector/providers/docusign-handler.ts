@@ -3,6 +3,7 @@ import {
   buildDocuSignAuthorizationUrl,
   exchangeDocuSignCode,
   getDocuSignSecretName,
+  refreshDocuSignToken,
 } from "./docusign";
 
 export const docusignHandler: ProviderHandler = {
@@ -30,4 +31,5 @@ export const docusignHandler: ProviderHandler = {
   getClientSecret: (e) => e.DOCUSIGN_OAUTH_CLIENT_SECRET,
   getSecretName: getDocuSignSecretName,
   getRefreshSecretName: () => "DOCUSIGN_REFRESH_TOKEN",
+  refreshToken: refreshDocuSignToken,
 };

@@ -7,6 +7,8 @@ import { http, HttpResponse } from "msw";
 import {
   setRunDialogTimeOption$,
   setRunDialogFrequency$,
+  setRunDialogMinute$,
+  setRunDialogDate$,
 } from "../../../signals/agent-detail/run-dialog.ts";
 
 const context = testContext();
@@ -360,6 +362,139 @@ describe("run dialog", () => {
         screen.getByText("Sandbox crashed: out of memory"),
       ).toBeInTheDocument();
     });
+  });
+
+  it("should create one-time schedule when time is Once", async () => {
+    mockAgentDetailAPI();
+
+    let capturedBody: unknown = null;
+    server.use(
+      http.post("/api/agent/schedules", async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json(
+          {
+            id: "schedule_once",
+            composeId: "compose_1",
+            composeName: "my-agent",
+            scopeSlug: "test-user",
+            name: "default",
+            cronExpression: null,
+            atTime: "2030-06-15T14:30:00.000Z",
+            timezone: "UTC",
+            prompt: "One-time task",
+            vars: null,
+            secretNames: null,
+            artifactName: null,
+            artifactVersion: null,
+            volumeVersions: null,
+            enabled: true,
+            nextRunAt: "2030-06-15T14:30:00.000Z",
+            lastRunAt: null,
+            retryStartedAt: null,
+            createdAt: "2024-01-01T00:00:00Z",
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Run/ }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Run this agent" }),
+      ).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByPlaceholderText(
+      "Describe your task in natural language.",
+    );
+    fireEvent.change(textarea, { target: { value: "One-time task" } });
+
+    // Set time option to "once" and provide a future date
+    act(() => {
+      context.store.set(setRunDialogTimeOption$, "once");
+      context.store.set(setRunDialogDate$, "2030-06-15");
+      context.store.set(setRunDialogFrequency$, "14");
+      context.store.set(setRunDialogMinute$, "30");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Run this agent" }),
+      ).not.toBeInTheDocument();
+    });
+
+    // Verify schedule API was called with atTime (no cronExpression)
+    const body = capturedBody as Record<string, unknown>;
+    expect(body.composeId).toBe("compose_1");
+    expect(body.atTime).toBeDefined();
+    expect(body.cronExpression).toBeUndefined();
+    expect(body.prompt).toBe("One-time task");
+    expect(body.name).toBe("default");
+  });
+
+  it("should show error when one-time schedule date is in the past", async () => {
+    mockAgentDetailAPI();
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Run/ }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Run this agent" }),
+      ).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByPlaceholderText(
+      "Describe your task in natural language.",
+    );
+    fireEvent.change(textarea, { target: { value: "Past task" } });
+
+    // Set time option to "once" with a past date
+    act(() => {
+      context.store.set(setRunDialogTimeOption$, "once");
+      context.store.set(setRunDialogDate$, "2020-01-01");
+      context.store.set(setRunDialogFrequency$, "9");
+      context.store.set(setRunDialogMinute$, "0");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    // Should show error message (dialog stays open)
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("Scheduled time must be in the future"),
+      ).toBeInTheDocument();
+    });
+
+    // Dialog should still be open
+    expect(
+      screen.getByRole("heading", { name: "Run this agent" }),
+    ).toBeInTheDocument();
   });
 
   it("should close dialog on Cancel", async () => {

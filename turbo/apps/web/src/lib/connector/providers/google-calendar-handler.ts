@@ -1,15 +1,21 @@
 import { type ProviderHandler } from "../provider-types";
 import {
-  buildGmailAuthorizationUrl,
-  exchangeGmailCode,
-  getGmailSecretName,
-} from "./gmail";
-import { refreshGoogleToken } from "./google-oauth";
+  buildGoogleAuthorizationUrl,
+  exchangeGoogleOAuthCode,
+  refreshGoogleToken,
+} from "./google-oauth";
 
-export const gmailHandler: ProviderHandler = {
-  buildAuthUrl: buildGmailAuthorizationUrl,
+export const googleCalendarHandler: ProviderHandler = {
+  buildAuthUrl: (clientId, redirectUri, state) =>
+    buildGoogleAuthorizationUrl(
+      "google-calendar",
+      clientId,
+      redirectUri,
+      state,
+    ),
   async exchangeCode(clientId, clientSecret, code, redirectUri) {
-    const result = await exchangeGmailCode(
+    const result = await exchangeGoogleOAuthCode(
+      "google-calendar",
       clientId,
       clientSecret,
       code,
@@ -29,8 +35,8 @@ export const gmailHandler: ProviderHandler = {
   },
   getClientId: (e) => e.GOOGLE_OAUTH_CLIENT_ID,
   getClientSecret: (e) => e.GOOGLE_OAUTH_CLIENT_SECRET,
-  getSecretName: getGmailSecretName,
-  getRefreshSecretName: () => "GMAIL_REFRESH_TOKEN",
+  getSecretName: () => "GOOGLE_CALENDAR_ACCESS_TOKEN",
+  getRefreshSecretName: () => "GOOGLE_CALENDAR_REFRESH_TOKEN",
   refreshToken: (clientId, clientSecret, refreshToken) =>
-    refreshGoogleToken("gmail", clientId, clientSecret, refreshToken),
+    refreshGoogleToken("google-calendar", clientId, clientSecret, refreshToken),
 };

@@ -99,15 +99,10 @@ fn resolve_control_socket(input: &str) -> RunnerResult<PathBuf> {
         return Err(RunnerError::Config("run_id must not be empty".into()));
     }
 
-    // sock_dir("x") → /run/vm0/sock/x, parent → /run/vm0/sock
-    // Can't use sock_dir("") because join("") is a no-op in Rust.
     let runtime = RuntimePaths::new();
-    let sock_parent = runtime.sock_dir("_");
-    let sock_parent = sock_parent
-        .parent()
-        .ok_or_else(|| RunnerError::Config("unable to determine socket base directory".into()))?;
+    let sock_parent = runtime.sock_base();
 
-    let entries = std::fs::read_dir(sock_parent).map_err(|e| {
+    let entries = std::fs::read_dir(&sock_parent).map_err(|e| {
         RunnerError::Config(format!(
             "cannot read {}: {e} (is a sandbox running?)",
             sock_parent.display()

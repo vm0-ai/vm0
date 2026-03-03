@@ -33,8 +33,15 @@ function makeSchedule(overrides?: Record<string, unknown>) {
 }
 
 function mockAgentDetailAPI(
-  opts: { withSchedule?: boolean } = { withSchedule: true },
+  opts: {
+    withSchedule?: boolean;
+    schedule?: Record<string, unknown>;
+  } = { withSchedule: true },
 ) {
+  const scheduleData = opts.schedule
+    ? makeSchedule(opts.schedule)
+    : makeSchedule();
+
   server.use(
     http.get("/api/agent/composes", ({ request }) => {
       const url = new URL(request.url);
@@ -69,7 +76,7 @@ function mockAgentDetailAPI(
     }),
     http.get("/api/agent/schedules", () => {
       return HttpResponse.json({
-        schedules: opts.withSchedule ? [makeSchedule()] : [],
+        schedules: opts.withSchedule ? [scheduleData] : [],
       });
     }),
     http.post("/api/agent/schedules/:name/enable", () => {
@@ -182,6 +189,122 @@ describe("schedule dialog", () => {
     const body = capturedBody as Record<string, unknown>;
     expect(body.composeId).toBe("compose_1");
     expect(body.prompt).toBe("Updated standup summary");
+  });
+
+  it("should show Scheduled badge for one-time schedule", async () => {
+    mockAgentDetailAPI({
+      withSchedule: true,
+      schedule: {
+        cronExpression: null,
+        atTime: "2030-06-15T14:30:00.000Z",
+        prompt: "One-time report",
+        nextRunAt: "2030-06-15T14:30:00.000Z",
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("Scheduled")).toBeInTheDocument();
+    });
+  });
+
+  it("should open edit dialog with one-time fields for atTime schedule", async () => {
+    mockAgentDetailAPI({
+      withSchedule: true,
+      schedule: {
+        cronExpression: null,
+        atTime: "2030-06-15T14:30:00.000Z",
+        prompt: "One-time report",
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("Scheduled")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit schedule" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Edit this schedule" }),
+      ).toBeInTheDocument();
+    });
+
+    // Prompt should be pre-filled
+    expect(screen.getByDisplayValue("One-time report")).toBeInTheDocument();
+  });
+
+  it("should update one-time schedule on save", async () => {
+    mockAgentDetailAPI({
+      withSchedule: true,
+      schedule: {
+        cronExpression: null,
+        atTime: "2030-06-15T14:30:00.000Z",
+        prompt: "One-time report",
+      },
+    });
+
+    let capturedBody: unknown = null;
+    server.use(
+      http.post("/api/agent/schedules", async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json(
+          makeSchedule({
+            cronExpression: null,
+            atTime: "2030-06-15T14:30:00.000Z",
+            prompt: "Updated one-time report",
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("Scheduled")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit schedule" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Edit this schedule" }),
+      ).toBeInTheDocument();
+    });
+
+    // Modify prompt
+    const textarea = screen.getByDisplayValue("One-time report");
+    fireEvent.change(textarea, {
+      target: { value: "Updated one-time report" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Edit this schedule" }),
+      ).not.toBeInTheDocument();
+    });
+
+    // Verify API was called with atTime (not cronExpression)
+    const body = capturedBody as Record<string, unknown>;
+    expect(body.composeId).toBe("compose_1");
+    expect(body.atTime).toBeDefined();
+    expect(body.cronExpression).toBeUndefined();
+    expect(body.prompt).toBe("Updated one-time report");
   });
 
   it("should delete schedule and hide badge", async () => {
