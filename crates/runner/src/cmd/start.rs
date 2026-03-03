@@ -164,13 +164,10 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         memory_mb,
     } = sandbox;
     let max_concurrent = if max_concurrent == 0 {
-        let host_cpus = crate::host::cpu_count();
+        let host_cpus = crate::host::cpu_count()?;
         let host_memory_mb = crate::host::memory_mb()?;
-        let computed = std::cmp::min(
-            host_cpus / vcpu as usize,
-            host_memory_mb / memory_mb as usize,
-        )
-        .max(1);
+        let computed =
+            crate::host::compute_max_concurrent(host_cpus, host_memory_mb, vcpu, memory_mb);
         info!(
             host_cpus,
             host_memory_mb, vcpu, memory_mb, computed, "auto-detected max_concurrent"

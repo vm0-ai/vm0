@@ -1476,7 +1476,11 @@ jobs:
           # Sum auto-detected max_concurrent from all hosts' status.json
           TOTAL=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            MC=$(ssh $SSH_OPTS "${METAL_USER}@${HOST}" "grep -o '\"max_concurrent\": [0-9]*' ${RUNNER_DIR}/status.json | grep -o '[0-9]*'")
+            MC=$(ssh $SSH_OPTS "${METAL_USER}@${HOST}" "grep -o '\"max_concurrent\": [0-9]*' ${RUNNER_DIR}/status.json | grep -o '[0-9]*'") || true
+            if [ -z "$MC" ] || ! [[ "$MC" =~ ^[0-9]+$ ]]; then
+              echo "::error::Failed to read max_concurrent from ${HOST}"
+              exit 1
+            fi
             echo "Host ${HOST}: max_concurrent=${MC}"
             TOTAL=$((TOTAL + MC))
           done
@@ -1596,6 +1600,10 @@ jobs:
 
       - name: Run Runner E2E Tests (Chunk ${{ matrix.index }})
         run: |
+          if [ -z "$RUNNER_CHUNK_COUNT" ] || [ "$RUNNER_CHUNK_COUNT" -eq 0 ]; then
+            echo "::error::RUNNER_CHUNK_COUNT is empty or zero"
+            exit 1
+          fi
           PARALLEL=$(( RUNNER_TOTAL_CAPACITY / RUNNER_CHUNK_COUNT ))
           [ "$PARALLEL" -lt 1 ] && PARALLEL=1
           echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel, total capacity ${RUNNER_TOTAL_CAPACITY}) ==="
