@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.31.0](https://github.com/vm0-ai/vm0/compare/core-v8.30.0...core-v8.31.0) (2026-03-03)
+
+
+### Features
+
+* **connectors:** add google calendar connector ([#3522](https://github.com/vm0-ai/vm0/issues/3522)) ([878ef7d](https://github.com/vm0-ai/vm0/commit/878ef7d3979ac161fdf822d7c674bad51c5000a3))
+
 ## [8.30.0](https://github.com/vm0-ai/vm0/compare/core-v8.29.0...core-v8.30.0) (2026-03-03)
 
 

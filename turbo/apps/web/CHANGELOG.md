@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.63.0](https://github.com/vm0-ai/vm0/compare/web-v12.62.0...web-v12.63.0) (2026-03-03)
+
+
+### Features
+
+* **connectors:** add google calendar connector ([#3522](https://github.com/vm0-ai/vm0/issues/3522)) ([878ef7d](https://github.com/vm0-ai/vm0/commit/878ef7d3979ac161fdf822d7c674bad51c5000a3))
+* **platform:** add one-time schedule option to agent run dialog ([#3507](https://github.com/vm0-ai/vm0/issues/3507)) ([3c23118](https://github.com/vm0-ai/vm0/commit/3c2311828af86446a409a6a193ac2d6f65b6fd66))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.31.0
+
 ## [12.62.0](https://github.com/vm0-ai/vm0/compare/web-v12.61.0...web-v12.62.0) (2026-03-03)
 
 

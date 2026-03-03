@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.78.0](https://github.com/vm0-ai/vm0/compare/platform-v0.77.0...platform-v0.78.0) (2026-03-03)
+
+
+### Features
+
+* **connectors:** add google calendar connector ([#3522](https://github.com/vm0-ai/vm0/issues/3522)) ([878ef7d](https://github.com/vm0-ai/vm0/commit/878ef7d3979ac161fdf822d7c674bad51c5000a3))
+* **platform:** add one-time schedule option to agent run dialog ([#3507](https://github.com/vm0-ai/vm0/issues/3507)) ([3c23118](https://github.com/vm0-ai/vm0/commit/3c2311828af86446a409a6a193ac2d6f65b6fd66))
+* **platform:** forward logger errors to sentry ([#3506](https://github.com/vm0-ai/vm0/issues/3506)) ([dc94a6a](https://github.com/vm0-ai/vm0/commit/dc94a6a9dafcf6c598ff3017ddc154e8e96aca70))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.31.0
+
 ## [0.77.0](https://github.com/vm0-ai/vm0/compare/platform-v0.76.0...platform-v0.77.0) (2026-03-03)
 
 
