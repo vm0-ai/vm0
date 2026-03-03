@@ -11,7 +11,6 @@ env:
   # Sandbox VM parameters for runner build
   RUNNER_VCPU: 2
   RUNNER_MEMORY_MB: 2048
-  RUNNER_MAX_CONCURRENT: 4
 
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'merge_group' && format('merge-queue-{0}', github.run_id) || 'staging') }}
@@ -1368,6 +1367,8 @@ jobs:
   deploy-runner-start:
     runs-on: ubuntu-latest
     needs: [prepare, deploy-runner-prepare, deploy-web]
+    outputs:
+      max-concurrent: ${{ steps.start.outputs.max-concurrent }}
     timeout-minutes: 2
     if: |
       github.event_name != 'push' &&
@@ -1388,6 +1389,7 @@ jobs:
 
       # Read METAL_HOSTS from secret directly — GitHub Actions masks secret values in job outputs
       - name: Rebuild config and start runner service on all hosts
+        id: start
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
@@ -1418,7 +1420,6 @@ jobs:
               --runner-dirname ${JOB_REF} \
               --vcpu ${RUNNER_VCPU} \
               --memory-mb ${RUNNER_MEMORY_MB} \
-              --max-concurrent ${RUNNER_MAX_CONCURRENT} \
               --api-url ${PREVIEW_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
@@ -1469,6 +1470,12 @@ jobs:
           if [ "$FAILED" -ne 0 ]; then
             exit 1
           fi
+
+          # Read auto-detected max_concurrent from first host's status.json
+          FIRST_HOST=$(echo "$METAL_HOSTS" | tr ',' ' ' | awk '{print $1}')
+          MAX_CONCURRENT=$(ssh $SSH_OPTS "${METAL_USER}@${FIRST_HOST}" "jq -r '.max_concurrent' ${RUNNER_DIR}/status.json")
+          echo "max-concurrent=${MAX_CONCURRENT}" >> "$GITHUB_OUTPUT"
+          echo "Runner max_concurrent: ${MAX_CONCURRENT}"
 
   # Run CLI E2E tests - Phase 3: Runner tests (needs runner deployed)
   # Skip on push to main - runner tests are only needed for PRs
@@ -1589,6 +1596,7 @@ jobs:
           BATS_TEST_TIMEOUT=60 RUNNER_GROUP="vm0/development-${JOB_REF}" ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --no-parallelize-within-files ${{ matrix.files }}
           echo "✅ Chunk ${{ matrix.index }} tests passed"
         env:
+          RUNNER_MAX_CONCURRENT: ${{ needs.deploy-runner-start.outputs.max-concurrent }}
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"

@@ -3,6 +3,7 @@ mod config;
 mod deps;
 mod error;
 mod executor;
+mod host;
 mod http;
 mod lock;
 mod network_logs;

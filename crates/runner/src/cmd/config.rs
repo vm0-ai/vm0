@@ -35,7 +35,7 @@ pub struct ConfigArgs {
     /// Memory size in MiB for sandbox VMs
     #[arg(long, default_value_t = DEFAULT_MEMORY_MB)]
     memory_mb: u32,
-    /// Maximum concurrent job executions
+    /// Maximum concurrent VMs (0 = auto-detect from host CPU/memory)
     #[arg(long, default_value_t = DEFAULT_MAX_CONCURRENT)]
     max_concurrent: usize,
 

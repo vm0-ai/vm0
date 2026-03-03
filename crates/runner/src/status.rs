@@ -18,6 +18,7 @@ pub enum RunnerMode {
 #[derive(Debug, Serialize)]
 struct RunnerStatus {
     mode: RunnerMode,
+    max_concurrent: usize,
     active_runs: usize,
     active_run_ids: Vec<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -38,6 +39,7 @@ fn serialize_iso<S: serde::Serializer>(dt: &DateTime<Utc>, s: S) -> Result<S::Ok
 /// Share via `Arc<StatusTracker>` — immutable fields live outside the mutex.
 pub struct StatusTracker {
     started_at: DateTime<Utc>,
+    max_concurrent: usize,
     proxy_port: Option<u16>,
     path: PathBuf,
     state: Mutex<MutableState>,
@@ -49,9 +51,10 @@ struct MutableState {
 }
 
 impl StatusTracker {
-    pub fn new(path: PathBuf) -> Self {
+    pub fn new(path: PathBuf, max_concurrent: usize) -> Self {
         Self {
             started_at: Utc::now(),
+            max_concurrent,
             proxy_port: None,
             path,
             state: Mutex::new(MutableState {
@@ -95,6 +98,7 @@ impl StatusTracker {
     async fn write_status(&self, state: &MutableState) {
         let status = RunnerStatus {
             mode: state.mode,
+            max_concurrent: self.max_concurrent,
             active_runs: state.active_run_ids.len(),
             active_run_ids: state.active_run_ids.iter().copied().collect(),
             proxy_port: self.proxy_port,
@@ -134,12 +138,13 @@ mod tests {
     async fn write_initial_creates_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone());
+        let tracker = StatusTracker::new(path.clone(), 4);
 
         tracker.write_initial().await;
 
         let status = read_status(&path);
         assert_eq!(status["mode"], "running");
+        assert_eq!(status["max_concurrent"], 4);
         assert_eq!(status["active_runs"], 0);
         assert!(status["active_run_ids"].as_array().unwrap().is_empty());
         assert!(status["started_at"].as_str().is_some());
@@ -150,7 +155,7 @@ mod tests {
     async fn set_mode_updates_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone());
+        let tracker = StatusTracker::new(path.clone(), 4);
 
         tracker.write_initial().await;
         tracker.set_mode(RunnerMode::Draining).await;
@@ -163,7 +168,7 @@ mod tests {
     async fn add_and_remove_run() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone());
+        let tracker = StatusTracker::new(path.clone(), 4);
 
         let id1 = Uuid::new_v4();
         let id2 = Uuid::new_v4();
@@ -195,7 +200,7 @@ mod tests {
     async fn proxy_port_in_status() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let mut tracker = StatusTracker::new(path.clone());
+        let mut tracker = StatusTracker::new(path.clone(), 4);
         tracker.set_proxy_port(8080).await;
 
         let status = read_status(&path);
@@ -206,7 +211,7 @@ mod tests {
     async fn proxy_port_absent_when_not_set() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone());
+        let tracker = StatusTracker::new(path.clone(), 4);
 
         tracker.write_initial().await;
 
@@ -218,7 +223,7 @@ mod tests {
     async fn timestamps_are_iso8601() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone());
+        let tracker = StatusTracker::new(path.clone(), 4);
 
         tracker.write_initial().await;
 

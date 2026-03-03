@@ -6,7 +6,8 @@ use crate::error::{RunnerError, RunnerResult};
 
 pub(crate) const DEFAULT_VCPU: u32 = 2;
 pub(crate) const DEFAULT_MEMORY_MB: u32 = 2048;
-pub(crate) const DEFAULT_MAX_CONCURRENT: usize = 4;
+/// 0 means auto-detect from host CPU and memory at startup.
+pub(crate) const DEFAULT_MAX_CONCURRENT: usize = 0;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct RunnerConfig {
