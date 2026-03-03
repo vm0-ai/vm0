@@ -6,12 +6,6 @@ import ccstatePlugin from "./custom-eslint/index.ts";
 /** @type {import("eslint").Linter.Config[]} */
 export default [
   ...baseConfig,
-  // Allow Vite built-in env variables (import.meta.env.PROD, import.meta.env.MODE)
-  {
-    rules: {
-      "turbo/no-undeclared-env-vars": ["warn", { allowList: ["PROD", "MODE"] }],
-    },
-  },
   {
     ...pluginReact.configs.flat.recommended,
     settings: { react: { version: "detect" } },
