@@ -2,13 +2,17 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { env } from "../../env";
 import { SELF_HOSTED_USER_ID } from "./constants";
 
-const DEFAULT_TEST_EMAIL = "e2e+clerk_test@vm0.ai";
-
-const TEST_USER_EMAILS: Record<string, string> = {
-  serial: DEFAULT_TEST_EMAIL,
+const TEST_USER_EMAILS = {
+  serial: "e2e+clerk_test@vm0.ai",
   parallel: "e2e_01+clerk_test@vm0.ai",
   runner: "e2e_02+clerk_test@vm0.ai",
-};
+} as const;
+
+type TestVariant = keyof typeof TEST_USER_EMAILS;
+
+export function isTestVariant(value: string): value is TestVariant {
+  return value in TEST_USER_EMAILS;
+}
 
 /**
  * Resolve the test user ID based on the deployment mode.
@@ -19,7 +23,7 @@ const TEST_USER_EMAILS: Record<string, string> = {
  * @param variant - which test user to resolve ("serial", "parallel", or "runner")
  */
 export async function resolveTestUserId(
-  variant: string = "serial",
+  variant: TestVariant = "serial",
 ): Promise<string | null> {
   const useLocalAuth = !env().NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
@@ -27,7 +31,7 @@ export async function resolveTestUserId(
     return SELF_HOSTED_USER_ID;
   }
 
-  const email = TEST_USER_EMAILS[variant] ?? DEFAULT_TEST_EMAIL;
+  const email = TEST_USER_EMAILS[variant];
   const clerk = await clerkClient();
   const { data: users } = await clerk.users.getUserList({
     emailAddress: [email],

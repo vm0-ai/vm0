@@ -8,7 +8,10 @@ import {
   generateDefaultScopeSlug,
 } from "../../../../../src/lib/scope/scope-service";
 import { isBadRequest } from "../../../../../src/lib/errors";
-import { resolveTestUserId } from "../../../../../src/lib/auth/test-user";
+import {
+  resolveTestUserId,
+  isTestVariant,
+} from "../../../../../src/lib/auth/test-user";
 import { env } from "../../../../../src/env";
 
 /**
@@ -53,6 +56,12 @@ export async function POST(request: Request) {
 
   const url = new URL(request.url);
   const variant = url.searchParams.get("variant") ?? "serial";
+  if (!isTestVariant(variant)) {
+    return NextResponse.json(
+      { error: `Unknown test variant: ${variant}` },
+      { status: 400 },
+    );
+  }
   const userId = await resolveTestUserId(variant);
   if (!userId) {
     return NextResponse.json({ error: "Test user not found" }, { status: 500 });
