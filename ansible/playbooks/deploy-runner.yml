@@ -93,7 +93,7 @@
     - name: Verify runner health
       command: "{{ bin_dir }}/runner doctor"
       retries: 5
-      delay: 10
+      delay: 5
       register: health
       until: health.rc == 0
 
@@ -123,3 +123,7 @@
     # ========================================
     - name: Verify runner health after cleanup
       command: "{{ bin_dir }}/runner doctor"
+      retries: 5
+      delay: 5
+      register: health_final
+      until: health_final.rc == 0

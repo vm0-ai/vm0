@@ -1403,9 +1403,9 @@ jobs:
               --env USE_MOCK_CLAUDE=true"
 
             # Health check — wait for the runner to initialize (mitmdump, status.json).
-            # Retry up to 5 times with 2s intervals to handle slow cold starts.
+            # Retry up to 5 times with 5s intervals to handle slow cold starts.
             for attempt in 1 2 3 4 5; do
-              sleep 2
+              sleep 5
               if ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner doctor"; then
                 break
               fi
@@ -1533,7 +1533,16 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             echo "Checking runner on ${HOST}..."
-            if ! ssh $SSH_OPTS "${METAL_USER}@${HOST}" "test -x ${BIN_DIR}/runner && ${BIN_DIR}/runner doctor"; then
+            HEALTHY=false
+            for attempt in 1 2 3 4 5; do
+              if ssh $SSH_OPTS "${METAL_USER}@${HOST}" "test -x ${BIN_DIR}/runner && ${BIN_DIR}/runner doctor"; then
+                HEALTHY=true
+                break
+              fi
+              echo "runner doctor attempt $attempt failed on ${HOST}, retrying in 5s..."
+              sleep 5
+            done
+            if [ "$HEALTHY" != "true" ]; then
               echo ""
               echo "::error::Runner not healthy on ${HOST}. This typically happens when 'Re-run failed jobs' is used after the cleanup step has already run. Use 'Re-run all jobs' to redeploy the runner first."
               exit 1
