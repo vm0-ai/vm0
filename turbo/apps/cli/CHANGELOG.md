@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.41.0](https://github.com/vm0-ai/vm0/compare/cli-v9.40.3...cli-v9.41.0) (2026-03-03)
+
+
+### Features
+
+* **connectors:** filter connector types by configured oauth credentials ([#3477](https://github.com/vm0-ai/vm0/issues/3477)) ([09319ec](https://github.com/vm0-ai/vm0/commit/09319ec9081e38d476b6f0e4b9c1e106ba0df8cb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.29.0
+
 ## [9.40.3](https://github.com/vm0-ai/vm0/compare/cli-v9.40.2...cli-v9.40.3) (2026-03-02)
 
 

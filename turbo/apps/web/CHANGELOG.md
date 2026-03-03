@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.61.0](https://github.com/vm0-ai/vm0/compare/web-v12.60.0...web-v12.61.0) (2026-03-03)
+
+
+### Features
+
+* **connectors:** filter connector types by configured oauth credentials ([#3477](https://github.com/vm0-ai/vm0/issues/3477)) ([09319ec](https://github.com/vm0-ai/vm0/commit/09319ec9081e38d476b6f0e4b9c1e106ba0df8cb))
+* **docs:** remove remaining public api v1 references ([#3469](https://github.com/vm0-ai/vm0/issues/3469)) ([d956347](https://github.com/vm0-ai/vm0/commit/d956347feeb87ffb828eedc01e5fc650e074fa9d))
+* **github:** add database schema for github issue integration ([#3456](https://github.com/vm0-ai/vm0/issues/3456)) ([0d1f88d](https://github.com/vm0-ai/vm0/commit/0d1f88dd939c691c357467dca492a0ba59b7a66f)), closes [#3439](https://github.com/vm0-ai/vm0/issues/3439)
+* **storage:** auto-create artifact when not found during run ([#3446](https://github.com/vm0-ai/vm0/issues/3446)) ([1b045c4](https://github.com/vm0-ai/vm0/commit/1b045c4ee576d41bc94c39a410c13341a0190e75))
+* **web:** update connector oauth scopes and add deel pkce support ([#3459](https://github.com/vm0-ai/vm0/issues/3459)) ([3c9926a](https://github.com/vm0-ai/vm0/commit/3c9926ac223b3458c9ffc38600e0c19cc552b044))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.29.0
+
 ## [12.60.0](https://github.com/vm0-ai/vm0/compare/web-v12.59.0...web-v12.60.0) (2026-03-02)
 
 
