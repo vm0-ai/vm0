@@ -1,4 +1,4 @@
-import { useGet, useSet } from "ccstate-react";
+import { useGet } from "ccstate-react";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import {
@@ -11,8 +11,8 @@ import {
   githubIntegrationNotLinked$,
   githubInstallUrl$,
 } from "../../signals/integrations-page/github-integration.ts";
-import { navigateInReact$ } from "../../signals/route.ts";
 import githubIcon from "../settings-page/icons/github.svg";
+import { Link } from "../router/link.tsx";
 
 function IntegrationCardSkeleton() {
   return (
@@ -33,7 +33,6 @@ export function SlackIntegrationCard() {
   const loading = useGet(slackIntegrationLoading$);
   const notLinked = useGet(slackIntegrationNotLinked$);
   const installUrl = useGet(slackInstallUrl$);
-  const navigate = useSet(navigateInReact$);
 
   if (loading) {
     return <IntegrationCardSkeleton />;
@@ -55,17 +54,13 @@ export function SlackIntegrationCard() {
           installUrl ? (
             <Button variant="outline" size="sm" asChild>
               <a href={installUrl} target="_blank" rel="noopener noreferrer">
-                Connect
+                Install
               </a>
             </Button>
           ) : null
         ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate("/settings/slack")}
-          >
-            Settings
+          <Button variant="outline" size="sm" asChild>
+            <Link pathname="/settings/slack">Settings</Link>
           </Button>
         )}
       </div>
