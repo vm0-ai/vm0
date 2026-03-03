@@ -72,19 +72,13 @@ test("sign-in flow", async ({ page, baseURL }) => {
   expect(platformHref).toContain("platform");
   await expect(platformButton).toHaveAttribute("target", "_blank");
 
-  // Open platform page and verify the user's email is visible.
-  // Platform may not be reachable in local dev — only deployed previews have it.
+  // Open platform page and verify post-auth content
   const platformPage = await page.context().newPage();
-  const platformReachable = await platformPage
-    .goto(platformHref!, { timeout: 10_000, waitUntil: "commit" })
-    .then(() => true)
-    .catch(() => false);
-  if (platformReachable) {
-    await platformPage.waitForLoadState("domcontentloaded");
-    await expect(platformPage.getByText(TEST_EMAIL)).toBeVisible({
-      timeout: 15_000,
-    });
-  }
+  await platformPage.goto(platformHref!, { timeout: 15_000 });
+  await platformPage.waitForLoadState("domcontentloaded");
+  await expect(platformPage.getByText("Get started")).toBeVisible({
+    timeout: 15_000,
+  });
   await platformPage.close();
 
   // Sign out
