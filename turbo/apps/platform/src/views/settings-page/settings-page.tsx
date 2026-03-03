@@ -23,6 +23,7 @@ import {
   SlackIntegrationCard,
   GitHubIntegrationCard,
 } from "../integrations-page/integrations-page.tsx";
+import { NotificationSettings } from "./notification-settings.tsx";
 
 export function SettingsPage() {
   const tab = useGet(activeTab$);
@@ -47,6 +48,7 @@ export function SettingsPage() {
               Secrets and variables
             </TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
+            <TabsTrigger value="notifications">Notifications</TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -84,6 +86,8 @@ export function SettingsPage() {
             )}
           </div>
         )}
+
+        {tab === "notifications" && <NotificationSettings />}
       </div>
     </AppShell>
   );
