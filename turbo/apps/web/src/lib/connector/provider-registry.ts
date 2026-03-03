@@ -8,6 +8,7 @@ import { figmaHandler } from "./providers/figma-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
 import { githubHandler } from "./providers/github-handler";
 import { gmailHandler } from "./providers/gmail-handler";
+import { googleCalendarHandler } from "./providers/google-calendar-handler";
 import { googleDocsHandler } from "./providers/google-docs-handler";
 import { googleDriveHandler } from "./providers/google-drive-handler";
 import { googleSheetsHandler } from "./providers/google-sheets-handler";
@@ -30,6 +31,7 @@ export const PROVIDER_HANDLERS: Record<
   "garmin-connect": garminConnectHandler,
   github: githubHandler,
   gmail: gmailHandler,
+  "google-calendar": googleCalendarHandler,
   "google-docs": googleDocsHandler,
   "google-drive": googleDriveHandler,
   "google-sheets": googleSheetsHandler,
