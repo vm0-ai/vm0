@@ -123,7 +123,7 @@ export const CONNECTOR_TYPES = {
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
-      scopes: ["https://mail.google.com/"],
+      scopes: ["https://www.googleapis.com/auth/gmail.modify"],
     } as ConnectorOAuthConfig,
   },
   "google-sheets": {
@@ -217,7 +217,8 @@ export const CONNECTOR_TYPES = {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
       scopes: [
-        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/drive.readonly",
+        "https://www.googleapis.com/auth/drive.file",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
     } as ConnectorOAuthConfig,
