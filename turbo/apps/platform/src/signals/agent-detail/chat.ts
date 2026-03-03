@@ -6,6 +6,9 @@ import { logger } from "../log.ts";
 import { agentDetail$, refreshAgentInstructions$ } from "./agent-detail.ts";
 import { closeInlineRun$ } from "./inline-run.ts";
 import { setupPollingLoop$, type PageResult } from "./polling.ts";
+import type { SessionListItem } from "@vm0/core";
+
+export type { SessionListItem };
 
 const L = logger("Chat");
 
@@ -44,14 +47,6 @@ export interface ChatMessage {
   runId?: string;
   status?: LogStatus;
   error?: string;
-}
-
-export interface SessionListItem {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-  messageCount: number;
-  preview: string | null;
 }
 
 // ---------------------------------------------------------------------------

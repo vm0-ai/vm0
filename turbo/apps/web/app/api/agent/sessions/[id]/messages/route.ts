@@ -32,6 +32,25 @@ const router = tsr.router(sessionMessagesContract, {
   },
 });
 
+interface PathParamsValidationError {
+  pathParamsError: {
+    issues: Array<{ path: string[]; message: string }>;
+  } | null;
+}
+
+function isPathParamsError(err: unknown): err is PathParamsValidationError {
+  return (
+    err !== null &&
+    typeof err === "object" &&
+    "pathParamsError" in err &&
+    (err.pathParamsError === null ||
+      (typeof err.pathParamsError === "object" &&
+        err.pathParamsError !== null &&
+        "issues" in err.pathParamsError &&
+        Array.isArray(err.pathParamsError.issues)))
+  );
+}
+
 function errorHandler(err: unknown): TsRestResponse | void {
   if (isNotFound(err)) {
     return TsRestResponse.fromJson(
@@ -40,21 +59,13 @@ function errorHandler(err: unknown): TsRestResponse | void {
     );
   }
 
-  if (err && typeof err === "object" && "pathParamsError" in err) {
-    const validationError = err as {
-      pathParamsError: {
-        issues: Array<{ path: string[]; message: string }>;
-      } | null;
-    };
-
-    if (validationError.pathParamsError) {
-      const issue = validationError.pathParamsError.issues[0];
-      if (issue) {
-        return TsRestResponse.fromJson(
-          { error: { message: issue.message, code: "BAD_REQUEST" } },
-          { status: 400 },
-        );
-      }
+  if (isPathParamsError(err) && err.pathParamsError) {
+    const issue = err.pathParamsError.issues[0];
+    if (issue) {
+      return TsRestResponse.fromJson(
+        { error: { message: issue.message, code: "BAD_REQUEST" } },
+        { status: 400 },
+      );
     }
   }
 
