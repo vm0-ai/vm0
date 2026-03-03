@@ -62,11 +62,7 @@ export const mainRunCommand = new Command()
     collectVolumeVersions,
     {},
   )
-  .option(
-    "--memory <name>",
-    "Memory storage name (defaults to 'memory')",
-    "memory",
-  )
+  .option("--memory <name>", "Memory storage name")
   .option(
     "--conversation <id>",
     "Resume from conversation ID (for fine-grained control)",
@@ -93,7 +89,7 @@ export const mainRunCommand = new Command()
         secrets: Record<string, string>;
         artifactName?: string;
         artifactVersion?: string;
-        memory: string;
+        memory?: string;
         volumeVersion: Record<string, string>;
         conversation?: string;
         modelProvider?: string;

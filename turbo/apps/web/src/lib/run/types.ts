@@ -63,7 +63,7 @@ export interface ExecutionContext {
   artifactName?: string;
   artifactVersion?: string;
 
-  // Memory storage name (defaults to "memory")
+  // Memory storage name
   memoryName?: string;
 
   // Volume version overrides (volume name -> version)
