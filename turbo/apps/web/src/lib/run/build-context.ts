@@ -821,6 +821,56 @@ async function resolveCredentialsAndEnvironment(
 }
 
 /**
+ * Apply resolution defaults to context variables.
+ * Params override resolution values (explicit CLI args win).
+ */
+function applyResolutionDefaults(
+  params: BuildContextParams,
+  resolution: ConversationResolution,
+): {
+  agentComposeVersionId: string;
+  agentCompose: unknown;
+  artifactName: string | undefined;
+  artifactVersion: string | undefined;
+  memoryName: string | undefined;
+  vars: Record<string, string> | undefined;
+  secretNames: string[] | undefined;
+  volumeVersions: Record<string, string> | undefined;
+  resumeSession: ResumeSession;
+  resumeArtifact: ArtifactSnapshot | undefined;
+} {
+  const artifactName = params.artifactName || resolution.artifactName;
+  const artifactVersion = params.artifactVersion || resolution.artifactVersion;
+
+  // Build resumeArtifact if applicable
+  let resumeArtifact: ArtifactSnapshot | undefined;
+  if (resolution.buildResumeArtifact && artifactName) {
+    resumeArtifact = {
+      artifactName,
+      artifactVersion: artifactVersion || "latest",
+    };
+  }
+
+  return {
+    agentComposeVersionId:
+      params.agentComposeVersionId || resolution.agentComposeVersionId,
+    agentCompose: resolution.agentCompose,
+    artifactName,
+    artifactVersion,
+    memoryName: params.memoryName || resolution.memoryName,
+    vars: params.vars || resolution.vars,
+    secretNames: resolution.secretNames,
+    volumeVersions: params.volumeVersions || resolution.volumeVersions,
+    resumeSession: {
+      sessionId: resolution.conversationData.cliAgentSessionId,
+      sessionHistory: resolution.conversationData.cliAgentSessionHistory,
+      workingDir: resolution.workingDir,
+    },
+    resumeArtifact,
+  };
+}
+
+/**
  * Build unified execution context from various parameter sources
  * Supports: new run, checkpoint resume, session continue
  *
@@ -863,6 +913,7 @@ export async function buildExecutionContext(
   let vars: Record<string, string> | undefined = params.vars;
   let secrets: Record<string, string> | undefined = params.secrets;
   let secretNames: string[] | undefined;
+  let memoryName: string | undefined = params.memoryName;
   let volumeVersions: Record<string, string> | undefined =
     params.volumeVersions;
   let resumeSession: ResumeSession | undefined;
@@ -876,32 +927,17 @@ export async function buildExecutionContext(
   // Step 2: Apply resolution defaults and build resumeSession (unified path)
   // Note: secrets are NEVER stored - caller must always provide fresh secrets via params
   if (resolution) {
-    // Apply defaults (params override resolution values)
-    agentComposeVersionId =
-      agentComposeVersionId || resolution.agentComposeVersionId;
-    agentCompose = resolution.agentCompose;
-    artifactName = artifactName || resolution.artifactName;
-    artifactVersion = artifactVersion || resolution.artifactVersion;
-    vars = vars || resolution.vars;
-    // secrets from params only - resolution only has secretNames for validation
-    // Get secretNames from resolution (stored for validation/error messages)
-    secretNames = resolution.secretNames;
-    volumeVersions = volumeVersions || resolution.volumeVersions;
-
-    // Build resumeSession from resolution (single place!)
-    resumeSession = {
-      sessionId: resolution.conversationData.cliAgentSessionId,
-      sessionHistory: resolution.conversationData.cliAgentSessionHistory,
-      workingDir: resolution.workingDir,
-    };
-
-    // Build resumeArtifact if applicable
-    if (resolution.buildResumeArtifact && artifactName) {
-      resumeArtifact = {
-        artifactName,
-        artifactVersion: artifactVersion || "latest",
-      };
-    }
+    const defaults = applyResolutionDefaults(params, resolution);
+    agentComposeVersionId = defaults.agentComposeVersionId;
+    agentCompose = defaults.agentCompose;
+    artifactName = defaults.artifactName;
+    artifactVersion = defaults.artifactVersion;
+    memoryName = defaults.memoryName;
+    vars = defaults.vars;
+    secretNames = defaults.secretNames;
+    volumeVersions = defaults.volumeVersions;
+    resumeSession = defaults.resumeSession;
+    resumeArtifact = defaults.resumeArtifact;
 
     log.debug(
       `Resolution applied: artifact=${artifactName}@${artifactVersion}`,
@@ -997,7 +1033,7 @@ export async function buildExecutionContext(
       sandboxToken: params.sandboxToken,
       artifactName,
       artifactVersion,
-      memoryName: params.memoryName,
+      memoryName,
       volumeVersions,
       environment,
       userTimezone,

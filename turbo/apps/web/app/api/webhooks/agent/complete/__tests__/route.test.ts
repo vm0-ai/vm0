@@ -17,6 +17,7 @@ import {
   findTestQueueEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
+import { getAgentSessionWithConversation } from "../../../../../../src/lib/agent-session";
 import {
   testContext,
   uniqueId,
@@ -307,6 +308,43 @@ describe("POST /api/webhooks/agent/complete", () => {
       };
       expect(result.memory).toEqual({ "my-memory": "mem-v1" });
       expect(result.artifact).toEqual({ "test-artifact": "v1" });
+    });
+
+    it("should store memoryName in agent session when checkpoint has memorySnapshot", async () => {
+      // Create checkpoint with memorySnapshot
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session-mem-store",
+            cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+            memorySnapshot: {
+              memoryName: "persist-memory",
+              memoryVersion: "mem-v1",
+            },
+          }),
+        },
+      );
+      const checkpointResponse = await checkpointWebhook(checkpointRequest);
+      expect(checkpointResponse.status).toBe(200);
+
+      const checkpointData = (await checkpointResponse.json()) as {
+        agentSessionId: string;
+      };
+
+      // Verify agent session has memoryName
+      const session = await getAgentSessionWithConversation(
+        checkpointData.agentSessionId,
+      );
+      expect(session).toBeDefined();
+      expect(session!.memoryName).toBe("persist-memory");
     });
 
     it("should handle failed completion (exitCode≠0)", async () => {

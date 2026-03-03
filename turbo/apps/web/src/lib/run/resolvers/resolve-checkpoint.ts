@@ -8,6 +8,7 @@ import { logger } from "../../logger";
 import type {
   ArtifactSnapshot,
   AgentComposeSnapshot,
+  MemorySnapshot,
   VolumeVersionsSnapshot,
 } from "../../checkpoint/types";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
@@ -72,6 +73,8 @@ export async function resolveCheckpoint(
     checkpoint.agentComposeSnapshot as unknown as AgentComposeSnapshot;
   const checkpointArtifact =
     checkpoint.artifactSnapshot as unknown as ArtifactSnapshot | null;
+  const checkpointMemory =
+    checkpoint.memorySnapshot as unknown as MemorySnapshot | null;
   const checkpointVolumeVersions =
     checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
 
@@ -113,6 +116,7 @@ export async function resolveCheckpoint(
     },
     artifactName: checkpointArtifact?.artifactName,
     artifactVersion: checkpointArtifact?.artifactVersion,
+    memoryName: checkpointMemory?.memoryName,
     vars: agentComposeSnapshot.vars || {},
     secretNames,
     volumeVersions: checkpointVolumeVersions?.versions,

@@ -9,11 +9,14 @@ import {
   createTestVolume,
   createTestArtifact,
   createTestRequest,
+  createTestSandboxToken,
+  createTestRun,
   insertStalePendingRun,
   findTestRunRecord,
   findTestRunCallbacks,
   findTestRunsByUserAndPrompt,
 } from "../../../__tests__/api-test-helpers";
+import { POST as checkpointWebhook } from "../../../../app/api/webhooks/agent/checkpoints/route";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
 import { addPermission } from "../../agent/permission-service";
 import { reloadEnv } from "../../../env";
@@ -315,6 +318,63 @@ describe("createRun()", () => {
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("running");
+    });
+
+    it("should restore memoryName from session in continue flow", async () => {
+      // Allow concurrent runs for this test
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      reloadEnv();
+
+      // Step 1: Create a run and checkpoint with memorySnapshot
+      const { runId } = await createTestRun(composeId, "Initial run");
+      const sandboxToken = await createTestSandboxToken(user.userId, runId);
+
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sandboxToken}`,
+          },
+          body: JSON.stringify({
+            runId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-for-continue",
+            cliAgentSessionHistory: JSON.stringify([]),
+            memorySnapshot: {
+              memoryName: "restored-memory",
+              memoryVersion: "v1",
+            },
+          }),
+        },
+      );
+      const checkpointResponse = await checkpointWebhook(checkpointRequest);
+      expect(checkpointResponse.status).toBe(200);
+
+      const { agentSessionId } = (await checkpointResponse.json()) as {
+        agentSessionId: string;
+      };
+
+      // Step 2: Continue from session WITHOUT specifying memoryName
+      vi.mocked(Sandbox.create).mockClear();
+      const continueResult = await createRun(
+        baseParams({
+          sessionId: agentSessionId,
+          prompt: "Continue prompt",
+        }),
+      );
+
+      expect(continueResult.runId).toBeDefined();
+      expect(continueResult.status).toBe("running");
+
+      // Step 3: Verify Sandbox.create was called with VM0_MEMORY_NAME
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      expect(createCall).toBeDefined();
+      const sandboxOptions = createCall![1] as {
+        envs?: Record<string, string>;
+      };
+      expect(sandboxOptions.envs?.VM0_MEMORY_NAME).toBe("restored-memory");
     });
   });
 

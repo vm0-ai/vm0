@@ -66,6 +66,7 @@ export async function createAgentSession(
       userId: input.userId,
       agentComposeId: input.agentComposeId,
       artifactName: input.artifactName,
+      memoryName: input.memoryName,
       conversationId: input.conversationId,
     })
     .returning();
@@ -184,6 +185,7 @@ function mapToAgentSessionData(
     agentComposeId: session.agentComposeId,
     conversationId: session.conversationId,
     artifactName: session.artifactName,
+    memoryName: session.memoryName,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };

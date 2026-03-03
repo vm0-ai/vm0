@@ -15,6 +15,7 @@ export interface ConversationResolution {
   };
   artifactName?: string;
   artifactVersion?: string;
+  memoryName?: string;
   vars?: Record<string, string>;
   /** Secret names required for this run (values must be provided at runtime) */
   secretNames?: string[];

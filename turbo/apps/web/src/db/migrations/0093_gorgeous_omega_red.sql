@@ -1,1 +1,0 @@
-ALTER TABLE "checkpoints" ADD COLUMN "memory_snapshot" jsonb;

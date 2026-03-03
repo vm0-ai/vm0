@@ -1,0 +1,1 @@
+ALTER TABLE "agent_sessions" ADD COLUMN "memory_name" varchar(255);
