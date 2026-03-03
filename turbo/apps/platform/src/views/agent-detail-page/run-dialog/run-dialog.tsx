@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
+import { Input } from "@vm0/ui/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -31,11 +32,14 @@ import {
   setRunDialogDayOfWeek$,
   runDialogDayOfMonth$,
   setRunDialogDayOfMonth$,
+  runDialogDate$,
+  setRunDialogDate$,
   runDialogSaving$,
   runDialogSaveError$,
   submitRunDialog$,
 } from "../../../signals/agent-detail/run-dialog.ts";
 import { agentSchedule$ } from "../../../signals/agent-detail/schedule.ts";
+import { getTodayDateLocal } from "../../../signals/agent-detail/cron.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -50,6 +54,7 @@ export function RunDialog() {
   const minute = useGet(runDialogMinute$);
   const dayOfWeek = useGet(runDialogDayOfWeek$);
   const dayOfMonth = useGet(runDialogDayOfMonth$);
+  const date = useGet(runDialogDate$);
   const saving = useGet(runDialogSaving$);
   const saveError = useGet(runDialogSaveError$);
   const close = useSet(closeRunDialog$);
@@ -59,6 +64,7 @@ export function RunDialog() {
   const setMinute = useSet(setRunDialogMinute$);
   const setDayOfWeek = useSet(setRunDialogDayOfWeek$);
   const setDayOfMonth = useSet(setRunDialogDayOfMonth$);
+  const setDate = useSet(setRunDialogDate$);
   const submit = useSet(submitRunDialog$);
   const schedule = useGet(agentSchedule$);
 
@@ -88,7 +94,9 @@ export function RunDialog() {
   }));
 
   const hasSchedule = schedule !== null;
-  const isSchedule = !hasSchedule && timeOption !== "now";
+  const isSchedule = timeOption !== "now";
+  const isOnce = timeOption === "once";
+  const isRecurring = isSchedule && !isOnce;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && close()}>
@@ -113,27 +121,44 @@ export function RunDialog() {
             />
           </div>
 
-          {!hasSchedule && (
+          <div className="flex flex-col gap-3">
+            <label className="text-sm font-medium text-foreground px-1">
+              Time
+            </label>
+            <Select value={timeOption} onValueChange={setTimeOption}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="now">Now</SelectItem>
+                <SelectItem value="once">Once</SelectItem>
+                {!hasSchedule && (
+                  <>
+                    <SelectItem value="every-weekday">Every weekday</SelectItem>
+                    <SelectItem value="every-day">Every day</SelectItem>
+                    <SelectItem value="every-week">Every week</SelectItem>
+                    <SelectItem value="every-month">Every month</SelectItem>
+                  </>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {isOnce && (
             <div className="flex flex-col gap-3">
               <label className="text-sm font-medium text-foreground px-1">
-                Time
+                Date
               </label>
-              <Select value={timeOption} onValueChange={setTimeOption}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="now">Now</SelectItem>
-                  <SelectItem value="every-weekday">Every weekday</SelectItem>
-                  <SelectItem value="every-day">Every day</SelectItem>
-                  <SelectItem value="every-week">Every week</SelectItem>
-                  <SelectItem value="every-month">Every month</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input
+                type="date"
+                value={date}
+                min={getTodayDateLocal()}
+                onChange={(e) => setDate(e.target.value)}
+              />
             </div>
           )}
 
-          {isSchedule && timeOption === "every-week" && (
+          {isRecurring && timeOption === "every-week" && (
             <div className="flex flex-col gap-3">
               <label className="text-sm font-medium text-foreground px-1">
                 Day of week
@@ -153,7 +178,7 @@ export function RunDialog() {
             </div>
           )}
 
-          {isSchedule && timeOption === "every-month" && (
+          {isRecurring && timeOption === "every-month" && (
             <div className="flex flex-col gap-3">
               <label className="text-sm font-medium text-foreground px-1">
                 Day of month
@@ -176,7 +201,7 @@ export function RunDialog() {
           {isSchedule && (
             <div className="flex flex-col gap-3">
               <label className="text-sm font-medium text-foreground px-1">
-                Frequency
+                {isOnce ? "Time" : "Frequency"}
               </label>
               <div className="flex items-center gap-2">
                 <IconClock

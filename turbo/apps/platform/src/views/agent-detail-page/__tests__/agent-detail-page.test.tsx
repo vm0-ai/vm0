@@ -519,6 +519,264 @@ describe("agent detail page", () => {
     });
   });
 
+  it("should fetch session list when chat panel opens", async () => {
+    mockAgentDetailAPI();
+
+    server.use(
+      http.get("/api/agent/sessions", () => {
+        return HttpResponse.json({
+          sessions: [
+            {
+              id: "session_1",
+              createdAt: "2024-01-01T00:00:00Z",
+              updatedAt: "2024-01-02T00:00:00Z",
+              messageCount: 3,
+              preview: "Help me build my agent",
+            },
+            {
+              id: "session_2",
+              createdAt: "2024-01-01T00:00:00Z",
+              updatedAt: "2024-01-01T12:00:00Z",
+              messageCount: 1,
+              preview: "What is this agent?",
+            },
+          ],
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // Open chat panel
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("Send a message to start chatting"),
+      ).toBeInTheDocument();
+    });
+
+    // Open session dropdown
+    fireEvent.click(screen.getByRole("button", { name: "Session history" }));
+
+    // Session items should appear
+    await vi.waitFor(() => {
+      expect(screen.getByText("Help me build my agent")).toBeInTheDocument();
+      expect(screen.getByText("What is this agent?")).toBeInTheDocument();
+    });
+  });
+
+  it("should switch to a different session and load its messages", async () => {
+    mockAgentDetailAPI();
+
+    server.use(
+      http.get("/api/agent/sessions", () => {
+        return HttpResponse.json({
+          sessions: [
+            {
+              id: "session_old",
+              createdAt: "2024-01-01T00:00:00Z",
+              updatedAt: "2024-01-01T12:00:00Z",
+              messageCount: 2,
+              preview: "Previous conversation",
+            },
+          ],
+        });
+      }),
+      http.get("/api/agent/sessions/:id", () => {
+        return HttpResponse.json({
+          id: "session_old",
+          agentComposeId: "compose_1",
+          conversationId: "conv_1",
+          artifactName: null,
+          secretNames: null,
+          chatMessages: [
+            {
+              role: "user",
+              content: "Previous conversation",
+              createdAt: "2024-01-01T10:00:00Z",
+            },
+            {
+              role: "assistant",
+              content: "Here is what I found",
+              runId: "run_old",
+              createdAt: "2024-01-01T10:01:00Z",
+            },
+          ],
+          createdAt: "2024-01-01T00:00:00Z",
+          updatedAt: "2024-01-01T12:00:00Z",
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // Open chat panel
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("Send a message to start chatting"),
+      ).toBeInTheDocument();
+    });
+
+    // Open session dropdown and click session
+    fireEvent.click(screen.getByRole("button", { name: "Session history" }));
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("Previous conversation")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Previous conversation"));
+
+    // Messages from the old session should now appear in the chat
+    await vi.waitFor(() => {
+      expect(screen.getByText("Here is what I found")).toBeInTheDocument();
+    });
+  });
+
+  it("should clear messages when starting a new session", async () => {
+    mockAgentDetailAPI();
+
+    server.use(
+      http.get("/api/agent/sessions", () => {
+        return HttpResponse.json({
+          sessions: [
+            {
+              id: "session_existing",
+              createdAt: "2024-01-01T00:00:00Z",
+              updatedAt: "2024-01-01T12:00:00Z",
+              messageCount: 2,
+              preview: "Old chat",
+            },
+          ],
+        });
+      }),
+      http.get("/api/agent/sessions/:id", () => {
+        return HttpResponse.json({
+          id: "session_existing",
+          agentComposeId: "compose_1",
+          conversationId: "conv_1",
+          artifactName: null,
+          secretNames: null,
+          chatMessages: [
+            {
+              role: "user",
+              content: "Old chat",
+              createdAt: "2024-01-01T10:00:00Z",
+            },
+            {
+              role: "assistant",
+              content: "Old response",
+              createdAt: "2024-01-01T10:01:00Z",
+            },
+          ],
+          createdAt: "2024-01-01T00:00:00Z",
+          updatedAt: "2024-01-01T12:00:00Z",
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // Open chat panel
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("Send a message to start chatting"),
+      ).toBeInTheDocument();
+    });
+
+    // Switch to old session first
+    fireEvent.click(screen.getByRole("button", { name: "Session history" }));
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("Old chat")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Old chat"));
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("Old response")).toBeInTheDocument();
+    });
+
+    // Click "New chat" button
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+
+    // Messages should be cleared
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("Send a message to start chatting"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("should show empty state in session dropdown when no sessions exist", async () => {
+    mockAgentDetailAPI();
+
+    server.use(
+      http.get("/api/agent/sessions", () => {
+        return HttpResponse.json({ sessions: [] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // Open chat panel
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("Send a message to start chatting"),
+      ).toBeInTheDocument();
+    });
+
+    // Open session dropdown
+    fireEvent.click(screen.getByRole("button", { name: "Session history" }));
+
+    // Should show empty state
+    await vi.waitFor(() => {
+      expect(screen.getByText("No previous sessions")).toBeInTheDocument();
+    });
+  });
+
   it("should show read-only pre for shared (non-owner) agents", async () => {
     // Shared agent path has scope/name format
     server.use(

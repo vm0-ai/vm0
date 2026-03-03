@@ -1794,6 +1794,125 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     });
   });
 
+  describe("Google Calendar OAuth Flow", () => {
+    it("should store Google Calendar connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        accessToken: "calendar-access-token",
+        refreshToken: "calendar-refresh-token",
+        scope:
+          "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/userinfo.email",
+        email: "testuser@gmail.com",
+        name: "Calendar User",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-calendar",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-calendar" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=google-calendar");
+      expect(location).toContain("username=Calendar+User");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/google-calendar",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("google-calendar");
+      expect(connector.externalUsername).toBe("Calendar User");
+      expect(connector.externalId).toBe("google-user-123");
+      expect(connector.externalEmail).toBe("testuser@gmail.com");
+    });
+
+    it("should redirect with error when Google Calendar token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-calendar",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-calendar" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Google Calendar returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        accessToken: "calendar-access-token",
+        refreshToken: "calendar-refresh-token-stored",
+        email: "testuser@gmail.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-calendar",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-calendar" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "GOOGLE_CALENDAR_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("calendar-refresh-token-stored");
+    });
+
+    it("should redirect with error when Google Calendar user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-calendar",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-calendar" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
   describe("Linear OAuth Flow", () => {
     it("should store Linear connector and redirect to success page", async () => {
       await context.setupUser();

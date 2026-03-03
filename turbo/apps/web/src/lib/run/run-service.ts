@@ -534,6 +534,7 @@ export async function createRun(
       vars: params.vars ?? null,
       secretNames: params.secrets ? Object.keys(params.secrets) : null,
       resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
+      continuedFromSessionId: params.sessionId ?? null,
       scheduleId: params.scheduleId ?? null,
       lastHeartbeatAt: new Date(),
     })

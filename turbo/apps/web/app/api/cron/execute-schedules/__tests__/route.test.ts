@@ -236,6 +236,64 @@ describe("GET /api/cron/execute-schedules", () => {
     });
   });
 
+  describe("Loop Schedule Triggering", () => {
+    it("should execute due loop schedule and set nextRunAt to null", async () => {
+      // 1. Create and enable a loop schedule (nextRunAt = now on enable)
+      await createTestSchedule(testComposeId, "loop-trigger-test", {
+        intervalSeconds: 300,
+        prompt: "Loop task",
+      });
+      await enableTestSchedule(testComposeId, "loop-trigger-test");
+
+      // Verify it's enabled with nextRunAt set
+      const before = await getTestSchedule(testComposeId, "loop-trigger-test");
+      expect(before.enabled).toBe(true);
+      expect(before.nextRunAt).not.toBeNull();
+
+      // 2. Execute cron endpoint (loop schedule should be due immediately)
+      const request = createTestRequest(
+        "http://localhost:3000/api/cron/execute-schedules",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.executed).toBeGreaterThanOrEqual(1);
+
+      // 3. Verify loop schedule state after execution:
+      //    - lastRunAt should be set
+      //    - nextRunAt should be null (loop callback handles scheduling next run)
+      const after = await getTestSchedule(testComposeId, "loop-trigger-test");
+      expect(after.lastRunAt).not.toBeNull();
+      expect(after.nextRunAt).toBeNull();
+      expect(after.enabled).toBe(true);
+    });
+
+    it("should retry loop schedule when blocked by concurrency limit", async () => {
+      // 1. Create and enable loop schedule
+      await createTestSchedule(testComposeId, "loop-retry-test", {
+        intervalSeconds: 300,
+        prompt: "Loop retry task",
+      });
+      await enableTestSchedule(testComposeId, "loop-retry-test");
+
+      // 2. Create a blocking run
+      await createTestRun(testComposeId, "Blocking run");
+
+      // 3. Execute cron - should fail due to concurrency limit
+      const request = createTestRequest(
+        "http://localhost:3000/api/cron/execute-schedules",
+      );
+      await GET(request);
+
+      // 4. Verify schedule entered retry state
+      const schedule = await getTestSchedule(testComposeId, "loop-retry-test");
+      expect(schedule.retryStartedAt).not.toBeNull();
+      expect(schedule.nextRunAt).not.toBeNull();
+    });
+  });
+
   describe("Concurrency Retry", () => {
     it("should retry schedule when blocked by concurrency limit", async () => {
       // 1. Set time to 8:00 AM

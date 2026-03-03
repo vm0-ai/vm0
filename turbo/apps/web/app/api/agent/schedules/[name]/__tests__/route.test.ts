@@ -110,6 +110,22 @@ describe("GET /api/agent/schedules/:name - Get Schedule", () => {
     expect(response.status).toBe(400);
     expect(data.error.message).toContain("composeId");
   });
+
+  it("should return loop schedule with triggerType and intervalSeconds", async () => {
+    await createTestSchedule(testComposeId, "loop-get-test", {
+      intervalSeconds: 600,
+      prompt: "Loop get test",
+    });
+
+    const retrieved = await getTestSchedule(testComposeId, "loop-get-test");
+
+    expect(retrieved.name).toBe("loop-get-test");
+    expect(retrieved.triggerType).toBe("loop");
+    expect(retrieved.intervalSeconds).toBe(600);
+    expect(retrieved.cronExpression).toBeNull();
+    expect(retrieved.atTime).toBeNull();
+    expect(retrieved.prompt).toBe("Loop get test");
+  });
 });
 
 describe("DELETE /api/agent/schedules/:name - Delete Schedule", () => {
@@ -194,5 +210,26 @@ describe("DELETE /api/agent/schedules/:name - Delete Schedule", () => {
 
     expect(response.status).toBe(401);
     expect(data.error.message).toContain("Not authenticated");
+  });
+
+  it("should delete loop schedule", async () => {
+    await createTestSchedule(testComposeId, "loop-to-delete", {
+      intervalSeconds: 300,
+      prompt: "Will be deleted",
+    });
+
+    // Verify it exists
+    const before = await getTestSchedule(testComposeId, "loop-to-delete");
+    expect(before.triggerType).toBe("loop");
+
+    // Delete it
+    await deleteTestSchedule(testComposeId, "loop-to-delete");
+
+    // Verify it's gone
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/schedules/loop-to-delete?composeId=${testComposeId}`,
+    );
+    const response = await GET(request);
+    expect(response.status).toBe(404);
   });
 });

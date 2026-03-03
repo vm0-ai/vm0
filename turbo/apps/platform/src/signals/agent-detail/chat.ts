@@ -6,6 +6,9 @@ import { logger } from "../log.ts";
 import { agentDetail$, refreshAgentInstructions$ } from "./agent-detail.ts";
 import { closeInlineRun$ } from "./inline-run.ts";
 import { setupPollingLoop$, type PageResult } from "./polling.ts";
+import type { SessionListItem } from "@vm0/core";
+
+export type { SessionListItem };
 
 const L = logger("Chat");
 
@@ -68,6 +71,7 @@ const internalMessages$ = state<ChatMessage[]>([]);
 export const chatMessages$ = computed((get) => get(internalMessages$));
 
 const internalSessionId$ = state<string | null>(null);
+export const currentSessionId$ = computed((get) => get(internalSessionId$));
 
 const internalActiveRunId$ = state<string | null>(null);
 
@@ -79,6 +83,15 @@ const internalSending$ = state(false);
 export const chatSending$ = computed((get) => get(internalSending$));
 
 const pollingAbortController$ = state<AbortController | null>(null);
+
+// Session list state
+const internalSessionList$ = state<SessionListItem[]>([]);
+export const sessionList$ = computed((get) => get(internalSessionList$));
+
+const internalSessionListLoading$ = state(false);
+export const sessionListLoading$ = computed((get) =>
+  get(internalSessionListLoading$),
+);
 
 // ---------------------------------------------------------------------------
 // Chat input (used by ChatPanel view)
@@ -135,6 +148,95 @@ export const initChatFromCache$ = command(({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
+// Commands: session list management
+// ---------------------------------------------------------------------------
+
+const fetchSessionList$ = command(async ({ get, set }) => {
+  const detail = get(agentDetail$);
+  if (!detail) {
+    return;
+  }
+
+  set(internalSessionListLoading$, true);
+  try {
+    const fetchFn = get(fetch$);
+    const res = await fetchFn(
+      `/api/agent/sessions?agentComposeId=${encodeURIComponent(detail.id)}`,
+    );
+    if (res.ok) {
+      const data = (await res.json()) as { sessions: SessionListItem[] };
+      set(internalSessionList$, data.sessions);
+    }
+  } catch (error) {
+    throwIfAbort(error);
+    L.error("Failed to fetch session list:", error);
+  } finally {
+    set(internalSessionListLoading$, false);
+  }
+});
+
+export const switchSession$ = command(
+  async ({ get, set }, sessionId: string) => {
+    const detail = get(agentDetail$);
+    if (!detail) {
+      return;
+    }
+
+    set(internalSessionListLoading$, true);
+    try {
+      const fetchFn = get(fetch$);
+      const res = await fetchFn(`/api/agent/sessions/${sessionId}`);
+      if (!res.ok) {
+        L.error("Failed to fetch session:", res.statusText);
+        return;
+      }
+
+      const data = (await res.json()) as {
+        chatMessages?: {
+          role: "user" | "assistant";
+          content: string;
+          runId?: string;
+          createdAt: string;
+        }[];
+      };
+
+      // Convert stored messages to ChatMessage format (add client-side IDs)
+      const messages: ChatMessage[] = (data.chatMessages ?? []).map((m) => ({
+        id: crypto.randomUUID(),
+        role: m.role,
+        content: m.content,
+        runId: m.runId,
+      }));
+
+      set(internalMessages$, messages);
+      set(internalSessionId$, sessionId);
+      // Reset transient run state
+      set(internalActiveRunId$, null);
+      set(internalRunEvents$, []);
+      set(internalRunStatus$, null);
+      set(internalSending$, false);
+      set(saveToCache$);
+    } catch (error) {
+      throwIfAbort(error);
+      L.error("Failed to switch session:", error);
+    } finally {
+      set(internalSessionListLoading$, false);
+    }
+  },
+);
+
+export const startNewSession$ = command(({ set }) => {
+  set(internalMessages$, []);
+  set(internalSessionId$, null);
+  // Reset transient run state
+  set(internalActiveRunId$, null);
+  set(internalRunEvents$, []);
+  set(internalRunStatus$, null);
+  set(internalSending$, false);
+  set(saveToCache$);
+});
+
+// ---------------------------------------------------------------------------
 // Commands: open / close
 // ---------------------------------------------------------------------------
 
@@ -142,6 +244,12 @@ export const openChatPanel$ = command(({ set }) => {
   // Close inline run panel first (mutually exclusive)
   set(closeInlineRun$);
   set(internalPanelOpen$, true);
+
+  // Fetch session list in background
+  set(fetchSessionList$).catch((error: unknown) => {
+    throwIfAbort(error);
+    L.error("Failed to fetch session list on open:", error);
+  });
 });
 
 export const closeChatPanel$ = command(({ get, set }) => {
@@ -348,6 +456,43 @@ const onRunComplete$ = command(async ({ get, set }, runId: string) => {
         const updated = [...prev];
         updated[idx] = { ...updated[idx], content: resultContent };
         return updated;
+      });
+    }
+
+    // Persist messages to server, then refresh session list
+    const sessionId = get(internalSessionId$);
+    const currentMessages = get(internalMessages$);
+    const assistantIdx = sessionId
+      ? currentMessages.findIndex(
+          (m) => m.role === "assistant" && m.runId === runId,
+        )
+      : -1;
+    const userMsg =
+      assistantIdx > 0 ? currentMessages[assistantIdx - 1] : undefined;
+    const assistantMsg =
+      assistantIdx > 0 ? currentMessages[assistantIdx] : undefined;
+
+    if (sessionId && userMsg?.role === "user" && assistantMsg) {
+      try {
+        await fetchFn(`/api/agent/sessions/${sessionId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [
+              { role: "user", content: userMsg.content },
+              { role: "assistant", content: assistantMsg.content, runId },
+            ],
+          }),
+        });
+      } catch (error) {
+        throwIfAbort(error);
+        L.error("Failed to persist messages:", error);
+      }
+
+      // Refresh session list after messages are persisted
+      set(fetchSessionList$).catch((error: unknown) => {
+        throwIfAbort(error);
+        L.error("Failed to refresh session list:", error);
       });
     }
 

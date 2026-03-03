@@ -1,0 +1,92 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { GET } from "../route";
+import {
+  createTestRequest,
+  createTestCompose,
+  createTestRun,
+  completeTestRun,
+} from "../../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  uniqueId,
+  type UserContext,
+} from "../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { appendChatMessages } from "../../../../../src/lib/agent-session";
+
+const context = testContext();
+
+describe("GET /api/agent/sessions", () => {
+  let user: UserContext;
+  let testComposeId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+
+    const { composeId } = await createTestCompose(uniqueId("session-list"));
+    testComposeId = composeId;
+  });
+
+  it("should return sessions with chat messages for an agent", async () => {
+    // Create a run and complete it (creates a session via checkpoint)
+    const { runId } = await createTestRun(testComposeId, "Test prompt");
+    const { agentSessionId } = await completeTestRun(user.userId, runId);
+
+    // Append chat messages to the session so it appears in the list
+    await appendChatMessages(agentSessionId, user.userId, [
+      { role: "user", content: "Hello agent" },
+      { role: "assistant", content: "Hello user", runId },
+    ]);
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/sessions?agentComposeId=${testComposeId}`,
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.sessions).toBeInstanceOf(Array);
+    expect(data.sessions.length).toBeGreaterThanOrEqual(1);
+
+    const session = data.sessions.find(
+      (s: { id: string }) => s.id === agentSessionId,
+    );
+    expect(session).toBeDefined();
+    expect(session.messageCount).toBe(2);
+    expect(session.preview).toBe("Hello agent");
+    expect(session.createdAt).toBeDefined();
+    expect(session.updatedAt).toBeDefined();
+  });
+
+  it("should return empty list when no sessions have messages", async () => {
+    // Create a run and complete it (creates session but without chat messages)
+    const { runId } = await createTestRun(testComposeId, "Test prompt");
+    await completeTestRun(user.userId, runId);
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/sessions?agentComposeId=${testComposeId}`,
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.sessions).toEqual([]);
+  });
+
+  it("should return 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/sessions?agentComposeId=${testComposeId}`,
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error.code).toBe("UNAUTHORIZED");
+  });
+});

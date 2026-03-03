@@ -1,6 +1,18 @@
 import { useGet, useSet } from "ccstate-react";
-import { IconX, IconLoader2, IconAlertCircle } from "@tabler/icons-react";
+import {
+  IconX,
+  IconLoader2,
+  IconAlertCircle,
+  IconChevronDown,
+  IconPlus,
+} from "@tabler/icons-react";
 import { Button } from "@vm0/ui/components/ui/button";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+  PopoverClose,
+} from "@vm0/ui/components/ui/popover";
 import { Markdown } from "../components/markdown.tsx";
 import { StatusDot } from "../logs-page/components/status-dot.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -12,9 +24,39 @@ import {
   chatInput$,
   setChatInput$,
   clearChatInput$,
+  sessionList$,
+  sessionListLoading$,
+  switchSession$,
+  startNewSession$,
+  currentSessionId$,
   type ChatMessage,
+  type SessionListItem,
 } from "../../signals/agent-detail/chat.ts";
 import { agentName$ } from "../../signals/agent-detail/agent-detail.ts";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function formatRelativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) {
+    return "Just now";
+  }
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  const days = Math.floor(hours / 24);
+  if (days < 7) {
+    return `${days}d ago`;
+  }
+  return new Date(dateStr).toLocaleDateString();
+}
 
 // ---------------------------------------------------------------------------
 // ChatPanel
@@ -29,6 +71,11 @@ export function ChatPanel() {
   const setInputValue = useSet(setChatInput$);
   const clearInput = useSet(clearChatInput$);
   const agentName = useGet(agentName$);
+  const sessions = useGet(sessionList$);
+  const sessionsLoading = useGet(sessionListLoading$);
+  const switchTo = useSet(switchSession$);
+  const newSession = useSet(startNewSession$);
+  const activeSessionId = useGet(currentSessionId$);
 
   const handleSend = () => {
     const trimmed = input.trim();
@@ -50,10 +97,40 @@ export function ChatPanel() {
     <div className="rounded-lg border border-border overflow-hidden flex flex-col h-full bg-sidebar">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0 bg-card">
-        <span className="text-sm font-medium text-muted-foreground">
-          {agentName ?? "Chat"}
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Session history"
+            >
+              Chat
+              <IconChevronDown size={14} />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-64 p-1">
+            <SessionDropdown
+              sessions={sessions}
+              loading={sessionsLoading}
+              activeSessionId={activeSessionId}
+              onSelect={(id) => detach(switchTo(id), Reason.DomCallback)}
+              onNew={() => newSession()}
+            />
+          </PopoverContent>
+        </Popover>
+        <span className="text-xs text-muted-foreground truncate">
+          {agentName}
         </span>
         <div className="flex-1" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0 text-muted-foreground"
+          onClick={() => newSession()}
+          aria-label="New chat"
+        >
+          <IconPlus size={16} />
+        </Button>
         <Button
           variant="ghost"
           size="icon"
@@ -166,6 +243,84 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
         <StatusDot variant="pending" className="animate-pulse" />
         <span className="text-sm text-muted-foreground">Thinking...</span>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SessionDropdown — session list inside popover
+// ---------------------------------------------------------------------------
+
+function SessionDropdown({
+  sessions,
+  loading,
+  activeSessionId,
+  onSelect,
+  onNew,
+}: {
+  sessions: SessionListItem[];
+  loading: boolean;
+  activeSessionId: string | null;
+  onSelect: (id: string) => void;
+  onNew: () => void;
+}) {
+  return (
+    <div className="flex flex-col">
+      <PopoverClose asChild>
+        <button
+          type="button"
+          className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-accent rounded-md transition-colors"
+          onClick={onNew}
+        >
+          <IconPlus size={14} />
+          New Chat
+        </button>
+      </PopoverClose>
+      {sessions.length > 0 && <div className="border-t border-border my-1" />}
+      {loading ? (
+        <div className="flex items-center justify-center py-3">
+          <IconLoader2
+            size={14}
+            className="animate-spin text-muted-foreground"
+          />
+        </div>
+      ) : sessions.length === 0 ? (
+        <p className="px-3 py-2 text-xs text-muted-foreground">
+          No previous sessions
+        </p>
+      ) : (
+        <div className="max-h-48 overflow-y-auto">
+          {sessions.map((s) => (
+            <PopoverClose key={s.id} asChild>
+              <button
+                type="button"
+                className={`w-full text-left px-3 py-2 rounded-md transition-colors ${
+                  s.id === activeSessionId
+                    ? "bg-accent text-accent-foreground"
+                    : "hover:bg-accent/50"
+                }`}
+                onClick={() => onSelect(s.id)}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground truncate">
+                    {formatRelativeTime(s.updatedAt)}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {s.messageCount} msgs
+                  </span>
+                </div>
+                {s.preview ? (
+                  <p className="text-sm truncate mt-0.5">{s.preview}</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic mt-0.5">
+                    Empty session
+                  </p>
+                )}
+              </button>
+            </PopoverClose>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

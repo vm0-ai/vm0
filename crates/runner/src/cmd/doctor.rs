@@ -307,10 +307,14 @@ async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
 // API connectivity check
 // ---------------------------------------------------------------------------
 
-/// Returns `None` if no server configured, `Some(true)` if reachable,
-/// `Some(false)` if unreachable.
+/// Returns `None` if no server configured or URL uses `.test` TLD (RFC 2606),
+/// `Some(true)` if reachable, `Some(false)` if unreachable.
 async fn check_api(config: &RunnerConfig) -> Option<bool> {
     let server = config.server.as_ref()?;
+    // Skip connectivity check for .test domains (reserved per RFC 2606, used in CI)
+    if server.url.contains(".test") {
+        return None;
+    }
     let client = reqeast::builder()
         .timeout(Duration::from_secs(5))
         .build()
