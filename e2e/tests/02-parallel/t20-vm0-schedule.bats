@@ -183,7 +183,7 @@ EOF
         --prompt "Loop every 5 minutes"
     assert_success
     assert_output --partial "Created schedule"
-    assert_output --partial "Loop (every 300s)"
+    assert_output --partial "Loop (interval 300s)"
 }
 
 @test "vm0 schedule status shows loop schedule details" {
@@ -193,7 +193,7 @@ EOF
     assert_success
     assert_output --partial "Agent:"
     assert_output --partial "$LOOP_AGENT_NAME"
-    assert_output --partial "every 300s"
+    assert_output --partial "interval 300s"
     assert_output --partial "loop"
 }
 

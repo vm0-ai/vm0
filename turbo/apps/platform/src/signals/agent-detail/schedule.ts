@@ -83,18 +83,18 @@ function describeLoop(intervalSeconds: number): string {
     return "Loop (immediate)";
   }
   if (intervalSeconds < 60) {
-    return `Loop every ${intervalSeconds}s`;
+    return `Loop interval ${intervalSeconds}s`;
   }
   if (intervalSeconds < 3600) {
     const m = Math.floor(intervalSeconds / 60);
-    return `Loop every ${m}m`;
+    return `Loop interval ${m}m`;
   }
   const h = Math.floor(intervalSeconds / 3600);
   const remainMin = Math.floor((intervalSeconds % 3600) / 60);
   if (remainMin === 0) {
-    return `Loop every ${h}h`;
+    return `Loop interval ${h}h`;
   }
-  return `Loop every ${h}h ${remainMin}m`;
+  return `Loop interval ${h}h ${remainMin}m`;
 }
 
 function describeCron(cron: string): string {

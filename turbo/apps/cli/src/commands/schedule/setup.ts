@@ -623,7 +623,7 @@ function displayDeployResult(
   ) {
     console.log(
       chalk.dim(
-        `  Mode: Loop (every ${deployResult.schedule.intervalSeconds}s)`,
+        `  Mode: Loop (interval ${deployResult.schedule.intervalSeconds}s)`,
       ),
     );
   } else if (deployResult.schedule.cronExpression) {

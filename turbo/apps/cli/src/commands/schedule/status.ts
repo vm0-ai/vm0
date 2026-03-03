@@ -24,7 +24,7 @@ function formatDateTimeStyled(dateStr: string | null): string {
  */
 function formatTrigger(schedule: ScheduleResponse): string {
   if (schedule.triggerType === "loop" && schedule.intervalSeconds !== null) {
-    return `every ${schedule.intervalSeconds}s ${chalk.dim("(loop)")}`;
+    return `interval ${schedule.intervalSeconds}s ${chalk.dim("(loop)")}`;
   }
   if (schedule.cronExpression) {
     return schedule.cronExpression;
