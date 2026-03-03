@@ -644,7 +644,7 @@ jobs:
 
             cd turbo && DATABASE_URL="$DATABASE_URL" pnpm -F web db:migrate
             echo "Neon branch ready"
-          ) 2>&1 | sed 's/^/[neon] /' &
+          ) > /tmp/neon-log 2>&1 &
           NEON_PID=$!
 
           # --- Build web in foreground ---
@@ -655,9 +655,11 @@ jobs:
           # --- Wait for Neon (child process, so wait works) ---
           echo "::group::Neon Branch"
           if ! wait $NEON_PID; then
+            cat /tmp/neon-log
             echo "::error::Neon branch creation failed"
             exit 1
           fi
+          cat /tmp/neon-log
           echo "::endgroup::"
 
           echo "database-url=$(cat /tmp/neon-database-url)" >> "$GITHUB_OUTPUT"
