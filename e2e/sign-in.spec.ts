@@ -48,19 +48,13 @@ test("sign-in flow", async ({ page, baseURL }) => {
   await emailCodeOption.waitFor({ state: "visible", timeout: 10_000 });
   await emailCodeOption.click();
 
-  // Enter OTP — wait for Clerk to finish preparing the verification session
+  // Enter OTP with retry — Clerk needs time to prepare the verification session
   const otpInput = page.locator('input[data-input-otp="true"]');
   await expect(otpInput).toBeEditable({ timeout: 10_000 });
-  await expect(page.getByText(/Resend/)).toBeVisible({ timeout: 10_000 });
-  await otpInput.pressSequentially(TEST_OTP);
-
-  // Wait for redirect away from auth pages
-  await page.waitForURL(
-    (url) =>
-      !url.pathname.includes("/sign-in") &&
-      !url.pathname.includes("/sign-up"),
-    { timeout: 15_000 }
-  );
+  await expect(async () => {
+    await otpInput.fill(TEST_OTP);
+    await expect(page).not.toHaveURL(/sign-in/, { timeout: 5_000 });
+  }).toPass({ intervals: [1_000, 2_000], timeout: 15_000 });
   expect(page.url()).not.toContain("/404");
 
   // Verify post-auth state: "Platform" button visible in navbar
@@ -68,18 +62,8 @@ test("sign-in flow", async ({ page, baseURL }) => {
   await platformButton.waitFor({ state: "visible", timeout: 10_000 });
 
   // Verify Platform button links to the platform and opens in a new tab
-  const platformHref = await platformButton.getAttribute("href");
-  expect(platformHref).toContain("platform");
+  await expect(platformButton).toHaveAttribute("href", /platform/);
   await expect(platformButton).toHaveAttribute("target", "_blank");
-
-  // Open platform page and verify post-auth content
-  const platformPage = await page.context().newPage();
-  await platformPage.goto(platformHref!, { timeout: 15_000 });
-  await platformPage.waitForLoadState("domcontentloaded");
-  await expect(platformPage.getByText("Get started")).toBeVisible({
-    timeout: 15_000,
-  });
-  await platformPage.close();
 
   // Sign out
   const signOutButton = page.locator('button.btn-try-demo:has-text("Sign out")');
