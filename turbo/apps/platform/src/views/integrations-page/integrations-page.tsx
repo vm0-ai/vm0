@@ -98,8 +98,8 @@ export function GitHubIntegrationCard() {
             </Button>
           ) : null
         ) : (
-          <Button variant="outline" size="sm" disabled>
-            Installed
+          <Button variant="outline" size="sm" asChild>
+            <Link pathname="/settings/github">Settings</Link>
           </Button>
         )}
       </div>

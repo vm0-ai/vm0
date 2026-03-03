@@ -23,6 +23,7 @@ import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupPlaygroundPage$ } from "./playground-page/playground-page.ts";
 import { setupEnvironmentVariablesSetupPage$ } from "./environment-variables-setup/setup-page.ts";
 import { setupSlackSettingsPage$ } from "./integrations-page/slack-settings-page.ts";
+import { setupGitHubSettingsPage$ } from "./integrations-page/github-settings-page.ts";
 import { setupProviderSetupPage$ } from "./provider-setup/provider-setup-page.ts";
 import { setupSlackConnectPage$ } from "./slack-connect/slack-connect-page.ts";
 import { setupSlackConnectSuccessPage$ } from "./slack-connect/slack-connect-success-page.ts";
@@ -69,6 +70,10 @@ const ROUTE_CONFIG = [
   {
     path: "/settings/slack",
     setup: setupScopeRequiredPageWrapper(setupSlackSettingsPage$),
+  },
+  {
+    path: "/settings/github",
+    setup: setupScopeRequiredPageWrapper(setupGitHubSettingsPage$),
   },
   {
     path: "/environment-variables-setup",
