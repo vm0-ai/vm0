@@ -34,6 +34,14 @@ import { getDefaultModelProvider } from "../model-provider/model-provider-servic
 import { connectors } from "../../db/schema/connector";
 import { refreshNotionToken } from "../connector/providers/notion";
 import { refreshLinearToken } from "../connector/providers/linear";
+import { refreshGoogleToken } from "../connector/providers/google-oauth";
+import { refreshDropboxToken } from "../connector/providers/dropbox";
+import { refreshStravaToken } from "../connector/providers/strava";
+import { refreshDocuSignToken } from "../connector/providers/docusign";
+import { refreshFigmaToken } from "../connector/providers/figma";
+import { refreshMercuryToken } from "../connector/providers/mercury";
+import { refreshDeelToken } from "../connector/providers/deel";
+import { refreshGarminConnectToken } from "../connector/providers/garmin-connect";
 import { upsertConnectorSecret } from "../connector/connector-service";
 
 const log = logger("run:build-context");
@@ -312,101 +320,174 @@ async function resolveModelProviderCredential(
 }
 
 /**
- * Refresh Notion access token using the stored refresh token.
- * Updates both NOTION_ACCESS_TOKEN and NOTION_REFRESH_TOKEN in the database
- * and returns the new access token for immediate use.
- *
- * Returns null if refresh token is unavailable or refresh fails
- * (caller should fall back to using the existing access token).
+ * Configuration for connector token refresh.
+ * Maps connector type to its refresh function, secret names, and OAuth env var names.
  */
-async function refreshNotionAccessToken(
-  userId: string,
-  connectorSecrets: Record<string, string>,
-): Promise<string | null> {
-  const currentRefreshToken = connectorSecrets["NOTION_REFRESH_TOKEN"];
-  if (!currentRefreshToken) {
-    log.debug("No Notion refresh token available, skipping token refresh");
-    return null;
-  }
-
-  const env = globalThis.services.env;
-  const clientId = env.NOTION_OAUTH_CLIENT_ID;
-  const clientSecret = env.NOTION_OAUTH_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    log.debug(
-      "Notion OAuth credentials not configured, skipping token refresh",
-    );
-    return null;
-  }
-
-  try {
-    const result = await refreshNotionToken(
-      clientId,
-      clientSecret,
-      currentRefreshToken,
-    );
-
-    // Persist new tokens to database
-    await upsertConnectorSecret(
-      userId,
-      "NOTION_ACCESS_TOKEN",
-      result.accessToken,
-    );
-    if (result.refreshToken) {
-      await upsertConnectorSecret(
-        userId,
-        "NOTION_REFRESH_TOKEN",
-        result.refreshToken,
-      );
-    }
-
-    // Update in-memory secrets map so subsequent mapping uses fresh token
-    connectorSecrets["NOTION_ACCESS_TOKEN"] = result.accessToken;
-    if (result.refreshToken) {
-      connectorSecrets["NOTION_REFRESH_TOKEN"] = result.refreshToken;
-    }
-
-    log.debug("Notion access token refreshed successfully");
-    return result.accessToken;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    log.warn(`Notion token refresh failed: ${message}`);
-    return null;
-  }
+interface ConnectorRefreshConfig {
+  label: string;
+  accessTokenSecret: string;
+  refreshTokenSecret: string;
+  getClientId: (env: typeof globalThis.services.env) => string | undefined;
+  getClientSecret: (env: typeof globalThis.services.env) => string | undefined;
+  refresh: (
+    clientId: string,
+    clientSecret: string,
+    refreshToken: string,
+  ) => Promise<{ accessToken: string; refreshToken: string | null }>;
 }
 
+const CONNECTOR_REFRESH_CONFIGS: Partial<
+  Record<string, ConnectorRefreshConfig>
+> = {
+  notion: {
+    label: "Notion",
+    accessTokenSecret: "NOTION_ACCESS_TOKEN",
+    refreshTokenSecret: "NOTION_REFRESH_TOKEN",
+    getClientId: (env) => env.NOTION_OAUTH_CLIENT_ID,
+    getClientSecret: (env) => env.NOTION_OAUTH_CLIENT_SECRET,
+    refresh: refreshNotionToken,
+  },
+  linear: {
+    label: "Linear",
+    accessTokenSecret: "LINEAR_ACCESS_TOKEN",
+    refreshTokenSecret: "LINEAR_REFRESH_TOKEN",
+    getClientId: (env) => env.LINEAR_OAUTH_CLIENT_ID,
+    getClientSecret: (env) => env.LINEAR_OAUTH_CLIENT_SECRET,
+    refresh: refreshLinearToken,
+  },
+  gmail: {
+    label: "Gmail",
+    accessTokenSecret: "GMAIL_ACCESS_TOKEN",
+    refreshTokenSecret: "GMAIL_REFRESH_TOKEN",
+    getClientId: (env) => env.GOOGLE_OAUTH_CLIENT_ID,
+    getClientSecret: (env) => env.GOOGLE_OAUTH_CLIENT_SECRET,
+    refresh: (clientId, clientSecret, refreshToken) =>
+      refreshGoogleToken("gmail", clientId, clientSecret, refreshToken),
+  },
+  "google-sheets": {
+    label: "Google Sheets",
+    accessTokenSecret: "GOOGLE_SHEETS_ACCESS_TOKEN",
+    refreshTokenSecret: "GOOGLE_SHEETS_REFRESH_TOKEN",
+    getClientId: (env) => env.GOOGLE_OAUTH_CLIENT_ID,
+    getClientSecret: (env) => env.GOOGLE_OAUTH_CLIENT_SECRET,
+    refresh: (clientId, clientSecret, refreshToken) =>
+      refreshGoogleToken("google-sheets", clientId, clientSecret, refreshToken),
+  },
+  "google-docs": {
+    label: "Google Docs",
+    accessTokenSecret: "GOOGLE_DOCS_ACCESS_TOKEN",
+    refreshTokenSecret: "GOOGLE_DOCS_REFRESH_TOKEN",
+    getClientId: (env) => env.GOOGLE_OAUTH_CLIENT_ID,
+    getClientSecret: (env) => env.GOOGLE_OAUTH_CLIENT_SECRET,
+    refresh: (clientId, clientSecret, refreshToken) =>
+      refreshGoogleToken("google-docs", clientId, clientSecret, refreshToken),
+  },
+  "google-drive": {
+    label: "Google Drive",
+    accessTokenSecret: "GOOGLE_DRIVE_ACCESS_TOKEN",
+    refreshTokenSecret: "GOOGLE_DRIVE_REFRESH_TOKEN",
+    getClientId: (env) => env.GOOGLE_OAUTH_CLIENT_ID,
+    getClientSecret: (env) => env.GOOGLE_OAUTH_CLIENT_SECRET,
+    refresh: (clientId, clientSecret, refreshToken) =>
+      refreshGoogleToken("google-drive", clientId, clientSecret, refreshToken),
+  },
+  dropbox: {
+    label: "Dropbox",
+    accessTokenSecret: "DROPBOX_ACCESS_TOKEN",
+    refreshTokenSecret: "DROPBOX_REFRESH_TOKEN",
+    getClientId: (env) => env.DROPBOX_OAUTH_CLIENT_ID,
+    getClientSecret: (env) => env.DROPBOX_OAUTH_CLIENT_SECRET,
+    refresh: refreshDropboxToken,
+  },
+  strava: {
+    label: "Strava",
+    accessTokenSecret: "STRAVA_ACCESS_TOKEN",
+    refreshTokenSecret: "STRAVA_REFRESH_TOKEN",
+    getClientId: (env) => env.STRAVA_OAUTH_CLIENT_ID,
+    getClientSecret: (env) => env.STRAVA_OAUTH_CLIENT_SECRET,
+    refresh: refreshStravaToken,
+  },
+  docusign: {
+    label: "DocuSign",
+    accessTokenSecret: "DOCUSIGN_ACCESS_TOKEN",
+    refreshTokenSecret: "DOCUSIGN_REFRESH_TOKEN",
+    getClientId: (env) => env.DOCUSIGN_OAUTH_CLIENT_ID,
+    getClientSecret: (env) => env.DOCUSIGN_OAUTH_CLIENT_SECRET,
+    refresh: refreshDocuSignToken,
+  },
+  figma: {
+    label: "Figma",
+    accessTokenSecret: "FIGMA_ACCESS_TOKEN",
+    refreshTokenSecret: "FIGMA_REFRESH_TOKEN",
+    getClientId: (env) => env.FIGMA_OAUTH_CLIENT_ID,
+    getClientSecret: (env) => env.FIGMA_OAUTH_CLIENT_SECRET,
+    refresh: refreshFigmaToken,
+  },
+  mercury: {
+    label: "Mercury",
+    accessTokenSecret: "MERCURY_ACCESS_TOKEN",
+    refreshTokenSecret: "MERCURY_REFRESH_TOKEN",
+    getClientId: (env) => env.MERCURY_OAUTH_CLIENT_ID,
+    getClientSecret: (env) => env.MERCURY_OAUTH_CLIENT_SECRET,
+    refresh: refreshMercuryToken,
+  },
+  deel: {
+    label: "Deel",
+    accessTokenSecret: "DEEL_ACCESS_TOKEN",
+    refreshTokenSecret: "DEEL_REFRESH_TOKEN",
+    getClientId: (env) => env.DEEL_OAUTH_CLIENT_ID,
+    getClientSecret: (env) => env.DEEL_OAUTH_CLIENT_SECRET,
+    refresh: refreshDeelToken,
+  },
+  "garmin-connect": {
+    label: "Garmin Connect",
+    accessTokenSecret: "GARMIN_CONNECT_ACCESS_TOKEN",
+    refreshTokenSecret: "GARMIN_CONNECT_REFRESH_TOKEN",
+    getClientId: (env) => env.GARMIN_CONNECT_OAUTH_CLIENT_ID,
+    getClientSecret: (env) => env.GARMIN_CONNECT_OAUTH_CLIENT_SECRET,
+    refresh: refreshGarminConnectToken,
+  },
+};
+
 /**
- * Refresh Linear access token using the stored refresh token.
- * Updates both LINEAR_ACCESS_TOKEN and LINEAR_REFRESH_TOKEN in the database
- * and returns the new access token for immediate use.
+ * Generic connector access token refresh.
+ * Looks up the connector's refresh config, calls the provider-specific refresh
+ * function, persists new tokens, and updates the in-memory secrets map.
  *
- * Returns null if refresh token is unavailable or refresh fails
- * (caller should fall back to using the existing access token).
+ * Returns null if refresh token is unavailable, OAuth credentials are missing,
+ * or the refresh fails (caller should fall back to the existing access token).
  */
-async function refreshLinearAccessToken(
+async function refreshConnectorAccessToken(
+  connectorType: string,
   userId: string,
   connectorSecrets: Record<string, string>,
 ): Promise<string | null> {
-  const currentRefreshToken = connectorSecrets["LINEAR_REFRESH_TOKEN"];
+  const config = CONNECTOR_REFRESH_CONFIGS[connectorType];
+  if (!config) {
+    return null;
+  }
+
+  const currentRefreshToken = connectorSecrets[config.refreshTokenSecret];
   if (!currentRefreshToken) {
-    log.debug("No Linear refresh token available, skipping token refresh");
+    log.debug(
+      `No ${config.label} refresh token available, skipping token refresh`,
+    );
     return null;
   }
 
   const env = globalThis.services.env;
-  const clientId = env.LINEAR_OAUTH_CLIENT_ID;
-  const clientSecret = env.LINEAR_OAUTH_CLIENT_SECRET;
+  const clientId = config.getClientId(env);
+  const clientSecret = config.getClientSecret(env);
 
   if (!clientId || !clientSecret) {
     log.debug(
-      "Linear OAuth credentials not configured, skipping token refresh",
+      `${config.label} OAuth credentials not configured, skipping token refresh`,
     );
     return null;
   }
 
   try {
-    const result = await refreshLinearToken(
+    const result = await config.refresh(
       clientId,
       clientSecret,
       currentRefreshToken,
@@ -415,28 +496,28 @@ async function refreshLinearAccessToken(
     // Persist new tokens to database
     await upsertConnectorSecret(
       userId,
-      "LINEAR_ACCESS_TOKEN",
+      config.accessTokenSecret,
       result.accessToken,
     );
     if (result.refreshToken) {
       await upsertConnectorSecret(
         userId,
-        "LINEAR_REFRESH_TOKEN",
+        config.refreshTokenSecret,
         result.refreshToken,
       );
     }
 
     // Update in-memory secrets map so subsequent mapping uses fresh token
-    connectorSecrets["LINEAR_ACCESS_TOKEN"] = result.accessToken;
+    connectorSecrets[config.accessTokenSecret] = result.accessToken;
     if (result.refreshToken) {
-      connectorSecrets["LINEAR_REFRESH_TOKEN"] = result.refreshToken;
+      connectorSecrets[config.refreshTokenSecret] = result.refreshToken;
     }
 
-    log.debug("Linear access token refreshed successfully");
+    log.debug(`${config.label} access token refreshed successfully`);
     return result.accessToken;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    log.warn(`Linear token refresh failed: ${message}`);
+    log.warn(`${config.label} token refresh failed: ${message}`);
     return null;
   }
 }
@@ -492,11 +573,13 @@ async function resolveConnectorCredentials(
       continue;
     }
 
-    // Refresh tokens before resolving environment mapping
-    if (connectorType.data === "notion") {
-      await refreshNotionAccessToken(userId, connectorSecrets);
-    } else if (connectorType.data === "linear") {
-      await refreshLinearAccessToken(userId, connectorSecrets);
+    // Refresh access token before resolving environment mapping
+    if (connectorType.data in CONNECTOR_REFRESH_CONFIGS) {
+      await refreshConnectorAccessToken(
+        connectorType.data,
+        userId,
+        connectorSecrets,
+      );
     }
 
     const mapping = getConnectorEnvironmentMapping(connectorType.data);
