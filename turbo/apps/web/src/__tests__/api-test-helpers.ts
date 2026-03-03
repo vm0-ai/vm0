@@ -1646,9 +1646,13 @@ export async function findTestArtifactStorage(scopeId: string) {
 export async function findTestStorageByName(
   scopeId: string,
   name: string,
-): Promise<{ id: string; name: string } | undefined> {
+): Promise<{ id: string; name: string; s3Prefix: string } | undefined> {
   const [result] = await globalThis.services.db
-    .select({ id: storages.id, name: storages.name })
+    .select({
+      id: storages.id,
+      name: storages.name,
+      s3Prefix: storages.s3Prefix,
+    })
     .from(storages)
     .where(
       and(
