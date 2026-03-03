@@ -176,8 +176,6 @@ export const composesMainContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       content: agentComposeContentSchema,
-      /** When renaming an agent, pass the previous name so the server can migrate storage volumes. */
-      previousName: agentNameSchema.optional(),
     }),
     responses: {
       200: createComposeResponseSchema,
