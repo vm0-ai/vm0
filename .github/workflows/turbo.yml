@@ -540,29 +540,173 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
-      # Step 1: Create Neon database branch
-      - name: Create Neon Branch and Run Migrations
-        id: branch
-        uses: ./.github/actions/neon-branch
-        with:
-          neon-api-key: ${{ secrets.NEON_API_KEY }}
-          neon-project-id: ${{ vars.NEON_PROJECT_ID }}
-          branch-name: "${{ needs.prepare.outputs.job-ref }}"
-          action: "create"
+      # Step 1: Start Neon branch creation in background (parallel with build)
+      - name: Start Neon branch creation
+        run: |
+          (
+            set -euo pipefail
 
-      # Step 2: Deploy to Vercel with database URL
-      - name: Deploy Web to Vercel
-        id: deploy
-        uses: ./.github/actions/vercel-deploy
+            # Install neonctl if needed
+            if ! command -v neonctl &> /dev/null; then
+              npm install -g neonctl@2.15.0
+            fi
+
+            BRANCH_NAME="preview/${{ needs.prepare.outputs.job-ref }}"
+
+            # Create or reset branch
+            if neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
+              echo "Branch $BRANCH_NAME already exists, resetting..."
+              neonctl branches reset "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --parent
+
+              for i in {1..30}; do
+                CURRENT_STATE=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .current_state")
+                if [ "$CURRENT_STATE" = "ready" ]; then
+                  echo "Branch reset complete"
+                  break
+                fi
+                echo "Branch state: $CURRENT_STATE (attempt $i/30)"
+                sleep 2
+              done
+            else
+              echo "Creating branch $BRANCH_NAME"
+              neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
+            fi
+
+            # Get connection string
+            DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --pooled)
+            if [ -z "$DATABASE_URL" ]; then
+              DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb)
+            fi
+            echo "$DATABASE_URL" > /tmp/neon-database-url
+
+            # Run migrations
+            cd turbo && DATABASE_URL="$DATABASE_URL" pnpm -F web db:migrate
+            echo "Migration complete"
+
+            touch /tmp/neon-done
+          ) > /tmp/neon-log 2>&1 &
+          echo $! > /tmp/neon-pid
+          echo "Neon branch creation started in background (PID: $(cat /tmp/neon-pid))"
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+
+      # Step 2: Build web in foreground (parallel with Neon)
+      - name: Setup Vercel
+        uses: ./.github/actions/vercel-setup
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
-          environment: preview
-          deployment-env: web
-          prebuilt: "true"
-          environment-variables: |
-            DATABASE_URL=${{ steps.branch.outputs.database-url }}
+
+      - name: Build Web
+        env:
+          SKIP_ENV_VALIDATION: "true"
+          BLOG_BASE_URL: ${{ needs.prepare.outputs.web-preview-url }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+          SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          AXIOM_TOKEN_SESSIONS: ${{ secrets.AXIOM_TOKEN_SESSIONS }}
+          AXIOM_TOKEN_TELEMETRY: ${{ secrets.AXIOM_TOKEN_TELEMETRY }}
+          AXIOM_DATASET_SUFFIX: dev
+          USE_MOCK_CLAUDE: "true"
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
+          CONCURRENT_RUN_LIMIT: "0"
+          VM0_DEBUG: "*"
+          CLAUDE_CODE_VERSION_URL: ${{ vars.CLAUDE_CODE_VERSION_URL }}
+          SLACK_CLIENT_ID: ${{ vars.SLACK_CLIENT_ID }}
+          SLACK_CLIENT_SECRET: ${{ secrets.SLACK_CLIENT_SECRET }}
+          SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
+          SLACK_REDIRECT_BASE_URL: ${{ needs.prepare.outputs.web-preview-url }}
+          SLACK_DEFAULT_AGENT: ${{ vars.SLACK_DEFAULT_AGENT }}
+          SENTRY_DSN_WEB: ${{ secrets.SENTRY_DSN_WEB }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_WEB }}
+          GH_OAUTH_CLIENT_ID: ${{ vars.GH_OAUTH_CLIENT_ID }}
+          GH_OAUTH_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+          NOTION_OAUTH_CLIENT_ID: ${{ vars.NOTION_OAUTH_CLIENT_ID }}
+          NOTION_OAUTH_CLIENT_SECRET: ${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          LINEAR_OAUTH_CLIENT_ID: ${{ vars.LINEAR_OAUTH_CLIENT_ID }}
+          LINEAR_OAUTH_CLIENT_SECRET: ${{ secrets.LINEAR_OAUTH_CLIENT_SECRET }}
+          FIGMA_OAUTH_CLIENT_ID: ${{ vars.FIGMA_OAUTH_CLIENT_ID }}
+          FIGMA_OAUTH_CLIENT_SECRET: ${{ secrets.FIGMA_OAUTH_CLIENT_SECRET }}
+          DEEL_OAUTH_CLIENT_ID: ${{ vars.DEEL_OAUTH_CLIENT_ID }}
+          DEEL_OAUTH_CLIENT_SECRET: ${{ secrets.DEEL_OAUTH_CLIENT_SECRET }}
+          DOCUSIGN_OAUTH_CLIENT_ID: ${{ vars.DOCUSIGN_OAUTH_CLIENT_ID }}
+          DOCUSIGN_OAUTH_CLIENT_SECRET: ${{ secrets.DOCUSIGN_OAUTH_CLIENT_SECRET }}
+          NGROK_API_KEY: ${{ secrets.NGROK_API_KEY }}
+          NGROK_COMPUTER_CONNECTOR_DOMAIN: ${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
+          PLATFORM_URL: ${{ needs.prepare.outputs.platform-preview-url }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
+          RESEND_FROM_DOMAIN: ${{ vars.RESEND_FROM_DOMAIN }}
+          VM0_ADMIN_USERS: ${{ vars.VM0_ADMIN_USERS }}
+          STRAPI_URL: ${{ vars.STRAPI_URL }}
+        run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
+
+      # Step 3: Wait for Neon branch to be ready
+      - name: Wait for Neon branch
+        id: neon
+        run: |
+          PID=$(cat /tmp/neon-pid)
+          echo "Waiting for Neon branch creation (PID: $PID)..."
+          while kill -0 "$PID" 2>/dev/null; do
+            sleep 2
+          done
+
+          if [ ! -f /tmp/neon-done ]; then
+            echo "::error::Neon branch creation failed"
+            cat /tmp/neon-log
+            exit 1
+          fi
+
+          echo "Neon branch ready"
+          cat /tmp/neon-log
+          echo "database-url=$(cat /tmp/neon-database-url)" >> "$GITHUB_OUTPUT"
+
+      # Step 4: Deploy prebuilt artifacts with database URL
+      - name: Start deployment
+        id: deployment
+        uses: bobheadxi/deployments@v1
+        with:
+          step: start
+          token: ${{ github.token }}
+          env: web/preview/${{ github.head_ref || github.ref_name }}
+          ref: ${{ github.head_ref && format('refs/heads/{0}', github.head_ref) || github.ref }}
+          desc: Deploying preview environment
+
+      - name: Deploy Web to Vercel
+        id: deploy
+        run: |
+          DEPLOY_CMD="vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}"
+          DEPLOY_CMD="$DEPLOY_CMD --meta branch=${{ github.head_ref || github.ref_name }}"
+          DEPLOY_CMD="$DEPLOY_CMD --meta pr=${{ needs.prepare.outputs.job-ref }}"
+
+          while IFS= read -r line; do
+            line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            if [ -n "$line" ]; then
+              KEY="${line%%=*}"
+              VALUE="${line#*=}"
+              DEPLOY_CMD="$DEPLOY_CMD --env $KEY=\"$VALUE\""
+            fi
+          done <<< "$ENV_VARS"
+
+          DEPLOYMENT_URL=$(eval $DEPLOY_CMD)
+          echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
+          echo "Deployment URL: $DEPLOYMENT_URL"
+        env:
+          ENV_VARS: |
+            DATABASE_URL=${{ steps.neon.outputs.database-url }}
             BLOG_BASE_URL=${{ needs.prepare.outputs.web-preview-url }}
             CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
@@ -613,11 +757,19 @@ jobs:
             RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
             VM0_ADMIN_USERS=${{ vars.VM0_ADMIN_USERS }}
             STRAPI_URL=${{ vars.STRAPI_URL }}
-          meta-branch: ${{ github.head_ref || github.ref_name }}
-          meta-pr: ${{ needs.prepare.outputs.job-ref }}
-          skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
 
-      # Step 3: Create stable preview URL alias (when PREVIEW_DOMAIN is configured)
+      - name: Finish deployment
+        uses: bobheadxi/deployments@v1
+        if: always() && !(github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '')
+        with:
+          step: finish
+          token: ${{ github.token }}
+          status: ${{ job.status }}
+          env: ${{ steps.deployment.outputs.env }}
+          env_url: ${{ steps.deploy.outputs.url }}
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+
+      # Step 5: Create stable preview URL alias (when PREVIEW_DOMAIN is configured)
       - name: Create Vercel Alias
         id: alias
         if: vars.PREVIEW_DOMAIN != ''
@@ -629,10 +781,10 @@ jobs:
           app-name: www
           job-ref: ${{ needs.prepare.outputs.job-ref }}
           preview-domain: ${{ vars.PREVIEW_DOMAIN }}
-          deployment-id: ${{ steps.deploy.outputs.deployment-id }}
-          deployment-env: ${{ steps.deploy.outputs.deployment-env }}
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+          deployment-env: ${{ steps.deployment.outputs.env }}
 
-      # Step 4: Generate test token for E2E tests (runs in parallel with e2e-auth)
+      # Step 6: Generate test token for E2E tests (runs in parallel with e2e-auth)
       - name: Generate E2E test token
         run: e2e/scripts/generate-test-token.sh
         env:
