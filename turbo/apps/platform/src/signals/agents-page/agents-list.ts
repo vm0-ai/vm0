@@ -43,6 +43,20 @@ const agentsListState$ = state<AgentsListState>({
 });
 
 // ---------------------------------------------------------------------------
+// Manage agent dialog (which agent's dialog is open; null = closed)
+// ---------------------------------------------------------------------------
+
+const internalManageAgentDialogOpen$ = state<string | null>(null);
+export const manageAgentDialogOpen$ = computed((get) =>
+  get(internalManageAgentDialogOpen$),
+);
+export const setManageAgentDialogOpen$ = command(
+  ({ set }, name: string | null) => {
+    set(internalManageAgentDialogOpen$, name);
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Missing items (computed from required-env + configured secrets/variables)
 // ---------------------------------------------------------------------------
 

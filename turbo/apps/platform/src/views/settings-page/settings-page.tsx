@@ -24,11 +24,13 @@ import {
   GitHubIntegrationCard,
 } from "../integrations-page/integrations-page.tsx";
 import { NotificationSettings } from "./notification-settings.tsx";
+import { mergedItems$ } from "../../signals/settings-page/secrets-and-variables.ts";
 
 export function SettingsPage() {
   const tab = useGet(activeTab$);
   const setTab = useSet(setActiveTab$);
   const featureSwitches = useLastResolved(featureSwitch$);
+  const mergedItems = useLastResolved(mergedItems$);
 
   return (
     <AppShell
@@ -42,7 +44,7 @@ export function SettingsPage() {
           value={tab}
           onValueChange={(value) => setTab(value as SettingsTab)}
         >
-          <TabsList>
+          <TabsList className="w-fit">
             <TabsTrigger value="providers">Model Providers</TabsTrigger>
             <TabsTrigger value="connections">Connections</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
@@ -63,17 +65,16 @@ export function SettingsPage() {
           <>
             <ConnectorList />
             <DisconnectConnectorDialog />
-            <section className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1">
-                <h3 className="text-base font-medium text-foreground">
-                  Secrets and variables
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  Add custom API keys and environment variables for your agents.
-                </p>
-              </div>
-              <SecretsAndVariablesList />
-            </section>
+            {(mergedItems === undefined || mergedItems.length > 0) && (
+              <section className="flex flex-col gap-4">
+                {mergedItems !== undefined && mergedItems.length > 0 && (
+                  <h3 className="text-base font-medium text-foreground">
+                    Custom API
+                  </h3>
+                )}
+                <SecretsAndVariablesList />
+              </section>
+            )}
             <SecretDialog />
             <DeleteSecretDialog />
             <VariableDialog />

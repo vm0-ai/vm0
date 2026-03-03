@@ -1,0 +1,108 @@
+import { useLastResolved, useSet } from "ccstate-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@vm0/ui/components/ui/dialog";
+import { MODEL_PROVIDER_TYPES, type ModelProviderType } from "@vm0/core";
+import {
+  configuredProviders$,
+  openAddDialog$,
+} from "../../signals/settings-page/model-providers.ts";
+import { getUILabel, getUIDescription } from "./provider-ui-config.ts";
+import { ProviderIcon } from "./provider-icons.tsx";
+
+function getProviderTypes(): ModelProviderType[] {
+  return Object.keys(MODEL_PROVIDER_TYPES) as ModelProviderType[];
+}
+
+function ProviderCardInDialog({
+  type,
+  configured,
+  onAdd,
+}: {
+  type: ModelProviderType;
+  configured: boolean;
+  onAdd: () => void;
+}) {
+  const label = getUILabel(type);
+  const description = getUIDescription(type);
+
+  return (
+    <div
+      className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/50"
+      data-testid={`provider-card-${type}`}
+    >
+      <div className="flex items-center gap-3">
+        <div className="shrink-0">
+          <ProviderIcon type={type} size={28} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-foreground truncate">
+            {label}
+          </div>
+        </div>
+      </div>
+      {description && (
+        <div className="text-xs text-muted-foreground line-clamp-2">
+          {description}
+        </div>
+      )}
+      <div className="mt-auto">
+        {configured ? (
+          <span className="text-xs text-muted-foreground">Configured</span>
+        ) : (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+          >
+            Add
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function AddProviderDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const configuredProviders = useLastResolved(configuredProviders$);
+  const openAdd = useSet(openAddDialog$);
+  const configuredSet = new Set(configuredProviders?.map((p) => p.type) ?? []);
+
+  const handleAdd = (type: ModelProviderType) => {
+    openAdd(type);
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden pr-0 pb-0">
+        <DialogHeader>
+          <DialogTitle>Add model provider</DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="pt-4 pb-6 pr-6">
+            <div className="grid grid-cols-2 gap-3">
+              {getProviderTypes().map((type) => (
+                <ProviderCardInDialog
+                  key={type}
+                  type={type}
+                  configured={configuredSet.has(type)}
+                  onAdd={() => handleAdd(type)}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

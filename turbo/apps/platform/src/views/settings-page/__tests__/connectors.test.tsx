@@ -29,7 +29,7 @@ function makeConnector(
   };
 }
 
-describe("Connections tab", () => {
+describe("connections tab", () => {
   it("shows all connector types with not-connected status", async () => {
     await setupPage({
       context,
