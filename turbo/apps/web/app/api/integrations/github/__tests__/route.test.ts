@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GET, DELETE } from "../route";
+import { GET, DELETE, PATCH } from "../route";
 import {
   createTestRequest,
   createTestScope,
   createTestCompose,
   insertTestGitHubInstallation,
   findTestGitHubInstallationById,
+  findTestComposeWithScope,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -70,6 +71,29 @@ describe("/api/integrations/github", () => {
       expect(data.agent).toBeDefined();
       expect(data.agent.name).toBe("gh-agent");
     });
+
+    it("should return environment data in response", async () => {
+      const userId = uniqueId("gh-user");
+      mockClerk({ userId });
+      await createTestScope(uniqueId("gh-scope"));
+      const { composeId } = await createTestCompose("gh-agent");
+
+      await insertTestGitHubInstallation(userId, composeId);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/integrations/github",
+        { headers: { Authorization: "Bearer test-token" } },
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.environment).toBeDefined();
+      expect(data.environment.requiredSecrets).toBeDefined();
+      expect(data.environment.requiredVars).toBeDefined();
+      expect(data.environment.missingSecrets).toBeDefined();
+      expect(data.environment.missingVars).toBeDefined();
+    });
   });
 
   describe("DELETE /api/integrations/github", () => {
@@ -129,6 +153,184 @@ describe("/api/integrations/github", () => {
       // Verify installation was deleted
       const row = await findTestGitHubInstallationById(installation.id);
       expect(row).toBeUndefined();
+    });
+  });
+
+  describe("PATCH /api/integrations/github", () => {
+    it("should return 401 when not authenticated", async () => {
+      mockClerk({ userId: null });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/integrations/github",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agentName: "test-agent" }),
+        },
+      );
+      const response = await PATCH(request);
+
+      expect(response.status).toBe(401);
+    });
+
+    it("should return 400 when agentName is missing", async () => {
+      const userId = uniqueId("gh-user");
+      mockClerk({ userId });
+      await createTestScope(uniqueId("gh-scope"));
+      const { composeId } = await createTestCompose("gh-agent");
+      await insertTestGitHubInstallation(userId, composeId);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/integrations/github",
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: "Bearer test-token",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        },
+      );
+      const response = await PATCH(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("should return 404 when no installation exists", async () => {
+      const userId = uniqueId("gh-user");
+      mockClerk({ userId });
+      await createTestScope(uniqueId("gh-scope"));
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/integrations/github",
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: "Bearer test-token",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ agentName: "some-agent" }),
+        },
+      );
+      const response = await PATCH(request);
+
+      expect(response.status).toBe(404);
+    });
+
+    it("should return 404 when agent does not exist", async () => {
+      const userId = uniqueId("gh-user");
+      mockClerk({ userId });
+      await createTestScope(uniqueId("gh-scope"));
+      const { composeId } = await createTestCompose("gh-agent");
+      await insertTestGitHubInstallation(userId, composeId);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/integrations/github",
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: "Bearer test-token",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ agentName: "nonexistent-agent" }),
+        },
+      );
+      const response = await PATCH(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("should update default agent successfully", async () => {
+      const userId = uniqueId("gh-user");
+      mockClerk({ userId });
+      await createTestScope(uniqueId("gh-scope"));
+      const { composeId } = await createTestCompose("gh-agent");
+      await insertTestGitHubInstallation(userId, composeId);
+
+      // Create a new agent to switch to
+      await createTestCompose("new-agent");
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/integrations/github",
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: "Bearer test-token",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ agentName: "new-agent" }),
+        },
+      );
+      const response = await PATCH(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.ok).toBe(true);
+
+      // Verify the agent was updated by fetching the integration
+      const getResponse = await GET(
+        createTestRequest("http://localhost:3000/api/integrations/github", {
+          headers: { Authorization: "Bearer test-token" },
+        }),
+      );
+      const getData = await getResponse.json();
+
+      expect(getData.agent.name).toBe("new-agent");
+    });
+
+    it("should update default agent with scoped name", async () => {
+      const userId = uniqueId("gh-user");
+      mockClerk({ userId });
+      await createTestScope(uniqueId("gh-scope"));
+      const { composeId } = await createTestCompose("gh-agent");
+      await insertTestGitHubInstallation(userId, composeId);
+
+      // Create a compose in a different scope (simulating a shared agent)
+      const otherUserId = uniqueId("other-user");
+      mockClerk({ userId: otherUserId });
+      await createTestScope(uniqueId("other-scope"));
+      const { composeId: otherComposeId } =
+        await createTestCompose("shared-agent");
+
+      // Switch back to original user
+      mockClerk({ userId });
+
+      // Look up the other scope's slug for the scoped name
+      const otherCompose = await findTestComposeWithScope(otherComposeId);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/integrations/github",
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: "Bearer test-token",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            agentName: `${otherCompose!.scopeSlug}/${otherCompose!.composeName}`,
+          }),
+        },
+      );
+      const response = await PATCH(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.ok).toBe(true);
+
+      // Verify the agent was updated
+      const getResponse = await GET(
+        createTestRequest("http://localhost:3000/api/integrations/github", {
+          headers: { Authorization: "Bearer test-token" },
+        }),
+      );
+      const getData = await getResponse.json();
+
+      expect(getData.agent.name).toBe(otherCompose!.composeName);
+      expect(getData.agent.scopeSlug).toBe(otherCompose!.scopeSlug);
     });
   });
 });
