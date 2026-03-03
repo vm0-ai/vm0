@@ -55,59 +55,6 @@ export async function getAgentSessionWithConversation(
 }
 
 /**
- * Find existing session or create a new one
- * Used when checkpoint is created to ensure session exists
- * Note: artifactName is optional - sessions without artifact use (userId, composeId) as key
- */
-export async function findOrCreateAgentSession(
-  userId: string,
-  agentComposeId: string,
-  artifactName?: string,
-  conversationId?: string,
-): Promise<{ session: AgentSessionData; created: boolean }> {
-  // Build query conditions - handle null artifactName for sessions without artifact
-  // For sessions with artifact: match (userId, composeId, artifactName)
-  // For sessions without artifact: match (userId, composeId, artifactName IS NULL)
-  const conditions = artifactName
-    ? and(
-        eq(agentSessions.userId, userId),
-        eq(agentSessions.agentComposeId, agentComposeId),
-        eq(agentSessions.artifactName, artifactName),
-      )
-    : and(
-        eq(agentSessions.userId, userId),
-        eq(agentSessions.agentComposeId, agentComposeId),
-        isNull(agentSessions.artifactName),
-      );
-
-  // Find existing session with same compose and artifact
-  const [existing] = await globalThis.services.db
-    .select()
-    .from(agentSessions)
-    .where(conditions)
-    .limit(1);
-
-  if (existing) {
-    // Update conversation reference if provided
-    if (conversationId) {
-      const updated = await updateAgentSession(existing.id, conversationId);
-      return { session: updated, created: false };
-    }
-    return { session: mapToAgentSessionData(existing), created: false };
-  }
-
-  // Create new session
-  const session = await createAgentSession({
-    userId,
-    agentComposeId,
-    artifactName,
-    conversationId,
-  });
-
-  return { session, created: true };
-}
-
-/**
  * Create a new agent session
  */
 export async function createAgentSession(

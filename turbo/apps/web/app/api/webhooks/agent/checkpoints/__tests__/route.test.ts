@@ -4,6 +4,7 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
+  createTestRunDirect,
   createTestSandboxToken,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -19,6 +20,7 @@ const context = testContext();
 describe("POST /api/webhooks/agent/checkpoints", () => {
   let user: UserContext;
   let testComposeId: string;
+  let testVersionId: string;
   let testRunId: string;
   let testToken: string;
 
@@ -27,8 +29,11 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     user = await context.setupUser();
 
     // Create compose for test runs
-    const { composeId } = await createTestCompose(uniqueId("checkpoint"));
+    const { composeId, versionId } = await createTestCompose(
+      uniqueId("checkpoint"),
+    );
     testComposeId = composeId;
+    testVersionId = versionId;
 
     // Create a running run
     const { runId } = await createTestRun(testComposeId, "Test prompt");
@@ -322,6 +327,137 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(data.agentSessionId).toBeDefined();
       expect(data.conversationId).toBeDefined();
       expect(data.artifact).toEqual(artifactSnapshot);
+    });
+  });
+
+  describe("Session independence", () => {
+    it("should create independent sessions for separate artifact runs", async () => {
+      const artifactSnapshot = {
+        artifactName: "my-app",
+        artifactVersion: "v1",
+      };
+
+      // Create two runs directly in DB (bypasses API auth complexity)
+      const run1 = await createTestRunDirect(user.userId, testVersionId, {
+        prompt: "Run 1",
+      });
+      const run2 = await createTestRunDirect(user.userId, testVersionId, {
+        prompt: "Run 2",
+      });
+
+      const token1 = await createTestSandboxToken(user.userId, run1.id);
+      const token2 = await createTestSandboxToken(user.userId, run2.id);
+
+      const request1 = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token1}`,
+          },
+          body: JSON.stringify({
+            runId: run1.id,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-run-1",
+            cliAgentSessionHistory: '{"type":"test"}',
+            artifactSnapshot,
+          }),
+        },
+      );
+
+      const response1 = await POST(request1);
+      expect(response1.status).toBe(200);
+      const data1 = await response1.json();
+
+      const request2 = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token2}`,
+          },
+          body: JSON.stringify({
+            runId: run2.id,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-run-2",
+            cliAgentSessionHistory: '{"type":"test"}',
+            artifactSnapshot,
+          }),
+        },
+      );
+
+      const response2 = await POST(request2);
+      expect(response2.status).toBe(200);
+      const data2 = await response2.json();
+
+      // Each run should get its own independent session
+      expect(data1.agentSessionId).not.toBe(data2.agentSessionId);
+    });
+
+    it("should reuse session when continuedFromSessionId is set", async () => {
+      // Create a session via first run's checkpoint
+      const request1 = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-original",
+            cliAgentSessionHistory: '{"type":"test"}',
+          }),
+        },
+      );
+
+      const response1 = await POST(request1);
+      expect(response1.status).toBe(200);
+      const data1 = await response1.json();
+      const originalSessionId = data1.agentSessionId;
+
+      // Create a continue run with continuedFromSessionId
+      const continueRun = await createTestRunDirect(
+        user.userId,
+        testVersionId,
+        {
+          prompt: "Continue prompt",
+          continuedFromSessionId: originalSessionId,
+        },
+      );
+
+      const continueToken = await createTestSandboxToken(
+        user.userId,
+        continueRun.id,
+      );
+
+      const request2 = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${continueToken}`,
+          },
+          body: JSON.stringify({
+            runId: continueRun.id,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-continued",
+            cliAgentSessionHistory: '{"type":"test-continued"}',
+          }),
+        },
+      );
+
+      const response2 = await POST(request2);
+      expect(response2.status).toBe(200);
+      const data2 = await response2.json();
+
+      // Continue run should reuse the same session
+      expect(data2.agentSessionId).toBe(originalSessionId);
     });
   });
 
