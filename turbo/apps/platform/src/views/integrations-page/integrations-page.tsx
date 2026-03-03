@@ -54,7 +54,7 @@ export function SlackIntegrationCard() {
           installUrl ? (
             <Button variant="outline" size="sm" asChild>
               <a href={installUrl} target="_blank" rel="noopener noreferrer">
-                Connect
+                Install
               </a>
             </Button>
           ) : null
@@ -93,13 +93,13 @@ export function GitHubIntegrationCard() {
           installUrl ? (
             <Button variant="outline" size="sm" asChild>
               <a href={installUrl} target="_blank" rel="noopener noreferrer">
-                Connect
+                Install
               </a>
             </Button>
           ) : null
         ) : (
           <Button variant="outline" size="sm" disabled>
-            Connected
+            Installed
           </Button>
         )}
       </div>

@@ -203,7 +203,7 @@ describe("settings integrations tab", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows Connect link when user is not linked to Slack", async () => {
+  it("shows Install link when user is not linked to Slack", async () => {
     server.use(
       http.get("/api/integrations/slack", () => {
         return HttpResponse.json(
@@ -221,7 +221,7 @@ describe("settings integrations tab", () => {
     // Should show the Slack card
     expect(screen.getByText("VM0 in Slack")).toBeInTheDocument();
 
-    // Should show Connect link (not Settings button within the card)
-    expect(screen.getByText("Connect")).toBeInTheDocument();
+    // Should show Install link (not Settings button within the card)
+    expect(screen.getByText("Install")).toBeInTheDocument();
   });
 });
