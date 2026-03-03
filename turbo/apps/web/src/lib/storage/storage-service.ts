@@ -2,11 +2,12 @@ import { resolveVolumes } from "./storage-resolver";
 import { generatePresignedUrl, putS3Object } from "../s3/s3-client";
 import { logger } from "../logger";
 import { badRequest } from "../errors";
-import type {
-  AgentVolumeConfig,
-  StorageManifest,
-  ManifestStorage,
-  ManifestArtifact,
+import {
+  DEFAULT_MEMORY_MOUNT_PATH,
+  type AgentVolumeConfig,
+  type StorageManifest,
+  type ManifestStorage,
+  type ManifestArtifact,
 } from "./types";
 import { storages, storageVersions } from "../../db/schema/storage";
 import { eq, and, isNull } from "drizzle-orm";
@@ -232,7 +233,7 @@ async function resolveVersion(
  * @param volumeVersionOverrides - Optional volume version overrides
  * @param resumeArtifact - Optional artifact snapshot for resume (overrides artifactName/artifactVersion)
  * @param resumeArtifactMountPath - Mount path for resume artifact
- * @param memoryName - Optional memory storage name (mounted at /home/user/.vm0/memory)
+ * @param memoryName - Optional memory storage name (mounted at DEFAULT_MEMORY_MOUNT_PATH)
  * @returns Storage manifest with presigned URLs
  */
 export async function prepareStorageManifest(
@@ -383,7 +384,6 @@ export async function prepareStorageManifest(
     : Promise.resolve(null);
 
   // Resolve memory artifact (uses runner's scope, same as artifact)
-  // Memory is mounted at a fixed path: /home/user/.vm0/memory
   const memoryPromise = memoryName
     ? (async (): Promise<ManifestArtifact | null> => {
         try {
@@ -398,7 +398,7 @@ export async function prepareStorageManifest(
           const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
 
           const memoryArtifact: ManifestArtifact = {
-            mountPath: "/home/user/.vm0/memory",
+            mountPath: DEFAULT_MEMORY_MOUNT_PATH,
             vasStorageName: memoryName,
             vasVersionId: versionId,
             archiveUrl,

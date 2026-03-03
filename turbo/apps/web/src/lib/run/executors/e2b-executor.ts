@@ -4,7 +4,11 @@ import { e2bConfig } from "../../e2b/config";
 import { badRequest } from "../../errors";
 import { resolveSystemImageToE2b } from "@vm0/core";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
-import type { PreparedArtifact, StorageManifest } from "../../storage/types";
+import {
+  DEFAULT_MEMORY_MOUNT_PATH,
+  type PreparedArtifact,
+  type StorageManifest,
+} from "../../storage/types";
 import {
   RUN_AGENT_SCRIPT,
   DOWNLOAD_SCRIPT,
@@ -271,7 +275,7 @@ function addStorageEnvVars(
   } else if (context.memoryName) {
     // First run: memory doesn't exist yet, but we still need env vars for upload
     envVars.VM0_MEMORY_DRIVER = "vas";
-    envVars.VM0_MEMORY_MOUNT_PATH = "/home/user/.vm0/memory";
+    envVars.VM0_MEMORY_MOUNT_PATH = DEFAULT_MEMORY_MOUNT_PATH;
     envVars.VM0_MEMORY_NAME = context.memoryName;
   }
 }

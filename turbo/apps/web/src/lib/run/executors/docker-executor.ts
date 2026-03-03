@@ -5,7 +5,11 @@ import {
 import { env } from "../../../env";
 import type { SandboxLike } from "../../docker/docker-sandbox";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
-import type { PreparedArtifact, StorageManifest } from "../../storage/types";
+import {
+  DEFAULT_MEMORY_MOUNT_PATH,
+  type PreparedArtifact,
+  type StorageManifest,
+} from "../../storage/types";
 import {
   RUN_AGENT_SCRIPT,
   DOWNLOAD_SCRIPT,
@@ -282,7 +286,7 @@ async function buildSandboxEnvVars(
   } else if (context.memoryName) {
     // First run: memory doesn't exist yet, but we still need env vars for upload
     sandboxEnvVars.VM0_MEMORY_DRIVER = "vas";
-    sandboxEnvVars.VM0_MEMORY_MOUNT_PATH = "/home/user/.vm0/memory";
+    sandboxEnvVars.VM0_MEMORY_MOUNT_PATH = DEFAULT_MEMORY_MOUNT_PATH;
     sandboxEnvVars.VM0_MEMORY_NAME = context.memoryName;
   }
 
