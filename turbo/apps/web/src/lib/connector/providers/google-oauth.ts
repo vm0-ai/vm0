@@ -17,6 +17,11 @@ interface GoogleTokenResult {
   userInfo: GoogleUserInfo;
 }
 
+interface GoogleRefreshResult {
+  accessToken: string;
+  refreshToken: string | null;
+}
+
 /**
  * Build Google OAuth authorization URL for any Google connector.
  * Requests offline access to obtain a refresh token.
@@ -108,6 +113,64 @@ export async function exchangeGoogleOAuthCode(
     expiresIn: data.expires_in,
     scopes: data.scope ? data.scope.split(" ") : [],
     userInfo,
+  };
+}
+
+/**
+ * Refresh a Google access token using the refresh token.
+ * Works for any Google connector (Gmail, Sheets, Docs, Drive).
+ * Returns new access token (Google does not rotate refresh tokens).
+ */
+export async function refreshGoogleToken(
+  connectorType: ConnectorType,
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<GoogleRefreshResult> {
+  const oauthConfig = getConnectorOAuthConfig(connectorType);
+  if (!oauthConfig) {
+    throw new Error(`${connectorType} OAuth config not found`);
+  }
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `${connectorType} token refresh failed: ${response.status}`,
+    );
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+
+  if (!data.access_token) {
+    throw new Error(`No access token in ${connectorType} refresh response`);
+  }
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
   };
 }
 

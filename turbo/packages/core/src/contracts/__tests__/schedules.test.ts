@@ -37,6 +37,26 @@ describe("schedules contracts", () => {
       }
     });
 
+    it("should accept valid loop trigger", () => {
+      const result = scheduleTriggerSchema.safeParse({
+        loop: { interval: 300 },
+        timezone: "UTC",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.loop?.interval).toBe(300);
+      }
+    });
+
+    it("should accept loop trigger with interval 0", () => {
+      const result = scheduleTriggerSchema.safeParse({
+        loop: { interval: 0 },
+      });
+
+      expect(result.success).toBe(true);
+    });
+
     it("should reject when both cron and at are provided", () => {
       const result = scheduleTriggerSchema.safeParse({
         cron: "0 9 * * *",
@@ -46,12 +66,21 @@ describe("schedules contracts", () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.issues[0]?.message).toContain(
-          "Exactly one of 'cron' or 'at' must be specified",
+          "Exactly one of 'cron', 'at', or 'loop' must be specified",
         );
       }
     });
 
-    it("should reject when neither cron nor at is provided", () => {
+    it("should reject when cron and loop are both provided", () => {
+      const result = scheduleTriggerSchema.safeParse({
+        cron: "0 9 * * *",
+        loop: { interval: 300 },
+      });
+
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject when neither cron, at, nor loop is provided", () => {
       const result = scheduleTriggerSchema.safeParse({
         timezone: "UTC",
       });
@@ -297,6 +326,30 @@ describe("schedules contracts", () => {
       expect(result.success).toBe(true);
     });
 
+    it("should accept valid deploy request with intervalSeconds", () => {
+      const result = deployScheduleRequestSchema.safeParse({
+        name: "loop-task",
+        composeId: "123e4567-e89b-12d3-a456-426614174000",
+        intervalSeconds: 300,
+        timezone: "UTC",
+        prompt: "Run in loop",
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept deploy request with intervalSeconds 0", () => {
+      const result = deployScheduleRequestSchema.safeParse({
+        name: "loop-task",
+        composeId: "123e4567-e89b-12d3-a456-426614174000",
+        intervalSeconds: 0,
+        timezone: "UTC",
+        prompt: "Run immediately",
+      });
+
+      expect(result.success).toBe(true);
+    });
+
     it("should reject when both cronExpression and atTime are provided", () => {
       const result = deployScheduleRequestSchema.safeParse({
         name: "task",
@@ -310,12 +363,25 @@ describe("schedules contracts", () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.issues[0]?.message).toContain(
-          "Exactly one of 'cronExpression' or 'atTime' must be specified",
+          "Exactly one of 'cronExpression', 'atTime', or 'intervalSeconds' must be specified",
         );
       }
     });
 
-    it("should reject when neither cronExpression nor atTime is provided", () => {
+    it("should reject when cronExpression and intervalSeconds are both provided", () => {
+      const result = deployScheduleRequestSchema.safeParse({
+        name: "task",
+        composeId: "123e4567-e89b-12d3-a456-426614174000",
+        cronExpression: "0 9 * * *",
+        intervalSeconds: 300,
+        timezone: "UTC",
+        prompt: "Run",
+      });
+
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject when no trigger is provided", () => {
       const result = deployScheduleRequestSchema.safeParse({
         name: "task",
         composeId: "123e4567-e89b-12d3-a456-426614174000",
@@ -326,22 +392,24 @@ describe("schedules contracts", () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.issues[0]?.message).toContain(
-          "Exactly one of 'cronExpression' or 'atTime' must be specified",
+          "Exactly one of 'cronExpression', 'atTime', or 'intervalSeconds' must be specified",
         );
       }
     });
   });
 
   describe("scheduleResponseSchema", () => {
-    it("should accept valid schedule response", () => {
+    it("should accept valid cron schedule response", () => {
       const result = scheduleResponseSchema.safeParse({
         id: "123e4567-e89b-12d3-a456-426614174000",
         composeId: "123e4567-e89b-12d3-a456-426614174001",
         composeName: "my-agent",
         scopeSlug: "user-abc123",
         name: "daily-task",
+        triggerType: "cron",
         cronExpression: "0 9 * * *",
         atTime: null,
+        intervalSeconds: null,
         timezone: "UTC",
         prompt: "Run the task",
         vars: { ENV: "prod" },
@@ -353,11 +421,47 @@ describe("schedules contracts", () => {
         nextRunAt: "2025-01-13T09:00:00Z",
         lastRunAt: "2025-01-12T09:00:00Z",
         retryStartedAt: null,
+        consecutiveFailures: 0,
         createdAt: "2025-01-12T10:00:00Z",
         updatedAt: "2025-01-12T10:00:00Z",
       });
 
       expect(result.success).toBe(true);
+    });
+
+    it("should accept valid loop schedule response", () => {
+      const result = scheduleResponseSchema.safeParse({
+        id: "123e4567-e89b-12d3-a456-426614174000",
+        composeId: "123e4567-e89b-12d3-a456-426614174001",
+        composeName: "my-agent",
+        scopeSlug: "user-abc123",
+        name: "loop-task",
+        triggerType: "loop",
+        cronExpression: null,
+        atTime: null,
+        intervalSeconds: 300,
+        timezone: "UTC",
+        prompt: "Run in loop",
+        vars: null,
+        secretNames: null,
+        artifactName: null,
+        artifactVersion: null,
+        volumeVersions: null,
+        enabled: true,
+        nextRunAt: "2025-01-13T09:05:00Z",
+        lastRunAt: "2025-01-13T09:00:00Z",
+        retryStartedAt: null,
+        consecutiveFailures: 0,
+        createdAt: "2025-01-12T10:00:00Z",
+        updatedAt: "2025-01-12T10:00:00Z",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.triggerType).toBe("loop");
+        expect(result.data.intervalSeconds).toBe(300);
+        expect(result.data.consecutiveFailures).toBe(0);
+      }
     });
 
     it("should accept response with nullable fields as null", () => {
@@ -367,8 +471,10 @@ describe("schedules contracts", () => {
         composeName: "my-agent",
         scopeSlug: "user-abc123",
         name: "task",
+        triggerType: "once",
         cronExpression: null,
         atTime: "2025-12-31T23:59:59Z",
+        intervalSeconds: null,
         timezone: "UTC",
         prompt: "One-time run",
         vars: null,
@@ -380,6 +486,7 @@ describe("schedules contracts", () => {
         nextRunAt: null,
         lastRunAt: null,
         retryStartedAt: null,
+        consecutiveFailures: 0,
         createdAt: "2025-01-12T10:00:00Z",
         updatedAt: "2025-01-12T10:00:00Z",
       });

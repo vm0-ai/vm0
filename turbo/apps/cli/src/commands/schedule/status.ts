@@ -23,6 +23,9 @@ function formatDateTimeStyled(dateStr: string | null): string {
  * Format trigger (cron or at) - timezone shown separately
  */
 function formatTrigger(schedule: ScheduleResponse): string {
+  if (schedule.triggerType === "loop" && schedule.intervalSeconds !== null) {
+    return `interval ${schedule.intervalSeconds}s ${chalk.dim("(loop)")}`;
+  }
   if (schedule.cronExpression) {
     return schedule.cronExpression;
   }
@@ -109,6 +112,14 @@ function printTimeSchedule(schedule: ScheduleResponse): void {
     console.log(
       `${"Next Run:".padEnd(16)}${formatDateTimeStyled(schedule.nextRunAt)}`,
     );
+  }
+
+  if (schedule.triggerType === "loop") {
+    const failureText =
+      schedule.consecutiveFailures > 0
+        ? chalk.yellow(`${schedule.consecutiveFailures}/3`)
+        : chalk.dim("0/3");
+    console.log(`${"Failures:".padEnd(16)}${failureText}`);
   }
 }
 

@@ -5,17 +5,24 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 /**
- * Schedule trigger type - either cron (recurring) or at (one-time)
+ * Schedule trigger type - cron (recurring), at (one-time), or loop (completion-based interval)
  */
 const scheduleTriggerSchema = z
   .object({
     cron: z.string().optional(),
     at: z.string().optional(),
+    loop: z.object({ interval: z.number().int().min(0) }).optional(),
     timezone: z.string().default("UTC"),
   })
-  .refine((data) => (data.cron && !data.at) || (!data.cron && data.at), {
-    message: "Exactly one of 'cron' or 'at' must be specified",
-  });
+  .refine(
+    (data) => {
+      const triggers = [data.cron, data.at, data.loop].filter(Boolean);
+      return triggers.length === 1;
+    },
+    {
+      message: "Exactly one of 'cron', 'at', or 'loop' must be specified",
+    },
+  );
 
 /**
  * Schedule run configuration - what to execute
@@ -56,6 +63,7 @@ const deployScheduleRequestSchema = z
     name: z.string().min(1).max(64, "Schedule name max 64 chars"),
     cronExpression: z.string().optional(),
     atTime: z.string().optional(),
+    intervalSeconds: z.number().int().min(0).optional(),
     timezone: z.string().default("UTC"),
     prompt: z.string().min(1, "Prompt required"),
     // vars and secrets removed - now managed via platform tables
@@ -66,11 +74,17 @@ const deployScheduleRequestSchema = z
     composeId: z.string().uuid("Invalid compose ID"),
   })
   .refine(
-    (data) =>
-      (data.cronExpression && !data.atTime) ||
-      (!data.cronExpression && data.atTime),
+    (data) => {
+      const triggers = [
+        data.cronExpression,
+        data.atTime,
+        data.intervalSeconds,
+      ].filter((v) => v !== undefined);
+      return triggers.length === 1;
+    },
     {
-      message: "Exactly one of 'cronExpression' or 'atTime' must be specified",
+      message:
+        "Exactly one of 'cronExpression', 'atTime', or 'intervalSeconds' must be specified",
     },
   );
 
@@ -83,8 +97,10 @@ const scheduleResponseSchema = z.object({
   composeName: z.string(),
   scopeSlug: z.string(),
   name: z.string(),
+  triggerType: z.enum(["cron", "once", "loop"]),
   cronExpression: z.string().nullable(),
   atTime: z.string().nullable(),
+  intervalSeconds: z.number().nullable(),
   timezone: z.string(),
   prompt: z.string(),
   vars: z.record(z.string(), z.string()).nullable(),
@@ -97,6 +113,7 @@ const scheduleResponseSchema = z.object({
   nextRunAt: z.string().nullable(),
   lastRunAt: z.string().nullable(),
   retryStartedAt: z.string().nullable(),
+  consecutiveFailures: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

@@ -7,9 +7,9 @@ import {
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
 import { ThemeToggle } from "../components/theme-toggle.tsx";
-import { navigateInReact$ } from "../../signals/route.ts";
 import { toggleSidebar$, toggleMobileSidebar$ } from "../../signals/sidebar.ts";
 import type { RoutePath } from "../../types/route.ts";
+import { Link } from "../router/link.tsx";
 
 export interface BreadcrumbItem {
   label: string;
@@ -22,7 +22,6 @@ interface NavbarProps {
 }
 
 export function Navbar({ breadcrumb }: NavbarProps) {
-  const navigate = useSet(navigateInReact$);
   const toggleSidebar = useSet(toggleSidebar$);
   const toggleMobileSidebar = useSet(toggleMobileSidebar$);
 
@@ -78,16 +77,13 @@ export function Navbar({ breadcrumb }: NavbarProps) {
                   <span className="text-muted-foreground/50 shrink-0">/</span>
                 )}
                 {item.path ? (
-                  <button
-                    onClick={() =>
-                      navigate(item.path!, {
-                        pathParams: item.pathParams,
-                      })
-                    }
+                  <Link
+                    pathname={item.path}
+                    options={{ pathParams: item.pathParams }}
                     className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
                   >
                     {item.label}
-                  </button>
+                  </Link>
                 ) : (
                   <TooltipProvider delayDuration={300}>
                     <Tooltip>

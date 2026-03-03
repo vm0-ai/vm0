@@ -74,6 +74,10 @@ jobs:
                   type: mrkdwn
                   text: "*Database Migration* starting...\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
 
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+
       - name: Get Production Database URL
         id: get-db-url
         run: |
@@ -91,6 +95,17 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
 
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> $GITHUB_OUTPUT
+
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.1.1
@@ -105,7 +120,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Database Migration* ✅ Migration completed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
+                  text: "*Database Migration* ✅ Migration completed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -121,7 +136,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Database Migration* ❌ Migration failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Database Migration* ❌ Migration failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Deploy web app to production
   deploy-web-production:
@@ -156,6 +171,10 @@ jobs:
                 text:
                   type: mrkdwn
                   text: "*Web App* deploying to production...\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
 
       - name: Get Production Database URL
         id: get-db-url
@@ -225,6 +244,17 @@ jobs:
             RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
             VM0_ADMIN_USERS=${{ vars.VM0_ADMIN_USERS }}
 
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> $GITHUB_OUTPUT
+
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.1.1
@@ -239,7 +269,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Web App* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
+                  text: "*Web App* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -255,7 +285,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Web App* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Web App* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Deploy docs app to production
   deploy-docs-production:
@@ -288,6 +318,10 @@ jobs:
                   type: mrkdwn
                   text: "*Docs* deploying to production...\n📦 Version: `${{ needs.release-please.outputs.docs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/docs-v${{ needs.release-please.outputs.docs_version }}|View Release>"
 
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+
       - name: Deploy Docs to Vercel Production
         id: deploy
         uses: ./.github/actions/vercel-deploy
@@ -297,6 +331,17 @@ jobs:
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_DOCS }}
           environment: production
           deployment-env: docs
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> $GITHUB_OUTPUT
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
@@ -312,7 +357,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Docs* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.docs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/docs-v${{ needs.release-please.outputs.docs_version }}|View Release>"
+                  text: "*Docs* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.docs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/docs-v${{ needs.release-please.outputs.docs_version }}|View Release>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -328,7 +373,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Docs* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.docs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/docs-v${{ needs.release-please.outputs.docs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Docs* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.docs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/docs-v${{ needs.release-please.outputs.docs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Deploy platform (Vite SPA) to production
   deploy-platform-production:
@@ -361,6 +406,10 @@ jobs:
                   type: mrkdwn
                   text: "*Platform* deploying to production...\n📦 Version: `${{ needs.release-please.outputs.platform_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.platform_version }}|View Release>"
 
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+
       - name: Deploy Platform to Vercel Production
         id: deploy
         uses: ./.github/actions/vercel-deploy
@@ -378,6 +427,17 @@ jobs:
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_PLATFORM }}
 
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> $GITHUB_OUTPUT
+
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.1.1
@@ -392,7 +452,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Platform* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.platform_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.platform_version }}|View Release>"
+                  text: "*Platform* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.platform_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.platform_version }}|View Release>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -408,7 +468,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Platform* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.platform_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.platform_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Platform* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.platform_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.platform_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   publish-npm:
     needs: release-please
@@ -437,6 +497,10 @@ jobs:
                   type: mrkdwn
                   text: "*CLI* publishing to npm...\n📦 Version: `${{ needs.release-please.outputs.cli_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/cli-v${{ needs.release-please.outputs.cli_version }}|View Release>"
 
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+
       - uses: actions/setup-node@v6
         with:
           node-version: lts/*
@@ -459,6 +523,17 @@ jobs:
       - name: Publish to npm with OIDC
         run: cd turbo/apps/cli/dist && npm publish --access public
 
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> $GITHUB_OUTPUT
+
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.1.1
@@ -473,7 +548,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*CLI* ✅ Published successfully\n📦 Version: `${{ needs.release-please.outputs.cli_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/cli-v${{ needs.release-please.outputs.cli_version }}|View Release>\n📦 <https://www.npmjs.com/package/@vm0/cli/v/${{ needs.release-please.outputs.cli_version }}|View on npm>"
+                  text: "*CLI* ✅ Published successfully\n📦 Version: `${{ needs.release-please.outputs.cli_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/cli-v${{ needs.release-please.outputs.cli_version }}|View Release>\n📦 <https://www.npmjs.com/package/@vm0/cli/v/${{ needs.release-please.outputs.cli_version }}|View on npm>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -489,7 +564,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*CLI* ❌ Publish failed\n📦 Version: `${{ needs.release-please.outputs.cli_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/cli-v${{ needs.release-please.outputs.cli_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*CLI* ❌ Publish failed\n📦 Version: `${{ needs.release-please.outputs.cli_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/cli-v${{ needs.release-please.outputs.cli_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Deploy runner to production metal instances
   deploy-runner-production:
@@ -525,6 +600,10 @@ jobs:
                 text:
                   type: mrkdwn
                   text: "*Runner RS* deploying to production servers...\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
 
       # Cross-compile Rust binaries for ARM64 (metal runners are ARM64)
       - name: Cross-compile guest binaries for ARM64
@@ -607,6 +686,17 @@ jobs:
             -e "runner_version=${RUNNER_VERSION}" \
             -v
 
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> $GITHUB_OUTPUT
+
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.1.1
@@ -621,7 +711,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
+                  text: "*Runner RS* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -637,7 +727,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Runner RS* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Build E2B templates to production account
   # Uses production environment E2B_API_KEY secret

@@ -15,7 +15,7 @@ import {
 } from "@vm0/ui/components/ui/table";
 import { AppShell } from "../layout/app-shell.tsx";
 import { AgentsListSkeleton } from "./agents-list-skeleton.tsx";
-import { useGet, useLastResolved, useResolved, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useResolved } from "ccstate-react";
 import {
   agentsList$,
   agentsLoading$,
@@ -25,7 +25,7 @@ import {
   getAgentScheduleStatus,
 } from "../../signals/agents-page/agents-list.ts";
 import { defaultModelProvider$ } from "../../signals/external/model-providers.ts";
-import { navigateInReact$ } from "../../signals/route.ts";
+import { useNavigationHandler } from "../router/link.tsx";
 import { getUILabel } from "../settings-page/provider-ui-config.ts";
 import { Bed, Settings, Clock, AlertTriangle } from "lucide-react";
 import type { ComposeListItem } from "@vm0/core";
@@ -147,12 +147,9 @@ function AgentRow({
   missingCount: number;
   modelProviderLabel: string;
 }) {
-  const navigate = useSet(navigateInReact$);
-
-  const handleRowClick = () =>
-    navigate("/agents/:name", {
-      pathParams: { name: agent.name },
-    });
+  const { onClick: handleRowClick } = useNavigationHandler("/agents/:name", {
+    pathParams: { name: agent.name },
+  });
 
   return (
     <TableRow className="h-[53px]">

@@ -8,6 +8,7 @@ import figmaIcon from "./icons/figma.svg";
 import garminConnectIcon from "./icons/garmin-connect.svg";
 import githubIcon from "./icons/github.svg";
 import gmailIcon from "./icons/gmail.svg";
+import googleCalendarIcon from "./icons/google-calendar.svg";
 import googleDocsIcon from "./icons/google-docs.svg";
 import googleDriveIcon from "./icons/google-drive.svg";
 import googleSheetsIcon from "./icons/google-sheets.svg";
@@ -26,6 +27,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   "garmin-connect": garminConnectIcon,
   github: githubIcon,
   gmail: gmailIcon,
+  "google-calendar": googleCalendarIcon,
   "google-docs": googleDocsIcon,
   "google-drive": googleDriveIcon,
   "google-sheets": googleSheetsIcon,

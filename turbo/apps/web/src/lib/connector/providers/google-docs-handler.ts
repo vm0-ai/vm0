@@ -2,6 +2,7 @@ import { type ProviderHandler } from "../provider-types";
 import {
   buildGoogleAuthorizationUrl,
   exchangeGoogleOAuthCode,
+  refreshGoogleToken,
 } from "./google-oauth";
 
 export const googleDocsHandler: ProviderHandler = {
@@ -31,4 +32,6 @@ export const googleDocsHandler: ProviderHandler = {
   getClientSecret: (e) => e.GOOGLE_OAUTH_CLIENT_SECRET,
   getSecretName: () => "GOOGLE_DOCS_ACCESS_TOKEN",
   getRefreshSecretName: () => "GOOGLE_DOCS_REFRESH_TOKEN",
+  refreshToken: (clientId, clientSecret, refreshToken) =>
+    refreshGoogleToken("google-docs", clientId, clientSecret, refreshToken),
 };

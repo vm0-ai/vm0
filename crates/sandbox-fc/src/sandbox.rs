@@ -81,6 +81,8 @@ pub struct FirecrackerSandbox {
     /// Notified when the firecracker process exits unexpectedly.
     /// Sandbox operations race against this to detect crashes promptly.
     crash_notify: Arc<Notify>,
+    /// Control socket server for `runner exec`.
+    control_server: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl FirecrackerSandbox {
@@ -105,6 +107,7 @@ impl FirecrackerSandbox {
             state: Arc::new(AtomicU8::new(SandboxState::Created as u8)),
             guest: Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>)),
             crash_notify: Arc::new(Notify::new()),
+            control_server: None,
         }
     }
 
@@ -319,6 +322,9 @@ impl FirecrackerSandbox {
 
 impl Drop for FirecrackerSandbox {
     fn drop(&mut self) {
+        if let Some(h) = self.control_server.take() {
+            h.abort();
+        }
         // If the process is still alive (e.g. owning task panicked before
         // explicit cleanup), kill the entire process group synchronously.
         // `kill_on_drop(true)` only sends SIGKILL to the direct child (`sudo`);
@@ -449,6 +455,12 @@ impl Sandbox for FirecrackerSandbox {
             ));
         }
 
+        // Start control socket server for `runner exec`.
+        self.control_server = Some(crate::control::spawn_server(
+            self.sock_paths.control_sock(),
+            Arc::clone(&self.guest),
+        ));
+
         info!(id = %self.id, "sandbox started");
         Ok(())
     }
@@ -456,6 +468,10 @@ impl Sandbox for FirecrackerSandbox {
     async fn stop(&mut self) -> sandbox::Result<()> {
         if !self.transition(SandboxState::Running, SandboxState::Stopping) {
             return Ok(());
+        }
+
+        if let Some(h) = self.control_server.take() {
+            h.abort();
         }
 
         // Try graceful shutdown via vsock.
@@ -478,6 +494,9 @@ impl Sandbox for FirecrackerSandbox {
     async fn kill(&mut self) -> sandbox::Result<()> {
         if !self.transition(SandboxState::Running, SandboxState::Stopping) {
             return Ok(());
+        }
+        if let Some(h) = self.control_server.take() {
+            h.abort();
         }
         self.guest.lock().await.take();
         self.kill_process().await;

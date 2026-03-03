@@ -3,6 +3,7 @@ import {
   buildDropboxAuthorizationUrl,
   exchangeDropboxCode,
   getDropboxSecretName,
+  refreshDropboxToken,
 } from "./dropbox";
 
 export const dropboxHandler: ProviderHandler = {
@@ -30,4 +31,5 @@ export const dropboxHandler: ProviderHandler = {
   getClientSecret: (e) => e.DROPBOX_OAUTH_CLIENT_SECRET,
   getSecretName: getDropboxSecretName,
   getRefreshSecretName: () => "DROPBOX_REFRESH_TOKEN",
+  refreshToken: refreshDropboxToken,
 };

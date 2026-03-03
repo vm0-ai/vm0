@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.78.0](https://github.com/vm0-ai/vm0/compare/platform-v0.77.0...platform-v0.78.0) (2026-03-03)
+
+
+### Features
+
+* **connectors:** add google calendar connector ([#3522](https://github.com/vm0-ai/vm0/issues/3522)) ([878ef7d](https://github.com/vm0-ai/vm0/commit/878ef7d3979ac161fdf822d7c674bad51c5000a3))
+* **platform:** add one-time schedule option to agent run dialog ([#3507](https://github.com/vm0-ai/vm0/issues/3507)) ([3c23118](https://github.com/vm0-ai/vm0/commit/3c2311828af86446a409a6a193ac2d6f65b6fd66))
+* **platform:** forward logger errors to sentry ([#3506](https://github.com/vm0-ai/vm0/issues/3506)) ([dc94a6a](https://github.com/vm0-ai/vm0/commit/dc94a6a9dafcf6c598ff3017ddc154e8e96aca70))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.31.0
+
+## [0.77.0](https://github.com/vm0-ai/vm0/compare/platform-v0.76.0...platform-v0.77.0) (2026-03-03)
+
+
+### Features
+
+* **github:** add oauth installation flow for github app ([#3466](https://github.com/vm0-ai/vm0/issues/3466)) ([5e07a31](https://github.com/vm0-ai/vm0/commit/5e07a3154da03b64d6e5553ee0cecc05ebc43a7a))
+* **platform:** add chat panel for direct agent conversations ([#3208](https://github.com/vm0-ai/vm0/issues/3208)) ([36fc521](https://github.com/vm0-ai/vm0/commit/36fc521f2f2474f5bab2912deb2ff88fb987e891))
+* **platform:** add notification preferences tab to settings page ([#3497](https://github.com/vm0-ai/vm0/issues/3497)) ([322eca3](https://github.com/vm0-ai/vm0/commit/322eca3965a0683097cb2f578c7ec82a7613e38d)), closes [#3474](https://github.com/vm0-ai/vm0/issues/3474)
+* **platform:** support cmd+click to open in new tab for all navigation ([#3476](https://github.com/vm0-ai/vm0/issues/3476)) ([148e1be](https://github.com/vm0-ai/vm0/commit/148e1bee4d3828e92261f978c51226d2f007a82a)), closes [#3471](https://github.com/vm0-ai/vm0/issues/3471)
+
+
+### Bug Fixes
+
+* **platform:** rename integration connect buttons to install ([#3504](https://github.com/vm0-ai/vm0/issues/3504)) ([678697a](https://github.com/vm0-ai/vm0/commit/678697a67e51f0a6651cde2d1a771822c9431ad3))
+
+
+### Performance Improvements
+
+* **platform:** parallelize bootstrap setup operations ([#3485](https://github.com/vm0-ai/vm0/issues/3485)) ([1af5790](https://github.com/vm0-ai/vm0/commit/1af5790155b5e4a4fed95725b4fe5620848173fa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.30.0
+
 ## [0.76.0](https://github.com/vm0-ai/vm0/compare/platform-v0.75.1...platform-v0.76.0) (2026-03-03)
 
 

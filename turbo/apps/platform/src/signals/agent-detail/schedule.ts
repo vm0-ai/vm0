@@ -4,7 +4,15 @@ import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { agentDetail$ } from "./agent-detail.ts";
-import { buildCronExpression, type ScheduleTimeOption } from "./cron.ts";
+import {
+  buildCronExpression,
+  buildAtTime,
+  isAtTimePast,
+  getTomorrowDateLocal,
+  type CronTimeOption,
+  type ScheduleTimeOption,
+  type ScheduleBody,
+} from "./cron.ts";
 
 const L = logger("Schedule");
 
@@ -18,8 +26,10 @@ interface ScheduleResponse {
   composeName: string;
   scopeSlug: string;
   name: string;
+  triggerType: "cron" | "once" | "loop";
   cronExpression: string | null;
   atTime: string | null;
+  intervalSeconds: number | null;
   timezone: string;
   prompt: string;
   vars: Record<string, string> | null;
@@ -31,6 +41,7 @@ interface ScheduleResponse {
   nextRunAt: string | null;
   lastRunAt: string | null;
   retryStartedAt: string | null;
+  consecutiveFailures: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,8 +62,15 @@ export const agentScheduleSummary$ = computed((get) => {
 
   const parts: string[] = [];
 
-  if (schedule.cronExpression) {
+  if (schedule.triggerType === "loop" && schedule.intervalSeconds !== null) {
+    parts.push(describeLoop(schedule.intervalSeconds));
+  } else if (schedule.cronExpression) {
     parts.push(describeCron(schedule.cronExpression));
+  } else if (schedule.atTime) {
+    const at = new Date(schedule.atTime);
+    parts.push(
+      `Once at ${at.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`,
+    );
   }
 
   if (schedule.timezone) {
@@ -68,6 +86,25 @@ export const agentScheduleSummary$ = computed((get) => {
 
   return parts.join("\n");
 });
+
+function describeLoop(intervalSeconds: number): string {
+  if (intervalSeconds === 0) {
+    return "Loop (immediate)";
+  }
+  if (intervalSeconds < 60) {
+    return `Loop interval ${intervalSeconds}s`;
+  }
+  if (intervalSeconds < 3600) {
+    const m = Math.floor(intervalSeconds / 60);
+    return `Loop interval ${m}m`;
+  }
+  const h = Math.floor(intervalSeconds / 3600);
+  const remainMin = Math.floor((intervalSeconds % 3600) / 60);
+  if (remainMin === 0) {
+    return `Loop interval ${h}h`;
+  }
+  return `Loop interval ${h}h ${remainMin}m`;
+}
 
 function describeCron(cron: string): string {
   const dayNames: Record<string, string> = {
@@ -173,7 +210,7 @@ const deleteAgentSchedule$ = command(async ({ get, set }) => {
 function parseCronExpression(cron: string): {
   minute: string;
   hour: string;
-  timeOption: ScheduleTimeOption;
+  timeOption: CronTimeOption;
   dayOfWeek: string;
   dayOfMonth: string;
 } {
@@ -183,7 +220,7 @@ function parseCronExpression(cron: string): {
   const dayOfMonth = parts[2] ?? "*";
   const dayOfWeek = parts[4] ?? "*";
 
-  let timeOption: ScheduleTimeOption = "every-day";
+  let timeOption: CronTimeOption = "every-day";
 
   if (dayOfMonth !== "*") {
     timeOption = "every-month";
@@ -220,27 +257,49 @@ export const setScheduleDialogPrompt$ = command(({ set }, value: string) => {
   set(internalDialogPrompt$, value);
 });
 
-const internalDialogTimeOption$ = state<ScheduleTimeOption>("every-day");
+type ScheduleDialogTimeOption = ScheduleTimeOption | "once";
+
+const internalDialogTimeOption$ = state<ScheduleDialogTimeOption>("every-day");
 export const scheduleDialogTimeOption$ = computed((get) =>
   get(internalDialogTimeOption$),
 );
 
 export const setScheduleDialogTimeOption$ = command(
   ({ set }, value: string) => {
-    if (isScheduleTimeOption(value)) {
+    if (isScheduleDialogTimeOption(value)) {
       set(internalDialogTimeOption$, value);
     }
   },
 );
 
-function isScheduleTimeOption(v: string): v is ScheduleTimeOption {
+function isScheduleDialogTimeOption(v: string): v is ScheduleDialogTimeOption {
   return (
+    v === "once" ||
     v === "every-weekday" ||
     v === "every-day" ||
     v === "every-week" ||
-    v === "every-month"
+    v === "every-month" ||
+    v === "loop"
   );
 }
+
+const internalDialogIntervalSeconds$ = state("300");
+export const scheduleDialogIntervalSeconds$ = computed((get) =>
+  get(internalDialogIntervalSeconds$),
+);
+
+export const setScheduleDialogIntervalSeconds$ = command(
+  ({ set }, value: string) => {
+    set(internalDialogIntervalSeconds$, value);
+  },
+);
+
+const internalDialogDate$ = state(getTomorrowDateLocal());
+export const scheduleDialogDate$ = computed((get) => get(internalDialogDate$));
+
+export const setScheduleDialogDate$ = command(({ set }, value: string) => {
+  set(internalDialogDate$, value);
+});
 
 const internalDialogHour$ = state("9");
 export const scheduleDialogHour$ = computed((get) => get(internalDialogHour$));
@@ -301,19 +360,35 @@ export const openScheduleDialog$ = command(({ get, set }) => {
   set(internalDialogPrompt$, schedule.prompt);
   set(internalDialogSaveError$, null);
 
-  if (schedule.cronExpression) {
+  if (schedule.triggerType === "loop" && schedule.intervalSeconds !== null) {
+    set(internalDialogTimeOption$, "loop");
+    set(internalDialogIntervalSeconds$, String(schedule.intervalSeconds));
+  } else if (schedule.cronExpression) {
     const parsed = parseCronExpression(schedule.cronExpression);
     set(internalDialogTimeOption$, parsed.timeOption);
     set(internalDialogHour$, parsed.hour);
     set(internalDialogMinute$, parsed.minute);
     set(internalDialogDayOfWeek$, parsed.dayOfWeek);
     set(internalDialogDayOfMonth$, parsed.dayOfMonth);
+    set(internalDialogDate$, getTomorrowDateLocal());
+  } else if (schedule.atTime) {
+    const at = new Date(schedule.atTime);
+    const y = at.getFullYear();
+    const mo = String(at.getMonth() + 1).padStart(2, "0");
+    const d = String(at.getDate()).padStart(2, "0");
+    set(internalDialogTimeOption$, "once");
+    set(internalDialogDate$, `${y}-${mo}-${d}`);
+    set(internalDialogHour$, String(at.getHours()));
+    set(internalDialogMinute$, String(at.getMinutes()));
+    set(internalDialogDayOfWeek$, "1");
+    set(internalDialogDayOfMonth$, "1");
   } else {
     set(internalDialogTimeOption$, "every-day");
     set(internalDialogHour$, "9");
     set(internalDialogMinute$, "0");
     set(internalDialogDayOfWeek$, "1");
     set(internalDialogDayOfMonth$, "1");
+    set(internalDialogDate$, getTomorrowDateLocal());
   }
 
   set(internalDialogOpen$, true);
@@ -335,6 +410,7 @@ export const submitScheduleDialog$ = command(async ({ get, set }) => {
   const minute = get(internalDialogMinute$);
   const dayOfWeek = get(internalDialogDayOfWeek$);
   const dayOfMonth = get(internalDialogDayOfMonth$);
+  const intervalSecondsStr = get(internalDialogIntervalSeconds$);
 
   if (!detail || !prompt.trim()) {
     return;
@@ -345,29 +421,57 @@ export const submitScheduleDialog$ = command(async ({ get, set }) => {
 
   try {
     const fetchFn = get(fetch$);
-    const cronExpression = buildCronExpression({
-      timeOption,
-      hour,
-      minute,
-      dayOfWeek,
-      dayOfMonth,
-    });
+    const date = get(internalDialogDate$);
     const timezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     // Use existing schedule name if editing, otherwise default to "default"
     const existingSchedule = get(internalAgentSchedule$);
     const scheduleName = existingSchedule?.name ?? "default";
 
+    // Build request body based on trigger type
+    const base = {
+      composeId: detail.id,
+      name: scheduleName,
+      timezone,
+      prompt: prompt.trim(),
+    };
+
+    let body: ScheduleBody;
+
+    if (timeOption === "loop") {
+      body = {
+        ...base,
+        intervalSeconds: Number.parseInt(intervalSecondsStr, 10) || 0,
+      };
+    } else if (timeOption === "once") {
+      if (isAtTimePast(date, hour, minute)) {
+        set(internalDialogSaveError$, "Scheduled time must be in the future");
+        set(internalDialogSaving$, false);
+        return;
+      }
+      const atTime = buildAtTime(date, hour, minute);
+      body = {
+        ...base,
+        atTime,
+      };
+    } else {
+      const cronExpression = buildCronExpression({
+        timeOption,
+        hour,
+        minute,
+        dayOfWeek,
+        dayOfMonth,
+      });
+      body = {
+        ...base,
+        cronExpression,
+      };
+    }
+
     const response = await fetchFn("/api/agent/schedules", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        composeId: detail.id,
-        name: scheduleName,
-        cronExpression,
-        timezone,
-        prompt: prompt.trim(),
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {

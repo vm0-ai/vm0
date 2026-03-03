@@ -60,8 +60,8 @@ export function AgentInstructions({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <div className="flex items-center justify-between gap-4">
+    <div className="rounded-lg border border-border bg-card p-4 flex flex-col h-full">
+      <div className="flex items-center justify-between gap-4 shrink-0">
         <h2 className="text-base font-medium text-foreground">
           Agent instructions
         </h2>
@@ -97,7 +97,7 @@ export function AgentInstructions({
         </div>
       </div>
 
-      <div className="instructions-content mt-2">
+      <div className="mt-2 flex-1 overflow-y-auto min-h-0">
         {viewMode === "markdown" ? (
           isOwner ? (
             <textarea

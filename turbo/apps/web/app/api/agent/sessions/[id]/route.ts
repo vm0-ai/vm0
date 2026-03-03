@@ -90,6 +90,7 @@ const router = tsr.router(sessionsByIdContract, {
         conversationId: session.conversationId,
         artifactName: session.artifactName,
         secretNames,
+        chatMessages: session.chatMessages ?? [],
         createdAt: session.createdAt.toISOString(),
         updatedAt: session.updatedAt.toISOString(),
       },
@@ -97,25 +98,36 @@ const router = tsr.router(sessionsByIdContract, {
   },
 });
 
+interface PathParamsValidationError {
+  pathParamsError: {
+    issues: Array<{ path: string[]; message: string }>;
+  } | null;
+}
+
+function isPathParamsError(err: unknown): err is PathParamsValidationError {
+  return (
+    err !== null &&
+    typeof err === "object" &&
+    "pathParamsError" in err &&
+    (err.pathParamsError === null ||
+      (typeof err.pathParamsError === "object" &&
+        err.pathParamsError !== null &&
+        "issues" in err.pathParamsError &&
+        Array.isArray(err.pathParamsError.issues)))
+  );
+}
+
 /**
  * Custom error handler to convert validation errors to API error format
  */
 function errorHandler(err: unknown): TsRestResponse | void {
-  if (err && typeof err === "object" && "pathParamsError" in err) {
-    const validationError = err as {
-      pathParamsError: {
-        issues: Array<{ path: string[]; message: string }>;
-      } | null;
-    };
-
-    if (validationError.pathParamsError) {
-      const issue = validationError.pathParamsError.issues[0];
-      if (issue) {
-        return TsRestResponse.fromJson(
-          { error: { message: issue.message, code: "BAD_REQUEST" } },
-          { status: 400 },
-        );
-      }
+  if (isPathParamsError(err) && err.pathParamsError) {
+    const issue = err.pathParamsError.issues[0];
+    if (issue) {
+      return TsRestResponse.fromJson(
+        { error: { message: issue.message, code: "BAD_REQUEST" } },
+        { status: 400 },
+      );
     }
   }
 

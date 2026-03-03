@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.6.7...sandbox-fc-v0.7.0) (2026-03-03)
+
+
+### Features
+
+* **runner:** add exec command for live vm debugging ([#3502](https://github.com/vm0-ai/vm0/issues/3502)) ([0453c3b](https://github.com/vm0-ai/vm0/commit/0453c3bd7a32f9b9e2760ff30e4aea192a9b0836))
+
 ## [0.6.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.6.6...sandbox-fc-v0.6.7) (2026-03-02)
 
 

@@ -25,4 +25,9 @@ export interface ProviderHandler {
   getClientSecret(currentEnv: Env): string | undefined;
   getSecretName(): string;
   getRefreshSecretName?(): string;
+  refreshToken?(
+    clientId: string,
+    clientSecret: string,
+    refreshToken: string,
+  ): Promise<{ accessToken: string; refreshToken: string | null }>;
 }

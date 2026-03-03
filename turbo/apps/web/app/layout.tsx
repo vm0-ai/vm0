@@ -1,3 +1,4 @@
+// Root layout for the web application
 import type { Metadata } from "next";
 import Script from "next/script";
 import {

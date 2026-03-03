@@ -26,6 +26,7 @@ export const agentRuns = pgTable(
       length: 64,
     }).references(() => agentComposeVersions.id, { onDelete: "set null" }),
     resumedFromCheckpointId: uuid("resumed_from_checkpoint_id"),
+    continuedFromSessionId: uuid("continued_from_session_id"),
     // References agent_schedules.id if this run was triggered by a schedule
     scheduleId: uuid("schedule_id").references(
       (): AnyPgColumn => agentSchedules.id,

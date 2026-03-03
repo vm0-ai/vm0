@@ -9,7 +9,8 @@ export type SettingsTab =
   | "providers"
   | "connectors"
   | "secrets-and-variables"
-  | "integrations";
+  | "integrations"
+  | "notifications";
 
 // ---------------------------------------------------------------------------
 // Internal state
@@ -32,7 +33,8 @@ function isValidTab(value: string): value is SettingsTab {
     value === "providers" ||
     value === "connectors" ||
     value === "secrets-and-variables" ||
-    value === "integrations"
+    value === "integrations" ||
+    value === "notifications"
   );
 }
 

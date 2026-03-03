@@ -1,0 +1,118 @@
+/**
+ * API-based GitHub Test Helpers
+ *
+ * These helpers create GitHub test fixtures for webhook handler tests.
+ * Direct DB operations are used because GitHub App installations are created
+ * via a GitHub OAuth callback that requires real GitHub API interaction.
+ */
+import crypto from "crypto";
+import { eq } from "drizzle-orm";
+import { uniqueId } from "../test-helpers";
+import { initServices } from "../../lib/init-services";
+import { env } from "../../env";
+import { encryptCredentialValue } from "../../lib/crypto/secrets-encryption";
+import { scopes } from "../../db/schema/scope";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../db/schema/agent-compose";
+import { githubInstallations } from "../../db/schema/github-installation";
+
+interface GitHubInstallationResult {
+  installation: {
+    id: string;
+    userId: string;
+    installationId: string;
+    defaultComposeId: string;
+  };
+  ghInstallationId: number;
+  compose: { id: string; name: string };
+  versionId: string;
+  userId: string;
+}
+
+/**
+ * Given a GitHub App installation exists in the database.
+ *
+ * Creates all prerequisite records (scope, compose, version, installation)
+ * needed for webhook handler tests.
+ */
+export async function givenGitHubInstallation(
+  installationId?: number,
+): Promise<GitHubInstallationResult> {
+  const ghInstallationId =
+    installationId ?? Math.floor(Math.random() * 1_000_000_000);
+
+  initServices();
+  const { SECRETS_ENCRYPTION_KEY } = env();
+
+  const userId = uniqueId("gh-user");
+  const scopeSlug = uniqueId("scope");
+
+  // Create scope
+  const [scope] = await globalThis.services.db
+    .insert(scopes)
+    .values({ slug: scopeSlug, type: "personal", ownerId: userId })
+    .returning();
+
+  // Create compose
+  const [compose] = await globalThis.services.db
+    .insert(agentComposes)
+    .values({
+      userId,
+      scopeId: scope!.id,
+      name: uniqueId("gh-agent"),
+    })
+    .returning();
+
+  // Create compose version (content-addressed: id is SHA-256 hash)
+  const versionContent = {
+    agents: { default: { model: "claude-sonnet-4-20250514" } },
+  };
+  const versionId = crypto
+    .createHash("sha256")
+    .update(JSON.stringify(versionContent) + compose!.id)
+    .digest("hex");
+
+  await globalThis.services.db.insert(agentComposeVersions).values({
+    id: versionId,
+    composeId: compose!.id,
+    content: versionContent,
+    createdBy: userId,
+  });
+
+  // Update compose headVersionId
+  await globalThis.services.db
+    .update(agentComposes)
+    .set({ headVersionId: versionId })
+    .where(eq(agentComposes.id, compose!.id));
+
+  // Create installation
+  const encryptedToken = encryptCredentialValue(
+    "ghs_test_token",
+    SECRETS_ENCRYPTION_KEY,
+  );
+
+  const [installation] = await globalThis.services.db
+    .insert(githubInstallations)
+    .values({
+      userId,
+      installationId: String(ghInstallationId),
+      encryptedAccessToken: encryptedToken,
+      defaultComposeId: compose!.id,
+    })
+    .returning();
+
+  return {
+    installation: {
+      id: installation!.id,
+      userId: installation!.userId,
+      installationId: installation!.installationId,
+      defaultComposeId: installation!.defaultComposeId,
+    },
+    ghInstallationId,
+    compose: { id: compose!.id, name: compose!.name },
+    versionId,
+    userId,
+  };
+}

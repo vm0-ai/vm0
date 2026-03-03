@@ -4,6 +4,7 @@ import {
   exchangeGmailCode,
   getGmailSecretName,
 } from "./gmail";
+import { refreshGoogleToken } from "./google-oauth";
 
 export const gmailHandler: ProviderHandler = {
   buildAuthUrl: buildGmailAuthorizationUrl,
@@ -30,4 +31,6 @@ export const gmailHandler: ProviderHandler = {
   getClientSecret: (e) => e.GOOGLE_OAUTH_CLIENT_SECRET,
   getSecretName: getGmailSecretName,
   getRefreshSecretName: () => "GMAIL_REFRESH_TOKEN",
+  refreshToken: (clientId, clientSecret, refreshToken) =>
+    refreshGoogleToken("gmail", clientId, clientSecret, refreshToken),
 };
