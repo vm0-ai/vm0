@@ -1185,10 +1185,10 @@ jobs:
         needs.prepare.outputs.ci-changed == 'true'
       )
     outputs:
-      host-count: ${{ steps.host.outputs.host-count }}
       bin-dir: ${{ steps.host.outputs.bin-dir }}
       runner-dir: ${{ steps.host.outputs.runner-dir }}
       runner-matrix: ${{ steps.runner-matrix.outputs.matrix }}
+      chunk-count: ${{ steps.runner-matrix.outputs.chunk-count }}
       rootfs-hash: ${{ steps.deploy.outputs.rootfs-hash }}
       snapshot-hash: ${{ steps.deploy.outputs.snapshot-hash }}
     steps:
@@ -1235,15 +1235,16 @@ jobs:
             echo "::error::AWS_METAL_RUNNER_HOSTS is empty"
             exit 1
           fi
-          echo "host-count=${NUM_HOSTS}" >> "$GITHUB_OUTPUT"
           echo "Deploying to ${NUM_HOSTS} metal hosts"
 
       - name: Generate runner E2E test matrix
         id: runner-matrix
         shell: bash
         run: |
-          # Split test files across metal hosts, balanced by test count
-          NUM_CHUNKS=${{ steps.host.outputs.host-count }}
+          # Split test files into fixed chunks for parallel bats execution
+          NUM_FILES=$(ls e2e/tests/03-experimental-runner/*.bats 2>/dev/null | wc -l)
+          NUM_CHUNKS=4
+          [ "$NUM_CHUNKS" -gt "$NUM_FILES" ] && NUM_CHUNKS=$NUM_FILES
 
           # Count tests per file, sort heaviest first
           mapfile -t SORTED < <(
@@ -1273,6 +1274,7 @@ jobs:
             echo "Chunk $((i+1)): ${CHUNK_COUNTS[$i]} tests"
           done
           echo "matrix=${CHUNKS}]" >> $GITHUB_OUTPUT
+          echo "chunk-count=${NUM_CHUNKS}" >> $GITHUB_OUTPUT
 
       - name: Deploy binaries and build rootfs/snapshot on all metal hosts
         id: deploy
@@ -1368,7 +1370,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [prepare, deploy-runner-prepare, deploy-web]
     outputs:
-      max-concurrent: ${{ steps.start.outputs.max-concurrent }}
+      total-capacity: ${{ steps.start.outputs.total-capacity }}
     timeout-minutes: 2
     if: |
       github.event_name != 'push' &&
@@ -1471,11 +1473,15 @@ jobs:
             exit 1
           fi
 
-          # Read auto-detected max_concurrent from first host's status.json
-          FIRST_HOST=$(echo "$METAL_HOSTS" | tr ',' ' ' | awk '{print $1}')
-          MAX_CONCURRENT=$(ssh $SSH_OPTS "${METAL_USER}@${FIRST_HOST}" "grep -o '\"max_concurrent\": [0-9]*' ${RUNNER_DIR}/status.json | grep -o '[0-9]*'")
-          echo "max-concurrent=${MAX_CONCURRENT}" >> "$GITHUB_OUTPUT"
-          echo "Runner max_concurrent: ${MAX_CONCURRENT}"
+          # Sum auto-detected max_concurrent from all hosts' status.json
+          TOTAL=0
+          for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
+            MC=$(ssh $SSH_OPTS "${METAL_USER}@${HOST}" "grep -o '\"max_concurrent\": [0-9]*' ${RUNNER_DIR}/status.json | grep -o '[0-9]*'")
+            echo "Host ${HOST}: max_concurrent=${MC}"
+            TOTAL=$((TOTAL + MC))
+          done
+          echo "total-capacity=${TOTAL}" >> "$GITHUB_OUTPUT"
+          echo "Total capacity across all hosts: ${TOTAL}"
 
   # Run CLI E2E tests - Phase 3: Runner tests (needs runner deployed)
   # Skip on push to main - runner tests are only needed for PRs
@@ -1590,13 +1596,15 @@ jobs:
 
       - name: Run Runner E2E Tests (Chunk ${{ matrix.index }})
         run: |
-          PARALLEL=${RUNNER_MAX_CONCURRENT}
-          echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel) ==="
+          PARALLEL=$(( RUNNER_TOTAL_CAPACITY / RUNNER_CHUNK_COUNT ))
+          [ "$PARALLEL" -lt 1 ] && PARALLEL=1
+          echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel, total capacity ${RUNNER_TOTAL_CAPACITY}) ==="
           echo "Files: ${{ matrix.files }}"
           BATS_TEST_TIMEOUT=60 RUNNER_GROUP="vm0/development-${JOB_REF}" ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --no-parallelize-within-files ${{ matrix.files }}
           echo "✅ Chunk ${{ matrix.index }} tests passed"
         env:
-          RUNNER_MAX_CONCURRENT: ${{ needs.deploy-runner-start.outputs.max-concurrent }}
+          RUNNER_TOTAL_CAPACITY: ${{ needs.deploy-runner-start.outputs.total-capacity }}
+          RUNNER_CHUNK_COUNT: ${{ needs.deploy-runner-prepare.outputs.chunk-count }}
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
