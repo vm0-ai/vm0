@@ -179,6 +179,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     } else {
         max_concurrent
     };
+    fc_config.concurrency = max_concurrent;
     let mut status = StatusTracker::new(paths.status(), max_concurrent);
     status.set_proxy_port(mitm.port()).await;
     let status = Arc::new(status);
