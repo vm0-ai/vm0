@@ -1,6 +1,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { CONNECTOR_TYPES } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  CONNECTOR_FEATURE_FLAGS,
+  isFeatureEnabled,
+  type ConnectorType,
+} from "@vm0/core";
 import { listConnectors } from "../../lib/api";
 import { withErrorHandler } from "../../lib/command";
 
@@ -13,9 +18,15 @@ export const listCommand = new Command()
       const result = await listConnectors();
       const connectedMap = new Map(result.connectors.map((c) => [c.type, c]));
 
-      const allTypes = Object.keys(CONNECTOR_TYPES) as Array<
-        keyof typeof CONNECTOR_TYPES
-      >;
+      const allTypesRaw = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+      const allTypes: ConnectorType[] = [];
+      for (const type of allTypesRaw) {
+        const flag = CONNECTOR_FEATURE_FLAGS[type];
+        if (flag && !(await isFeatureEnabled(flag))) {
+          continue;
+        }
+        allTypes.push(type);
+      }
 
       // Calculate column widths
       const typeWidth = Math.max(4, ...allTypes.map((t) => t.length));

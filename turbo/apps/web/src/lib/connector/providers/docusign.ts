@@ -17,6 +17,11 @@ interface DocuSignTokenResult {
   userInfo: DocuSignUserInfo;
 }
 
+interface DocuSignRefreshResult {
+  accessToken: string;
+  refreshToken: string | null;
+}
+
 /**
  * Build DocuSign OAuth authorization URL.
  * Requests offline access to obtain a refresh token.
@@ -105,6 +110,64 @@ export async function exchangeDocuSignCode(
     expiresIn: data.expires_in,
     scopes: data.scope ? data.scope.split(" ") : [],
     userInfo,
+  };
+}
+
+/**
+ * Refresh a DocuSign access token using the refresh token.
+ * DocuSign uses Basic Auth for token requests.
+ * Returns new access token and new refresh token (both must be stored).
+ */
+export async function refreshDocuSignToken(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<DocuSignRefreshResult> {
+  const oauthConfig = getConnectorOAuthConfig("docusign");
+  if (!oauthConfig) {
+    throw new Error("DocuSign OAuth config not found");
+  }
+
+  const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
+    "base64",
+  );
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Basic ${basicAuth}`,
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`DocuSign token refresh failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+
+  if (!data.access_token) {
+    throw new Error("No access token in DocuSign refresh response");
+  }
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
   };
 }
 

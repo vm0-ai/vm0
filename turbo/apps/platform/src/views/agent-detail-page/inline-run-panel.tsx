@@ -12,19 +12,11 @@ import {
   inlineRunError$,
   inlineRunStatus$,
 } from "../../signals/agent-detail/inline-run.ts";
+import { isTerminalStatus } from "../../signals/agent-detail/polling.ts";
 import { FormattedEventsView } from "../logs-page/log-detail/components/formatted-events-view.tsx";
 
 interface InlineRunPanelProps {
   runId: string | null;
-}
-
-function isTerminal(status: string | null): boolean {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "timeout" ||
-    status === "cancelled"
-  );
 }
 
 function noop() {
@@ -39,12 +31,12 @@ export function InlineRunPanel({ runId }: InlineRunPanelProps) {
 
   const events = eventsLoadable.state === "hasData" ? eventsLoadable.data : [];
   const isLoading = eventsLoadable.state === "loading" && events.length === 0;
-  const terminal = isTerminal(runStatus);
+  const terminal = isTerminalStatus(runStatus);
 
   return (
-    <div className="rounded-lg border border-border overflow-hidden">
+    <div className="rounded-lg border border-border overflow-hidden flex flex-col h-full">
       {/* Header */}
-      <div className="border-b border-border bg-card">
+      <div className="border-b border-border bg-card shrink-0">
         <div className="flex items-center gap-2 px-4 py-3">
           <IconPlayerPlay
             size={16}
@@ -79,7 +71,7 @@ export function InlineRunPanel({ runId }: InlineRunPanelProps) {
       </div>
 
       {/* Content */}
-      <div className="bg-muted/50 p-4">
+      <div className="bg-muted/50 p-4 flex-1 overflow-y-auto min-h-0">
         {!runId ? (
           <div className="flex items-center justify-center py-8">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -116,7 +108,7 @@ export function InlineRunPanel({ runId }: InlineRunPanelProps) {
 }
 
 function StatusLabel({ status }: { status: string }) {
-  const colorClass = isTerminal(status)
+  const colorClass = isTerminalStatus(status)
     ? status === "completed"
       ? "text-green-600"
       : "text-destructive"

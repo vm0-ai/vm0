@@ -84,8 +84,6 @@ function formatAgentDetails(
     console.log(`    Image:    ${agent.image}`);
   }
 
-  formatListSection("Apps", agent.apps ?? []);
-
   if (agent.working_dir) {
     console.log(`    Working Dir: ${agent.working_dir}`);
   }

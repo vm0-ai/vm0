@@ -188,6 +188,118 @@ describe("Skill Upload on Compose Save", () => {
     expect(putsAfterSecond).toBe(putsAfterFirst);
   });
 
+  it("should accept bare skill name and normalize to full URL", async () => {
+    const agentName = `test-bare-skill-${Date.now()}`;
+    const config = {
+      version: "1.0",
+      agents: {
+        [agentName]: {
+          framework: "claude-code" as const,
+          skills: ["slack"],
+        },
+      },
+    };
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/composes",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: config }),
+      },
+    );
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+
+    // Verify the stored compose has the normalized URL
+    const data = await response.json();
+    const getRequest = createTestRequest(
+      `http://localhost:3000/api/agent/composes/${data.composeId}`,
+      { method: "GET" },
+    );
+
+    const getResponse = await GET(getRequest);
+    const composeData = await getResponse.json();
+
+    const agent = composeData.content.agents[agentName];
+    expect(agent.skills).toEqual([SKILL_URL]);
+  });
+
+  it("should accept plain repo URL and normalize to tree URL", async () => {
+    const agentName = `test-repo-url-skill-${Date.now()}`;
+
+    // Mock GitHub API for root-directory skill
+    server.use(
+      http.get(
+        "https://api.github.com/repos/acme/my-skill/contents/",
+        ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("ref") !== "main") {
+            return HttpResponse.json({ message: "Not Found" }, { status: 404 });
+          }
+          return HttpResponse.json([
+            {
+              name: "SKILL.md",
+              path: "SKILL.md",
+              type: "file",
+              download_url:
+                "https://raw.githubusercontent.com/acme/my-skill/main/SKILL.md",
+            },
+          ]);
+        },
+      ),
+      http.get(
+        "https://raw.githubusercontent.com/acme/my-skill/main/SKILL.md",
+        () => {
+          return HttpResponse.text(`---
+name: My Skill
+description: A root directory skill
+---
+# My Skill
+`);
+        },
+      ),
+    );
+
+    const config = {
+      version: "1.0",
+      agents: {
+        [agentName]: {
+          framework: "claude-code" as const,
+          skills: ["https://github.com/acme/my-skill"],
+        },
+      },
+    };
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/composes",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: config }),
+      },
+    );
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+
+    // Verify the stored compose has the normalized tree URL
+    const data = await response.json();
+    const getRequest = createTestRequest(
+      `http://localhost:3000/api/agent/composes/${data.composeId}`,
+      { method: "GET" },
+    );
+
+    const getResponse = await GET(getRequest);
+    const composeData = await getResponse.json();
+
+    const agent = composeData.content.agents[agentName];
+    expect(agent.skills).toEqual([
+      "https://github.com/acme/my-skill/tree/main",
+    ]);
+  });
+
   it("should merge skill-declared env vars into agent environment", async () => {
     const agentName = `test-skill-env-${Date.now()}`;
     const config = {

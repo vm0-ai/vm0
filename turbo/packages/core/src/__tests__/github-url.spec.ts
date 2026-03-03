@@ -3,6 +3,7 @@ import {
   parseGitHubTreeUrl,
   parseGitHubUrl,
   getSkillNameFromPath,
+  resolveSkillRef,
 } from "../github-url";
 
 describe("parseGitHubTreeUrl", () => {
@@ -61,9 +62,6 @@ describe("parseGitHubTreeUrl", () => {
     expect(parseGitHubTreeUrl("https://github.com/owner")).toBeNull();
     expect(parseGitHubTreeUrl("https://github.com/owner/repo")).toBeNull();
     expect(parseGitHubTreeUrl("https://github.com/owner/repo/tree")).toBeNull();
-    expect(
-      parseGitHubTreeUrl("https://github.com/owner/repo/tree/main"),
-    ).toBeNull();
   });
 
   it("preserves full path for unique identification", () => {
@@ -215,5 +213,65 @@ describe("getSkillNameFromPath", () => {
 
   it("returns path if no segments", () => {
     expect(getSkillNameFromPath("")).toBe("");
+  });
+});
+
+describe("resolveSkillRef", () => {
+  it("expands bare name to default registry URL", () => {
+    expect(resolveSkillRef("slack")).toBe(
+      "https://github.com/vm0-ai/vm0-skills/tree/main/slack",
+    );
+  });
+
+  it("expands another bare name", () => {
+    expect(resolveSkillRef("elevenlabs")).toBe(
+      "https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs",
+    );
+  });
+
+  it("trims whitespace from bare names", () => {
+    expect(resolveSkillRef("  slack  ")).toBe(
+      "https://github.com/vm0-ai/vm0-skills/tree/main/slack",
+    );
+  });
+
+  it("returns full tree URL as-is", () => {
+    const url = "https://github.com/acme/repo/tree/main/tool";
+    expect(resolveSkillRef(url)).toBe(url);
+  });
+
+  it("normalizes plain repo URL to tree URL with default branch", () => {
+    expect(resolveSkillRef("https://github.com/acme/my-skill")).toBe(
+      "https://github.com/acme/my-skill/tree/main",
+    );
+  });
+
+  it("keeps tree URL without path as-is", () => {
+    const url = "https://github.com/acme/repo/tree/develop";
+    expect(resolveSkillRef(url)).toBe(url);
+  });
+
+  it("throws on empty string", () => {
+    expect(() => resolveSkillRef("")).toThrow(
+      "Skill reference cannot be empty",
+    );
+  });
+
+  it("throws on whitespace-only string", () => {
+    expect(() => resolveSkillRef("   ")).toThrow(
+      "Skill reference cannot be empty",
+    );
+  });
+
+  it("throws on non-GitHub URL", () => {
+    expect(() => resolveSkillRef("https://example.com/foo")).toThrow(
+      "Invalid skill URL",
+    );
+  });
+
+  it("throws on GitHub blob URL", () => {
+    expect(() =>
+      resolveSkillRef("https://github.com/owner/repo/blob/main/file.ts"),
+    ).toThrow("Invalid skill URL");
   });
 });

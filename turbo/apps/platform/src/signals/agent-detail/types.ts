@@ -19,7 +19,6 @@ interface AgentDefinition {
   framework: string;
   instructions?: string;
   skills?: string[];
-  apps?: string[];
   environment?: Record<string, string>;
   experimental_runner?: { group: string };
   experimental_firewall?: {

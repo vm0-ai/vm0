@@ -132,7 +132,7 @@ describe("agents-list signals", () => {
           return HttpResponse.json({ variables: [] });
         }),
         http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({ connectors: [] });
+          return HttpResponse.json({ connectors: [], configuredTypes: [] });
         }),
       );
 
@@ -167,7 +167,7 @@ describe("agents-list signals", () => {
           return HttpResponse.json({ variables: [] });
         }),
         http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({ connectors: [] });
+          return HttpResponse.json({ connectors: [], configuredTypes: [] });
         }),
       );
 
@@ -215,6 +215,7 @@ describe("agents-list signals", () => {
                 updatedAt: "2024-01-01",
               },
             ],
+            configuredTypes: ["github"],
           });
         }),
       );
@@ -272,7 +273,7 @@ describe("agents-list signals", () => {
           });
         }),
         http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({ connectors: [] });
+          return HttpResponse.json({ connectors: [], configuredTypes: [] });
         }),
       );
 

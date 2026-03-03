@@ -1,15 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { useFeature, FeatureSwitchKey } from "../feature-switch";
+import { isFeatureEnabled, FeatureSwitchKey } from "../feature-switch";
 
 describe("feature-switch", () => {
-  describe("useFeature", () => {
+  describe("isFeatureEnabled", () => {
     it("returns a Promise", () => {
-      const result = useFeature(FeatureSwitchKey.Pricing);
+      const result = isFeatureEnabled(FeatureSwitchKey.Pricing);
       expect(result).toBeInstanceOf(Promise);
     });
 
     it("resolves to false for Pricing", async () => {
-      const result = await useFeature(FeatureSwitchKey.Pricing);
+      const result = await isFeatureEnabled(FeatureSwitchKey.Pricing);
       expect(result).toBe(false);
     });
   });

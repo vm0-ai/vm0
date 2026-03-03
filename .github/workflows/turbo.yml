@@ -11,7 +11,7 @@ env:
   # Sandbox VM parameters for runner build
   RUNNER_VCPU: 2
   RUNNER_MEMORY_MB: 2048
-  RUNNER_MAX_CONCURRENT: 4
+  RUNNER_MAX_CONCURRENT: 8
 
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'merge_group' && format('merge-queue-{0}', github.run_id) || 'staging') }}
@@ -37,6 +37,7 @@ jobs:
       docker-platform-changed: ${{ steps.detect-docker.outputs.docker-platform-changed }}
       migration-changed: ${{ steps.detect-migration.outputs.migration-changed }}
       crates-changed: ${{ steps.detect-crates.outputs.crates-changed }}
+      ci-changed: ${{ steps.detect-ci.outputs.ci-changed }}
       cli-e2e-parallel-matrix: ${{ steps.cli-e2e-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
@@ -187,6 +188,25 @@ jobs:
           else
             echo "No crates changes"
             echo "crates-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Detect CI workflow changes
+        id: detect-ci
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            BASE_REF="${{ github.event.merge_group.base_sha }}"
+          else
+            BASE_REF="HEAD^"
+          fi
+
+          if git diff --name-only "$BASE_REF" HEAD | grep -q "^\.github/workflows/turbo\.yml$"; then
+            echo "CI workflow changes detected"
+            echo "ci-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No CI workflow changes"
+            echo "ci-changed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Set job-ref
@@ -507,7 +527,8 @@ jobs:
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
         needs.prepare.outputs.platform-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true'
+        needs.prepare.outputs.crates-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true'
       )
     outputs:
       preview-url: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
@@ -769,6 +790,14 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
+      - name: Verify sign-in flow
+        run: cd e2e && npx playwright test sign-in.spec.ts
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
   # Run API E2E tests (lightweight, fast)
   api-e2e-test:
     runs-on: ubuntu-latest
@@ -824,7 +853,8 @@ jobs:
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true'
+        needs.prepare.outputs.crates-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true'
       )
     timeout-minutes: 5
     permissions:
@@ -898,7 +928,8 @@ jobs:
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true'
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true'
       )
     strategy:
       fail-fast: false
@@ -978,12 +1009,12 @@ jobs:
     needs: [prepare]
     timeout-minutes: 10
     if: |
-      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true'
+        needs.prepare.outputs.crates-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true'
       )
     outputs:
       host-count: ${{ steps.host.outputs.host-count }}
@@ -1170,12 +1201,12 @@ jobs:
     needs: [prepare, deploy-runner-prepare, deploy-web]
     timeout-minutes: 2
     if: |
-      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true'
+        needs.prepare.outputs.crates-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true'
       )
     steps:
       - name: Setup SSH
@@ -1288,12 +1319,12 @@ jobs:
     if: |
       always() &&
       (needs.cli-e2e-02-parallel.result == 'success' || needs.cli-e2e-02-parallel.result == 'skipped') &&
-      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true'
+        needs.prepare.outputs.crates-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true'
       )
     strategy:
       fail-fast: false
@@ -1373,7 +1404,6 @@ jobs:
     needs: [prepare, deploy-runner-prepare, deploy-runner-start, cli-e2e-03-runner]
     if: |
       always() &&
-      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
       needs.deploy-runner-prepare.outputs.bin-dir != ''
     steps:
@@ -1429,7 +1459,6 @@ jobs:
         run: |
           pnpm e2b:build
           pnpm e2b:codex:build
-          pnpm e2b:claude-code-github:build
           pnpm e2b:cli:build
 
       - name: Build summary

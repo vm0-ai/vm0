@@ -25,14 +25,6 @@ import {
   openDeleteVariableDialog$,
 } from "../../signals/settings-page/variables.ts";
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
 function truncateValue(value: string, maxLength = 60): string {
   return value.length > maxLength
     ? value.substring(0, maxLength) + "..."
@@ -61,14 +53,12 @@ function SecretRow({
         <div className="text-sm font-medium text-foreground font-mono">
           {secret.name}
         </div>
+        <div className="text-sm text-muted-foreground font-mono">••••••••</div>
         {secret.description && (
-          <div className="text-sm text-muted-foreground">
+          <div className="text-xs text-muted-foreground">
             {secret.description}
           </div>
         )}
-      </div>
-      <div className="text-xs text-muted-foreground shrink-0">
-        {formatDate(secret.updatedAt)}
       </div>
       <Popover>
         <PopoverTrigger asChild>
@@ -129,9 +119,6 @@ function VariableRow({
             {variable.description}
           </div>
         )}
-      </div>
-      <div className="text-xs text-muted-foreground shrink-0">
-        {formatDate(variable.updatedAt)}
       </div>
       <Popover>
         <PopoverTrigger asChild>

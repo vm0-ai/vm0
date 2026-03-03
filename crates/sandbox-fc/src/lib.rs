@@ -1,6 +1,7 @@
 mod api;
 mod command;
 mod config;
+pub mod control;
 mod factory;
 mod network;
 mod overlay;

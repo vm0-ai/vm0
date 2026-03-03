@@ -101,16 +101,14 @@ export const bootstrap$ = command(
     set(setRootSignal$, signal);
 
     set(setupLoggers$);
-    set(setupGlobalMethod$, signal).catch(() => {
-      // Global method setup runs in background, errors are non-fatal
-    });
 
     render();
 
-    await set(setupClerk$, signal);
-    signal.throwIfAborted();
-
-    await set(setupRoutes$, signal);
+    await Promise.all([
+      set(setupGlobalMethod$, signal),
+      set(setupClerk$, signal),
+      set(setupRoutes$, signal),
+    ]);
     signal.throwIfAborted();
   },
 );

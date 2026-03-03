@@ -257,6 +257,105 @@ jobs:
             --config ${RUNNER_DIR}/runner.yaml \
             'curl -sf --max-time 10 https://httpbin.org/get'"
 
+  runner-exec:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      - name: Test runner exec
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          ROOTFS_HASH: ${{ needs.runner-build.outputs.rootfs-hash }}
+          SNAPSHOT_HASH: ${{ needs.runner-build.outputs.snapshot-hash }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+          REMOTE="${METAL_USER}@${HOST}"
+          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+
+          echo "=== Generating config ==="
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+            --rootfs-hash ${ROOTFS_HASH} \
+            --snapshot-hash ${SNAPSHOT_HASH} \
+            --name ${JOB_REF}-exec \
+            --group vm0/exec-${JOB_REF} \
+            --runner-dirname ${JOB_REF}-exec \
+            --api-url https://localhost \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "=== Running exec test ==="
+          ssh $SSH_OPTS $REMOTE bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          BIN_DIR=$1; JOB_REF=$2
+          RUNNER_DIR="$HOME/.vm0-runner/runners/${JOB_REF}-exec"
+          SVC="${JOB_REF}-exec"
+          GROUP="vm0/exec-${JOB_REF}"
+
+          fail() { echo "FAIL: $1"; exit 1; }
+
+          cleanup() {
+            echo "--- Cleanup ---"
+            "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          # Start transient runner service
+          echo "--- Starting runner ---"
+          "$BIN_DIR/runner" service start --name "$SVC" \
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+
+          # Submit a long-running job in background (keeps sandbox alive during tests)
+          echo "--- Submitting long-running job ---"
+          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
+
+          # Wait for OUR runner's sandbox to have a control socket.
+          # Read the run ID from our runner's status.json (not from /run/vm0/sock/)
+          # to avoid matching sandboxes from parallel CI jobs (benchmark, upgrade).
+          echo "--- Waiting for sandbox control socket ---"
+          for i in $(seq 1 30); do
+            RUN_ID=$(grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
+              "$RUNNER_DIR/status.json" 2>/dev/null | head -1)
+            [ -n "$RUN_ID" ] && [ -S "/run/vm0/sock/$RUN_ID/control.sock" ] && break
+            RUN_ID=""
+            sleep 1
+          done
+          [ -z "$RUN_ID" ] && fail "control socket not found after 30s"
+          echo "Found sandbox: $RUN_ID"
+
+          # Test 1: basic exec
+          echo "--- Test: basic exec ---"
+          OUTPUT=$("$BIN_DIR/runner" exec "$RUN_ID" -- echo hello-from-exec)
+          echo "$OUTPUT" | grep -q "hello-from-exec" || fail "expected 'hello-from-exec', got: $OUTPUT"
+          echo "PASS: basic exec"
+
+          # Test 2: exit code propagation
+          echo "--- Test: exit code propagation ---"
+          "$BIN_DIR/runner" exec "$RUN_ID" -- false && fail "expected non-zero exit"
+          echo "PASS: exit code propagation"
+
+          # Test 3: prefix matching
+          echo "--- Test: prefix matching ---"
+          PREFIX=$(echo "$RUN_ID" | cut -c1-8)
+          OUTPUT=$("$BIN_DIR/runner" exec "$PREFIX" -- hostname)
+          [ -n "$OUTPUT" ] || fail "prefix match returned empty output"
+          echo "PASS: prefix matching"
+
+          # Stop transient service (kills sandbox, submit terminates naturally)
+          "$BIN_DIR/runner" service stop --name "$SVC"
+          trap - EXIT
+
+          echo "=== Exec test passed ==="
+          REMOTE_SCRIPT
+
   runner-upgrade-local:
     runs-on: ubuntu-latest
     needs: [runner-build]
@@ -373,7 +472,7 @@ jobs:
 
   runner-cleanup:
     runs-on: ubuntu-latest
-    needs: [runner-build, runner-benchmark, runner-upgrade-local]
+    needs: [runner-build, runner-benchmark, runner-exec, runner-upgrade-local]
     if: ${{ always() && needs.runner-build.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v6

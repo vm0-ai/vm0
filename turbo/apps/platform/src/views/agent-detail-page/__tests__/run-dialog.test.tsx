@@ -308,6 +308,60 @@ describe("run dialog", () => {
     expect(body.name).toBe("default");
   });
 
+  it("should show error in inline run panel when run fails with error", async () => {
+    mockAgentDetailAPI();
+
+    server.use(
+      http.post("/api/agent/runs", () => {
+        return HttpResponse.json({ runId: "run_err_1" }, { status: 201 });
+      }),
+      http.get("/api/agent/runs/:runId/telemetry/agent", () => {
+        return HttpResponse.json({ events: [], hasMore: false });
+      }),
+      http.get("/api/platform/logs/:runId", () => {
+        return HttpResponse.json({
+          id: "run_err_1",
+          status: "failed",
+          error: "Sandbox crashed: out of memory",
+          createdAt: "2024-01-01T00:00:00Z",
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Run/ }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Run this agent" }),
+      ).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByPlaceholderText(
+      "Describe your task in natural language.",
+    );
+    fireEvent.change(textarea, { target: { value: "Do something" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    // The inline run panel should display the error from the failed run
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("Sandbox crashed: out of memory"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("should close dialog on Cancel", async () => {
     mockAgentDetailAPI();
 

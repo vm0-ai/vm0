@@ -3,6 +3,7 @@ import { connectorsMainContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
 import { listConnectors } from "../../../src/lib/connector/connector-service";
+import { getConfiguredConnectorTypes } from "../../../src/lib/connector/provider-registry";
 
 const router = tsr.router(connectorsMainContract, {
   /**
@@ -17,11 +18,15 @@ const router = tsr.router(connectorsMainContract, {
     }
 
     const connectorList = await listConnectors(userId);
+    const configuredTypes = getConfiguredConnectorTypes(
+      globalThis.services.env,
+    );
 
     return {
       status: 200 as const,
       body: {
         connectors: connectorList,
+        configuredTypes,
       },
     };
   },

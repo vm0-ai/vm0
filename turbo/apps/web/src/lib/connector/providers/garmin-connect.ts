@@ -17,6 +17,11 @@ interface GarminConnectTokenResult {
   userInfo: GarminConnectUserInfo;
 }
 
+interface GarminConnectRefreshResult {
+  accessToken: string;
+  refreshToken: string | null;
+}
+
 /**
  * Derive a PKCE code_verifier deterministically from the OAuth state.
  * Uses the state as seed material for a reproducible verifier.
@@ -139,6 +144,61 @@ export async function exchangeGarminConnectCode(
     expiresIn: data.expires_in,
     scopes: [],
     userInfo,
+  };
+}
+
+/**
+ * Refresh a Garmin Connect access token using the refresh token.
+ * PKCE is not required for refresh — only client credentials and refresh token.
+ * Garmin rotates refresh tokens — both must be stored.
+ */
+export async function refreshGarminConnectToken(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<GarminConnectRefreshResult> {
+  const oauthConfig = getConnectorOAuthConfig("garmin-connect");
+  if (!oauthConfig) {
+    throw new Error("Garmin Connect OAuth config not found");
+  }
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Garmin Connect token refresh failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+
+  if (!data.access_token) {
+    throw new Error("No access token in Garmin Connect refresh response");
+  }
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
   };
 }
 

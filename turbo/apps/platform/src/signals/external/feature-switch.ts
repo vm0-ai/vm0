@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { logger } from "../log";
-import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
+import { FeatureSwitchKey, getAllFeatureStates } from "@vm0/core";
 import { localStorageSignals } from "./local-storage";
 import { throwIfAbort } from "../utils";
 import { user$ } from "../auth";
@@ -18,10 +18,7 @@ export const featureSwitch$ = computed(async (get) => {
   const user = await get(user$);
   const userId = user?.id;
 
-  const result: Partial<Record<FeatureSwitchKey, boolean>> = {};
-  for (const key of Object.values(FeatureSwitchKey)) {
-    result[key] = Boolean(await isFeatureEnabled(key, userId));
-  }
+  const result = await getAllFeatureStates(userId);
 
   const override = get(get$);
   if (!override) {

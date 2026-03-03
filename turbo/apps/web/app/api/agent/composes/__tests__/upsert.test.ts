@@ -90,8 +90,8 @@ describe("Agent Compose Upsert Behavior", () => {
       expect(agent.working_dir).toBe("/home/user/workspace");
     });
 
-    it("should resolve github app-specific image", async () => {
-      const agentName = `test-github-app-${Date.now()}`;
+    it("should silently ignore apps field in config", async () => {
+      const agentName = `test-apps-ignored-${Date.now()}`;
       const config = {
         version: "1.0",
         agents: {
@@ -125,9 +125,9 @@ describe("Agent Compose Upsert Behavior", () => {
       const getResponse = await GET(getRequest);
       const composeData = await getResponse.json();
 
-      // Verify server resolved github-specific image
+      // apps field is silently ignored — always resolves to base image
       const agent = composeData.content.agents[agentName];
-      expect(agent.image).toMatch(/^vm0\/claude-code-github:/);
+      expect(agent.image).toMatch(/^vm0\/claude-code:/);
     });
 
     it("should ignore deprecated image and working_dir fields from input", async () => {

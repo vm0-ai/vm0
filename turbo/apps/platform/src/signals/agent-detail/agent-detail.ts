@@ -184,6 +184,42 @@ export const fetchAgentInstructions$ = command(async ({ get, set }) => {
   }
 });
 
+/**
+ * Silently refresh instructions in the background.
+ * Only updates state when content has actually changed — no loading flash.
+ */
+export const refreshAgentInstructions$ = command(async ({ get, set }) => {
+  const detail = get(agentDetail$);
+  if (!detail) {
+    return;
+  }
+
+  try {
+    const fetchFn = get(fetch$);
+    const response = await fetchFn(
+      `/api/agent/composes/${detail.id}/instructions`,
+    );
+
+    if (!response.ok) {
+      return;
+    }
+
+    const data = (await response.json()) as AgentInstructions;
+    const current = get(agentInstructions$);
+
+    // Only update if content actually changed
+    if (
+      data.content !== current?.content ||
+      data.filename !== current?.filename
+    ) {
+      set(agentInstructionsState$, { instructions: data, loading: false });
+    }
+  } catch (error) {
+    throwIfAbort(error);
+    L.error("Failed to refresh instructions:", error);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Instructions editing — owner inline editing state
 // ---------------------------------------------------------------------------

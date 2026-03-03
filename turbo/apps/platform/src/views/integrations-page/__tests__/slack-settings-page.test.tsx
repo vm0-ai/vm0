@@ -100,7 +100,7 @@ describe("slack settings page", () => {
 
     // Should show a link to secrets or variables settings
     expect(
-      screen.getByRole("button", { name: /secrets or variables/i }),
+      screen.getByRole("link", { name: /secrets or variables/i }),
     ).toBeInTheDocument();
   });
 
@@ -193,17 +193,17 @@ describe("settings integrations tab", () => {
     expect(screen.getByText("VM0 in Slack")).toBeInTheDocument();
     expect(screen.getByText("Use your VM0 agent in Slack")).toBeInTheDocument();
 
-    // Should show a Settings button inside the Slack card (not the nav "Settings")
+    // Should show a Settings link inside the Slack card (not the nav "Settings")
     // The Slack card now uses rounded-xl instead of rounded-lg
     const slackCard = screen
       .getByText("Use your VM0 agent in Slack")
       .closest("div.rounded-xl") as HTMLElement;
     expect(
-      within(slackCard).getByRole("button", { name: /settings/i }),
+      within(slackCard).getByRole("link", { name: /settings/i }),
     ).toBeInTheDocument();
   });
 
-  it("shows Connect link when user is not linked to Slack", async () => {
+  it("shows Install link when user is not linked to Slack", async () => {
     server.use(
       http.get("/api/integrations/slack", () => {
         return HttpResponse.json(
@@ -221,7 +221,7 @@ describe("settings integrations tab", () => {
     // Should show the Slack card
     expect(screen.getByText("VM0 in Slack")).toBeInTheDocument();
 
-    // Should show Connect link (not Settings button within the card)
-    expect(screen.getByText("Connect")).toBeInTheDocument();
+    // Should show Install link (not Settings button within the card)
+    expect(screen.getByText("Install")).toBeInTheDocument();
   });
 });

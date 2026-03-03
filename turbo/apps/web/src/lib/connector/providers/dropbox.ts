@@ -18,6 +18,11 @@ interface DropboxTokenResult {
   userInfo: DropboxUserInfo;
 }
 
+interface DropboxRefreshResult {
+  accessToken: string;
+  refreshToken: string | null;
+}
+
 /**
  * Build Dropbox OAuth authorization URL.
  * Requests offline access to obtain a refresh token.
@@ -103,6 +108,60 @@ export async function exchangeDropboxCode(
     expiresIn: data.expires_in,
     scopes: data.scope ? data.scope.split(" ") : [],
     userInfo,
+  };
+}
+
+/**
+ * Refresh a Dropbox access token using the refresh token.
+ * Returns new access token (Dropbox does not rotate refresh tokens).
+ */
+export async function refreshDropboxToken(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<DropboxRefreshResult> {
+  const oauthConfig = getConnectorOAuthConfig("dropbox");
+  if (!oauthConfig) {
+    throw new Error("Dropbox OAuth config not found");
+  }
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Dropbox token refresh failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+
+  if (!data.access_token) {
+    throw new Error("No access token in Dropbox refresh response");
+  }
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
   };
 }
 

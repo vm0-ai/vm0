@@ -35,7 +35,7 @@ interface UploadSkillContext {
  * - If a storage with a HEAD version already exists, skip entirely.
  * - If the computed version already exists in S3, skip the upload.
  *
- * @param skillUrl - GitHub tree URL (e.g. https://github.com/owner/repo/tree/main/path)
+ * @param skillUrl - Resolved GitHub tree URL (already normalized by caller)
  * @param ctx - User/scope context for DB records
  */
 export async function uploadSkillFromGitHub(

@@ -17,6 +17,11 @@ interface StravaTokenResult {
   userInfo: StravaUserInfo;
 }
 
+interface StravaRefreshResult {
+  accessToken: string;
+  refreshToken: string | null;
+}
+
 /**
  * Build Strava OAuth authorization URL.
  * Requests offline access via approval_prompt=force to obtain a refresh token.
@@ -119,6 +124,60 @@ export async function exchangeStravaCode(
     expiresIn: data.expires_in,
     scopes: [],
     userInfo,
+  };
+}
+
+/**
+ * Refresh a Strava access token using the refresh token.
+ * Strava rotates refresh tokens — both must be stored.
+ */
+export async function refreshStravaToken(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<StravaRefreshResult> {
+  const oauthConfig = getConnectorOAuthConfig("strava");
+  if (!oauthConfig) {
+    throw new Error("Strava OAuth config not found");
+  }
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Strava token refresh failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+
+  if (!data.access_token) {
+    throw new Error("No access token in Strava refresh response");
+  }
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
   };
 }
 

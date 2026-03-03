@@ -1,5 +1,22 @@
 # Changelog
 
+## [8.30.0](https://github.com/vm0-ai/vm0/compare/core-v8.29.0...core-v8.30.0) (2026-03-03)
+
+
+### Features
+
+* **github:** add oauth installation flow for github app ([#3466](https://github.com/vm0-ai/vm0/issues/3466)) ([5e07a31](https://github.com/vm0-ai/vm0/commit/5e07a3154da03b64d6e5553ee0cecc05ebc43a7a))
+* support bare skill names in vm0.yaml with default registry ([#3465](https://github.com/vm0-ai/vm0/issues/3465)) ([353d295](https://github.com/vm0-ai/vm0/commit/353d29501a569620118203b71dc1b1a99f891b3a))
+
+## [8.29.0](https://github.com/vm0-ai/vm0/compare/core-v8.28.0...core-v8.29.0) (2026-03-03)
+
+
+### Features
+
+* **connectors:** filter connector types by configured oauth credentials ([#3477](https://github.com/vm0-ai/vm0/issues/3477)) ([09319ec](https://github.com/vm0-ai/vm0/commit/09319ec9081e38d476b6f0e4b9c1e106ba0df8cb))
+* **core:** add user-targeted feature switch with enabled user ids ([#3451](https://github.com/vm0-ai/vm0/issues/3451)) ([9e1c37a](https://github.com/vm0-ai/vm0/commit/9e1c37ac3a66882f29db39d0d1b11f165bc12f42))
+* **web:** update connector oauth scopes and add deel pkce support ([#3459](https://github.com/vm0-ai/vm0/issues/3459)) ([3c9926a](https://github.com/vm0-ai/vm0/commit/3c9926ac223b3458c9ffc38600e0c19cc552b044))
+
 ## [8.28.0](https://github.com/vm0-ai/vm0/compare/core-v8.27.0...core-v8.28.0) (2026-03-02)
 
 

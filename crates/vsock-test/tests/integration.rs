@@ -7,7 +7,7 @@
 )]
 
 use std::io;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -94,12 +94,6 @@ impl Deref for Harness {
     }
 }
 
-impl DerefMut for Harness {
-    fn deref_mut(&mut self) -> &mut VsockHost {
-        self.host.as_mut().unwrap()
-    }
-}
-
 impl Drop for Harness {
     fn drop(&mut self) {
         // Drop host first to close the connection, then join guest thread.
@@ -115,7 +109,7 @@ impl Drop for Harness {
 
 #[tokio::test]
 async fn test_exec() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let result = h
         .exec("echo hello", 5000, &[], false)
@@ -130,7 +124,7 @@ async fn test_exec() {
 
 #[tokio::test]
 async fn test_exec_stderr() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let result = h
         .exec("echo error >&2 && exit 1", 5000, &[], false)
@@ -144,7 +138,7 @@ async fn test_exec_stderr() {
 
 #[tokio::test]
 async fn test_exec_multiline() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let result = h
         .exec("printf 'line1\\nline2\\nline3\\n'", 5000, &[], false)
@@ -158,7 +152,7 @@ async fn test_exec_multiline() {
 
 #[tokio::test]
 async fn test_exec_pipe_chain() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let result = h
         .exec("echo 'hello world' | tr 'a-z' 'A-Z'", 5000, &[], false)
@@ -172,7 +166,7 @@ async fn test_exec_pipe_chain() {
 
 #[tokio::test]
 async fn test_exec_env_vars() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let result = h
         .exec("export TEST_VAR=hello; echo $TEST_VAR", 5000, &[], false)
@@ -186,7 +180,7 @@ async fn test_exec_env_vars() {
 
 #[tokio::test]
 async fn test_exec_timeout() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let result = h
         .exec("sleep 10", 100, &[], false)
@@ -200,7 +194,7 @@ async fn test_exec_timeout() {
 
 #[tokio::test]
 async fn test_exec_sequential() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     for i in 0..5 {
         let result = h
@@ -215,7 +209,7 @@ async fn test_exec_sequential() {
 
 #[tokio::test]
 async fn test_exec_sudo() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     // In debug mode, sudo=true uses `sudo sh -c`, which may fail if sudo is
     // not installed. We only verify the flag is correctly sent through the
@@ -235,7 +229,7 @@ async fn test_exec_sudo() {
 
 #[tokio::test]
 async fn test_write_file() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let file_path = h.dir.join("testfile.txt");
     let file_path_str = file_path.to_string_lossy().to_string();
@@ -258,7 +252,7 @@ async fn test_write_file() {
 
 #[tokio::test]
 async fn test_write_file_special_characters() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let file_path = h.dir.join("special.txt");
     let file_path_str = file_path.to_string_lossy().to_string();
@@ -275,7 +269,7 @@ async fn test_write_file_special_characters() {
 
 #[tokio::test]
 async fn test_write_file_creates_parent_dirs() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let file_path = h.dir.join("a/b/c/nested.txt");
     let file_path_str = file_path.to_string_lossy().to_string();
@@ -294,7 +288,7 @@ async fn test_write_file_creates_parent_dirs() {
 
 #[tokio::test]
 async fn test_spawn_watch() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let pid = h
         .spawn_watch("echo done", 5000, &[], false)
@@ -315,7 +309,7 @@ async fn test_spawn_watch() {
 
 #[tokio::test]
 async fn test_spawn_watch_exit_code() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let pid = h
         .spawn_watch("exit 42", 5000, &[], false)
@@ -333,7 +327,7 @@ async fn test_spawn_watch_exit_code() {
 
 #[tokio::test]
 async fn test_spawn_watch_stderr() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let pid = h
         .spawn_watch("echo error >&2 && exit 1", 5000, &[], false)
@@ -352,7 +346,7 @@ async fn test_spawn_watch_stderr() {
 
 #[tokio::test]
 async fn test_spawn_watch_both_stdout_stderr() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let pid = h
         .spawn_watch("echo out && echo err >&2 && exit 2", 5000, &[], false)
@@ -372,7 +366,7 @@ async fn test_spawn_watch_both_stdout_stderr() {
 
 #[tokio::test]
 async fn test_spawn_watch_no_output() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let pid = h
         .spawn_watch("true", 5000, &[], false)
@@ -392,7 +386,7 @@ async fn test_spawn_watch_no_output() {
 
 #[tokio::test]
 async fn test_spawn_watch_concurrent() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     // Spawn two processes — second finishes first
     let pid1 = h
@@ -423,9 +417,58 @@ async fn test_spawn_watch_concurrent() {
     h.finish();
 }
 
+/// Core concurrency test: exec works while wait_for_exit is pending.
+///
+/// This is the exact production scenario that motivated the VsockHost refactor —
+/// runner calls wait_for_exit (blocks for hours) and a separate task needs to
+/// exec into the same VM.
+#[tokio::test]
+async fn test_exec_while_waiting_for_exit() {
+    let h = Harness::new().await;
+
+    // Spawn a long-running process. Use `exec` to replace the shell so the
+    // PID we get is the actual sleep process (same pattern as sigterm/sigkill tests).
+    let pid = h
+        .spawn_watch("exec sleep 60", 0, &[], false)
+        .await
+        .expect("spawn_watch failed");
+
+    // Run wait_for_exit and exec concurrently on the same task via join!.
+    // The exec branch runs a command and then kills the long-running process,
+    // which unblocks wait_for_exit.
+    let (wait_result, _) = tokio::join!(h.wait_for_exit(pid, Duration::from_secs(10)), async {
+        // This exec must NOT block on the pending wait_for_exit.
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            h.exec("echo alive", 5000, &[], false),
+        )
+        .await
+        .expect("exec timed out — wait_for_exit is blocking")
+        .expect("exec failed");
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout, b"alive\n");
+
+        // Kill the process group so wait_for_exit resolves.
+        h.exec(
+            &format!("kill -15 -{pid} 2>/dev/null || kill -15 {pid}"),
+            5000,
+            &[],
+            false,
+        )
+        .await
+        .expect("kill failed");
+    });
+
+    let event = wait_result.expect("wait_for_exit failed");
+    assert_eq!(event.pid, pid);
+    assert_ne!(event.exit_code, 0); // killed
+
+    h.finish();
+}
+
 #[tokio::test]
 async fn test_spawn_watch_timeout() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let pid = h
         .spawn_watch("sleep 10", 100, &[], false)
@@ -444,7 +487,7 @@ async fn test_spawn_watch_timeout() {
 
 #[tokio::test]
 async fn test_spawn_watch_cached_exit() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let pid = h
         .spawn_watch("echo cached", 5000, &[], false)
@@ -470,7 +513,7 @@ async fn test_spawn_watch_cached_exit() {
 
 #[tokio::test]
 async fn test_spawn_watch_multiline() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let pid = h
         .spawn_watch("printf 'line1\\nline2\\nline3\\n'", 5000, &[], false)
@@ -489,7 +532,7 @@ async fn test_spawn_watch_multiline() {
 
 #[tokio::test]
 async fn test_spawn_watch_large_output() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let pid = h
         .spawn_watch(
@@ -513,7 +556,7 @@ async fn test_spawn_watch_large_output() {
 
 #[tokio::test]
 async fn test_spawn_watch_delayed_output() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let pid = h
         .spawn_watch("sleep 0.2 && echo delayed", 5000, &[], false)
@@ -532,7 +575,7 @@ async fn test_spawn_watch_delayed_output() {
 
 #[tokio::test]
 async fn test_spawn_watch_sigterm() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     // Use `exec` to replace shell so the PID we get is the actual sleep process
     let pid = h
@@ -561,7 +604,7 @@ async fn test_spawn_watch_sigterm() {
 
 #[tokio::test]
 async fn test_spawn_watch_sigkill() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let pid = h
         .spawn_watch("exec sleep 60", 0, &[], false)
@@ -588,7 +631,7 @@ async fn test_spawn_watch_sigkill() {
 
 #[tokio::test]
 async fn test_spawn_watch_rapid_multiple() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let mut pids = Vec::new();
     for i in 0..5 {
@@ -617,7 +660,7 @@ async fn test_spawn_watch_rapid_multiple() {
 
 #[tokio::test]
 async fn test_spawn_watch_nonexistent_command() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let pid = h
         .spawn_watch("nonexistent_command_12345 2>&1", 5000, &[], false)
@@ -642,7 +685,7 @@ async fn test_spawn_watch_nonexistent_command() {
 
 #[tokio::test]
 async fn test_spawn_watch_unicode() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let pid = h
         .spawn_watch(
@@ -669,7 +712,7 @@ async fn test_spawn_watch_unicode() {
 
 #[tokio::test]
 async fn test_spawn_watch_interleaved_output() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let pid = h
         .spawn_watch(
@@ -698,7 +741,7 @@ async fn test_spawn_watch_interleaved_output() {
 
 #[tokio::test]
 async fn test_write_file_large() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let file_path = h.dir.join("large.txt");
     let file_path_str = file_path.to_string_lossy().to_string();
@@ -719,7 +762,7 @@ async fn test_write_file_large() {
 
 #[tokio::test]
 async fn test_shutdown() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let acked = h.shutdown(Duration::from_secs(5)).await;
     assert!(acked);
@@ -729,7 +772,7 @@ async fn test_shutdown() {
 
 #[tokio::test]
 async fn test_shutdown_after_exec() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     // Run a command first, then shutdown
     let result = h
@@ -748,7 +791,7 @@ async fn test_shutdown_after_exec() {
 
 #[tokio::test]
 async fn test_exec_with_env() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let result = h
         .exec("echo $MY_VAR", 5000, &[("MY_VAR", "hello_env")], false)
@@ -762,7 +805,7 @@ async fn test_exec_with_env() {
 
 #[tokio::test]
 async fn test_exec_with_multiple_env() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let result = h
         .exec(
@@ -781,7 +824,7 @@ async fn test_exec_with_multiple_env() {
 
 #[tokio::test]
 async fn test_exec_with_env_special_chars() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let result = h
         .exec("echo $VAL", 5000, &[("VAL", "it's a \"test\"")], false)
@@ -795,7 +838,7 @@ async fn test_exec_with_env_special_chars() {
 
 #[tokio::test]
 async fn test_spawn_watch_with_env() {
-    let mut h = Harness::new().await;
+    let h = Harness::new().await;
 
     let pid = h
         .spawn_watch(

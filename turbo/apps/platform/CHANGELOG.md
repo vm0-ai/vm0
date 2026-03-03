@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.77.0](https://github.com/vm0-ai/vm0/compare/platform-v0.76.0...platform-v0.77.0) (2026-03-03)
+
+
+### Features
+
+* **github:** add oauth installation flow for github app ([#3466](https://github.com/vm0-ai/vm0/issues/3466)) ([5e07a31](https://github.com/vm0-ai/vm0/commit/5e07a3154da03b64d6e5553ee0cecc05ebc43a7a))
+* **platform:** add chat panel for direct agent conversations ([#3208](https://github.com/vm0-ai/vm0/issues/3208)) ([36fc521](https://github.com/vm0-ai/vm0/commit/36fc521f2f2474f5bab2912deb2ff88fb987e891))
+* **platform:** add notification preferences tab to settings page ([#3497](https://github.com/vm0-ai/vm0/issues/3497)) ([322eca3](https://github.com/vm0-ai/vm0/commit/322eca3965a0683097cb2f578c7ec82a7613e38d)), closes [#3474](https://github.com/vm0-ai/vm0/issues/3474)
+* **platform:** support cmd+click to open in new tab for all navigation ([#3476](https://github.com/vm0-ai/vm0/issues/3476)) ([148e1be](https://github.com/vm0-ai/vm0/commit/148e1bee4d3828e92261f978c51226d2f007a82a)), closes [#3471](https://github.com/vm0-ai/vm0/issues/3471)
+
+
+### Bug Fixes
+
+* **platform:** rename integration connect buttons to install ([#3504](https://github.com/vm0-ai/vm0/issues/3504)) ([678697a](https://github.com/vm0-ai/vm0/commit/678697a67e51f0a6651cde2d1a771822c9431ad3))
+
+
+### Performance Improvements
+
+* **platform:** parallelize bootstrap setup operations ([#3485](https://github.com/vm0-ai/vm0/issues/3485)) ([1af5790](https://github.com/vm0-ai/vm0/commit/1af5790155b5e4a4fed95725b4fe5620848173fa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.30.0
+
+## [0.76.0](https://github.com/vm0-ai/vm0/compare/platform-v0.75.1...platform-v0.76.0) (2026-03-03)
+
+
+### Features
+
+* **connectors:** filter connector types by configured oauth credentials ([#3477](https://github.com/vm0-ai/vm0/issues/3477)) ([09319ec](https://github.com/vm0-ai/vm0/commit/09319ec9081e38d476b6f0e4b9c1e106ba0df8cb))
+* **core:** add user-targeted feature switch with enabled user ids ([#3451](https://github.com/vm0-ai/vm0/issues/3451)) ([9e1c37a](https://github.com/vm0-ai/vm0/commit/9e1c37ac3a66882f29db39d0d1b11f165bc12f42))
+* **web:** update connector oauth scopes and add deel pkce support ([#3459](https://github.com/vm0-ai/vm0/issues/3459)) ([3c9926a](https://github.com/vm0-ai/vm0/commit/3c9926ac223b3458c9ffc38600e0c19cc552b044))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.29.0
+
 ## [0.75.1](https://github.com/vm0-ai/vm0/compare/platform-v0.75.0...platform-v0.75.1) (2026-03-02)
 
 

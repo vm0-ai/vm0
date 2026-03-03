@@ -17,6 +17,11 @@ interface FigmaTokenResult {
   userInfo: FigmaUserInfo;
 }
 
+interface FigmaRefreshResult {
+  accessToken: string;
+  refreshToken: string | null;
+}
+
 /**
  * Build Figma OAuth authorization URL.
  */
@@ -103,6 +108,64 @@ export async function exchangeFigmaCode(
     expiresIn: data.expires_in,
     scopes: ["file_content:read"],
     userInfo,
+  };
+}
+
+/**
+ * Refresh a Figma access token using the refresh token.
+ * Figma uses Basic Auth for token requests.
+ * Returns new access token and new refresh token (both must be stored).
+ */
+export async function refreshFigmaToken(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<FigmaRefreshResult> {
+  const oauthConfig = getConnectorOAuthConfig("figma");
+  if (!oauthConfig) {
+    throw new Error("Figma OAuth config not found");
+  }
+
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
+    "base64",
+  );
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Figma token refresh failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+
+  if (!data.access_token) {
+    throw new Error("No access token in Figma refresh response");
+  }
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
   };
 }
 

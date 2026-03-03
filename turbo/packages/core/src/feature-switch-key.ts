@@ -22,4 +22,5 @@ export enum FeatureSwitchKey {
   MercuryConnector = "mercuryConnector",
   StravaConnector = "stravaConnector",
   GarminConnectConnector = "garminConnectConnector",
+  GitHubIntegration = "githubIntegration",
 }
