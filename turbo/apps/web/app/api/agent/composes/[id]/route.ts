@@ -3,18 +3,27 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { composesByIdContract } from "@vm0/core";
+import { composesByIdContract, getInstructionsStorageName } from "@vm0/core";
 import { and, eq, inArray } from "drizzle-orm";
+import { after } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
+import { storages } from "../../../../../src/db/schema/storage";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../../src/lib/agent/permission-service";
+import {
+  listS3Objects,
+  deleteS3Objects,
+} from "../../../../../src/lib/s3/s3-client";
+import { logger } from "../../../../../src/lib/logger";
 import type { AgentComposeYaml } from "../../../../../src/types/agent-compose";
+
+const log = logger("api:agent:composes:delete");
 
 const router = tsr.router(composesByIdContract, {
   getById: async ({ params, headers }) => {
@@ -148,6 +157,45 @@ const router = tsr.router(composesByIdContract, {
     await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.id, params.id));
+
+    // 5. Clean up agent-instructions volume (DB sync, S3 async)
+    const storageName = getInstructionsStorageName(compose.name);
+    const [storage] = await globalThis.services.db
+      .select({ id: storages.id, s3Prefix: storages.s3Prefix })
+      .from(storages)
+      .where(
+        and(
+          eq(storages.scopeId, compose.scopeId),
+          eq(storages.name, storageName),
+          eq(storages.type, "volume"),
+        ),
+      )
+      .limit(1);
+
+    if (storage) {
+      // Delete DB record (CASCADE removes storage_versions)
+      await globalThis.services.db
+        .delete(storages)
+        .where(eq(storages.id, storage.id));
+
+      // Async S3 cleanup after response is sent
+      const s3Prefix = storage.s3Prefix;
+      after(async () => {
+        const bucketName = globalThis.services.env.R2_USER_STORAGES_BUCKET_NAME;
+        const objects = await listS3Objects(bucketName, s3Prefix);
+        if (objects.length > 0) {
+          await deleteS3Objects(
+            bucketName,
+            objects.map((o) => o.key),
+          );
+        }
+        log.info("Cleaned up instructions storage S3 objects", {
+          storageName,
+          s3Prefix,
+          objectCount: objects.length,
+        });
+      });
+    }
 
     return { status: 204 as const, body: undefined };
   },
