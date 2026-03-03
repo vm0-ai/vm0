@@ -90,6 +90,12 @@ const router = tsr.router(sessionsByIdContract, {
         conversationId: session.conversationId,
         artifactName: session.artifactName,
         secretNames,
+        chatMessages: (session.chatMessages ?? []) as Array<{
+          role: "user" | "assistant";
+          content: string;
+          runId?: string;
+          createdAt: string;
+        }>,
         createdAt: session.createdAt.toISOString(),
         updatedAt: session.updatedAt.toISOString(),
       },

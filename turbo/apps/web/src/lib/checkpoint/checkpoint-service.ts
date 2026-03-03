@@ -4,7 +4,11 @@ import { agentComposeVersions } from "../../db/schema/agent-compose";
 import { conversations } from "../../db/schema/conversation";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { notFound } from "../errors";
-import { findOrCreateAgentSession } from "../agent-session";
+import {
+  findOrCreateAgentSession,
+  createAgentSession,
+  updateAgentSession,
+} from "../agent-session";
 import { storeSessionHistory } from "../session-history";
 import { logger } from "../logger";
 import type {
@@ -180,21 +184,42 @@ export async function createCheckpoint(
 
   log.debug(`Checkpoint created successfully: ${checkpoint.id}`);
 
-  // Find or create agent session
-  // Sessions are lightweight compose ↔ conversation associations
-  // artifactSnapshot may be undefined for runs without artifact
+  // Resolve agent session
+  // For session continuations, update the existing session's conversation reference.
+  // For new chat runs (no artifact, no session), create a new session to support
+  // multiple chat sessions per agent.
+  // For artifact sessions, use find-or-create to maintain 1:1 mapping.
   const artifactSnapshot = request.artifactSnapshot as
     | ArtifactSnapshot
     | undefined;
   const volumeSnapshot = request.volumeVersionsSnapshot as
     | VolumeVersionsSnapshot
     | undefined;
-  const { session: agentSession } = await findOrCreateAgentSession(
-    run.userId,
-    version.composeId,
-    artifactSnapshot?.artifactName, // May be undefined for runs without artifact
-    conversation.id,
-  );
+
+  let agentSession;
+  if (run.continuedFromSessionId) {
+    // Session continuation: update existing session's conversation reference
+    agentSession = await updateAgentSession(
+      run.continuedFromSessionId,
+      conversation.id,
+    );
+  } else if (!artifactSnapshot?.artifactName) {
+    // New chat (no artifact, no session): always create a new session
+    agentSession = await createAgentSession({
+      userId: run.userId,
+      agentComposeId: version.composeId,
+      conversationId: conversation.id,
+    });
+  } else {
+    // Artifact session: find-or-create maintains 1:1 mapping
+    const { session } = await findOrCreateAgentSession(
+      run.userId,
+      version.composeId,
+      artifactSnapshot.artifactName,
+      conversation.id,
+    );
+    agentSession = session;
+  }
 
   log.debug(`Agent session updated/created: ${agentSession.id}`);
 
