@@ -14,6 +14,8 @@ import {
   createTestCallback,
   createTestAgentSession,
   insertTestGitHubInstallation,
+  insertTestGitHubIssueSession,
+  findTestGitHubIssueSession,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { computeHmacSignature } from "../../../../../../../src/lib/callback/hmac";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
@@ -64,13 +66,30 @@ function createCallbackRequest(
   });
 }
 
+interface CapturedComment {
+  owner: string;
+  repo: string;
+  issueNumber: string;
+  body: string;
+}
+
 /**
  * Set up MSW handlers for GitHub API (installation token + issue comment).
+ * Returns a `capturedComments` array that records every comment POST.
  */
 function setupGitHubApiMocks(installationId: string) {
+  const capturedComments: CapturedComment[] = [];
+
   const commentMock = http.post(
     `https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments`,
-    () => {
+    async ({ params, request }) => {
+      const { body } = (await request.json()) as { body: string };
+      capturedComments.push({
+        owner: params["owner"] as string,
+        repo: params["repo"] as string,
+        issueNumber: params["issueNumber"] as string,
+        body,
+      });
       return HttpResponse.json({ id: 42 });
     },
   );
@@ -86,7 +105,7 @@ function setupGitHubApiMocks(installationId: string) {
   );
 
   server.use(commentMock, tokenMock);
-  return { commentMock, tokenMock };
+  return { commentMock, tokenMock, capturedComments };
 }
 
 /**
@@ -103,7 +122,7 @@ async function givenGitHubCallbackSetup(overrides?: {
   const { runId } = await createTestRun(composeId, "Test GitHub prompt");
   const installation = await insertTestGitHubInstallation(userId, composeId);
 
-  setupGitHubApiMocks(installation.installationId);
+  const { capturedComments } = setupGitHubApiMocks(installation.installationId);
 
   const payload: CallbackPayload = {
     installationId: installation.id,
@@ -119,7 +138,15 @@ async function givenGitHubCallbackSetup(overrides?: {
     payload: payload as unknown as Record<string, unknown>,
   });
 
-  return { userId, composeId, runId, installation, payload, secret };
+  return {
+    userId,
+    composeId,
+    runId,
+    installation,
+    payload,
+    secret,
+    capturedComments,
+  };
 }
 
 describe("POST /api/internal/callbacks/github/issues", () => {
@@ -245,7 +272,8 @@ describe("POST /api/internal/callbacks/github/issues", () => {
 
   describe("Successful Callback", () => {
     it("should post comment to GitHub issue on completed run", async () => {
-      const { runId, payload, secret } = await givenGitHubCallbackSetup();
+      const { runId, payload, secret, capturedComments } =
+        await givenGitHubCallbackSetup();
 
       const request = createCallbackRequest(
         { runId, status: "completed", payload },
@@ -256,10 +284,19 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
+
+      // Verify the comment was posted to the correct repo and issue
+      expect(capturedComments).toHaveLength(1);
+      expect(capturedComments[0]!.owner).toBe("test-org");
+      expect(capturedComments[0]!.repo).toBe("test-repo");
+      expect(capturedComments[0]!.issueNumber).toBe("42");
+      // Verify the comment body includes the VM0 attribution footer
+      expect(capturedComments[0]!.body).toContain("Powered by");
     });
 
     it("should post error comment on failed run", async () => {
-      const { runId, payload, secret } = await givenGitHubCallbackSetup();
+      const { runId, payload, secret, capturedComments } =
+        await givenGitHubCallbackSetup();
 
       const request = createCallbackRequest(
         {
@@ -275,6 +312,15 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
+
+      // Verify the error comment was posted with the error message
+      expect(capturedComments).toHaveLength(1);
+      expect(capturedComments[0]!.body).toContain("Error");
+      expect(capturedComments[0]!.body).toContain("Agent crashed unexpectedly");
+      // Verify the comment targets the correct repo and issue
+      expect(capturedComments[0]!.owner).toBe("test-org");
+      expect(capturedComments[0]!.repo).toBe("test-repo");
+      expect(capturedComments[0]!.issueNumber).toBe("42");
     });
 
     it("should return 404 when GitHub installation is missing", async () => {
@@ -316,7 +362,7 @@ describe("POST /api/internal/callbacks/github/issues", () => {
         await givenGitHubCallbackSetup();
 
       // Create an agent session so findNewSessionId can find it
-      await createTestAgentSession(userId, composeId);
+      const session = await createTestAgentSession(userId, composeId);
 
       const request = createCallbackRequest(
         { runId, status: "completed", payload },
@@ -324,15 +370,38 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       );
       const response = await POST(request);
 
-      // The callback should succeed regardless of session creation
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
+
+      // Verify a github_issue_sessions record was created in the database
+      const issueSession = await findTestGitHubIssueSession(
+        payload.installationId,
+        payload.repo,
+        payload.issueNumber,
+      );
+
+      expect(issueSession).not.toBeNull();
+      expect(issueSession!.agentSessionId).toBe(session.id);
+      expect(issueSession!.userId).toBe(userId);
+      expect(issueSession!.lastCommentId).toBe("42");
     });
 
-    it("should handle existing session on completed run", async () => {
-      const { runId, payload, secret } = await givenGitHubCallbackSetup({
-        existingSessionId: "existing-session-id",
+    it("should update lastCommentId for existing session on completed run", async () => {
+      const { userId, composeId, runId, installation, payload, secret } =
+        await givenGitHubCallbackSetup({
+          existingSessionId: "existing-session-id",
+        });
+
+      // Pre-insert a github_issue_sessions record to simulate an existing session
+      const session = await createTestAgentSession(userId, composeId);
+      await insertTestGitHubIssueSession({
+        userId,
+        installationId: installation.id,
+        repo: payload.repo,
+        issueNumber: payload.issueNumber,
+        agentSessionId: session.id,
+        lastCommentId: "old-comment-id",
       });
 
       const request = createCallbackRequest(
@@ -348,6 +417,16 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
+
+      // Verify the lastCommentId was updated in the database
+      const issueSession = await findTestGitHubIssueSession(
+        payload.installationId,
+        payload.repo,
+        payload.issueNumber,
+      );
+
+      expect(issueSession).not.toBeNull();
+      expect(issueSession!.lastCommentId).toBe("42");
     });
   });
 });

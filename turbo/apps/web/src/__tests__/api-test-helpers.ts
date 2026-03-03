@@ -21,6 +21,7 @@ import { usageDaily } from "../db/schema/usage-daily";
 import { slackComposeRequests } from "../db/schema/slack-compose-request";
 import { slackInstallations } from "../db/schema/slack-installation";
 import { githubInstallations } from "../db/schema/github-installation";
+import { githubIssueSessions } from "../db/schema/github-issue-session";
 import { slackThreadSessions } from "../db/schema/slack-thread-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
@@ -2119,4 +2120,57 @@ export async function findTestGitHubInstallationById(id: string) {
     .where(eq(githubInstallations.id, id))
     .limit(1);
   return row;
+}
+
+/**
+ * Insert a GitHub issue session record directly in the database.
+ *
+ * Direct DB insert is required because issue sessions are created by the
+ * callback handler, and we need to pre-populate them for update path tests.
+ */
+export async function insertTestGitHubIssueSession(params: {
+  userId: string;
+  installationId: string;
+  repo: string;
+  issueNumber: number;
+  agentSessionId: string;
+  lastCommentId?: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(githubIssueSessions)
+    .values({
+      userId: params.userId,
+      installationId: params.installationId,
+      repo: params.repo,
+      issueNumber: params.issueNumber,
+      agentSessionId: params.agentSessionId,
+      lastCommentId: params.lastCommentId,
+    })
+    .returning({ id: githubIssueSessions.id });
+  return row!;
+}
+
+/**
+ * Find a GitHub issue session by installation, repo, and issue number.
+ *
+ * Direct DB read is required because there is no API endpoint to query
+ * issue sessions. Used to verify callback handler creates/updates records.
+ */
+export async function findTestGitHubIssueSession(
+  installationId: string,
+  repo: string,
+  issueNumber: number,
+) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(githubIssueSessions)
+    .where(
+      and(
+        eq(githubIssueSessions.installationId, installationId),
+        eq(githubIssueSessions.repo, repo),
+        eq(githubIssueSessions.issueNumber, issueNumber),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 }
