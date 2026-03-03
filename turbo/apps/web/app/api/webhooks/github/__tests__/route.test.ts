@@ -6,6 +6,13 @@ import { POST } from "../route";
 import * as runModule from "../../../../../src/lib/run";
 import { reloadEnv } from "../../../../../src/env";
 
+// Note: createRun is spied on (rather than exercised with real DB + executor)
+// because this test file focuses on the webhook routing layer: signature
+// verification, event routing, trigger conditions, and callback context
+// construction.  Real createRun integration is covered by its own dedicated
+// tests in src/lib/run/__tests__/create-run.test.ts.  The same boundary is
+// used in the Slack webhook tests (slack/handlers/__tests__/run-agent.test.ts).
+
 // Mock Next.js after() to capture callbacks for controlled execution
 const afterPromises: Promise<unknown>[] = [];
 vi.mock("next/server", async (importOriginal) => {
@@ -445,7 +452,7 @@ describe("POST /api/webhooks/github", () => {
   });
 
   describe("Installation Not Found", () => {
-    it("should handle gracefully when installation does not exist", async () => {
+    it("should handle missing installation without crashing", async () => {
       // Use an installation ID that doesn't exist in the database
       const request = createGitHubWebhookRequest(
         "issues",
@@ -457,9 +464,9 @@ describe("POST /api/webhooks/github", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
+      // The error thrown in dispatchAgentRun is caught by the .catch() in route.ts
       await flushAfterCallbacks();
 
-      // Should not crash, just log and return
       expect(createRunSpy).not.toHaveBeenCalled();
     });
   });

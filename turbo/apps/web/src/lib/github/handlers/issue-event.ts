@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
 import { githubInstallations } from "../../../db/schema/github-installation";
 import { githubIssueSessions } from "../../../db/schema/github-issue-session";
@@ -14,58 +15,65 @@ const log = logger("github:issue-event");
 
 const VM0_AGENT_LABEL = "vm0-agent";
 
+// ─── GitHub Webhook Payload Schemas ────────────────────────────────
+
+const gitHubUserSchema = z.object({
+  id: z.number(),
+  login: z.string(),
+  type: z.string(),
+});
+
+const gitHubLabelSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+});
+
+const gitHubIssueSchema = z.object({
+  number: z.number(),
+  title: z.string(),
+  body: z.string().nullable(),
+  labels: z.array(gitHubLabelSchema),
+  user: gitHubUserSchema,
+});
+
+const gitHubCommentSchema = z.object({
+  id: z.number(),
+  body: z.string(),
+  user: gitHubUserSchema,
+});
+
+const gitHubRepositorySchema = z.object({
+  full_name: z.string(),
+});
+
+const gitHubInstallationSchema = z.object({
+  id: z.number(),
+});
+
+export const gitHubIssuesEventSchema = z.object({
+  action: z.string(),
+  issue: gitHubIssueSchema,
+  label: gitHubLabelSchema.optional(),
+  repository: gitHubRepositorySchema,
+  installation: gitHubInstallationSchema,
+  sender: gitHubUserSchema,
+});
+
+export const gitHubIssueCommentEventSchema = z.object({
+  action: z.string(),
+  issue: gitHubIssueSchema,
+  comment: gitHubCommentSchema,
+  repository: gitHubRepositorySchema,
+  installation: gitHubInstallationSchema,
+  sender: gitHubUserSchema,
+});
+
 // ─── GitHub Webhook Payload Types ──────────────────────────────────
 
-interface GitHubUser {
-  id: number;
-  login: string;
-  type: string; // "User" | "Bot" | "Organization"
-}
-
-interface GitHubLabel {
-  id: number;
-  name: string;
-}
-
-interface GitHubIssue {
-  number: number;
-  title: string;
-  body: string | null;
-  labels: GitHubLabel[];
-  user: GitHubUser;
-}
-
-interface GitHubComment {
-  id: number;
-  body: string;
-  user: GitHubUser;
-}
-
-interface GitHubRepository {
-  full_name: string; // "owner/repo"
-}
-
-interface GitHubInstallation {
-  id: number;
-}
-
-export interface GitHubIssuesEvent {
-  action: string;
-  issue: GitHubIssue;
-  label?: GitHubLabel;
-  repository: GitHubRepository;
-  installation: GitHubInstallation;
-  sender: GitHubUser;
-}
-
-export interface GitHubIssueCommentEvent {
-  action: string;
-  issue: GitHubIssue;
-  comment: GitHubComment;
-  repository: GitHubRepository;
-  installation: GitHubInstallation;
-  sender: GitHubUser;
-}
+type GitHubIssuesEvent = z.infer<typeof gitHubIssuesEventSchema>;
+type GitHubIssueCommentEvent = z.infer<typeof gitHubIssueCommentEventSchema>;
+type GitHubIssue = z.infer<typeof gitHubIssueSchema>;
+type GitHubComment = z.infer<typeof gitHubCommentSchema>;
 
 // ─── Callback Context ──────────────────────────────────────────────
 
@@ -208,10 +216,9 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
     .limit(1);
 
   if (!installation) {
-    log.error("GitHub installation not found", {
-      installationId: ghInstallationId,
-    });
-    return;
+    throw new Error(
+      `GitHub installation not found: installationId=${ghInstallationId}`,
+    );
   }
 
   // 2. Resolve agent compose and version
@@ -222,10 +229,9 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
     .limit(1);
 
   if (!compose) {
-    log.error("Agent compose not found", {
-      composeId: installation.defaultComposeId,
-    });
-    return;
+    throw new Error(
+      `Agent compose not found: composeId=${installation.defaultComposeId}`,
+    );
   }
 
   let versionId = compose.headVersionId;
@@ -238,8 +244,7 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
       .limit(1);
 
     if (!latestVersion) {
-      log.error("Agent compose has no versions", { composeId: compose.id });
-      return;
+      throw new Error(`Agent compose has no versions: composeId=${compose.id}`);
     }
     versionId = latestVersion.id;
   }

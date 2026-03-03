@@ -8,10 +8,8 @@ import {
 import {
   handleIssuesEvent,
   handleIssueCommentEvent,
-} from "../../../../src/lib/github/handlers/issue-event";
-import type {
-  GitHubIssuesEvent,
-  GitHubIssueCommentEvent,
+  gitHubIssuesEventSchema,
+  gitHubIssueCommentEventSchema,
 } from "../../../../src/lib/github/handlers/issue-event";
 import { logger } from "../../../../src/lib/logger";
 
@@ -80,13 +78,19 @@ export async function POST(request: Request) {
 
   // Route to event-specific handlers
   if (headers.event === "issues") {
+    const parsed = gitHubIssuesEventSchema.safeParse(payload);
+    if (!parsed.success) {
+      log.error("Invalid issues event payload", { error: parsed.error });
+      return NextResponse.json(
+        { error: "Invalid payload structure" },
+        { status: 400 },
+      );
+    }
+
     initServices();
 
     after(
-      handleIssuesEvent(
-        payload as unknown as GitHubIssuesEvent,
-        GITHUB_APP_SLUG,
-      ).catch((error) => {
+      handleIssuesEvent(parsed.data, GITHUB_APP_SLUG).catch((error) => {
         log.error("Error handling issues event", { error });
       }),
     );
@@ -95,13 +99,21 @@ export async function POST(request: Request) {
   }
 
   if (headers.event === "issue_comment") {
+    const parsed = gitHubIssueCommentEventSchema.safeParse(payload);
+    if (!parsed.success) {
+      log.error("Invalid issue_comment event payload", {
+        error: parsed.error,
+      });
+      return NextResponse.json(
+        { error: "Invalid payload structure" },
+        { status: 400 },
+      );
+    }
+
     initServices();
 
     after(
-      handleIssueCommentEvent(
-        payload as unknown as GitHubIssueCommentEvent,
-        GITHUB_APP_SLUG,
-      ).catch((error) => {
+      handleIssueCommentEvent(parsed.data, GITHUB_APP_SLUG).catch((error) => {
         log.error("Error handling issue_comment event", { error });
       }),
     );
