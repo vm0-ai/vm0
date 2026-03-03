@@ -553,6 +553,36 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  x: {
+    label: "X",
+    helpText:
+      "Connect your X (Twitter) account to read tweets, timelines, and search",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with X to grant read access.",
+        secrets: {
+          X_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          X_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      X_ACCESS_TOKEN: "$secrets.X_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://twitter.com/i/oauth2/authorize",
+      tokenUrl: "https://api.twitter.com/2/oauth2/token",
+      scopes: ["tweet.read", "users.read", "follows.read", "offline.access"],
+    } as ConnectorOAuthConfig,
+  },
   "garmin-connect": {
     label: "Garmin Connect",
     helpText:
@@ -605,6 +635,7 @@ export const connectorTypeSchema = z.enum([
   "mercury",
   "strava",
   "garmin-connect",
+  "x",
 ]);
 
 /**

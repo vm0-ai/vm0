@@ -17,6 +17,7 @@ import { mercuryHandler } from "./providers/mercury-handler";
 import { notionHandler } from "./providers/notion-handler";
 import { slackHandler } from "./providers/slack-handler";
 import { stravaHandler } from "./providers/strava-handler";
+import { xHandler } from "./providers/x-handler";
 
 export type { OAuthTokenResult };
 
@@ -40,6 +41,7 @@ export const PROVIDER_HANDLERS: Record<
   notion: notionHandler,
   slack: slackHandler,
   strava: stravaHandler,
+  x: xHandler,
 };
 
 /**
