@@ -2,6 +2,7 @@ import { type ProviderHandler } from "../provider-types";
 import {
   buildGoogleAuthorizationUrl,
   exchangeGoogleOAuthCode,
+  refreshGoogleToken,
 } from "./google-oauth";
 
 export const googleSheetsHandler: ProviderHandler = {
@@ -31,4 +32,6 @@ export const googleSheetsHandler: ProviderHandler = {
   getClientSecret: (e) => e.GOOGLE_OAUTH_CLIENT_SECRET,
   getSecretName: () => "GOOGLE_SHEETS_ACCESS_TOKEN",
   getRefreshSecretName: () => "GOOGLE_SHEETS_REFRESH_TOKEN",
+  refreshToken: (clientId, clientSecret, refreshToken) =>
+    refreshGoogleToken("google-sheets", clientId, clientSecret, refreshToken),
 };

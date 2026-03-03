@@ -3,6 +3,7 @@ import {
   buildGarminConnectAuthorizationUrl,
   exchangeGarminConnectCode,
   getGarminConnectSecretName,
+  refreshGarminConnectToken,
 } from "./garmin-connect";
 
 export const garminConnectHandler: ProviderHandler = {
@@ -35,4 +36,5 @@ export const garminConnectHandler: ProviderHandler = {
   getClientSecret: (e) => e.GARMIN_CONNECT_OAUTH_CLIENT_SECRET,
   getSecretName: getGarminConnectSecretName,
   getRefreshSecretName: () => "GARMIN_CONNECT_REFRESH_TOKEN",
+  refreshToken: refreshGarminConnectToken,
 };

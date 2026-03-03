@@ -3,6 +3,7 @@ import {
   buildLinearAuthorizationUrl,
   exchangeLinearCode,
   getLinearSecretName,
+  refreshLinearToken,
 } from "./linear";
 
 export const linearHandler: ProviderHandler = {
@@ -30,4 +31,5 @@ export const linearHandler: ProviderHandler = {
   getClientSecret: (e) => e.LINEAR_OAUTH_CLIENT_SECRET,
   getSecretName: getLinearSecretName,
   getRefreshSecretName: () => "LINEAR_REFRESH_TOKEN",
+  refreshToken: refreshLinearToken,
 };

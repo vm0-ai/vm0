@@ -3,6 +3,7 @@ import {
   buildNotionAuthorizationUrl,
   exchangeNotionCode,
   getNotionSecretName,
+  refreshNotionToken,
 } from "./notion";
 
 export const notionHandler: ProviderHandler = {
@@ -26,4 +27,5 @@ export const notionHandler: ProviderHandler = {
   getClientSecret: (e) => e.NOTION_OAUTH_CLIENT_SECRET,
   getSecretName: getNotionSecretName,
   getRefreshSecretName: () => "NOTION_REFRESH_TOKEN",
+  refreshToken: refreshNotionToken,
 };

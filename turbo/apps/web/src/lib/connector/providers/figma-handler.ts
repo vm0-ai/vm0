@@ -3,6 +3,7 @@ import {
   buildFigmaAuthorizationUrl,
   exchangeFigmaCode,
   getFigmaSecretName,
+  refreshFigmaToken,
 } from "./figma";
 
 export const figmaHandler: ProviderHandler = {
@@ -30,4 +31,5 @@ export const figmaHandler: ProviderHandler = {
   getClientSecret: (e) => e.FIGMA_OAUTH_CLIENT_SECRET,
   getSecretName: getFigmaSecretName,
   getRefreshSecretName: () => "FIGMA_REFRESH_TOKEN",
+  refreshToken: refreshFigmaToken,
 };
