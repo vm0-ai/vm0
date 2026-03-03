@@ -58,24 +58,6 @@ function mockConnectorsAPI(connectors?: unknown[]) {
     http.get("/api/connectors", () => {
       return HttpResponse.json({
         connectors: connectors ?? [],
-        configuredTypes: [
-          "github",
-          "gmail",
-          "google-sheets",
-          "google-docs",
-          "google-drive",
-          "notion",
-          "computer",
-          "slack",
-          "deel",
-          "docusign",
-          "dropbox",
-          "linear",
-          "figma",
-          "mercury",
-          "strava",
-          "garmin-connect",
-        ],
       });
     }),
   );

@@ -22,7 +22,7 @@ import {
 } from "@vm0/ui/components/ui/table";
 import { AppShell } from "../layout/app-shell.tsx";
 import { AgentsListSkeleton } from "./agents-list-skeleton.tsx";
-import { useGet, useLastResolved, useResolved } from "ccstate-react";
+import { useGet, useLastResolved, useResolved, useSet } from "ccstate-react";
 import {
   agentsList$,
   agentsLoading$,
@@ -34,7 +34,7 @@ import {
   setManageAgentDialogOpen$,
 } from "../../signals/agents-page/agents-list.ts";
 import { defaultModelProvider$ } from "../../signals/external/model-providers.ts";
-import { useNavigationHandler } from "../router/link.tsx";
+import { navigateInReact$ } from "../../signals/route.ts";
 import { getUILabel } from "../settings-page/provider-ui-config.ts";
 import { Bed, Settings, Clock, AlertTriangle } from "lucide-react";
 import { IconDotsVertical, IconTerminal } from "@tabler/icons-react";
@@ -248,9 +248,12 @@ function AgentRow({
   modelProviderLabel: string;
   onOpenManageDialog: (agentName: string) => void;
 }) {
-  const { onClick: handleRowClick } = useNavigationHandler("/agents/:name", {
-    pathParams: { name: agent.name },
-  });
+  const navigate = useSet(navigateInReact$);
+
+  const handleRowClick = () =>
+    navigate("/agents/:name", {
+      pathParams: { name: agent.name },
+    });
 
   return (
     <>

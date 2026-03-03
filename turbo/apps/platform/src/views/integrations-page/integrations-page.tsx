@@ -1,4 +1,4 @@
-import { useGet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import {
@@ -11,7 +11,7 @@ import {
   githubIntegrationNotLinked$,
   githubInstallUrl$,
 } from "../../signals/integrations-page/github-integration.ts";
-import { Link } from "../router/link.tsx";
+import { navigateInReact$ } from "../../signals/route.ts";
 import githubIcon from "../settings-page/icons/github.svg";
 
 function IntegrationCardSkeleton() {
@@ -33,6 +33,7 @@ export function SlackIntegrationCard() {
   const loading = useGet(slackIntegrationLoading$);
   const notLinked = useGet(slackIntegrationNotLinked$);
   const installUrl = useGet(slackInstallUrl$);
+  const navigate = useSet(navigateInReact$);
 
   if (loading) {
     return <IntegrationCardSkeleton />;
@@ -54,13 +55,17 @@ export function SlackIntegrationCard() {
           installUrl ? (
             <Button variant="outline" size="sm" asChild>
               <a href={installUrl} target="_blank" rel="noopener noreferrer">
-                Install
+                Connect
               </a>
             </Button>
           ) : null
         ) : (
-          <Button variant="outline" size="sm" asChild>
-            <Link pathname="/settings/slack">Settings</Link>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/settings/slack")}
+          >
+            Settings
           </Button>
         )}
       </div>
@@ -72,6 +77,7 @@ export function GitHubIntegrationCard() {
   const loading = useGet(githubIntegrationLoading$);
   const notLinked = useGet(githubIntegrationNotLinked$);
   const installUrl = useGet(githubInstallUrl$);
+  const navigate = useSet(navigateInReact$);
 
   if (loading) {
     return <IntegrationCardSkeleton />;
@@ -98,8 +104,12 @@ export function GitHubIntegrationCard() {
             </Button>
           ) : null
         ) : (
-          <Button variant="outline" size="sm" asChild>
-            <Link pathname="/settings/github">Settings</Link>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/settings/github")}
+          >
+            Settings
           </Button>
         )}
       </div>

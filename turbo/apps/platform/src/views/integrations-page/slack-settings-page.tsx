@@ -35,7 +35,6 @@ import {
 import { agentsList$ } from "../../signals/agents-page/agents-list.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
 import { AppShell } from "../layout/app-shell.tsx";
-import { Link } from "../router/link.tsx";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -60,6 +59,7 @@ function MissingEnvBanner({
   missingSecrets: string[];
   missingVars: string[];
 }) {
+  const navigate = useSet(navigateInReact$);
   const envVars = getAllConnectorEnvVars();
 
   const hasMissingConnectors = missingSecrets.some((s) => envVars.has(s));
@@ -70,6 +70,15 @@ function MissingEnvBanner({
     return null;
   }
 
+  const navigateToConnections = (tab: "connectors" | "secrets") => {
+    if (agentName) {
+      navigate("/agents/:name/connections", {
+        pathParams: { name: agentName },
+        searchParams: new URLSearchParams({ tab }),
+      });
+    }
+  };
+
   return (
     <div className="flex items-center gap-3 rounded-lg border border-amber-500 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950/30">
       <IconAlertTriangle
@@ -79,41 +88,23 @@ function MissingEnvBanner({
       />
       <p className="text-sm">
         {"Looks like this agent is missing some "}
-        {hasMissingConnectors &&
-          (agentName ? (
-            <Link
-              pathname="/agents/:name/connections"
-              options={{
-                pathParams: { name: agentName },
-                searchParams: new URLSearchParams({ tab: "connectors" }),
-              }}
-              className="font-medium text-amber-600 hover:underline dark:text-amber-500"
-            >
-              connectors
-            </Link>
-          ) : (
-            <span className="font-medium text-amber-600 dark:text-amber-500">
-              connectors
-            </span>
-          ))}
+        {hasMissingConnectors && (
+          <button
+            className="font-medium text-amber-600 hover:underline dark:text-amber-500"
+            onClick={() => navigateToConnections("connectors")}
+          >
+            connectors
+          </button>
+        )}
         {hasMissingConnectors && hasMissingSecretsOrVars && ", "}
-        {hasMissingSecretsOrVars &&
-          (agentName ? (
-            <Link
-              pathname="/agents/:name/connections"
-              options={{
-                pathParams: { name: agentName },
-                searchParams: new URLSearchParams({ tab: "secrets" }),
-              }}
-              className="font-medium text-amber-600 hover:underline dark:text-amber-500"
-            >
-              secrets or variables
-            </Link>
-          ) : (
-            <span className="font-medium text-amber-600 dark:text-amber-500">
-              secrets or variables
-            </span>
-          ))}
+        {hasMissingSecretsOrVars && (
+          <button
+            className="font-medium text-amber-600 hover:underline dark:text-amber-500"
+            onClick={() => navigateToConnections("secrets")}
+          >
+            secrets or variables
+          </button>
+        )}
         {". Add them now so it can run without stopping."}
       </p>
     </div>
@@ -135,15 +126,37 @@ function DefaultAgentSection({
   agentOptions: { name: string }[];
   onAgentChange: (name: string) => void;
 }) {
+  const navigate = useSet(navigateInReact$);
+
   return (
     <div className="flex flex-col gap-4">
       <h3 className="text-base font-medium">Default agent</h3>
       <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
         <div className="flex flex-1 flex-col gap-1">
           {isAdmin ? (
-            <p className="text-sm font-medium">
-              Default agent you would like to use in Slack
-            </p>
+            <>
+              <p className="text-sm font-medium">
+                Default agent you would like to use in Slack
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {
+                  "If you want to manage your agent's model provider, secrets, or connectors, go to "
+                }
+                <button
+                  className="text-primary hover:underline"
+                  onClick={() =>
+                    navigate("/settings", {
+                      searchParams: new URLSearchParams({
+                        tab: "providers",
+                      }),
+                    })
+                  }
+                >
+                  Settings
+                </button>
+                .
+              </p>
+            </>
           ) : (
             <>
               <p className="text-sm font-medium">
@@ -231,7 +244,6 @@ export function SlackSettingsPage() {
       (async () => {
         await disconnect();
         closeConfirm();
-        // Programmatic post-action redirect — not a user-clickable link
         navigate("/settings", {
           searchParams: new URLSearchParams({ tab: "integrations" }),
         });
