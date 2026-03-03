@@ -87,6 +87,11 @@ pub async fn load(path: &Path) -> RunnerResult<RunnerConfig> {
         config.resolve_relative_paths(config_dir);
     }
     validate_paths(&config).await?;
+    if config.sandbox.vcpu == 0 || config.sandbox.memory_mb == 0 {
+        return Err(RunnerError::Config(
+            "sandbox.vcpu and sandbox.memory_mb must be non-zero".into(),
+        ));
+    }
     Ok(config)
 }
 
