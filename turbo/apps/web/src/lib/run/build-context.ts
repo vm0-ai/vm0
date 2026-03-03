@@ -33,6 +33,7 @@ import { getVariableValues } from "../variable/variable-service";
 import { getDefaultModelProvider } from "../model-provider/model-provider-service";
 import { connectors } from "../../db/schema/connector";
 import { refreshNotionToken } from "../connector/providers/notion";
+import { refreshLinearToken } from "../connector/providers/linear";
 import { upsertConnectorSecret } from "../connector/connector-service";
 
 const log = logger("run:build-context");
@@ -376,6 +377,71 @@ async function refreshNotionAccessToken(
 }
 
 /**
+ * Refresh Linear access token using the stored refresh token.
+ * Updates both LINEAR_ACCESS_TOKEN and LINEAR_REFRESH_TOKEN in the database
+ * and returns the new access token for immediate use.
+ *
+ * Returns null if refresh token is unavailable or refresh fails
+ * (caller should fall back to using the existing access token).
+ */
+async function refreshLinearAccessToken(
+  userId: string,
+  connectorSecrets: Record<string, string>,
+): Promise<string | null> {
+  const currentRefreshToken = connectorSecrets["LINEAR_REFRESH_TOKEN"];
+  if (!currentRefreshToken) {
+    log.debug("No Linear refresh token available, skipping token refresh");
+    return null;
+  }
+
+  const env = globalThis.services.env;
+  const clientId = env.LINEAR_OAUTH_CLIENT_ID;
+  const clientSecret = env.LINEAR_OAUTH_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    log.debug(
+      "Linear OAuth credentials not configured, skipping token refresh",
+    );
+    return null;
+  }
+
+  try {
+    const result = await refreshLinearToken(
+      clientId,
+      clientSecret,
+      currentRefreshToken,
+    );
+
+    // Persist new tokens to database
+    await upsertConnectorSecret(
+      userId,
+      "LINEAR_ACCESS_TOKEN",
+      result.accessToken,
+    );
+    if (result.refreshToken) {
+      await upsertConnectorSecret(
+        userId,
+        "LINEAR_REFRESH_TOKEN",
+        result.refreshToken,
+      );
+    }
+
+    // Update in-memory secrets map so subsequent mapping uses fresh token
+    connectorSecrets["LINEAR_ACCESS_TOKEN"] = result.accessToken;
+    if (result.refreshToken) {
+      connectorSecrets["LINEAR_REFRESH_TOKEN"] = result.refreshToken;
+    }
+
+    log.debug("Linear access token refreshed successfully");
+    return result.accessToken;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    log.warn(`Linear token refresh failed: ${message}`);
+    return null;
+  }
+}
+
+/**
  * Result of connector credential resolution
  */
 interface ConnectorCredentialResult {
@@ -426,9 +492,11 @@ async function resolveConnectorCredentials(
       continue;
     }
 
-    // Refresh Notion token before resolving environment mapping
+    // Refresh tokens before resolving environment mapping
     if (connectorType.data === "notion") {
       await refreshNotionAccessToken(userId, connectorSecrets);
+    } else if (connectorType.data === "linear") {
+      await refreshLinearAccessToken(userId, connectorSecrets);
     }
 
     const mapping = getConnectorEnvironmentMapping(connectorType.data);
