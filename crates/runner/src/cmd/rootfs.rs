@@ -36,13 +36,41 @@ fn bundled_guest(_name: &str) -> Option<&'static [u8]> {
 
 #[derive(Args)]
 pub struct RootfsArgs {
-    #[arg(long)]
+    #[cfg_attr(
+        bundled_guests,
+        arg(long, help = "Path to guest-agent binary [default: bundled]")
+    )]
+    #[cfg_attr(
+        not(bundled_guests),
+        arg(long, help = "Path to guest-agent binary (required)")
+    )]
     guest_agent: Option<PathBuf>,
-    #[arg(long)]
+    #[cfg_attr(
+        bundled_guests,
+        arg(long, help = "Path to guest-download binary [default: bundled]")
+    )]
+    #[cfg_attr(
+        not(bundled_guests),
+        arg(long, help = "Path to guest-download binary (required)")
+    )]
     guest_download: Option<PathBuf>,
-    #[arg(long)]
+    #[cfg_attr(
+        bundled_guests,
+        arg(long, help = "Path to guest-init binary [default: bundled]")
+    )]
+    #[cfg_attr(
+        not(bundled_guests),
+        arg(long, help = "Path to guest-init binary (required)")
+    )]
     guest_init: Option<PathBuf>,
-    #[arg(long)]
+    #[cfg_attr(
+        bundled_guests,
+        arg(long, help = "Path to guest-mock-claude binary [default: bundled]")
+    )]
+    #[cfg_attr(
+        not(bundled_guests),
+        arg(long, help = "Path to guest-mock-claude binary (required)")
+    )]
     guest_mock_claude: Option<PathBuf>,
     /// Compute and print the input hash without building
     #[arg(long)]
