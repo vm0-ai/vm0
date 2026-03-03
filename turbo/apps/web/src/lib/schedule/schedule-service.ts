@@ -1,12 +1,17 @@
 import { eq, and, lte, inArray, desc } from "drizzle-orm";
 import { Cron } from "croner";
-import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
+import {
+  extractVariableReferences,
+  groupVariablesBySource,
+  getConnectorProvidedSecretNames,
+} from "@vm0/core";
 import { agentSchedules } from "../../db/schema/agent-schedule";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
+import { connectors } from "../../db/schema/connector";
 import { scopes, type ScopeType } from "../../db/schema/scope";
 import { decryptSecretsMap } from "../crypto";
 import {
@@ -261,6 +266,8 @@ async function validateRequiredConfig(
   let platformSecretNames: string[] = [];
   let platformVarNames: string[] = [];
 
+  let connectorProvidedNames = new Set<string>();
+
   if (userScope) {
     const platformSecrets = await getSecretValues(userScope.id, "user");
     platformSecretNames = Object.keys(platformSecrets);
@@ -273,10 +280,20 @@ async function validateRequiredConfig(
     log.debug(
       `Fetched ${platformVarNames.length} platform variable(s) for validation`,
     );
+
+    // Query connected connectors to exclude their provided secrets
+    const userConnectors = await globalThis.services.db
+      .select({ type: connectors.type })
+      .from(connectors)
+      .where(eq(connectors.scopeId, userScope.id));
+    connectorProvidedNames = getConnectorProvidedSecretNames(
+      userConnectors.map((c) => c.type),
+    );
   }
 
   const missingSecrets = required.secrets.filter(
-    (name) => !platformSecretNames.includes(name),
+    (name) =>
+      !platformSecretNames.includes(name) && !connectorProvidedNames.has(name),
   );
   const missingVars = required.vars.filter(
     (name) => !platformVarNames.includes(name),
