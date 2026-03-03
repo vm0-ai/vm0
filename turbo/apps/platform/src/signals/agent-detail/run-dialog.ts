@@ -12,6 +12,7 @@ import {
 import { fetchAgentSchedule$ } from "./schedule.ts";
 import {
   type ScheduleTimeOption,
+  type ScheduleBody,
   buildCronExpression,
   buildAtTime,
   isAtTimePast,
@@ -201,7 +202,7 @@ export const submitRunDialog$ = command(async ({ get, set }) => {
 
     // Schedule creation (recurring or one-time)
     const timezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
-    let scheduleBody: Record<string, unknown>;
+    let scheduleBody: ScheduleBody;
 
     if (timeOption === "once") {
       const date = get(internalDate$);

@@ -8,6 +8,14 @@ export type ScheduleTimeOption =
   | "every-week"
   | "every-month";
 
+/** Discriminated union for schedule creation/update request body. */
+export type ScheduleBody = {
+  composeId: string;
+  name: string;
+  timezone: string;
+  prompt: string;
+} & ({ cronExpression: string } | { atTime: string });
+
 // ---------------------------------------------------------------------------
 // One-time schedule helpers
 // ---------------------------------------------------------------------------

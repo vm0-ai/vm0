@@ -10,6 +10,7 @@ import {
   isAtTimePast,
   getTomorrowDateLocal,
   type ScheduleTimeOption,
+  type ScheduleBody,
 } from "./cron.ts";
 
 const L = logger("Schedule");
@@ -386,7 +387,7 @@ export const submitScheduleDialog$ = command(async ({ get, set }) => {
     const existingSchedule = get(internalAgentSchedule$);
     const scheduleName = existingSchedule?.name ?? "default";
 
-    let body: Record<string, unknown>;
+    let body: ScheduleBody;
 
     if (timeOption === "once") {
       if (isAtTimePast(date, hour, minute)) {
