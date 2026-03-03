@@ -609,14 +609,12 @@ jobs:
       - name: Cross-compile guest binaries for ARM64
         run: |
           cd crates
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc \
-            cargo build --release --target aarch64-unknown-linux-musl \
+          cargo build --release --target aarch64-unknown-linux-musl \
             -p guest-agent -p guest-download -p guest-init -p guest-mock-claude
 
       - name: Cross-compile runner with embedded guests for ARM64
         run: |
           cd crates
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc \
           GUEST_AGENT_PATH=target/aarch64-unknown-linux-musl/release/guest-agent \
           GUEST_DOWNLOAD_PATH=target/aarch64-unknown-linux-musl/release/guest-download \
           GUEST_INIT_PATH=target/aarch64-unknown-linux-musl/release/guest-init \
