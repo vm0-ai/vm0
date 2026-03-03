@@ -471,6 +471,54 @@ describe("agent detail page", () => {
     expect(screen.queryByRole("button", { name: "Chat" })).toBeNull();
   });
 
+  it("should propagate inline run error from polling", async () => {
+    mockAgentDetailAPI();
+
+    // Mock run creation, then return failed status with error
+    server.use(
+      http.post("/api/agent/runs", () => {
+        return HttpResponse.json({ runId: "run_err" });
+      }),
+      http.get("/api/agent/runs/:runId/telemetry/agent", () => {
+        return HttpResponse.json({ events: [], hasMore: false });
+      }),
+      http.get("/api/platform/logs/:runId", () => {
+        return HttpResponse.json({
+          id: "run_err",
+          status: "failed",
+          error: "Sandbox crashed unexpectedly",
+          createdAt: "2024-01-01T00:00:00Z",
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // Trigger an inline run via the run dialog mock
+    // We simulate by importing and calling startInlineRun$ directly
+    const { startInlineRun$ } = await import(
+      "../../../signals/agent-detail/inline-run.ts"
+    );
+    const { set } = context.store;
+    set(startInlineRun$, "run_err");
+
+    // Error should propagate and display in the inline run panel
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("Sandbox crashed unexpectedly"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("should show read-only pre for shared (non-owner) agents", async () => {
     // Shared agent path has scope/name format
     server.use(

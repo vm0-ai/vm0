@@ -38,6 +38,7 @@ async function extractResultFromEvents(
 // ---------------------------------------------------------------------------
 
 export interface ChatMessage {
+  id: string;
   role: "user" | "assistant";
   content: string;
   runId?: string;
@@ -171,11 +172,16 @@ export const sendChatMessage$ = command(
     set(internalSending$, true);
 
     // Add user message
-    const userMessage: ChatMessage = { role: "user", content: prompt.trim() };
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: prompt.trim(),
+    };
     set(internalMessages$, (prev) => [...prev, userMessage]);
 
     // Add placeholder assistant message
     const assistantPlaceholder: ChatMessage = {
+      id: crypto.randomUUID(),
       role: "assistant",
       content: "",
     };
@@ -185,7 +191,11 @@ export const sendChatMessage$ = command(
       const fetchFn = get(fetch$);
       const sessionId = get(internalSessionId$);
 
-      const body: Record<string, unknown> = {
+      const body: {
+        agentComposeId: string;
+        prompt: string;
+        sessionId?: string;
+      } = {
         agentComposeId: detail.id,
         prompt: prompt.trim(),
       };
@@ -209,8 +219,7 @@ export const sendChatMessage$ = command(
         set(internalMessages$, (prev) => {
           const updated = [...prev];
           updated[updated.length - 1] = {
-            role: "assistant",
-            content: "",
+            ...updated[updated.length - 1],
             error: errorMsg,
           };
           return updated;
@@ -273,8 +282,7 @@ export const sendChatMessage$ = command(
       set(internalMessages$, (prev) => {
         const updated = [...prev];
         updated[updated.length - 1] = {
-          role: "assistant",
-          content: "",
+          ...updated[updated.length - 1],
           error: error instanceof Error ? error.message : "Unknown error",
         };
         return updated;

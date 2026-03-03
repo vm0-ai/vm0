@@ -74,12 +74,7 @@ export function ChatPanel() {
             </p>
           </div>
         ) : (
-          messages.map((msg, idx) => (
-            <ChatMessageRow
-              key={msg.runId ?? `${msg.role}-${idx}`}
-              message={msg}
-            />
-          ))
+          messages.map((msg) => <ChatMessageRow key={msg.id} message={msg} />)
         )}
       </div>
 
