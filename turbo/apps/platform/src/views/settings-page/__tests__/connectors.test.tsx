@@ -29,11 +29,11 @@ function makeConnector(
   };
 }
 
-describe("connectors tab", () => {
+describe("Connections tab", () => {
   it("shows all connector types with not-connected status", async () => {
     await setupPage({
       context,
-      path: "/settings?tab=connectors",
+      path: "/settings?tab=connections",
       featureSwitches: { dropboxConnector: true, gmailConnector: true },
     });
 
@@ -48,7 +48,7 @@ describe("connectors tab", () => {
   it("shows connected status when a connector exists", async () => {
     setMockConnectors([makeConnector("github")]);
 
-    await setupPage({ context, path: "/settings?tab=connectors" });
+    await setupPage({ context, path: "/settings?tab=connections" });
 
     expect(screen.getByText("Connected as octocat")).toBeInTheDocument();
 
@@ -69,7 +69,7 @@ describe("connectors tab", () => {
       }),
     );
 
-    await setupPage({ context, path: "/settings?tab=connectors" });
+    await setupPage({ context, path: "/settings?tab=connections" });
 
     // Open kebab menu for connected connector
     const optionsButton = screen.getByRole("button", {
@@ -99,15 +99,15 @@ describe("connectors tab", () => {
     });
   });
 
-  it("switches to connectors tab from providers tab", async () => {
+  it("switches to Connections tab from providers tab", async () => {
     await setupPage({ context, path: "/settings" });
 
     // Default tab is providers
     expect(screen.getByText("Model Providers")).toBeInTheDocument();
 
-    // Click Connectors tab
-    const connectorsTab = screen.getByRole("tab", { name: /connectors/i });
-    await user.click(connectorsTab);
+    // Click Connections tab
+    const connectionsTab = screen.getByRole("tab", { name: /connections/i });
+    await user.click(connectionsTab);
 
     // Should show connector list
     await vi.waitFor(() => {

@@ -38,16 +38,19 @@ function truncateValue(value: string, maxLength = 60): string {
 function SecretRow({
   secret,
   isFirst,
+  index,
 }: {
   secret: SecretResponse;
   isFirst: boolean;
+  index: number;
 }) {
   const openEdit = useSet(openEditSecretDialog$);
   const openDelete = useSet(openDeleteSecretDialog$);
 
   return (
     <div
-      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl ${isFirst ? "rounded-t-xl" : ""}`}
+      className={`relative z-[var(--row-z)] flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl transition-colors hover:bg-muted/50 ${isFirst ? "rounded-t-xl" : ""}`}
+      style={{ "--row-z": index } as React.CSSProperties}
     >
       <div className="flex flex-1 flex-col gap-1 min-w-0">
         <div className="text-sm font-medium text-foreground font-mono">
@@ -96,16 +99,19 @@ function SecretRow({
 function VariableRow({
   variable,
   isFirst,
+  index,
 }: {
   variable: VariableResponse;
   isFirst: boolean;
+  index: number;
 }) {
   const openEdit = useSet(openEditVariableDialog$);
   const openDelete = useSet(openDeleteVariableDialog$);
 
   return (
     <div
-      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl ${isFirst ? "rounded-t-xl" : ""}`}
+      className={`relative z-[var(--row-z)] flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl transition-colors hover:bg-muted/50 ${isFirst ? "rounded-t-xl" : ""}`}
+      style={{ "--row-z": index } as React.CSSProperties}
     >
       <div className="flex flex-1 flex-col gap-1 min-w-0">
         <div className="text-sm font-medium text-foreground font-mono">
@@ -156,12 +162,20 @@ function VariableRow({
 // Item row dispatcher
 // ---------------------------------------------------------------------------
 
-function ItemRow({ item, isFirst }: { item: MergedItem; isFirst: boolean }) {
+function ItemRow({
+  item,
+  isFirst,
+  index,
+}: {
+  item: MergedItem;
+  isFirst: boolean;
+  index: number;
+}) {
   if (item.kind === "secret") {
-    return <SecretRow secret={item.data} isFirst={isFirst} />;
+    return <SecretRow secret={item.data} isFirst={isFirst} index={index} />;
   }
 
-  return <VariableRow variable={item.data} isFirst={isFirst} />;
+  return <VariableRow variable={item.data} isFirst={isFirst} index={index} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -233,6 +247,7 @@ export function SecretsAndVariablesList() {
               key={`${item.kind}-${item.name}`}
               item={item}
               isFirst={index === 0}
+              index={index}
             />
           ))}
 

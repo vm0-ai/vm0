@@ -52,7 +52,7 @@ function mockVariables(): VariableResponse[] {
   ];
 }
 
-describe("secrets and variables tab", () => {
+describe("Connections tab (secrets and variables)", () => {
   it("shows both secrets and variables in one list", async () => {
     server.use(
       http.get("/api/secrets", () => {
@@ -65,7 +65,7 @@ describe("secrets and variables tab", () => {
 
     await setupPage({
       context,
-      path: "/settings?tab=secrets-and-variables",
+      path: "/settings?tab=connections",
     });
 
     await vi.waitFor(() => {
@@ -96,7 +96,7 @@ describe("secrets and variables tab", () => {
 
     await setupPage({
       context,
-      path: "/settings?tab=secrets-and-variables",
+      path: "/settings?tab=connections",
     });
 
     await vi.waitFor(() => {
@@ -135,7 +135,7 @@ describe("secrets and variables tab", () => {
 
     await setupPage({
       context,
-      path: "/settings?tab=secrets-and-variables",
+      path: "/settings?tab=connections",
     });
 
     // Wait for the list to load
@@ -166,9 +166,10 @@ describe("secrets and variables tab", () => {
     await vi.waitFor(() => {
       expect(screen.getByText("API_KEY")).toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("tab", { name: /secrets and variables/i }),
-    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /connections/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("backward compat: ?tab=variables still works", async () => {
@@ -186,9 +187,10 @@ describe("secrets and variables tab", () => {
     await vi.waitFor(() => {
       expect(screen.getByText("API_URL")).toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("tab", { name: /secrets and variables/i }),
-    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /connections/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("shows skeleton loading state before data resolves", async () => {
@@ -209,7 +211,7 @@ describe("secrets and variables tab", () => {
 
     await setupPage({
       context,
-      path: "/settings?tab=secrets-and-variables",
+      path: "/settings?tab=connections",
     });
 
     // While loading, footer and items should not be visible
@@ -256,7 +258,7 @@ describe("secrets and variables tab", () => {
 
     await setupPage({
       context,
-      path: "/settings?tab=secrets-and-variables",
+      path: "/settings?tab=connections",
     });
 
     await vi.waitFor(() => {
@@ -323,7 +325,7 @@ describe("secrets and variables tab", () => {
 
     await setupPage({
       context,
-      path: "/settings?tab=secrets-and-variables",
+      path: "/settings?tab=connections",
     });
 
     await vi.waitFor(() => {
@@ -374,7 +376,7 @@ describe("secrets and variables tab", () => {
 
     await setupPage({
       context,
-      path: "/settings?tab=secrets-and-variables",
+      path: "/settings?tab=connections",
     });
 
     await vi.waitFor(() => {

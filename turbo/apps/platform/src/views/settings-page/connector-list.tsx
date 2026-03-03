@@ -39,7 +39,7 @@ function ConnectorRow({
 
   return (
     <div
-      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 ${isFirst ? "rounded-t-xl" : ""} ${isLast ? "rounded-b-xl border-b" : ""}`}
+      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 transition-colors hover:bg-muted/50 ${isFirst ? "rounded-t-xl" : ""} ${isLast ? "rounded-b-xl border-b" : ""}`}
     >
       <div className="shrink-0">
         <ConnectorIcon type={item.type} size={28} />

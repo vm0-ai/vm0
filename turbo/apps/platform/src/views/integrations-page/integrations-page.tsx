@@ -39,7 +39,7 @@ export function SlackIntegrationCard() {
   }
 
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
+    <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/50">
       <div className="shrink-0">
         <img src="/slack-icon.svg" alt="Slack" className="h-7 w-7" />
       </div>

@@ -7,8 +7,7 @@ import { searchParams$, updateSearchParams$ } from "../route.ts";
 
 export type SettingsTab =
   | "providers"
-  | "connectors"
-  | "secrets-and-variables"
+  | "connections"
   | "integrations"
   | "notifications";
 
@@ -31,16 +30,21 @@ export const activeTab$ = computed((get) => get(internalActiveTab$));
 function isValidTab(value: string): value is SettingsTab {
   return (
     value === "providers" ||
-    value === "connectors" ||
-    value === "secrets-and-variables" ||
+    value === "connections" ||
     value === "integrations" ||
     value === "notifications"
   );
 }
 
-/** Legacy tab values that map to the merged tab. */
-function isLegacySecretsOrVariablesTab(value: string): boolean {
-  return value === "secrets" || value === "variables";
+/** Legacy tab values that map to the Connections tab. */
+function isLegacyConnectionsTab(value: string): boolean {
+  return (
+    value === "connectors" ||
+    value === "connectors-and-secrets" ||
+    value === "secrets-and-variables" ||
+    value === "secrets" ||
+    value === "variables"
+  );
 }
 
 /**
@@ -54,8 +58,8 @@ export const initSettingsTabs$ = command(({ get, set }) => {
   if (tab) {
     if (isValidTab(tab)) {
       set(internalActiveTab$, tab);
-    } else if (isLegacySecretsOrVariablesTab(tab)) {
-      set(internalActiveTab$, "secrets-and-variables");
+    } else if (isLegacyConnectionsTab(tab)) {
+      set(internalActiveTab$, "connections");
     }
   }
 });

@@ -44,10 +44,7 @@ export function SettingsPage() {
         >
           <TabsList>
             <TabsTrigger value="providers">Model Providers</TabsTrigger>
-            <TabsTrigger value="connectors">Connectors</TabsTrigger>
-            <TabsTrigger value="secrets-and-variables">
-              Secrets and variables
-            </TabsTrigger>
+            <TabsTrigger value="connections">Connections</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
           </TabsList>
@@ -62,16 +59,21 @@ export function SettingsPage() {
           </>
         )}
 
-        {tab === "connectors" && (
+        {tab === "connections" && (
           <>
             <ConnectorList />
             <DisconnectConnectorDialog />
-          </>
-        )}
-
-        {tab === "secrets-and-variables" && (
-          <>
-            <SecretsAndVariablesList />
+            <section className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-base font-medium text-foreground">
+                  Secrets and variables
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Add custom API keys and environment variables for your agents.
+                </p>
+              </div>
+              <SecretsAndVariablesList />
+            </section>
             <SecretDialog />
             <DeleteSecretDialog />
             <VariableDialog />
