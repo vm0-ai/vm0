@@ -13,6 +13,9 @@ import {
 } from "../../../../../src/lib/github/github-app";
 import { resolveDefaultAgentComposeId } from "../../../../../src/lib/agent-compose/resolve-default";
 import { linkVm0User } from "../callback/route";
+import { logger } from "../../../../../src/lib/logger";
+
+const log = logger("github:install");
 
 /**
  * GitHub App Install Endpoint
@@ -48,11 +51,19 @@ export async function GET(request: Request) {
   const vm0UserId = url.searchParams.get("vm0UserId");
   const composeId = url.searchParams.get("composeId");
 
-  // If we have the App credentials, check whether the app is already
-  // installed on GitHub. If it is, create/link the record locally and
-  // skip the GitHub redirect entirely.
+  // Fast path: if a local installation record already exists, just
+  // create the user link — no GitHub API call needed.
+  if (vm0UserId) {
+    const redirectUrl = await tryLinkFromLocalRecord(vm0UserId);
+    if (redirectUrl) {
+      return NextResponse.redirect(redirectUrl);
+    }
+  }
+
+  // Slow path: check GitHub API for existing installations that are
+  // missing from our DB (e.g. installed before we had this code).
   if (GITHUB_APP_ID && GITHUB_APP_PRIVATE_KEY && vm0UserId) {
-    const redirectUrl = await tryLinkExistingInstallation(
+    const redirectUrl = await tryLinkFromGitHubApi(
       GITHUB_APP_ID,
       GITHUB_APP_PRIVATE_KEY,
       SECRETS_ENCRYPTION_KEY,
@@ -107,26 +118,43 @@ export async function GET(request: Request) {
 }
 
 /**
- * Check if the GitHub App is already installed somewhere and, if so,
- * create the local installation record + user link.
- *
- * Returns a redirect URL on success, or null if no installation was
- * found (caller should fall through to the GitHub redirect).
+ * Fast path: check if any installation already exists in our DB.
+ * If so, just create the user link — no GitHub API call needed.
  */
-async function tryLinkExistingInstallation(
+async function tryLinkFromLocalRecord(
+  vm0UserId: string,
+): Promise<string | null> {
+  const db = globalThis.services.db;
+  const [existing] = await db
+    .select({ id: githubInstallations.id })
+    .from(githubInstallations)
+    .where(eq(githubInstallations.status, "active"))
+    .limit(1);
+
+  if (!existing) {
+    return null;
+  }
+
+  await linkVm0User(db, existing.id, vm0UserId);
+  return `${getPlatformUrl()}/settings?tab=integrations`;
+}
+
+/**
+ * Slow path: query GitHub API for existing installations that are
+ * not yet in our DB, create the record + user link.
+ */
+async function tryLinkFromGitHubApi(
   appId: string,
   privateKey: string,
   encryptionKey: string,
   vm0UserId: string,
   composeId: string | null,
 ): Promise<string | null> {
-  const platformUrl = getPlatformUrl();
-
   let installations;
   try {
     installations = await listAppInstallations(appId, privateKey);
-  } catch {
-    // If the API call fails, fall through to normal install flow
+  } catch (err) {
+    log.error("Failed to list app installations", { error: err });
     return null;
   }
 
@@ -135,8 +163,9 @@ async function tryLinkExistingInstallation(
   }
 
   const db = globalThis.services.db;
+  const platformUrl = getPlatformUrl();
 
-  // Try to find an installation that is NOT already in our DB
+  // Check if any GitHub installation is already tracked locally
   for (const ghInstall of installations) {
     const ghInstallationId = String(ghInstall.id);
 
@@ -147,13 +176,12 @@ async function tryLinkExistingInstallation(
       .limit(1);
 
     if (existing) {
-      // Record exists — just create user link if needed
       await linkVm0User(db, existing.id, vm0UserId);
       return `${platformUrl}/settings?tab=integrations`;
     }
   }
 
-  // No DB record for any installation — create one for the first
+  // No DB record — create one for the first installation
   const ghInstall = installations[0]!;
   const ghInstallationId = String(ghInstall.id);
 

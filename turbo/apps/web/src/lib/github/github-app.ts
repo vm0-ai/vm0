@@ -15,7 +15,7 @@ import { createSign } from "node:crypto";
  *
  * @see https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app
  */
-function createAppJWT(appId: string, privateKeyBase64: string): string {
+function createAppJWT(appId: string, privateKeyPemOrBase64: string): string {
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: "RS256", typ: "JWT" };
   const payload = {
@@ -28,7 +28,7 @@ function createAppJWT(appId: string, privateKeyBase64: string): string {
   const encodedPayload = base64url(JSON.stringify(payload));
   const signingInput = `${encodedHeader}.${encodedPayload}`;
 
-  const privateKey = Buffer.from(privateKeyBase64, "base64").toString("utf-8");
+  const privateKey = parsePemKey(privateKeyPemOrBase64);
   const signer = createSign("RSA-SHA256");
   signer.update(signingInput);
   const signature = signer.sign(privateKey, "base64url");
@@ -152,6 +152,23 @@ export async function listAppInstallations(
   }
 
   return (await res.json()) as AppInstallation[];
+}
+
+/**
+ * Parse a PEM private key from either base64-encoded or raw PEM format.
+ * Env vars often store PEM keys with newlines replaced by spaces.
+ */
+function parsePemKey(input: string): string {
+  if (!input.startsWith("-----BEGIN")) {
+    return Buffer.from(input, "base64").toString("utf-8");
+  }
+  // Extract header, body, footer from space-or-newline-separated PEM
+  const match = input.match(
+    /^(-----BEGIN [^-]+-----)[\s]+([\s\S]+?)[\s]+(-----END [^-]+-----)$/,
+  );
+  if (!match) return input;
+  const body = match[2]!.replace(/\s+/g, "\n");
+  return `${match[1]}\n${body}\n${match[3]}\n`;
 }
 
 function base64url(str: string): string {
