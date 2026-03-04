@@ -1,6 +1,6 @@
 ## Add OAuth Connector Checklist
 
-1. Create a PR similar to #3332.
+1. Use existing OAuth connectors (e.g., Gmail, Notion, Linear) as templates for implementation.
 1. Ensure you use the real product SVG logo from the Internet, not a placeholder image.
 1. Ensure the new connector is protected with a feature switch, and that the feature switch is disabled by default.
 1. Ask the user to provide OAuth credentials to GitHub — both the client ID and client secret. Show the `gh` command as an example, but do not run the command on the user's behalf. Provide two sets of credentials: one for the default/dev environment and one for production. Be careful to distinguish between secrets and vars.
