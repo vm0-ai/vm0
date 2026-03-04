@@ -164,7 +164,7 @@ describe("fetchTelegramContext", () => {
       fromUserId: "111",
       fromUsername: "alice",
       text: "First message",
-      createdAt: new Date("2025-01-01T00:00:01Z"),
+      createdAt: new Date(Date.now() - 60_000),
     });
     await insertTelegramMessage({
       installationId,
@@ -173,7 +173,7 @@ describe("fetchTelegramContext", () => {
       fromUserId: "222",
       fromUsername: "bob",
       text: "Second message",
-      createdAt: new Date("2025-01-01T00:00:02Z"),
+      createdAt: new Date(Date.now() - 30_000),
     });
 
     const result = await fetchTelegramContext(installationId, chatId);
@@ -196,7 +196,7 @@ describe("fetchTelegramContext", () => {
       fromUserId: "111",
       fromUsername: "alice",
       text: "Old message",
-      createdAt: new Date("2025-01-01T00:00:01Z"),
+      createdAt: new Date(Date.now() - 60_000),
     });
     await insertTelegramMessage({
       installationId,
@@ -205,7 +205,7 @@ describe("fetchTelegramContext", () => {
       fromUserId: "222",
       fromUsername: "bob",
       text: "New message",
-      createdAt: new Date("2025-01-01T00:00:02Z"),
+      createdAt: new Date(Date.now() - 30_000),
     });
 
     const result = await fetchTelegramContext(installationId, chatId, "10");
@@ -229,7 +229,7 @@ describe("fetchTelegramContext", () => {
       fromUserId: "111",
       fromUsername: "alice",
       text: "Only message",
-      createdAt: new Date("2025-01-01T00:00:01Z"),
+      createdAt: new Date(Date.now() - 60_000),
     });
 
     const result = await fetchTelegramContext(installationId, chatId, "5");
@@ -275,7 +275,7 @@ describe("fetchTelegramContext", () => {
       fromUserId: "111",
       fromUsername: "alice",
       text: "User message",
-      createdAt: new Date("2025-01-01T00:00:01Z"),
+      createdAt: new Date(Date.now() - 60_000),
     });
     await insertTelegramMessage({
       installationId,
@@ -285,7 +285,7 @@ describe("fetchTelegramContext", () => {
       fromUsername: "test_bot",
       text: "Bot reply",
       isBot: true,
-      createdAt: new Date("2025-01-01T00:00:02Z"),
+      createdAt: new Date(Date.now() - 30_000),
     });
 
     const result = await fetchTelegramContext(installationId, chatId);
