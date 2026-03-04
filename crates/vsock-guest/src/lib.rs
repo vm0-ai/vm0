@@ -824,8 +824,8 @@ mod tests {
         let mut body = vec![0u8; body_len];
         host_stream.read_exact(&mut body).unwrap();
 
-        // Send a slow exec (sleep 30) — we won't wait for its result
-        let slow_payload = vsock_proto::encode_exec(5000, "sleep 30", &[], false);
+        // Send a slow exec (sleep 5) — we won't wait for its result
+        let slow_payload = vsock_proto::encode_exec(5000, "sleep 5", &[], false);
         let slow_msg = vsock_proto::encode(MSG_EXEC, 1, &slow_payload).unwrap();
         host_stream.write_all(&slow_msg).unwrap();
 

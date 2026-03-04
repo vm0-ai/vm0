@@ -740,14 +740,14 @@ async fn test_spawn_watch_interleaved_output() {
 /// Core regression test: a slow exec must not block a subsequent fast exec.
 ///
 /// Before the fix, MSG_EXEC blocked the guest event loop synchronously, so a
-/// `sleep 30` would prevent any other exec from being processed until it finished.
+/// `sleep 5` would prevent any other exec from being processed until it finished.
 #[tokio::test]
 async fn test_concurrent_exec_not_blocked() {
     let h = Harness::new().await;
 
-    // Launch a slow exec (sleep 30) and a fast exec (echo ok) concurrently.
+    // Launch a slow exec (sleep 5) and a fast exec (echo ok) concurrently.
     // The fast one should complete within seconds despite the slow one running.
-    let slow = h.exec("sleep 30", 60000, &[], false);
+    let slow = h.exec("sleep 5", 10000, &[], false);
     let fast = async {
         // Small delay to ensure slow exec is dispatched first
         tokio::time::sleep(Duration::from_millis(100)).await;
