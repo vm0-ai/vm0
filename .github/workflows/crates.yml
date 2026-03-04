@@ -163,15 +163,15 @@ jobs:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           JOB_REF: ${{ github.event_name == 'pull_request' && format('pr-{0}-test', github.event.pull_request.number) || 'main-test' }}
         run: |
-          HOSTS=($(echo "$METAL_HOSTS" | tr ',' '\n' | grep .))
-          NUM_HOSTS=${#HOSTS[@]}
+          HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | grep .)
+          NUM_HOSTS=$(echo "$HOSTS" | grep -c .)
           if [ "$NUM_HOSTS" -lt 1 ]; then
             echo "::error::AWS_METAL_RUNNER_HOSTS is empty"
             exit 1
           fi
           HASH=$(echo -n "$JOB_REF" | md5sum | cut -c1-8)
           HOST_INDEX=$(( 0x$HASH % NUM_HOSTS ))
-          HOST=${HOSTS[$HOST_INDEX]}
+          HOST=$(echo "$HOSTS" | sed -n "$((HOST_INDEX + 1))p")
           echo "host=${HOST}" >> "$GITHUB_OUTPUT"
           echo "job-ref=${JOB_REF}" >> "$GITHUB_OUTPUT"
           echo "Selected metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS})"
