@@ -79,11 +79,11 @@ describe("telegram connect success page", () => {
   it("auto-opens Telegram deep link on load", async () => {
     await setupPage({
       context,
-      path: "/telegram/connect/success?bot=my_test_bot&token=abc123",
+      path: "/telegram/connect/success?bot=my_test_bot",
     });
 
     expect(openSpy).toHaveBeenCalledWith(
-      "https://t.me/my_test_bot?start=abc123",
+      "https://t.me/my_test_bot",
       "_blank",
       "noopener,noreferrer",
     );

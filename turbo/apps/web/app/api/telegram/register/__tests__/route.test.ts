@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { HttpResponse } from "msw";
 import { POST } from "../route";
+import { eq, and } from "drizzle-orm";
 import {
   testContext,
   uniqueId,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { createTestCompose } from "../../../../../src/__tests__/api-test-helpers";
+import { telegramUserLinks } from "../../../../../src/db/schema/telegram-user-link";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 
@@ -129,7 +131,21 @@ describe("POST /api/telegram/register", () => {
     expect(body.botUsername).toBe(`bot_${botId}`);
     expect(body.webhookUrl).toContain("/api/telegram/webhook/");
     expect(body.id).toBeDefined();
-    expect(body.linkToken).toBeDefined();
+    expect(body.linkToken).toBeUndefined();
+
+    // Verify pending user link was created
+    const [pendingLink] = await globalThis.services.db
+      .select()
+      .from(telegramUserLinks)
+      .where(
+        and(
+          eq(telegramUserLinks.installationId, body.id),
+          eq(telegramUserLinks.telegramUserId, "pending"),
+        ),
+      )
+      .limit(1);
+    expect(pendingLink).toBeDefined();
+    expect(pendingLink!.vm0UserId).toBeDefined();
 
     expect(getMeHandler.mocked).toHaveBeenCalledTimes(1);
     expect(setWebhookHandler.mocked).toHaveBeenCalledTimes(1);

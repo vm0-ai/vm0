@@ -7,16 +7,10 @@ import { TelegramConnectSuccessPage } from "../../views/telegram-connect/telegra
 export const setupTelegramConnectSuccessPage$ = command(({ get, set }) => {
   set(updatePage$, createElement(TelegramConnectSuccessPage));
 
-  // Auto-open Telegram with deep link to trigger /start with link token
+  // Auto-open Telegram so the user can send their first message
   const params = get(searchParams$);
   const botUsername = params.get("bot");
-  const linkToken = params.get("token");
   if (botUsername) {
-    const startParam = linkToken ? `?start=${linkToken}` : "";
-    window.open(
-      `https://t.me/${botUsername}${startParam}`,
-      "_blank",
-      "noopener,noreferrer",
-    );
+    window.open(`https://t.me/${botUsername}`, "_blank", "noopener,noreferrer");
   }
 });

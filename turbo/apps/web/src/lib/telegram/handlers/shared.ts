@@ -1,6 +1,7 @@
 import { eq, and } from "drizzle-orm";
 import { telegramThreadSessions } from "../../../db/schema/telegram-thread-session";
 import { telegramMessages } from "../../../db/schema/telegram-message";
+import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { getPlatformUrl } from "../../url";
 import {
@@ -142,6 +143,30 @@ export function buildLoginUrl(botUsername: string, linkToken: string): string {
  */
 export function buildLogsUrl(runId: string): string {
   return `${getPlatformUrl()}/logs/${runId}`;
+}
+
+/**
+ * Complete a pending user link by replacing the placeholder telegramUserId
+ * with the real one. Returns the updated row or null if no pending link exists.
+ */
+export async function completePendingLink(
+  installationId: string,
+  realTelegramUserId: string,
+): Promise<typeof telegramUserLinks.$inferSelect | null> {
+  const [updated] = await globalThis.services.db
+    .update(telegramUserLinks)
+    .set({
+      telegramUserId: realTelegramUserId,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(telegramUserLinks.installationId, installationId),
+        eq(telegramUserLinks.telegramUserId, "pending"),
+      ),
+    )
+    .returning();
+  return updated ?? null;
 }
 
 /**

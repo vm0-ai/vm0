@@ -11,6 +11,7 @@ import {
   storeTelegramMessage,
   getWorkspaceAgent,
   resolveSessionCompose,
+  completePendingLink,
 } from "./shared";
 import { logger } from "../../logger";
 
@@ -70,7 +71,7 @@ export async function handleTelegramMention(
   const client = createTelegramClient(botToken);
 
   // 2. Check user link
-  const [userLink] = await globalThis.services.db
+  let [userLink] = await globalThis.services.db
     .select()
     .from(telegramUserLinks)
     .where(
@@ -80,6 +81,18 @@ export async function handleTelegramMention(
       ),
     )
     .limit(1);
+
+  // 2b. Auto-complete pending link if no direct match
+  if (!userLink) {
+    const completed = await completePendingLink(installationId, fromUserId);
+    if (completed) {
+      userLink = completed;
+      log.info("Auto-completed pending link", {
+        installationId,
+        telegramUserId: fromUserId,
+      });
+    }
+  }
 
   if (!userLink) {
     await sendMessage(
