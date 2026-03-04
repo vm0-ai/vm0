@@ -30,6 +30,9 @@ tempfile = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
 which = { workspace = true }
 
+# These dev-dependencies exist solely for release-please version tracking:
+# cargo-workspace plugin includes dev-dependencies in its dependency graph,
+# so runner-rs gets auto-bumped when any guest crate version changes.
 [dev-dependencies]
 guest-agent = { workspace = true }
 guest-download = { workspace = true }
