@@ -36,7 +36,6 @@ agents:
     framework: claude-code
     experimental_runner:
       group: ${RUNNER_GROUP}
-    image: "vm0/claude-code:dev"
     volumes:
       - ${VOLUME_NAME}:/home/user/data
     working_dir: /home/user/workspace
@@ -111,7 +110,6 @@ agents:
     framework: claude-code
     experimental_runner:
       group: ${RUNNER_GROUP}
-    image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
       API_KEY: \${{ vars.E2E_TEST_VAR }}

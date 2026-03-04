@@ -43,7 +43,6 @@ agents:
     framework: claude-code
     experimental_runner:
       group: ${RUNNER_GROUP}
-    image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
 
@@ -71,7 +70,6 @@ agents:
     framework: claude-code
     experimental_runner:
       group: ${RUNNER_GROUP}
-    image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
 
@@ -101,7 +99,6 @@ agents:
     framework: claude-code
     experimental_runner:
       group: ${RUNNER_GROUP}
-    image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
 
@@ -129,7 +126,6 @@ agents:
     framework: claude-code
     experimental_runner:
       group: ${RUNNER_GROUP}
-    image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
 
@@ -156,7 +152,6 @@ agents:
     framework: claude-code
     experimental_runner:
       group: ${RUNNER_GROUP}
-    image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
 
@@ -182,7 +177,6 @@ agents:
     framework: claude-code
     experimental_runner:
       group: ${RUNNER_GROUP}
-    image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
 
