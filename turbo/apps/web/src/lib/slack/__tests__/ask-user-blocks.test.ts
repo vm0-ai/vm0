@@ -108,7 +108,7 @@ describe("buildAskUserQuestionBlocks", () => {
     expect(blocks).toHaveLength(4);
   });
 
-  it("should handle multiple questions", () => {
+  it("should render checkboxes for multiple single-select questions", () => {
     const questions: AskUserQuestion[] = [
       {
         question: "Framework?",
@@ -122,8 +122,26 @@ describe("buildAskUserQuestionBlocks", () => {
 
     const blocks = buildAskUserQuestionBlocks(questions, pendingId);
 
-    // Header + (question + actions) * 2 + submit + context = 7
+    // Header + (question + checkboxes) * 2 + submit + context = 7
     expect(blocks).toHaveLength(7);
+
+    // First question checkboxes
+    const q0Actions = blocks[2] as ActionsBlock;
+    expect(q0Actions.elements[0]).toMatchObject({
+      type: "checkboxes",
+      action_id: "ask_user_multi_q0",
+    });
+
+    // Second question checkboxes
+    const q1Actions = blocks[4] as ActionsBlock;
+    expect(q1Actions.elements[0]).toMatchObject({
+      type: "checkboxes",
+      action_id: "ask_user_multi_q1",
+    });
+
+    // Submit button present
+    const submitBlock = blocks[5] as ActionsBlock;
+    expect(submitBlock.block_id).toBe("ask_user_submit_block");
   });
 });
 

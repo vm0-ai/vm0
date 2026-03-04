@@ -6,7 +6,6 @@ import type {
   ActionsBlock,
   Button,
   Checkboxes,
-  RadioButtons,
   Option,
 } from "@slack/web-api";
 import { getPlatformUrl } from "../url";
@@ -686,8 +685,8 @@ export function buildAskUserQuestionBlocks(
         block_id: `ask_user_block_q${qIdx}`,
         elements: buttons,
       } as ActionsBlock);
-    } else if (q.multiSelect) {
-      // Checkboxes for multi-select
+    } else {
+      // Checkboxes for multi-question or multi-select flows
       const checkboxes: Checkboxes = {
         type: "checkboxes",
         action_id: `ask_user_multi_q${qIdx}`,
@@ -698,19 +697,6 @@ export function buildAskUserQuestionBlocks(
         type: "actions",
         block_id: `ask_user_block_q${qIdx}`,
         elements: [checkboxes],
-      } as ActionsBlock);
-    } else {
-      // Radio buttons for single-select (multi-question flow)
-      const radioButtons: RadioButtons = {
-        type: "radio_buttons",
-        action_id: `ask_user_q${qIdx}`,
-        options,
-      };
-
-      blocks.push({
-        type: "actions",
-        block_id: `ask_user_block_q${qIdx}`,
-        elements: [radioButtons],
       } as ActionsBlock);
     }
   }

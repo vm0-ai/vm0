@@ -84,7 +84,6 @@ interface SlackInteractivePayload {
         string,
         {
           type: string;
-          selected_option?: { value: string } | null;
           selected_options?: Array<{ value: string }>;
         }
       >
@@ -162,7 +161,7 @@ export async function POST(request: Request) {
         log.error("Failed to handle direct pick:", err);
       });
     }
-    // Radio button and checkbox selections are maintained client-side by Slack.
+    // Checkbox selections are maintained client-side by Slack.
   }
 
   return new Response("", { status: 200 });
@@ -299,18 +298,7 @@ function collectAnswersFromState(
     if (!q) continue;
 
     for (const element of Object.values(actions)) {
-      // Single-select radio button
-      if (element.selected_option) {
-        const optMatch = element.selected_option.value.match(/^q\d+_o(\d+)$/);
-        if (optMatch) {
-          const opt = q.options?.[parseInt(optMatch[1]!, 10)];
-          if (opt) {
-            answers.set(qIdx, [opt.label]);
-          }
-        }
-      }
-
-      // Multi-select checkboxes
+      // Checkboxes — used for both single-select and multi-select
       if (element.selected_options && element.selected_options.length > 0) {
         const labels: string[] = [];
         for (const selOpt of element.selected_options) {
