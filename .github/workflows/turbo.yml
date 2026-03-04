@@ -1677,7 +1677,7 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
-  # Runner stress test: submit concurrent jobs with real Claude to validate queue + stability
+  # Runner stress test: submit concurrent jobs with mock Claude to validate queue + stability
   # Only runs on PRs with the 'stress-test' label (opt-in)
   runner-stress-test:
     runs-on: ubuntu-latest

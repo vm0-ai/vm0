@@ -60,8 +60,6 @@ run_job() {
   # Save results
   echo "$status" > "${WORK_DIR}/job-${index}.status"
   echo "$duration" > "${WORK_DIR}/job-${index}.duration"
-  echo "$job_start" > "${WORK_DIR}/job-${index}.start"
-  echo "$job_end" > "${WORK_DIR}/job-${index}.end"
   echo "$output" > "${WORK_DIR}/job-${index}.output"
 
   echo "[${index}/${JOB_COUNT}] ${status} (${duration}s)"
