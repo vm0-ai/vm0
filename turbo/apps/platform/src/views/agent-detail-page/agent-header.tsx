@@ -30,6 +30,7 @@ import { openChatPanel$ } from "../../signals/agent-detail/chat.ts";
 import { AgentAvatar } from "./agent-avatar.tsx";
 import type { AgentDetail } from "../../signals/agent-detail/types.ts";
 import { Link } from "../router/link.tsx";
+import { detach, Reason } from "../../signals/utils.ts";
 
 interface AgentHeaderProps {
   detail: AgentDetail;
@@ -112,7 +113,7 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
               <Button
                 variant="default"
                 size="sm"
-                onClick={() => openRun()}
+                onClick={() => detach(openRun(), Reason.DomCallback)}
                 disabled={isBusy}
               >
                 {isBusy ? (
