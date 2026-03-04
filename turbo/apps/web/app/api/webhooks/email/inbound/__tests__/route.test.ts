@@ -28,6 +28,8 @@ const mockResend = vi.mocked(new Resend(""), true);
 function mockReceivedEmailGet(data: {
   from: string;
   to: string[];
+  cc?: string[] | null;
+  reply_to?: string[] | null;
   subject: string;
   text: string;
   html: string;
@@ -196,6 +198,8 @@ describe("POST /api/webhooks/email/inbound", () => {
       emailThreadSessionId: expect.any(String),
       inboundEmailId: "inbound-email-123",
       inboundMessageId: "<default-msg-id@example.com>",
+      replyRecipientTo: expect.any(Array),
+      replyRecipientCc: expect.any(Array),
     });
   });
 

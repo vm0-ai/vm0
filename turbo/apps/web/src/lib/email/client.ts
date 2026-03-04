@@ -17,9 +17,10 @@ function getResendClient(): Resend {
 
 interface SendEmailOptions {
   from: string;
-  to: string;
+  to: string | string[];
   subject: string;
   react: ReactElement;
+  cc?: string | string[];
   replyTo?: string;
   headers?: Record<string, string>;
 }
@@ -44,6 +45,7 @@ export async function sendEmail(
     to: options.to,
     subject: options.subject,
     react: options.react,
+    cc: options.cc,
     replyTo: options.replyTo,
     headers: options.headers,
   });
@@ -74,6 +76,8 @@ export async function sendEmail(
 export async function getReceivedEmail(emailId: string): Promise<{
   from: string;
   to: string[];
+  cc: string[];
+  replyTo: string[];
   subject: string;
   text: string;
   html: string;
@@ -92,6 +96,8 @@ export async function getReceivedEmail(emailId: string): Promise<{
   return {
     from: data.from,
     to: data.to,
+    cc: data.cc ?? [],
+    replyTo: data.reply_to ?? [],
     subject: data.subject,
     text: data.text ?? "",
     html: data.html ?? "",

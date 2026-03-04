@@ -6,8 +6,10 @@ import { extractEmailBody } from "../content-extract";
 import {
   verifyReplyToken,
   lookupEmailThreadSession,
+  computeReplyRecipients,
   type HandlerResult,
 } from "./shared";
+import { env } from "../../../env";
 import { createRun } from "../../run";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { logger } from "../../logger";
@@ -81,7 +83,16 @@ export async function handleInboundEmailReply(
   // 4. Fetch full email body from Resend
   const email = await getReceivedEmail(emailId);
 
-  // 5. Extract inbound Message-ID and References for threading (case-insensitive lookup)
+  // 5. Compute reply recipients based on bot position in To/CC
+  const replyRecipients = computeReplyRecipients({
+    from: event.data.from,
+    to: email.to,
+    cc: email.cc,
+    replyTo: email.replyTo,
+    botDomain: env().RESEND_FROM_DOMAIN ?? "",
+  });
+
+  // 6. Extract inbound Message-ID and References for threading (case-insensitive lookup)
   const headers = email.headers ?? {};
   const messageIdKey = Object.keys(headers).find(
     (k) => k.toLowerCase() === "message-id",
@@ -138,6 +149,8 @@ export async function handleInboundEmailReply(
         inboundEmailId: emailId,
         inboundMessageId,
         inboundReferences,
+        replyRecipientTo: replyRecipients.to,
+        replyRecipientCc: replyRecipients.cc,
       },
     },
   ];

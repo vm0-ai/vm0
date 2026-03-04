@@ -28,6 +28,8 @@ interface ReplyCallbackPayload {
   inboundEmailId: string;
   inboundMessageId?: string;
   inboundReferences?: string;
+  replyRecipientTo?: string[];
+  replyRecipientCc?: string[];
 }
 
 function createCallbackRequest(
@@ -331,6 +333,56 @@ describe("POST /api/internal/callbacks/email/reply", () => {
       // No threading headers should be set
       expect(sendArgs.headers["In-Reply-To"]).toBeUndefined();
       expect(sendArgs.headers["References"]).toBeUndefined();
+    });
+
+    it("should send to multiple recipients when replyRecipientTo is provided", async () => {
+      const user = await context.setupUser({ prefix: "reply-replyall" });
+      mockClerk({ userId: user.userId });
+      const { composeId } = await createTestCompose(uniqueId("reply-agent"));
+      const agentSession = await createTestAgentSession(user.userId, composeId);
+      const replyToken = generateReplyToken(agentSession.id);
+      const emailSession = await createTestEmailThreadSession({
+        userId: user.userId,
+        composeId,
+        agentSessionId: agentSession.id,
+        replyToToken: replyToken,
+      });
+
+      const { runId } = await createTestRun(composeId, "Email reply task");
+      await completeTestRun(user.userId, runId);
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "Reply-all output" } },
+      ]);
+
+      const payload: ReplyCallbackPayload = {
+        emailThreadSessionId: emailSession.id,
+        inboundEmailId: "inbound-email-replyall",
+        replyRecipientTo: ["user-a@example.com", "user-b@example.com"],
+        replyRecipientCc: ["user-c@example.com"],
+      };
+
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/email/reply",
+        payload: { ...payload },
+      });
+
+      const request = createCallbackRequest(
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      const sendArgs = mockResend.emails.send.mock.calls[0]![0] as {
+        to: string | string[];
+        cc: string | string[];
+      };
+      expect(sendArgs.to).toEqual(["user-a@example.com", "user-b@example.com"]);
+      expect(sendArgs.cc).toEqual(["user-c@example.com"]);
     });
 
     it("should send error reply email on failed run", async () => {

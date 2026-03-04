@@ -28,6 +28,8 @@ interface CallbackPayload {
   inboundReferences?: string;
   subject?: string;
   triggerLocalPart?: string;
+  replyRecipientTo?: string[];
+  replyRecipientCc?: string[];
 }
 
 function parsePayload(payload: unknown): CallbackPayload | null {
@@ -165,16 +167,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     payload.inboundReferences,
   );
 
-  // Send response email
+  // Send response email (use computed recipients if available, fall back to sender)
+  const emailTo =
+    payload.replyRecipientTo && payload.replyRecipientTo.length > 0
+      ? payload.replyRecipientTo
+      : senderEmail;
+  const emailCc =
+    payload.replyRecipientCc && payload.replyRecipientCc.length > 0
+      ? payload.replyRecipientCc
+      : undefined;
+
   const { messageId } = await sendEmail({
     from: buildFromAddress(payload.triggerLocalPart ?? compose.name),
-    to: senderEmail,
+    to: emailTo,
     subject: buildSubject(payload.subject, compose.name),
     react: AgentReplyEmail({
       agentName: compose.name,
       output,
       logsUrl,
     }),
+    cc: emailCc,
     replyTo: replyToAddress,
     headers,
   });

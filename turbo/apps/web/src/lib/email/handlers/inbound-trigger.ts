@@ -7,8 +7,10 @@ import {
   parseAgentOnlyAddress,
   resolveAgentByAddress,
   generateReplyToken,
+  computeReplyRecipients,
   type HandlerResult,
 } from "./shared";
+import { env } from "../../../env";
 import { createRun } from "../../run";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
@@ -181,7 +183,16 @@ export async function handleInboundEmailTrigger(
   // 5. Fetch full email
   const email = await getReceivedEmail(emailId);
 
-  // 6. Extract inbound Message-ID for threading (case-insensitive lookup)
+  // 6. Compute reply recipients based on bot position in To/CC
+  const replyRecipients = computeReplyRecipients({
+    from: senderEmail,
+    to: email.to,
+    cc: email.cc,
+    replyTo: email.replyTo,
+    botDomain: env().RESEND_FROM_DOMAIN ?? "",
+  });
+
+  // 7. Extract inbound Message-ID for threading (case-insensitive lookup)
   const headers = email.headers ?? {};
   const messageIdKey = Object.keys(headers).find(
     (k) => k.toLowerCase() === "message-id",
@@ -248,6 +259,8 @@ export async function handleInboundEmailTrigger(
         inboundReferences,
         subject,
         triggerLocalPart,
+        replyRecipientTo: replyRecipients.to,
+        replyRecipientCc: replyRecipients.cc,
       },
     },
   ];

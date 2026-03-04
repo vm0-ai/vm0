@@ -24,6 +24,8 @@ interface CallbackPayload {
   inboundEmailId: string;
   inboundMessageId?: string;
   inboundReferences?: string;
+  replyRecipientTo?: string[];
+  replyRecipientCc?: string[];
 }
 
 function parsePayload(payload: unknown): CallbackPayload | null {
@@ -156,15 +158,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     headers["References"] = referencesParts.join(" ");
   }
 
+  // Use computed recipients if available, fall back to session owner
+  const emailTo =
+    payload.replyRecipientTo && payload.replyRecipientTo.length > 0
+      ? payload.replyRecipientTo
+      : userEmail;
+  const emailCc =
+    payload.replyRecipientCc && payload.replyRecipientCc.length > 0
+      ? payload.replyRecipientCc
+      : undefined;
+
   const { messageId } = await sendEmail({
     from: buildFromAddress(compose.name),
-    to: userEmail,
+    to: emailTo,
     subject: `Re: VM0 - Scheduled run for "${compose.name}" completed`,
     react: AgentReplyEmail({
       agentName: compose.name,
       output,
       logsUrl,
     }),
+    cc: emailCc,
     replyTo: replyToAddress,
     headers,
   });

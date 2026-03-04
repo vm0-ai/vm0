@@ -32,6 +32,8 @@ interface TriggerCallbackPayload {
   inboundReferences?: string;
   subject?: string;
   triggerLocalPart?: string;
+  replyRecipientTo?: string[];
+  replyRecipientCc?: string[];
 }
 
 function createCallbackRequest(
@@ -234,6 +236,92 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
       };
       expect(sendArgs.subject).toBe("Re: Original Topic");
       expect(sendArgs.from).toContain(agentName);
+    });
+
+    it("should send to multiple recipients when replyRecipientTo is provided", async () => {
+      const user = await context.setupUser({ prefix: "trigger-replyall" });
+      mockClerk({ userId: user.userId });
+      const agentName = uniqueId("replyall-agent");
+      const { composeId } = await createTestCompose(agentName);
+      const { runId } = await createTestRun(composeId, "Test prompt");
+      await completeTestRun(user.userId, runId);
+
+      const replyToken = generateReplyToken(crypto.randomUUID());
+      const payload: TriggerCallbackPayload = {
+        senderEmail: "user-a@example.com",
+        composeId,
+        userId: user.userId,
+        inboundEmailId: "email-replyall",
+        replyToken,
+        subject: "Group discussion",
+        triggerLocalPart: agentName,
+        replyRecipientTo: ["user-a@example.com", "user-b@example.com"],
+        replyRecipientCc: ["user-c@example.com"],
+      };
+
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/email/trigger",
+        payload: { ...payload },
+      });
+
+      const request = createCallbackRequest(
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      const sendArgs = mockResend.emails.send.mock.calls[0]![0] as {
+        to: string | string[];
+        cc: string | string[];
+      };
+      expect(sendArgs.to).toEqual(["user-a@example.com", "user-b@example.com"]);
+      expect(sendArgs.cc).toEqual(["user-c@example.com"]);
+    });
+
+    it("should fall back to senderEmail when replyRecipientTo is not provided", async () => {
+      const user = await context.setupUser({ prefix: "trigger-fallback" });
+      mockClerk({ userId: user.userId });
+      const agentName = uniqueId("fallback-agent");
+      const { composeId } = await createTestCompose(agentName);
+      const { runId } = await createTestRun(composeId, "Test prompt");
+      await completeTestRun(user.userId, runId);
+
+      const replyToken = generateReplyToken(crypto.randomUUID());
+      const senderEmail = "sender@example.com";
+      const payload: TriggerCallbackPayload = {
+        senderEmail,
+        composeId,
+        userId: user.userId,
+        inboundEmailId: "email-fallback",
+        replyToken,
+        triggerLocalPart: agentName,
+      };
+
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/email/trigger",
+        payload: { ...payload },
+      });
+
+      const request = createCallbackRequest(
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      const sendArgs = mockResend.emails.send.mock.calls[0]![0] as {
+        to: string | string[];
+        cc: unknown;
+      };
+      expect(sendArgs.to).toBe(senderEmail);
+      expect(sendArgs.cc).toBeUndefined();
     });
 
     it("should send error email for failed trigger run", async () => {

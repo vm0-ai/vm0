@@ -79,6 +79,92 @@ export function isReplyAddress(toAddress: string): boolean {
 }
 
 // ============================================================================
+// Reply Recipient Computation
+// ============================================================================
+
+interface ReplyRecipients {
+  to: string[];
+  cc: string[];
+}
+
+/**
+ * Extract the domain portion of an email address (case-insensitive).
+ */
+function emailDomain(address: string): string {
+  const atIndex = address.lastIndexOf("@");
+  return atIndex === -1 ? "" : address.slice(atIndex + 1).toLowerCase();
+}
+
+/**
+ * Compute reply recipients based on the bot's position in the original email.
+ *
+ * Strategy:
+ * - Bot in To (sole recipient): reply to sender only
+ * - Bot in To (with others):    reply-all (sender + other To → to, CC preserved)
+ * - Bot only in CC:             reply to sender only
+ *
+ * Also handles Reply-To honoring, self-loop prevention, and deduplication.
+ */
+export function computeReplyRecipients(opts: {
+  from: string;
+  to: string[];
+  cc: string[];
+  replyTo: string[];
+  botDomain: string;
+}): ReplyRecipients {
+  const { from, to, cc, replyTo, botDomain } = opts;
+  const botDomainLower = botDomain.toLowerCase();
+
+  const isBotAddress = (addr: string) => emailDomain(addr) === botDomainLower;
+
+  // Primary reply target: honor Reply-To if present, otherwise use From
+  const primaryTarget = replyTo.length > 0 ? replyTo[0]! : from;
+
+  // Determine if bot is in the To field
+  const botInTo = to.some(isBotAddress);
+
+  // Non-bot To recipients (excluding the bot itself)
+  const otherToRecipients = to.filter((addr) => !isBotAddress(addr));
+
+  let replyToList: string[];
+  let replyCcList: string[];
+
+  if (botInTo && otherToRecipients.length > 0) {
+    // Reply-All: bot was in To with others
+    replyToList = [primaryTarget, ...otherToRecipients];
+    replyCcList = [...cc];
+  } else {
+    // Simple reply: bot was sole To recipient or only CC'd
+    replyToList = [primaryTarget];
+    replyCcList = [];
+  }
+
+  // Remove bot's own addresses
+  replyToList = replyToList.filter((addr) => !isBotAddress(addr));
+  replyCcList = replyCcList.filter((addr) => !isBotAddress(addr));
+
+  // Deduplicate (case-insensitive)
+  const dedup = (list: string[]): string[] => {
+    const seen = new Set<string>();
+    return list.filter((addr) => {
+      const lower = addr.toLowerCase();
+      if (seen.has(lower)) return false;
+      seen.add(lower);
+      return true;
+    });
+  };
+
+  replyToList = dedup(replyToList);
+  replyCcList = dedup(replyCcList);
+
+  // Remove from CC any address already in To
+  const toSet = new Set(replyToList.map((a) => a.toLowerCase()));
+  replyCcList = replyCcList.filter((addr) => !toSet.has(addr.toLowerCase()));
+
+  return { to: replyToList, cc: replyCcList };
+}
+
+// ============================================================================
 // Agent Resolution
 // ============================================================================
 
