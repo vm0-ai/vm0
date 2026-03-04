@@ -2182,9 +2182,36 @@ export async function insertTestGitHubInstallationWithAdmin(
     .set({ adminGithubUserId: githubUserId })
     .where(eq(githubInstallations.id, installation.id));
 
-  await insertTestGitHubUserLink(githubUserId, installation.id, vm0UserId);
+  // Create user link inline (maps GitHub user to VM0 user for this installation)
+  await globalThis.services.db
+    .insert(githubUserLinks)
+    .values({
+      githubUserId,
+      installationId: installation.id,
+      vm0UserId,
+    })
+    .onConflictDoNothing();
 
   return { installation, githubUserId };
+}
+
+/**
+ * Insert a GitHub user link record directly in the database.
+ *
+ * Direct DB insert is required because user links are created by the
+ * GitHub OAuth callback which requires real GitHub API interaction.
+ * This helper creates a link between a GitHub user and a VM0 user
+ * for a given installation, used to test non-admin authorization paths.
+ */
+export async function insertTestGitHubUserLink(
+  githubUserId: string,
+  installationId: string,
+  vm0UserId: string,
+) {
+  await globalThis.services.db
+    .insert(githubUserLinks)
+    .values({ githubUserId, installationId, vm0UserId })
+    .onConflictDoNothing();
 }
 
 /**
