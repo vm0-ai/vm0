@@ -15,11 +15,13 @@ const linkBodySchema = z.object({
 /** Link token expiry: 10 minutes */
 const LINK_TOKEN_TTL_MS = 10 * 60 * 1000;
 
-interface LinkTokenPayload {
-  vm0UserId: string;
-  installationId: string;
-  exp: number;
-}
+const linkTokenPayloadSchema = z.object({
+  vm0UserId: z.string(),
+  installationId: z.string(),
+  exp: z.number(),
+});
+
+type LinkTokenPayload = z.infer<typeof linkTokenPayloadSchema>;
 
 /**
  * Create a signed link token (base64url-encoded payload + HMAC signature).
@@ -53,13 +55,14 @@ export function verifyLinkToken(
   if (expectedBuf.length !== sigBuf.length) return null;
   if (!timingSafeEqual(expectedBuf, sigBuf)) return null;
 
-  const payload = JSON.parse(
-    Buffer.from(data, "base64url").toString(),
-  ) as LinkTokenPayload;
+  const parsed = linkTokenPayloadSchema.safeParse(
+    JSON.parse(Buffer.from(data, "base64url").toString()),
+  );
+  if (!parsed.success) return null;
 
-  if (Date.now() > payload.exp) return null;
+  if (Date.now() > parsed.data.exp) return null;
 
-  return payload;
+  return parsed.data;
 }
 
 /**

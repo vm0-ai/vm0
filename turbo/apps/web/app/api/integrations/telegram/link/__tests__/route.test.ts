@@ -116,9 +116,12 @@ describe("/api/integrations/telegram/link", () => {
       // Verify the token is valid using the exported verifier
       const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
       const payload = verifyLinkToken(data.token, SECRETS_ENCRYPTION_KEY);
-      expect(payload).not.toBeNull();
-      expect(payload!.vm0UserId).toBe(user.userId);
-      expect(payload!.installationId).toBe(installationId);
+      expect(payload).toEqual(
+        expect.objectContaining({
+          vm0UserId: user.userId,
+          installationId,
+        }),
+      );
     });
   });
 });
