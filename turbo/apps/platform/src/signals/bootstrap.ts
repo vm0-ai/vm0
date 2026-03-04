@@ -28,6 +28,9 @@ import { setupGitHubSettingsPage$ } from "./integrations-page/github-settings-pa
 import { setupProviderSetupPage$ } from "./provider-setup/provider-setup-page.ts";
 import { setupSlackConnectPage$ } from "./slack-connect/slack-connect-page.ts";
 import { setupSlackConnectSuccessPage$ } from "./slack-connect/slack-connect-success-page.ts";
+import { setupTelegramSettingsPage$ } from "./integrations-page/telegram-settings-page.ts";
+import { setupTelegramConnectPage$ } from "./telegram-connect/telegram-connect-page.ts";
+import { setupTelegramConnectSuccessPage$ } from "./telegram-connect/telegram-connect-success-page.ts";
 
 const L = logger("Bootstrap");
 
@@ -95,6 +98,18 @@ const ROUTE_CONFIG = [
   {
     path: "/slack/connect/success",
     setup: setupAuthPageWrapper(setupSlackConnectSuccessPage$),
+  },
+  {
+    path: "/settings/telegram",
+    setup: setupScopeRequiredPageWrapper(setupTelegramSettingsPage$),
+  },
+  {
+    path: "/telegram/connect",
+    setup: setupAuthPageWrapper(setupTelegramConnectPage$),
+  },
+  {
+    path: "/telegram/connect/success",
+    setup: setupAuthPageWrapper(setupTelegramConnectSuccessPage$),
   },
   {
     path: "/_playground",

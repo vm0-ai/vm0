@@ -21,6 +21,7 @@ import { DeleteVariableDialog } from "./delete-variable-dialog.tsx";
 import {
   SlackIntegrationCard,
   GitHubIntegrationCard,
+  TelegramIntegrationCard,
 } from "../integrations-page/integrations-page.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { mergedItems$ } from "../../signals/settings-page/secrets-and-variables.ts";
@@ -85,6 +86,9 @@ export function SettingsPage() {
             <SlackIntegrationCard />
             {featureSwitches?.[FeatureSwitchKey.GitHubIntegration] && (
               <GitHubIntegrationCard />
+            )}
+            {featureSwitches?.[FeatureSwitchKey.TelegramIntegration] && (
+              <TelegramIntegrationCard />
             )}
           </div>
         )}

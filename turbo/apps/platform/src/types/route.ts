@@ -15,4 +15,7 @@ export type RoutePath =
   | "/provider-setup"
   | "/slack/connect"
   | "/slack/connect/success"
+  | "/settings/telegram"
+  | "/telegram/connect"
+  | "/telegram/connect/success"
   | `/projects/${string}`;

@@ -31,4 +31,5 @@ export enum FeatureSwitchKey {
   IntervalsIcuConnector = "intervalsIcuConnector",
   XeroConnector = "xeroConnector",
   GitHubIntegration = "githubIntegration",
+  TelegramIntegration = "telegramIntegration",
 }

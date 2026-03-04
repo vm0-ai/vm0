@@ -7,6 +7,7 @@ import { initSettingsTabs$ } from "./settings-tabs.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { fetchSlackIntegration$ } from "../integrations-page/slack-integration.ts";
 import { fetchGitHubIntegration$ } from "../integrations-page/github-integration.ts";
+import { fetchTelegramIntegration$ } from "../integrations-page/telegram-integration.ts";
 
 /**
  * Setup the settings page.
@@ -19,6 +20,9 @@ export const setupSettingsPage$ = command(async ({ set, get }) => {
     set(fetchSlackIntegration$),
     features?.[FeatureSwitchKey.GitHubIntegration]
       ? set(fetchGitHubIntegration$)
+      : Promise.resolve(),
+    features?.[FeatureSwitchKey.TelegramIntegration]
+      ? set(fetchTelegramIntegration$)
       : Promise.resolve(),
   ]);
 });
