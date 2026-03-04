@@ -17,13 +17,18 @@ use crate::process;
 // ---------------------------------------------------------------------------
 
 #[derive(Args)]
-pub struct DoctorArgs {}
+pub struct DoctorArgs {
+    /// Only check the runner with this name (matches config `name` field)
+    #[arg(long)]
+    name: Option<String>,
+}
 
 // ---------------------------------------------------------------------------
 // Report structs
 // ---------------------------------------------------------------------------
 
 struct RunnerReport {
+    name: Option<String>,
     pid: u32,
     config_path: PathBuf,
     subcommand: String,
@@ -68,7 +73,7 @@ enum JobStatus {
 // Entry point
 // ---------------------------------------------------------------------------
 
-pub async fn run_doctor(_args: DoctorArgs) -> RunnerResult<ExitCode> {
+pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     // Phase 1: Discover running processes (single /proc scan)
     let discovered = process::discover_all().await;
 
@@ -88,12 +93,31 @@ pub async fn run_doctor(_args: DoctorArgs) -> RunnerResult<ExitCode> {
         reports.push(report);
     }
 
+    // Filter by name if specified
+    let reports = if let Some(ref name_filter) = args.name {
+        reports
+            .into_iter()
+            .filter(|r| r.name.as_deref() == Some(name_filter.as_str()))
+            .collect()
+    } else {
+        reports
+    };
+
     // Phase 4: Find stopped services (installed but no matching running process)
-    let stopped = find_stopped_services(&installed_services, &reports);
+    // Skip when filtering by name — other runners' stopped services are irrelevant
+    let stopped = if args.name.is_none() {
+        find_stopped_services(&installed_services, &reports)
+    } else {
+        vec![]
+    };
 
     // Phase 5: Global orphan detection
-    let global_warnings =
-        detect_global_orphans(&reports, &discovered.firecrackers, &discovered.mitmdumps).await;
+    // Skip when filtering by name — other runners' orphans are not this runner's concern
+    let global_warnings = if args.name.is_none() {
+        detect_global_orphans(&reports, &discovered.firecrackers, &discovered.mitmdumps).await
+    } else {
+        vec![]
+    };
 
     // Phase 6: Output
     let total_warnings = print_report(&reports, &stopped, &global_warnings);
@@ -119,6 +143,7 @@ async fn build_runner_report(
 
     // Load config (best-effort)
     let config = load_config_lenient(&runner.config_path).await;
+    let name = config.as_ref().map(|c| c.name.clone());
 
     // Detect service type
     let service_type = detect_service_type(runner.pid, installed).await;
@@ -165,6 +190,7 @@ async fn build_runner_report(
     };
 
     RunnerReport {
+        name,
         pid: runner.pid,
         config_path: runner.config_path.clone(),
         subcommand: runner.subcommand.clone(),
@@ -778,6 +804,7 @@ mod tests {
             },
         ];
         let reports = vec![RunnerReport {
+            name: None,
             pid: 1,
             config_path: PathBuf::from("/data/active.yaml"),
             subcommand: "start".into(),
