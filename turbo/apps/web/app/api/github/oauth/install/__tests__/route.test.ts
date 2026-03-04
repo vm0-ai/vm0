@@ -1,15 +1,21 @@
 import { createHmac } from "node:crypto";
+import { sql } from "drizzle-orm";
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET } from "../route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
+import { initServices } from "../../../../../../src/lib/init-services";
 import { env } from "../../../../../../src/env";
 
 const context = testContext();
 
 describe("/api/github/oauth/install", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     context.setupMocks();
+    initServices();
+    // Clear any leftover installation data so tests start clean
+    await globalThis.services.db.execute(sql`DELETE FROM github_user_links`);
+    await globalThis.services.db.execute(sql`DELETE FROM github_installations`);
   });
 
   it("should redirect to GitHub App installation page with signed state", async () => {
