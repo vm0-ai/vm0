@@ -3,6 +3,7 @@ import { agentComposes } from "../../../db/schema/agent-compose";
 import { getReceivedEmail } from "../client";
 import { processEmailAttachments } from "../attachment";
 import { extractEmailBody } from "../content-extract";
+import { verifySenderAuthenticity } from "../sender-auth";
 import {
   verifyReplyToken,
   lookupEmailThreadSession,
@@ -12,6 +13,7 @@ import {
 } from "./shared";
 import { createRun } from "../../run";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
+import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
 import { logger } from "../../logger";
 
 const log = logger("email:inbound-reply");
@@ -80,10 +82,49 @@ export async function handleInboundEmailReply(
     };
   }
 
-  // 4. Fetch full email body from Resend
+  // 4. Verify sender is the session owner
+  const senderEmail = event.data.from;
+  const senderUserId = await getUserIdByEmail(senderEmail);
+  if (!senderUserId) {
+    log.debug("Reply sender email not registered", { from: senderEmail });
+    return {
+      ok: false,
+      errorMessage: "Your email address is not associated with a VM0 account.",
+    };
+  }
+
+  if (senderUserId !== session.userId) {
+    log.warn("Reply sender does not match session owner", {
+      from: senderEmail,
+      senderUserId,
+      sessionUserId: session.userId,
+    });
+    return {
+      ok: false,
+      errorMessage:
+        "Only the original sender can continue this email conversation.",
+    };
+  }
+
+  // 5. Fetch full email body from Resend
   const email = await getReceivedEmail(emailId);
 
-  // 5. Compute reply recipients based on bot position in To/CC
+  // 6. Verify sender authenticity via DMARC
+  const verification = verifySenderAuthenticity(email.headers);
+  if (!verification.verified) {
+    log.warn("Reply sender authentication failed", {
+      from: senderEmail,
+      reason: verification.reason,
+      emailId,
+    });
+    return {
+      ok: false,
+      errorMessage:
+        "Your email could not be authenticated (DMARC verification failed).",
+    };
+  }
+
+  // 7. Compute reply recipients based on bot position in To/CC
   const replyRecipients = computeReplyRecipients({
     from: event.data.from,
     to: email.to,
@@ -92,7 +133,7 @@ export async function handleInboundEmailReply(
     botDomain: getFromDomain(),
   });
 
-  // 6. Extract inbound Message-ID and References for threading (case-insensitive lookup)
+  // 8. Extract inbound Message-ID and References for threading (case-insensitive lookup)
   const headers = email.headers ?? {};
   const messageIdKey = Object.keys(headers).find(
     (k) => k.toLowerCase() === "message-id",
@@ -103,7 +144,7 @@ export async function handleInboundEmailReply(
   );
   const inboundReferences = referencesKey ? headers[referencesKey] : undefined;
 
-  // 7. Extract email body (prefer HTML, fallback to text, strip quotes)
+  // 9. Extract email body (prefer HTML, fallback to text, strip quotes)
   let replyContent = extractEmailBody(email.html, email.text);
   if (!replyContent.trim()) {
     log.debug("Empty reply content after stripping", { emailId });
@@ -113,13 +154,13 @@ export async function handleInboundEmailReply(
     };
   }
 
-  // 7b. Process attachments and append to reply content
+  // 9b. Process attachments and append to reply content
   const attachmentText = await processEmailAttachments(emailId);
   if (attachmentText) {
     replyContent = `${replyContent}\n\n${attachmentText}`;
   }
 
-  // 8. Get compose to find agent name and version
+  // 10. Get compose to find agent name and version
   const [compose] = await globalThis.services.db
     .select({
       name: agentComposes.name,
@@ -139,7 +180,7 @@ export async function handleInboundEmailReply(
     };
   }
 
-  // 9. Build callbacks for email reply notification
+  // 11. Build callbacks for email reply notification
   const callbacks = [
     {
       url: `${getApiUrl()}/api/internal/callbacks/email/reply`,
@@ -155,7 +196,7 @@ export async function handleInboundEmailReply(
     },
   ];
 
-  // 10. Create and dispatch run via unified pipeline
+  // 12. Create and dispatch run via unified pipeline
   const result = await createRun({
     userId: session.userId,
     agentComposeVersionId: compose.headVersionId ?? "",
