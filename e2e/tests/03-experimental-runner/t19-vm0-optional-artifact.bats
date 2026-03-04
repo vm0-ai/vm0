@@ -27,7 +27,8 @@ agents:
   ${AGENT_NAME}:
     description: "E2E test agent for optional artifact testing"
     framework: claude-code
-    image: "vm0/claude-code:dev"
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     volumes:
       - claude-files:/home/user/.claude
     working_dir: /home/user/workspace

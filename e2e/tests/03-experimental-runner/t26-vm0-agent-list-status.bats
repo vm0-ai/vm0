@@ -41,6 +41,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for list command"
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -67,6 +69,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for version format"
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -95,6 +99,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for status command"
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -121,6 +127,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for version specifier"
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -146,6 +154,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for latest tag"
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -170,6 +180,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for no-sources flag"
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
@@ -196,6 +208,8 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     environment:
       API_KEY: "${{ secrets.MY_API_KEY }}"
       AUTH_TOKEN: "${{ secrets.AUTH_TOKEN }}"
@@ -223,6 +237,8 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     environment:
       DEBUG_MODE: "${{ vars.DEBUG }}"
       LOG_LEVEL: "${{ vars.LOG_LEVEL }}"
@@ -250,6 +266,8 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     environment:
       DATABASE_URL: "${{ credentials.DB_URL }}"
 EOF
@@ -275,6 +293,8 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     environment:
       API_KEY: "${{ secrets.API_KEY }}"
       DEBUG: "${{ vars.DEBUG }}"
@@ -312,6 +332,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for delete command"
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
 EOF
 
     echo "# Step 2: Run vm0 compose to create the agent"
@@ -343,6 +365,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for rm alias"
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
 EOF
 
     echo "# Step 2: Run vm0 compose to create the agent"
