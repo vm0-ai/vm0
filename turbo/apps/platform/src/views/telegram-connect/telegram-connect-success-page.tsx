@@ -11,7 +11,7 @@ export function TelegramConnectSuccessPage() {
   const botUsername = params.get("bot");
   const linkToken = params.get("token");
   const telegramLink = botUsername
-    ? `tg://resolve?domain=${botUsername}${linkToken ? `&start=${linkToken}` : ""}`
+    ? `https://t.me/${botUsername}${linkToken ? `?start=${linkToken}` : ""}`
     : null;
 
   const backgroundGradient =

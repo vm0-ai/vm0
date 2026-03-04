@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -11,12 +11,16 @@ const context = testContext();
 const user = userEvent.setup();
 
 describe("telegram connect page", () => {
+  let openSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
-    // Reset window.location if a previous test changed it to a non-http protocol
-    // (e.g., tg:// from the success page signal during navigate$)
-    if (!window.location.href.startsWith("http")) {
-      window.location.href = "http://localhost/";
-    }
+    // Mock window.open to prevent the success page signal from triggering
+    // real navigation to https://t.me/... which would hit MSW
+    openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+  });
+
+  afterEach(() => {
+    openSpy.mockRestore();
   });
 
   it("redirects to provider-setup when no provider configured", async () => {

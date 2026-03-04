@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -8,6 +8,15 @@ import { screen } from "@testing-library/react";
 const context = testContext();
 
 describe("telegram connect success page", () => {
+  let openSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+  });
+
+  afterEach(() => {
+    openSpy.mockRestore();
+  });
   it("renders success message and bot link when bot param is present", async () => {
     await setupPage({
       context,
@@ -68,28 +77,15 @@ describe("telegram connect success page", () => {
   });
 
   it("auto-opens Telegram deep link on load", async () => {
-    const locationSpy = vi.spyOn(window, "location", "get");
-    const mockLocation = {
-      ...window.location,
-      href: "",
-    };
-    let capturedHref = "";
-    Object.defineProperty(mockLocation, "href", {
-      get: () => capturedHref,
-      set: (val: string) => {
-        capturedHref = val;
-      },
-    });
-    locationSpy.mockReturnValue(mockLocation as Location);
-
     await setupPage({
       context,
       path: "/telegram/connect/success?bot=my_test_bot&token=abc123",
     });
 
-    // The setupTelegramConnectSuccessPage$ sets window.location.href with tg:// protocol and link token
-    expect(capturedHref).toBe("tg://resolve?domain=my_test_bot&start=abc123");
-
-    locationSpy.mockRestore();
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://t.me/my_test_bot?start=abc123",
+      "_blank",
+      "noopener,noreferrer",
+    );
   });
 });
