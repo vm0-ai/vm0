@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.43.0](https://github.com/vm0-ai/vm0/compare/cli-v9.42.1...cli-v9.43.0) (2026-03-04)
+
+
+### Features
+
+* **schedules:** add loop execution mode for recurring agent runs ([#3423](https://github.com/vm0-ai/vm0/issues/3423)) ([00d8876](https://github.com/vm0-ai/vm0/commit/00d8876ada1144fee2d40e2e6e4eb60ab893c4fd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.32.0
+
 ## [9.42.1](https://github.com/vm0-ai/vm0/compare/cli-v9.42.0...cli-v9.42.1) (2026-03-03)
 
 

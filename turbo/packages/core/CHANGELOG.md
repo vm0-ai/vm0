@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.32.0](https://github.com/vm0-ai/vm0/compare/core-v8.31.0...core-v8.32.0) (2026-03-04)
+
+
+### Features
+
+* add reddit oauth connector ([#3532](https://github.com/vm0-ai/vm0/issues/3532)) ([ecc31b4](https://github.com/vm0-ai/vm0/commit/ecc31b45276946812962d6877ff5072e1e4d55e9))
+* add x (twitter) read-only connector ([#3554](https://github.com/vm0-ai/vm0/issues/3554)) ([05dca8a](https://github.com/vm0-ai/vm0/commit/05dca8ab0f6fd9c535b534bcf54cf15eced72afb))
+* **platform:** add chat session history and message persistence ([#3520](https://github.com/vm0-ai/vm0/issues/3520)) ([f02f228](https://github.com/vm0-ai/vm0/commit/f02f228c78e2e53ce64bc2b36f08b937e42f2ec2))
+* **schedules:** add loop execution mode for recurring agent runs ([#3423](https://github.com/vm0-ai/vm0/issues/3423)) ([00d8876](https://github.com/vm0-ai/vm0/commit/00d8876ada1144fee2d40e2e6e4eb60ab893c4fd))
+
+
+### Bug Fixes
+
+* narrow google oauth scopes from restricted to sensitive ([#3568](https://github.com/vm0-ai/vm0/issues/3568)) ([441e07e](https://github.com/vm0-ai/vm0/commit/441e07e766e11d9e644c07aaac7b76a3d4000ddc))
+
 ## [8.31.0](https://github.com/vm0-ai/vm0/compare/core-v8.30.0...core-v8.31.0) (2026-03-03)
 
 

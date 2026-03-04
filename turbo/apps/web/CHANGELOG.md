@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.64.0](https://github.com/vm0-ai/vm0/compare/web-v12.63.0...web-v12.64.0) (2026-03-04)
+
+
+### Features
+
+* add reddit oauth connector ([#3532](https://github.com/vm0-ai/vm0/issues/3532)) ([ecc31b4](https://github.com/vm0-ai/vm0/commit/ecc31b45276946812962d6877ff5072e1e4d55e9))
+* add x (twitter) read-only connector ([#3554](https://github.com/vm0-ai/vm0/issues/3554)) ([05dca8a](https://github.com/vm0-ai/vm0/commit/05dca8ab0f6fd9c535b534bcf54cf15eced72afb))
+* **github:** add webhook endpoint for issue events ([#3533](https://github.com/vm0-ai/vm0/issues/3533)) ([3bca3cc](https://github.com/vm0-ai/vm0/commit/3bca3cc0ed871e4369949418887a5b034e7e8872))
+* **platform:** add chat session history and message persistence ([#3520](https://github.com/vm0-ai/vm0/issues/3520)) ([f02f228](https://github.com/vm0-ai/vm0/commit/f02f228c78e2e53ce64bc2b36f08b937e42f2ec2))
+* **schedules:** add loop execution mode for recurring agent runs ([#3423](https://github.com/vm0-ai/vm0/issues/3423)) ([00d8876](https://github.com/vm0-ai/vm0/commit/00d8876ada1144fee2d40e2e6e4eb60ab893c4fd))
+
+
+### Bug Fixes
+
+* update google calendar icon with higher quality version ([#3555](https://github.com/vm0-ai/vm0/issues/3555)) ([b04185e](https://github.com/vm0-ai/vm0/commit/b04185e90dfc68d1ab98922d0c474cdba76a1319))
+* use uppercase 1password field refs in env templates ([#3566](https://github.com/vm0-ai/vm0/issues/3566)) ([233e6cc](https://github.com/vm0-ai/vm0/commit/233e6cc071f666be4985ebbccc5629a8b8fab934))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.32.0
+
 ## [12.63.0](https://github.com/vm0-ai/vm0/compare/web-v12.62.0...web-v12.63.0) (2026-03-03)
 
 
