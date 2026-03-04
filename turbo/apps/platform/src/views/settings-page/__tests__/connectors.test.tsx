@@ -30,19 +30,13 @@ function makeConnector(
 }
 
 describe("connections tab", () => {
-  it("shows all connector types with not-connected status", async () => {
+  it("shows empty state when no connectors are connected or used", async () => {
     await setupPage({
       context,
       path: "/settings?tab=connections",
-      featureSwitches: { dropboxConnector: true, gmailConnector: true },
     });
 
-    expect(screen.getByText("Dropbox")).toBeInTheDocument();
-    expect(screen.getByText("GitHub")).toBeInTheDocument();
-    expect(screen.getByText("Gmail")).toBeInTheDocument();
-    expect(screen.getByText("Linear")).toBeInTheDocument();
-    expect(screen.getByText("Notion")).toBeInTheDocument();
-    expect(screen.getByText("Slack")).toBeInTheDocument();
+    expect(screen.getByText(/no connectors in list/i)).toBeInTheDocument();
   });
 
   it("shows connected status when a connector exists", async () => {
@@ -51,14 +45,9 @@ describe("connections tab", () => {
     await setupPage({ context, path: "/settings?tab=connections" });
 
     expect(screen.getByText("Connected as octocat")).toBeInTheDocument();
-
-    // Other connectors should still show Connect buttons
-    const connectButtons = screen.getAllByText("Connect");
-    expect(connectButtons.length).toBeGreaterThan(0);
-    // "Not connected" status has been removed from the UI
   });
 
-  it("can uninstall a connector via kebab menu", async () => {
+  it("can disconnect a connector via kebab menu", async () => {
     setMockConnectors([makeConnector("github")]);
 
     let deletedType: string | null = null;
@@ -77,9 +66,9 @@ describe("connections tab", () => {
     });
     await user.click(optionsButton);
 
-    // Click Uninstall
-    const uninstallButton = await screen.findByText("Uninstall");
-    await user.click(uninstallButton);
+    // Click Disconnect
+    const disconnectButton = await screen.findByText("Disconnect");
+    await user.click(disconnectButton);
 
     // Confirm in dialog
     const dialog = await screen.findByRole("dialog");
@@ -100,6 +89,8 @@ describe("connections tab", () => {
   });
 
   it("switches to Connections tab from providers tab", async () => {
+    setMockConnectors([makeConnector("github"), makeConnector("notion")]);
+
     await setupPage({ context, path: "/settings" });
 
     // Default tab is providers
@@ -109,11 +100,10 @@ describe("connections tab", () => {
     const connectionsTab = screen.getByRole("tab", { name: /connections/i });
     await user.click(connectionsTab);
 
-    // Should show connector list
+    // Should show connected connectors
     await vi.waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(screen.getByText("Notion")).toBeInTheDocument();
-    expect(screen.getByText("Slack")).toBeInTheDocument();
   });
 });
