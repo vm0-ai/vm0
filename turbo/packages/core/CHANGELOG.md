@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.32.1](https://github.com/vm0-ai/vm0/compare/core-v8.32.0...core-v8.32.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* **platform:** remove agent rename to fix storage reference bug ([#3545](https://github.com/vm0-ai/vm0/issues/3545)) ([c8c5156](https://github.com/vm0-ai/vm0/commit/c8c5156160cafe54b1049585df32eed7b440d94f))
+
 ## [8.32.0](https://github.com/vm0-ai/vm0/compare/core-v8.31.0...core-v8.32.0) (2026-03-04)
 
 
