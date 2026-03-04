@@ -74,10 +74,3 @@ export function configureGlobalProxyFromEnv(): void {
     );
   }
 }
-
-/**
- * Test-only reset hook for module-scoped bootstrap state.
- */
-export function resetProxyBootstrapForTests(): void {
-  configured = false;
-}
