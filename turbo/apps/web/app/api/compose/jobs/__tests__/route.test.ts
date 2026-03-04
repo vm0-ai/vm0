@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
 import { GET } from "../[jobId]/route";
 import { POST as webhookComplete } from "../../../webhooks/compose/complete/route";
@@ -10,6 +10,7 @@ import {
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
+import { Sandbox } from "@e2b/code-interpreter";
 
 const context = testContext();
 
@@ -669,5 +670,153 @@ describe("GET /api/compose/jobs/:jobId", () => {
 
       expect(response.status).toBe(400);
     });
+  });
+});
+
+describe("Platform session auth (no CLI token)", () => {
+  const context = testContext();
+
+  const testContent = {
+    version: "1",
+    agents: {
+      "my-agent": {
+        framework: "claude-code",
+        description: "A test agent",
+      },
+    },
+  };
+
+  beforeEach(async () => {
+    context.setupMocks();
+  });
+
+  it("should create a job via Clerk session without Authorization header", async () => {
+    await context.setupUser();
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/compose/jobs",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: testContent }),
+      },
+    );
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(201);
+    const data = await response.json();
+    expect(data.jobId).toBeDefined();
+    expect(data.status).toBe("pending");
+    expect(data.source).toBe("platform");
+  });
+
+  it("should pass a generated vm0_live_ token to sandbox", async () => {
+    await context.setupUser();
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/compose/jobs",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          githubUrl: "https://github.com/owner/repo",
+        }),
+      },
+    );
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+
+    // Verify E2B sandbox was created with a generated vm0_live_ token
+    const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+    expect(createCall).toBeDefined();
+    const sandboxEnvs = createCall![1]?.envs as Record<string, string>;
+    expect(sandboxEnvs.VM0_TOKEN).toMatch(/^vm0_live_/);
+  });
+
+  it("should create a job with Clerk JWT in Authorization header", async () => {
+    // Platform SaaS sends a Clerk JWT as Bearer token — this should still work
+    // because getUserId() resolves auth via Clerk session cookies first
+    await context.setupUser();
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/compose/jobs",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.fake",
+        },
+        body: JSON.stringify({ content: testContent }),
+      },
+    );
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(201);
+    const data = await response.json();
+    expect(data.jobId).toBeDefined();
+    expect(data.source).toBe("platform");
+  });
+
+  it("should complete full lifecycle: session auth → webhook → poll", async () => {
+    const user = await context.setupUser();
+
+    // 1. Create job via session auth (no CLI token)
+    const createRequest = createTestRequest(
+      "http://localhost:3000/api/compose/jobs",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: testContent }),
+      },
+    );
+
+    const createResponse = await POST(createRequest);
+    expect(createResponse.status).toBe(201);
+    const { jobId } = await createResponse.json();
+
+    // 2. Complete via webhook
+    const sandboxToken = await createTestComposeJobToken(user.userId, jobId);
+    const webhookRequest = createTestRequest(
+      "http://localhost:3000/api/webhooks/compose/complete",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sandboxToken}`,
+        },
+        body: JSON.stringify({
+          jobId,
+          success: true,
+          result: {
+            composeId: "session-compose-id",
+            composeName: "my-agent",
+            versionId: "session-version-id",
+            warnings: [],
+          },
+        }),
+      },
+    );
+
+    await webhookComplete(webhookRequest);
+
+    // 3. Poll for completed status (use CLI token for GET — platform would use session)
+    const userCliToken = await createTestCliToken(user.userId);
+    const getRequest = createTestRequest(
+      `http://localhost:3000/api/compose/jobs/${jobId}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${userCliToken}` },
+      },
+    );
+
+    const getResponse = await GET(getRequest);
+    expect(getResponse.status).toBe(200);
+    const data = await getResponse.json();
+    expect(data.status).toBe("completed");
+    expect(data.result.composeId).toBe("session-compose-id");
+    expect(data.completedAt).toBeDefined();
   });
 });

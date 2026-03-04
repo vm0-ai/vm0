@@ -587,7 +587,6 @@ describe("POST /api/webhooks/compose/complete", () => {
         userId: userLink.vm0UserId,
         source: "github",
         githubUrl: "https://github.com/owner/failing-repo",
-        userToken: "test-token",
       });
 
       // Insert slack_compose_requests record (simulating what Slack handler does)

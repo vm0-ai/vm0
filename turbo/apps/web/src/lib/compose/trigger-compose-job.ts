@@ -1,6 +1,8 @@
+import crypto from "crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { composeJobs } from "../../db/schema/compose-job";
 import type { ComposeJobSource } from "../../db/schema/compose-job";
+import { cliTokens } from "../../db/schema/cli-tokens";
 import { generateComposeJobToken } from "../auth/sandbox-token";
 import { Sandbox } from "@e2b/code-interpreter";
 import { env } from "../../env";
@@ -342,22 +344,43 @@ interface TriggerComposeJobResult {
 }
 
 /**
+ * Generate a short-lived CLI token for sandbox use.
+ * The token is stored in the cli_tokens table with a 10-minute TTL,
+ * matching the compose-job webhook token lifetime.
+ */
+async function generateComposeCliToken(
+  userId: string,
+  jobId: string,
+): Promise<string> {
+  const token = `vm0_live_${crypto.randomBytes(32).toString("base64url")}`;
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  await globalThis.services.db.insert(cliTokens).values({
+    token,
+    userId,
+    name: `Compose Job ${jobId}`,
+    expiresAt,
+  });
+
+  return token;
+}
+
+/**
  * Trigger a compose job from any source.
  * Reusable internal function callable from both the HTTP endpoint and Slack handler.
  *
- * No Slack-specific parameters — pure compose domain.
+ * Generates a short-lived CLI token server-side for sandbox authentication,
+ * so callers don't need to provide a token.
  */
 type TriggerComposeJobParams =
   | {
       userId: string;
-      userToken: string;
       source: "github";
       githubUrl: string;
       overwrite?: boolean;
     }
   | {
       userId: string;
-      userToken: string;
       source: "platform";
       content: Record<string, unknown>;
       instructions?: string;
@@ -366,7 +389,7 @@ type TriggerComposeJobParams =
 export async function triggerComposeJob(
   params: TriggerComposeJobParams,
 ): Promise<TriggerComposeJobResult> {
-  const { userId, userToken, source } = params;
+  const { userId, source } = params;
 
   // Idempotency: Check for existing active job for this user
   const [existingJob] = await globalThis.services.db
@@ -409,7 +432,8 @@ export async function triggerComposeJob(
 
   log.debug(`Created new job ${jobId} for user ${userId}`);
 
-  // Generate webhook token
+  // Generate tokens for sandbox
+  const cliToken = await generateComposeCliToken(userId, jobId);
   const webhookToken = await generateComposeJobToken(userId, jobId);
 
   // Build sandbox params
@@ -423,7 +447,7 @@ export async function triggerComposeJob(
         };
 
   // Fire-and-forget: Spawn sandbox asynchronously
-  spawnComposeJobSandbox(jobId, sandboxParams, userToken, webhookToken).catch(
+  spawnComposeJobSandbox(jobId, sandboxParams, cliToken, webhookToken).catch(
     async (error) => {
       log.error(`Failed to spawn sandbox for job ${jobId}:`, error);
       const errorMessage =

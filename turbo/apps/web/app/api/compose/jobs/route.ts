@@ -55,34 +55,18 @@ const router = tsr.router(composeJobsMainContract, {
       };
     }
 
-    // Extract user token from Authorization header
-    const userToken = headers.authorization?.substring(7); // Remove "Bearer "
-    if (!userToken) {
-      return {
-        status: 401 as const,
-        body: {
-          error: {
-            message: "Missing authorization token",
-            code: "UNAUTHORIZED",
-          },
-        },
-      };
-    }
-
     // Dispatch based on input type: GitHub URL or platform content
     const isGitHubInput = "githubUrl" in body;
 
     const result = isGitHubInput
       ? await triggerComposeJob({
           userId,
-          userToken,
           source: "github",
           githubUrl: body.githubUrl,
           overwrite: body.overwrite,
         })
       : await triggerComposeJob({
           userId,
-          userToken,
           source: "platform",
           content: body.content,
           instructions: body.instructions,
