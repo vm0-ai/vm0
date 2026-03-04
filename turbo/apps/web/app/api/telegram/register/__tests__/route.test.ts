@@ -166,6 +166,42 @@ describe("POST /api/telegram/register", () => {
     expect(body.error.code).toBe("CONFLICT");
   });
 
+  it("returns 400 when no default agent is available", async () => {
+    await context.setupUser();
+
+    const botId = testBotId();
+    const getMeHandler = telegramGetMe(botId, `noagent_bot_${botId}`);
+    server.use(getMeHandler.handler);
+
+    // No defaultAgentId in body and TELEGRAM_DEFAULT_AGENT env var not set
+    const response = await POST(registerRequest({ botToken: TEST_BOT_TOKEN }));
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.message).toContain("No default agent specified");
+  });
+
+  it("returns 404 when defaultAgentId references a nonexistent agent", async () => {
+    await context.setupUser();
+
+    const botId = testBotId();
+    const getMeHandler = telegramGetMe(botId, `ghost_bot_${botId}`);
+    server.use(getMeHandler.handler);
+
+    const response = await POST(
+      registerRequest({
+        botToken: TEST_BOT_TOKEN,
+        defaultAgentId: "00000000-0000-0000-0000-000000000000",
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.error.code).toBe("NOT_FOUND");
+    expect(body.error.message).toContain("Agent not found");
+  });
+
   it("rolls back installation when webhook registration fails", async () => {
     await context.setupUser();
 
