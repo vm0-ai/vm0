@@ -157,14 +157,7 @@ export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
     log.info("Auto-created scope for Telegram user", { userId: vm0UserId });
   }
 
-  try {
-    await ensureArtifactExists(scope.id, vm0UserId, "artifact", scope.slug);
-  } catch (err) {
-    log.error("Failed to ensure artifact exists for Telegram user", {
-      userId: vm0UserId,
-      err,
-    });
-  }
+  await ensureArtifactExists(scope.id, vm0UserId, "artifact", scope.slug);
 }
 
 /**
