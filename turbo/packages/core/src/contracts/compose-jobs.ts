@@ -40,7 +40,7 @@ export const createComposeJobRequestSchema = z.union([
     overwrite: z.boolean().optional().default(false),
   }),
   z.object({
-    content: z.record(z.unknown()),
+    content: z.record(z.string(), z.unknown()),
     instructions: z.string().optional(),
   }),
 ]);
