@@ -114,16 +114,24 @@ export async function createUserScope(clerkUserId: string, slug: string) {
   validateScopeSlug(slug);
 
   // Dual-write: create Clerk Organization so every scope is backed by one.
-  // In self-hosted mode (no Clerk), skip — clerkOrgId stays NULL.
+  // Best-effort — if Clerk fails, scope is still created (clerkOrgId stays
+  // NULL and will be filled by the batch backfill before Phase 3).
   let clerkOrgId: string | null = null;
   if (hasClerkAuth()) {
-    const client = await clerkClient();
-    const clerkOrg = await client.organizations.createOrganization({
-      name: slug,
-      slug,
-      createdBy: clerkUserId,
-    });
-    clerkOrgId = clerkOrg.id;
+    try {
+      const client = await clerkClient();
+      const clerkOrg = await client.organizations.createOrganization({
+        name: slug,
+        slug,
+        createdBy: clerkUserId,
+      });
+      clerkOrgId = clerkOrg.id;
+    } catch (err) {
+      log.warn("Failed to create Clerk org for scope, continuing without it", {
+        slug,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   // Create scope + admin membership atomically
