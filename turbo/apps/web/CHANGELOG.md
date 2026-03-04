@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.70.0](https://github.com/vm0-ai/vm0/compare/web-v12.69.4...web-v12.70.0) (2026-03-04)
+
+
+### Features
+
+* **email:** add smart reply-all behavior for email agent ([#3659](https://github.com/vm0-ai/vm0/issues/3659)) ([fd74d89](https://github.com/vm0-ai/vm0/commit/fd74d8986b039ea5c0072a9b5d836a9db1378cee))
+
 ## [12.69.4](https://github.com/vm0-ai/vm0/compare/web-v12.69.3...web-v12.69.4) (2026-03-04)
 
 
