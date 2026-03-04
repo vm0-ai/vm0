@@ -120,7 +120,7 @@ async function givenGitHubCallbackSetup(overrides?: {
   const { composeId } = await createTestCompose("gh-callback-agent");
 
   const { runId } = await createTestRun(composeId, "Test GitHub prompt");
-  const installation = await insertTestGitHubInstallation(userId, composeId);
+  const installation = await insertTestGitHubInstallation(composeId);
 
   const { capturedComments } = setupGitHubApiMocks(
     installation.installationId!,

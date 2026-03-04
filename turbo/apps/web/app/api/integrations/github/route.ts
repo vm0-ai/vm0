@@ -10,6 +10,7 @@ import { env } from "../../../../src/env";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { getApiUrl } from "../../../../src/lib/callback";
 import { githubInstallations } from "../../../../src/db/schema/github-installation";
+import { githubUserLinks } from "../../../../src/db/schema/github-user-link";
 import {
   agentComposes,
   agentComposeVersions,
@@ -27,8 +28,8 @@ import {
 /**
  * GET /api/integrations/github
  *
- * Returns GitHub App installation info for the authenticated user,
- * including current agent and environment variable status.
+ * Returns GitHub App installation info for the authenticated user.
+ * Finds installations via github_user_links join.
  * If no installation exists, returns 404 with an install URL.
  */
 export async function GET(request: Request) {
@@ -46,14 +47,21 @@ export async function GET(request: Request) {
 
   const db = globalThis.services.db;
 
-  // Find user's GitHub App installation
-  const [installation] = await db
-    .select()
-    .from(githubInstallations)
-    .where(eq(githubInstallations.userId, userId))
+  // Find user's GitHub App installation via user link
+  const [result] = await db
+    .select({
+      installation: githubInstallations,
+      link: githubUserLinks,
+    })
+    .from(githubUserLinks)
+    .innerJoin(
+      githubInstallations,
+      eq(githubInstallations.id, githubUserLinks.installationId),
+    )
+    .where(eq(githubUserLinks.vm0UserId, userId))
     .limit(1);
 
-  if (!installation) {
+  if (!result) {
     const { GITHUB_APP_SLUG } = env();
     const baseUrl = getApiUrl();
     const installUrl = GITHUB_APP_SLUG
@@ -68,6 +76,11 @@ export async function GET(request: Request) {
       { status: 404 },
     );
   }
+
+  const { installation } = result;
+
+  // Determine if current user is the admin
+  const isAdmin = result.link.githubUserId === installation.adminGithubUserId;
 
   // Get default agent info with headVersionId for environment extraction
   const [compose] = await db
@@ -133,6 +146,9 @@ export async function GET(request: Request) {
       id: installation.id,
       installationId: installation.installationId,
       status: installation.status,
+      targetName: installation.targetName,
+      targetType: installation.targetType,
+      isAdmin,
     },
     agent: compose
       ? { id: compose.id, name: compose.name, scopeSlug: compose.scopeSlug }
@@ -149,8 +165,8 @@ export async function GET(request: Request) {
 /**
  * DELETE /api/integrations/github
  *
- * Removes the authenticated user's GitHub App installation.
- * Cascades to delete all associated issue sessions.
+ * Removes the GitHub App installation. Only the admin can uninstall.
+ * Cascades to delete all associated issue sessions and user links.
  */
 export async function DELETE(request: Request) {
   initServices();
@@ -167,24 +183,45 @@ export async function DELETE(request: Request) {
 
   const db = globalThis.services.db;
 
-  // Find user's GitHub App installation
-  const [installation] = await db
-    .select({ id: githubInstallations.id })
-    .from(githubInstallations)
-    .where(eq(githubInstallations.userId, userId))
+  // Find user's GitHub App installation via user link
+  const [result] = await db
+    .select({
+      installationId: githubInstallations.id,
+      adminGithubUserId: githubInstallations.adminGithubUserId,
+      githubUserId: githubUserLinks.githubUserId,
+    })
+    .from(githubUserLinks)
+    .innerJoin(
+      githubInstallations,
+      eq(githubInstallations.id, githubUserLinks.installationId),
+    )
+    .where(eq(githubUserLinks.vm0UserId, userId))
     .limit(1);
 
-  if (!installation) {
+  if (!result) {
     return NextResponse.json(
       { error: { message: "No GitHub installation found", code: "NOT_FOUND" } },
       { status: 404 },
     );
   }
 
-  // Delete installation (cascades to github_issue_sessions)
+  // Only admin can delete
+  if (result.githubUserId !== result.adminGithubUserId) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "Only the installation admin can uninstall",
+          code: "FORBIDDEN",
+        },
+      },
+      { status: 403 },
+    );
+  }
+
+  // Delete installation (cascades to github_issue_sessions and github_user_links)
   await db
     .delete(githubInstallations)
-    .where(eq(githubInstallations.id, installation.id));
+    .where(eq(githubInstallations.id, result.installationId));
 
   return NextResponse.json({ ok: true });
 }
@@ -192,7 +229,8 @@ export async function DELETE(request: Request) {
 /**
  * PATCH /api/integrations/github
  *
- * Updates the default agent for the authenticated user's GitHub installation.
+ * Updates the default agent for the GitHub installation.
+ * Only the admin can change the default agent.
  * Body: { agentName: string }
  */
 export async function PATCH(request: Request) {
@@ -218,17 +256,38 @@ export async function PATCH(request: Request) {
 
   const db = globalThis.services.db;
 
-  // Find user's GitHub App installation
-  const [installation] = await db
-    .select({ id: githubInstallations.id })
-    .from(githubInstallations)
-    .where(eq(githubInstallations.userId, userId))
+  // Find user's GitHub App installation via user link
+  const [result] = await db
+    .select({
+      installationId: githubInstallations.id,
+      adminGithubUserId: githubInstallations.adminGithubUserId,
+      githubUserId: githubUserLinks.githubUserId,
+    })
+    .from(githubUserLinks)
+    .innerJoin(
+      githubInstallations,
+      eq(githubInstallations.id, githubUserLinks.installationId),
+    )
+    .where(eq(githubUserLinks.vm0UserId, userId))
     .limit(1);
 
-  if (!installation) {
+  if (!result) {
     return NextResponse.json(
       { error: { message: "No GitHub installation found", code: "NOT_FOUND" } },
       { status: 404 },
+    );
+  }
+
+  // Only admin can change default agent
+  if (result.githubUserId !== result.adminGithubUserId) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "Only the installation admin can change the default agent",
+          code: "FORBIDDEN",
+        },
+      },
+      { status: 403 },
     );
   }
 
@@ -274,7 +333,7 @@ export async function PATCH(request: Request) {
   await db
     .update(githubInstallations)
     .set({ defaultComposeId: compose.id, updatedAt: new Date() })
-    .where(eq(githubInstallations.id, installation.id));
+    .where(eq(githubInstallations.id, result.installationId));
 
   return NextResponse.json({ ok: true });
 }

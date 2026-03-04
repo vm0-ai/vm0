@@ -30,6 +30,7 @@ import * as emailThreadSessionSchema from "./schema/email-thread-session";
 import * as emailReplyRequestSchema from "./schema/email-reply-request";
 import * as orgAccessTokenSchema from "./schema/org-access-token";
 import * as githubInstallationSchema from "./schema/github-installation";
+import * as githubUserLinkSchema from "./schema/github-user-link";
 import * as githubIssueSessionSchema from "./schema/github-issue-session";
 import * as telegramInstallationSchema from "./schema/telegram-installation";
 import * as telegramUserLinkSchema from "./schema/telegram-user-link";
@@ -69,6 +70,7 @@ export const schema = {
   ...emailReplyRequestSchema,
   ...orgAccessTokenSchema,
   ...githubInstallationSchema,
+  ...githubUserLinkSchema,
   ...githubIssueSessionSchema,
   ...telegramInstallationSchema,
   ...telegramUserLinkSchema,

@@ -1,11 +1,17 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { encryptCredentialValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import { githubInstallations } from "../../../../../src/db/schema/github-installation";
-import { getInstallationAccessToken } from "../../../../../src/lib/github/github-app";
+import { githubUserLinks } from "../../../../../src/db/schema/github-user-link";
+import { connectors } from "../../../../../src/db/schema/connector";
+import { scopes } from "../../../../../src/db/schema/scope";
+import {
+  getInstallationAccessToken,
+  getInstallationInfo,
+} from "../../../../../src/lib/github/github-app";
 import { getPlatformUrl } from "../../../../../src/lib/url";
 import { resolveDefaultAgentComposeId } from "../../../../../src/lib/agent-compose/resolve-default";
 
@@ -20,8 +26,8 @@ import { resolveDefaultAgentComposeId } from "../../../../../src/lib/agent-compo
  * Flow:
  * 1. Parse installation_id from query params
  * 2. Verify HMAC signature on state to prevent userId spoofing
- * 3. Generate an installation access token via JWT
- * 4. Encrypt and store the token in the database
+ * 3. Create/reuse installation record (org-level, not per-user)
+ * 4. Create github_user_links record if vm0UserId is present
  * 5. Redirect to Platform settings page
  */
 
@@ -73,16 +79,8 @@ export async function GET(request: Request) {
 
   const state = parseOAuthState(url.searchParams.get("state"));
 
-  if (!state.vm0UserId) {
-    return NextResponse.redirect(
-      `${platformUrl}/settings?tab=integrations&error=${encodeURIComponent("Missing user context. Please try installing again from the Platform.")}`,
-    );
-  }
-
-  // Verify HMAC signature to prevent userId spoofing.
-  // The install route always signs the state when vm0UserId is present,
-  // so we always verify when vm0UserId is present.
-  {
+  // Verify HMAC signature when vm0UserId is present
+  if (state.vm0UserId) {
     const expectedPayload = `${state.vm0UserId}:${state.composeId ?? ""}`;
     const expectedSig = createHmac("sha256", SECRETS_ENCRYPTION_KEY)
       .update(expectedPayload)
@@ -119,7 +117,6 @@ export async function GET(request: Request) {
     const targetType = url.searchParams.get("target_type") ?? "Organization";
 
     await globalThis.services.db.insert(githubInstallations).values({
-      userId: state.vm0UserId,
       installationId: null,
       encryptedAccessToken: null,
       status: "pending",
@@ -140,17 +137,29 @@ export async function GET(request: Request) {
     );
   }
 
+  const db = globalThis.services.db;
+
   // Check if installation already exists
-  const [existing] = await globalThis.services.db
+  const [existing] = await db
     .select({ id: githubInstallations.id })
     .from(githubInstallations)
     .where(eq(githubInstallations.installationId, installationId))
     .limit(1);
 
   if (existing) {
-    // Already installed — redirect to settings
+    // Installation exists — create user link if vm0UserId present and not already linked
+    if (state.vm0UserId) {
+      await linkVm0User(db, existing.id, state.vm0UserId);
+    }
     return NextResponse.redirect(`${platformUrl}/settings?tab=integrations`);
   }
+
+  // Get installation info from GitHub API (target type, ID, name)
+  const installInfo = await getInstallationInfo(
+    GITHUB_APP_ID,
+    GITHUB_APP_PRIVATE_KEY,
+    installationId,
+  );
 
   // Get installation access token from GitHub
   const { token } = await getInstallationAccessToken(
@@ -165,14 +174,97 @@ export async function GET(request: Request) {
     SECRETS_ENCRYPTION_KEY,
   );
 
-  // Create installation record
-  await globalThis.services.db.insert(githubInstallations).values({
-    userId: state.vm0UserId,
-    installationId,
-    encryptedAccessToken,
-    status: "active",
-    defaultComposeId: composeId,
-  });
+  // For User-type installations, the account IS the admin
+  const adminGithubUserId =
+    installInfo.targetType === "User" ? installInfo.targetId : null;
+
+  // Create installation record (org-level, no userId)
+  // Check for a pending record for this target first
+  const [pendingRecord] = await db
+    .select({ id: githubInstallations.id })
+    .from(githubInstallations)
+    .where(
+      and(
+        eq(githubInstallations.targetId, installInfo.targetId),
+        eq(githubInstallations.status, "pending"),
+      ),
+    )
+    .limit(1);
+
+  let installRecordId: string;
+
+  if (pendingRecord) {
+    // Activate pending record
+    await db
+      .update(githubInstallations)
+      .set({
+        status: "active",
+        installationId,
+        encryptedAccessToken,
+        targetType: installInfo.targetType,
+        targetName: installInfo.targetName,
+        adminGithubUserId,
+        updatedAt: new Date(),
+      })
+      .where(eq(githubInstallations.id, pendingRecord.id));
+    installRecordId = pendingRecord.id;
+  } else {
+    // Create new installation record
+    const [newInstall] = await db
+      .insert(githubInstallations)
+      .values({
+        installationId,
+        encryptedAccessToken,
+        status: "active",
+        targetType: installInfo.targetType,
+        targetId: installInfo.targetId,
+        targetName: installInfo.targetName,
+        adminGithubUserId,
+        defaultComposeId: composeId,
+      })
+      .returning({ id: githubInstallations.id });
+    installRecordId = newInstall!.id;
+  }
+
+  // Create user link if vm0UserId is present
+  if (state.vm0UserId) {
+    await linkVm0User(db, installRecordId, state.vm0UserId);
+  }
 
   return NextResponse.redirect(`${platformUrl}/settings?tab=integrations`);
+}
+
+/**
+ * Link a VM0 user to a GitHub installation via github_user_links.
+ *
+ * Looks up the user's GitHub connector to find their GitHub user ID.
+ * If no connector exists, the link is skipped (user can link later).
+ */
+async function linkVm0User(
+  db: typeof globalThis.services.db,
+  installRecordId: string,
+  vm0UserId: string,
+): Promise<void> {
+  // Find user's GitHub OAuth connector to get their GitHub user ID
+  const [connector] = await db
+    .select({ externalId: connectors.externalId })
+    .from(connectors)
+    .innerJoin(scopes, eq(scopes.id, connectors.scopeId))
+    .where(and(eq(scopes.ownerId, vm0UserId), eq(connectors.type, "github")))
+    .limit(1);
+
+  if (!connector?.externalId) {
+    // No GitHub connector — user needs to link via /github/connect later
+    return;
+  }
+
+  // Create user link (ignore conflict if already linked)
+  await db
+    .insert(githubUserLinks)
+    .values({
+      githubUserId: connector.externalId,
+      installationId: installRecordId,
+      vm0UserId,
+    })
+    .onConflictDoNothing();
 }

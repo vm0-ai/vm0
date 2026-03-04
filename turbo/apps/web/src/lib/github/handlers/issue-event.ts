@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
 import { githubInstallations } from "../../../db/schema/github-installation";
+import { githubUserLinks } from "../../../db/schema/github-user-link";
 import { githubIssueSessions } from "../../../db/schema/github-issue-session";
 import {
   agentComposes,
@@ -100,7 +101,7 @@ export async function handleIssuesEvent(
   payload: GitHubIssuesEvent,
   appSlug: string | undefined,
 ): Promise<void> {
-  const { action, issue, label, repository, installation } = payload;
+  const { action, issue, label, repository, installation, sender } = payload;
 
   // Only handle opened and labeled actions
   if (action !== "opened" && action !== "labeled") {
@@ -130,6 +131,7 @@ export async function handleIssuesEvent(
     ghInstallationId: String(installation.id),
     repo: repository.full_name,
     issueNumber: issue.number,
+    senderGithubUserId: String(sender.id),
     prompt,
     appSlug,
   });
@@ -179,6 +181,7 @@ export async function handleIssueCommentEvent(
     ghInstallationId: String(installation.id),
     repo: repository.full_name,
     issueNumber: issue.number,
+    senderGithubUserId: String(sender.id),
     prompt,
     commentId: String(comment.id),
     appSlug,
@@ -191,6 +194,7 @@ interface DispatchParams {
   ghInstallationId: string;
   repo: string;
   issueNumber: number;
+  senderGithubUserId: string;
   prompt: string;
   commentId?: string;
   appSlug: string | undefined;
@@ -200,13 +204,21 @@ interface DispatchParams {
  * Core dispatch logic shared by issue and comment handlers.
  *
  * 1. Resolve installation from GitHub installation ID
- * 2. Get agent compose and latest version
- * 3. Look up existing session for multi-turn
- * 4. Create agent run with callback
- * 5. Update/create issue session mapping
+ * 2. Resolve VM0 user via github_user_links
+ * 3. Get agent compose and latest version
+ * 4. Look up existing session for multi-turn
+ * 5. Create agent run with callback
+ * 6. Update/create issue session mapping
  */
 async function dispatchAgentRun(params: DispatchParams): Promise<void> {
-  const { ghInstallationId, repo, issueNumber, prompt, commentId } = params;
+  const {
+    ghInstallationId,
+    repo,
+    issueNumber,
+    senderGithubUserId,
+    prompt,
+    commentId,
+  } = params;
 
   // 1. Resolve installation (only active installations can trigger runs)
   const [installation] = await globalThis.services.db
@@ -226,7 +238,30 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
     );
   }
 
-  // 2. Resolve agent compose and version
+  // 2. Resolve VM0 user via github_user_links
+  const [userLink] = await globalThis.services.db
+    .select({ vm0UserId: githubUserLinks.vm0UserId })
+    .from(githubUserLinks)
+    .where(
+      and(
+        eq(githubUserLinks.githubUserId, senderGithubUserId),
+        eq(githubUserLinks.installationId, installation.id),
+      ),
+    )
+    .limit(1);
+
+  if (!userLink) {
+    log.warn("No VM0 user linked for GitHub user", {
+      githubUserId: senderGithubUserId,
+      installationId: installation.id,
+    });
+    // TODO: Post comment asking user to link their VM0 account
+    return;
+  }
+
+  const vm0UserId = userLink.vm0UserId;
+
+  // 3. Resolve agent compose and version
   const [compose] = await globalThis.services.db
     .select()
     .from(agentComposes)
@@ -254,7 +289,7 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
     versionId = latestVersion.id;
   }
 
-  // 3. Look up existing session for multi-turn
+  // 4. Look up existing session for multi-turn
   let existingSessionId: string | undefined;
   const [existingSession] = await globalThis.services.db
     .select({
@@ -281,14 +316,14 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
     }
   }
 
-  // 4. Create agent run with callback
+  // 5. Create agent run with callback
   const callbackUrl = `${getApiUrl()}/api/internal/callbacks/github`;
   const callbackSecret = generateCallbackSecret();
   const callbackContext: GitHubCallbackContext = {
     installationId: installation.id,
     repo,
     issueNumber,
-    userId: installation.userId,
+    userId: vm0UserId,
     agentName: compose.name,
     composeId: compose.id,
     existingSessionId,
@@ -296,7 +331,7 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
 
   try {
     const result = await createRun({
-      userId: installation.userId,
+      userId: vm0UserId,
       agentComposeVersionId: versionId,
       prompt,
       composeId: compose.id,
@@ -318,7 +353,7 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
       issueNumber,
     });
 
-    // 5. Update or create issue session mapping
+    // 6. Update or create issue session mapping
     if (existingSession) {
       // Update lastCommentId for deduplication
       if (commentId) {

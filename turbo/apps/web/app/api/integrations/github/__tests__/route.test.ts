@@ -4,7 +4,7 @@ import {
   createTestRequest,
   createTestScope,
   createTestCompose,
-  insertTestGitHubInstallation,
+  insertTestGitHubInstallationWithAdmin,
   findTestGitHubInstallationById,
   findTestComposeWithScope,
 } from "../../../../../src/__tests__/api-test-helpers";
@@ -56,7 +56,7 @@ describe("/api/integrations/github", () => {
       await createTestScope(uniqueId("gh-scope"));
       const { composeId } = await createTestCompose("gh-agent");
 
-      await insertTestGitHubInstallation(userId, composeId);
+      await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
       const request = createTestRequest(
         "http://localhost:3000/api/integrations/github",
@@ -78,7 +78,7 @@ describe("/api/integrations/github", () => {
       await createTestScope(uniqueId("gh-scope"));
       const { composeId } = await createTestCompose("gh-agent");
 
-      await insertTestGitHubInstallation(userId, composeId);
+      await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
       const request = createTestRequest(
         "http://localhost:3000/api/integrations/github",
@@ -132,9 +132,9 @@ describe("/api/integrations/github", () => {
       await createTestScope(uniqueId("gh-scope"));
       const { composeId } = await createTestCompose("gh-agent");
 
-      const installation = await insertTestGitHubInstallation(
-        userId,
+      const { installation } = await insertTestGitHubInstallationWithAdmin(
         composeId,
+        userId,
       );
 
       const request = createTestRequest(
@@ -178,7 +178,7 @@ describe("/api/integrations/github", () => {
       mockClerk({ userId });
       await createTestScope(uniqueId("gh-scope"));
       const { composeId } = await createTestCompose("gh-agent");
-      await insertTestGitHubInstallation(userId, composeId);
+      await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
       const request = createTestRequest(
         "http://localhost:3000/api/integrations/github",
@@ -224,7 +224,7 @@ describe("/api/integrations/github", () => {
       mockClerk({ userId });
       await createTestScope(uniqueId("gh-scope"));
       const { composeId } = await createTestCompose("gh-agent");
-      await insertTestGitHubInstallation(userId, composeId);
+      await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
       const request = createTestRequest(
         "http://localhost:3000/api/integrations/github",
@@ -249,7 +249,7 @@ describe("/api/integrations/github", () => {
       mockClerk({ userId });
       await createTestScope(uniqueId("gh-scope"));
       const { composeId } = await createTestCompose("gh-agent");
-      await insertTestGitHubInstallation(userId, composeId);
+      await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
       // Create a new agent to switch to
       await createTestCompose("new-agent");
@@ -287,7 +287,7 @@ describe("/api/integrations/github", () => {
       mockClerk({ userId });
       await createTestScope(uniqueId("gh-scope"));
       const { composeId } = await createTestCompose("gh-agent");
-      await insertTestGitHubInstallation(userId, composeId);
+      await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
       // Create a compose in a different scope (simulating a shared agent)
       const otherUserId = uniqueId("other-user");

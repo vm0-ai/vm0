@@ -8,7 +8,7 @@ import {
   createTestScope,
   createTestCompose,
   findTestGitHubInstallations,
-  findTestGitHubInstallationsByUserId,
+  findTestGitHubInstallationsByTargetId,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -19,8 +19,27 @@ import { env } from "../../../../../../src/env";
 
 const context = testContext();
 
-function setupGitHubTokenMock(installationId: string) {
+const TEST_TARGET_ID = "99887766";
+const TEST_TARGET_LOGIN = "test-org";
+const TEST_TARGET_TYPE = "Organization";
+
+function setupGitHubMocks(installationId: string) {
   server.use(
+    // Mock GET /app/installations/{id} for installation info
+    http.get(
+      `https://api.github.com/app/installations/${installationId}`,
+      () => {
+        return HttpResponse.json({
+          id: Number(installationId),
+          account: {
+            id: Number(TEST_TARGET_ID),
+            login: TEST_TARGET_LOGIN,
+            type: TEST_TARGET_TYPE,
+          },
+        });
+      },
+    ),
+    // Mock POST /app/installations/{id}/access_tokens
     http.post(
       `https://api.github.com/app/installations/${installationId}/access_tokens`,
       () => {
@@ -69,31 +88,6 @@ describe("/api/github/oauth/callback", () => {
     expect(location).toContain("Missing%20installation%20ID");
   });
 
-  it("should redirect with error when state has no vm0UserId", async () => {
-    const request = createTestRequest(
-      "http://localhost:3000/api/github/oauth/callback?installation_id=12345&setup_action=install",
-    );
-    const response = await GET(request);
-
-    expect(response.status).toBe(307);
-    const location = response.headers.get("Location");
-    expect(location).toContain("error=");
-    expect(location).toContain("Missing%20user%20context");
-  });
-
-  it("should redirect with error when state has no composeId and no signature", async () => {
-    const state = JSON.stringify({ vm0UserId: "user-123" });
-    const request = createTestRequest(
-      `http://localhost:3000/api/github/oauth/callback?installation_id=12345&setup_action=install&state=${encodeURIComponent(state)}`,
-    );
-    const response = await GET(request);
-
-    expect(response.status).toBe(307);
-    const location = response.headers.get("Location");
-    expect(location).toContain("error=");
-    expect(location).toContain("Invalid%20state%20signature");
-  });
-
   it("should redirect with error when state signature is invalid", async () => {
     const state = JSON.stringify({
       vm0UserId: "user-123",
@@ -131,8 +125,8 @@ describe("/api/github/oauth/callback", () => {
 
     const installationId = uniqueId("install");
     server.use(
-      http.post(
-        `https://api.github.com/app/installations/${installationId}/access_tokens`,
+      http.get(
+        `https://api.github.com/app/installations/${installationId}`,
         () => {
           return HttpResponse.json(
             { message: "Bad credentials" },
@@ -148,7 +142,7 @@ describe("/api/github/oauth/callback", () => {
     );
 
     await expect(GET(request)).rejects.toThrow(
-      "Failed to get installation access token: 401",
+      "Failed to get installation info: 401",
     );
   });
 
@@ -159,7 +153,7 @@ describe("/api/github/oauth/callback", () => {
     const { composeId } = await createTestCompose("gh-test-agent");
 
     const installationId = uniqueId("install");
-    setupGitHubTokenMock(installationId);
+    setupGitHubMocks(installationId);
 
     const state = buildSignedState(userId, composeId);
     const request = createTestRequest(
@@ -176,9 +170,11 @@ describe("/api/github/oauth/callback", () => {
     const installations = await findTestGitHubInstallations(installationId);
     expect(installations).toHaveLength(1);
     const installation = installations[0]!;
-    expect(installation.userId).toBe(userId);
     expect(installation.defaultComposeId).toBe(composeId);
     expect(installation.encryptedAccessToken).toBeTruthy();
+    expect(installation.targetType).toBe(TEST_TARGET_TYPE);
+    expect(installation.targetId).toBe(TEST_TARGET_ID);
+    expect(installation.targetName).toBe(TEST_TARGET_LOGIN);
   });
 
   it("should create pending record when setup_action is request", async () => {
@@ -188,7 +184,7 @@ describe("/api/github/oauth/callback", () => {
     const { composeId } = await createTestCompose("gh-test-agent");
 
     const state = buildSignedState(userId, composeId);
-    const targetId = "12345678";
+    const targetId = uniqueId("target");
     const request = createTestRequest(
       `http://localhost:3000/api/github/oauth/callback?setup_action=request&target_id=${targetId}&target_type=Organization&state=${encodeURIComponent(state)}`,
     );
@@ -201,10 +197,9 @@ describe("/api/github/oauth/callback", () => {
     expect(location).not.toContain("error=");
 
     // Verify pending installation was created in DB
-    const installations = await findTestGitHubInstallationsByUserId(userId);
+    const installations = await findTestGitHubInstallationsByTargetId(targetId);
     expect(installations).toHaveLength(1);
     const installation = installations[0]!;
-    expect(installation.userId).toBe(userId);
     expect(installation.status).toBe("pending");
     expect(installation.installationId).toBeNull();
     expect(installation.encryptedAccessToken).toBeNull();
@@ -220,7 +215,7 @@ describe("/api/github/oauth/callback", () => {
     const { composeId } = await createTestCompose("gh-test-agent");
 
     const installationId = uniqueId("install");
-    setupGitHubTokenMock(installationId);
+    setupGitHubMocks(installationId);
 
     // First callback — creates installation
     const state = buildSignedState(userId, composeId);

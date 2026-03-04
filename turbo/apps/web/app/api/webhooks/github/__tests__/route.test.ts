@@ -11,7 +11,7 @@ import {
   createTestScope,
   createTestCompose,
   insertTestPendingGitHubInstallation,
-  findTestGitHubInstallationsByUserId,
+  findTestGitHubInstallationsByTargetId,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { POST } from "../route";
@@ -90,10 +90,12 @@ interface IssuesPayloadOverrides {
   installationId?: number;
   repo?: string;
   issueBody?: string | null;
+  senderId?: number;
 }
 
 /** Build a GitHub issues event payload */
 function buildIssuesPayload(overrides?: IssuesPayloadOverrides) {
+  const senderId = overrides?.senderId ?? 100;
   return {
     action: overrides?.action ?? "opened",
     issue: {
@@ -104,12 +106,12 @@ function buildIssuesPayload(overrides?: IssuesPayloadOverrides) {
           ? overrides.issueBody
           : "This is a test issue body",
       labels: overrides?.labels ?? [{ id: 1, name: "vm0-agent" }],
-      user: { id: 100, login: "testuser", type: "User" },
+      user: { id: senderId, login: "testuser", type: "User" },
     },
     ...(overrides?.label && { label: overrides.label }),
     repository: { full_name: overrides?.repo ?? "owner/repo" },
     installation: { id: overrides?.installationId ?? 12345 },
-    sender: { id: 100, login: "testuser", type: "User" },
+    sender: { id: senderId, login: "testuser", type: "User" },
   };
 }
 
@@ -122,10 +124,12 @@ interface CommentPayloadOverrides {
   repo?: string;
   senderType?: string;
   senderLogin?: string;
+  senderId?: number;
 }
 
 /** Build a GitHub issue_comment event payload */
 function buildIssueCommentPayload(overrides?: CommentPayloadOverrides) {
+  const senderId = overrides?.senderId ?? 100;
   const senderLogin = overrides?.senderLogin ?? "testuser";
   const senderType = overrides?.senderType ?? "User";
 
@@ -136,16 +140,16 @@ function buildIssueCommentPayload(overrides?: CommentPayloadOverrides) {
       title: "Test Issue",
       body: "This is a test issue body",
       labels: overrides?.labels ?? [{ id: 1, name: "vm0-agent" }],
-      user: { id: 100, login: "testuser", type: "User" },
+      user: { id: senderId, login: "testuser", type: "User" },
     },
     comment: {
       id: overrides?.commentId ?? 999,
       body: overrides?.commentBody ?? "Please help with this",
-      user: { id: 100, login: senderLogin, type: senderType },
+      user: { id: senderId, login: senderLogin, type: senderType },
     },
     repository: { full_name: overrides?.repo ?? "owner/repo" },
     installation: { id: overrides?.installationId ?? 12345 },
-    sender: { id: 100, login: senderLogin, type: senderType },
+    sender: { id: senderId, login: senderLogin, type: senderType },
   };
 }
 
@@ -222,7 +226,8 @@ describe("POST /api/webhooks/github", () => {
   describe("Issues Event", () => {
     it("should trigger agent for opened issue with vm0-agent label", async () => {
       // Given a GitHub installation exists
-      const { ghInstallationId } = await givenGitHubInstallation();
+      const { ghInstallationId, githubUserId } =
+        await givenGitHubInstallation();
 
       // When a webhook arrives for an opened issue with the vm0-agent label
       const request = createGitHubWebhookRequest(
@@ -231,6 +236,7 @@ describe("POST /api/webhooks/github", () => {
           action: "opened",
           labels: [{ id: 1, name: "vm0-agent" }],
           installationId: ghInstallationId,
+          senderId: Number(githubUserId),
         }),
       );
       const response = await POST(request);
@@ -250,7 +256,8 @@ describe("POST /api/webhooks/github", () => {
     });
 
     it("should trigger agent when vm0-agent label is added", async () => {
-      const { ghInstallationId } = await givenGitHubInstallation();
+      const { ghInstallationId, githubUserId } =
+        await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
         "issues",
@@ -259,6 +266,7 @@ describe("POST /api/webhooks/github", () => {
           labels: [{ id: 1, name: "vm0-agent" }],
           label: { id: 1, name: "vm0-agent" },
           installationId: ghInstallationId,
+          senderId: Number(githubUserId),
         }),
       );
       const response = await POST(request);
@@ -270,7 +278,8 @@ describe("POST /api/webhooks/github", () => {
     });
 
     it("should NOT trigger agent for opened issue without vm0-agent label", async () => {
-      const { ghInstallationId } = await givenGitHubInstallation();
+      const { ghInstallationId, githubUserId } =
+        await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
         "issues",
@@ -278,6 +287,7 @@ describe("POST /api/webhooks/github", () => {
           action: "opened",
           labels: [{ id: 2, name: "bug" }],
           installationId: ghInstallationId,
+          senderId: Number(githubUserId),
         }),
       );
       const response = await POST(request);
@@ -289,7 +299,8 @@ describe("POST /api/webhooks/github", () => {
     });
 
     it("should NOT trigger agent when a non-vm0-agent label is added", async () => {
-      const { ghInstallationId } = await givenGitHubInstallation();
+      const { ghInstallationId, githubUserId } =
+        await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
         "issues",
@@ -301,6 +312,7 @@ describe("POST /api/webhooks/github", () => {
           ],
           label: { id: 2, name: "enhancement" },
           installationId: ghInstallationId,
+          senderId: Number(githubUserId),
         }),
       );
       const response = await POST(request);
@@ -312,7 +324,8 @@ describe("POST /api/webhooks/github", () => {
     });
 
     it("should ignore closed/edited/other issue actions", async () => {
-      const { ghInstallationId } = await givenGitHubInstallation();
+      const { ghInstallationId, githubUserId } =
+        await givenGitHubInstallation();
 
       for (const action of ["closed", "edited", "reopened", "deleted"]) {
         createRunSpy.mockClear();
@@ -323,6 +336,7 @@ describe("POST /api/webhooks/github", () => {
             action,
             labels: [{ id: 1, name: "vm0-agent" }],
             installationId: ghInstallationId,
+            senderId: Number(githubUserId),
           }),
         );
         const response = await POST(request);
@@ -335,7 +349,8 @@ describe("POST /api/webhooks/github", () => {
     });
 
     it("should handle issue with null body", async () => {
-      const { ghInstallationId } = await givenGitHubInstallation();
+      const { ghInstallationId, githubUserId } =
+        await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
         "issues",
@@ -344,6 +359,7 @@ describe("POST /api/webhooks/github", () => {
           labels: [{ id: 1, name: "vm0-agent" }],
           installationId: ghInstallationId,
           issueBody: null,
+          senderId: Number(githubUserId),
         }),
       );
       const response = await POST(request);
@@ -359,7 +375,8 @@ describe("POST /api/webhooks/github", () => {
 
   describe("Issue Comment Event", () => {
     it("should trigger agent for comment on issue with vm0-agent label", async () => {
-      const { ghInstallationId } = await givenGitHubInstallation();
+      const { ghInstallationId, githubUserId } =
+        await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
         "issue_comment",
@@ -367,6 +384,7 @@ describe("POST /api/webhooks/github", () => {
           labels: [{ id: 1, name: "vm0-agent" }],
           commentBody: "Can you help me fix this?",
           installationId: ghInstallationId,
+          senderId: Number(githubUserId),
         }),
       );
       const response = await POST(request);
@@ -381,7 +399,8 @@ describe("POST /api/webhooks/github", () => {
     });
 
     it("should trigger agent for comment mentioning @bot", async () => {
-      const { ghInstallationId } = await givenGitHubInstallation();
+      const { ghInstallationId, githubUserId } =
+        await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
         "issue_comment",
@@ -389,6 +408,7 @@ describe("POST /api/webhooks/github", () => {
           labels: [], // No vm0-agent label
           commentBody: `@${TEST_APP_SLUG}[bot] please review this`,
           installationId: ghInstallationId,
+          senderId: Number(githubUserId),
         }),
       );
       const response = await POST(request);
@@ -400,7 +420,8 @@ describe("POST /api/webhooks/github", () => {
     });
 
     it("should NOT trigger for comment without label or mention", async () => {
-      const { ghInstallationId } = await givenGitHubInstallation();
+      const { ghInstallationId, githubUserId } =
+        await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
         "issue_comment",
@@ -408,6 +429,7 @@ describe("POST /api/webhooks/github", () => {
           labels: [{ id: 2, name: "bug" }],
           commentBody: "Just a regular comment",
           installationId: ghInstallationId,
+          senderId: Number(githubUserId),
         }),
       );
       const response = await POST(request);
@@ -419,7 +441,8 @@ describe("POST /api/webhooks/github", () => {
     });
 
     it("should prevent self-triggering from bot comments", async () => {
-      const { ghInstallationId } = await givenGitHubInstallation();
+      const { ghInstallationId, githubUserId } =
+        await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
         "issue_comment",
@@ -429,6 +452,7 @@ describe("POST /api/webhooks/github", () => {
           senderType: "Bot",
           senderLogin: `${TEST_APP_SLUG}[bot]`,
           installationId: ghInstallationId,
+          senderId: Number(githubUserId),
         }),
       );
       const response = await POST(request);
@@ -440,7 +464,8 @@ describe("POST /api/webhooks/github", () => {
     });
 
     it("should ignore non-created comment actions", async () => {
-      const { ghInstallationId } = await givenGitHubInstallation();
+      const { ghInstallationId, githubUserId } =
+        await givenGitHubInstallation();
 
       for (const action of ["edited", "deleted"]) {
         createRunSpy.mockClear();
@@ -451,6 +476,7 @@ describe("POST /api/webhooks/github", () => {
             action,
             labels: [{ id: 1, name: "vm0-agent" }],
             installationId: ghInstallationId,
+            senderId: Number(githubUserId),
           }),
         );
         const response = await POST(request);
@@ -500,6 +526,8 @@ describe("POST /api/webhooks/github", () => {
       installationId?: number;
       accountId?: number;
       accountType?: string;
+      accountLogin?: string;
+      senderId?: number;
     }) {
       return {
         action: overrides?.action ?? "created",
@@ -507,8 +535,13 @@ describe("POST /api/webhooks/github", () => {
           id: overrides?.installationId ?? 99999,
           account: {
             id: overrides?.accountId ?? 55555,
+            login: overrides?.accountLogin ?? "test-org",
             type: overrides?.accountType ?? "Organization",
           },
+        },
+        sender: {
+          id: overrides?.senderId ?? 12345,
+          login: "installer-user",
         },
       };
     }
@@ -537,7 +570,7 @@ describe("POST /api/webhooks/github", () => {
       const ghInstallationId = Math.floor(Math.random() * 1_000_000_000);
 
       // Create a pending installation record
-      await insertTestPendingGitHubInstallation(userId, composeId, targetId);
+      await insertTestPendingGitHubInstallation(composeId, targetId);
 
       // Set up MSW mock for GitHub token API
       setupInstallationTokenMock(ghInstallationId);
@@ -556,7 +589,8 @@ describe("POST /api/webhooks/github", () => {
       await flushAfterCallbacks();
 
       // Verify the pending installation was activated
-      const installations = await findTestGitHubInstallationsByUserId(userId);
+      const installations =
+        await findTestGitHubInstallationsByTargetId(targetId);
       expect(installations).toHaveLength(1);
       const installation = installations[0]!;
       expect(installation.status).toBe("active");
@@ -615,7 +649,8 @@ describe("POST /api/webhooks/github", () => {
 
   describe("Session Continuity", () => {
     it("should include callback context with session info", async () => {
-      const { ghInstallationId } = await givenGitHubInstallation();
+      const { ghInstallationId, githubUserId } =
+        await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
         "issue_comment",
@@ -623,6 +658,7 @@ describe("POST /api/webhooks/github", () => {
           labels: [{ id: 1, name: "vm0-agent" }],
           commentBody: "Follow-up question",
           installationId: ghInstallationId,
+          senderId: Number(githubUserId),
         }),
       );
       const response = await POST(request);

@@ -7,7 +7,14 @@ import { logger } from "../log.ts";
 const L = logger("GitHubIntegration");
 
 interface GitHubIntegrationData {
-  installation: { id: string; installationId: string | null; status: string };
+  installation: {
+    id: string;
+    installationId: string | null;
+    status: string;
+    targetName: string | null;
+    targetType: string | null;
+    isAdmin: boolean;
+  };
   agent: { id: string; name: string; scopeSlug: string } | null;
   environment: {
     requiredSecrets: string[];
@@ -49,6 +56,9 @@ export const githubInstallUrl$ = computed(
 );
 export const githubIntegrationPendingApproval$ = computed(
   (get) => get(githubIntegrationState$).pendingApproval,
+);
+export const githubIntegrationIsAdmin$ = computed(
+  (get) => get(githubIntegrationState$).data?.installation.isAdmin ?? false,
 );
 
 export const fetchGitHubIntegration$ = command(async ({ get, set }) => {

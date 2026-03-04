@@ -27,6 +27,7 @@ import {
   githubIntegrationData$,
   githubIntegrationLoading$,
   githubIntegrationPendingApproval$,
+  githubIntegrationIsAdmin$,
   disconnectGithub$,
   updateGithubDefaultAgent$,
   githubDisconnectDialogOpen$,
@@ -129,6 +130,7 @@ export function GitHubSettingsPage() {
   const data = useGet(githubIntegrationData$);
   const loading = useGet(githubIntegrationLoading$);
   const pendingApproval = useGet(githubIntegrationPendingApproval$);
+  const isAdmin = useGet(githubIntegrationIsAdmin$);
   const agents = useGet(agentsList$);
   const navigate = useSet(navigateInReact$);
   const disconnect = useSet(disconnectGithub$);
@@ -194,7 +196,11 @@ export function GitHubSettingsPage() {
     <AppShell
       breadcrumb={breadcrumb}
       title="VM0 in GitHub"
-      subtitle="Configure your settings how to run VM0 in GitHub."
+      subtitle={
+        data?.installation.targetName
+          ? `Connected to ${data.installation.targetName}`
+          : "Configure your settings how to run VM0 in GitHub."
+      }
     >
       <div className="flex flex-col gap-6 px-6 pb-8">
         {loading ? (
@@ -231,6 +237,7 @@ export function GitHubSettingsPage() {
                 <Select
                   value={scopedAgentName ?? ""}
                   onValueChange={handleAgentChange}
+                  disabled={!isAdmin}
                 >
                   <SelectTrigger className="w-full sm:w-[280px] sm:shrink-0">
                     <SelectValue placeholder="Select an agent" />
@@ -267,6 +274,7 @@ export function GitHubSettingsPage() {
                   variant="destructive"
                   size="sm"
                   onClick={() => openConfirm()}
+                  disabled={!isAdmin}
                 >
                   Uninstall
                 </Button>

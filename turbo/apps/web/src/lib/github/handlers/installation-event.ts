@@ -12,6 +12,7 @@ const log = logger("github:installation-event");
 
 const gitHubInstallationAccountSchema = z.object({
   id: z.number(),
+  login: z.string(),
   type: z.string(),
 });
 
@@ -20,9 +21,15 @@ const gitHubInstallationSchema = z.object({
   account: gitHubInstallationAccountSchema,
 });
 
+const gitHubSenderSchema = z.object({
+  id: z.number(),
+  login: z.string(),
+});
+
 export const gitHubInstallationEventSchema = z.object({
   action: z.string(),
   installation: gitHubInstallationSchema,
+  sender: gitHubSenderSchema.optional(),
 });
 
 type GitHubInstallationEvent = z.infer<typeof gitHubInstallationEventSchema>;
@@ -85,6 +92,9 @@ export async function handleInstallationCreatedEvent(
     SECRETS_ENCRYPTION_KEY,
   );
 
+  // Set adminGithubUserId from webhook sender if available
+  const adminGithubUserId = payload.sender ? String(payload.sender.id) : null;
+
   // Activate the pending record
   await globalThis.services.db
     .update(githubInstallations)
@@ -92,6 +102,8 @@ export async function handleInstallationCreatedEvent(
       status: "active",
       installationId: ghInstallationId,
       encryptedAccessToken,
+      targetName: account.login,
+      adminGithubUserId,
       updatedAt: new Date(),
     })
     .where(eq(githubInstallations.id, pending.id));

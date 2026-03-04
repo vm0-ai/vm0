@@ -17,11 +17,11 @@ import {
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
 import { githubInstallations } from "../../db/schema/github-installation";
+import { githubUserLinks } from "../../db/schema/github-user-link";
 
 interface GitHubInstallationResult {
   installation: {
     id: string;
-    userId: string;
     installationId: string;
     defaultComposeId: string;
   };
@@ -29,12 +29,13 @@ interface GitHubInstallationResult {
   compose: { id: string; name: string };
   versionId: string;
   userId: string;
+  githubUserId: string;
 }
 
 /**
  * Given a GitHub App installation exists in the database.
  *
- * Creates all prerequisite records (scope, compose, version, installation)
+ * Creates all prerequisite records (scope, compose, version, installation, user link)
  * needed for webhook handler tests.
  */
 export async function givenGitHubInstallation(
@@ -47,6 +48,7 @@ export async function givenGitHubInstallation(
   const { SECRETS_ENCRYPTION_KEY } = env();
 
   const userId = uniqueId("gh-user");
+  const githubUserId = String(Math.floor(Math.random() * 1_000_000_000));
   const scopeSlug = uniqueId("scope");
 
   // Create scope
@@ -87,7 +89,7 @@ export async function givenGitHubInstallation(
     .set({ headVersionId: versionId })
     .where(eq(agentComposes.id, compose!.id));
 
-  // Create installation
+  // Create installation (org-level, no userId)
   const encryptedToken = encryptCredentialValue(
     "ghs_test_token",
     SECRETS_ENCRYPTION_KEY,
@@ -96,17 +98,26 @@ export async function givenGitHubInstallation(
   const [installation] = await globalThis.services.db
     .insert(githubInstallations)
     .values({
-      userId,
       installationId: String(ghInstallationId),
       encryptedAccessToken: encryptedToken,
       defaultComposeId: compose!.id,
+      targetType: "Organization",
+      targetId: String(Math.floor(Math.random() * 1_000_000_000)),
+      targetName: "test-org",
+      adminGithubUserId: githubUserId,
     })
     .returning();
+
+  // Create user link
+  await globalThis.services.db.insert(githubUserLinks).values({
+    githubUserId,
+    installationId: installation!.id,
+    vm0UserId: userId,
+  });
 
   return {
     installation: {
       id: installation!.id,
-      userId: installation!.userId,
       installationId: installation!.installationId!,
       defaultComposeId: installation!.defaultComposeId,
     },
@@ -114,5 +125,6 @@ export async function givenGitHubInstallation(
     compose: { id: compose!.id, name: compose!.name },
     versionId,
     userId,
+    githubUserId,
   };
 }
