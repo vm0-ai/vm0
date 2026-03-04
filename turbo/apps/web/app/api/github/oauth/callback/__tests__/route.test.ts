@@ -49,9 +49,15 @@ describe("/api/github/oauth/callback", () => {
     context.setupMocks();
   });
 
-  it("should redirect with error when installation_id is missing", async () => {
+  it("should redirect with error when installation_id is missing for install action", async () => {
+    const userId = uniqueId("gh-user");
+    mockClerk({ userId });
+    await createTestScope(uniqueId("gh-scope"));
+    const { composeId } = await createTestCompose("gh-test-agent");
+
+    const state = buildSignedState(userId, composeId);
     const request = createTestRequest(
-      "http://localhost:3000/api/github/oauth/callback",
+      `http://localhost:3000/api/github/oauth/callback?setup_action=install&state=${encodeURIComponent(state)}`,
     );
     const response = await GET(request);
 

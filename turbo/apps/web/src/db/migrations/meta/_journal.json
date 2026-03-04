@@ -701,6 +701,13 @@
       "when": 1772598190600,
       "tag": "0099_slippery_sunset_bain",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1772598515368,
+      "tag": "0100_github_installation_pending",
+      "breakpoints": true
     }
   ]
 }

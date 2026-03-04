@@ -122,7 +122,9 @@ async function givenGitHubCallbackSetup(overrides?: {
   const { runId } = await createTestRun(composeId, "Test GitHub prompt");
   const installation = await insertTestGitHubInstallation(userId, composeId);
 
-  const { capturedComments } = setupGitHubApiMocks(installation.installationId);
+  const { capturedComments } = setupGitHubApiMocks(
+    installation.installationId!,
+  );
 
   const payload: CallbackPayload = {
     installationId: installation.id,

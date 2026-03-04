@@ -72,7 +72,7 @@ function initEnv() {
       SLACK_CLIENT_SECRET: z.string().min(1).optional(),
       SLACK_SIGNING_SECRET: z.string().min(1).optional(),
       SLACK_REDIRECT_BASE_URL: z.string().url().optional(), // Override base URL for OAuth redirects (e.g., tunnel URL)
-      SLACK_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent for new installs (format: "scope/name")
+      VM0_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent for new Slack/GitHub installs (format: "scope/name")
       // Telegram bot integration
       TELEGRAM_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent for new bots (format: "scope/name")
       // LLM API
@@ -212,7 +212,7 @@ function initEnv() {
       SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET,
       SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
       SLACK_REDIRECT_BASE_URL: process.env.SLACK_REDIRECT_BASE_URL,
-      SLACK_DEFAULT_AGENT: process.env.SLACK_DEFAULT_AGENT,
+      VM0_DEFAULT_AGENT: process.env.VM0_DEFAULT_AGENT,
       TELEGRAM_DEFAULT_AGENT: process.env.TELEGRAM_DEFAULT_AGENT,
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
       GH_OAUTH_CLIENT_ID: process.env.GH_OAUTH_CLIENT_ID,

@@ -1,5 +1,5 @@
 import { useGet, useSet } from "ccstate-react";
-import { IconAlertTriangle } from "@tabler/icons-react";
+import { IconAlertTriangle, IconClock } from "@tabler/icons-react";
 import {
   CONNECTOR_TYPES,
   getConnectorProvidedSecretNames,
@@ -26,6 +26,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   githubIntegrationData$,
   githubIntegrationLoading$,
+  githubIntegrationPendingApproval$,
   disconnectGithub$,
   updateGithubDefaultAgent$,
   githubDisconnectDialogOpen$,
@@ -127,6 +128,7 @@ function MissingEnvBanner({
 export function GitHubSettingsPage() {
   const data = useGet(githubIntegrationData$);
   const loading = useGet(githubIntegrationLoading$);
+  const pendingApproval = useGet(githubIntegrationPendingApproval$);
   const agents = useGet(agentsList$);
   const navigate = useSet(navigateInReact$);
   const disconnect = useSet(disconnectGithub$);
@@ -185,14 +187,14 @@ export function GitHubSettingsPage() {
 
   const breadcrumb = [
     { label: "Settings", path: "/settings" as const },
-    "GitHub Issues",
+    "VM0 in GitHub",
   ];
 
   return (
     <AppShell
       breadcrumb={breadcrumb}
-      title="GitHub Issues"
-      subtitle="Configure your GitHub integration settings."
+      title="VM0 in GitHub"
+      subtitle="Configure your settings how to run VM0 in GitHub."
     >
       <div className="flex flex-col gap-6 px-6 pb-8">
         {loading ? (
@@ -203,28 +205,27 @@ export function GitHubSettingsPage() {
           </div>
         ) : (
           <>
+            {pendingApproval && (
+              <div className="flex items-center gap-3 rounded-lg border border-amber-500 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950/30">
+                <IconClock
+                  size={20}
+                  className="shrink-0 text-amber-500"
+                  stroke={1.5}
+                />
+                <p className="text-sm">
+                  Waiting for organization admin approval. The integration will
+                  activate automatically once approved.
+                </p>
+              </div>
+            )}
+
             {/* Default agent section */}
             <div className="flex flex-col gap-4">
               <h3 className="text-base font-medium">Default agent</h3>
               <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
                 <div className="flex flex-1 flex-col gap-1">
                   <p className="text-sm font-medium">
-                    Default agent for GitHub issues
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {
-                      "If you want to manage your agent's model provider, secrets, or connectors, go to "
-                    }
-                    <Link
-                      pathname="/settings"
-                      options={{
-                        searchParams: new URLSearchParams({ tab: "providers" }),
-                      }}
-                      className="text-primary hover:underline"
-                    >
-                      Settings
-                    </Link>
-                    .
+                    Default agent you would like to use in GitHub
                   </p>
                 </div>
                 <Select
@@ -251,17 +252,15 @@ export function GitHubSettingsPage() {
               missingVars={data?.environment.missingVars ?? []}
             />
 
-            {/* Disconnect section */}
+            {/* Uninstall section */}
             <div className="flex flex-col gap-4">
-              <h3 className="text-base font-medium">Disconnect GitHub</h3>
+              <h3 className="text-base font-medium">Uninstall GitHub</h3>
               <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
                 <div className="flex flex-1 flex-col gap-1">
-                  <p className="text-sm font-medium">
-                    Disconnect GitHub integration
-                  </p>
+                  <p className="text-sm font-medium">Uninstall GitHub</p>
                   <p className="text-sm text-muted-foreground">
-                    Your GitHub App installation will be removed and agents will
-                    no longer respond to GitHub issues.
+                    Your VM0 agent will be removed and uninstalled from your
+                    GitHub organization.
                   </p>
                 </div>
                 <Button
@@ -269,7 +268,7 @@ export function GitHubSettingsPage() {
                   size="sm"
                   onClick={() => openConfirm()}
                 >
-                  Disconnect
+                  Uninstall
                 </Button>
               </div>
             </div>
@@ -287,10 +286,10 @@ export function GitHubSettingsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Disconnect GitHub</DialogTitle>
+            <DialogTitle>Uninstall GitHub</DialogTitle>
             <DialogDescription>
               This will remove your GitHub App installation and delete all
-              associated issue sessions. You can reconnect at any time.
+              associated issue sessions. You can reinstall at any time.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -298,7 +297,7 @@ export function GitHubSettingsPage() {
               Cancel
             </Button>
             <Button variant="destructive" onClick={handleDisconnect}>
-              Disconnect
+              Uninstall
             </Button>
           </DialogFooter>
         </DialogContent>

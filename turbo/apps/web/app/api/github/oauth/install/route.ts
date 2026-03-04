@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
+import { getApiUrl } from "../../../../../src/lib/callback";
 
 /**
  * GitHub App Install Endpoint
@@ -62,8 +63,9 @@ export async function GET(request: Request) {
     installUrl.searchParams.set("state", state);
   }
 
-  // Derive redirect URI from request URL (web app origin, not platform)
-  const redirectUri = `${url.protocol}//${url.host}/api/github/oauth/callback`;
+  // Derive redirect URI: prefer VM0_API_URL (tunnel) over request URL
+  const baseUrl = getApiUrl();
+  const redirectUri = `${baseUrl}/api/github/oauth/callback`;
   installUrl.searchParams.set("redirect_uri", redirectUri);
 
   return NextResponse.redirect(installUrl.toString());

@@ -107,7 +107,7 @@ export async function givenGitHubInstallation(
     installation: {
       id: installation!.id,
       userId: installation!.userId,
-      installationId: installation!.installationId,
+      installationId: installation!.installationId!,
       defaultComposeId: installation!.defaultComposeId,
     },
     ghInstallationId,

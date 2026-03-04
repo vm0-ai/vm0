@@ -8,6 +8,7 @@ import {
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getApiUrl } from "../../../../src/lib/callback";
 import { githubInstallations } from "../../../../src/db/schema/github-installation";
 import {
   agentComposes,
@@ -54,8 +55,7 @@ export async function GET(request: Request) {
 
   if (!installation) {
     const { GITHUB_APP_SLUG } = env();
-    const reqUrl = new URL(request.url);
-    const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
+    const baseUrl = getApiUrl();
     const installUrl = GITHUB_APP_SLUG
       ? `${baseUrl}/api/github/oauth/install?vm0UserId=${encodeURIComponent(userId)}`
       : null;
@@ -132,6 +132,7 @@ export async function GET(request: Request) {
     installation: {
       id: installation.id,
       installationId: installation.installationId,
+      status: installation.status,
     },
     agent: compose
       ? { id: compose.id, name: compose.name, scopeSlug: compose.scopeSlug }

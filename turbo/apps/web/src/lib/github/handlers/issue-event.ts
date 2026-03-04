@@ -208,11 +208,16 @@ interface DispatchParams {
 async function dispatchAgentRun(params: DispatchParams): Promise<void> {
   const { ghInstallationId, repo, issueNumber, prompt, commentId } = params;
 
-  // 1. Resolve installation
+  // 1. Resolve installation (only active installations can trigger runs)
   const [installation] = await globalThis.services.db
     .select()
     .from(githubInstallations)
-    .where(eq(githubInstallations.installationId, ghInstallationId))
+    .where(
+      and(
+        eq(githubInstallations.installationId, ghInstallationId),
+        eq(githubInstallations.status, "active"),
+      ),
+    )
     .limit(1);
 
   if (!installation) {

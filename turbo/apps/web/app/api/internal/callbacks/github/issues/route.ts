@@ -203,6 +203,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return errorResponse("GitHub installation not found", 404);
   }
 
+  if (!installation.installationId) {
+    log.error("GitHub installation is pending, cannot post comment", {
+      installationId,
+    });
+    return errorResponse("GitHub installation is pending approval", 400);
+  }
+
   // Get a fresh installation access token
   if (!GITHUB_APP_ID || !GITHUB_APP_PRIVATE_KEY) {
     log.error("GitHub App credentials not configured");

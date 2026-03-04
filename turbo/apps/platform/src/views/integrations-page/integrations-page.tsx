@@ -10,6 +10,7 @@ import {
   githubIntegrationLoading$,
   githubIntegrationNotLinked$,
   githubInstallUrl$,
+  githubIntegrationPendingApproval$,
 } from "../../signals/integrations-page/github-integration.ts";
 import githubIcon from "../settings-page/icons/github.svg";
 import { Link } from "../router/link.tsx";
@@ -72,6 +73,7 @@ export function GitHubIntegrationCard() {
   const loading = useGet(githubIntegrationLoading$);
   const notLinked = useGet(githubIntegrationNotLinked$);
   const installUrl = useGet(githubInstallUrl$);
+  const pendingApproval = useGet(githubIntegrationPendingApproval$);
 
   if (loading) {
     return <IntegrationCardSkeleton />;
@@ -83,9 +85,9 @@ export function GitHubIntegrationCard() {
         <img src={githubIcon} alt="GitHub" className="h-7 w-7" />
       </div>
       <div className="flex flex-1 flex-col gap-1 min-w-0">
-        <div className="text-sm font-medium text-foreground">GitHub Issues</div>
+        <div className="text-sm font-medium text-foreground">VM0 in GitHub</div>
         <div className="text-sm text-muted-foreground">
-          Trigger agents from GitHub issue events
+          Use your VM0 agent in GitHub
         </div>
       </div>
       <div className="shrink-0">
@@ -97,6 +99,15 @@ export function GitHubIntegrationCard() {
               </a>
             </Button>
           ) : null
+        ) : pendingApproval ? (
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+              Pending Approval
+            </span>
+            <Button variant="outline" size="sm" asChild>
+              <Link pathname="/settings/github">Settings</Link>
+            </Button>
+          </div>
         ) : (
           <Button variant="outline" size="sm" disabled>
             Installed

@@ -11,6 +11,10 @@ import {
   gitHubIssuesEventSchema,
   gitHubIssueCommentEventSchema,
 } from "../../../../src/lib/github/handlers/issue-event";
+import {
+  handleInstallationCreatedEvent,
+  gitHubInstallationEventSchema,
+} from "../../../../src/lib/github/handlers/installation-event";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("webhook:github");
@@ -115,6 +119,27 @@ export async function POST(request: Request) {
     after(
       handleIssueCommentEvent(parsed.data, GITHUB_APP_SLUG).catch((error) => {
         log.error("Error handling issue_comment event", { error });
+      }),
+    );
+
+    return new Response("OK", { status: 200 });
+  }
+
+  if (headers.event === "installation") {
+    const parsed = gitHubInstallationEventSchema.safeParse(payload);
+    if (!parsed.success) {
+      log.error("Invalid installation event payload", { error: parsed.error });
+      return NextResponse.json(
+        { error: "Invalid payload structure" },
+        { status: 400 },
+      );
+    }
+
+    initServices();
+
+    after(
+      handleInstallationCreatedEvent(parsed.data).catch((error) => {
+        log.error("Error handling installation event", { error });
       }),
     );
 

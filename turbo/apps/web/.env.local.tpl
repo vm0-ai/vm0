@@ -26,7 +26,7 @@ SECRETS_ENCRYPTION_KEY=op://Development/vm0-env-local/SECRETS_ENCRYPTION_KEY
 SLACK_CLIENT_ID=op://Development/vm0-env-local/SLACK_CLIENT_ID
 SLACK_CLIENT_SECRET=op://Development/vm0-env-local/SLACK_CLIENT_SECRET
 SLACK_SIGNING_SECRET=op://Development/vm0-env-local/SLACK_SIGNING_SECRET
-SLACK_DEFAULT_AGENT=op://Development/vm0-env-local/SLACK_DEFAULT_AGENT
+VM0_DEFAULT_AGENT=op://Development/vm0-env-local/VM0_DEFAULT_AGENT
 
 # Required: Claude Code Version URL
 CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest

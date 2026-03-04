@@ -1,12 +1,14 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { encryptCredentialValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import { githubInstallations } from "../../../../../src/db/schema/github-installation";
 import { getInstallationAccessToken } from "../../../../../src/lib/github/github-app";
 import { getPlatformUrl } from "../../../../../src/lib/url";
+import { scopes } from "../../../../../src/db/schema/scope";
+import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 
 /**
  * GitHub App OAuth Callback Endpoint
@@ -65,14 +67,6 @@ export async function GET(request: Request) {
   const installationId = url.searchParams.get("installation_id");
   const setupAction = url.searchParams.get("setup_action");
 
-  // GitHub sends setup_action=install for new installations
-  // and setup_action=update for permission changes
-  if (!installationId) {
-    return NextResponse.redirect(
-      `${platformUrl}/settings?tab=integrations&error=${encodeURIComponent("Missing installation ID from GitHub")}`,
-    );
-  }
-
   // Handle update action (permission changes) — no state needed
   if (setupAction === "update") {
     return NextResponse.redirect(`${platformUrl}/settings?tab=integrations`);
@@ -86,26 +80,62 @@ export async function GET(request: Request) {
     );
   }
 
-  if (!state.composeId) {
+  // Verify HMAC signature when composeId is present in state
+  if (state.composeId) {
+    const expectedPayload = `${state.vm0UserId}:${state.composeId}`;
+    const expectedSig = createHmac("sha256", SECRETS_ENCRYPTION_KEY)
+      .update(expectedPayload)
+      .digest("hex");
+
+    const sigValid =
+      state.sig !== null &&
+      state.sig.length === expectedSig.length &&
+      timingSafeEqual(Buffer.from(state.sig), Buffer.from(expectedSig));
+
+    if (!sigValid) {
+      return NextResponse.redirect(
+        `${platformUrl}/settings?tab=integrations&error=${encodeURIComponent("Invalid state signature. Please try installing again from the Platform.")}`,
+      );
+    }
+  }
+
+  // Resolve composeId: use state value or fall back to VM0_DEFAULT_AGENT env var
+  let composeId = state.composeId;
+  if (!composeId) {
+    composeId = await resolveDefaultAgentComposeId();
+  }
+
+  if (!composeId) {
     return NextResponse.redirect(
-      `${platformUrl}/settings?tab=integrations&error=${encodeURIComponent("Missing default agent. Please select an agent before connecting GitHub.")}`,
+      `${platformUrl}/settings?tab=integrations&error=${encodeURIComponent("Missing default agent. Please set VM0_DEFAULT_AGENT or select an agent before connecting GitHub.")}`,
     );
   }
 
-  // Verify HMAC signature to prevent state tampering
-  const expectedPayload = `${state.vm0UserId}:${state.composeId}`;
-  const expectedSig = createHmac("sha256", SECRETS_ENCRYPTION_KEY)
-    .update(expectedPayload)
-    .digest("hex");
+  // Handle setup_action=request — user requested install on an org they don't admin.
+  // GitHub sends no installation_id in this case. Create a pending record.
+  if (setupAction === "request") {
+    const targetId = url.searchParams.get("target_id");
+    const targetType = url.searchParams.get("target_type") ?? "Organization";
 
-  const sigValid =
-    state.sig !== null &&
-    state.sig.length === expectedSig.length &&
-    timingSafeEqual(Buffer.from(state.sig), Buffer.from(expectedSig));
+    await globalThis.services.db.insert(githubInstallations).values({
+      userId: state.vm0UserId,
+      installationId: null,
+      encryptedAccessToken: null,
+      status: "pending",
+      targetId,
+      targetType,
+      defaultComposeId: composeId,
+    });
 
-  if (!sigValid) {
     return NextResponse.redirect(
-      `${platformUrl}/settings?tab=integrations&error=${encodeURIComponent("Invalid state signature. Please try installing again from the Platform.")}`,
+      `${platformUrl}/settings?tab=integrations&pending=true`,
+    );
+  }
+
+  // For install action, installation_id is required
+  if (!installationId) {
+    return NextResponse.redirect(
+      `${platformUrl}/settings?tab=integrations&error=${encodeURIComponent("Missing installation ID from GitHub")}`,
     );
   }
 
@@ -139,8 +169,42 @@ export async function GET(request: Request) {
     userId: state.vm0UserId,
     installationId,
     encryptedAccessToken,
-    defaultComposeId: state.composeId,
+    status: "active",
+    defaultComposeId: composeId,
   });
 
   return NextResponse.redirect(`${platformUrl}/settings?tab=integrations`);
+}
+
+/**
+ * Resolve the default agent compose ID from VM0_DEFAULT_AGENT env var.
+ * Format: "scope-slug/agent-name"
+ */
+async function resolveDefaultAgentComposeId(): Promise<string | null> {
+  const { VM0_DEFAULT_AGENT } = env();
+  if (!VM0_DEFAULT_AGENT) return null;
+
+  const [scopeSlug, agentName] = VM0_DEFAULT_AGENT.split("/");
+  if (!scopeSlug || !agentName) return null;
+
+  const [scope] = await globalThis.services.db
+    .select({ id: scopes.id })
+    .from(scopes)
+    .where(eq(scopes.slug, scopeSlug))
+    .limit(1);
+
+  if (!scope) return null;
+
+  const [compose] = await globalThis.services.db
+    .select({ id: agentComposes.id })
+    .from(agentComposes)
+    .where(
+      and(
+        eq(agentComposes.scopeId, scope.id),
+        eq(agentComposes.name, agentName),
+      ),
+    )
+    .limit(1);
+
+  return compose?.id ?? null;
 }

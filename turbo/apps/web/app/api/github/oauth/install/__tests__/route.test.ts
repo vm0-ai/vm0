@@ -26,7 +26,7 @@ describe("/api/github/oauth/install", () => {
       `/apps/${env().GITHUB_APP_SLUG}/installations/new`,
     );
 
-    // Verify redirect_uri derives from request origin
+    // Verify redirect_uri uses API URL (falls back to localhost in test)
     expect(location.searchParams.get("redirect_uri")).toBe(
       "http://localhost:3000/api/github/oauth/callback",
     );

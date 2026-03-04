@@ -12,7 +12,7 @@ const log = logger("slack:permission-sync");
  * Sync agent permissions for all linked users in a Slack workspace
  * when the workspace default agent is switched.
  *
- * - Revokes email permissions on the old agent (unless it's the SLACK_DEFAULT_AGENT)
+ * - Revokes email permissions on the old agent (unless it's the VM0_DEFAULT_AGENT)
  * - Grants email permissions on the new agent
  *
  * When `dbOverride` is provided (a caller's transaction), permission writes
@@ -51,7 +51,7 @@ export async function syncWorkspaceAgentPermissions(
     return;
   }
 
-  // 3. Determine if old agent is the SLACK_DEFAULT_AGENT (skip revocation)
+  // 3. Determine if old agent is the VM0_DEFAULT_AGENT (skip revocation)
   const defaultComposeId = await resolveDefaultAgentComposeId();
   const skipRevoke = oldComposeId === defaultComposeId;
 

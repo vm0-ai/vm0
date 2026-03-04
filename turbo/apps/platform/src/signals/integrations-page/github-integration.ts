@@ -7,7 +7,7 @@ import { logger } from "../log.ts";
 const L = logger("GitHubIntegration");
 
 interface GitHubIntegrationData {
-  installation: { id: string; installationId: string };
+  installation: { id: string; installationId: string | null; status: string };
   agent: { id: string; name: string; scopeSlug: string } | null;
   environment: {
     requiredSecrets: string[];
@@ -23,6 +23,7 @@ interface GitHubIntegrationState {
   error: string | null;
   notLinked: boolean;
   installUrl: string | null;
+  pendingApproval: boolean;
 }
 
 const githubIntegrationState$ = state<GitHubIntegrationState>({
@@ -31,6 +32,7 @@ const githubIntegrationState$ = state<GitHubIntegrationState>({
   error: null,
   notLinked: false,
   installUrl: null,
+  pendingApproval: false,
 });
 
 export const githubIntegrationData$ = computed(
@@ -44,6 +46,9 @@ export const githubIntegrationNotLinked$ = computed(
 );
 export const githubInstallUrl$ = computed(
   (get) => get(githubIntegrationState$).installUrl,
+);
+export const githubIntegrationPendingApproval$ = computed(
+  (get) => get(githubIntegrationState$).pendingApproval,
 );
 
 export const fetchGitHubIntegration$ = command(async ({ get, set }) => {
@@ -67,6 +72,7 @@ export const fetchGitHubIntegration$ = command(async ({ get, set }) => {
         error: null,
         notLinked: true,
         installUrl: body.installUrl ?? null,
+        pendingApproval: false,
       });
       return;
     }
@@ -84,6 +90,7 @@ export const fetchGitHubIntegration$ = command(async ({ get, set }) => {
       error: null,
       notLinked: false,
       installUrl: null,
+      pendingApproval: data.installation.status === "pending",
     });
   } catch (error) {
     throwIfAbort(error);

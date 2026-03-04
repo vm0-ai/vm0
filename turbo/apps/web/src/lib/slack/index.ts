@@ -31,16 +31,16 @@ export function getSlackRedirectBaseUrl(requestUrl?: string): string {
 }
 
 /**
- * Resolve the default agent compose ID from SLACK_DEFAULT_AGENT env var.
+ * Resolve the default agent compose ID from VM0_DEFAULT_AGENT env var.
  * Format: "scope-slug/agent-name" (e.g. "yuma/deep-dive")
  *
  * Returns the compose ID if found, or null.
  */
 export async function resolveDefaultAgentComposeId(): Promise<string | null> {
-  const { SLACK_DEFAULT_AGENT } = env();
-  if (!SLACK_DEFAULT_AGENT) return null;
+  const { VM0_DEFAULT_AGENT } = env();
+  if (!VM0_DEFAULT_AGENT) return null;
 
-  const [scopeSlug, agentName] = SLACK_DEFAULT_AGENT.split("/");
+  const [scopeSlug, agentName] = VM0_DEFAULT_AGENT.split("/");
   if (!scopeSlug || !agentName) return null;
 
   const [scope] = await globalThis.services.db

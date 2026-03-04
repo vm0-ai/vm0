@@ -16,10 +16,11 @@ import { agentComposes } from "./agent-compose";
 export const githubInstallations = pgTable("github_installations", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").notNull(),
-  installationId: varchar("installation_id", { length: 255 })
-    .notNull()
-    .unique(),
-  encryptedAccessToken: text("encrypted_access_token").notNull(),
+  installationId: varchar("installation_id", { length: 255 }),
+  encryptedAccessToken: text("encrypted_access_token"),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  targetType: varchar("target_type", { length: 20 }),
+  targetId: varchar("target_id", { length: 255 }),
   defaultComposeId: uuid("default_compose_id")
     .notNull()
     .references(() => agentComposes.id, { onDelete: "restrict" }),
