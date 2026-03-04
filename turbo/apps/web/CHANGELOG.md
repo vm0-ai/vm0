@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.69.0](https://github.com/vm0-ai/vm0/compare/web-v12.68.0...web-v12.69.0) (2026-03-04)
+
+
+### Features
+
+* **slack:** interactive ask-user cards via prompt-based detection ([#3602](https://github.com/vm0-ai/vm0/issues/3602)) ([94f11a5](https://github.com/vm0-ai/vm0/commit/94f11a582a59cdd9db84848523f2d2406ee0d624))
+
 ## [12.68.0](https://github.com/vm0-ai/vm0/compare/web-v12.67.0...web-v12.68.0) (2026-03-04)
 
 
