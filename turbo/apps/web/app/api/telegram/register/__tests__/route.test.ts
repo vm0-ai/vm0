@@ -129,6 +129,7 @@ describe("POST /api/telegram/register", () => {
     expect(body.botUsername).toBe(`bot_${botId}`);
     expect(body.webhookUrl).toContain("/api/telegram/webhook/");
     expect(body.id).toBeDefined();
+    expect(body.linkToken).toBeDefined();
 
     expect(getMeHandler.mocked).toHaveBeenCalledTimes(1);
     expect(setWebhookHandler.mocked).toHaveBeenCalledTimes(1);

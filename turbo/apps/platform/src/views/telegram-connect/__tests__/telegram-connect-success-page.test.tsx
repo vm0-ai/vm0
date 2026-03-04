@@ -84,11 +84,11 @@ describe("telegram connect success page", () => {
 
     await setupPage({
       context,
-      path: "/telegram/connect/success?bot=my_test_bot",
+      path: "/telegram/connect/success?bot=my_test_bot&token=abc123",
     });
 
-    // The setupTelegramConnectSuccessPage$ sets window.location.href with tg:// protocol
-    expect(capturedHref).toBe("tg://resolve?domain=my_test_bot");
+    // The setupTelegramConnectSuccessPage$ sets window.location.href with tg:// protocol and link token
+    expect(capturedHref).toBe("tg://resolve?domain=my_test_bot&start=abc123");
 
     locationSpy.mockRestore();
   });

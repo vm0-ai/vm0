@@ -5,7 +5,6 @@ import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { telegramInstallations } from "../../../../src/db/schema/telegram-installation";
-import { telegramUserLinks } from "../../../../src/db/schema/telegram-user-link";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import {
   getMe,
@@ -15,6 +14,7 @@ import {
 import { encryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
 import { generateCallbackSecret } from "../../../../src/lib/callback/hmac";
 import { resolveDefaultAgentComposeId } from "../../../../src/lib/agent-compose/resolve-default";
+import { createLinkToken } from "../../../../src/lib/telegram/handlers/start";
 import { logger } from "../../../../src/lib/logger";
 
 const registerBodySchema = z.object({
@@ -195,15 +195,12 @@ export async function POST(request: Request) {
     log.warn("Failed to register bot commands", { error });
   });
 
-  // 8. Auto-create user link for the registering admin
-  await globalThis.services.db
-    .insert(telegramUserLinks)
-    .values({
-      telegramUserId: telegramBotId,
-      installationId: installation.id,
-      vm0UserId: userId,
-    })
-    .onConflictDoNothing();
+  // 8. Generate link token so the admin can link their Telegram account
+  const linkToken = createLinkToken(
+    userId,
+    installation.id,
+    SECRETS_ENCRYPTION_KEY,
+  );
 
   return NextResponse.json(
     {
@@ -211,6 +208,7 @@ export async function POST(request: Request) {
       botId: telegramBotId,
       botUsername: botInfoResult.username,
       webhookUrl,
+      linkToken,
     },
     { status: 201 },
   );

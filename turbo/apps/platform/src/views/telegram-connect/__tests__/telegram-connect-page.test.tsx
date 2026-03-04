@@ -100,6 +100,7 @@ describe("telegram connect page", () => {
         return HttpResponse.json({
           id: "installation_1",
           botUsername: "my_test_bot",
+          linkToken: "test-link-token",
         });
       }),
     );
@@ -133,6 +134,7 @@ describe("telegram connect page", () => {
     });
     const params = context.store.get(searchParams$);
     expect(params.get("bot")).toBe("my_test_bot");
+    expect(params.get("token")).toBe("test-link-token");
   });
 
   it("shows error message when registration fails", async () => {

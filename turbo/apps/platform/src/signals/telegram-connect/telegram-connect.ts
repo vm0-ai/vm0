@@ -12,7 +12,12 @@ interface TelegramConnectState {
 }
 
 type RegisterTelegramBotResult =
-  | { success: true; installationId: string; botUsername: string }
+  | {
+      success: true;
+      installationId: string;
+      botUsername: string;
+      linkToken?: string;
+    }
   | { success: false };
 
 const telegramConnectState$ = state<TelegramConnectState>({
@@ -110,6 +115,7 @@ export const registerTelegramBot$ = command(
       const result = (await response.json()) as {
         id: string;
         botUsername: string;
+        linkToken?: string;
       };
 
       set(telegramConnectState$, (prev) => ({
@@ -121,6 +127,7 @@ export const registerTelegramBot$ = command(
         success: true,
         installationId: result.id,
         botUsername: result.botUsername,
+        linkToken: result.linkToken,
       };
     } catch (error) {
       throwIfAbort(error);
