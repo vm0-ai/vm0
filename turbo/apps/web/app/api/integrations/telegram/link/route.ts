@@ -1,4 +1,3 @@
-import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { eq, desc } from "drizzle-orm";
 import { z } from "zod";
@@ -7,63 +6,11 @@ import { env } from "../../../../../src/env";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { telegramUserLinks } from "../../../../../src/db/schema/telegram-user-link";
 import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
+import { createLinkToken } from "../../../../../src/lib/telegram/handlers/start";
 
 const linkBodySchema = z.object({
   installationId: z.string().min(1),
 });
-
-/** Link token expiry: 10 minutes */
-const LINK_TOKEN_TTL_MS = 10 * 60 * 1000;
-
-const linkTokenPayloadSchema = z.object({
-  vm0UserId: z.string(),
-  installationId: z.string(),
-  exp: z.number(),
-});
-
-type LinkTokenPayload = z.infer<typeof linkTokenPayloadSchema>;
-
-/**
- * Create a signed link token (base64url-encoded payload + HMAC signature).
- */
-function createLinkToken(payload: LinkTokenPayload, secret: string): string {
-  const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = createHmac("sha256", secret).update(data).digest("base64url");
-  return `${data}.${sig}`;
-}
-
-/**
- * Verify and decode a link token. Returns null if invalid or expired.
- */
-export function verifyLinkToken(
-  token: string,
-  secret: string,
-): LinkTokenPayload | null {
-  const parts = token.split(".");
-  if (parts.length !== 2) return null;
-
-  const [data, sig] = parts;
-  if (!data || !sig) return null;
-
-  const expectedSig = createHmac("sha256", secret)
-    .update(data)
-    .digest("base64url");
-
-  // Timing-safe comparison
-  const expectedBuf = Buffer.from(expectedSig);
-  const sigBuf = Buffer.from(sig);
-  if (expectedBuf.length !== sigBuf.length) return null;
-  if (!timingSafeEqual(expectedBuf, sigBuf)) return null;
-
-  const parsed = linkTokenPayloadSchema.safeParse(
-    JSON.parse(Buffer.from(data, "base64url").toString()),
-  );
-  if (!parsed.success) return null;
-
-  if (Date.now() > parsed.data.exp) return null;
-
-  return parsed.data;
-}
 
 /**
  * GET /api/integrations/telegram/link
@@ -157,11 +104,8 @@ export async function POST(request: Request) {
   const { SECRETS_ENCRYPTION_KEY } = env();
 
   const token = createLinkToken(
-    {
-      vm0UserId: userId,
-      installationId: installation.id,
-      exp: Date.now() + LINK_TOKEN_TTL_MS,
-    },
+    userId,
+    installation.id,
     SECRETS_ENCRYPTION_KEY,
   );
 

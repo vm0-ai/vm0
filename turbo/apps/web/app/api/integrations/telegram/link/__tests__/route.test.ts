@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST } from "../route";
-import { verifyLinkToken } from "../route";
+import { verifyLinkToken } from "../../../../../../src/lib/telegram/handlers/start";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { createTestTelegramInstallation } from "../../../../../../src/__tests__/api-test-helpers";
