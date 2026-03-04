@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -11,6 +11,14 @@ const context = testContext();
 const user = userEvent.setup();
 
 describe("telegram connect page", () => {
+  beforeEach(() => {
+    // Reset window.location if a previous test changed it to a non-http protocol
+    // (e.g., tg:// from the success page signal during navigate$)
+    if (!window.location.href.startsWith("http")) {
+      window.location.href = "http://localhost/";
+    }
+  });
+
   it("redirects to provider-setup when no provider configured", async () => {
     server.use(
       http.get("/api/model-providers", () => {
