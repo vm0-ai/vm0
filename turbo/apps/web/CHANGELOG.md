@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.69.2](https://github.com/vm0-ai/vm0/compare/web-v12.69.1...web-v12.69.2) (2026-03-04)
+
+
+### Bug Fixes
+
+* **slack:** restrict ask-user question submission to initiator only ([#3631](https://github.com/vm0-ai/vm0/issues/3631)) ([d5a52be](https://github.com/vm0-ai/vm0/commit/d5a52be2b85e307c70ac1df936e0f05015ea1523))
+
+
+### Reverts
+
+* **slack:** restore permission denial detection for ask-user ([#3632](https://github.com/vm0-ai/vm0/issues/3632)) ([769cc9c](https://github.com/vm0-ai/vm0/commit/769cc9ce6094b87204638df8d02eef5335b644ea))
+
 ## [12.69.1](https://github.com/vm0-ai/vm0/compare/web-v12.69.0...web-v12.69.1) (2026-03-04)
 
 
