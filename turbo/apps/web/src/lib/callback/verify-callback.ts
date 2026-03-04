@@ -15,7 +15,8 @@ interface Logger {
  * Generic over the payload type so each endpoint can narrow its own payload shape.
  */
 interface VerifiedCallback<P = unknown> {
-  callbackId: string;
+  /** Present only when the dispatcher includes callbackId (new behavior). */
+  callbackId?: string;
   runId: string;
   status: "completed" | "failed";
   result?: Record<string, unknown>;
@@ -62,16 +63,19 @@ export async function verifyCallback<P = unknown>(
     return { ok: false, response: errorResponse("Invalid JSON body", 400) };
   }
 
-  const { callbackId, runId } = body;
+  const { callbackId } = body;
 
-  if (!callbackId && !runId) {
+  if (!body.runId) {
     return {
       ok: false,
-      response: errorResponse("Missing callbackId and runId", 400),
+      response: errorResponse("Missing runId", 400),
     };
   }
 
-  // Look up the callback record — prefer callbackId (PK) for unambiguous lookup
+  const runId = body.runId;
+
+  // Look up the callback record — prefer callbackId (PK) for unambiguous lookup.
+  // TODO: remove runId-only fallback once all deployed dispatchers include callbackId
   const [callback] = callbackId
     ? await globalThis.services.db
         .select({ encryptedSecret: agentRunCallbacks.encryptedSecret })
@@ -81,7 +85,7 @@ export async function verifyCallback<P = unknown>(
     : await globalThis.services.db
         .select({ encryptedSecret: agentRunCallbacks.encryptedSecret })
         .from(agentRunCallbacks)
-        .where(eq(agentRunCallbacks.runId, runId!))
+        .where(eq(agentRunCallbacks.runId, runId))
         .limit(1);
 
   if (!callback) {
@@ -122,8 +126,8 @@ export async function verifyCallback<P = unknown>(
   return {
     ok: true,
     data: {
-      callbackId: callbackId ?? runId!,
-      runId: runId ?? callbackId!,
+      callbackId,
+      runId,
       status: body.status,
       result: body.result,
       error: body.error,

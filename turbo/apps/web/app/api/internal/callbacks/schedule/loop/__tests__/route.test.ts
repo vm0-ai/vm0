@@ -28,6 +28,7 @@ interface LoopCallbackPayload {
 
 function createCallbackRequest(
   body: {
+    callbackId?: string;
     runId: string;
     status: "completed" | "failed";
     error?: string;
@@ -72,7 +73,7 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
     });
     await enableTestSchedule(composeId, schedule.name);
     const { runId } = await createTestRun(composeId, "Loop task");
-    const { secret } = await createTestCallback({
+    const { callbackId, secret } = await createTestCallback({
       runId,
       url: "http://localhost/api/internal/callbacks/schedule/loop",
       payload: {
@@ -80,7 +81,7 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
         intervalSeconds: 300,
       },
     });
-    return { schedule, runId, secret };
+    return { schedule, runId, callbackId, secret };
   }
 
   describe("Signature Verification", () => {
@@ -116,6 +117,60 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(404);
+    });
+
+    it("should verify using callbackId for PK-based secret lookup", async () => {
+      const { schedule, runId, callbackId, secret } = await setupLoopSchedule();
+
+      const request = createCallbackRequest(
+        {
+          callbackId,
+          runId,
+          status: "completed",
+          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+    });
+
+    it("should verify correct callback when multiple callbacks exist for same run", async () => {
+      const { schedule, runId, callbackId, secret } = await setupLoopSchedule();
+
+      // Create additional callbacks for the same run (simulates email + slack)
+      await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/slack",
+        payload: { workspaceId: "W1" },
+      });
+      await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/email/reply",
+        payload: { emailId: "E1" },
+      });
+
+      // With callbackId, the loop callback should still verify with its own secret
+      const request = createCallbackRequest(
+        {
+          callbackId,
+          runId,
+          status: "completed",
+          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      const updated = await findTestScheduleById(schedule.id);
+      expect(updated!.nextRunAt).not.toBeNull();
     });
   });
 
