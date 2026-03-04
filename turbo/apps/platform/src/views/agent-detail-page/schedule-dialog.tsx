@@ -39,8 +39,13 @@ import {
   scheduleDialogSaveError$,
   submitScheduleDialog$,
   deleteScheduleFromDialog$,
+  scheduleDialogTimezone$,
+  setScheduleDialogTimezone$,
 } from "../../signals/agent-detail/schedule.ts";
-import { getTodayDateLocal } from "../../signals/agent-detail/cron.ts";
+import {
+  getTodayDateLocal,
+  COMMON_TIMEZONES,
+} from "../../signals/agent-detail/cron.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -89,6 +94,8 @@ export function ScheduleDialog() {
   const setDate = useSet(setScheduleDialogDate$);
   const submit = useSet(submitScheduleDialog$);
   const deleteSchedule = useSet(deleteScheduleFromDialog$);
+  const timezone = useGet(scheduleDialogTimezone$);
+  const setTimezone = useSet(setScheduleDialogTimezone$);
 
   const dayOfMonthOptions = Array.from({ length: 31 }, (_, i) => ({
     value: String(i + 1),
@@ -252,6 +259,24 @@ export function ScheduleDialog() {
               </div>
             </div>
           )}
+
+          <div className="flex flex-col gap-3">
+            <label className="text-sm font-medium text-foreground px-1">
+              Timezone
+            </label>
+            <Select value={timezone} onValueChange={setTimezone}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {COMMON_TIMEZONES.map((tz) => (
+                  <SelectItem key={tz} value={tz}>
+                    {tz.replace(/_/g, " ")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {saveError && <p className="text-sm text-destructive">{saveError}</p>}

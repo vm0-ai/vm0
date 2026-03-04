@@ -189,6 +189,34 @@ describe("schedule dialog", () => {
     const body = capturedBody as Record<string, unknown>;
     expect(body.composeId).toBe("compose_1");
     expect(body.prompt).toBe("Updated standup summary");
+    expect(body.timezone).toBeDefined();
+  });
+
+  it("should restore saved timezone in edit dialog", async () => {
+    mockAgentDetailAPI({
+      withSchedule: true,
+      schedule: { timezone: "Asia/Tokyo" },
+    });
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("Scheduled")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit schedule" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Edit this schedule" }),
+      ).toBeInTheDocument();
+    });
+
+    // The timezone select should show the saved timezone
+    expect(screen.getByText("Asia/Tokyo")).toBeInTheDocument();
   });
 
   it("should show Scheduled badge for one-time schedule", async () => {

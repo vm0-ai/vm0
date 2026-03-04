@@ -302,12 +302,13 @@ describe("run dialog", () => {
       ).not.toBeInTheDocument();
     });
 
-    // Verify schedule API was called with cron expression
+    // Verify schedule API was called with cron expression and timezone
     const body = capturedBody as Record<string, unknown>;
     expect(body.composeId).toBe("compose_1");
     expect(body.cronExpression).toBe("0 9 * * 1-5");
     expect(body.prompt).toBe("Daily review");
     expect(body.name).toBe("default");
+    expect(body.timezone).toBeDefined();
   });
 
   it("should show error in inline run panel when run fails with error", async () => {

@@ -17,7 +17,9 @@ import {
   buildAtTime,
   isAtTimePast,
   getTomorrowDateLocal,
+  getBrowserTimezone,
 } from "./cron.ts";
+import { notificationPreferences$ } from "../settings-page/notification-settings.ts";
 import { closeChatPanel$ } from "./chat.ts";
 
 const L = logger("RunDialog");
@@ -102,6 +104,14 @@ export const setRunDialogDayOfMonth$ = command(({ set }, value: string) => {
   set(internalDayOfMonth$, value);
 });
 
+// Timezone
+const internalTimezone$ = state(getBrowserTimezone());
+export const runDialogTimezone$ = computed((get) => get(internalTimezone$));
+
+export const setRunDialogTimezone$ = command(({ set }, value: string) => {
+  set(internalTimezone$, value);
+});
+
 // ---------------------------------------------------------------------------
 // Saving state
 // ---------------------------------------------------------------------------
@@ -120,7 +130,7 @@ export const runDialogSaveError$ = computed((get) => get(internalSaveError$));
 // Open / close
 // ---------------------------------------------------------------------------
 
-export const openRunDialog$ = command(({ set }) => {
+export const openRunDialog$ = command(async ({ get, set }) => {
   set(internalPrompt$, "");
   set(internalTimeOption$, "now");
   set(internalFrequency$, "9");
@@ -129,6 +139,16 @@ export const openRunDialog$ = command(({ set }) => {
   set(internalDayOfMonth$, "1");
   set(internalDate$, getTomorrowDateLocal());
   set(internalSaveError$, null);
+
+  // Default timezone from user preferences, fallback to browser
+  try {
+    const prefs = await get(notificationPreferences$);
+    set(internalTimezone$, prefs.timezone ?? getBrowserTimezone());
+  } catch (error) {
+    throwIfAbort(error);
+    set(internalTimezone$, getBrowserTimezone());
+  }
+
   set(internalOpen$, true);
 });
 
@@ -201,7 +221,7 @@ export const submitRunDialog$ = command(async ({ get, set }) => {
     }
 
     // Schedule creation (recurring or one-time)
-    const timezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const timezone = get(internalTimezone$);
     let scheduleBody: ScheduleBody;
 
     if (timeOption === "once") {

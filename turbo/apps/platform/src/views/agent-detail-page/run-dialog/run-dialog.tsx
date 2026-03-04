@@ -37,9 +37,14 @@ import {
   runDialogSaving$,
   runDialogSaveError$,
   submitRunDialog$,
+  runDialogTimezone$,
+  setRunDialogTimezone$,
 } from "../../../signals/agent-detail/run-dialog.ts";
 import { agentSchedule$ } from "../../../signals/agent-detail/schedule.ts";
-import { getTodayDateLocal } from "../../../signals/agent-detail/cron.ts";
+import {
+  getTodayDateLocal,
+  COMMON_TIMEZONES,
+} from "../../../signals/agent-detail/cron.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -66,6 +71,8 @@ export function RunDialog() {
   const setDayOfMonth = useSet(setRunDialogDayOfMonth$);
   const setDate = useSet(setRunDialogDate$);
   const submit = useSet(submitRunDialog$);
+  const timezone = useGet(runDialogTimezone$);
+  const setTimezone = useSet(setRunDialogTimezone$);
   const schedule = useGet(agentSchedule$);
 
   const weekdays = [
@@ -234,6 +241,26 @@ export function RunDialog() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+          )}
+
+          {isSchedule && (
+            <div className="flex flex-col gap-3">
+              <label className="text-sm font-medium text-foreground px-1">
+                Timezone
+              </label>
+              <Select value={timezone} onValueChange={setTimezone}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {COMMON_TIMEZONES.map((tz) => (
+                    <SelectItem key={tz} value={tz}>
+                      {tz.replace(/_/g, " ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
         </div>

@@ -9,6 +9,7 @@ import {
   buildAtTime,
   isAtTimePast,
   getTomorrowDateLocal,
+  getBrowserTimezone,
   type CronTimeOption,
   type ScheduleTimeOption,
   type ScheduleBody,
@@ -337,6 +338,15 @@ export const setScheduleDialogDayOfMonth$ = command(
   },
 );
 
+const internalDialogTimezone$ = state(getBrowserTimezone());
+export const scheduleDialogTimezone$ = computed((get) =>
+  get(internalDialogTimezone$),
+);
+
+export const setScheduleDialogTimezone$ = command(({ set }, value: string) => {
+  set(internalDialogTimezone$, value);
+});
+
 const internalDialogSaving$ = state(false);
 export const scheduleDialogSaving$ = computed((get) =>
   get(internalDialogSaving$),
@@ -358,6 +368,7 @@ export const openScheduleDialog$ = command(({ get, set }) => {
   }
 
   set(internalDialogPrompt$, schedule.prompt);
+  set(internalDialogTimezone$, schedule.timezone || getBrowserTimezone());
   set(internalDialogSaveError$, null);
 
   if (schedule.triggerType === "loop" && schedule.intervalSeconds !== null) {
@@ -422,7 +433,7 @@ export const submitScheduleDialog$ = command(async ({ get, set }) => {
   try {
     const fetchFn = get(fetch$);
     const date = get(internalDialogDate$);
-    const timezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const timezone = get(internalDialogTimezone$);
 
     // Use existing schedule name if editing, otherwise default to "default"
     const existingSchedule = get(internalAgentSchedule$);

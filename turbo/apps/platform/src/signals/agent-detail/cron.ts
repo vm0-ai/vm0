@@ -70,6 +70,40 @@ export function getTodayDateLocal(): string {
   return `${y}-${mo}-${day}`;
 }
 
+// ---------------------------------------------------------------------------
+// Common timezones for schedule selectors
+// ---------------------------------------------------------------------------
+
+export const COMMON_TIMEZONES = [
+  "UTC",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Anchorage",
+  "Pacific/Honolulu",
+  "America/Toronto",
+  "America/Vancouver",
+  "America/Sao_Paulo",
+  "Europe/London",
+  "Europe/Berlin",
+  "Europe/Paris",
+  "Europe/Moscow",
+  "Asia/Dubai",
+  "Asia/Kolkata",
+  "Asia/Shanghai",
+  "Asia/Tokyo",
+  "Asia/Seoul",
+  "Asia/Singapore",
+  "Australia/Sydney",
+  "Pacific/Auckland",
+] as const;
+
+/** Return the browser-detected timezone. */
+export function getBrowserTimezone(): string {
+  return new Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
 export function buildCronExpression(opts: {
   timeOption: CronTimeOption;
   hour: string;
