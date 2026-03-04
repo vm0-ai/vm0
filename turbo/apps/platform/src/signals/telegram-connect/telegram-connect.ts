@@ -11,6 +11,10 @@ interface TelegramConnectState {
   error: string | null;
 }
 
+type RegisterTelegramBotResult =
+  | { success: true; installationId: string; botUsername: string }
+  | { success: false };
+
 const telegramConnectState$ = state<TelegramConnectState>({
   status: "checking",
   isLinked: false,
@@ -81,7 +85,7 @@ export const registerTelegramBot$ = command(
   async (
     { get, set },
     params: { botToken: string; defaultAgentId?: string },
-  ) => {
+  ): Promise<RegisterTelegramBotResult> => {
     set(telegramConnectState$, (prev) => ({
       ...prev,
       status: "registering" as const,

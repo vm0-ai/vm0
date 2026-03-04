@@ -29,15 +29,10 @@ export function TelegramConnectPage() {
     }
     detach(
       (async () => {
-        const result = (await registerBot({ botToken: botToken.trim() })) as {
-          success: boolean;
-          botUsername?: string;
-        };
+        const result = await registerBot({ botToken: botToken.trim() });
         if (result.success) {
           const successParams = new URLSearchParams();
-          if (result.botUsername) {
-            successParams.set("bot", result.botUsername);
-          }
+          successParams.set("bot", result.botUsername);
           navigate("/telegram/connect/success", {
             searchParams: successParams,
           });
