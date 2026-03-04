@@ -101,10 +101,8 @@ export async function POST(request: Request) {
   const { SECRETS_ENCRYPTION_KEY } = env();
 
   // 1. Verify bot token
-  let botInfo;
-  try {
-    botInfo = await getMe(body.botToken);
-  } catch {
+  const botInfoResult = await getMe(body.botToken).catch(() => null);
+  if (!botInfoResult) {
     return NextResponse.json(
       {
         error: {
@@ -117,7 +115,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const telegramBotId = String(botInfo.id);
+  const telegramBotId = String(botInfoResult.id);
 
   // 2. Check for duplicate
   const [existing] = await globalThis.services.db
@@ -179,7 +177,7 @@ export async function POST(request: Request) {
     .insert(telegramInstallations)
     .values({
       telegramBotId,
-      botUsername: botInfo.username,
+      botUsername: botInfoResult.username,
       encryptedBotToken,
       webhookSecret,
       defaultComposeId: defaultAgentId,
@@ -240,7 +238,7 @@ export async function POST(request: Request) {
     {
       id: installation.id,
       botId: telegramBotId,
-      botUsername: botInfo.username,
+      botUsername: botInfoResult.username,
       webhookUrl,
     },
     { status: 201 },
