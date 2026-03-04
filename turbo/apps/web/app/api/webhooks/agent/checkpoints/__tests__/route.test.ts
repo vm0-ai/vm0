@@ -1,10 +1,9 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
   createTestRun,
-  createTestRunDirect,
   createTestSandboxToken,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -13,6 +12,7 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { reloadEnv } from "../../../../../../src/env";
 import { randomUUID } from "crypto";
 
 const context = testContext();
@@ -20,7 +20,6 @@ const context = testContext();
 describe("POST /api/webhooks/agent/checkpoints", () => {
   let user: UserContext;
   let testComposeId: string;
-  let testVersionId: string;
   let testRunId: string;
   let testToken: string;
 
@@ -29,11 +28,8 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     user = await context.setupUser();
 
     // Create compose for test runs
-    const { composeId, versionId } = await createTestCompose(
-      uniqueId("checkpoint"),
-    );
+    const { composeId } = await createTestCompose(uniqueId("checkpoint"));
     testComposeId = composeId;
-    testVersionId = versionId;
 
     // Create a running run
     const { runId } = await createTestRun(testComposeId, "Test prompt");
@@ -337,16 +333,16 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         artifactVersion: "v1",
       };
 
-      // Create two runs directly in DB (bypasses API auth complexity)
-      const run1 = await createTestRunDirect(user.userId, testVersionId, {
-        prompt: "Run 1",
-      });
-      const run2 = await createTestRunDirect(user.userId, testVersionId, {
-        prompt: "Run 2",
-      });
+      // Allow multiple concurrent runs and re-enable Clerk auth for API route calls
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      reloadEnv();
+      mockClerk({ userId: user.userId });
+      const { runId: runId1 } = await createTestRun(testComposeId, "Run 1");
+      const { runId: runId2 } = await createTestRun(testComposeId, "Run 2");
+      mockClerk({ userId: null });
 
-      const token1 = await createTestSandboxToken(user.userId, run1.id);
-      const token2 = await createTestSandboxToken(user.userId, run2.id);
+      const token1 = await createTestSandboxToken(user.userId, runId1);
+      const token2 = await createTestSandboxToken(user.userId, runId2);
 
       const request1 = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/checkpoints",
@@ -357,7 +353,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             Authorization: `Bearer ${token1}`,
           },
           body: JSON.stringify({
-            runId: run1.id,
+            runId: runId1,
             cliAgentType: "claude-code",
             cliAgentSessionId: "session-run-1",
             cliAgentSessionHistory: '{"type":"test"}',
@@ -379,7 +375,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             Authorization: `Bearer ${token2}`,
           },
           body: JSON.stringify({
-            runId: run2.id,
+            runId: runId2,
             cliAgentType: "claude-code",
             cliAgentSessionId: "session-run-2",
             cliAgentSessionHistory: '{"type":"test"}',
@@ -421,18 +417,19 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       const originalSessionId = data1.agentSessionId;
 
       // Create a continue run with continuedFromSessionId
-      const continueRun = await createTestRunDirect(
-        user.userId,
-        testVersionId,
-        {
-          prompt: "Continue prompt",
-          continuedFromSessionId: originalSessionId,
-        },
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      reloadEnv();
+      mockClerk({ userId: user.userId });
+      const { runId: continueRunId } = await createTestRun(
+        testComposeId,
+        "Continue prompt",
+        { sessionId: originalSessionId },
       );
+      mockClerk({ userId: null });
 
       const continueToken = await createTestSandboxToken(
         user.userId,
-        continueRun.id,
+        continueRunId,
       );
 
       const request2 = createTestRequest(
@@ -444,7 +441,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             Authorization: `Bearer ${continueToken}`,
           },
           body: JSON.stringify({
-            runId: continueRun.id,
+            runId: continueRunId,
             cliAgentType: "claude-code",
             cliAgentSessionId: "session-continued",
             cliAgentSessionHistory: '{"type":"test-continued"}',

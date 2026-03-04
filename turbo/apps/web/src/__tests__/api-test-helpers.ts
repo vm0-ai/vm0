@@ -473,7 +473,7 @@ async function createTestComposeVersion(
  * Use this when you need a run without going through the API route
  * (e.g., for webhook tests where Clerk auth is disabled).
  */
-export async function createTestRunDirect(
+async function createTestRunDirect(
   userId: string,
   versionId: string,
   options?: {
