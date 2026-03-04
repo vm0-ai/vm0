@@ -21,7 +21,7 @@ interface ComposeJobResponse {
  */
 export async function triggerAndPollComposeJob(
   fetchFn: typeof fetch,
-  content: Record<string, unknown>,
+  content: object,
   instructions?: string,
 ): Promise<ComposeJobResponse> {
   // Create compose job
