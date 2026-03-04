@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq, and, isNull } from "drizzle-orm";
+import { z } from "zod";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import {
@@ -16,11 +17,28 @@ import {
   setThreadStatus,
   refreshAppHome,
   buildAskUserAnsweredBlocks,
+  buildErrorMessage,
 } from "../../../../src/lib/slack";
 import type { AskUserQuestion } from "../../../../src/lib/slack";
 import { runAgentForSlack } from "../../../../src/lib/slack/handlers/run-agent";
 import type { SlackCallbackContext } from "../../../../src/lib/slack/handlers/run-agent";
 import { logger } from "../../../../src/lib/logger";
+
+const askUserQuestionSchema = z.array(
+  z.object({
+    question: z.string(),
+    header: z.string().optional(),
+    options: z
+      .array(
+        z.object({
+          label: z.string(),
+          description: z.string().optional(),
+        }),
+      )
+      .optional(),
+    multiSelect: z.boolean().optional(),
+  }),
+);
 
 const log = logger("slack:interactive");
 
@@ -255,6 +273,42 @@ function buildAnswerPrompt(
 }
 
 /**
+ * Update the Slack card with an error message. Best-effort — if the
+ * Slack API call itself fails we just log it.
+ */
+async function updateCardWithError(
+  channelId: string,
+  messageTs: string | null,
+  workspaceId: string,
+  errorText: string,
+): Promise<void> {
+  if (!messageTs) {
+    return;
+  }
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
+    .limit(1);
+  if (!installation) {
+    return;
+  }
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+  await updateMessage(
+    client,
+    channelId,
+    messageTs,
+    errorText,
+    buildErrorMessage(errorText),
+  );
+}
+
+/**
  * Handle the Submit button click on an askUserQuestion interactive card.
  *
  * Collects all selections from the card's actions state, updates the card
@@ -273,35 +327,53 @@ async function handleAskUserSubmit(
     return;
   }
 
-  // Look up pending question
-  const [pending] = await globalThis.services.db
-    .select()
-    .from(slackPendingQuestions)
+  // Atomically mark as answered — only the first submit wins.
+  // The WHERE clause includes `answeredAt IS NULL` so a concurrent
+  // second click will match zero rows.
+  const [claimed] = await globalThis.services.db
+    .update(slackPendingQuestions)
+    .set({ answeredAt: new Date() })
     .where(
       and(
         eq(slackPendingQuestions.id, pendingId),
         isNull(slackPendingQuestions.answeredAt),
       ),
     )
-    .limit(1);
+    .returning();
 
-  if (!pending) {
+  if (!claimed) {
     log.warn("Pending question not found or already answered", { pendingId });
     return;
   }
 
-  if (new Date() > pending.expiresAt) {
+  if (new Date() > claimed.expiresAt) {
     log.warn("Pending question expired", { pendingId });
+    await updateCardWithError(
+      claimed.slackChannelId,
+      claimed.slackMessageTs,
+      claimed.slackWorkspaceId,
+      "This question has expired. Please ask the agent again.",
+    );
     return;
   }
 
-  // Mark as answered
-  await globalThis.services.db
-    .update(slackPendingQuestions)
-    .set({ answeredAt: new Date() })
-    .where(eq(slackPendingQuestions.id, pendingId));
+  // Validate JSONB questions data at runtime
+  const parsed = askUserQuestionSchema.safeParse(claimed.questions);
+  if (!parsed.success) {
+    log.error("Invalid questions data in pending question", {
+      pendingId,
+      error: parsed.error,
+    });
+    await updateCardWithError(
+      claimed.slackChannelId,
+      claimed.slackMessageTs,
+      claimed.slackWorkspaceId,
+      "Something went wrong processing your answer. Please try again.",
+    );
+    return;
+  }
 
-  const questions = pending.questions as AskUserQuestion[];
+  const questions: AskUserQuestion[] = parsed.data;
   const answers = collectAnswersFromActions(payload.actions ?? [], questions);
   const answerPrompt = buildAnswerPrompt(questions, answers);
 
@@ -310,11 +382,17 @@ async function handleAskUserSubmit(
   const [installation] = await globalThis.services.db
     .select()
     .from(slackInstallations)
-    .where(eq(slackInstallations.slackWorkspaceId, pending.slackWorkspaceId))
+    .where(eq(slackInstallations.slackWorkspaceId, claimed.slackWorkspaceId))
     .limit(1);
 
   if (!installation) {
     log.error("Installation not found for pending question", { pendingId });
+    await updateCardWithError(
+      claimed.slackChannelId,
+      claimed.slackMessageTs,
+      claimed.slackWorkspaceId,
+      "Slack installation not found. Please reconnect the VM0 app.",
+    );
     return;
   }
 
@@ -325,16 +403,16 @@ async function handleAskUserSubmit(
   const client = createSlackClient(botToken);
 
   // Replace interactive card with answered summary
-  if (pending.slackMessageTs) {
+  if (claimed.slackMessageTs) {
     const answeredBlocks = buildAskUserAnsweredBlocks(
       questions,
       answers,
-      pending.agentName,
+      claimed.agentName,
     );
     await updateMessage(
       client,
-      pending.slackChannelId,
-      pending.slackMessageTs,
+      claimed.slackChannelId,
+      claimed.slackMessageTs,
       answerPrompt,
       answeredBlocks,
     );
@@ -344,8 +422,8 @@ async function handleAskUserSubmit(
   try {
     await setThreadStatus(
       client,
-      pending.slackChannelId,
-      pending.slackThreadTs,
+      claimed.slackChannelId,
+      claimed.slackThreadTs,
       "is thinking...",
     );
   } catch (err) {
@@ -356,30 +434,36 @@ async function handleAskUserSubmit(
   const [userLink] = await globalThis.services.db
     .select()
     .from(slackUserLinks)
-    .where(eq(slackUserLinks.id, pending.userLinkId))
+    .where(eq(slackUserLinks.id, claimed.userLinkId))
     .limit(1);
 
   if (!userLink) {
     log.error("User link not found for pending question", { pendingId });
+    await updateCardWithError(
+      claimed.slackChannelId,
+      claimed.slackMessageTs,
+      claimed.slackWorkspaceId,
+      "Your VM0 account link was not found. Please reconnect your account.",
+    );
     return;
   }
 
   // Dispatch new agent run with the user's answer
   const callbackContext: SlackCallbackContext = {
-    workspaceId: pending.slackWorkspaceId,
-    channelId: pending.slackChannelId,
-    threadTs: pending.slackThreadTs,
-    messageTs: pending.slackThreadTs,
-    userLinkId: pending.userLinkId,
-    agentName: pending.agentName,
-    composeId: pending.composeId,
-    existingSessionId: pending.sessionId ?? undefined,
+    workspaceId: claimed.slackWorkspaceId,
+    channelId: claimed.slackChannelId,
+    threadTs: claimed.slackThreadTs,
+    messageTs: claimed.slackThreadTs,
+    userLinkId: claimed.userLinkId,
+    agentName: claimed.agentName,
+    composeId: claimed.composeId,
+    existingSessionId: claimed.sessionId ?? undefined,
   };
 
   await runAgentForSlack({
-    composeId: pending.composeId,
-    agentName: pending.agentName,
-    sessionId: pending.sessionId ?? undefined,
+    composeId: claimed.composeId,
+    agentName: claimed.agentName,
+    sessionId: claimed.sessionId ?? undefined,
     prompt: answerPrompt,
     threadContext: "",
     userId: userLink.vm0UserId,

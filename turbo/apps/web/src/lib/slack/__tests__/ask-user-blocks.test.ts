@@ -97,7 +97,7 @@ describe("buildAskUserQuestionBlocks", () => {
     });
 
     // Verify options have plain_text type
-    if ("options" in checkbox) {
+    if (checkbox && "options" in checkbox) {
       const opts = (
         checkbox as {
           options: Array<{ text: { type: string }; value: string }>;
