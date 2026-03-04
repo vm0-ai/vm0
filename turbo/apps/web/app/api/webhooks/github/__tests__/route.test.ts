@@ -1,7 +1,19 @@
 import crypto from "crypto";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { testContext } from "../../../../../src/__tests__/test-helpers";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../../src/mocks/server";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../src/__tests__/test-helpers";
 import { givenGitHubInstallation } from "../../../../../src/__tests__/github/api-helpers";
+import {
+  createTestScope,
+  createTestCompose,
+  insertTestPendingGitHubInstallation,
+  findTestGitHubInstallationsByUserId,
+} from "../../../../../src/__tests__/api-test-helpers";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { POST } from "../route";
 import * as runModule from "../../../../../src/lib/run";
 import { reloadEnv } from "../../../../../src/env";
@@ -479,6 +491,107 @@ describe("POST /api/webhooks/github", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
+    });
+  });
+
+  describe("Installation Event", () => {
+    function buildInstallationPayload(overrides?: {
+      action?: string;
+      installationId?: number;
+      accountId?: number;
+      accountType?: string;
+    }) {
+      return {
+        action: overrides?.action ?? "created",
+        installation: {
+          id: overrides?.installationId ?? 99999,
+          account: {
+            id: overrides?.accountId ?? 55555,
+            type: overrides?.accountType ?? "Organization",
+          },
+        },
+      };
+    }
+
+    function setupInstallationTokenMock(installationId: number) {
+      server.use(
+        http.post(
+          `https://api.github.com/app/installations/${installationId}/access_tokens`,
+          () => {
+            return HttpResponse.json({
+              token: "ghs_test_activation_token",
+              expires_at: "2099-01-01T00:00:00Z",
+            });
+          },
+        ),
+      );
+    }
+
+    it("should activate pending installation on installation.created event", async () => {
+      const userId = uniqueId("gh-user");
+      mockClerk({ userId });
+      await createTestScope(uniqueId("gh-scope"));
+      const { composeId } = await createTestCompose("gh-webhook-agent");
+
+      const targetId = String(Math.floor(Math.random() * 1_000_000_000));
+      const ghInstallationId = Math.floor(Math.random() * 1_000_000_000);
+
+      // Create a pending installation record
+      await insertTestPendingGitHubInstallation(userId, composeId, targetId);
+
+      // Set up MSW mock for GitHub token API
+      setupInstallationTokenMock(ghInstallationId);
+
+      const request = createGitHubWebhookRequest(
+        "installation",
+        buildInstallationPayload({
+          action: "created",
+          installationId: ghInstallationId,
+          accountId: Number(targetId),
+        }),
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      await flushAfterCallbacks();
+
+      // Verify the pending installation was activated
+      const installations = await findTestGitHubInstallationsByUserId(userId);
+      expect(installations).toHaveLength(1);
+      const installation = installations[0]!;
+      expect(installation.status).toBe("active");
+      expect(installation.installationId).toBe(String(ghInstallationId));
+      expect(installation.encryptedAccessToken).toBeTruthy();
+    });
+
+    it("should be a no-op when no pending installation matches the account", async () => {
+      const request = createGitHubWebhookRequest(
+        "installation",
+        buildInstallationPayload({
+          action: "created",
+          installationId: 77777,
+          accountId: 11111, // No pending record for this account
+        }),
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Should complete without error (no pending record to activate)
+      await flushAfterCallbacks();
+    });
+
+    it("should ignore non-created installation actions", async () => {
+      const request = createGitHubWebhookRequest(
+        "installation",
+        buildInstallationPayload({
+          action: "deleted",
+          installationId: 77777,
+        }),
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      await flushAfterCallbacks();
     });
   });
 

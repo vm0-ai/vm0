@@ -1,14 +1,13 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { encryptCredentialValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import { githubInstallations } from "../../../../../src/db/schema/github-installation";
 import { getInstallationAccessToken } from "../../../../../src/lib/github/github-app";
 import { getPlatformUrl } from "../../../../../src/lib/url";
-import { scopes } from "../../../../../src/db/schema/scope";
-import { agentComposes } from "../../../../../src/db/schema/agent-compose";
+import { resolveDefaultAgentComposeId } from "../../../../../src/lib/agent-compose/resolve-default";
 
 /**
  * GitHub App OAuth Callback Endpoint
@@ -80,9 +79,11 @@ export async function GET(request: Request) {
     );
   }
 
-  // Verify HMAC signature when composeId is present in state
-  if (state.composeId) {
-    const expectedPayload = `${state.vm0UserId}:${state.composeId}`;
+  // Verify HMAC signature to prevent userId spoofing.
+  // The install route always signs the state when vm0UserId is present,
+  // so we always verify when vm0UserId is present.
+  {
+    const expectedPayload = `${state.vm0UserId}:${state.composeId ?? ""}`;
     const expectedSig = createHmac("sha256", SECRETS_ENCRYPTION_KEY)
       .update(expectedPayload)
       .digest("hex");
@@ -174,37 +175,4 @@ export async function GET(request: Request) {
   });
 
   return NextResponse.redirect(`${platformUrl}/settings?tab=integrations`);
-}
-
-/**
- * Resolve the default agent compose ID from VM0_DEFAULT_AGENT env var.
- * Format: "scope-slug/agent-name"
- */
-async function resolveDefaultAgentComposeId(): Promise<string | null> {
-  const { VM0_DEFAULT_AGENT } = env();
-  if (!VM0_DEFAULT_AGENT) return null;
-
-  const [scopeSlug, agentName] = VM0_DEFAULT_AGENT.split("/");
-  if (!scopeSlug || !agentName) return null;
-
-  const [scope] = await globalThis.services.db
-    .select({ id: scopes.id })
-    .from(scopes)
-    .where(eq(scopes.slug, scopeSlug))
-    .limit(1);
-
-  if (!scope) return null;
-
-  const [compose] = await globalThis.services.db
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.scopeId, scope.id),
-        eq(agentComposes.name, agentName),
-      ),
-    )
-    .limit(1);
-
-  return compose?.id ?? null;
 }

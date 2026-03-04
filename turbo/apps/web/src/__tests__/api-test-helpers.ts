@@ -2110,6 +2110,35 @@ export async function insertTestGitHubInstallation(
 }
 
 /**
+ * Insert a pending GitHub installation record directly in the database.
+ *
+ * Direct DB insert is required because pending installations are created by the
+ * GitHub OAuth callback route with setup_action=request, which requires a full
+ * OAuth redirect flow.
+ */
+export async function insertTestPendingGitHubInstallation(
+  userId: string,
+  composeId: string,
+  targetId: string,
+  targetType: string = "Organization",
+) {
+  const [row] = await globalThis.services.db
+    .insert(githubInstallations)
+    .values({
+      userId,
+      installationId: null,
+      encryptedAccessToken: null,
+      status: "pending",
+      targetId,
+      targetType,
+      defaultComposeId: composeId,
+    })
+    .returning();
+
+  return row!;
+}
+
+/**
  * Find GitHub installations by installation ID.
  *
  * Direct DB read is required because the GET endpoint filters by userId
@@ -2135,6 +2164,19 @@ export async function findTestGitHubInstallationById(id: string) {
     .where(eq(githubInstallations.id, id))
     .limit(1);
   return row;
+}
+
+/**
+ * Find GitHub installations by user ID.
+ *
+ * Direct DB read is required because pending installations have no
+ * installation_id to query by, and the GET endpoint requires auth context.
+ */
+export async function findTestGitHubInstallationsByUserId(userId: string) {
+  return globalThis.services.db
+    .select()
+    .from(githubInstallations)
+    .where(eq(githubInstallations.userId, userId));
 }
 
 /**

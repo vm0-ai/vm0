@@ -68,10 +68,9 @@ export async function handleInstallationCreatedEvent(
     env();
 
   if (!GITHUB_APP_ID || !GITHUB_APP_PRIVATE_KEY) {
-    log.error(
-      "GitHub App not configured, cannot activate pending installation",
+    throw new Error(
+      "GitHub App not configured (GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY missing), cannot activate pending installation",
     );
-    return;
   }
 
   // Get installation access token
