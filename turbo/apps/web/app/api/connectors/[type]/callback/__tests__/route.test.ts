@@ -48,6 +48,7 @@ const X_TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
 const VERCEL_TOKEN_URL = "https://api.vercel.com/login/oauth/token";
 const VERCEL_USERINFO_URL = "https://api.vercel.com/login/oauth/userinfo";
 const SENTRY_TOKEN_URL = "https://sentry.io/oauth/token/";
+const INTERVALS_ICU_TOKEN_URL = "https://intervals.icu/api/oauth/token";
 
 /**
  * Create MSW handlers for GitHub OAuth API
@@ -797,6 +798,32 @@ function createSentryOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for Intervals.icu OAuth API
+ */
+function createIntervalsIcuOAuthMock(options: {
+  accessToken?: string;
+  athleteId?: string;
+  name?: string | null;
+  tokenError?: string;
+}) {
+  return handlers({
+    tokenExchange: http.post(INTERVALS_ICU_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "intervals-icu-test-access-token",
+        athlete_id: options.athleteId ?? "i12345",
+        name: options.name !== undefined ? options.name : "Test Athlete",
+      });
+    }),
+  });
+}
+
+/**
  * Create a test request with OAuth callback parameters and cookies
  */
 function createCallbackRequest(options: {
@@ -867,6 +894,11 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("VERCEL_OAUTH_CLIENT_SECRET", "vercel-test-client-secret");
     vi.stubEnv("SENTRY_OAUTH_CLIENT_ID", "sentry-test-client-id");
     vi.stubEnv("SENTRY_OAUTH_CLIENT_SECRET", "sentry-test-client-secret");
+    vi.stubEnv("INTERVALS_ICU_OAUTH_CLIENT_ID", "intervals-icu-test-client-id");
+    vi.stubEnv(
+      "INTERVALS_ICU_OAUTH_CLIENT_SECRET",
+      "intervals-icu-test-client-secret",
+    );
     reloadEnv();
   });
 
@@ -3798,6 +3830,99 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       });
       const response = await GET(request, {
         params: Promise.resolve({ type: "sentry" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Intervals.icu OAuth Flow", () => {
+    it("should store Intervals.icu connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createIntervalsIcuOAuthMock({
+        accessToken: "intervals-icu-access-token",
+        athleteId: "i12345",
+        name: "Test Athlete",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "intervals-icu",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "intervals-icu" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=intervals-icu");
+      expect(location).toContain("username=Test+Athlete");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/intervals-icu",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("intervals-icu");
+      expect(connector.externalUsername).toBe("Test Athlete");
+      expect(connector.externalId).toBe("i12345");
+      expect(connector.externalEmail).toBeNull();
+    });
+
+    it("should redirect with error when Intervals.icu token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createIntervalsIcuOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "intervals-icu",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "intervals-icu" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should redirect with error when Intervals.icu returns no athlete_id", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = handlers({
+        tokenExchange: http.post(INTERVALS_ICU_TOKEN_URL, () => {
+          return HttpResponse.json({
+            access_token: "intervals-icu-access-token",
+            // No athlete_id
+            name: "Test Athlete",
+          });
+        }),
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "intervals-icu",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "intervals-icu" }),
       });
 
       expect(response.status).toBe(307);
