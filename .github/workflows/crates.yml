@@ -11,9 +11,10 @@ on:
     paths:
       - 'crates/**'
       - '.github/workflows/crates.yml'
+  merge_group:
 
 concurrency:
-  group: crates-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
+  group: crates-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'merge_group' && format('merge-queue-{0}', github.run_id) || 'main') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
