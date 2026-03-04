@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
@@ -7,7 +7,6 @@ import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { telegramInstallations } from "../../../../src/db/schema/telegram-installation";
 import { telegramUserLinks } from "../../../../src/db/schema/telegram-user-link";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
-import { scopes } from "../../../../src/db/schema/scope";
 import {
   getMe,
   setWebhook,
@@ -15,6 +14,7 @@ import {
 } from "../../../../src/lib/telegram/client";
 import { encryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
 import { generateCallbackSecret } from "../../../../src/lib/callback/hmac";
+import { resolveDefaultAgentComposeId } from "../../../../src/lib/agent-compose/resolve-default";
 import { logger } from "../../../../src/lib/logger";
 
 const registerBodySchema = z.object({
@@ -29,45 +29,15 @@ const log = logger("api:telegram:register");
  * Uses VERCEL_URL in production, falls back to request origin.
  */
 function getWebhookBaseUrl(requestUrl: string): string {
-  const { VERCEL_URL } = env();
+  const { VM0_TUNNEL_URL, VERCEL_URL } = env();
+  if (VM0_TUNNEL_URL) {
+    return VM0_TUNNEL_URL;
+  }
   if (VERCEL_URL) {
     return `https://${VERCEL_URL}`;
   }
   const url = new URL(requestUrl);
   return `${url.protocol}//${url.host}`;
-}
-
-/**
- * Resolve the default agent compose ID from TELEGRAM_DEFAULT_AGENT env var.
- * Format: "scope-slug/agent-name"
- */
-async function resolveDefaultAgent(): Promise<string | null> {
-  const { TELEGRAM_DEFAULT_AGENT } = env();
-  if (!TELEGRAM_DEFAULT_AGENT) return null;
-
-  const [scopeSlug, agentName] = TELEGRAM_DEFAULT_AGENT.split("/");
-  if (!scopeSlug || !agentName) return null;
-
-  const [scope] = await globalThis.services.db
-    .select({ id: scopes.id })
-    .from(scopes)
-    .where(eq(scopes.slug, scopeSlug))
-    .limit(1);
-
-  if (!scope) return null;
-
-  const [compose] = await globalThis.services.db
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.scopeId, scope.id),
-        eq(agentComposes.name, agentName),
-      ),
-    )
-    .limit(1);
-
-  return compose?.id ?? null;
 }
 
 /**
@@ -137,13 +107,14 @@ export async function POST(request: Request) {
   }
 
   // 3. Resolve default agent
-  const defaultAgentId = body.defaultAgentId ?? (await resolveDefaultAgent());
+  const defaultAgentId =
+    body.defaultAgentId ?? (await resolveDefaultAgentComposeId());
   if (!defaultAgentId) {
     return NextResponse.json(
       {
         error: {
           message:
-            "No default agent specified. Provide defaultAgentId or set TELEGRAM_DEFAULT_AGENT env var.",
+            "No default agent specified. Provide defaultAgentId or set VM0_DEFAULT_AGENT env var.",
           code: "BAD_REQUEST",
         },
       },

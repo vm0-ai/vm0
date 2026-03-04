@@ -72,7 +72,7 @@ export function TelegramConnectPage() {
               <div className="flex flex-col items-center gap-2">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                 <p className="text-sm text-muted-foreground">
-                  Checking connection status...
+                  Checking installation status...
                 </p>
               </div>
             ) : isLinked ? (
@@ -80,7 +80,7 @@ export function TelegramConnectPage() {
               <div className="flex flex-col items-center gap-4">
                 <div className="flex flex-col gap-1 text-center text-foreground">
                   <h1 className="text-lg font-medium leading-7">
-                    Already Connected
+                    Already Installed
                   </h1>
                   <p className="text-sm leading-5 text-muted-foreground">
                     Your account is already linked to a Telegram bot.
@@ -105,7 +105,7 @@ export function TelegramConnectPage() {
               <>
                 <div className="flex flex-col gap-1 text-center text-foreground">
                   <h1 className="text-lg font-medium leading-7">
-                    Connect a Telegram Bot
+                    Install a Telegram Bot
                   </h1>
                   <p className="text-sm leading-5 text-muted-foreground">
                     Enter your bot token from{" "}
@@ -117,7 +117,7 @@ export function TelegramConnectPage() {
                     >
                       @BotFather
                     </a>{" "}
-                    to connect your Telegram bot to VM0.
+                    to install your Telegram bot on VM0.
                   </p>
                 </div>
 
@@ -149,9 +149,7 @@ export function TelegramConnectPage() {
                     disabled={!botToken.trim() || status === "registering"}
                     className="w-full"
                   >
-                    {status === "registering"
-                      ? "Registering..."
-                      : "Connect Bot"}
+                    {status === "registering" ? "Installing..." : "Install Bot"}
                   </Button>
                   <Button
                     className="w-full"

@@ -16,26 +16,25 @@ describe("telegram connect success page", () => {
 
     expect(context.store.get(pathname$)).toBe("/telegram/connect/success");
 
-    expect(screen.getByText("Telegram bot connected")).toBeInTheDocument();
+    expect(screen.getByText("Telegram bot installed")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Your Telegram bot is now connected to VM0. You can start using it right away.",
+        "Your Telegram bot is now installed on VM0. You can start using it right away.",
       ),
     ).toBeInTheDocument();
 
-    // Should show Telegram deep link
-    const telegramLink = screen.getByRole("link", {
+    // Should show Telegram button
+    const telegramButton = screen.getByRole("button", {
       name: "Open in Telegram",
     });
-    expect(telegramLink).toBeInTheDocument();
-    expect(telegramLink.getAttribute("href")).toBe("https://t.me/my_test_bot");
+    expect(telegramButton).toBeInTheDocument();
 
     // Should show platform link
     const platformLink = screen.getByRole("link", {
       name: "Go to VM0 Platform",
     });
     expect(platformLink).toBeInTheDocument();
-    expect(platformLink.getAttribute("href")).toBe("/");
+    expect(platformLink.getAttribute("href")).toBe("/settings/telegram");
   });
 
   it("renders without telegram link when no bot param", async () => {
@@ -44,11 +43,11 @@ describe("telegram connect success page", () => {
       path: "/telegram/connect/success",
     });
 
-    expect(screen.getByText("Telegram bot connected")).toBeInTheDocument();
+    expect(screen.getByText("Telegram bot installed")).toBeInTheDocument();
 
-    // Should NOT show "Open in Telegram" link
+    // Should NOT show "Open in Telegram" button
     expect(
-      screen.queryByRole("link", { name: "Open in Telegram" }),
+      screen.queryByRole("button", { name: "Open in Telegram" }),
     ).not.toBeInTheDocument();
 
     // Should still show platform link
@@ -88,8 +87,8 @@ describe("telegram connect success page", () => {
       path: "/telegram/connect/success?bot=my_test_bot",
     });
 
-    // The setupTelegramConnectSuccessPage$ sets window.location.href
-    expect(capturedHref).toBe("https://t.me/my_test_bot");
+    // The setupTelegramConnectSuccessPage$ sets window.location.href with tg:// protocol
+    expect(capturedHref).toBe("tg://resolve?domain=my_test_bot");
 
     locationSpy.mockRestore();
   });

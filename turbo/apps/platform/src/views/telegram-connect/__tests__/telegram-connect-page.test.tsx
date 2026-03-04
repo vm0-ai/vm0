@@ -45,19 +45,19 @@ describe("telegram connect page", () => {
     });
 
     await vi.waitFor(() => {
-      expect(screen.getByText("Connect a Telegram Bot")).toBeInTheDocument();
+      expect(screen.getByText("Install a Telegram Bot")).toBeInTheDocument();
     });
 
     expect(
       screen.getByPlaceholderText("123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Connect Bot" }),
+      screen.getByRole("button", { name: "Install Bot" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
   });
 
-  it("shows already-connected state when user is linked", async () => {
+  it("shows already-installed state when user is linked", async () => {
     server.use(
       http.get("*/api/integrations/telegram/link", () => {
         return HttpResponse.json({ linked: true });
@@ -70,7 +70,7 @@ describe("telegram connect page", () => {
     });
 
     await vi.waitFor(() => {
-      expect(screen.getByText("Already Connected")).toBeInTheDocument();
+      expect(screen.getByText("Already Installed")).toBeInTheDocument();
     });
     expect(
       screen.getByText("Your account is already linked to a Telegram bot."),
@@ -80,7 +80,7 @@ describe("telegram connect page", () => {
     ).toBeInTheDocument();
   });
 
-  it("calls register API and navigates to success page on Connect Bot", async () => {
+  it("calls register API and navigates to success page on Install Bot", async () => {
     let capturedBody: Record<string, unknown> | null = null;
 
     server.use(
@@ -103,7 +103,7 @@ describe("telegram connect page", () => {
 
     await vi.waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Connect Bot" }),
+        screen.getByRole("button", { name: "Install Bot" }),
       ).toBeInTheDocument();
     });
 
@@ -113,7 +113,7 @@ describe("telegram connect page", () => {
     );
     await user.type(tokenInput, "123456:ABC-token");
 
-    await user.click(screen.getByRole("button", { name: "Connect Bot" }));
+    await user.click(screen.getByRole("button", { name: "Install Bot" }));
 
     await vi.waitFor(() => {
       expect(capturedBody).toBeTruthy();
@@ -147,7 +147,7 @@ describe("telegram connect page", () => {
 
     await vi.waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Connect Bot" }),
+        screen.getByRole("button", { name: "Install Bot" }),
       ).toBeInTheDocument();
     });
 
@@ -156,7 +156,7 @@ describe("telegram connect page", () => {
     );
     await user.type(tokenInput, "bad-token");
 
-    await user.click(screen.getByRole("button", { name: "Connect Bot" }));
+    await user.click(screen.getByRole("button", { name: "Install Bot" }));
 
     await vi.waitFor(() => {
       expect(screen.getByText("Invalid bot token")).toBeInTheDocument();

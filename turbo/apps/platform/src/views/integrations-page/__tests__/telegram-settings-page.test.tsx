@@ -41,10 +41,10 @@ describe("telegram settings page", () => {
 
     // Disconnect section (heading + button)
     expect(
-      screen.getByRole("heading", { name: "Disconnect Telegram" }),
+      screen.getByRole("heading", { name: "Uninstall Telegram" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /disconnect/i }),
+      screen.getByRole("button", { name: /uninstall/i }),
     ).toBeInTheDocument();
   });
 
@@ -113,20 +113,20 @@ describe("telegram settings page", () => {
     ).toBeInTheDocument();
   });
 
-  it("opens disconnect confirmation dialog", async () => {
+  it("opens uninstall confirmation dialog", async () => {
     await setupPage({ context, path: "/settings/telegram" });
 
     // Click the disconnect button
     const disconnectButton = screen.getByRole("button", {
-      name: /disconnect/i,
+      name: /uninstall/i,
     });
     await user.click(disconnectButton);
 
     // Confirm dialog should appear
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Disconnect Telegram")).toBeInTheDocument();
+    expect(within(dialog).getByText("Uninstall Telegram")).toBeInTheDocument();
     expect(
-      within(dialog).getByText(/remove the Telegram bot connection/),
+      within(dialog).getByText(/remove the Telegram bot installation/),
     ).toBeInTheDocument();
 
     // Should have Cancel and Disconnect buttons
@@ -134,16 +134,16 @@ describe("telegram settings page", () => {
       within(dialog).getByRole("button", { name: /cancel/i }),
     ).toBeInTheDocument();
     expect(
-      within(dialog).getByRole("button", { name: /disconnect/i }),
+      within(dialog).getByRole("button", { name: /uninstall/i }),
     ).toBeInTheDocument();
   });
 
-  it("closes disconnect dialog on cancel", async () => {
+  it("closes uninstall dialog on cancel", async () => {
     await setupPage({ context, path: "/settings/telegram" });
 
     // Open the dialog
     const disconnectButton = screen.getByRole("button", {
-      name: /disconnect/i,
+      name: /uninstall/i,
     });
     await user.click(disconnectButton);
 
@@ -183,7 +183,7 @@ describe("settings integrations tab with telegram", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows Connect link when bot is not linked", async () => {
+  it("shows Install link when bot is not linked", async () => {
     server.use(
       http.get("/api/integrations/telegram", () => {
         return HttpResponse.json(
@@ -204,12 +204,12 @@ describe("settings integrations tab with telegram", () => {
     // Should show the Telegram card
     expect(screen.getByText("VM0 in Telegram")).toBeInTheDocument();
 
-    // Should show Connect link (not Settings)
+    // Should show Install link (not Settings)
     const telegramCard = screen
       .getByText("Use your VM0 agent in Telegram")
       .closest("div.rounded-xl") as HTMLElement;
     expect(
-      within(telegramCard).getByRole("link", { name: /connect/i }),
+      within(telegramCard).getByRole("link", { name: /install/i }),
     ).toBeInTheDocument();
   });
 });

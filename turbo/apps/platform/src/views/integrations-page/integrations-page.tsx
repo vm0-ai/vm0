@@ -153,7 +153,7 @@ export function TelegramIntegrationCard() {
       <div className="shrink-0">
         {notLinked ? (
           <Button variant="outline" size="sm" asChild>
-            <Link pathname="/telegram/connect">Connect</Link>
+            <Link pathname="/telegram/connect">Install</Link>
           </Button>
         ) : (
           <Button variant="outline" size="sm" asChild>

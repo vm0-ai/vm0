@@ -9,7 +9,9 @@ export function TelegramConnectSuccessPage() {
   const params = useGet(searchParams$);
 
   const botUsername = params.get("bot");
-  const telegramLink = botUsername ? `https://t.me/${botUsername}` : null;
+  const telegramLink = botUsername
+    ? `tg://resolve?domain=${botUsername}`
+    : null;
 
   const backgroundGradient =
     theme === "dark"
@@ -42,10 +44,10 @@ export function TelegramConnectSuccessPage() {
 
               <div className="flex flex-col gap-1 text-center text-foreground">
                 <h1 className="text-lg font-medium leading-7">
-                  Telegram bot connected
+                  Telegram bot installed
                 </h1>
                 <p className="text-sm leading-5 text-muted-foreground">
-                  Your Telegram bot is now connected to VM0. You can start using
+                  Your Telegram bot is now installed on VM0. You can start using
                   it right away.
                 </p>
               </div>
@@ -67,18 +69,18 @@ export function TelegramConnectSuccessPage() {
             {/* Action Buttons */}
             <div className="flex w-full flex-col gap-4">
               {telegramLink && (
-                <Button asChild variant="outline" className="w-full">
-                  <a
-                    href={telegramLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Open in Telegram
-                  </a>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() =>
+                    window.open(telegramLink, "_blank", "noopener,noreferrer")
+                  }
+                >
+                  Open in Telegram
                 </Button>
               )}
               <Button asChild variant="outline" className="w-full">
-                <a href="/">Go to VM0 Platform</a>
+                <a href="/settings/telegram">Go to VM0 Platform</a>
               </Button>
             </div>
           </div>

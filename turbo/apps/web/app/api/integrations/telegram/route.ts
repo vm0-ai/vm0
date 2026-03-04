@@ -288,7 +288,7 @@ export async function PATCH(request: Request) {
 /**
  * DELETE /api/integrations/telegram
  *
- * Disconnect the Telegram bot. Admin only.
+ * Uninstall the Telegram bot. Admin only.
  * Removes webhook from Telegram and deletes the installation (cascades to user_links, sessions, messages).
  */
 export async function DELETE(request: Request) {
@@ -307,44 +307,22 @@ export async function DELETE(request: Request) {
   const { SECRETS_ENCRYPTION_KEY } = env();
   const db = globalThis.services.db;
 
-  // Find user's Telegram link
-  const [userLink] = await db
-    .select()
-    .from(telegramUserLinks)
-    .where(eq(telegramUserLinks.vm0UserId, userId))
-    .orderBy(desc(telegramUserLinks.createdAt))
-    .limit(1);
-
-  if (!userLink) {
-    return NextResponse.json(
-      { error: { message: "No linked Telegram bot", code: "NOT_FOUND" } },
-      { status: 404 },
-    );
-  }
-
+  // Find installation where user is admin
   const [installation] = await db
     .select()
     .from(telegramInstallations)
-    .where(eq(telegramInstallations.id, userLink.installationId))
+    .where(eq(telegramInstallations.adminUserId, userId))
     .limit(1);
 
   if (!installation) {
     return NextResponse.json(
-      { error: { message: "Telegram bot not found", code: "NOT_FOUND" } },
-      { status: 404 },
-    );
-  }
-
-  // Admin check
-  if (installation.adminUserId !== userId) {
-    return NextResponse.json(
       {
         error: {
-          message: "Only the bot admin can disconnect the bot",
-          code: "FORBIDDEN",
+          message: "No Telegram bot found or you are not the bot admin",
+          code: "NOT_FOUND",
         },
       },
-      { status: 403 },
+      { status: 404 },
     );
   }
 

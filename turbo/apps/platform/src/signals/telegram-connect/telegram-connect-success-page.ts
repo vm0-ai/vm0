@@ -7,10 +7,10 @@ import { TelegramConnectSuccessPage } from "../../views/telegram-connect/telegra
 export const setupTelegramConnectSuccessPage$ = command(({ get, set }) => {
   set(updatePage$, createElement(TelegramConnectSuccessPage));
 
-  // Auto-open Telegram on page load
+  // Auto-open Telegram app on page load (uses tg:// protocol for system prompt)
   const params = get(searchParams$);
   const botUsername = params.get("bot");
   if (botUsername) {
-    window.location.href = `https://t.me/${botUsername}`;
+    window.location.href = `tg://resolve?domain=${botUsername}`;
   }
 });

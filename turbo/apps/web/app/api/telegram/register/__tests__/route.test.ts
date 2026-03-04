@@ -173,7 +173,7 @@ describe("POST /api/telegram/register", () => {
     const getMeHandler = telegramGetMe(botId, `noagent_bot_${botId}`);
     server.use(getMeHandler.handler);
 
-    // No defaultAgentId in body and TELEGRAM_DEFAULT_AGENT env var not set
+    // No defaultAgentId in body and VM0_DEFAULT_AGENT env var not set
     const response = await POST(registerRequest({ botToken: TEST_BOT_TOKEN }));
     const body = await response.json();
 

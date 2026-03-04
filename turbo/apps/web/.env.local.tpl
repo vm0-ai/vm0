@@ -111,7 +111,7 @@ NGROK_API_KEY=op://Development/vm0-env-local/NGROK_API_KEY
 NGROK_COMPUTER_CONNECTOR_DOMAIN=computer.vm7.io
 
 # Required: Platform UI URL (for settings page links in error messages)
-PLATFORM_URL=op://Development/vm0-env-local/NEXT_PUBLIC_PLATFORM_URL
+PLATFORM_URL=op://Development/vm0-env-local/PLATFORM_URL
 
 # Optional: Blog Configuration
 BLOG_BASE_URL=

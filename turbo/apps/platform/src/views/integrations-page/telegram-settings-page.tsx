@@ -135,23 +135,6 @@ function DefaultAgentSection({
               <p className="text-sm font-medium">
                 Default agent you would like to use in Telegram
               </p>
-              <p className="text-sm text-muted-foreground">
-                {
-                  "If you want to manage your agent's model provider, secrets, or connectors, go to "
-                }
-                <Link
-                  pathname="/settings"
-                  options={{
-                    searchParams: new URLSearchParams({
-                      tab: "providers",
-                    }),
-                  }}
-                  className="text-primary hover:underline"
-                >
-                  Settings
-                </Link>
-                .
-              </p>
             </>
           ) : (
             <>
@@ -334,12 +317,12 @@ export function TelegramSettingsPage() {
 
             {/* Disconnect section */}
             <div className="flex flex-col gap-4">
-              <h3 className="text-base font-medium">Disconnect Telegram</h3>
+              <h3 className="text-base font-medium">Uninstall Telegram</h3>
               <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
                 <div className="flex flex-1 flex-col gap-1">
-                  <p className="text-sm font-medium">Disconnect bot</p>
+                  <p className="text-sm font-medium">Uninstall bot</p>
                   <p className="text-sm text-muted-foreground">
-                    Your VM0 agent will be disconnected from this Telegram bot.
+                    Your VM0 agent will be uninstalled from this Telegram bot.
                     All linked accounts and message history will be removed.
                   </p>
                 </div>
@@ -348,7 +331,7 @@ export function TelegramSettingsPage() {
                   size="sm"
                   onClick={() => openConfirm()}
                 >
-                  Disconnect
+                  Uninstall
                 </Button>
               </div>
             </div>
@@ -366,10 +349,10 @@ export function TelegramSettingsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Disconnect Telegram</DialogTitle>
+            <DialogTitle>Uninstall Telegram</DialogTitle>
             <DialogDescription>
-              This will remove the Telegram bot connection, delete all linked
-              accounts, and clear message history. You can reconnect at any
+              This will remove the Telegram bot installation, delete all linked
+              accounts, and clear message history. You can reinstall at any
               time.
             </DialogDescription>
           </DialogHeader>
@@ -378,7 +361,7 @@ export function TelegramSettingsPage() {
               Cancel
             </Button>
             <Button variant="destructive" onClick={handleDisconnect}>
-              Disconnect
+              Uninstall
             </Button>
           </DialogFooter>
         </DialogContent>

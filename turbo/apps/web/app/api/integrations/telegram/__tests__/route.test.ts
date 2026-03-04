@@ -159,7 +159,7 @@ describe("/api/integrations/telegram", () => {
       expect(data.error.code).toBe("UNAUTHORIZED");
     });
 
-    it("returns 403 for non-admin user", async () => {
+    it("returns 404 for non-admin user", async () => {
       const user = await context.setupUser();
       await createTestTelegramInstallation({
         adminUserId: "other-admin",
@@ -173,8 +173,8 @@ describe("/api/integrations/telegram", () => {
       const response = await DELETE(request);
       const data = await response.json();
 
-      expect(response.status).toBe(403);
-      expect(data.error.code).toBe("FORBIDDEN");
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
     });
 
     it("deletes installation and removes webhook for admin", async () => {
