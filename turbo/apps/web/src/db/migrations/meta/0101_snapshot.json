@@ -1,5 +1,5 @@
 {
-  "id": "ceeed3f9-803f-4aad-b910-720f51ef3590",
+  "id": "cd27e9e9-b660-4f44-a476-8f3fed8998e4",
   "prevId": "a93d330a-c37a-431a-97ab-1207e93e7f2a",
   "version": "7",
   "dialect": "postgresql",
@@ -1350,7 +1350,7 @@
           "name": "github_url",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "overwrite": {
           "name": "overwrite",
@@ -1358,6 +1358,25 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "content": {
+          "name": "content",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "instructions": {
+          "name": "instructions",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'github'"
         },
         "status": {
           "name": "status",
@@ -2032,13 +2051,32 @@
           "name": "installation_id",
           "type": "varchar(255)",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "encrypted_access_token": {
           "name": "encrypted_access_token",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "target_type": {
+          "name": "target_type",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
         },
         "default_compose_id": {
           "name": "default_compose_id",
@@ -2067,7 +2105,24 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "github_installations_installation_id_unique": {
+          "name": "github_installations_installation_id_unique",
+          "columns": [
+            {
+              "expression": "installation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "installation_id IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "github_installations_default_compose_id_agent_composes_id_fk": {
           "name": "github_installations_default_compose_id_agent_composes_id_fk",
@@ -2080,13 +2135,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "github_installations_installation_id_unique": {
-          "name": "github_installations_installation_id_unique",
-          "nullsNotDistinct": false,
-          "columns": ["installation_id"]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
