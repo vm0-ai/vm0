@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
 import {
   createTestRequest,
@@ -12,6 +12,7 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { reloadEnv } from "../../../../../../src/env";
 import { randomUUID } from "crypto";
 
 const context = testContext();
@@ -322,6 +323,138 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(data.agentSessionId).toBeDefined();
       expect(data.conversationId).toBeDefined();
       expect(data.artifact).toEqual(artifactSnapshot);
+    });
+  });
+
+  describe("Session independence", () => {
+    it("should create independent sessions for separate artifact runs", async () => {
+      const artifactSnapshot = {
+        artifactName: "my-app",
+        artifactVersion: "v1",
+      };
+
+      // Allow multiple concurrent runs and re-enable Clerk auth for API route calls
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      reloadEnv();
+      mockClerk({ userId: user.userId });
+      const { runId: runId1 } = await createTestRun(testComposeId, "Run 1");
+      const { runId: runId2 } = await createTestRun(testComposeId, "Run 2");
+      mockClerk({ userId: null });
+
+      const token1 = await createTestSandboxToken(user.userId, runId1);
+      const token2 = await createTestSandboxToken(user.userId, runId2);
+
+      const request1 = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token1}`,
+          },
+          body: JSON.stringify({
+            runId: runId1,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-run-1",
+            cliAgentSessionHistory: '{"type":"test"}',
+            artifactSnapshot,
+          }),
+        },
+      );
+
+      const response1 = await POST(request1);
+      expect(response1.status).toBe(200);
+      const data1 = await response1.json();
+
+      const request2 = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token2}`,
+          },
+          body: JSON.stringify({
+            runId: runId2,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-run-2",
+            cliAgentSessionHistory: '{"type":"test"}',
+            artifactSnapshot,
+          }),
+        },
+      );
+
+      const response2 = await POST(request2);
+      expect(response2.status).toBe(200);
+      const data2 = await response2.json();
+
+      // Each run should get its own independent session
+      expect(data1.agentSessionId).not.toBe(data2.agentSessionId);
+    });
+
+    it("should reuse session when continuedFromSessionId is set", async () => {
+      // Create a session via first run's checkpoint
+      const request1 = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-original",
+            cliAgentSessionHistory: '{"type":"test"}',
+          }),
+        },
+      );
+
+      const response1 = await POST(request1);
+      expect(response1.status).toBe(200);
+      const data1 = await response1.json();
+      const originalSessionId = data1.agentSessionId;
+
+      // Create a continue run with continuedFromSessionId
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      reloadEnv();
+      mockClerk({ userId: user.userId });
+      const { runId: continueRunId } = await createTestRun(
+        testComposeId,
+        "Continue prompt",
+        { sessionId: originalSessionId },
+      );
+      mockClerk({ userId: null });
+
+      const continueToken = await createTestSandboxToken(
+        user.userId,
+        continueRunId,
+      );
+
+      const request2 = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${continueToken}`,
+          },
+          body: JSON.stringify({
+            runId: continueRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-continued",
+            cliAgentSessionHistory: '{"type":"test-continued"}',
+          }),
+        },
+      );
+
+      const response2 = await POST(request2);
+      expect(response2.status).toBe(200);
+      const data2 = await response2.json();
+
+      // Continue run should reuse the same session
+      expect(data2.agentSessionId).toBe(originalSessionId);
     });
   });
 

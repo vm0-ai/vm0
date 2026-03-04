@@ -4,7 +4,6 @@ import { stringify, parse } from "yaml";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
-import { navigateInReact$ } from "../route.ts";
 import { agentDetail$, fetchAgentDetail$ } from "./agent-detail.ts";
 import { skillValueToUrl } from "../../data/skills.ts";
 import { AGENT_NAME_REGEX, fetchSkillFrontmatter } from "@vm0/core";
@@ -88,7 +87,15 @@ export const configDialogValid$ = computed((get) => {
   if (firstKey === undefined || firstKey === "") {
     return false;
   }
-  return AGENT_NAME_REGEX.test(firstKey);
+  if (!AGENT_NAME_REGEX.test(firstKey)) {
+    return false;
+  }
+  // Agent name cannot be changed — reject if it differs from the original
+  const detail = get(agentDetail$);
+  if (detail && firstKey !== detail.name) {
+    return false;
+  }
+  return true;
 });
 
 // ---------------------------------------------------------------------------
@@ -296,37 +303,6 @@ export const updateComposeField$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Update agent name — restructures the agents dictionary key
-// ---------------------------------------------------------------------------
-
-export const updateAgentName$ = command(({ get, set }, newName: string) => {
-  const compose = get(internalEditableCompose$);
-  if (!compose) {
-    return;
-  }
-
-  const agentKeys = Object.keys(compose.agents);
-  const firstKey = agentKeys[0];
-  if (firstKey === undefined || newName === firstKey) {
-    return;
-  }
-
-  const agentDef = compose.agents[firstKey];
-  if (!agentDef) {
-    return;
-  }
-
-  const updated: ComposeContent = {
-    ...compose,
-    agents: { [newName]: agentDef },
-  };
-
-  set(internalEditableCompose$, updated);
-  set(internalYamlText$, stringify(updated));
-  set(internalYamlError$, null);
-});
-
-// ---------------------------------------------------------------------------
 // Update skills — converts values to GitHub URLs
 // ---------------------------------------------------------------------------
 
@@ -363,7 +339,7 @@ export const updateSkills$ = command(({ get, set }, skillValues: string[]) => {
 // Update from YAML tab — parse YAML and update compose
 // ---------------------------------------------------------------------------
 
-export const updateYamlText$ = command(({ set }, text: string) => {
+export const updateYamlText$ = command(({ get, set }, text: string) => {
   set(internalYamlText$, text);
 
   try {
@@ -373,6 +349,19 @@ export const updateYamlText$ = command(({ set }, text: string) => {
     if (!parsed || typeof parsed !== "object" || !parsed.agents) {
       set(internalYamlError$, "Invalid YAML: must contain 'agents' field");
       return;
+    }
+
+    // Agent name cannot be changed via YAML editing
+    const detail = get(agentDetail$);
+    if (detail) {
+      const newAgentKey = Object.keys(parsed.agents)[0];
+      if (newAgentKey && newAgentKey !== detail.name) {
+        set(
+          internalYamlError$,
+          "Agent name cannot be changed. Create a new agent instead.",
+        );
+        return;
+      }
     }
 
     set(internalEditableCompose$, parsed);
@@ -402,15 +391,10 @@ export const saveConfigDialog$ = command(async ({ get, set }) => {
 
   try {
     const fetchFn = get(fetch$);
-    const newAgentKey = Object.keys(compose.agents)[0];
-    const nameChanged = newAgentKey && newAgentKey !== detail.name;
     const response = await fetchFn("/api/agent/composes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content: compose,
-        ...(nameChanged ? { previousName: detail.name } : {}),
-      }),
+      body: JSON.stringify({ content: compose }),
     });
 
     if (!response.ok) {
@@ -422,19 +406,9 @@ export const saveConfigDialog$ = command(async ({ get, set }) => {
       );
     }
 
-    if (nameChanged) {
-      // Navigate to new agent URL
-      set(internalOpen$, false);
-      toast.success("Agent configuration saved");
-      set(navigateInReact$, "/agents/:name", {
-        pathParams: { name: newAgentKey },
-      });
-    } else {
-      // Refresh agent detail and close dialog
-      await set(fetchAgentDetail$);
-      set(internalOpen$, false);
-      toast.success("Agent configuration saved");
-    }
+    await set(fetchAgentDetail$);
+    set(internalOpen$, false);
+    toast.success("Agent configuration saved");
   } catch (error) {
     throwIfAbort(error);
     const message = error instanceof Error ? error.message : "Failed to save";

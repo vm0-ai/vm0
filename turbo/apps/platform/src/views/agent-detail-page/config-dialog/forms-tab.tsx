@@ -4,29 +4,16 @@ import { MultiSelectCombobox } from "@vm0/ui/components/ui/multi-select-combobox
 import {
   editableCompose$,
   updateComposeField$,
-  updateAgentName$,
   updateSkills$,
   skillEnvHints$,
 } from "../../../signals/agent-detail/config-dialog.ts";
 import { skills$, skillUrlToValue } from "../../../data/skills.ts";
-import { AGENT_NAME_REGEX } from "@vm0/core";
-
-function validateAgentName(name: string): string | null {
-  if (!name) {
-    return "Agent name is required";
-  }
-  if (!AGENT_NAME_REGEX.test(name)) {
-    return "Must be 3-64 chars, letters/numbers/hyphens, start and end with letter or number";
-  }
-  return null;
-}
 
 export function FormsTab() {
   const compose = useGet(editableCompose$);
   const skills = useGet(skills$);
   const envHints = useGet(skillEnvHints$);
   const updateField = useSet(updateComposeField$);
-  const updateName = useSet(updateAgentName$);
   const updateSkillValues = useSet(updateSkills$);
 
   if (!compose) {
@@ -44,7 +31,6 @@ export function FormsTab() {
     return null;
   }
 
-  const nameError = validateAgentName(firstKey);
   const selectedSkills = agent.skills?.map(skillUrlToValue) ?? [];
 
   // Include custom/unrecognized skill URLs as extra options so they aren't
@@ -62,12 +48,7 @@ export function FormsTab() {
         <label className="text-sm font-medium text-foreground">
           Agent name
         </label>
-        <Input
-          value={firstKey}
-          onChange={(e) => updateName(e.target.value)}
-          placeholder="my-agent"
-        />
-        {nameError && <p className="text-xs text-destructive">{nameError}</p>}
+        <Input value={firstKey} readOnly className="bg-muted" />
       </div>
 
       <div className="flex flex-col gap-2">

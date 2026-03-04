@@ -4,6 +4,7 @@ export type RoutePath =
   | "/logs/:id"
   | "/settings"
   | "/settings/slack"
+  | "/settings/github"
   | "/agents"
   | "/agents/:name"
   | "/agents/:name/logs"

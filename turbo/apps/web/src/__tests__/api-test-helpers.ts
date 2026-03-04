@@ -21,11 +21,14 @@ import { usageDaily } from "../db/schema/usage-daily";
 import { slackComposeRequests } from "../db/schema/slack-compose-request";
 import { slackInstallations } from "../db/schema/slack-installation";
 import { githubInstallations } from "../db/schema/github-installation";
+import { githubIssueSessions } from "../db/schema/github-issue-session";
 import { slackThreadSessions } from "../db/schema/slack-thread-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
 import { agentSchedules } from "../db/schema/agent-schedule";
-import { and, eq, inArray, like } from "drizzle-orm";
+import { telegramInstallations } from "../db/schema/telegram-installation";
+import { telegramMessages } from "../db/schema/telegram-message";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
 import { encryptSecrets } from "../lib/crypto/secrets-encryption";
@@ -469,19 +472,26 @@ async function createTestComposeVersion(
 
 /**
  * Create a run record directly in the database.
- * Internal helper for createTestSessionWithConversation.
+ * Use this when you need a run without going through the API route
+ * (e.g., for webhook tests where Clerk auth is disabled).
  */
-async function createTestRunRecord(
+async function createTestRunDirect(
   userId: string,
   versionId: string,
+  options?: {
+    status?: string;
+    prompt?: string;
+    continuedFromSessionId?: string;
+  },
 ): Promise<{ id: string }> {
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
       agentComposeVersionId: versionId,
-      status: "completed",
-      prompt: "test prompt",
+      status: options?.status ?? "running",
+      prompt: options?.prompt ?? "test prompt",
+      continuedFromSessionId: options?.continuedFromSessionId,
     })
     .returning({ id: agentRuns.id });
   return run!;
@@ -516,7 +526,9 @@ export async function createTestSessionWithConversation(
   // Create compose version
   const versionId = await createTestComposeVersion(agentComposeId, userId);
   // Create run
-  const run = await createTestRunRecord(userId, versionId);
+  const run = await createTestRunDirect(userId, versionId, {
+    status: "completed",
+  });
   // Create conversation
   const conversation = await createTestConversation(run.id);
   // Create session with conversation
@@ -1669,7 +1681,6 @@ export async function findTestStorageByName(
     .limit(1);
   return result;
 }
-
 export async function findTestSlackComposeRequest(composeJobId: string) {
   const [row] = await globalThis.services.db
     .select()
@@ -2123,4 +2134,139 @@ export async function findTestGitHubInstallationById(id: string) {
     .where(eq(githubInstallations.id, id))
     .limit(1);
   return row;
+}
+
+/**
+ * Insert a GitHub issue session record directly in the database.
+ *
+ * Direct DB insert is required because issue sessions are created by the
+ * callback handler, and we need to pre-populate them for update path tests.
+ */
+export async function insertTestGitHubIssueSession(params: {
+  userId: string;
+  installationId: string;
+  repo: string;
+  issueNumber: number;
+  agentSessionId: string;
+  lastCommentId?: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(githubIssueSessions)
+    .values({
+      userId: params.userId,
+      installationId: params.installationId,
+      repo: params.repo,
+      issueNumber: params.issueNumber,
+      agentSessionId: params.agentSessionId,
+      lastCommentId: params.lastCommentId,
+    })
+    .returning({ id: githubIssueSessions.id });
+  return row!;
+}
+
+/**
+ * Find a GitHub issue session by installation, repo, and issue number.
+ *
+ * Direct DB read is required because there is no API endpoint to query
+ * issue sessions. Used to verify callback handler creates/updates records.
+ */
+export async function findTestGitHubIssueSession(
+  installationId: string,
+  repo: string,
+  issueNumber: number,
+) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(githubIssueSessions)
+    .where(
+      and(
+        eq(githubIssueSessions.installationId, installationId),
+        eq(githubIssueSessions.repo, repo),
+        eq(githubIssueSessions.issueNumber, issueNumber),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Create a Telegram installation with all required parent records.
+ * Returns the installation ID for use as a foreign key.
+ */
+export async function createTestTelegramInstallation(): Promise<string> {
+  initServices();
+  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
+
+  const suffix = uniqueId("tg");
+  const adminUserId = uniqueId("test-admin");
+
+  const [scope] = await globalThis.services.db
+    .insert(scopes)
+    .values({
+      slug: uniqueId("scope"),
+      type: "personal",
+      ownerId: adminUserId,
+    })
+    .returning();
+
+  const [compose] = await globalThis.services.db
+    .insert(agentComposes)
+    .values({
+      userId: adminUserId,
+      scopeId: scope!.id,
+      name: uniqueId("compose"),
+    })
+    .returning();
+
+  const [installation] = await globalThis.services.db
+    .insert(telegramInstallations)
+    .values({
+      telegramBotId: suffix,
+      botUsername: `bot_${suffix}`,
+      encryptedBotToken: encryptCredentialValue(
+        "test-bot-token",
+        SECRETS_ENCRYPTION_KEY,
+      ),
+      webhookSecret: uniqueId("secret"),
+      defaultComposeId: compose!.id,
+      adminUserId,
+    })
+    .returning();
+
+  return installation!.id;
+}
+
+/**
+ * Insert test telegram messages with a specific creation date.
+ * Used by cleanup cron tests.
+ */
+export async function insertTestTelegramMessages(
+  installationId: string,
+  count: number,
+  createdAt: Date,
+): Promise<void> {
+  const values = Array.from({ length: count }, (_, i) => ({
+    installationId,
+    chatId: "chat-1",
+    messageId: `${createdAt.getTime()}-${i}`,
+    fromUserId: "user-1",
+    text: `message ${i}`,
+    isBot: false,
+    createdAt,
+  }));
+
+  await globalThis.services.db.insert(telegramMessages).values(values);
+}
+
+/**
+ * Count telegram messages for a specific installation.
+ */
+export async function countTestTelegramMessages(
+  installationId: string,
+): Promise<number> {
+  const result = await globalThis.services.db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(telegramMessages)
+    .where(eq(telegramMessages.installationId, installationId));
+  return result[0]!.count;
 }

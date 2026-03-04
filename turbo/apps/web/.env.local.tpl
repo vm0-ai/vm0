@@ -78,6 +78,14 @@ STRAVA_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/STRAVA_OAUTH_CLIENT_SE
 GARMIN_CONNECT_OAUTH_CLIENT_ID=op://Development/vm0-env-local/GARMIN_CONNECT_OAUTH_CLIENT_ID
 GARMIN_CONNECT_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/GARMIN_CONNECT_OAUTH_CLIENT_SECRET
 
+# Optional: Reddit OAuth Connector
+REDDIT_OAUTH_CLIENT_ID=op://Development/vm0-env-local/REDDIT_OAUTH_CLIENT_ID
+REDDIT_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/REDDIT_OAUTH_CLIENT_SECRET
+
+# Optional: X OAuth Connector
+X_OAUTH_CLIENT_ID=op://Development/vm0-env-local/X_OAUTH_CLIENT_ID
+X_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/X_OAUTH_CLIENT_SECRET
+
 # Optional: Vercel OAuth Connector
 VERCEL_OAUTH_CLIENT_ID=op://Development/vm0-env-local/VERCEL_OAUTH_CLIENT_ID
 VERCEL_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/VERCEL_OAUTH_CLIENT_SECRET

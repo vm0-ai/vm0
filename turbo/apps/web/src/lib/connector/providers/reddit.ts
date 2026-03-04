@@ -149,6 +149,65 @@ async function fetchRedditUserInfo(
   };
 }
 
+interface RedditRefreshResult {
+  accessToken: string;
+  refreshToken: string | null;
+}
+
+/**
+ * Refresh a Reddit access token using the refresh token.
+ * Reddit uses Basic Auth (same as token exchange) and may rotate refresh tokens.
+ */
+export async function refreshRedditToken(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<RedditRefreshResult> {
+  const oauthConfig = getConnectorOAuthConfig("reddit");
+  if (!oauthConfig) {
+    throw new Error("Reddit OAuth config not found");
+  }
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${encodeBasicAuth(clientId, clientSecret)}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": REDDIT_USER_AGENT,
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Reddit token refresh failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+
+  if (!data.access_token) {
+    throw new Error("No access token in Reddit refresh response");
+  }
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
+  };
+}
+
 /**
  * Get the primary secret name for Reddit connector (the access token).
  */
