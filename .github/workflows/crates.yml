@@ -73,6 +73,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates -> target
+          shared-key: check
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check formatting
         run: |
@@ -123,7 +125,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates -> target
-          key: aarch64-musl
+          shared-key: aarch64-musl
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-targets: false
 
       - name: Cross-compile guest binaries for ARM64
         run: |
