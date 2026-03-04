@@ -819,4 +819,46 @@ mod tests {
         assert_eq!(stopped.len(), 1);
         assert_eq!(stopped.first().unwrap().unit_name, "vm0-runner-stopped");
     }
+
+    fn make_report(name: Option<&str>) -> RunnerReport {
+        RunnerReport {
+            name: name.map(String::from),
+            pid: 1,
+            config_path: PathBuf::from("/data/test.yaml"),
+            subcommand: "start".into(),
+            service_type: ServiceType::Bare,
+            status: None,
+            api_ok: None,
+            proxy_pid: None,
+            jobs: vec![],
+            warnings: vec![],
+        }
+    }
+
+    #[test]
+    fn filter_by_name_keeps_matching() {
+        let reports = vec![
+            make_report(Some("pr-100-1")),
+            make_report(Some("pr-200-1")),
+            make_report(None),
+        ];
+        let name_filter = "pr-100-1";
+        let filtered: Vec<_> = reports
+            .into_iter()
+            .filter(|r| r.name.as_deref() == Some(name_filter))
+            .collect();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name.as_deref(), Some("pr-100-1"));
+    }
+
+    #[test]
+    fn filter_by_name_no_match_returns_empty() {
+        let reports = vec![make_report(Some("pr-100-1")), make_report(None)];
+        let name_filter = "nonexistent";
+        let filtered: Vec<_> = reports
+            .into_iter()
+            .filter(|r| r.name.as_deref() == Some(name_filter))
+            .collect();
+        assert!(filtered.is_empty());
+    }
 }
