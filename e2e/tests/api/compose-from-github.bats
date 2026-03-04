@@ -2,8 +2,8 @@
 
 load '../../helpers/setup'
 
-# Compose from GitHub API E2E Tests
-# Tests verify that the GitHub compose workflow works end-to-end
+# Compose Jobs API E2E Tests
+# Tests verify that the compose job workflow works end-to-end
 
 # Test GitHub repository URL (must contain a valid vm0.yaml)
 TEST_GITHUB_URL="https://github.com/vm0-ai/vm0-cookbooks/tree/main/examples/201-hackernews"
@@ -54,7 +54,7 @@ poll_job_until_complete() {
     local status
 
     while [[ $attempt -lt $MAX_POLL_ATTEMPTS ]]; do
-        result=$(api_get "/api/compose/from-github/${job_id}")
+        result=$(api_get "/api/compose/jobs/${job_id}")
         status=$(echo "$result" | jq -r '.status')
 
         echo "# Poll attempt $((attempt + 1))/${MAX_POLL_ATTEMPTS}: status=$status" >&3
@@ -98,8 +98,8 @@ setup() {
 # Compose from GitHub E2E Tests
 # ============================================
 
-@test "POST /api/compose/from-github creates a compose job" {
-    result=$(api_post "/api/compose/from-github" "{\"githubUrl\": \"${TEST_GITHUB_URL}\"}")
+@test "POST /api/compose/jobs creates a compose job" {
+    result=$(api_post "/api/compose/jobs" "{\"githubUrl\": \"${TEST_GITHUB_URL}\"}")
 
     # Verify response structure
     echo "$result" | jq -e '.jobId' > /dev/null
@@ -113,7 +113,7 @@ setup() {
 
 @test "Compose from GitHub completes successfully" {
     # Create job
-    create_result=$(api_post "/api/compose/from-github" "{\"githubUrl\": \"${TEST_GITHUB_URL}\", \"overwrite\": true}")
+    create_result=$(api_post "/api/compose/jobs" "{\"githubUrl\": \"${TEST_GITHUB_URL}\", \"overwrite\": true}")
 
     # Extract job ID (handle both 201 new job and 200 existing job)
     job_id=$(echo "$create_result" | jq -r '.jobId')
@@ -145,13 +145,13 @@ setup() {
     echo "# Created compose: $compose_name (ID: $compose_id)" >&3
 }
 
-@test "GET /api/compose/from-github/:jobId returns job status" {
+@test "GET /api/compose/jobs/:jobId returns job status" {
     # Create job first
-    create_result=$(api_post "/api/compose/from-github" "{\"githubUrl\": \"${TEST_GITHUB_URL}\"}")
+    create_result=$(api_post "/api/compose/jobs" "{\"githubUrl\": \"${TEST_GITHUB_URL}\"}")
     job_id=$(echo "$create_result" | jq -r '.jobId')
 
     # Get job status
-    result=$(api_get "/api/compose/from-github/${job_id}")
+    result=$(api_get "/api/compose/jobs/${job_id}")
 
     # Verify response structure
     echo "$result" | jq -e '.jobId' > /dev/null
@@ -164,13 +164,13 @@ setup() {
     [[ "$returned_job_id" == "$job_id" ]]
 }
 
-@test "GET /api/compose/from-github/:jobId returns 404 for non-existent job" {
+@test "GET /api/compose/jobs/:jobId returns 404 for non-existent job" {
     non_existent_id="00000000-0000-0000-0000-000000000000"
 
     result=$(curl -s -w "\n%{http_code}" \
         -H "Authorization: Bearer $VM0_TOKEN" \
         -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
-        "${VM0_API_URL}/api/compose/from-github/${non_existent_id}")
+        "${VM0_API_URL}/api/compose/jobs/${non_existent_id}")
 
     # Extract HTTP status code (last line)
     http_code=$(echo "$result" | tail -n1)
