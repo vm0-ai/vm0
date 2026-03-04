@@ -17,6 +17,7 @@ import { uniqueId } from "../test-helpers";
 import { initServices } from "../../lib/init-services";
 import { slackUserLinks } from "../../db/schema/slack-user-link";
 import { slackInstallations } from "../../db/schema/slack-installation";
+import { slackPendingQuestions } from "../../db/schema/slack-pending-question";
 
 // Import route handlers
 import { GET as oauthCallbackRoute } from "../../../app/api/slack/oauth/callback/route";
@@ -276,9 +277,6 @@ export async function givenPendingQuestion(
   channelId: string;
 }> {
   initServices();
-  const { slackPendingQuestions } = await import(
-    "../../db/schema/slack-pending-question"
-  );
 
   const channelId = options.channelId ?? "C-test-channel";
   const questions = options.questions ?? [
