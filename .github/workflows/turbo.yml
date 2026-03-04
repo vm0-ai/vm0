@@ -1630,8 +1630,13 @@ jobs:
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             HOST_INDEX=$((HOST_INDEX + 1))
             RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+            REMOTE="${METAL_USER}@${HOST}"
             echo "Checking runner ${RUNNER_NAME} on ${HOST}..."
-            if ! ssh $SSH_OPTS "${METAL_USER}@${HOST}" "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"; then
+            if ! ssh $SSH_OPTS "$REMOTE" "test -x ${BIN_DIR}/runner"; then
+              echo "::error::Runner binary not found on ${HOST}. The cleanup job may have already run. Use 'Re-run all jobs' to redeploy the runner first."
+              exit 1
+            fi
+            if ! ssh $SSH_OPTS "$REMOTE" "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"; then
               echo "::error::Runner ${RUNNER_NAME} not healthy on ${HOST}. Use 'Re-run all jobs' to redeploy the runner first."
               exit 1
             fi
