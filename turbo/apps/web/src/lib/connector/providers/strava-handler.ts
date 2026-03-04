@@ -3,6 +3,7 @@ import {
   buildStravaAuthorizationUrl,
   exchangeStravaCode,
   getStravaSecretName,
+  refreshStravaToken,
 } from "./strava";
 
 export const stravaHandler: ProviderHandler = {
@@ -25,4 +26,5 @@ export const stravaHandler: ProviderHandler = {
   getClientSecret: (e) => e.STRAVA_OAUTH_CLIENT_SECRET,
   getSecretName: getStravaSecretName,
   getRefreshSecretName: () => "STRAVA_REFRESH_TOKEN",
+  refreshToken: refreshStravaToken,
 };

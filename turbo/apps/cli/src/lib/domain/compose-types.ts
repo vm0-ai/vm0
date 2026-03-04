@@ -11,7 +11,6 @@
 export interface AgentDefinition {
   description?: string;
   framework: string;
-  apps?: string[];
   volumes?: string[];
   environment?: Record<string, string>;
   instructions?: string;

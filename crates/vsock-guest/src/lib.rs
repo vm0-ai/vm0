@@ -454,8 +454,8 @@ fn handle_spawn_watch(
 
 /// Handle incoming message and return response.
 ///
-/// `MSG_SPAWN_WATCH` is handled separately in `handle_connection` because it
-/// needs the writer `Arc` for background process-exit notifications.
+/// `MSG_EXEC` and `MSG_SPAWN_WATCH` are handled separately in
+/// `handle_connection` because they run in background threads.
 fn handle_message(msg: &RawMessage) -> io::Result<Option<Vec<u8>>> {
     log(
         "INFO",
@@ -466,14 +466,6 @@ fn handle_message(msg: &RawMessage) -> io::Result<Option<Vec<u8>>> {
         MSG_PING => Ok(Some(
             vsock_proto::encode(MSG_PONG, msg.seq, &[]).map_err(to_io_error)?,
         )),
-        MSG_EXEC => {
-            let d = vsock_proto::decode_exec(&msg.payload).map_err(to_io_error)?;
-            let (exit_code, stdout, stderr) = handle_exec(d.timeout_ms, d.command, &d.env, d.sudo);
-            let payload = vsock_proto::encode_exec_result(exit_code, &stdout, &stderr);
-            Ok(Some(
-                vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).map_err(to_io_error)?,
-            ))
-        }
         MSG_WRITE_FILE => {
             let (path, content, use_sudo) =
                 vsock_proto::decode_write_file(&msg.payload).map_err(to_io_error)?;
@@ -582,26 +574,61 @@ pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
             .decode(buf.get(..n).unwrap_or_default())
             .map_err(to_io_error)?
         {
-            // Handle spawn_watch separately since it needs the writer Arc
-            let response = if msg.msg_type == MSG_SPAWN_WATCH {
+            // MSG_EXEC and MSG_SPAWN_WATCH run in background threads to avoid
+            // blocking the event loop. A blocking child process (e.g. reading a
+            // pipe fd) would otherwise stall all subsequent messages.
+            if msg.msg_type == MSG_SPAWN_WATCH {
                 let d = vsock_proto::decode_exec(&msg.payload).map_err(to_io_error)?;
-                Some(handle_spawn_watch(
+                let response = handle_spawn_watch(
                     d.timeout_ms,
                     d.command,
                     &d.env,
                     d.sudo,
                     msg.seq,
                     Arc::clone(&writer),
-                )?)
-            } else {
-                handle_message(&msg)?
-            };
-
-            if let Some(response) = response {
-                // Recover from poisoned mutex: a panicked spawn_watch thread
-                // shouldn't block the main event loop from sending responses.
+                )?;
                 let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
                 w.write_all(&response)?;
+            } else if msg.msg_type == MSG_EXEC {
+                log(
+                    "INFO",
+                    &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
+                );
+                let d = vsock_proto::decode_exec(&msg.payload).map_err(to_io_error)?;
+                let timeout_ms = d.timeout_ms;
+                let command = d.command.to_owned();
+                let env: Vec<(String, String)> = d
+                    .env
+                    .iter()
+                    .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                    .collect();
+                let sudo = d.sudo;
+                let seq = msg.seq;
+                let w = Arc::clone(&writer);
+                thread::spawn(move || {
+                    let env_refs: Vec<(&str, &str)> =
+                        env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+                    let (exit_code, stdout, stderr) =
+                        handle_exec(timeout_ms, &command, &env_refs, sudo);
+                    let payload = vsock_proto::encode_exec_result(exit_code, &stdout, &stderr);
+                    let encoded = match vsock_proto::encode(MSG_EXEC_RESULT, seq, &payload) {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            log("ERROR", &format!("Failed to encode exec_result: {}", e));
+                            return;
+                        }
+                    };
+                    let mut w = w.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Err(e) = w.write_all(&encoded) {
+                        log("ERROR", &format!("Failed to send exec_result: {}", e));
+                    }
+                });
+            } else {
+                let response = handle_message(&msg)?;
+                if let Some(response) = response {
+                    let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
+                    w.write_all(&response)?;
+                }
             }
         }
     }
@@ -741,5 +768,149 @@ mod tests {
     fn prepend_env_with_special_chars() {
         let result = prepend_env("cmd", &[("KEY", "it's a \"test\"")]);
         assert_eq!(result, "export KEY='it'\\''s a \"test\"'; cmd");
+    }
+
+    /// Helper: send a MSG_EXEC via the writer half, read MSG_EXEC_RESULT from the
+    /// reader half, and return `(exit_code, stdout, stderr)`.
+    fn send_exec_and_read_result(
+        writer: &mut impl std::io::Write,
+        reader: &mut impl std::io::Read,
+        seq: u32,
+        command: &str,
+        timeout_ms: u32,
+    ) -> (i32, Vec<u8>, Vec<u8>) {
+        let payload = vsock_proto::encode_exec(timeout_ms, command, &[], false);
+        let msg = vsock_proto::encode(MSG_EXEC, seq, &payload).unwrap();
+        writer.write_all(&msg).unwrap();
+
+        // Read response — first 4 bytes are length header
+        let mut hdr = [0u8; 4];
+        reader.read_exact(&mut hdr).unwrap();
+        let body_len = u32::from_be_bytes(hdr) as usize;
+        let mut body = vec![0u8; body_len];
+        reader.read_exact(&mut body).unwrap();
+
+        // Decode
+        let mut full = Vec::with_capacity(4 + body_len);
+        full.extend_from_slice(&hdr);
+        full.extend_from_slice(&body);
+        let mut decoder = vsock_proto::Decoder::new();
+        let msgs = decoder.decode(&full).unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].msg_type, MSG_EXEC_RESULT);
+        assert_eq!(msgs[0].seq, seq);
+        vsock_proto::decode_exec_result(&msgs[0].payload)
+            .map(|(code, out, err)| (code, out.to_vec(), err.to_vec()))
+            .unwrap()
+    }
+
+    /// Verify that a slow exec does not block a fast exec that arrives later.
+    /// This is the core regression test for the non-blocking exec fix.
+    #[test]
+    fn slow_exec_does_not_block_fast_exec() {
+        use std::os::unix::net::UnixStream as StdUnixStream;
+
+        let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+
+        // Run handle_connection in a background thread (it blocks on read)
+        let handle = thread::spawn(move || {
+            let _ = handle_connection(guest_stream);
+        });
+
+        // Read and discard the MSG_READY sent by handle_connection
+        let mut hdr = [0u8; 4];
+        host_stream.read_exact(&mut hdr).unwrap();
+        let body_len = u32::from_be_bytes(hdr) as usize;
+        let mut body = vec![0u8; body_len];
+        host_stream.read_exact(&mut body).unwrap();
+
+        // Send a slow exec (sleep 5) — we won't wait for its result
+        let slow_payload = vsock_proto::encode_exec(5000, "sleep 5", &[], false);
+        let slow_msg = vsock_proto::encode(MSG_EXEC, 1, &slow_payload).unwrap();
+        host_stream.write_all(&slow_msg).unwrap();
+
+        // Give it a moment to start processing
+        thread::sleep(Duration::from_millis(100));
+
+        // Send a fast exec — this should return quickly despite the slow one
+        let fast_payload = vsock_proto::encode_exec(5000, "echo ok", &[], false);
+        let fast_msg = vsock_proto::encode(MSG_EXEC, 2, &fast_payload).unwrap();
+        host_stream.write_all(&fast_msg).unwrap();
+
+        // Read responses — we need to find seq=2 (the fast one) within 3 seconds.
+        // Before the fix, this would block until sleep 30 finished.
+        host_stream
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+
+        let mut decoder = vsock_proto::Decoder::new();
+        let mut found_fast = false;
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+
+        while std::time::Instant::now() < deadline {
+            let mut buf = [0u8; 4096];
+            match host_stream.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
+                        if msg.seq == 2 && msg.msg_type == MSG_EXEC_RESULT {
+                            let (code, stdout, _) =
+                                vsock_proto::decode_exec_result(&msg.payload).unwrap();
+                            assert_eq!(code, 0);
+                            assert_eq!(String::from_utf8_lossy(stdout).trim(), "ok");
+                            found_fast = true;
+                        }
+                    }
+                    if found_fast {
+                        break;
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => panic!("read error: {e}"),
+            }
+        }
+
+        assert!(
+            found_fast,
+            "fast exec (seq=2) should complete while slow exec is still running"
+        );
+
+        // Shut down: drop the stream so handle_connection sees EOF
+        drop(host_stream);
+        let _ = handle.join();
+    }
+
+    /// Verify that a normal exec still returns correct results.
+    #[test]
+    fn exec_returns_correct_result() {
+        use std::os::unix::net::UnixStream as StdUnixStream;
+
+        let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
+        let mut host_writer = host_stream.try_clone().unwrap();
+        let mut host_reader = host_stream;
+
+        let handle = thread::spawn(move || {
+            let _ = handle_connection(guest_stream);
+        });
+
+        // Discard MSG_READY
+        let mut hdr = [0u8; 4];
+        host_reader.read_exact(&mut hdr).unwrap();
+        let body_len = u32::from_be_bytes(hdr) as usize;
+        let mut body = vec![0u8; body_len];
+        host_reader.read_exact(&mut body).unwrap();
+
+        host_reader
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+
+        let (code, stdout, _stderr) =
+            send_exec_and_read_result(&mut host_writer, &mut host_reader, 1, "echo hello", 5000);
+        assert_eq!(code, 0);
+        assert_eq!(String::from_utf8_lossy(&stdout).trim(), "hello");
+
+        drop(host_writer);
+        drop(host_reader);
+        let _ = handle.join();
     }
 }

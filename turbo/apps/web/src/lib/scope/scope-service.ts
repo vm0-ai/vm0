@@ -93,16 +93,11 @@ export async function getScopeById(scopeId: string) {
 }
 
 /**
- * Create a new scope
+ * Create a new scope.
+ * Uses atomic INSERT ... ON CONFLICT DO NOTHING to handle concurrent requests safely.
  */
 async function createScope(slug: string, type: ScopeType, ownerId?: string) {
   validateScopeSlug(slug);
-
-  // Check if slug already exists
-  const existing = await getScopeBySlug(slug);
-  if (existing) {
-    throw badRequest(`Scope "${slug}" already exists`);
-  }
 
   log.debug("creating scope", { slug, type, ownerId });
 
@@ -113,11 +108,16 @@ async function createScope(slug: string, type: ScopeType, ownerId?: string) {
       type,
       ownerId,
     })
+    .onConflictDoNothing({ target: scopes.slug })
     .returning();
 
-  log.debug("scope created", { scopeId: scope!.id, slug });
+  if (!scope) {
+    throw badRequest(`Scope "${slug}" already exists`);
+  }
 
-  return scope!;
+  log.debug("scope created", { scopeId: scope.id, slug });
+
+  return scope;
 }
 
 /**

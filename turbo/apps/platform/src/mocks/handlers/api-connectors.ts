@@ -5,7 +5,14 @@
  */
 
 import { http, HttpResponse } from "msw";
-import type { ConnectorResponse, ConnectorListResponse } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorResponse,
+  type ConnectorListResponse,
+  type ConnectorType,
+} from "@vm0/core";
+
+const ALL_CONNECTOR_TYPES = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
 
 let mockConnectors: ConnectorResponse[] = [];
 
@@ -22,6 +29,7 @@ export const apiConnectorsHandlers = [
   http.get("/api/connectors", () => {
     const response: ConnectorListResponse = {
       connectors: mockConnectors,
+      configuredTypes: ALL_CONNECTOR_TYPES,
     };
     return HttpResponse.json(response);
   }),

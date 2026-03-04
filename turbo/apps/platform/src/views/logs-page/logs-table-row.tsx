@@ -1,10 +1,8 @@
-import { useSet } from "ccstate-react";
 import { IconChevronRight } from "@tabler/icons-react";
-import type { MouseEvent } from "react";
-import { navigateInReact$ } from "../../signals/route.ts";
 import { TableRow, TableCell } from "@vm0/ui";
 import { StatusBadge } from "./status-badge.tsx";
 import type { LogEntry } from "../../signals/logs-page/types.ts";
+import { useNavigationHandler } from "../router/link.tsx";
 
 function formatTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -24,17 +22,9 @@ interface LogsTableRowProps {
 }
 
 export function LogsTableRow({ entry }: LogsTableRowProps) {
-  const navigate = useSet(navigateInReact$);
-  const logDetailUrl = `/logs/${entry.id}`;
-
-  const handleRowClick = (event: MouseEvent<HTMLTableRowElement>) => {
-    // Open in new tab if Cmd (Mac) or Ctrl (Windows/Linux) is pressed
-    if (event.metaKey || event.ctrlKey) {
-      window.open(logDetailUrl, "_blank");
-      return;
-    }
-    navigate("/logs/:id", { pathParams: { id: entry.id } });
-  };
+  const { onClick: handleRowClick } = useNavigationHandler("/logs/:id", {
+    pathParams: { id: entry.id },
+  });
 
   return (
     <TableRow

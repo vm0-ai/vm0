@@ -21,6 +21,7 @@ export async function deploySchedule(body: {
   name: string;
   cronExpression?: string;
   atTime?: string;
+  intervalSeconds?: number;
   timezone?: string;
   prompt: string;
   // vars and secrets removed - now managed via platform tables

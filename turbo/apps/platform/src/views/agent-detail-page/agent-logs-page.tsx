@@ -241,6 +241,7 @@ export function AgentLogsPage() {
         },
         "Logs",
       ]}
+      contentClassName="mx-auto w-full max-w-[1200px]"
     >
       <div className="flex flex-col gap-[22px] p-8 min-h-full">
         {loading ? (

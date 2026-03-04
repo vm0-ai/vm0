@@ -4,7 +4,7 @@ import { agentComposeVersions } from "../../db/schema/agent-compose";
 import { conversations } from "../../db/schema/conversation";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { notFound } from "../errors";
-import { findOrCreateAgentSession } from "../agent-session";
+import { createAgentSession, updateAgentSession } from "../agent-session";
 import { storeSessionHistory } from "../session-history";
 import { logger } from "../logger";
 import type {
@@ -180,21 +180,32 @@ export async function createCheckpoint(
 
   log.debug(`Checkpoint created successfully: ${checkpoint.id}`);
 
-  // Find or create agent session
-  // Sessions are lightweight compose ↔ conversation associations
-  // artifactSnapshot may be undefined for runs without artifact
+  // Resolve agent session
+  // For session continuations, update the existing session's conversation reference.
+  // For new runs, always create a new session (with artifact name if present).
   const artifactSnapshot = request.artifactSnapshot as
     | ArtifactSnapshot
     | undefined;
   const volumeSnapshot = request.volumeVersionsSnapshot as
     | VolumeVersionsSnapshot
     | undefined;
-  const { session: agentSession } = await findOrCreateAgentSession(
-    run.userId,
-    version.composeId,
-    artifactSnapshot?.artifactName, // May be undefined for runs without artifact
-    conversation.id,
-  );
+
+  let agentSession;
+  if (run.continuedFromSessionId) {
+    // Continue: update existing session's conversation reference
+    agentSession = await updateAgentSession(
+      run.continuedFromSessionId,
+      conversation.id,
+    );
+  } else {
+    // New run: always create a new session (with artifact name if present)
+    agentSession = await createAgentSession({
+      userId: run.userId,
+      agentComposeId: version.composeId,
+      artifactName: artifactSnapshot?.artifactName,
+      conversationId: conversation.id,
+    });
+  }
 
   log.debug(`Agent session updated/created: ${agentSession.id}`);
 

@@ -1,5 +1,88 @@
 # Changelog
 
+## [9.44.0](https://github.com/vm0-ai/vm0/compare/cli-v9.43.2...cli-v9.44.0) (2026-03-04)
+
+
+### Features
+
+* **compose:** migrate platform compose to e2b sandbox execution ([#3593](https://github.com/vm0-ai/vm0/issues/3593)) ([cbed13c](https://github.com/vm0-ai/vm0/commit/cbed13c2901ac87b38e3c1041b43f431b670d2c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.34.0
+
+## [9.43.2](https://github.com/vm0-ai/vm0/compare/cli-v9.43.1...cli-v9.43.2) (2026-03-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.33.0
+
+## [9.43.1](https://github.com/vm0-ai/vm0/compare/cli-v9.43.0...cli-v9.43.1) (2026-03-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.32.1
+
+## [9.43.0](https://github.com/vm0-ai/vm0/compare/cli-v9.42.1...cli-v9.43.0) (2026-03-04)
+
+
+### Features
+
+* **schedules:** add loop execution mode for recurring agent runs ([#3423](https://github.com/vm0-ai/vm0/issues/3423)) ([00d8876](https://github.com/vm0-ai/vm0/commit/00d8876ada1144fee2d40e2e6e4eb60ab893c4fd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.32.0
+
+## [9.42.1](https://github.com/vm0-ai/vm0/compare/cli-v9.42.0...cli-v9.42.1) (2026-03-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.31.0
+
+## [9.42.0](https://github.com/vm0-ai/vm0/compare/cli-v9.41.0...cli-v9.42.0) (2026-03-03)
+
+
+### Features
+
+* support bare skill names in vm0.yaml with default registry ([#3465](https://github.com/vm0-ai/vm0/issues/3465)) ([353d295](https://github.com/vm0-ai/vm0/commit/353d29501a569620118203b71dc1b1a99f891b3a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.30.0
+
+## [9.41.0](https://github.com/vm0-ai/vm0/compare/cli-v9.40.3...cli-v9.41.0) (2026-03-03)
+
+
+### Features
+
+* **connectors:** filter connector types by configured oauth credentials ([#3477](https://github.com/vm0-ai/vm0/issues/3477)) ([09319ec](https://github.com/vm0-ai/vm0/commit/09319ec9081e38d476b6f0e4b9c1e106ba0df8cb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.29.0
+
 ## [9.40.3](https://github.com/vm0-ai/vm0/compare/cli-v9.40.2...cli-v9.40.3) (2026-03-02)
 
 

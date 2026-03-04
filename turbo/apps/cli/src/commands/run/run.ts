@@ -17,7 +17,6 @@ import {
   loadValues,
   parseIdentifier,
   pollEvents,
-  streamRealtimeEvents,
   showNextSteps,
   handleRunError,
 } from "./shared";
@@ -68,10 +67,6 @@ export const mainRunCommand = new Command()
     "Resume from conversation ID (for fine-grained control)",
   )
   .option(
-    "--experimental-realtime",
-    "Use realtime event streaming instead of polling (experimental)",
-  )
-  .option(
     "--model-provider <type>",
     "Override model provider (e.g., anthropic-api-key)",
   )
@@ -95,7 +90,6 @@ export const mainRunCommand = new Command()
         artifactVersion?: string;
         volumeVersion: Record<string, string>;
         conversation?: string;
-        experimentalRealtime?: boolean;
         modelProvider?: string;
         verbose?: boolean;
         experimentalSharedAgent?: boolean;
@@ -231,12 +225,10 @@ export const mainRunCommand = new Command()
           sandboxId: response.sandboxId,
         });
 
-        // 6. Poll or stream for events and exit with appropriate code
-        const result = options.experimentalRealtime
-          ? await streamRealtimeEvents(response.runId, {
-              verbose: options.verbose,
-            })
-          : await pollEvents(response.runId, { verbose: options.verbose });
+        // 6. Poll for events and exit with appropriate code
+        const result = await pollEvents(response.runId, {
+          verbose: options.verbose,
+        });
         if (!result.succeeded) {
           process.exit(1);
         }

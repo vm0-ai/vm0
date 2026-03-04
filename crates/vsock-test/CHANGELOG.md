@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.6.0...vsock-test-v0.6.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* **vsock-guest:** run exec in background thread to avoid blocking event loop ([#3584](https://github.com/vm0-ai/vm0/issues/3584)) ([437df50](https://github.com/vm0-ai/vm0/commit/437df503fdb58016273f84134899db3a9b24ad65))
+
 ## [0.6.0](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.5.0...vsock-test-v0.6.0) (2026-02-23)
 
 

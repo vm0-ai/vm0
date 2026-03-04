@@ -32,7 +32,7 @@ import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
 import { getDefaultModelProvider } from "../model-provider/model-provider-service";
 import { connectors } from "../../db/schema/connector";
-import { refreshNotionToken } from "../connector/providers/notion";
+import { PROVIDER_HANDLERS } from "../connector/provider-registry";
 import { upsertConnectorSecret } from "../connector/connector-service";
 
 const log = logger("run:build-context");
@@ -311,66 +311,72 @@ async function resolveModelProviderCredential(
 }
 
 /**
- * Refresh Notion access token using the stored refresh token.
- * Updates both NOTION_ACCESS_TOKEN and NOTION_REFRESH_TOKEN in the database
- * and returns the new access token for immediate use.
+ * Generic connector access token refresh.
+ * Looks up the connector's handler from PROVIDER_HANDLERS, calls its refreshToken
+ * method, persists new tokens, and updates the in-memory secrets map.
  *
- * Returns null if refresh token is unavailable or refresh fails
- * (caller should fall back to using the existing access token).
+ * Returns null if refresh token is unavailable, OAuth credentials are missing,
+ * or the refresh fails (caller should fall back to the existing access token).
  */
-async function refreshNotionAccessToken(
+async function refreshConnectorAccessToken(
+  connectorType: string,
   userId: string,
   connectorSecrets: Record<string, string>,
 ): Promise<string | null> {
-  const currentRefreshToken = connectorSecrets["NOTION_REFRESH_TOKEN"];
+  const handler =
+    PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
+  if (!handler?.refreshToken || !handler.getRefreshSecretName) {
+    return null;
+  }
+
+  const refreshTokenSecret = handler.getRefreshSecretName();
+  const currentRefreshToken = connectorSecrets[refreshTokenSecret];
   if (!currentRefreshToken) {
-    log.debug("No Notion refresh token available, skipping token refresh");
+    log.debug(`No ${connectorType} refresh token available, skipping`);
     return null;
   }
 
   const env = globalThis.services.env;
-  const clientId = env.NOTION_OAUTH_CLIENT_ID;
-  const clientSecret = env.NOTION_OAUTH_CLIENT_SECRET;
+  const clientId = handler.getClientId(env);
+  const clientSecret = handler.getClientSecret(env);
 
   if (!clientId || !clientSecret) {
     log.debug(
-      "Notion OAuth credentials not configured, skipping token refresh",
+      `${connectorType} OAuth credentials not configured, skipping token refresh`,
     );
     return null;
   }
 
+  const accessTokenSecret = handler.getSecretName();
+
   try {
-    const result = await refreshNotionToken(
+    const result = await handler.refreshToken(
       clientId,
       clientSecret,
       currentRefreshToken,
     );
 
     // Persist new tokens to database
-    await upsertConnectorSecret(
-      userId,
-      "NOTION_ACCESS_TOKEN",
-      result.accessToken,
-    );
+    await upsertConnectorSecret(userId, accessTokenSecret, result.accessToken);
     if (result.refreshToken) {
       await upsertConnectorSecret(
         userId,
-        "NOTION_REFRESH_TOKEN",
+        refreshTokenSecret,
         result.refreshToken,
       );
     }
 
     // Update in-memory secrets map so subsequent mapping uses fresh token
-    connectorSecrets["NOTION_ACCESS_TOKEN"] = result.accessToken;
+    connectorSecrets[accessTokenSecret] = result.accessToken;
     if (result.refreshToken) {
-      connectorSecrets["NOTION_REFRESH_TOKEN"] = result.refreshToken;
+      connectorSecrets[refreshTokenSecret] = result.refreshToken;
     }
 
-    log.debug("Notion access token refreshed successfully");
+    log.debug(`${connectorType} access token refreshed successfully`);
     return result.accessToken;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    log.warn(`Notion token refresh failed: ${message}`);
+    log.warn(`${connectorType} token refresh failed: ${message}`);
     return null;
   }
 }
@@ -426,9 +432,15 @@ async function resolveConnectorCredentials(
       continue;
     }
 
-    // Refresh Notion token before resolving environment mapping
-    if (connectorType.data === "notion") {
-      await refreshNotionAccessToken(userId, connectorSecrets);
+    // Refresh access token before resolving environment mapping
+    const handler =
+      PROVIDER_HANDLERS[connectorType.data as keyof typeof PROVIDER_HANDLERS];
+    if (handler?.refreshToken) {
+      await refreshConnectorAccessToken(
+        connectorType.data,
+        userId,
+        connectorSecrets,
+      );
     }
 
     const mapping = getConnectorEnvironmentMapping(connectorType.data);

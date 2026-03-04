@@ -83,8 +83,8 @@
   }
 }
 
-/* Selection color for instructions editor/viewer */
-.instructions-content ::selection {
+/* Global selection color */
+::selection {
   background-color: hsl(var(--primary-200));
   color: hsl(var(--foreground));
 }

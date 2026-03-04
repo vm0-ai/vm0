@@ -57,8 +57,11 @@ export enum Level {
   Fatal = "fatal",
 }
 
+type ErrorHandler = (loggerName: string, args: unknown[]) => void;
+
 class LoggerRegistry {
   private store: Partial<Record<string, ConsoleLogger>> = {};
+  private errorHandler: ErrorHandler | null = null;
 
   get(name: string): ConsoleLogger | undefined {
     return this.store[name];
@@ -68,6 +71,14 @@ class LoggerRegistry {
     this.store[name] = instance;
   }
 
+  setErrorHandler(handler: ErrorHandler): void {
+    this.errorHandler = handler;
+  }
+
+  getErrorHandler(): ErrorHandler | null {
+    return this.errorHandler;
+  }
+
   reset(): void {
     for (const key of Object.keys(this.store)) {
       const inst = this.store[key];
@@ -75,6 +86,7 @@ class LoggerRegistry {
         inst.level = Level.Info;
       }
     }
+    this.errorHandler = null;
   }
 
   getAll(): Partial<Record<string, ConsoleLogger>> {
@@ -83,6 +95,10 @@ class LoggerRegistry {
 }
 
 const loggerRegistry = new LoggerRegistry();
+
+export function setLogErrorHandler(handler: ErrorHandler): void {
+  loggerRegistry.setErrorHandler(handler);
+}
 
 /**
  * Create a logger instance with the given name.
@@ -199,6 +215,11 @@ export function logger(name: string): ConsoleLogger {
     return function (...args: ARGS) {
       if (!loggerInstance.shouldLog(level)) {
         return;
+      }
+
+      const errorHandler = loggerRegistry.getErrorHandler();
+      if ((level === Level.Error || level === Level.Fatal) && errorHandler) {
+        errorHandler(name, [...args]);
       }
 
       if (autoAppendName) {

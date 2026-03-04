@@ -2,10 +2,10 @@ import { useGet, useLastResolved, useSet } from "ccstate-react";
 import {
   IconCircleCheck,
   IconLoader,
-  IconPlus,
   IconDotsVertical,
-  IconChevronDown,
+  IconPlus,
 } from "@tabler/icons-react";
+import { Button } from "@vm0/ui/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import {
@@ -36,12 +36,15 @@ import {
   type AgentMergedItem,
 } from "../../signals/agent-detail/connections.ts";
 import {
+  addConnectionDialogOpen$,
+  setAddConnectionDialogOpen$,
   connectConnector$,
   pollingConnectorType$,
   openDisconnectDialog$,
 } from "../../signals/settings-page/connectors.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { DisconnectConnectorDialog } from "../settings-page/disconnect-connector-dialog.tsx";
+import { AddConnectionDialog } from "../settings-page/add-connection-dialog.tsx";
 import {
   openAddSecretDialog$,
   openEditSecretDialog$,
@@ -84,7 +87,7 @@ function ConnectorRow({ item }: { item: AgentConnectorStatus }) {
   const isPolling = pollingType === item.type;
 
   return (
-    <div className="flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 first:rounded-t-xl last:rounded-b-xl last:border-b">
+    <div className="flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 first:rounded-t-xl last:rounded-b-xl last:border-b transition-colors hover:bg-muted/50">
       <div className="shrink-0">
         <ConnectorIcon type={item.type} size={28} />
       </div>
@@ -179,10 +182,22 @@ function ConnectorsTab() {
   }
 
   return (
-    <div className="flex flex-col">
-      {connectorStatus.map((item) => (
-        <ConnectorRow key={item.type} item={item} />
-      ))}
+    <div className="flex flex-col gap-4">
+      <h3 className="text-base font-medium text-foreground">Connectors</h3>
+      <div className="flex flex-col">
+        {connectorStatus.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card p-8 text-center">
+            <p className="text-sm text-muted-foreground">
+              No connectors required by this agent. Click Add connection to
+              connect a service.
+            </p>
+          </div>
+        ) : (
+          connectorStatus.map((item) => (
+            <ConnectorRow key={item.type} item={item} />
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -206,7 +221,7 @@ function MissingItemRow({
 
   return (
     <div
-      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl ${isFirst ? "rounded-t-xl" : ""}`}
+      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl transition-colors hover:bg-muted/50 ${isFirst ? "rounded-t-xl" : ""}`}
     >
       <div className="flex flex-1 flex-col gap-1 min-w-0">
         <div className="text-sm font-medium text-foreground font-mono">
@@ -247,7 +262,7 @@ function SecretRow({
 
   return (
     <div
-      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl ${isFirst ? "rounded-t-xl" : ""}`}
+      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl transition-colors hover:bg-muted/50 ${isFirst ? "rounded-t-xl" : ""}`}
     >
       <div className="flex flex-1 flex-col gap-1 min-w-0">
         <div className="text-sm font-medium text-foreground font-mono">
@@ -307,7 +322,7 @@ function VariableRow({
 
   return (
     <div
-      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl ${isFirst ? "rounded-t-xl" : ""}`}
+      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl transition-colors hover:bg-muted/50 ${isFirst ? "rounded-t-xl" : ""}`}
     >
       <div className="flex flex-1 flex-col gap-1 min-w-0">
         <div className="text-sm font-medium text-foreground font-mono">
@@ -390,48 +405,6 @@ function ItemRow({
 }
 
 // ---------------------------------------------------------------------------
-// Add dropdown
-// ---------------------------------------------------------------------------
-
-function AddDropdown() {
-  const openAddSecret = useSet(openAddSecretDialog$);
-  const openAddVariable = useSet(openAddVariableDialog$);
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button className="flex items-center self-start shrink-0 rounded-md border border-border bg-background overflow-hidden hover:bg-muted transition-colors">
-          <span className="border-r border-border px-4 py-2 text-sm font-medium text-foreground">
-            Add more secrets
-          </span>
-          <span className="pl-2 pr-3 py-2">
-            <IconChevronDown
-              size={16}
-              stroke={1.5}
-              className="text-foreground"
-            />
-          </span>
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="flex flex-col gap-1 w-44 p-2">
-        <button
-          onClick={() => openAddSecret()}
-          className="w-full rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors"
-        >
-          Add secret
-        </button>
-        <button
-          onClick={() => openAddVariable()}
-          className="w-full rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors"
-        >
-          Add variable
-        </button>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Secrets and variables tab
 // ---------------------------------------------------------------------------
 
@@ -458,32 +431,16 @@ function SecretsAndVariablesTab() {
   }
 
   return (
-    <div className="flex flex-col">
-      {items.map((item, index) => (
-        <ItemRow
-          key={`${item.kind}-${item.name}`}
-          item={item}
-          isFirst={index === 0}
-        />
-      ))}
-
-      <div
-        className={`flex flex-col gap-4 border border-border bg-card p-4 rounded-b-xl sm:flex-row sm:items-center ${items.length === 0 ? "rounded-t-xl" : ""}`}
-      >
-        <div className="flex flex-1 items-center gap-4 min-w-0">
-          <div className="flex shrink-0 items-center justify-center size-[28px]">
-            <IconPlus size={24} stroke={1.5} className="text-foreground" />
-          </div>
-          <div className="flex flex-1 flex-col gap-1 min-w-0">
-            <div className="text-sm font-medium text-foreground">
-              New secrets and variables
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Custom API keys and variables
-            </div>
-          </div>
-        </div>
-        <AddDropdown />
+    <div className="flex flex-col gap-4">
+      <h3 className="text-base font-medium text-foreground">Custom API</h3>
+      <div className="flex flex-col">
+        {items.map((item, index) => (
+          <ItemRow
+            key={`${item.kind}-${item.name}`}
+            item={item}
+            isFirst={index === 0}
+          />
+        ))}
       </div>
     </div>
   );
@@ -494,6 +451,8 @@ function SecretsAndVariablesTab() {
 // ---------------------------------------------------------------------------
 
 export function AgentConnectionsPage() {
+  const addDialogOpen = useGet(addConnectionDialogOpen$);
+  const setAddDialogOpen = useSet(setAddConnectionDialogOpen$);
   const agentName = useGet(agentName$);
   const detail = useGet(agentDetail$);
   const loading = useGet(agentDetailLoading$);
@@ -514,32 +473,46 @@ export function AgentConnectionsPage() {
         },
         "Connections",
       ]}
+      contentClassName="mx-auto w-full max-w-[1200px]"
     >
       <div className="flex flex-col gap-[22px] p-8 min-h-full">
         {loading ? (
           <AgentConnectionsPageSkeleton />
         ) : detail ? (
           <>
-            <div className="flex flex-col gap-1">
-              <h2 className="text-lg font-medium text-foreground">
-                Connections of {detail.name}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                This is the secret list used for your agents in every run
-              </p>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-lg font-medium text-foreground">
+                  Connections of {detail.name}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  This is the secret list used for your agents in every run
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 gap-2"
+                onClick={() => setAddDialogOpen(true)}
+              >
+                <IconPlus size={16} stroke={1.5} />
+                Add connection
+              </Button>
             </div>
             {hasConnectors ? (
               <Tabs value={effectiveTab} onValueChange={setActiveTab}>
-                <TabsList>
+                <TabsList className="w-fit">
                   <TabsTrigger value="connectors">Connectors</TabsTrigger>
-                  <TabsTrigger value="secrets">
-                    Secrets and variables
-                  </TabsTrigger>
+                  <TabsTrigger value="secrets">Custom API</TabsTrigger>
                 </TabsList>
               </Tabs>
             ) : null}
             {effectiveTab === "connectors" && <ConnectorsTab />}
             {effectiveTab === "secrets" && <SecretsAndVariablesTab />}
+            <AddConnectionDialog
+              open={addDialogOpen}
+              onOpenChange={setAddDialogOpen}
+            />
             <SecretDialog />
             <VariableDialog />
             <DeleteSecretDialog />

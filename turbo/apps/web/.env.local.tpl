@@ -2,45 +2,45 @@
 DB_DRIVER=pg
 
 # Required: Authentication (Clerk)
-CLERK_SECRET_KEY=op://Development/vm0-env-local/clerk_secret_key
-CLERK_PUBLISHABLE_KEY=op://Development/vm0-env-local/clerk_publishable_key
+CLERK_SECRET_KEY=op://Development/vm0-env-local/CLERK_SECRET_KEY
+CLERK_PUBLISHABLE_KEY=op://Development/vm0-env-local/CLERK_PUBLISHABLE_KEY
 
 # Required: Sandbox Runtime (E2B)
-E2B_API_KEY=op://Development/vm0-env-local/e2b_api_key
+E2B_API_KEY=op://Development/vm0-env-local/E2B_API_KEY
 E2B_TEMPLATE_NAME=vm0-claude-code-dev
 
 # Required: Object Storage (Cloudflare R2)
-R2_ACCOUNT_ID=op://Development/vm0-env-local/r2_account_id
-R2_ACCESS_KEY_ID=op://Development/vm0-env-local/r2_access_key_id
-R2_SECRET_ACCESS_KEY=op://Development/vm0-env-local/r2_secret_access_key
-R2_USER_STORAGES_BUCKET_NAME=op://Development/vm0-env-local/r2_user_storages_bucket_name
+R2_ACCOUNT_ID=op://Development/vm0-env-local/R2_ACCOUNT_ID
+R2_ACCESS_KEY_ID=op://Development/vm0-env-local/R2_ACCESS_KEY_ID
+R2_SECRET_ACCESS_KEY=op://Development/vm0-env-local/R2_SECRET_ACCESS_KEY
+R2_USER_STORAGES_BUCKET_NAME=op://Development/vm0-env-local/R2_USER_STORAGES_BUCKET_NAME
 
 # Optional: Observability (Axiom)
-AXIOM_TOKEN_SESSIONS=op://Development/vm0-env-local/axiom_token_sessions
-AXIOM_TOKEN_TELEMETRY=op://Development/vm0-env-local/axiom_token_telemetry
+AXIOM_TOKEN_SESSIONS=op://Development/vm0-env-local/AXIOM_TOKEN_SESSIONS
+AXIOM_TOKEN_TELEMETRY=op://Development/vm0-env-local/AXIOM_TOKEN_TELEMETRY
 AXIOM_DATASET_SUFFIX=dev
 
 SECRETS_ENCRYPTION_KEY=op://Development/vm0-env-local/SECRETS_ENCRYPTION_KEY
 
 # Optional: Slack Integration
-SLACK_CLIENT_ID=op://Development/vm0-env-local/slack_client_id
-SLACK_CLIENT_SECRET=op://Development/vm0-env-local/slack_client_secret
-SLACK_SIGNING_SECRET=op://Development/vm0-env-local/slack_signing_secret
-SLACK_DEFAULT_AGENT=op://Development/vm0-env-local/slack_default_agent
+SLACK_CLIENT_ID=op://Development/vm0-env-local/SLACK_CLIENT_ID
+SLACK_CLIENT_SECRET=op://Development/vm0-env-local/SLACK_CLIENT_SECRET
+SLACK_SIGNING_SECRET=op://Development/vm0-env-local/SLACK_SIGNING_SECRET
+VM0_DEFAULT_AGENT=op://Development/vm0-env-local/VM0_DEFAULT_AGENT
 
 # Required: Claude Code Version URL
 CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest
 
 # Optional: LLM API (OpenRouter)
-OPENROUTER_API_KEY=op://Development/vm0-env-local/openrouter_api_key
+OPENROUTER_API_KEY=op://Development/vm0-env-local/OPENROUTER_API_KEY
 
 # Optional: GitHub OAuth Connector
-GH_OAUTH_CLIENT_ID=op://Development/vm0-env-local/gh_oauth_client_id
-GH_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/gh_oauth_client_secret
+GH_OAUTH_CLIENT_ID=op://Development/vm0-env-local/GH_OAUTH_CLIENT_ID
+GH_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/GH_OAUTH_CLIENT_SECRET
 
 # Optional: Notion OAuth Connector
-NOTION_OAUTH_CLIENT_ID=op://Development/vm0-env-local/notion_oauth_client_id
-NOTION_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/notion_oauth_client_secret
+NOTION_OAUTH_CLIENT_ID=op://Development/vm0-env-local/NOTION_OAUTH_CLIENT_ID
+NOTION_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/NOTION_OAUTH_CLIENT_SECRET
 
 # Optional: Google OAuth Connector (Gmail, Calendar, Drive, etc.)
 GOOGLE_OAUTH_CLIENT_ID=op://Development/vm0-env-local/GOOGLE_OAUTH_CLIENT_ID
@@ -70,6 +70,10 @@ FIGMA_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/FIGMA_OAUTH_CLIENT_SECR
 MERCURY_OAUTH_CLIENT_ID=op://Development/vm0-env-local/MERCURY_OAUTH_CLIENT_ID
 MERCURY_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/MERCURY_OAUTH_CLIENT_SECRET
 
+# Optional: Neon OAuth Connector
+NEON_OAUTH_CLIENT_ID=op://Development/vm0-env-local/NEON_OAUTH_CLIENT_ID
+NEON_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/NEON_OAUTH_CLIENT_SECRET
+
 # Optional: Strava OAuth Connector
 STRAVA_OAUTH_CLIENT_ID=op://Development/vm0-env-local/STRAVA_OAUTH_CLIENT_ID
 STRAVA_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/STRAVA_OAUTH_CLIENT_SECRET
@@ -78,12 +82,36 @@ STRAVA_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/STRAVA_OAUTH_CLIENT_SE
 GARMIN_CONNECT_OAUTH_CLIENT_ID=op://Development/vm0-env-local/GARMIN_CONNECT_OAUTH_CLIENT_ID
 GARMIN_CONNECT_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/GARMIN_CONNECT_OAUTH_CLIENT_SECRET
 
+# Optional: Reddit OAuth Connector
+REDDIT_OAUTH_CLIENT_ID=op://Development/vm0-env-local/REDDIT_OAUTH_CLIENT_ID
+REDDIT_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/REDDIT_OAUTH_CLIENT_SECRET
+
+# Optional: X OAuth Connector
+X_OAUTH_CLIENT_ID=op://Development/vm0-env-local/X_OAUTH_CLIENT_ID
+X_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/X_OAUTH_CLIENT_SECRET
+
+# Optional: Vercel OAuth Connector
+VERCEL_OAUTH_CLIENT_ID=op://Development/vm0-env-local/VERCEL_OAUTH_CLIENT_ID
+VERCEL_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/VERCEL_OAUTH_CLIENT_SECRET
+
+# Optional: Sentry OAuth Connector
+SENTRY_OAUTH_CLIENT_ID=op://Development/vm0-env-local/SENTRY_OAUTH_CLIENT_ID
+SENTRY_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/SENTRY_OAUTH_CLIENT_SECRET
+
+# Optional: Intervals.icu OAuth Connector
+INTERVALS_ICU_OAUTH_CLIENT_ID=op://Development/vm0-env-local/INTERVALS_ICU_OAUTH_CLIENT_ID
+INTERVALS_ICU_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/INTERVALS_ICU_OAUTH_CLIENT_SECRET
+
+# Optional: Xero OAuth Connector
+XERO_OAUTH_CLIENT_ID=op://Development/vm0-env-local/XERO_OAUTH_CLIENT_ID
+XERO_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/XERO_OAUTH_CLIENT_SECRET
+
 # Optional: ngrok (Computer Connector)
 NGROK_API_KEY=op://Development/vm0-env-local/NGROK_API_KEY
 NGROK_COMPUTER_CONNECTOR_DOMAIN=computer.vm7.io
 
 # Required: Platform UI URL (for settings page links in error messages)
-PLATFORM_URL=op://Development/vm0-env-local/next_public_platform_url
+PLATFORM_URL=op://Development/vm0-env-local/PLATFORM_URL
 
 # Optional: Blog Configuration
 BLOG_BASE_URL=
@@ -100,3 +128,11 @@ SENTRY_PROJECT=
 
 # Optional: VM0 Admin Users (comma-separated emails for super-admin access)
 # VM0_ADMIN_USERS=lancy@vm0.ai,ethan@vm0.ai
+
+# Optional: Github App for Integration
+GITHUB_APP_CLIENT_ID=op://Development/vm0-env-local/GITHUB_APP_CLIENT_ID
+GITHUB_APP_CLIENT_SECRET=op://Development/vm0-env-local/GITHUB_APP_CLIENT_SECRET
+GITHUB_APP_ID=op://Development/vm0-env-local/GITHUB_APP_ID
+GITHUB_APP_PRIVATE_KEY=op://Development/vm0-env-local/GITHUB_APP_PRIVATE_KEY
+GITHUB_APP_SLUG=op://Development/vm0-env-local/GITHUB_APP_SLUG
+GITHUB_APP_WEBHOOK_SECRET=op://Development/vm0-env-local/GITHUB_APP_WEBHOOK_SECRET

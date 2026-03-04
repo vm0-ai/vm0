@@ -4,6 +4,7 @@ import { z } from "zod";
 /**
  * Whether Clerk authentication is configured.
  *
+ *
  * Derived from the presence of NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY.
  * When false, the app falls back to single-user local auth.
  *
@@ -71,7 +72,8 @@ function initEnv() {
       SLACK_CLIENT_SECRET: z.string().min(1).optional(),
       SLACK_SIGNING_SECRET: z.string().min(1).optional(),
       SLACK_REDIRECT_BASE_URL: z.string().url().optional(), // Override base URL for OAuth redirects (e.g., tunnel URL)
-      SLACK_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent for new installs (format: "scope/name")
+      VM0_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent for new integrations (format: "scope/name")
+      VM0_TUNNEL_URL: z.string().url().optional(), // Tunnel URL for local development webhooks
       // LLM API
       OPENROUTER_API_KEY: z.string().min(1).optional(), // OpenRouter API key for logged-in users
       // GitHub OAuth (for connector)
@@ -101,12 +103,38 @@ function initEnv() {
       // Mercury OAuth (for connector)
       MERCURY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       MERCURY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Neon OAuth (for connector)
+      NEON_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      NEON_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Reddit OAuth (for connector)
+      REDDIT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      REDDIT_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Strava OAuth (for connector)
       STRAVA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       STRAVA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Garmin Connect OAuth (for connector)
       GARMIN_CONNECT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       GARMIN_CONNECT_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // X OAuth (for connector)
+      X_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      X_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Vercel OAuth (for connector)
+      VERCEL_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      VERCEL_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Sentry OAuth (for connector)
+      SENTRY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      SENTRY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Intervals.icu OAuth (for connector)
+      INTERVALS_ICU_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      INTERVALS_ICU_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Xero OAuth (for connector)
+      XERO_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      XERO_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // GitHub App (for issue integration)
+      GITHUB_APP_ID: z.string().min(1).optional(),
+      GITHUB_APP_SLUG: z.string().min(1).optional(),
+      GITHUB_APP_PRIVATE_KEY: z.string().min(1).optional(), // Base64-encoded PEM private key
+      GITHUB_APP_WEBHOOK_SECRET: z.string().min(1).optional(),
       // ngrok (for computer connector)
       NGROK_API_KEY: z.string().min(1).optional(),
       NGROK_COMPUTER_CONNECTOR_DOMAIN: z.string().min(1).optional(),
@@ -183,7 +211,8 @@ function initEnv() {
       SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET,
       SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
       SLACK_REDIRECT_BASE_URL: process.env.SLACK_REDIRECT_BASE_URL,
-      SLACK_DEFAULT_AGENT: process.env.SLACK_DEFAULT_AGENT,
+      VM0_DEFAULT_AGENT: process.env.VM0_DEFAULT_AGENT,
+      VM0_TUNNEL_URL: process.env.VM0_TUNNEL_URL,
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
       GH_OAUTH_CLIENT_ID: process.env.GH_OAUTH_CLIENT_ID,
       GH_OAUTH_CLIENT_SECRET: process.env.GH_OAUTH_CLIENT_SECRET,
@@ -203,12 +232,31 @@ function initEnv() {
       FIGMA_OAUTH_CLIENT_SECRET: process.env.FIGMA_OAUTH_CLIENT_SECRET,
       MERCURY_OAUTH_CLIENT_ID: process.env.MERCURY_OAUTH_CLIENT_ID,
       MERCURY_OAUTH_CLIENT_SECRET: process.env.MERCURY_OAUTH_CLIENT_SECRET,
+      NEON_OAUTH_CLIENT_ID: process.env.NEON_OAUTH_CLIENT_ID,
+      NEON_OAUTH_CLIENT_SECRET: process.env.NEON_OAUTH_CLIENT_SECRET,
+      REDDIT_OAUTH_CLIENT_ID: process.env.REDDIT_OAUTH_CLIENT_ID,
+      REDDIT_OAUTH_CLIENT_SECRET: process.env.REDDIT_OAUTH_CLIENT_SECRET,
       STRAVA_OAUTH_CLIENT_ID: process.env.STRAVA_OAUTH_CLIENT_ID,
       STRAVA_OAUTH_CLIENT_SECRET: process.env.STRAVA_OAUTH_CLIENT_SECRET,
       GARMIN_CONNECT_OAUTH_CLIENT_ID:
         process.env.GARMIN_CONNECT_OAUTH_CLIENT_ID,
       GARMIN_CONNECT_OAUTH_CLIENT_SECRET:
         process.env.GARMIN_CONNECT_OAUTH_CLIENT_SECRET,
+      X_OAUTH_CLIENT_ID: process.env.X_OAUTH_CLIENT_ID,
+      X_OAUTH_CLIENT_SECRET: process.env.X_OAUTH_CLIENT_SECRET,
+      VERCEL_OAUTH_CLIENT_ID: process.env.VERCEL_OAUTH_CLIENT_ID,
+      VERCEL_OAUTH_CLIENT_SECRET: process.env.VERCEL_OAUTH_CLIENT_SECRET,
+      SENTRY_OAUTH_CLIENT_ID: process.env.SENTRY_OAUTH_CLIENT_ID,
+      SENTRY_OAUTH_CLIENT_SECRET: process.env.SENTRY_OAUTH_CLIENT_SECRET,
+      INTERVALS_ICU_OAUTH_CLIENT_ID: process.env.INTERVALS_ICU_OAUTH_CLIENT_ID,
+      INTERVALS_ICU_OAUTH_CLIENT_SECRET:
+        process.env.INTERVALS_ICU_OAUTH_CLIENT_SECRET,
+      XERO_OAUTH_CLIENT_ID: process.env.XERO_OAUTH_CLIENT_ID,
+      XERO_OAUTH_CLIENT_SECRET: process.env.XERO_OAUTH_CLIENT_SECRET,
+      GITHUB_APP_ID: process.env.GITHUB_APP_ID,
+      GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
+      GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,
+      GITHUB_APP_WEBHOOK_SECRET: process.env.GITHUB_APP_WEBHOOK_SECRET,
       NGROK_API_KEY: process.env.NGROK_API_KEY,
       NGROK_COMPUTER_CONNECTOR_DOMAIN:
         process.env.NGROK_COMPUTER_CONNECTOR_DOMAIN,

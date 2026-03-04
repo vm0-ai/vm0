@@ -27,7 +27,7 @@ describe("dev-tool compose command", () => {
 
       server.use(
         // Create job
-        http.post("http://localhost:3000/api/compose/from-github", () => {
+        http.post("http://localhost:3000/api/compose/jobs", () => {
           return HttpResponse.json(
             {
               jobId: "job-123",
@@ -39,7 +39,7 @@ describe("dev-tool compose command", () => {
           );
         }),
         // Poll status - return running twice, then completed
-        http.get("http://localhost:3000/api/compose/from-github/:jobId", () => {
+        http.get("http://localhost:3000/api/compose/jobs/:jobId", () => {
           pollCount++;
           if (pollCount < 3) {
             return HttpResponse.json({
@@ -86,7 +86,7 @@ describe("dev-tool compose command", () => {
 
     it("should output JSON when --json flag is provided", async () => {
       server.use(
-        http.post("http://localhost:3000/api/compose/from-github", () => {
+        http.post("http://localhost:3000/api/compose/jobs", () => {
           return HttpResponse.json(
             {
               jobId: "job-123",
@@ -97,7 +97,7 @@ describe("dev-tool compose command", () => {
             { status: 201 },
           );
         }),
-        http.get("http://localhost:3000/api/compose/from-github/:jobId", () => {
+        http.get("http://localhost:3000/api/compose/jobs/:jobId", () => {
           return HttpResponse.json({
             jobId: "job-123",
             status: "completed",
@@ -145,7 +145,7 @@ describe("dev-tool compose command", () => {
   describe("failed compose", () => {
     it("should handle job failure", async () => {
       server.use(
-        http.post("http://localhost:3000/api/compose/from-github", () => {
+        http.post("http://localhost:3000/api/compose/jobs", () => {
           return HttpResponse.json(
             {
               jobId: "job-123",
@@ -156,7 +156,7 @@ describe("dev-tool compose command", () => {
             { status: 201 },
           );
         }),
-        http.get("http://localhost:3000/api/compose/from-github/:jobId", () => {
+        http.get("http://localhost:3000/api/compose/jobs/:jobId", () => {
           return HttpResponse.json({
             jobId: "job-123",
             status: "failed",
@@ -189,7 +189,7 @@ describe("dev-tool compose command", () => {
 
     it("should handle API errors", async () => {
       server.use(
-        http.post("http://localhost:3000/api/compose/from-github", () => {
+        http.post("http://localhost:3000/api/compose/jobs", () => {
           return HttpResponse.json(
             {
               error: { message: "Invalid GitHub URL", code: "BAD_REQUEST" },
@@ -219,7 +219,7 @@ describe("dev-tool compose command", () => {
   describe("timeout", () => {
     it("should timeout after specified duration", async () => {
       server.use(
-        http.post("http://localhost:3000/api/compose/from-github", () => {
+        http.post("http://localhost:3000/api/compose/jobs", () => {
           return HttpResponse.json(
             {
               jobId: "job-123",
@@ -231,7 +231,7 @@ describe("dev-tool compose command", () => {
           );
         }),
         // Always return running
-        http.get("http://localhost:3000/api/compose/from-github/:jobId", () => {
+        http.get("http://localhost:3000/api/compose/jobs/:jobId", () => {
           return HttpResponse.json({
             jobId: "job-123",
             status: "running",
@@ -266,7 +266,7 @@ describe("dev-tool compose command", () => {
 
       server.use(
         http.post(
-          "http://localhost:3000/api/compose/from-github",
+          "http://localhost:3000/api/compose/jobs",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(
@@ -287,7 +287,7 @@ describe("dev-tool compose command", () => {
             );
           },
         ),
-        http.get("http://localhost:3000/api/compose/from-github/:jobId", () => {
+        http.get("http://localhost:3000/api/compose/jobs/:jobId", () => {
           return HttpResponse.json({
             jobId: "job-123",
             status: "completed",

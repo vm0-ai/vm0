@@ -20,10 +20,17 @@ import { storages, storageVersions } from "../db/schema/storage";
 import { usageDaily } from "../db/schema/usage-daily";
 import { slackComposeRequests } from "../db/schema/slack-compose-request";
 import { slackInstallations } from "../db/schema/slack-installation";
+import { githubInstallations } from "../db/schema/github-installation";
+import { githubUserLinks } from "../db/schema/github-user-link";
+import { githubIssueSessions } from "../db/schema/github-issue-session";
 import { slackThreadSessions } from "../db/schema/slack-thread-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
-import { and, eq, inArray, like } from "drizzle-orm";
+import { agentSchedules } from "../db/schema/agent-schedule";
+import { telegramInstallations } from "../db/schema/telegram-installation";
+import { telegramMessages } from "../db/schema/telegram-message";
+import { telegramUserLinks } from "../db/schema/telegram-user-link";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
 import { encryptSecrets } from "../lib/crypto/secrets-encryption";
@@ -467,19 +474,26 @@ async function createTestComposeVersion(
 
 /**
  * Create a run record directly in the database.
- * Internal helper for createTestSessionWithConversation.
+ * Use this when you need a run without going through the API route
+ * (e.g., for webhook tests where Clerk auth is disabled).
  */
-async function createTestRunRecord(
+async function createTestRunDirect(
   userId: string,
   versionId: string,
+  options?: {
+    status?: string;
+    prompt?: string;
+    continuedFromSessionId?: string;
+  },
 ): Promise<{ id: string }> {
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
       agentComposeVersionId: versionId,
-      status: "completed",
-      prompt: "test prompt",
+      status: options?.status ?? "running",
+      prompt: options?.prompt ?? "test prompt",
+      continuedFromSessionId: options?.continuedFromSessionId,
     })
     .returning({ id: agentRuns.id });
   return run!;
@@ -514,7 +528,9 @@ export async function createTestSessionWithConversation(
   // Create compose version
   const versionId = await createTestComposeVersion(agentComposeId, userId);
   // Create run
-  const run = await createTestRunRecord(userId, versionId);
+  const run = await createTestRunDirect(userId, versionId, {
+    status: "completed",
+  });
   // Create conversation
   const conversation = await createTestConversation(run.id);
   // Create session with conversation
@@ -696,14 +712,17 @@ export async function createTestSchedule(
   options?: {
     cronExpression?: string;
     atTime?: string;
+    intervalSeconds?: number;
     timezone?: string;
     prompt?: string;
     // vars and secrets removed - now managed via platform tables
   },
 ): Promise<ScheduleResponse> {
-  // Default to cron if neither trigger specified
+  // Default to cron if no trigger specified
   const trigger =
-    options?.cronExpression || options?.atTime
+    options?.cronExpression ||
+    options?.atTime ||
+    options?.intervalSeconds !== undefined
       ? {}
       : { cronExpression: "0 0 * * *" };
 
@@ -719,6 +738,7 @@ export async function createTestSchedule(
         prompt: options?.prompt ?? "Test schedule prompt",
         cronExpression: options?.cronExpression,
         atTime: options?.atTime,
+        intervalSeconds: options?.intervalSeconds,
         // vars and secrets no longer sent - managed via platform tables
         ...trigger,
       }),
@@ -1645,9 +1665,13 @@ export async function findTestArtifactStorage(scopeId: string) {
 export async function findTestStorageByName(
   scopeId: string,
   name: string,
-): Promise<{ id: string; name: string } | undefined> {
+): Promise<{ id: string; name: string; s3Prefix: string } | undefined> {
   const [result] = await globalThis.services.db
-    .select({ id: storages.id, name: storages.name })
+    .select({
+      id: storages.id,
+      name: storages.name,
+      s3Prefix: storages.s3Prefix,
+    })
     .from(storages)
     .where(
       and(
@@ -1659,7 +1683,6 @@ export async function findTestStorageByName(
     .limit(1);
   return result;
 }
-
 export async function findTestSlackComposeRequest(composeJobId: string) {
   const [row] = await globalThis.services.db
     .select()
@@ -2022,4 +2045,335 @@ export async function createScopedCompose(
     .returning();
 
   return { composeId: compose!.id, scopeId: scope!.id };
+}
+
+/**
+ * Update internal schedule state for testing edge cases.
+ *
+ * Direct DB write is required because the schedule API does not expose
+ * an endpoint to set internal fields like consecutiveFailures — these
+ * are managed by the callback system, not user actions.
+ */
+export async function updateTestScheduleState(
+  scheduleId: string,
+  state: { consecutiveFailures?: number; enabled?: boolean },
+): Promise<void> {
+  await globalThis.services.db
+    .update(agentSchedules)
+    .set(state)
+    .where(eq(agentSchedules.id, scheduleId));
+}
+
+/**
+ * Get internal schedule state by ID for verifying callback side-effects.
+ *
+ * Direct DB read is required because the schedule GET API requires
+ * composeId + name, but callback tests only have the schedule ID from
+ * the payload. Also exposes internal fields not in the API response.
+ */
+export async function findTestScheduleById(scheduleId: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(agentSchedules)
+    .where(eq(agentSchedules.id, scheduleId))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Insert a GitHub App installation record directly in the database.
+ *
+ * Direct DB insert is required because installations are created by the
+ * GitHub OAuth callback route, which requires real GitHub API interaction.
+ */
+export async function insertTestGitHubInstallation(
+  composeId: string,
+  installationId?: string,
+) {
+  const id = installationId ?? uniqueId("gh-install");
+  const encryptedToken = encryptCredentialValue(
+    "ghs_test_token",
+    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+  );
+
+  const [row] = await globalThis.services.db
+    .insert(githubInstallations)
+    .values({
+      installationId: id,
+      encryptedAccessToken: encryptedToken,
+      defaultComposeId: composeId,
+    })
+    .returning();
+
+  return row!;
+}
+
+/**
+ * Insert a pending GitHub installation record directly in the database.
+ *
+ * Direct DB insert is required because pending installations are created by the
+ * GitHub OAuth callback route with setup_action=request, which requires a full
+ * OAuth redirect flow.
+ */
+export async function insertTestPendingGitHubInstallation(
+  composeId: string,
+  targetId: string,
+  targetType: string = "Organization",
+) {
+  const [row] = await globalThis.services.db
+    .insert(githubInstallations)
+    .values({
+      installationId: null,
+      encryptedAccessToken: null,
+      status: "pending",
+      targetId,
+      targetType,
+      defaultComposeId: composeId,
+    })
+    .returning();
+
+  return row!;
+}
+
+/**
+ * Find GitHub installations by installation ID.
+ *
+ * Direct DB read is required because the GET endpoint filters by userId
+ * (authenticated user) and does not support querying by installation ID.
+ */
+export async function findTestGitHubInstallations(installationId: string) {
+  return globalThis.services.db
+    .select()
+    .from(githubInstallations)
+    .where(eq(githubInstallations.installationId, installationId));
+}
+
+/**
+ * Find a GitHub installation by its primary key.
+ *
+ * Direct DB read is required because the DELETE endpoint removes the record,
+ * and we need to verify deletion by checking the row no longer exists.
+ */
+export async function findTestGitHubInstallationById(id: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(githubInstallations)
+    .where(eq(githubInstallations.id, id))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Create a GitHub installation with a user link and admin role.
+ *
+ * Combines insertTestGitHubInstallation + insertTestGitHubUserLink
+ * and sets adminGithubUserId so the linked user is the admin.
+ */
+export async function insertTestGitHubInstallationWithAdmin(
+  composeId: string,
+  vm0UserId: string,
+) {
+  const githubUserId = uniqueId("gh-uid");
+  const installation = await insertTestGitHubInstallation(composeId);
+
+  // Set admin to the github user
+  await globalThis.services.db
+    .update(githubInstallations)
+    .set({ adminGithubUserId: githubUserId })
+    .where(eq(githubInstallations.id, installation.id));
+
+  // Create user link inline (maps GitHub user to VM0 user for this installation)
+  await globalThis.services.db
+    .insert(githubUserLinks)
+    .values({
+      githubUserId,
+      installationId: installation.id,
+      vm0UserId,
+    })
+    .onConflictDoNothing();
+
+  return { installation, githubUserId };
+}
+
+/**
+ * Insert a GitHub user link record directly in the database.
+ *
+ * Direct DB insert is required because user links are created by the
+ * GitHub OAuth callback which requires real GitHub API interaction.
+ * This helper creates a link between a GitHub user and a VM0 user
+ * for a given installation, used to test non-admin authorization paths.
+ */
+export async function insertTestGitHubUserLink(
+  githubUserId: string,
+  installationId: string,
+  vm0UserId: string,
+) {
+  await globalThis.services.db
+    .insert(githubUserLinks)
+    .values({ githubUserId, installationId, vm0UserId })
+    .onConflictDoNothing();
+}
+
+/**
+ * Find GitHub installations by target ID.
+ *
+ * Direct DB read is required because pending installations have no
+ * installation_id to query by, and the GET endpoint requires auth context.
+ */
+export async function findTestGitHubInstallationsByTargetId(targetId: string) {
+  return globalThis.services.db
+    .select()
+    .from(githubInstallations)
+    .where(eq(githubInstallations.targetId, targetId));
+}
+
+/**
+ * Insert a GitHub issue session record directly in the database.
+ *
+ * Direct DB insert is required because issue sessions are created by the
+ * callback handler, and we need to pre-populate them for update path tests.
+ */
+export async function insertTestGitHubIssueSession(params: {
+  userId: string;
+  installationId: string;
+  repo: string;
+  issueNumber: number;
+  agentSessionId: string;
+  lastCommentId?: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(githubIssueSessions)
+    .values({
+      userId: params.userId,
+      installationId: params.installationId,
+      repo: params.repo,
+      issueNumber: params.issueNumber,
+      agentSessionId: params.agentSessionId,
+      lastCommentId: params.lastCommentId,
+    })
+    .returning({ id: githubIssueSessions.id });
+  return row!;
+}
+
+/**
+ * Find a GitHub issue session by installation, repo, and issue number.
+ *
+ * Direct DB read is required because there is no API endpoint to query
+ * issue sessions. Used to verify callback handler creates/updates records.
+ */
+export async function findTestGitHubIssueSession(
+  installationId: string,
+  repo: string,
+  issueNumber: number,
+) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(githubIssueSessions)
+    .where(
+      and(
+        eq(githubIssueSessions.installationId, installationId),
+        eq(githubIssueSessions.repo, repo),
+        eq(githubIssueSessions.issueNumber, issueNumber),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Create a Telegram installation with all required parent records.
+ * Optionally auto-creates a user link for testing integration endpoints.
+ * Returns the installation ID for use as a foreign key.
+ */
+export async function createTestTelegramInstallation(options?: {
+  adminUserId?: string;
+  vm0UserId?: string;
+}): Promise<string> {
+  initServices();
+  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
+
+  const suffix = uniqueId("tg");
+  const adminUserId = options?.adminUserId ?? uniqueId("test-admin");
+
+  const [scope] = await globalThis.services.db
+    .insert(scopes)
+    .values({
+      slug: uniqueId("scope"),
+      type: "personal",
+      ownerId: adminUserId,
+    })
+    .returning();
+
+  const [compose] = await globalThis.services.db
+    .insert(agentComposes)
+    .values({
+      userId: adminUserId,
+      scopeId: scope!.id,
+      name: uniqueId("compose"),
+    })
+    .returning();
+
+  const [installation] = await globalThis.services.db
+    .insert(telegramInstallations)
+    .values({
+      telegramBotId: suffix,
+      botUsername: `bot_${suffix}`,
+      encryptedBotToken: encryptCredentialValue(
+        "test-bot-token",
+        SECRETS_ENCRYPTION_KEY,
+      ),
+      webhookSecret: uniqueId("secret"),
+      defaultComposeId: compose!.id,
+      adminUserId,
+    })
+    .returning();
+
+  // Auto-create user link if vm0UserId is provided
+  if (options?.vm0UserId) {
+    await globalThis.services.db
+      .insert(telegramUserLinks)
+      .values({
+        telegramUserId: suffix,
+        installationId: installation!.id,
+        vm0UserId: options.vm0UserId,
+      })
+      .onConflictDoNothing();
+  }
+
+  return installation!.id;
+}
+
+/**
+ * Insert test telegram messages with a specific creation date.
+ * Used by cleanup cron tests.
+ */
+export async function insertTestTelegramMessages(
+  installationId: string,
+  count: number,
+  createdAt: Date,
+): Promise<void> {
+  const values = Array.from({ length: count }, (_, i) => ({
+    installationId,
+    chatId: "chat-1",
+    messageId: `${createdAt.getTime()}-${i}`,
+    fromUserId: "user-1",
+    text: `message ${i}`,
+    isBot: false,
+    createdAt,
+  }));
+
+  await globalThis.services.db.insert(telegramMessages).values(values);
+}
+
+/**
+ * Count telegram messages for a specific installation.
+ */
+export async function countTestTelegramMessages(
+  installationId: string,
+): Promise<number> {
+  const result = await globalThis.services.db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(telegramMessages)
+    .where(eq(telegramMessages.installationId, installationId));
+  return result[0]!.count;
 }

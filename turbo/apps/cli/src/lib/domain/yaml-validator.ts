@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { agentDefinitionSchema, volumeConfigSchema } from "@vm0/core";
+import {
+  agentDefinitionSchema,
+  volumeConfigSchema,
+  resolveSkillRef,
+} from "@vm0/core";
 
 /**
  * CLI-specific agent name schema that allows 3-character names.
@@ -15,16 +19,6 @@ const cliAgentNameSchema = z
   );
 
 /**
- * Validates GitHub tree URL format for skills
- * Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
- */
-function validateGitHubTreeUrl(url: string): boolean {
-  const githubTreeRegex =
-    /^https:\/\/github\.com\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+\/tree\/[^/]+\/.+$/;
-  return githubTreeRegex.test(url);
-}
-
-/**
  * CLI-extended agent definition schema with skills URL validation
  *
  * Note: Framework validation (image, working_dir) is now handled server-side.
@@ -32,16 +26,23 @@ function validateGitHubTreeUrl(url: string): boolean {
  */
 const cliAgentDefinitionSchema = agentDefinitionSchema.superRefine(
   (agent, ctx) => {
-    // GitHub tree URL validation for skills
+    // Validate skills: bare names or full GitHub URLs
     if (agent.skills) {
       for (let i = 0; i < agent.skills.length; i++) {
-        const skillUrl = agent.skills[i];
-        if (skillUrl && !validateGitHubTreeUrl(skillUrl)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `Invalid skill URL: ${skillUrl}. Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}`,
-            path: ["skills", i],
-          });
+        const skillRef = agent.skills[i];
+        if (skillRef) {
+          try {
+            resolveSkillRef(skillRef);
+          } catch (error) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message:
+                error instanceof Error
+                  ? error.message
+                  : `Invalid skill reference: ${skillRef}`,
+              path: ["skills", i],
+            });
+          }
         }
       }
     }

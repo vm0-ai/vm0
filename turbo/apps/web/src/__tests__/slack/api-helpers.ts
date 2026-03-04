@@ -17,6 +17,7 @@ import { uniqueId } from "../test-helpers";
 import { initServices } from "../../lib/init-services";
 import { slackUserLinks } from "../../db/schema/slack-user-link";
 import { slackInstallations } from "../../db/schema/slack-installation";
+import { slackPendingQuestions } from "../../db/schema/slack-pending-question";
 
 // Import route handlers
 import { GET as oauthCallbackRoute } from "../../../app/api/slack/oauth/callback/route";
@@ -252,6 +253,61 @@ export async function givenUserHasAgent(
       name: agentName,
     },
   };
+}
+
+/**
+ * Create a pending ask-user question for testing interactive handlers.
+ */
+export async function givenPendingQuestion(
+  userLink: LinkedUserResult["userLink"],
+  installation: WorkspaceInstallationResult["installation"],
+  options: {
+    channelId?: string;
+    threadTs?: string;
+    messageTs?: string;
+    questions?: Array<{
+      question: string;
+      header: string;
+      options: Array<{ label: string; description: string }>;
+      multiSelect: boolean;
+    }>;
+  } = {},
+): Promise<{
+  pendingId: string;
+  channelId: string;
+}> {
+  initServices();
+
+  const channelId = options.channelId ?? "C-test-channel";
+  const questions = options.questions ?? [
+    {
+      question: "Which option?",
+      header: "Choice",
+      options: [
+        { label: "Option A", description: "First option" },
+        { label: "Option B", description: "Second option" },
+      ],
+      multiSelect: false,
+    },
+  ];
+
+  const [pending] = await globalThis.services.db
+    .insert(slackPendingQuestions)
+    .values({
+      runId: uniqueId("run"),
+      slackWorkspaceId: installation.slackWorkspaceId,
+      slackChannelId: channelId,
+      slackThreadTs: options.threadTs ?? "thread.ts",
+      slackMessageTs: options.messageTs ?? "card.ts",
+      userLinkId: userLink.id,
+      composeId: installation.defaultComposeId,
+      agentName: "test-agent",
+      questions,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    })
+    .returning({ id: slackPendingQuestions.id });
+
+  return { pendingId: pending!.id, channelId };
 }
 
 /**

@@ -32,7 +32,8 @@ agents:
   ${AGENT_NAME}:
     description: "E2E schedule test agent"
     framework: claude-code
-    image: "vm0/claude-code:dev"
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -148,6 +149,89 @@ setup() {
 }
 
 # ============================================================
+# Loop Schedule Tests
+# Uses a separate agent to avoid conflicts with cron tests
+# ============================================================
+
+@test "vm0 schedule setup creates a loop schedule" {
+    local LOOP_AGENT_NAME="schedule-loop-${UNIQUE_ID}"
+    local LOOP_TEST_DIR="$(mktemp -d)"
+
+    # Save for subsequent tests
+    echo "$LOOP_AGENT_NAME" > "$BATS_FILE_TMPDIR/loop_agent_name"
+    echo "$LOOP_TEST_DIR" > "$BATS_FILE_TMPDIR/loop_test_dir"
+
+    cat > "$LOOP_TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  ${LOOP_AGENT_NAME}:
+    description: "E2E loop schedule test agent"
+    framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
+    working_dir: /home/user/workspace
+EOF
+
+    cd "$LOOP_TEST_DIR"
+    run $CLI_COMMAND compose vm0.yaml
+    assert_success
+
+    # Create loop schedule with 300s interval
+    run $CLI_COMMAND schedule setup "$LOOP_AGENT_NAME" \
+        --frequency loop \
+        --interval 300 \
+        --timezone "UTC" \
+        --prompt "Loop every 5 minutes"
+    assert_success
+    assert_output --partial "Created schedule"
+    assert_output --partial "Loop (interval 300s)"
+}
+
+@test "vm0 schedule status shows loop schedule details" {
+    local LOOP_AGENT_NAME=$(cat "$BATS_FILE_TMPDIR/loop_agent_name")
+
+    run $CLI_COMMAND schedule status "$LOOP_AGENT_NAME"
+    assert_success
+    assert_output --partial "Agent:"
+    assert_output --partial "$LOOP_AGENT_NAME"
+    assert_output --partial "interval 300s"
+    assert_output --partial "loop"
+}
+
+@test "vm0 schedule enable/disable loop schedule" {
+    local LOOP_AGENT_NAME=$(cat "$BATS_FILE_TMPDIR/loop_agent_name")
+
+    # Enable the loop schedule
+    run $CLI_COMMAND schedule enable "$LOOP_AGENT_NAME"
+    assert_success
+    assert_output --partial "Enabled"
+
+    # Verify enabled in list
+    run $CLI_COMMAND schedule list
+    assert_success
+    assert_output --partial "$LOOP_AGENT_NAME"
+    assert_output --partial "enabled"
+
+    # Disable the loop schedule
+    run $CLI_COMMAND schedule disable "$LOOP_AGENT_NAME"
+    assert_success
+    assert_output --partial "Disabled"
+}
+
+@test "vm0 schedule delete loop schedule" {
+    local LOOP_AGENT_NAME=$(cat "$BATS_FILE_TMPDIR/loop_agent_name")
+    local LOOP_TEST_DIR=$(cat "$BATS_FILE_TMPDIR/loop_test_dir")
+
+    run $CLI_COMMAND schedule delete "$LOOP_AGENT_NAME" --force
+    assert_success
+    assert_output --partial "Deleted"
+
+    # Clean up
+    rm -rf "$LOOP_TEST_DIR"
+}
+
+# ============================================================
 # Secrets/Vars Integration Test
 # Uses a separate agent with configuration requirements
 # Secrets and vars are now managed via platform tables
@@ -168,7 +252,8 @@ agents:
   ${CONFIG_AGENT_NAME}:
     description: "Test agent with configuration requirements"
     framework: claude-code
-    image: "vm0/claude-code:dev"
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
     environment:
       SCHEDULE_TEST_API_KEY: "\${{ secrets.${SECRET_NAME} }}"

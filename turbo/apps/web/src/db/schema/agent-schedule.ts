@@ -6,6 +6,7 @@ import {
   jsonb,
   timestamp,
   boolean,
+  integer,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -20,8 +21,10 @@ import { agentRuns } from "./agent-run";
  * API enforces 1:1 in initial version (single schedule per agent)
  *
  * Note: The migration includes a CHECK constraint (trigger_check) ensuring
- * exactly one trigger type is set: (cron_expression IS NOT NULL AND at_time IS NULL)
- * OR (cron_expression IS NULL AND at_time IS NOT NULL)
+ * exactly one trigger type is set, matching the trigger_type column:
+ * - 'cron': cron_expression NOT NULL, at_time NULL, interval_seconds NULL
+ * - 'once': cron_expression NULL, at_time NOT NULL, interval_seconds NULL
+ * - 'loop': cron_expression NULL, at_time NULL, interval_seconds NOT NULL
  */
 export const agentSchedules = pgTable(
   "agent_schedules",
@@ -32,9 +35,15 @@ export const agentSchedules = pgTable(
       .references(() => agentComposes.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 64 }).notNull(),
 
-    // Trigger configuration (mutually exclusive: cron XOR at)
+    // Trigger type discriminator: 'cron' | 'once' | 'loop'
+    triggerType: varchar("trigger_type", { length: 20 })
+      .notNull()
+      .default("cron"),
+
+    // Trigger configuration (mutually exclusive based on trigger_type)
     cronExpression: varchar("cron_expression", { length: 100 }),
     atTime: timestamp("at_time"),
+    intervalSeconds: integer("interval_seconds"),
     timezone: varchar("timezone", { length: 50 }).default("UTC").notNull(),
 
     // What to run
@@ -55,6 +64,8 @@ export const agentSchedules = pgTable(
     lastRunId: uuid("last_run_id").references(() => agentRuns.id),
     // Tracks when retry cycle started for concurrency failures (null = not retrying)
     retryStartedAt: timestamp("retry_started_at"),
+    // Tracks consecutive failures for loop schedules (auto-disable after 3)
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
 
     // Timestamps
     createdAt: timestamp("created_at").defaultNow().notNull(),

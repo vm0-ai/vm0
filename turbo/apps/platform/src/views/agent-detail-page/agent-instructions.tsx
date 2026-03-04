@@ -10,8 +10,8 @@ import {
   isInstructionsDirty$,
   setEditedContent$,
   cancelEditInstructions$,
-  saveInstructions$,
-  isSavingInstructions$,
+  buildInstructions$,
+  isBuildingInstructions$,
 } from "../../signals/agent-detail/agent-detail.ts";
 import type { AgentInstructions as AgentInstructionsType } from "../../signals/agent-detail/types.ts";
 
@@ -32,8 +32,8 @@ export function AgentInstructions({
   const isDirty = useGet(isInstructionsDirty$);
   const setEdited = useSet(setEditedContent$);
   const cancel = useSet(cancelEditInstructions$);
-  const save = useSet(saveInstructions$);
-  const isSaving = useGet(isSavingInstructions$);
+  const build = useSet(buildInstructions$);
+  const isBuilding = useGet(isBuildingInstructions$);
 
   const displayContent = edited ?? instructions?.content ?? "";
 
@@ -60,8 +60,8 @@ export function AgentInstructions({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <div className="flex items-center justify-between gap-4">
+    <div className="rounded-lg border border-border bg-card p-4 flex flex-col h-full">
+      <div className="flex items-center justify-between gap-4 shrink-0">
         <h2 className="text-base font-medium text-foreground">
           Agent instructions
         </h2>
@@ -74,17 +74,17 @@ export function AgentInstructions({
                 size="sm"
                 className="h-7 text-xs"
                 onClick={() => cancel()}
-                disabled={isSaving}
+                disabled={isBuilding}
               >
                 Discard
               </Button>
               <Button
                 size="sm"
                 className="h-7 text-xs"
-                onClick={() => void save()}
-                disabled={isSaving}
+                onClick={() => void build()}
+                disabled={isBuilding}
               >
-                {isSaving ? "Saving..." : "Save"}
+                {isBuilding ? "Building..." : "Build"}
               </Button>
             </>
           )}
@@ -97,7 +97,7 @@ export function AgentInstructions({
         </div>
       </div>
 
-      <div className="instructions-content mt-2">
+      <div className="mt-2 flex-1 overflow-y-auto min-h-0">
         {viewMode === "markdown" ? (
           isOwner ? (
             <textarea

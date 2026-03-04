@@ -1,5 +1,186 @@
 # Changelog
 
+## [12.69.3](https://github.com/vm0-ai/vm0/compare/web-v12.69.2...web-v12.69.3) (2026-03-04)
+
+
+### Bug Fixes
+
+* **callback:** use callback id for signature verification to fix multi-callback runs ([#3633](https://github.com/vm0-ai/vm0/issues/3633)) ([711d4d6](https://github.com/vm0-ai/vm0/commit/711d4d607c63abc3bd8adb99c96ff62ffb4ea2b1))
+
+## [12.69.2](https://github.com/vm0-ai/vm0/compare/web-v12.69.1...web-v12.69.2) (2026-03-04)
+
+
+### Bug Fixes
+
+* **slack:** restrict ask-user question submission to initiator only ([#3631](https://github.com/vm0-ai/vm0/issues/3631)) ([d5a52be](https://github.com/vm0-ai/vm0/commit/d5a52be2b85e307c70ac1df936e0f05015ea1523))
+
+
+### Reverts
+
+* **slack:** restore permission denial detection for ask-user ([#3632](https://github.com/vm0-ai/vm0/issues/3632)) ([769cc9c](https://github.com/vm0-ai/vm0/commit/769cc9ce6094b87204638df8d02eef5335b644ea))
+
+## [12.69.1](https://github.com/vm0-ai/vm0/compare/web-v12.69.0...web-v12.69.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* correct 1password reference key for platform url in env template ([#3624](https://github.com/vm0-ai/vm0/issues/3624)) ([71aa437](https://github.com/vm0-ai/vm0/commit/71aa4377578442a5c09bf01543d9034347780f44))
+
+## [12.69.0](https://github.com/vm0-ai/vm0/compare/web-v12.68.0...web-v12.69.0) (2026-03-04)
+
+
+### Features
+
+* **slack:** interactive ask-user cards via prompt-based detection ([#3602](https://github.com/vm0-ai/vm0/issues/3602)) ([94f11a5](https://github.com/vm0-ai/vm0/commit/94f11a582a59cdd9db84848523f2d2406ee0d624))
+
+## [12.68.0](https://github.com/vm0-ai/vm0/compare/web-v12.67.0...web-v12.68.0) (2026-03-04)
+
+
+### Features
+
+* add intervals.icu oauth connector ([#3608](https://github.com/vm0-ai/vm0/issues/3608)) ([6bae2a2](https://github.com/vm0-ai/vm0/commit/6bae2a24c261527f4c1d1467f52b7611501ad5b5)), closes [#3606](https://github.com/vm0-ai/vm0/issues/3606)
+* add xero oauth connector ([#3601](https://github.com/vm0-ai/vm0/issues/3601)) ([40e51d4](https://github.com/vm0-ai/vm0/commit/40e51d4a0246d1c419a554d62f5112ef5ff980b6)), closes [#3598](https://github.com/vm0-ai/vm0/issues/3598)
+* **compose:** migrate platform compose to e2b sandbox execution ([#3593](https://github.com/vm0-ai/vm0/issues/3593)) ([cbed13c](https://github.com/vm0-ai/vm0/commit/cbed13c2901ac87b38e3c1041b43f431b670d2c6))
+* **connectors:** add neon oauth connector ([#3591](https://github.com/vm0-ai/vm0/issues/3591)) ([5024986](https://github.com/vm0-ai/vm0/commit/5024986a1f4d2440b503f1b5dbf9bda7267c55f3))
+* **github:** add pending approval flow for org installations ([#3599](https://github.com/vm0-ai/vm0/issues/3599)) ([c83100a](https://github.com/vm0-ai/vm0/commit/c83100a4b401fb0c87cd4cc14ce92102594c99cf))
+* **telegram:** add agent completion callback handler ([#3611](https://github.com/vm0-ai/vm0/issues/3611)) ([c07ff56](https://github.com/vm0-ai/vm0/commit/c07ff565c858d9374f826d557a72fc60dd9352e8))
+* **telegram:** add bot registration and integration management endpoints ([#3596](https://github.com/vm0-ai/vm0/issues/3596)) ([5f92fe7](https://github.com/vm0-ai/vm0/commit/5f92fe7627126bf8007b34398a4ea2dcd1096032))
+* **telegram:** add webhook handler and message handlers ([#3595](https://github.com/vm0-ai/vm0/issues/3595)) ([c12e76b](https://github.com/vm0-ai/vm0/commit/c12e76bf2adfa1cef306517301a849e2cf4289c8))
+
+
+### Bug Fixes
+
+* use atomic upsert for model-provider and scope to prevent race conditions ([#3605](https://github.com/vm0-ai/vm0/issues/3605)) ([337c943](https://github.com/vm0-ai/vm0/commit/337c943eb147b0a50cd026bd7e774d6daf327e2a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.34.0
+
+## [12.67.0](https://github.com/vm0-ai/vm0/compare/web-v12.66.0...web-v12.67.0) (2026-03-04)
+
+
+### Features
+
+* add sentry oauth connector ([#3582](https://github.com/vm0-ai/vm0/issues/3582)) ([b80aa49](https://github.com/vm0-ai/vm0/commit/b80aa49255a0aa493cc217885ed80fad17c5a801))
+* add vercel oauth connector ([#3590](https://github.com/vm0-ai/vm0/issues/3590)) ([b5d8898](https://github.com/vm0-ai/vm0/commit/b5d8898bcca548e1300cc1f14b7ebdfa1a1c57c3)), closes [#3586](https://github.com/vm0-ai/vm0/issues/3586)
+* complete reddit and x connector integration ([#3581](https://github.com/vm0-ai/vm0/issues/3581)) ([c4e038e](https://github.com/vm0-ai/vm0/commit/c4e038ea6dc329aee10df96cb0c5291e5fb9957e))
+* **telegram:** add bot api client library ([#3580](https://github.com/vm0-ai/vm0/issues/3580)) ([032f49e](https://github.com/vm0-ai/vm0/commit/032f49eb020c36d350e90d779d6553353d88afa3))
+* **telegram:** add message retention cleanup cron job ([#3579](https://github.com/vm0-ai/vm0/issues/3579)) ([acd8ce6](https://github.com/vm0-ai/vm0/commit/acd8ce6318c7cb581546d08671d142c96e9b0cc5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.33.0
+
+## [12.66.0](https://github.com/vm0-ai/vm0/compare/web-v12.65.1...web-v12.66.0) (2026-03-04)
+
+
+### Features
+
+* **db:** add telegram integration database schema ([#3542](https://github.com/vm0-ai/vm0/issues/3542)) ([a37ecd6](https://github.com/vm0-ai/vm0/commit/a37ecd60576d960d2e903b069da3f5b7e0b11429))
+* **github:** add GitHub integration configuration UI ([#3538](https://github.com/vm0-ai/vm0/issues/3538)) ([df1d682](https://github.com/vm0-ai/vm0/commit/df1d68212aae2059a2d8f270eac84be64d2ddc1a))
+* **github:** implement callback handler for posting agent responses as issue comments ([#3530](https://github.com/vm0-ai/vm0/issues/3530)) ([83d7710](https://github.com/vm0-ai/vm0/commit/83d77100594c8c9f76f2857d17b42cfd1de7c50f))
+
+## [12.65.1](https://github.com/vm0-ai/vm0/compare/web-v12.65.0...web-v12.65.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* **platform:** remove agent rename to fix storage reference bug ([#3545](https://github.com/vm0-ai/vm0/issues/3545)) ([c8c5156](https://github.com/vm0-ai/vm0/commit/c8c5156160cafe54b1049585df32eed7b440d94f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.32.1
+
+## [12.65.0](https://github.com/vm0-ai/vm0/compare/web-v12.64.0...web-v12.65.0) (2026-03-04)
+
+
+### Features
+
+* **api:** clean up agent-instructions volume on agent delete ([#3553](https://github.com/vm0-ai/vm0/issues/3553)) ([aeaf791](https://github.com/vm0-ai/vm0/commit/aeaf79126e4d9f1288f8c91b0653480fb020f653))
+
+## [12.64.0](https://github.com/vm0-ai/vm0/compare/web-v12.63.0...web-v12.64.0) (2026-03-04)
+
+
+### Features
+
+* add reddit oauth connector ([#3532](https://github.com/vm0-ai/vm0/issues/3532)) ([ecc31b4](https://github.com/vm0-ai/vm0/commit/ecc31b45276946812962d6877ff5072e1e4d55e9))
+* add x (twitter) read-only connector ([#3554](https://github.com/vm0-ai/vm0/issues/3554)) ([05dca8a](https://github.com/vm0-ai/vm0/commit/05dca8ab0f6fd9c535b534bcf54cf15eced72afb))
+* **github:** add webhook endpoint for issue events ([#3533](https://github.com/vm0-ai/vm0/issues/3533)) ([3bca3cc](https://github.com/vm0-ai/vm0/commit/3bca3cc0ed871e4369949418887a5b034e7e8872))
+* **platform:** add chat session history and message persistence ([#3520](https://github.com/vm0-ai/vm0/issues/3520)) ([f02f228](https://github.com/vm0-ai/vm0/commit/f02f228c78e2e53ce64bc2b36f08b937e42f2ec2))
+* **schedules:** add loop execution mode for recurring agent runs ([#3423](https://github.com/vm0-ai/vm0/issues/3423)) ([00d8876](https://github.com/vm0-ai/vm0/commit/00d8876ada1144fee2d40e2e6e4eb60ab893c4fd))
+
+
+### Bug Fixes
+
+* update google calendar icon with higher quality version ([#3555](https://github.com/vm0-ai/vm0/issues/3555)) ([b04185e](https://github.com/vm0-ai/vm0/commit/b04185e90dfc68d1ab98922d0c474cdba76a1319))
+* use uppercase 1password field refs in env templates ([#3566](https://github.com/vm0-ai/vm0/issues/3566)) ([233e6cc](https://github.com/vm0-ai/vm0/commit/233e6cc071f666be4985ebbccc5629a8b8fab934))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.32.0
+
+## [12.63.0](https://github.com/vm0-ai/vm0/compare/web-v12.62.0...web-v12.63.0) (2026-03-03)
+
+
+### Features
+
+* **connectors:** add google calendar connector ([#3522](https://github.com/vm0-ai/vm0/issues/3522)) ([878ef7d](https://github.com/vm0-ai/vm0/commit/878ef7d3979ac161fdf822d7c674bad51c5000a3))
+* **platform:** add one-time schedule option to agent run dialog ([#3507](https://github.com/vm0-ai/vm0/issues/3507)) ([3c23118](https://github.com/vm0-ai/vm0/commit/3c2311828af86446a409a6a193ac2d6f65b6fd66))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.31.0
+
+## [12.62.0](https://github.com/vm0-ai/vm0/compare/web-v12.61.0...web-v12.62.0) (2026-03-03)
+
+
+### Features
+
+* **connectors:** add token refresh for all oauth connectors ([#3503](https://github.com/vm0-ai/vm0/issues/3503)) ([c579402](https://github.com/vm0-ai/vm0/commit/c579402aad57414806d5f4cfdcaea723d7e2a6bc))
+* **connectors:** add token refresh for linear connector during run context build ([#3490](https://github.com/vm0-ai/vm0/issues/3490)) ([25a5bde](https://github.com/vm0-ai/vm0/commit/25a5bdeffbd324f5f066d963a2d2765da02759a7))
+* **github:** add oauth installation flow for github app ([#3466](https://github.com/vm0-ai/vm0/issues/3466)) ([5e07a31](https://github.com/vm0-ai/vm0/commit/5e07a3154da03b64d6e5553ee0cecc05ebc43a7a))
+* support bare skill names in vm0.yaml with default registry ([#3465](https://github.com/vm0-ai/vm0/issues/3465)) ([353d295](https://github.com/vm0-ai/vm0/commit/353d29501a569620118203b71dc1b1a99f891b3a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.30.0
+
+## [12.61.0](https://github.com/vm0-ai/vm0/compare/web-v12.60.0...web-v12.61.0) (2026-03-03)
+
+
+### Features
+
+* **connectors:** filter connector types by configured oauth credentials ([#3477](https://github.com/vm0-ai/vm0/issues/3477)) ([09319ec](https://github.com/vm0-ai/vm0/commit/09319ec9081e38d476b6f0e4b9c1e106ba0df8cb))
+* **docs:** remove remaining public api v1 references ([#3469](https://github.com/vm0-ai/vm0/issues/3469)) ([d956347](https://github.com/vm0-ai/vm0/commit/d956347feeb87ffb828eedc01e5fc650e074fa9d))
+* **github:** add database schema for github issue integration ([#3456](https://github.com/vm0-ai/vm0/issues/3456)) ([0d1f88d](https://github.com/vm0-ai/vm0/commit/0d1f88dd939c691c357467dca492a0ba59b7a66f)), closes [#3439](https://github.com/vm0-ai/vm0/issues/3439)
+* **storage:** auto-create artifact when not found during run ([#3446](https://github.com/vm0-ai/vm0/issues/3446)) ([1b045c4](https://github.com/vm0-ai/vm0/commit/1b045c4ee576d41bc94c39a410c13341a0190e75))
+* **web:** update connector oauth scopes and add deel pkce support ([#3459](https://github.com/vm0-ai/vm0/issues/3459)) ([3c9926a](https://github.com/vm0-ai/vm0/commit/3c9926ac223b3458c9ffc38600e0c19cc552b044))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.29.0
+
 ## [12.60.0](https://github.com/vm0-ai/vm0/compare/web-v12.59.0...web-v12.60.0) (2026-03-02)
 
 

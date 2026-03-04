@@ -36,12 +36,12 @@ describe("slack settings page", () => {
     expect(screen.getByText("/vm0 disconnect")).toBeInTheDocument();
     expect(screen.getByText("/vm0 settings")).toBeInTheDocument();
 
-    // Disconnect section (heading + button)
+    // Uninstall section (heading + button)
     expect(
-      screen.getByRole("heading", { name: "Disconnect with Slack" }),
+      screen.getByRole("heading", { name: "Uninstall Slack" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /disconnect/i }),
+      screen.getByRole("button", { name: /uninstall/i }),
     ).toBeInTheDocument();
   });
 
@@ -100,32 +100,32 @@ describe("slack settings page", () => {
 
     // Should show a link to secrets or variables settings
     expect(
-      screen.getByRole("button", { name: /secrets or variables/i }),
+      screen.getByRole("link", { name: /secrets or variables/i }),
     ).toBeInTheDocument();
   });
 
-  it("opens disconnect confirmation dialog", async () => {
+  it("opens uninstall confirmation dialog", async () => {
     await setupPage({ context, path: "/settings/slack" });
 
-    // Click the disconnect button
-    const disconnectButton = screen.getByRole("button", {
-      name: /disconnect/i,
+    // Click the uninstall button
+    const uninstallButton = screen.getByRole("button", {
+      name: /uninstall/i,
     });
-    await user.click(disconnectButton);
+    await user.click(uninstallButton);
 
     // Confirm dialog should appear
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Disconnect Slack")).toBeInTheDocument();
+    expect(within(dialog).getByText("Uninstall Slack")).toBeInTheDocument();
     expect(
       within(dialog).getByText(/remove your Slack account connection/),
     ).toBeInTheDocument();
 
-    // Should have Cancel and Disconnect buttons
+    // Should have Cancel and Uninstall buttons
     expect(
       within(dialog).getByRole("button", { name: /cancel/i }),
     ).toBeInTheDocument();
     expect(
-      within(dialog).getByRole("button", { name: /disconnect/i }),
+      within(dialog).getByRole("button", { name: /uninstall/i }),
     ).toBeInTheDocument();
   });
 
@@ -163,14 +163,14 @@ describe("slack settings page", () => {
     expect(screen.getByText("shared-agent")).toBeInTheDocument();
   });
 
-  it("closes disconnect dialog on cancel", async () => {
+  it("closes uninstall dialog on cancel", async () => {
     await setupPage({ context, path: "/settings/slack" });
 
     // Open the dialog
-    const disconnectButton = screen.getByRole("button", {
-      name: /disconnect/i,
+    const uninstallButton = screen.getByRole("button", {
+      name: /uninstall/i,
     });
-    await user.click(disconnectButton);
+    await user.click(uninstallButton);
 
     const dialog = await screen.findByRole("dialog");
     const cancelButton = within(dialog).getByRole("button", {
@@ -193,17 +193,17 @@ describe("settings integrations tab", () => {
     expect(screen.getByText("VM0 in Slack")).toBeInTheDocument();
     expect(screen.getByText("Use your VM0 agent in Slack")).toBeInTheDocument();
 
-    // Should show a Settings button inside the Slack card (not the nav "Settings")
+    // Should show a Settings link inside the Slack card (not the nav "Settings")
     // The Slack card now uses rounded-xl instead of rounded-lg
     const slackCard = screen
       .getByText("Use your VM0 agent in Slack")
       .closest("div.rounded-xl") as HTMLElement;
     expect(
-      within(slackCard).getByRole("button", { name: /settings/i }),
+      within(slackCard).getByRole("link", { name: /settings/i }),
     ).toBeInTheDocument();
   });
 
-  it("shows Connect link when user is not linked to Slack", async () => {
+  it("shows Install link when user is not linked to Slack", async () => {
     server.use(
       http.get("/api/integrations/slack", () => {
         return HttpResponse.json(
@@ -221,7 +221,7 @@ describe("settings integrations tab", () => {
     // Should show the Slack card
     expect(screen.getByText("VM0 in Slack")).toBeInTheDocument();
 
-    // Should show Connect link (not Settings button within the card)
-    expect(screen.getByText("Connect")).toBeInTheDocument();
+    // Should show Install link (not Settings button within the card)
+    expect(screen.getByText("Install")).toBeInTheDocument();
   });
 });

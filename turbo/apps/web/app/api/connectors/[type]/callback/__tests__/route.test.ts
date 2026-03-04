@@ -42,6 +42,17 @@ const DEEL_TOKEN_URL = "https://app.deel.com/oauth2/tokens";
 const DEEL_PEOPLE_ME_URL = "https://api.letsdeel.com/rest/v2/people/me";
 const MERCURY_TOKEN_URL = "https://oauth2.mercury.com/oauth2/token";
 const MERCURY_ACCOUNTS_URL = "https://api.mercury.com/api/v1/accounts";
+const NEON_TOKEN_URL = "https://oauth2.neon.tech/oauth2/token";
+const NEON_USER_INFO_URL = "https://console.neon.tech/api/v2/users/me";
+const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
+const REDDIT_USER_INFO_URL = "https://oauth.reddit.com/api/v1/me";
+const X_TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
+const VERCEL_TOKEN_URL = "https://api.vercel.com/login/oauth/token";
+const VERCEL_USERINFO_URL = "https://api.vercel.com/login/oauth/userinfo";
+const SENTRY_TOKEN_URL = "https://sentry.io/oauth/token/";
+const INTERVALS_ICU_TOKEN_URL = "https://intervals.icu/api/oauth/token";
+const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
+const XERO_USERINFO_URL = "https://identity.xero.com/connect/userinfo";
 
 /**
  * Create MSW handlers for GitHub OAuth API
@@ -604,6 +615,311 @@ function createMercuryOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for Neon OAuth API
+ */
+function createNeonOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  name?: string | null;
+  email?: string | null;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(NEON_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "neon-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "neon-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "Bearer",
+        scope: "openid offline_access urn:neoncloud:projects:read",
+      });
+    }),
+    userInfo: http.get(NEON_USER_INFO_URL, () => {
+      if (options.userError) {
+        return HttpResponse.json({ message: "Unauthorized" }, { status: 401 });
+      }
+      return HttpResponse.json({
+        id: options.userId ?? "neon-user-123",
+        name: options.name !== undefined ? options.name : "Neon User",
+        email: options.email !== undefined ? options.email : "user@neon.tech",
+      });
+    }),
+  });
+}
+
+/**
+ * Create MSW handlers for Reddit OAuth API
+ */
+function createRedditOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  username?: string;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(REDDIT_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "reddit-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "reddit-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "bearer",
+        scope: "identity read",
+      });
+    }),
+    userInfo: http.get(REDDIT_USER_INFO_URL, () => {
+      if (options.userError) {
+        return HttpResponse.json({ message: "Unauthorized" }, { status: 401 });
+      }
+      return HttpResponse.json({
+        id: options.userId ?? "abc123",
+        name: options.username ?? "testreddituser",
+      });
+    }),
+  });
+}
+
+/**
+ * Create MSW handlers for X (Twitter) OAuth API
+ */
+function createXOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  username?: string;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(X_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "x-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "x-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "bearer",
+        scope: "tweet.read users.read follows.read offline.access",
+      });
+    }),
+    userInfo: http.get("https://api.twitter.com/2/users/me", ({ request }) => {
+      const url = new URL(request.url);
+      if (!url.searchParams.get("user.fields")) {
+        return HttpResponse.json(
+          { errors: [{ message: "Missing fields" }] },
+          { status: 400 },
+        );
+      }
+      if (options.userError) {
+        return HttpResponse.json(
+          { errors: [{ message: "Unauthorized" }] },
+          { status: 401 },
+        );
+      }
+      return HttpResponse.json({
+        data: {
+          id: options.userId ?? "x-user-123",
+          username: options.username ?? "testxuser",
+          name: "Test X User",
+        },
+      });
+    }),
+  });
+}
+
+/**
+ * Create MSW handlers for Vercel OAuth API
+ */
+function createVercelOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  username?: string;
+  email?: string | null;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(VERCEL_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "vercel-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "vercel-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "Bearer",
+        scope: "openid email profile offline_access",
+      });
+    }),
+    userInfo: http.post(VERCEL_USERINFO_URL, () => {
+      if (options.userError) {
+        return HttpResponse.json({ message: "Unauthorized" }, { status: 401 });
+      }
+      return HttpResponse.json({
+        sub: options.userId ?? "abc123vercel",
+        preferred_username: options.username ?? "verceluser",
+        email: options.email !== undefined ? options.email : "user@vercel.com",
+        name: "Vercel User",
+      });
+    }),
+  });
+}
+
+/**
+ * Create MSW handlers for Sentry OAuth API
+ * Sentry embeds user info directly in the token response.
+ */
+function createSentryOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  userName?: string | null;
+  email?: string | null;
+}) {
+  return handlers({
+    tokenExchange: http.post(SENTRY_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "sentry-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "sentry-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "bearer",
+        scope:
+          "org:read project:read team:read member:read event:read event:write",
+        user: {
+          id: options.userId ?? "sentry-user-123",
+          name:
+            options.userName !== undefined ? options.userName : "Sentry User",
+          email: options.email !== undefined ? options.email : "user@sentry.io",
+        },
+      });
+    }),
+  });
+}
+
+/**
+ * Create MSW handlers for Intervals.icu OAuth API
+ */
+function createIntervalsIcuOAuthMock(options: {
+  accessToken?: string;
+  athleteId?: string;
+  name?: string | null;
+  tokenError?: string;
+}) {
+  return handlers({
+    tokenExchange: http.post(INTERVALS_ICU_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "intervals-icu-test-access-token",
+        athlete_id: options.athleteId ?? "i12345",
+        name: options.name !== undefined ? options.name : "Test Athlete",
+      });
+    }),
+  });
+}
+
+/**
+ * Create MSW handlers for Xero OAuth API.
+ * Xero uses a separate userinfo endpoint (OpenID Connect).
+ */
+function createXeroOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  userName?: string | null;
+  email?: string | null;
+  userInfoError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(XERO_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "xero-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "xero-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "bearer",
+        scope:
+          "openid profile email offline_access accounting.transactions accounting.contacts accounting.settings",
+      });
+    }),
+    userInfo: http.get(XERO_USERINFO_URL, () => {
+      if (options.userInfoError) {
+        return HttpResponse.json({ error: "invalid_token" }, { status: 401 });
+      }
+      return HttpResponse.json({
+        sub: options.userId ?? "xero-user-123",
+        name: options.userName !== undefined ? options.userName : "Xero User",
+        email: options.email !== undefined ? options.email : "user@xero.com",
+      });
+    }),
+  });
+}
+
+/**
  * Create a test request with OAuth callback parameters and cookies
  */
 function createCallbackRequest(options: {
@@ -666,6 +982,23 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("DEEL_OAUTH_CLIENT_SECRET", "deel-test-client-secret");
     vi.stubEnv("MERCURY_OAUTH_CLIENT_ID", "mercury-test-client-id");
     vi.stubEnv("MERCURY_OAUTH_CLIENT_SECRET", "mercury-test-client-secret");
+    vi.stubEnv("NEON_OAUTH_CLIENT_ID", "neon-test-client-id");
+    vi.stubEnv("NEON_OAUTH_CLIENT_SECRET", "neon-test-client-secret");
+    vi.stubEnv("REDDIT_OAUTH_CLIENT_ID", "reddit-test-client-id");
+    vi.stubEnv("REDDIT_OAUTH_CLIENT_SECRET", "reddit-test-client-secret");
+    vi.stubEnv("X_OAUTH_CLIENT_ID", "x-test-client-id");
+    vi.stubEnv("X_OAUTH_CLIENT_SECRET", "x-test-client-secret");
+    vi.stubEnv("VERCEL_OAUTH_CLIENT_ID", "vercel-test-client-id");
+    vi.stubEnv("VERCEL_OAUTH_CLIENT_SECRET", "vercel-test-client-secret");
+    vi.stubEnv("SENTRY_OAUTH_CLIENT_ID", "sentry-test-client-id");
+    vi.stubEnv("SENTRY_OAUTH_CLIENT_SECRET", "sentry-test-client-secret");
+    vi.stubEnv("INTERVALS_ICU_OAUTH_CLIENT_ID", "intervals-icu-test-client-id");
+    vi.stubEnv(
+      "INTERVALS_ICU_OAUTH_CLIENT_SECRET",
+      "intervals-icu-test-client-secret",
+    );
+    vi.stubEnv("XERO_OAUTH_CLIENT_ID", "xero-test-client-id");
+    vi.stubEnv("XERO_OAUTH_CLIENT_SECRET", "xero-test-client-secret");
     reloadEnv();
   });
 
@@ -1794,6 +2127,125 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     });
   });
 
+  describe("Google Calendar OAuth Flow", () => {
+    it("should store Google Calendar connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        accessToken: "calendar-access-token",
+        refreshToken: "calendar-refresh-token",
+        scope:
+          "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/userinfo.email",
+        email: "testuser@gmail.com",
+        name: "Calendar User",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-calendar",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-calendar" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=google-calendar");
+      expect(location).toContain("username=Calendar+User");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/google-calendar",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("google-calendar");
+      expect(connector.externalUsername).toBe("Calendar User");
+      expect(connector.externalId).toBe("google-user-123");
+      expect(connector.externalEmail).toBe("testuser@gmail.com");
+    });
+
+    it("should redirect with error when Google Calendar token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-calendar",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-calendar" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Google Calendar returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        accessToken: "calendar-access-token",
+        refreshToken: "calendar-refresh-token-stored",
+        email: "testuser@gmail.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-calendar",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-calendar" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "GOOGLE_CALENDAR_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("calendar-refresh-token-stored");
+    });
+
+    it("should redirect with error when Google Calendar user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createGoogleOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "google-calendar",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "google-calendar" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
   describe("Linear OAuth Flow", () => {
     it("should store Linear connector and redirect to success page", async () => {
       await context.setupUser();
@@ -2858,6 +3310,1026 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       });
       const response = await GET(request, {
         params: Promise.resolve({ type: "mercury" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Neon OAuth Flow", () => {
+    it("should store Neon connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createNeonOAuthMock({
+        accessToken: "neon-access-token",
+        refreshToken: "neon-refresh-token",
+        userId: "neon-user-456",
+        name: "Neon Dev",
+        email: "dev@neon.tech",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "neon",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "neon" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=neon");
+      expect(location).toContain("username=Neon+Dev");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/neon",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("neon");
+      expect(connector.externalUsername).toBe("Neon Dev");
+      expect(connector.externalId).toBe("neon-user-456");
+      expect(connector.externalEmail).toBe("dev@neon.tech");
+    });
+
+    it("should redirect with error when Neon token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createNeonOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "neon",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "neon" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Neon returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createNeonOAuthMock({
+        accessToken: "neon-access-token",
+        refreshToken: "neon-refresh-token-stored",
+        userId: "neon-user-456",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "neon",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "neon" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "NEON_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("neon-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Neon returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 3600;
+      const { handlers: mswHandlers } = createNeonOAuthMock({
+        accessToken: "neon-access-token",
+        refreshToken: "neon-refresh-token",
+        expiresIn,
+        userId: "neon-user-456",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "neon",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "neon" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "neon",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Neon user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createNeonOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "neon",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "neon" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Reddit OAuth Flow", () => {
+    it("should store Reddit connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createRedditOAuthMock({
+        accessToken: "reddit-access-token",
+        refreshToken: "reddit-refresh-token",
+        userId: "xyz789",
+        username: "reddituser",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "reddit",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "reddit" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=reddit");
+      expect(location).toContain("username=reddituser");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/reddit",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("reddit");
+      expect(connector.externalUsername).toBe("reddituser");
+      expect(connector.externalId).toBe("xyz789");
+      expect(connector.externalEmail).toBeNull();
+    });
+
+    it("should redirect with error when Reddit token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createRedditOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "reddit",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "reddit" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Reddit returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createRedditOAuthMock({
+        accessToken: "reddit-access-token",
+        refreshToken: "reddit-refresh-token-stored",
+        userId: "xyz789",
+        username: "reddituser",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "reddit",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "reddit" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "REDDIT_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("reddit-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Reddit returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 3600;
+      const { handlers: mswHandlers } = createRedditOAuthMock({
+        accessToken: "reddit-access-token",
+        refreshToken: "reddit-refresh-token",
+        expiresIn,
+        userId: "xyz789",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "reddit",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "reddit" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "reddit",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Reddit user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createRedditOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "reddit",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "reddit" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("X OAuth Flow", () => {
+    it("should store X connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createXOAuthMock({
+        accessToken: "x-access-token",
+        refreshToken: "x-refresh-token",
+        userId: "x-user-456",
+        username: "xuser",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "x",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "x" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=x");
+      expect(location).toContain("username=xuser");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/x",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("x");
+      expect(connector.externalUsername).toBe("xuser");
+      expect(connector.externalId).toBe("x-user-456");
+      expect(connector.externalEmail).toBeNull();
+    });
+
+    it("should redirect with error when X token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createXOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "x",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "x" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when X returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createXOAuthMock({
+        accessToken: "x-access-token",
+        refreshToken: "x-refresh-token-stored",
+        userId: "x-user-456",
+        username: "xuser",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "x",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "x" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "X_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("x-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when X returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 7200;
+      const { handlers: mswHandlers } = createXOAuthMock({
+        accessToken: "x-access-token",
+        refreshToken: "x-refresh-token",
+        expiresIn,
+        userId: "x-user-456",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "x",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "x" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "x",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when X user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createXOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "x",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "x" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Vercel OAuth Flow", () => {
+    it("should store Vercel connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createVercelOAuthMock({
+        accessToken: "vercel-access-token",
+        refreshToken: "vercel-refresh-token",
+        userId: "vercel123",
+        username: "verceluser",
+        email: "user@vercel.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "vercel",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "vercel" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=vercel");
+      expect(location).toContain("username=verceluser");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/vercel",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("vercel");
+      expect(connector.externalUsername).toBe("verceluser");
+      expect(connector.externalId).toBe("vercel123");
+      expect(connector.externalEmail).toBe("user@vercel.com");
+    });
+
+    it("should redirect with error when Vercel token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createVercelOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "vercel",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "vercel" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Vercel returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createVercelOAuthMock({
+        accessToken: "vercel-access-token",
+        refreshToken: "vercel-refresh-token-stored",
+        userId: "vercel123",
+        username: "verceluser",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "vercel",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "vercel" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "VERCEL_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("vercel-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Vercel returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 3600;
+      const { handlers: mswHandlers } = createVercelOAuthMock({
+        accessToken: "vercel-access-token",
+        refreshToken: "vercel-refresh-token",
+        expiresIn,
+        userId: "vercel123",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "vercel",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "vercel" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "vercel",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Vercel user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createVercelOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "vercel",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "vercel" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Sentry OAuth Flow", () => {
+    it("should store Sentry connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createSentryOAuthMock({
+        accessToken: "sentry-access-token",
+        refreshToken: "sentry-refresh-token",
+        userId: "sentry-user-456",
+        userName: "Sentry User",
+        email: "user@sentry.io",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "sentry",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "sentry" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=sentry");
+      expect(location).toContain("username=Sentry+User");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/sentry",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("sentry");
+      expect(connector.externalUsername).toBe("Sentry User");
+      expect(connector.externalId).toBe("sentry-user-456");
+      expect(connector.externalEmail).toBe("user@sentry.io");
+    });
+
+    it("should redirect with error when Sentry token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createSentryOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "sentry",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "sentry" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Sentry returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createSentryOAuthMock({
+        accessToken: "sentry-access-token",
+        refreshToken: "sentry-refresh-token-stored",
+        userId: "sentry-user-456",
+        userName: "Sentry User",
+        email: "user@sentry.io",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "sentry",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "sentry" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "SENTRY_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("sentry-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Sentry returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 2592000; // 30 days
+      const { handlers: mswHandlers } = createSentryOAuthMock({
+        accessToken: "sentry-access-token",
+        refreshToken: "sentry-refresh-token",
+        expiresIn,
+        userId: "sentry-user-exp",
+        userName: "Expiring Sentry",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "sentry",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "sentry" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "sentry",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Sentry token response has no user info", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = handlers({
+        tokenExchange: http.post(SENTRY_TOKEN_URL, () => {
+          return HttpResponse.json({
+            access_token: "sentry-access-token",
+            refresh_token: "sentry-refresh-token",
+            token_type: "bearer",
+            scope: "org:read",
+            // No user field
+          });
+        }),
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "sentry",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "sentry" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Intervals.icu OAuth Flow", () => {
+    it("should store Intervals.icu connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createIntervalsIcuOAuthMock({
+        accessToken: "intervals-icu-access-token",
+        athleteId: "i12345",
+        name: "Test Athlete",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "intervals-icu",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "intervals-icu" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=intervals-icu");
+      expect(location).toContain("username=Test+Athlete");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/intervals-icu",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("intervals-icu");
+      expect(connector.externalUsername).toBe("Test Athlete");
+      expect(connector.externalId).toBe("i12345");
+      expect(connector.externalEmail).toBeNull();
+    });
+
+    it("should redirect with error when Intervals.icu token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createIntervalsIcuOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "intervals-icu",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "intervals-icu" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should redirect with error when Intervals.icu returns no athlete_id", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = handlers({
+        tokenExchange: http.post(INTERVALS_ICU_TOKEN_URL, () => {
+          return HttpResponse.json({
+            access_token: "intervals-icu-access-token",
+            // No athlete_id
+            name: "Test Athlete",
+          });
+        }),
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "intervals-icu",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "intervals-icu" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Xero OAuth Flow", () => {
+    it("should store Xero connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createXeroOAuthMock({
+        accessToken: "xero-access-token",
+        refreshToken: "xero-refresh-token",
+        userId: "xero-user-456",
+        userName: "Xero User",
+        email: "user@xero.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "xero",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "xero" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=xero");
+      expect(location).toContain("username=Xero+User");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/xero",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("xero");
+      expect(connector.externalUsername).toBe("Xero User");
+      expect(connector.externalId).toBe("xero-user-456");
+      expect(connector.externalEmail).toBe("user@xero.com");
+    });
+
+    it("should redirect with error when Xero token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createXeroOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "xero",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "xero" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Xero returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createXeroOAuthMock({
+        accessToken: "xero-access-token",
+        refreshToken: "xero-refresh-token-stored",
+        userId: "xero-user-456",
+        userName: "Xero User",
+        email: "user@xero.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "xero",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "xero" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "XERO_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("xero-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Xero returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 1800; // 30 minutes
+      const { handlers: mswHandlers } = createXeroOAuthMock({
+        accessToken: "xero-access-token",
+        refreshToken: "xero-refresh-token",
+        expiresIn,
+        userId: "xero-user-exp",
+        userName: "Expiring Xero",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "xero",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "xero" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "xero",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Xero user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createXeroOAuthMock({
+        userInfoError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "xero",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "xero" }),
       });
 
       expect(response.status).toBe(307);

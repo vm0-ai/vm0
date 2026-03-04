@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { verifyCallbackRequest } from "../../../../../../src/lib/callback";
-import { decryptCredentialValue } from "../../../../../../src/lib/crypto/secrets-encryption";
-import { agentRunCallbacks } from "../../../../../../src/db/schema/agent-run-callback";
+import { verifyCallback } from "../../../../../../src/lib/callback";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
 import { emailThreadSessions } from "../../../../../../src/db/schema/email-thread-session";
@@ -17,7 +15,6 @@ import {
   buildLogsUrl,
 } from "../../../../../../src/lib/email/handlers/shared";
 import { AgentReplyEmail } from "../../../../../../src/lib/email/templates/agent-reply";
-import { env } from "../../../../../../src/env";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("callback:email:reply");
@@ -29,24 +26,16 @@ interface CallbackPayload {
   inboundReferences?: string;
 }
 
-interface CallbackBody {
-  runId: string;
-  status: "completed" | "failed";
-  result?: Record<string, unknown>;
-  error?: string;
-  payload: CallbackPayload;
-}
-
-function parsePayload(body: CallbackBody): CallbackPayload | null {
-  if (!body.payload) return null;
-  const p = body.payload;
+function parsePayload(payload: unknown): CallbackPayload | null {
+  if (!payload || typeof payload !== "object") return null;
+  const p = payload as Record<string, unknown>;
   if (
     typeof p.emailThreadSessionId !== "string" ||
     typeof p.inboundEmailId !== "string"
   ) {
     return null;
   }
-  return p;
+  return p as unknown as CallbackPayload;
 }
 
 function errorResponse(message: string, status: number): NextResponse {
@@ -79,61 +68,13 @@ function formatOutput(
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
-  const { SECRETS_ENCRYPTION_KEY } = env();
 
-  // Read raw body for signature verification
-  const rawBody = await request.text();
+  const result = await verifyCallback<CallbackPayload>(request, log);
+  if (!result.ok) return result.response;
 
-  let body: CallbackBody;
-  try {
-    body = JSON.parse(rawBody);
-  } catch {
-    return errorResponse("Invalid JSON body", 400);
-  }
+  const { runId, status, error } = result.data;
 
-  const { runId, status, error } = body;
-
-  if (!runId) {
-    return errorResponse("Missing runId", 400);
-  }
-
-  // Query callback record to get the per-callback secret
-  const [callback] = await globalThis.services.db
-    .select({ encryptedSecret: agentRunCallbacks.encryptedSecret })
-    .from(agentRunCallbacks)
-    .where(eq(agentRunCallbacks.runId, runId))
-    .limit(1);
-
-  if (!callback) {
-    log.warn("Callback record not found", { runId });
-    return errorResponse("Callback not found", 404);
-  }
-
-  // Decrypt the per-callback secret and verify signature
-  const callbackSecret = decryptCredentialValue(
-    callback.encryptedSecret,
-    SECRETS_ENCRYPTION_KEY,
-  );
-
-  const signature = request.headers.get("X-VM0-Signature");
-  const timestamp = request.headers.get("X-VM0-Timestamp");
-
-  const verification = verifyCallbackRequest(
-    rawBody,
-    callbackSecret,
-    signature,
-    timestamp,
-  );
-
-  if (!verification.valid) {
-    log.warn("Callback signature verification failed", {
-      runId,
-      error: verification.error,
-    });
-    return errorResponse(verification.error ?? "Invalid signature", 401);
-  }
-
-  const payload = parsePayload(body);
+  const payload = parsePayload(result.data.payload);
   if (!payload) {
     return errorResponse("Invalid or missing payload", 400);
   }

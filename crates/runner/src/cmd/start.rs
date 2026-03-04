@@ -163,7 +163,21 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         vcpu,
         memory_mb,
     } = sandbox;
-    let mut status = StatusTracker::new(paths.status());
+    let max_concurrent = if max_concurrent == 0 {
+        let host_cpus = crate::host::cpu_count()?;
+        let host_memory_mb = crate::host::memory_mb()?;
+        let computed =
+            crate::host::compute_max_concurrent(host_cpus, host_memory_mb, vcpu, memory_mb);
+        info!(
+            host_cpus,
+            host_memory_mb, vcpu, memory_mb, computed, "auto-detected max_concurrent"
+        );
+        computed
+    } else {
+        max_concurrent
+    };
+    fc_config.concurrency = max_concurrent;
+    let mut status = StatusTracker::new(paths.status(), max_concurrent);
     status.set_proxy_port(mitm.port()).await;
     let status = Arc::new(status);
 

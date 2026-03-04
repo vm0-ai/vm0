@@ -35,10 +35,6 @@ export {
   agentComposeContentSchema,
   composeResponseSchema,
   composeListItemSchema,
-  SUPPORTED_APPS,
-  SUPPORTED_APP_TAGS,
-  type SupportedApp,
-  type SupportedAppTag,
   // Inferred types
   type ComposeResponse,
   type ComposeListItem,
@@ -264,17 +260,25 @@ export {
   type AuthMethodConfig,
 } from "./model-providers";
 export {
+  sessionsContract,
   sessionsByIdContract,
+  sessionMessagesContract,
   checkpointsByIdContract,
+  storedChatMessageSchema,
   sessionResponseSchema,
+  sessionListItemSchema,
   checkpointResponseSchema,
   agentComposeSnapshotSchema,
   artifactSnapshotSchema,
   volumeVersionsSnapshotSchema,
+  type SessionsContract,
   type SessionsByIdContract,
+  type SessionMessagesContract,
   type CheckpointsByIdContract,
   // Inferred types
+  type StoredChatMessage,
   type SessionResponse,
+  type SessionListItem,
   type CheckpointResponse,
   type AgentComposeSnapshot,
   type ArtifactSnapshot,
@@ -338,11 +342,8 @@ export {
 } from "./schedules";
 
 export {
-  realtimeTokenContract,
   runnerRealtimeTokenContract,
-  type RealtimeTokenContract,
   type RunnerRealtimeTokenContract,
-  type AblyTokenRequest,
 } from "./realtime";
 
 export {
@@ -375,6 +376,7 @@ export {
   webhookComposeCompleteContract,
   composeJobStatusSchema,
   composeJobResultSchema,
+  composeJobSourceSchema,
   createComposeJobRequestSchema,
   composeJobResponseSchema,
   type ComposeJobsMainContract,
@@ -382,6 +384,7 @@ export {
   type WebhookComposeCompleteContract,
   type ComposeJobStatus,
   type ComposeJobResult,
+  type ComposeJobSource,
   type CreateComposeJobRequest,
   type ComposeJobResponse,
 } from "./compose-jobs";

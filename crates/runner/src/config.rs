@@ -6,7 +6,8 @@ use crate::error::{RunnerError, RunnerResult};
 
 pub(crate) const DEFAULT_VCPU: u32 = 2;
 pub(crate) const DEFAULT_MEMORY_MB: u32 = 2048;
-pub(crate) const DEFAULT_MAX_CONCURRENT: usize = 4;
+/// 0 means auto-detect from host CPU and memory at startup.
+pub(crate) const DEFAULT_MAX_CONCURRENT: usize = 0;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct RunnerConfig {
@@ -86,6 +87,11 @@ pub async fn load(path: &Path) -> RunnerResult<RunnerConfig> {
         config.resolve_relative_paths(config_dir);
     }
     validate_paths(&config).await?;
+    if config.sandbox.vcpu == 0 || config.sandbox.memory_mb == 0 {
+        return Err(RunnerError::Config(
+            "sandbox.vcpu and sandbox.memory_mb must be non-zero".into(),
+        ));
+    }
     Ok(config)
 }
 
@@ -298,6 +304,88 @@ firecracker:
 
         let err = load(&config_path).await.unwrap_err();
         assert!(err.to_string().contains("not found"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn load_rejects_zero_vcpu() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        let rootfs = dir.path().join("rootfs.squashfs");
+        for f in [&fc, &kernel, &rootfs] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+
+        let yaml = format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {fc}
+  kernel: {kernel}
+  rootfs: {rootfs}
+sandbox:
+  vcpu: 0
+  memory_mb: 2048
+"#,
+            base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
+            fc = fc.display(),
+            kernel = kernel.display(),
+            rootfs = rootfs.display(),
+        );
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, &yaml).await.unwrap();
+
+        let err = load(&config_path).await.unwrap_err();
+        assert!(
+            err.to_string().contains("non-zero"),
+            "expected non-zero error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn load_rejects_zero_memory_mb() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        let rootfs = dir.path().join("rootfs.squashfs");
+        for f in [&fc, &kernel, &rootfs] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+
+        let yaml = format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {fc}
+  kernel: {kernel}
+  rootfs: {rootfs}
+sandbox:
+  vcpu: 2
+  memory_mb: 0
+"#,
+            base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
+            fc = fc.display(),
+            kernel = kernel.display(),
+            rootfs = rootfs.display(),
+        );
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, &yaml).await.unwrap();
+
+        let err = load(&config_path).await.unwrap_err();
+        assert!(
+            err.to_string().contains("non-zero"),
+            "expected non-zero error, got: {err}"
+        );
     }
 
     #[tokio::test]

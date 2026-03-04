@@ -26,32 +26,6 @@ const router = tsr.router(schedulesMainContract, {
       };
     }
 
-    // Validate trigger (exactly one must be specified)
-    if (!body.cronExpression && !body.atTime) {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            message: "Either cronExpression or atTime must be specified",
-            code: "BAD_REQUEST",
-          },
-        },
-      };
-    }
-
-    if (body.cronExpression && body.atTime) {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            message:
-              "Cannot specify both cronExpression and atTime. Use one or the other.",
-            code: "BAD_REQUEST",
-          },
-        },
-      };
-    }
-
     log.debug(`Deploying schedule ${body.name} for compose ${body.composeId}`);
 
     try {
@@ -62,6 +36,7 @@ const router = tsr.router(schedulesMainContract, {
         composeId: body.composeId,
         cronExpression: body.cronExpression,
         atTime: body.atTime,
+        intervalSeconds: body.intervalSeconds,
         timezone: body.timezone,
         prompt: body.prompt,
         // vars and secrets removed - now managed via platform tables

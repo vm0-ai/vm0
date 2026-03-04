@@ -1,5 +1,70 @@
 # Changelog
 
+## [8.34.0](https://github.com/vm0-ai/vm0/compare/core-v8.33.0...core-v8.34.0) (2026-03-04)
+
+
+### Features
+
+* add intervals.icu oauth connector ([#3608](https://github.com/vm0-ai/vm0/issues/3608)) ([6bae2a2](https://github.com/vm0-ai/vm0/commit/6bae2a24c261527f4c1d1467f52b7611501ad5b5)), closes [#3606](https://github.com/vm0-ai/vm0/issues/3606)
+* add xero oauth connector ([#3601](https://github.com/vm0-ai/vm0/issues/3601)) ([40e51d4](https://github.com/vm0-ai/vm0/commit/40e51d4a0246d1c419a554d62f5112ef5ff980b6)), closes [#3598](https://github.com/vm0-ai/vm0/issues/3598)
+* **compose:** migrate platform compose to e2b sandbox execution ([#3593](https://github.com/vm0-ai/vm0/issues/3593)) ([cbed13c](https://github.com/vm0-ai/vm0/commit/cbed13c2901ac87b38e3c1041b43f431b670d2c6))
+* **connectors:** add neon oauth connector ([#3591](https://github.com/vm0-ai/vm0/issues/3591)) ([5024986](https://github.com/vm0-ai/vm0/commit/5024986a1f4d2440b503f1b5dbf9bda7267c55f3))
+
+## [8.33.0](https://github.com/vm0-ai/vm0/compare/core-v8.32.1...core-v8.33.0) (2026-03-04)
+
+
+### Features
+
+* add sentry oauth connector ([#3582](https://github.com/vm0-ai/vm0/issues/3582)) ([b80aa49](https://github.com/vm0-ai/vm0/commit/b80aa49255a0aa493cc217885ed80fad17c5a801))
+* add vercel oauth connector ([#3590](https://github.com/vm0-ai/vm0/issues/3590)) ([b5d8898](https://github.com/vm0-ai/vm0/commit/b5d8898bcca548e1300cc1f14b7ebdfa1a1c57c3)), closes [#3586](https://github.com/vm0-ai/vm0/issues/3586)
+* complete reddit and x connector integration ([#3581](https://github.com/vm0-ai/vm0/issues/3581)) ([c4e038e](https://github.com/vm0-ai/vm0/commit/c4e038ea6dc329aee10df96cb0c5291e5fb9957e))
+
+## [8.32.1](https://github.com/vm0-ai/vm0/compare/core-v8.32.0...core-v8.32.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* **platform:** remove agent rename to fix storage reference bug ([#3545](https://github.com/vm0-ai/vm0/issues/3545)) ([c8c5156](https://github.com/vm0-ai/vm0/commit/c8c5156160cafe54b1049585df32eed7b440d94f))
+
+## [8.32.0](https://github.com/vm0-ai/vm0/compare/core-v8.31.0...core-v8.32.0) (2026-03-04)
+
+
+### Features
+
+* add reddit oauth connector ([#3532](https://github.com/vm0-ai/vm0/issues/3532)) ([ecc31b4](https://github.com/vm0-ai/vm0/commit/ecc31b45276946812962d6877ff5072e1e4d55e9))
+* add x (twitter) read-only connector ([#3554](https://github.com/vm0-ai/vm0/issues/3554)) ([05dca8a](https://github.com/vm0-ai/vm0/commit/05dca8ab0f6fd9c535b534bcf54cf15eced72afb))
+* **platform:** add chat session history and message persistence ([#3520](https://github.com/vm0-ai/vm0/issues/3520)) ([f02f228](https://github.com/vm0-ai/vm0/commit/f02f228c78e2e53ce64bc2b36f08b937e42f2ec2))
+* **schedules:** add loop execution mode for recurring agent runs ([#3423](https://github.com/vm0-ai/vm0/issues/3423)) ([00d8876](https://github.com/vm0-ai/vm0/commit/00d8876ada1144fee2d40e2e6e4eb60ab893c4fd))
+
+
+### Bug Fixes
+
+* narrow google oauth scopes from restricted to sensitive ([#3568](https://github.com/vm0-ai/vm0/issues/3568)) ([441e07e](https://github.com/vm0-ai/vm0/commit/441e07e766e11d9e644c07aaac7b76a3d4000ddc))
+
+## [8.31.0](https://github.com/vm0-ai/vm0/compare/core-v8.30.0...core-v8.31.0) (2026-03-03)
+
+
+### Features
+
+* **connectors:** add google calendar connector ([#3522](https://github.com/vm0-ai/vm0/issues/3522)) ([878ef7d](https://github.com/vm0-ai/vm0/commit/878ef7d3979ac161fdf822d7c674bad51c5000a3))
+
+## [8.30.0](https://github.com/vm0-ai/vm0/compare/core-v8.29.0...core-v8.30.0) (2026-03-03)
+
+
+### Features
+
+* **github:** add oauth installation flow for github app ([#3466](https://github.com/vm0-ai/vm0/issues/3466)) ([5e07a31](https://github.com/vm0-ai/vm0/commit/5e07a3154da03b64d6e5553ee0cecc05ebc43a7a))
+* support bare skill names in vm0.yaml with default registry ([#3465](https://github.com/vm0-ai/vm0/issues/3465)) ([353d295](https://github.com/vm0-ai/vm0/commit/353d29501a569620118203b71dc1b1a99f891b3a))
+
+## [8.29.0](https://github.com/vm0-ai/vm0/compare/core-v8.28.0...core-v8.29.0) (2026-03-03)
+
+
+### Features
+
+* **connectors:** filter connector types by configured oauth credentials ([#3477](https://github.com/vm0-ai/vm0/issues/3477)) ([09319ec](https://github.com/vm0-ai/vm0/commit/09319ec9081e38d476b6f0e4b9c1e106ba0df8cb))
+* **core:** add user-targeted feature switch with enabled user ids ([#3451](https://github.com/vm0-ai/vm0/issues/3451)) ([9e1c37a](https://github.com/vm0-ai/vm0/commit/9e1c37ac3a66882f29db39d0d1b11f165bc12f42))
+* **web:** update connector oauth scopes and add deel pkce support ([#3459](https://github.com/vm0-ai/vm0/issues/3459)) ([3c9926a](https://github.com/vm0-ai/vm0/commit/3c9926ac223b3458c9ffc38600e0c19cc552b044))
+
 ## [8.28.0](https://github.com/vm0-ai/vm0/compare/core-v8.27.0...core-v8.28.0) (2026-03-02)
 
 

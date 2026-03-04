@@ -38,13 +38,13 @@ export function DisconnectConnectorDialog() {
       <DialogContent className="max-w-2xl gap-6">
         <DialogHeader>
           <DialogTitle className="font-normal leading-7">
-            Are you sure you want to disconnect {connectorLabel}?
+            Are you sure you want to uninstall {connectorLabel}?
           </DialogTitle>
         </DialogHeader>
         <p className="text-sm text-secondary-foreground">
           This will remove the connection and its stored credentials. Your
           agents will no longer have access to {connectorLabel}. You can always
-          reconnect later.
+          reinstall later.
         </p>
         <DialogFooter>
           <Button
@@ -59,7 +59,7 @@ export function DisconnectConnectorDialog() {
             onClick={handleDisconnect}
             disabled={isLoading}
           >
-            {isLoading ? "Disconnecting..." : "Disconnect"}
+            {isLoading ? "Uninstalling..." : "Uninstall"}
           </Button>
         </DialogFooter>
       </DialogContent>

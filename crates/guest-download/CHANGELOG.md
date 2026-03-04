@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.14.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.13.0...guest-download-v0.14.0) (2026-03-04)
+
+
+### Miscellaneous Chores
+
+* **guest-download:** Synchronize runner-guest versions
+
+## [0.13.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.12.3...guest-download-v0.13.0) (2026-03-03)
+
+
+### Miscellaneous Chores
+
+* **guest-download:** Synchronize runner-guest versions
+
 ## [0.12.3](https://github.com/vm0-ai/vm0/compare/guest-download-v0.12.2...guest-download-v0.12.3) (2026-03-02)
 
 

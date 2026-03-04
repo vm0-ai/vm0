@@ -51,64 +51,14 @@ describe("framework-config", () => {
   });
 
   describe("resolveFrameworkImage", () => {
-    describe("without apps", () => {
-      it("returns :latest image for claude-code", () => {
-        expect(resolveFrameworkImage("claude-code")).toBe(
-          "vm0/claude-code:latest",
-        );
-      });
-
-      it("returns :latest image for codex", () => {
-        expect(resolveFrameworkImage("codex")).toBe("vm0/codex:latest");
-      });
+    it("returns :latest image for claude-code", () => {
+      expect(resolveFrameworkImage("claude-code")).toBe(
+        "vm0/claude-code:latest",
+      );
     });
 
-    describe("with github app", () => {
-      it("returns github-specific :latest image for claude-code with github app", () => {
-        expect(resolveFrameworkImage("claude-code", ["github"])).toBe(
-          "vm0/claude-code-github:latest",
-        );
-      });
-
-      it("returns github-specific :latest image for claude-code with github:dev app (dev tag ignored)", () => {
-        expect(resolveFrameworkImage("claude-code", ["github:dev"])).toBe(
-          "vm0/claude-code-github:latest",
-        );
-      });
-
-      it("returns github-specific :latest image for claude-code with github:latest app", () => {
-        expect(resolveFrameworkImage("claude-code", ["github:latest"])).toBe(
-          "vm0/claude-code-github:latest",
-        );
-      });
-
-      it("returns github-specific :latest image for codex with github app", () => {
-        expect(resolveFrameworkImage("codex", ["github"])).toBe(
-          "vm0/codex-github:latest",
-        );
-      });
-
-      it("returns github-specific :latest image for codex with github:dev app (dev tag ignored)", () => {
-        expect(resolveFrameworkImage("codex", ["github:dev"])).toBe(
-          "vm0/codex-github:latest",
-        );
-      });
-    });
-
-    describe("with unknown app", () => {
-      it("falls back to default image when app is not recognized", () => {
-        expect(resolveFrameworkImage("claude-code", ["unknown-app"])).toBe(
-          "vm0/claude-code:latest",
-        );
-      });
-    });
-
-    describe("with empty apps array", () => {
-      it("returns default image when apps array is empty", () => {
-        expect(resolveFrameworkImage("claude-code", [])).toBe(
-          "vm0/claude-code:latest",
-        );
-      });
+    it("returns :latest image for codex", () => {
+      expect(resolveFrameworkImage("codex")).toBe("vm0/codex:latest");
     });
   });
 });

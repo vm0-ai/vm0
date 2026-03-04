@@ -3,7 +3,7 @@
 # Test VM0 optional artifact functionality
 # This test verifies that:
 # 1. Agent runs work without --artifact-name flag
-# 2. Sessions are created even without artifact
+# 2. Each run without artifact creates its own session (multi-session)
 # 3. Checkpoints are created even without artifact
 # 4. Continue works from session without artifact
 #
@@ -70,9 +70,10 @@ teardown() {
     assert_output --partial "Checkpoint:"
 }
 
-@test "VM0 run without artifact: session persists across runs" {
-    # This test verifies that sessions are created and persisted
-    # even when running without artifact
+@test "VM0 run without artifact: each run creates its own session" {
+    # This test verifies that each independent run without artifact
+    # creates a new session (supporting multiple chat sessions per agent).
+    # To reuse a session, use "vm0 run continue <sessionId>".
 
     # Step 1: First run without artifact - creates new session
     echo "# Step 1: First run without artifact..."
@@ -90,7 +91,7 @@ teardown() {
     }
 
     # Step 2: Second run without artifact with same config
-    # Should return the same session (findOrCreate behavior)
+    # Each run creates its own session (multi-session support)
     echo "# Step 2: Second run without artifact..."
     run $CLI_COMMAND run "$AGENT_NAME" "echo 'second run'"
 
@@ -105,15 +106,15 @@ teardown() {
         return 1
     }
 
-    # Session IDs should be the same (findOrCreate returns existing)
-    [ "$SESSION_ID_1" = "$SESSION_ID_2" ] || {
-        echo "# Session IDs don't match!"
+    # Session IDs should be different (each run gets its own session)
+    [ "$SESSION_ID_1" != "$SESSION_ID_2" ] || {
+        echo "# Session IDs should differ but are the same!"
         echo "# First:  $SESSION_ID_1"
         echo "# Second: $SESSION_ID_2"
         return 1
     }
 
-    echo "# Verified: Same session returned for runs without artifact"
+    echo "# Verified: Each run without artifact creates its own session"
 }
 
 @test "VM0 run without artifact: continue from session works" {

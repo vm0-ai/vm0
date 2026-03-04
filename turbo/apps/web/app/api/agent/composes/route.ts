@@ -8,7 +8,6 @@ import {
   AGENT_NAME_REGEX,
   SUPPORTED_FRAMEWORKS,
   isSupportedFramework,
-  mergeSkillEnvironment,
 } from "@vm0/core";
 import {
   resolveFrameworkImage,
@@ -19,7 +18,6 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
-import { storages } from "../../../../src/db/schema/storage";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
@@ -27,44 +25,7 @@ import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
-import { getInstructionsStorageName } from "@vm0/core";
-import { uploadSkillFromGitHub } from "../../../../src/lib/skill/upload-skill";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
-
-/**
- * Ensure skill-declared env vars are present in the agent environment.
- * Skills declare required secrets/vars in their SKILL.md frontmatter;
- * this keeps the compose environment consistent whether submitted from
- * the CLI or the platform UI.
- */
-async function resolveSkillEnvVars(
-  agent: AgentComposeYaml["agents"][string],
-): Promise<void> {
-  if (!agent?.skills || agent.skills.length === 0) {
-    return;
-  }
-  const environment = agent.environment ?? {};
-  await mergeSkillEnvironment(agent.skills, environment);
-  if (Object.keys(environment).length > 0) {
-    agent.environment = environment;
-  }
-}
-
-/**
- * Download skill files from GitHub and upload them to storage.
- * Runs in parallel for all skills; skips if already uploaded.
- */
-async function uploadSkills(
-  agent: AgentComposeYaml["agents"][string],
-  ctx: { userId: string; scopeId: string; scopeSlug: string },
-): Promise<void> {
-  if (!agent?.skills || agent.skills.length === 0) {
-    return;
-  }
-  await Promise.all(
-    agent.skills.map((skillUrl) => uploadSkillFromGitHub(skillUrl, ctx)),
-  );
-}
 
 const router = tsr.router(composesMainContract, {
   getByName: async ({ query, headers }) => {
@@ -193,7 +154,7 @@ const router = tsr.router(composesMainContract, {
       };
     }
 
-    const { content, previousName } = body;
+    const { content } = body;
 
     // Validate agents is not array (Zod validates it's an object, but not that it's not an array)
     if (Array.isArray(content.agents)) {
@@ -283,11 +244,8 @@ const router = tsr.router(composesMainContract, {
       };
     }
 
-    // Merge skill-declared environment variables into agent environment
-    await resolveSkillEnvVars(agent);
-
     // Resolve image and working_dir server-side based on framework
-    const resolvedImage = resolveFrameworkImage(framework, agent?.apps);
+    const resolvedImage = resolveFrameworkImage(framework);
     const resolvedWorkingDir = resolveFrameworkWorkingDir(framework);
 
     // Build resolved content with server-determined image and working_dir
@@ -319,13 +277,6 @@ const router = tsr.router(composesMainContract, {
         },
       };
     }
-
-    // Download skill files from GitHub and upload to storage
-    await uploadSkills(agent, {
-      userId,
-      scopeId: userScope.id,
-      scopeSlug: userScope.slug,
-    });
 
     // Check compose and version existence in parallel
     const [existingComposes, existingVersions] = await Promise.all([
@@ -397,49 +348,6 @@ const router = tsr.router(composesMainContract, {
         updatedAt: new Date(),
       })
       .where(eq(agentComposes.id, composeId));
-
-    // When renaming, migrate the instructions storage volume to the new name.
-    // If the target name already exists (e.g. from a previous agent), delete it
-    // first to avoid unique constraint violations, then rename the old one.
-    if (previousName && previousName.toLowerCase() !== normalizedAgentName) {
-      const oldStorageName = getInstructionsStorageName(
-        previousName.toLowerCase(),
-      );
-      const newStorageName = getInstructionsStorageName(normalizedAgentName);
-
-      // Check if old storage exists before attempting rename
-      const [oldStorage] = await globalThis.services.db
-        .select({ id: storages.id })
-        .from(storages)
-        .where(
-          and(
-            eq(storages.scopeId, userScope.id),
-            eq(storages.name, oldStorageName),
-            eq(storages.type, "volume"),
-          ),
-        )
-        .limit(1);
-
-      if (oldStorage) {
-        // Delete conflicting storage + rename in a single transaction
-        await globalThis.services.db.transaction(async (tx) => {
-          await tx
-            .delete(storages)
-            .where(
-              and(
-                eq(storages.scopeId, userScope.id),
-                eq(storages.name, newStorageName),
-                eq(storages.type, "volume"),
-              ),
-            );
-
-          await tx
-            .update(storages)
-            .set({ name: newStorageName, updatedAt: new Date() })
-            .where(eq(storages.id, oldStorage.id));
-        });
-      }
-    }
 
     const updatedAt = new Date().toISOString();
 

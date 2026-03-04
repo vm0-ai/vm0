@@ -1,5 +1,8 @@
-import { eq, and, isNull } from "drizzle-orm";
-import { agentSessions } from "../../db/schema/agent-session";
+import { eq, and, isNull, desc, sql } from "drizzle-orm";
+import {
+  agentSessions,
+  type StoredChatMessage,
+} from "../../db/schema/agent-session";
 import { conversations } from "../../db/schema/conversation";
 import { notFound } from "../errors";
 import type {
@@ -52,62 +55,9 @@ export async function getAgentSessionWithConversation(
 }
 
 /**
- * Find existing session or create a new one
- * Used when checkpoint is created to ensure session exists
- * Note: artifactName is optional - sessions without artifact use (userId, composeId) as key
- */
-export async function findOrCreateAgentSession(
-  userId: string,
-  agentComposeId: string,
-  artifactName?: string,
-  conversationId?: string,
-): Promise<{ session: AgentSessionData; created: boolean }> {
-  // Build query conditions - handle null artifactName for sessions without artifact
-  // For sessions with artifact: match (userId, composeId, artifactName)
-  // For sessions without artifact: match (userId, composeId, artifactName IS NULL)
-  const conditions = artifactName
-    ? and(
-        eq(agentSessions.userId, userId),
-        eq(agentSessions.agentComposeId, agentComposeId),
-        eq(agentSessions.artifactName, artifactName),
-      )
-    : and(
-        eq(agentSessions.userId, userId),
-        eq(agentSessions.agentComposeId, agentComposeId),
-        isNull(agentSessions.artifactName),
-      );
-
-  // Find existing session with same compose and artifact
-  const [existing] = await globalThis.services.db
-    .select()
-    .from(agentSessions)
-    .where(conditions)
-    .limit(1);
-
-  if (existing) {
-    // Update conversation reference if provided
-    if (conversationId) {
-      const updated = await updateAgentSession(existing.id, conversationId);
-      return { session: updated, created: false };
-    }
-    return { session: mapToAgentSessionData(existing), created: false };
-  }
-
-  // Create new session
-  const session = await createAgentSession({
-    userId,
-    agentComposeId,
-    artifactName,
-    conversationId,
-  });
-
-  return { session, created: true };
-}
-
-/**
  * Create a new agent session
  */
-async function createAgentSession(
+export async function createAgentSession(
   input: CreateAgentSessionInput,
 ): Promise<AgentSessionData> {
   const [session] = await globalThis.services.db
@@ -130,7 +80,7 @@ async function createAgentSession(
 /**
  * Update an existing agent session's conversation reference
  */
-async function updateAgentSession(
+export async function updateAgentSession(
   id: string,
   conversationId: string,
 ): Promise<AgentSessionData> {
@@ -148,6 +98,81 @@ async function updateAgentSession(
   }
 
   return mapToAgentSessionData(session);
+}
+
+/**
+ * List chat sessions for a user + agent compose (no artifact).
+ * Only returns sessions that have at least one chat message.
+ */
+export async function listAgentSessions(
+  userId: string,
+  agentComposeId: string,
+): Promise<
+  Array<{
+    id: string;
+    createdAt: Date;
+    updatedAt: Date;
+    messageCount: number;
+    preview: string | null;
+  }>
+> {
+  const rows = await globalThis.services.db
+    .select()
+    .from(agentSessions)
+    .where(
+      and(
+        eq(agentSessions.userId, userId),
+        eq(agentSessions.agentComposeId, agentComposeId),
+        isNull(agentSessions.artifactName),
+      ),
+    )
+    .orderBy(desc(agentSessions.updatedAt));
+
+  return rows
+    .map((row) => {
+      const messages = (row.chatMessages ?? []) as StoredChatMessage[];
+      const firstUserMsg = messages.find((m) => m.role === "user");
+      return {
+        id: row.id,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        messageCount: messages.length,
+        preview: firstUserMsg ? firstUserMsg.content.slice(0, 100) : null,
+      };
+    })
+    .filter((s) => s.messageCount > 0);
+}
+
+/**
+ * Append chat messages to a session's chatMessages JSONB array.
+ * Adds server-side createdAt timestamp to each message.
+ */
+export async function appendChatMessages(
+  sessionId: string,
+  userId: string,
+  messages: Array<{
+    role: "user" | "assistant";
+    content: string;
+    runId?: string;
+  }>,
+): Promise<void> {
+  const now = new Date().toISOString();
+  const withTimestamps = messages.map((m) => ({ ...m, createdAt: now }));
+
+  const result = await globalThis.services.db
+    .update(agentSessions)
+    .set({
+      chatMessages: sql`COALESCE(${agentSessions.chatMessages}, '[]'::jsonb) || ${JSON.stringify(withTimestamps)}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, userId)),
+    )
+    .returning({ id: agentSessions.id });
+
+  if (result.length === 0) {
+    throw notFound("Session not found or not owned by user");
+  }
 }
 
 function mapToAgentSessionData(

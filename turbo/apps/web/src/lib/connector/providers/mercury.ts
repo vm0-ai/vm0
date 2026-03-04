@@ -17,6 +17,11 @@ interface MercuryTokenResult {
   userInfo: MercuryUserInfo;
 }
 
+interface MercuryRefreshResult {
+  accessToken: string;
+  refreshToken: string | null;
+}
+
 /**
  * Build Mercury OAuth authorization URL.
  * Requests offline_access scope to obtain a refresh token.
@@ -101,6 +106,60 @@ export async function exchangeMercuryCode(
     expiresIn: data.expires_in,
     scopes: data.scope ? data.scope.split(" ") : [],
     userInfo,
+  };
+}
+
+/**
+ * Refresh a Mercury access token using the refresh token.
+ * Returns new access token and new refresh token (both must be stored).
+ */
+export async function refreshMercuryToken(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<MercuryRefreshResult> {
+  const oauthConfig = getConnectorOAuthConfig("mercury");
+  if (!oauthConfig) {
+    throw new Error("Mercury OAuth config not found");
+  }
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Mercury token refresh failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+
+  if (!data.access_token) {
+    throw new Error("No access token in Mercury refresh response");
+  }
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
   };
 }
 

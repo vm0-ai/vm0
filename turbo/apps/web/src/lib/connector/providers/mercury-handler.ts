@@ -3,6 +3,7 @@ import {
   buildMercuryAuthorizationUrl,
   exchangeMercuryCode,
   getMercurySecretName,
+  refreshMercuryToken,
 } from "./mercury";
 
 export const mercuryHandler: ProviderHandler = {
@@ -30,4 +31,5 @@ export const mercuryHandler: ProviderHandler = {
   getClientSecret: (e) => e.MERCURY_OAUTH_CLIENT_SECRET,
   getSecretName: getMercurySecretName,
   getRefreshSecretName: () => "MERCURY_REFRESH_TOKEN",
+  refreshToken: refreshMercuryToken,
 };

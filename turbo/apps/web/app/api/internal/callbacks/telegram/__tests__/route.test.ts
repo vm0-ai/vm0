@@ -1,0 +1,400 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { HttpResponse } from "msw";
+import { POST } from "../route";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../../src/__tests__/test-helpers";
+import {
+  createTestRun,
+  createTestCallback,
+  createTestAgentSession,
+  createTestRequest,
+  createTestScope,
+  createTestCompose,
+} from "../../../../../../src/__tests__/api-test-helpers";
+import { computeHmacSignature } from "../../../../../../src/lib/callback/hmac";
+import { createTelegramCallbackInstallation } from "../../../../../../src/lib/telegram/__tests__/helpers";
+import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { server } from "../../../../../../src/mocks/server";
+import { http } from "../../../../../../src/__tests__/msw";
+
+const context = testContext();
+
+const TEST_BOT_TOKEN = "123456:ABC-test-telegram-callback";
+
+interface TelegramCallbackPayload {
+  installationId: string;
+  chatId: string;
+  messageId: string;
+  userLinkId: string;
+  agentName: string;
+  composeId: string;
+  existingSessionId: string | null;
+}
+
+function telegramSendMessage() {
+  return http.post(
+    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/sendMessage`,
+    () =>
+      HttpResponse.json({
+        ok: true,
+        result: { message_id: 999, chat: { id: 123 }, text: "response" },
+      }),
+  );
+}
+
+function telegramSendChatAction() {
+  return http.post(
+    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/sendChatAction`,
+    () => HttpResponse.json({ ok: true, result: true }),
+  );
+}
+
+/**
+ * Create a signed callback request for the Telegram callback endpoint
+ */
+function createCallbackRequest(
+  body: {
+    runId: string;
+    status: "completed" | "failed";
+    result?: Record<string, unknown>;
+    error?: string;
+    payload: TelegramCallbackPayload;
+  },
+  secret: string,
+  options?: { invalidSignature?: boolean; expiredTimestamp?: boolean },
+) {
+  const bodyString = JSON.stringify(body);
+  const timestamp = options?.expiredTimestamp
+    ? Math.floor(Date.now() / 1000) - 600
+    : Math.floor(Date.now() / 1000);
+
+  const signature = options?.invalidSignature
+    ? "invalid-signature"
+    : computeHmacSignature(bodyString, secret, timestamp);
+
+  return createTestRequest("http://localhost/api/internal/callbacks/telegram", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-VM0-Signature": signature,
+      "X-VM0-Timestamp": timestamp.toString(),
+    },
+    body: bodyString,
+  });
+}
+
+/**
+ * Set up a full Telegram test context: scope, compose (with version),
+ * installation (encrypted token), user link, run, callback.
+ */
+async function setupTelegramCallback() {
+  const userId = uniqueId("user");
+  mockClerk({ userId });
+
+  // Create scope + compose (with version) through API
+  await createTestScope(uniqueId("scope"));
+  const { composeId } = await createTestCompose("test-agent");
+
+  // Create installation with encrypted bot token + user link via helper
+  const { installationId, userLinkId } =
+    await createTelegramCallbackInstallation(composeId, userId, TEST_BOT_TOKEN);
+
+  // Create run and callback
+  const { runId } = await createTestRun(composeId, "Test prompt");
+  const chatId = `chat-${Date.now()}`;
+  const messageId = "42";
+
+  const payload: TelegramCallbackPayload = {
+    installationId,
+    chatId,
+    messageId,
+    userLinkId,
+    agentName: "test-agent",
+    composeId,
+    existingSessionId: null,
+  };
+
+  const { secret } = await createTestCallback({
+    runId,
+    url: "http://localhost/api/internal/callbacks/telegram",
+    payload: { ...payload },
+  });
+
+  return {
+    installationId,
+    composeId,
+    userId,
+    userLinkId,
+    runId,
+    chatId,
+    messageId,
+    payload,
+    secret,
+  };
+}
+
+describe("POST /api/internal/callbacks/telegram", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  describe("Signature Verification", () => {
+    it("should reject request with invalid signature", async () => {
+      const { runId, payload, secret } = await setupTelegramCallback();
+
+      const request = createCallbackRequest(
+        { runId, status: "completed", payload },
+        secret,
+        { invalidSignature: true },
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data.error).toContain("signature");
+    });
+
+    it("should reject request with expired timestamp", async () => {
+      const { runId, payload, secret } = await setupTelegramCallback();
+
+      const request = createCallbackRequest(
+        { runId, status: "completed", payload },
+        secret,
+        { expiredTimestamp: true },
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data.error).toContain("expired");
+    });
+
+    it("should reject request for non-existent callback", async () => {
+      const request = createTestRequest(
+        "http://localhost/api/internal/callbacks/telegram",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-VM0-Signature": "any-signature",
+            "X-VM0-Timestamp": Math.floor(Date.now() / 1000).toString(),
+          },
+          body: JSON.stringify({
+            runId: "00000000-0000-0000-0000-000000000000",
+            status: "completed",
+            payload: {
+              installationId: "inst-123",
+              chatId: "123",
+              messageId: "1",
+              userLinkId: "link-123",
+              agentName: "test-agent",
+              composeId: "compose-123",
+              existingSessionId: null,
+            },
+          }),
+        },
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data.error).toContain("not found");
+    });
+  });
+
+  describe("Successful Callback", () => {
+    it("should return 200 and send message on completed run", async () => {
+      const { runId, payload, secret } = await setupTelegramCallback();
+
+      const sendChatActionHandler = telegramSendChatAction();
+      const sendMessageHandler = telegramSendMessage();
+      server.use(sendChatActionHandler.handler, sendMessageHandler.handler);
+
+      const request = createCallbackRequest(
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      // Telegram API was called
+      expect(sendChatActionHandler.mocked).toHaveBeenCalledTimes(1);
+      expect(sendMessageHandler.mocked).toHaveBeenCalledTimes(1);
+    });
+
+    it("should return 200 and send error message on failed run", async () => {
+      const { runId, payload, secret } = await setupTelegramCallback();
+
+      const sendChatActionHandler = telegramSendChatAction();
+      const sendMessageHandler = telegramSendMessage();
+      server.use(sendChatActionHandler.handler, sendMessageHandler.handler);
+
+      const request = createCallbackRequest(
+        {
+          runId,
+          status: "failed",
+          error: "Agent crashed unexpectedly",
+          payload,
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      expect(sendMessageHandler.mocked).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("Thread Session", () => {
+    it("should process new thread callback without error", async () => {
+      const { runId, payload, secret, userId, composeId } =
+        await setupTelegramCallback();
+
+      const sendChatActionHandler = telegramSendChatAction();
+      const sendMessageHandler = telegramSendMessage();
+      server.use(sendChatActionHandler.handler, sendMessageHandler.handler);
+
+      // Create an agent session for findNewSessionId
+      await createTestAgentSession(userId, composeId);
+
+      const request = createCallbackRequest(
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should process existing session callback without error", async () => {
+      const { runId, payload, secret } = await setupTelegramCallback();
+
+      const sendChatActionHandler = telegramSendChatAction();
+      const sendMessageHandler = telegramSendMessage();
+      server.use(sendChatActionHandler.handler, sendMessageHandler.handler);
+
+      const request = createCallbackRequest(
+        {
+          runId,
+          status: "completed",
+          payload: { ...payload, existingSessionId: "existing-session-id" },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+    });
+  });
+
+  describe("Validation", () => {
+    it("should reject request with missing runId", async () => {
+      const request = createTestRequest(
+        "http://localhost/api/internal/callbacks/telegram",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-VM0-Signature": "any-signature",
+            "X-VM0-Timestamp": Math.floor(Date.now() / 1000).toString(),
+          },
+          body: JSON.stringify({
+            status: "completed",
+            payload: {
+              installationId: "inst-123",
+              chatId: "123",
+              messageId: "1",
+              userLinkId: "link-123",
+              agentName: "test-agent",
+              composeId: "compose-123",
+              existingSessionId: null,
+            },
+          }),
+        },
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toContain("runId");
+    });
+
+    it("should reject request with invalid payload", async () => {
+      const { runId, secret } = await setupTelegramCallback();
+
+      const body = JSON.stringify({
+        runId,
+        status: "completed",
+        payload: {
+          installationId: "inst-123",
+          // Missing required fields
+        },
+      });
+      const timestamp = Math.floor(Date.now() / 1000);
+      const signature = computeHmacSignature(body, secret, timestamp);
+
+      const request = createTestRequest(
+        "http://localhost/api/internal/callbacks/telegram",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-VM0-Signature": signature,
+            "X-VM0-Timestamp": timestamp.toString(),
+          },
+          body,
+        },
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toContain("payload");
+    });
+
+    it("should return success for missing installation", async () => {
+      const { runId, secret } = await setupTelegramCallback();
+
+      const payload: TelegramCallbackPayload = {
+        installationId: "00000000-0000-0000-0000-000000000000",
+        chatId: "123",
+        messageId: "1",
+        userLinkId: "link-123",
+        agentName: "test-agent",
+        composeId: "compose-123",
+        existingSessionId: null,
+      };
+
+      const body = JSON.stringify({ runId, status: "completed", payload });
+      const timestamp = Math.floor(Date.now() / 1000);
+      const signature = computeHmacSignature(body, secret, timestamp);
+
+      const request = createTestRequest(
+        "http://localhost/api/internal/callbacks/telegram",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-VM0-Signature": signature,
+            "X-VM0-Timestamp": timestamp.toString(),
+          },
+          body,
+        },
+      );
+      const response = await POST(request);
+
+      // Missing installation returns 200 (graceful, don't retry)
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+    });
+  });
+});

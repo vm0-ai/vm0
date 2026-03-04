@@ -2,6 +2,7 @@ import { type ProviderHandler } from "../provider-types";
 import {
   buildGoogleAuthorizationUrl,
   exchangeGoogleOAuthCode,
+  refreshGoogleToken,
 } from "./google-oauth";
 
 export const googleDriveHandler: ProviderHandler = {
@@ -31,4 +32,6 @@ export const googleDriveHandler: ProviderHandler = {
   getClientSecret: (e) => e.GOOGLE_OAUTH_CLIENT_SECRET,
   getSecretName: () => "GOOGLE_DRIVE_ACCESS_TOKEN",
   getRefreshSecretName: () => "GOOGLE_DRIVE_REFRESH_TOKEN",
+  refreshToken: (clientId, clientSecret, refreshToken) =>
+    refreshGoogleToken("google-drive", clientId, clientSecret, refreshToken),
 };

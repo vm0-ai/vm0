@@ -11,7 +11,6 @@ env:
   # Sandbox VM parameters for runner build
   RUNNER_VCPU: 2
   RUNNER_MEMORY_MB: 2048
-  RUNNER_MAX_CONCURRENT: 4
 
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'merge_group' && format('merge-queue-{0}', github.run_id) || 'staging') }}
@@ -37,6 +36,8 @@ jobs:
       docker-platform-changed: ${{ steps.detect-docker.outputs.docker-platform-changed }}
       migration-changed: ${{ steps.detect-migration.outputs.migration-changed }}
       crates-changed: ${{ steps.detect-crates.outputs.crates-changed }}
+      ci-changed: ${{ steps.detect-ci.outputs.ci-changed }}
+      e2e-changed: ${{ steps.detect-e2e.outputs.e2e-changed }}
       cli-e2e-parallel-matrix: ${{ steps.cli-e2e-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
@@ -187,6 +188,44 @@ jobs:
           else
             echo "No crates changes"
             echo "crates-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Detect CI workflow changes
+        id: detect-ci
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            BASE_REF="${{ github.event.merge_group.base_sha }}"
+          else
+            BASE_REF="HEAD^"
+          fi
+
+          if git diff --name-only "$BASE_REF" HEAD | grep -q "^\.github/workflows/turbo\.yml$"; then
+            echo "CI workflow changes detected"
+            echo "ci-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No CI workflow changes"
+            echo "ci-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Detect E2E test changes
+        id: detect-e2e
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            BASE_REF="${{ github.event.merge_group.base_sha }}"
+          else
+            BASE_REF="HEAD^"
+          fi
+
+          if git diff --name-only "$BASE_REF" HEAD | grep -q "^e2e/"; then
+            echo "E2E test changes detected"
+            echo "e2e-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No E2E test changes"
+            echo "e2e-changed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Set job-ref
@@ -507,7 +546,9 @@ jobs:
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
         needs.prepare.outputs.platform-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true'
+        needs.prepare.outputs.crates-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true' ||
+        needs.prepare.outputs.e2e-changed == 'true'
       )
     outputs:
       preview-url: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
@@ -515,33 +556,181 @@ jobs:
       contents: read
       pull-requests: write
       deployments: write
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
-      # Step 1: Create Neon database branch
-      - name: Create Neon Branch and Run Migrations
-        id: branch
-        uses: ./.github/actions/neon-branch
-        with:
-          neon-api-key: ${{ secrets.NEON_API_KEY }}
-          neon-project-id: ${{ vars.NEON_PROJECT_ID }}
-          branch-name: "${{ needs.prepare.outputs.job-ref }}"
-          action: "create"
-
-      # Step 2: Deploy to Vercel with database URL
-      - name: Deploy Web to Vercel
-        id: deploy
-        uses: ./.github/actions/vercel-deploy
+      # Step 1: Setup Vercel CLI and project config (needed by build)
+      - name: Setup Vercel
+        uses: ./.github/actions/vercel-setup
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
-          environment: preview
-          deployment-env: web
-          prebuilt: "true"
-          environment-variables: |
-            DATABASE_URL=${{ steps.branch.outputs.database-url }}
+
+      # Step 2: Create Neon branch + Build web in parallel
+      - name: Create Neon Branch and Build Web
+        id: neon
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          SKIP_ENV_VALIDATION: "true"
+          BLOG_BASE_URL: ${{ needs.prepare.outputs.web-preview-url }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+          SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          AXIOM_TOKEN_SESSIONS: ${{ secrets.AXIOM_TOKEN_SESSIONS }}
+          AXIOM_TOKEN_TELEMETRY: ${{ secrets.AXIOM_TOKEN_TELEMETRY }}
+          AXIOM_DATASET_SUFFIX: dev
+          USE_MOCK_CLAUDE: "true"
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
+          CONCURRENT_RUN_LIMIT: "0"
+          VM0_DEBUG: "*"
+          CLAUDE_CODE_VERSION_URL: ${{ vars.CLAUDE_CODE_VERSION_URL }}
+          SLACK_CLIENT_ID: ${{ vars.SLACK_CLIENT_ID }}
+          SLACK_CLIENT_SECRET: ${{ secrets.SLACK_CLIENT_SECRET }}
+          SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
+          SLACK_REDIRECT_BASE_URL: ${{ needs.prepare.outputs.web-preview-url }}
+          SLACK_DEFAULT_AGENT: ${{ vars.SLACK_DEFAULT_AGENT }}
+          SENTRY_DSN_WEB: ${{ secrets.SENTRY_DSN_WEB }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_WEB }}
+          GH_OAUTH_CLIENT_ID: ${{ vars.GH_OAUTH_CLIENT_ID }}
+          GH_OAUTH_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+          NOTION_OAUTH_CLIENT_ID: ${{ vars.NOTION_OAUTH_CLIENT_ID }}
+          NOTION_OAUTH_CLIENT_SECRET: ${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          LINEAR_OAUTH_CLIENT_ID: ${{ vars.LINEAR_OAUTH_CLIENT_ID }}
+          LINEAR_OAUTH_CLIENT_SECRET: ${{ secrets.LINEAR_OAUTH_CLIENT_SECRET }}
+          FIGMA_OAUTH_CLIENT_ID: ${{ vars.FIGMA_OAUTH_CLIENT_ID }}
+          FIGMA_OAUTH_CLIENT_SECRET: ${{ secrets.FIGMA_OAUTH_CLIENT_SECRET }}
+          DEEL_OAUTH_CLIENT_ID: ${{ vars.DEEL_OAUTH_CLIENT_ID }}
+          DEEL_OAUTH_CLIENT_SECRET: ${{ secrets.DEEL_OAUTH_CLIENT_SECRET }}
+          DOCUSIGN_OAUTH_CLIENT_ID: ${{ vars.DOCUSIGN_OAUTH_CLIENT_ID }}
+          DOCUSIGN_OAUTH_CLIENT_SECRET: ${{ secrets.DOCUSIGN_OAUTH_CLIENT_SECRET }}
+          NEON_OAUTH_CLIENT_ID: ${{ vars.NEON_OAUTH_CLIENT_ID }}
+          NEON_OAUTH_CLIENT_SECRET: ${{ secrets.NEON_OAUTH_CLIENT_SECRET }}
+          REDDIT_OAUTH_CLIENT_ID: ${{ vars.REDDIT_OAUTH_CLIENT_ID }}
+          REDDIT_OAUTH_CLIENT_SECRET: ${{ secrets.REDDIT_OAUTH_CLIENT_SECRET }}
+          X_OAUTH_CLIENT_ID: ${{ vars.X_OAUTH_CLIENT_ID }}
+          X_OAUTH_CLIENT_SECRET: ${{ secrets.X_OAUTH_CLIENT_SECRET }}
+          VERCEL_OAUTH_CLIENT_ID: ${{ vars.VERCEL_OAUTH_CLIENT_ID }}
+          VERCEL_OAUTH_CLIENT_SECRET: ${{ secrets.VERCEL_OAUTH_CLIENT_SECRET }}
+          SENTRY_OAUTH_CLIENT_ID: ${{ vars.SENTRY_OAUTH_CLIENT_ID }}
+          SENTRY_OAUTH_CLIENT_SECRET: ${{ secrets.SENTRY_OAUTH_CLIENT_SECRET }}
+          INTERVALS_ICU_OAUTH_CLIENT_ID: ${{ vars.INTERVALS_ICU_OAUTH_CLIENT_ID }}
+          INTERVALS_ICU_OAUTH_CLIENT_SECRET: ${{ secrets.INTERVALS_ICU_OAUTH_CLIENT_SECRET }}
+          XERO_OAUTH_CLIENT_ID: ${{ vars.XERO_OAUTH_CLIENT_ID }}
+          XERO_OAUTH_CLIENT_SECRET: ${{ secrets.XERO_OAUTH_CLIENT_SECRET }}
+          NGROK_API_KEY: ${{ secrets.NGROK_API_KEY }}
+          NGROK_COMPUTER_CONNECTOR_DOMAIN: ${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
+          PLATFORM_URL: ${{ needs.prepare.outputs.platform-preview-url }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
+          RESEND_FROM_DOMAIN: ${{ vars.RESEND_FROM_DOMAIN }}
+          VM0_ADMIN_USERS: ${{ vars.VM0_ADMIN_USERS }}
+          STRAPI_URL: ${{ vars.STRAPI_URL }}
+        run: |
+          # --- Start Neon branch creation in background ---
+          (
+            if ! command -v neonctl &> /dev/null; then
+              npm install -g neonctl@2.15.0
+            fi
+
+            BRANCH_NAME="preview/${{ needs.prepare.outputs.job-ref }}"
+
+            if neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
+              echo "Branch $BRANCH_NAME already exists, resetting..."
+              neonctl branches reset "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --parent
+
+              for i in {1..30}; do
+                CURRENT_STATE=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .current_state")
+                if [ "$CURRENT_STATE" = "ready" ]; then
+                  echo "Branch reset complete"
+                  break
+                fi
+                echo "Branch state: $CURRENT_STATE (attempt $i/30)"
+                sleep 2
+              done
+            else
+              echo "Creating branch $BRANCH_NAME"
+              neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
+            fi
+
+            DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --pooled)
+            if [ -z "$DATABASE_URL" ]; then
+              DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb)
+            fi
+            echo "$DATABASE_URL" > /tmp/neon-database-url
+
+            cd turbo && DATABASE_URL="$DATABASE_URL" pnpm -F web db:migrate
+            echo "Neon branch ready"
+          ) > /tmp/neon-log 2>&1 &
+          NEON_PID=$!
+
+          # --- Build web in foreground ---
+          echo "::group::Vercel Build"
+          vercel build --token="$VERCEL_TOKEN"
+          echo "::endgroup::"
+
+          # --- Wait for Neon (child process, so wait works) ---
+          echo "::group::Neon Branch"
+          if ! wait $NEON_PID; then
+            cat /tmp/neon-log
+            echo "::error::Neon branch creation failed"
+            exit 1
+          fi
+          cat /tmp/neon-log
+          echo "::endgroup::"
+
+          echo "database-url=$(cat /tmp/neon-database-url)" >> "$GITHUB_OUTPUT"
+
+      # Step 4: Deploy prebuilt artifacts with database URL
+      - name: Start deployment
+        id: deployment
+        uses: bobheadxi/deployments@v1
+        with:
+          step: start
+          token: ${{ github.token }}
+          env: web/preview/${{ github.head_ref || github.ref_name }}
+          ref: ${{ github.head_ref && format('refs/heads/{0}', github.head_ref) || github.ref }}
+          desc: Deploying preview environment
+
+      - name: Deploy Web to Vercel
+        id: deploy
+        run: |
+          DEPLOY_CMD="vercel deploy --prebuilt --archive=tgz --token=${{ secrets.VERCEL_TOKEN }}"
+          DEPLOY_CMD="$DEPLOY_CMD --meta branch=${{ github.head_ref || github.ref_name }}"
+          DEPLOY_CMD="$DEPLOY_CMD --meta pr=${{ needs.prepare.outputs.job-ref }}"
+
+          while IFS= read -r line; do
+            line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            if [ -n "$line" ]; then
+              KEY="${line%%=*}"
+              VALUE="${line#*=}"
+              DEPLOY_CMD="$DEPLOY_CMD --env $KEY=\"$VALUE\""
+            fi
+          done <<< "$ENV_VARS"
+
+          DEPLOYMENT_URL=$(eval $DEPLOY_CMD)
+          echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
+          echo "Deployment URL: $DEPLOYMENT_URL"
+        env:
+          ENV_VARS: |
+            DATABASE_URL=${{ steps.neon.outputs.database-url }}
             BLOG_BASE_URL=${{ needs.prepare.outputs.web-preview-url }}
             CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
@@ -584,6 +773,20 @@ jobs:
             DEEL_OAUTH_CLIENT_SECRET=${{ secrets.DEEL_OAUTH_CLIENT_SECRET }}
             DOCUSIGN_OAUTH_CLIENT_ID=${{ vars.DOCUSIGN_OAUTH_CLIENT_ID }}
             DOCUSIGN_OAUTH_CLIENT_SECRET=${{ secrets.DOCUSIGN_OAUTH_CLIENT_SECRET }}
+            NEON_OAUTH_CLIENT_ID=${{ vars.NEON_OAUTH_CLIENT_ID }}
+            NEON_OAUTH_CLIENT_SECRET=${{ secrets.NEON_OAUTH_CLIENT_SECRET }}
+            REDDIT_OAUTH_CLIENT_ID=${{ vars.REDDIT_OAUTH_CLIENT_ID }}
+            REDDIT_OAUTH_CLIENT_SECRET=${{ secrets.REDDIT_OAUTH_CLIENT_SECRET }}
+            X_OAUTH_CLIENT_ID=${{ vars.X_OAUTH_CLIENT_ID }}
+            X_OAUTH_CLIENT_SECRET=${{ secrets.X_OAUTH_CLIENT_SECRET }}
+            VERCEL_OAUTH_CLIENT_ID=${{ vars.VERCEL_OAUTH_CLIENT_ID }}
+            VERCEL_OAUTH_CLIENT_SECRET=${{ secrets.VERCEL_OAUTH_CLIENT_SECRET }}
+            SENTRY_OAUTH_CLIENT_ID=${{ vars.SENTRY_OAUTH_CLIENT_ID }}
+            SENTRY_OAUTH_CLIENT_SECRET=${{ secrets.SENTRY_OAUTH_CLIENT_SECRET }}
+            INTERVALS_ICU_OAUTH_CLIENT_ID=${{ vars.INTERVALS_ICU_OAUTH_CLIENT_ID }}
+            INTERVALS_ICU_OAUTH_CLIENT_SECRET=${{ secrets.INTERVALS_ICU_OAUTH_CLIENT_SECRET }}
+            XERO_OAUTH_CLIENT_ID=${{ vars.XERO_OAUTH_CLIENT_ID }}
+            XERO_OAUTH_CLIENT_SECRET=${{ secrets.XERO_OAUTH_CLIENT_SECRET }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
             NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
             PLATFORM_URL=${{ needs.prepare.outputs.platform-preview-url }}
@@ -592,11 +795,19 @@ jobs:
             RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
             VM0_ADMIN_USERS=${{ vars.VM0_ADMIN_USERS }}
             STRAPI_URL=${{ vars.STRAPI_URL }}
-          meta-branch: ${{ github.head_ref || github.ref_name }}
-          meta-pr: ${{ needs.prepare.outputs.job-ref }}
-          skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
 
-      # Step 3: Create stable preview URL alias (when PREVIEW_DOMAIN is configured)
+      - name: Finish deployment
+        uses: bobheadxi/deployments@v1
+        if: always() && !(github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '')
+        with:
+          step: finish
+          token: ${{ github.token }}
+          status: ${{ job.status }}
+          env: ${{ steps.deployment.outputs.env }}
+          env_url: ${{ steps.deploy.outputs.url }}
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+
+      # Step 5: Create stable preview URL alias (when PREVIEW_DOMAIN is configured)
       - name: Create Vercel Alias
         id: alias
         if: vars.PREVIEW_DOMAIN != ''
@@ -608,21 +819,40 @@ jobs:
           app-name: www
           job-ref: ${{ needs.prepare.outputs.job-ref }}
           preview-domain: ${{ vars.PREVIEW_DOMAIN }}
-          deployment-id: ${{ steps.deploy.outputs.deployment-id }}
-          deployment-env: ${{ steps.deploy.outputs.deployment-env }}
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+          deployment-env: ${{ steps.deployment.outputs.env }}
 
-      # Step 4: Generate test token for E2E tests (runs in parallel with e2e-auth)
-      - name: Generate E2E test token
-        run: e2e/scripts/generate-test-token.sh
+      # Step 6: Generate test tokens for E2E tests (one per test user)
+      - name: Generate E2E test tokens
+        run: |
+          for variant in serial parallel runner; do
+            e2e/scripts/generate-test-token.sh "$variant"
+            cp ~/.vm0/config.json "/tmp/e2e-token-${variant}.json"
+          done
         env:
           VM0_API_URL: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-      - name: Save test token to cache
+      - run: cp /tmp/e2e-token-serial.json ~/.vm0/config.json
+      - name: Save serial token to cache
         uses: actions/cache/save@v5
         with:
           path: ~/.vm0
-          key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          key: e2e-token-serial-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - run: cp /tmp/e2e-token-parallel.json ~/.vm0/config.json
+      - name: Save parallel token to cache
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.vm0
+          key: e2e-token-parallel-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - run: cp /tmp/e2e-token-runner.json ~/.vm0/config.json
+      - name: Save runner token to cache
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.vm0
+          key: e2e-token-runner-${{ github.run_id }}-${{ github.run_attempt }}
 
   # Deploy docs application
   deploy-docs:
@@ -769,39 +999,15 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-  # Run API E2E tests (lightweight, fast)
-  api-e2e-test:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
-    needs: [prepare, deploy-web]
-    if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.web-changed == 'true' }}"
-    timeout-minutes: 5
-    permissions:
-      actions: read # Required to query cache API
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: recursive # For BATS test framework
-
-      - name: Restore test token from cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ~/.vm0
-          key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            e2e-token-${{ github.run_id }}-
-          fail-on-cache-miss: true
-
-      - name: Run API E2E Tests
-        run: |
-          echo "=== Running API E2E Tests ==="
-          ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/api/*.bats
+      - name: Verify sign-in flow
+        run: cd e2e && npx playwright test sign-in.spec.ts
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-  # Run CLI E2E tests - Phase 1: Serial tests (establishes e2e-stable scope)
+  # Run CLI E2E tests - Phase 1: Serial tests (scope/provider CRUD)
   cli-e2e-01-serial:
     runs-on: ubuntu-latest
     container:
@@ -824,7 +1030,9 @@ jobs:
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true'
+        needs.prepare.outputs.crates-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true' ||
+        needs.prepare.outputs.e2e-changed == 'true'
       )
     timeout-minutes: 5
     permissions:
@@ -854,9 +1062,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.vm0
-          key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          key: e2e-token-serial-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            e2e-token-${{ github.run_id }}-
+            e2e-token-serial-${{ github.run_id }}-
           fail-on-cache-miss: true
 
       - name: Start Cron Simulator
@@ -893,12 +1101,14 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260203
-    needs: [prepare, cli-e2e-01-serial, deploy-web]
+    needs: [prepare, deploy-web]
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true'
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true' ||
+        needs.prepare.outputs.e2e-changed == 'true'
       )
     strategy:
       fail-fast: false
@@ -933,10 +1143,18 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.vm0
-          key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          key: e2e-token-parallel-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            e2e-token-${{ github.run_id }}-
+            e2e-token-parallel-${{ github.run_id }}-
           fail-on-cache-miss: true
+
+      - name: Bootstrap test account
+        run: |
+          vm0 scope set "e2e-parallel" --force
+          vm0 model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Start Cron Simulator
         run: |
@@ -978,18 +1196,19 @@ jobs:
     needs: [prepare]
     timeout-minutes: 10
     if: |
-      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true'
+        needs.prepare.outputs.crates-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true' ||
+        needs.prepare.outputs.e2e-changed == 'true'
       )
     outputs:
-      host-count: ${{ steps.host.outputs.host-count }}
       bin-dir: ${{ steps.host.outputs.bin-dir }}
       runner-dir: ${{ steps.host.outputs.runner-dir }}
       runner-matrix: ${{ steps.runner-matrix.outputs.matrix }}
+      chunk-count: ${{ steps.runner-matrix.outputs.chunk-count }}
       rootfs-hash: ${{ steps.deploy.outputs.rootfs-hash }}
       snapshot-hash: ${{ steps.deploy.outputs.snapshot-hash }}
     steps:
@@ -998,7 +1217,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates -> target
-          key: aarch64-musl
+          shared-key: aarch64-musl
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-targets: false
 
       - name: Cross-compile guest binaries for ARM64
         run: |
@@ -1036,15 +1257,16 @@ jobs:
             echo "::error::AWS_METAL_RUNNER_HOSTS is empty"
             exit 1
           fi
-          echo "host-count=${NUM_HOSTS}" >> "$GITHUB_OUTPUT"
           echo "Deploying to ${NUM_HOSTS} metal hosts"
 
       - name: Generate runner E2E test matrix
         id: runner-matrix
         shell: bash
         run: |
-          # Split test files across metal hosts, balanced by test count
-          NUM_CHUNKS=${{ steps.host.outputs.host-count }}
+          # Split test files into fixed chunks for parallel bats execution
+          NUM_FILES=$(ls e2e/tests/03-experimental-runner/*.bats 2>/dev/null | wc -l)
+          NUM_CHUNKS=4
+          [ "$NUM_CHUNKS" -gt "$NUM_FILES" ] && NUM_CHUNKS=$NUM_FILES
 
           # Count tests per file, sort heaviest first
           mapfile -t SORTED < <(
@@ -1074,6 +1296,7 @@ jobs:
             echo "Chunk $((i+1)): ${CHUNK_COUNTS[$i]} tests"
           done
           echo "matrix=${CHUNKS}]" >> $GITHUB_OUTPUT
+          echo "chunk-count=${NUM_CHUNKS}" >> $GITHUB_OUTPUT
 
       - name: Deploy binaries and build rootfs/snapshot on all metal hosts
         id: deploy
@@ -1168,14 +1391,17 @@ jobs:
   deploy-runner-start:
     runs-on: ubuntu-latest
     needs: [prepare, deploy-runner-prepare, deploy-web]
+    outputs:
+      total-capacity: ${{ steps.start.outputs.total-capacity }}
     timeout-minutes: 2
     if: |
-      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true'
+        needs.prepare.outputs.crates-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true' ||
+        needs.prepare.outputs.e2e-changed == 'true'
       )
     steps:
       - name: Setup SSH
@@ -1188,6 +1414,7 @@ jobs:
 
       # Read METAL_HOSTS from secret directly — GitHub Actions masks secret values in job outputs
       - name: Rebuild config and start runner service on all hosts
+        id: start
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
@@ -1218,7 +1445,6 @@ jobs:
               --runner-dirname ${JOB_REF} \
               --vcpu ${RUNNER_VCPU} \
               --memory-mb ${RUNNER_MEMORY_MB} \
-              --max-concurrent ${RUNNER_MAX_CONCURRENT} \
               --api-url ${PREVIEW_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
@@ -1229,19 +1455,9 @@ jobs:
               --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
               --env USE_MOCK_CLAUDE=true"
 
-            # Health check — wait for the runner to initialize (mitmdump, status.json).
-            # Retry up to 5 times with 2s intervals to handle slow cold starts.
-            for attempt in 1 2 3 4 5; do
-              sleep 2
-              if ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner doctor"; then
-                break
-              fi
-              if [ "$attempt" -eq 5 ]; then
-                echo "runner doctor failed after 5 attempts"
-                exit 1
-              fi
-              echo "runner doctor attempt $attempt failed, retrying..."
-            done
+            # Health check — filter by name so other PR runners don't cause false positives
+            sleep 5
+            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
             echo "=== Runner started on ${HOST} ==="
           }
 
@@ -1270,6 +1486,20 @@ jobs:
             exit 1
           fi
 
+          # Sum auto-detected max_concurrent from all hosts' status.json
+          TOTAL=0
+          for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
+            MC=$(ssh $SSH_OPTS "${METAL_USER}@${HOST}" "grep -o '\"max_concurrent\": [0-9]*' ${RUNNER_DIR}/status.json | grep -o '[0-9]*'") || true
+            if [ -z "$MC" ] || ! [[ "$MC" =~ ^[0-9]+$ ]]; then
+              echo "::error::Failed to read max_concurrent from ${HOST}"
+              exit 1
+            fi
+            echo "Host ${HOST}: max_concurrent=${MC}"
+            TOTAL=$((TOTAL + MC))
+          done
+          echo "total-capacity=${TOTAL}" >> "$GITHUB_OUTPUT"
+          echo "Total capacity across all hosts: ${TOTAL}"
+
   # Run CLI E2E tests - Phase 3: Runner tests (needs runner deployed)
   # Skip on push to main - runner tests are only needed for PRs
   cli-e2e-03-runner:
@@ -1279,21 +1509,18 @@ jobs:
     needs:
       [
         prepare,
-        cli-e2e-01-serial,
-        cli-e2e-02-parallel,
         deploy-web,
         deploy-runner-prepare,
         deploy-runner-start,
       ]
     if: |
-      always() &&
-      (needs.cli-e2e-02-parallel.result == 'success' || needs.cli-e2e-02-parallel.result == 'skipped') &&
-      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true'
+        needs.prepare.outputs.crates-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true' ||
+        needs.prepare.outputs.e2e-changed == 'true'
       )
     strategy:
       fail-fast: false
@@ -1328,10 +1555,18 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.vm0
-          key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          key: e2e-token-runner-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            e2e-token-${{ github.run_id }}-
+            e2e-token-runner-${{ github.run_id }}-
           fail-on-cache-miss: true
+
+      - name: Bootstrap test account
+        run: |
+          vm0 scope set "e2e-runner" --force
+          vm0 model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Start Cron Simulator
         run: |
@@ -1343,14 +1578,54 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      - name: Verify runners are deployed
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+          HOST_INDEX=0
+          for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
+            HOST_INDEX=$((HOST_INDEX + 1))
+            RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+            REMOTE="${METAL_USER}@${HOST}"
+            echo "Checking runner ${RUNNER_NAME} on ${HOST}..."
+            if ! ssh $SSH_OPTS "$REMOTE" "test -x ${BIN_DIR}/runner"; then
+              echo "::error::Runner binary not found on ${HOST}. The cleanup job may have already run. Use 'Re-run all jobs' to redeploy the runner first."
+              exit 1
+            fi
+            if ! ssh $SSH_OPTS "$REMOTE" "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"; then
+              echo "::error::Runner ${RUNNER_NAME} not healthy on ${HOST}. Use 'Re-run all jobs' to redeploy the runner first."
+              exit 1
+            fi
+          done
+          echo "All runners healthy"
+
       - name: Run Runner E2E Tests (Chunk ${{ matrix.index }})
         run: |
-          PARALLEL=${RUNNER_MAX_CONCURRENT}
-          echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel) ==="
+          if [ -z "$RUNNER_CHUNK_COUNT" ] || [ "$RUNNER_CHUNK_COUNT" -eq 0 ]; then
+            echo "::error::RUNNER_CHUNK_COUNT is empty or zero"
+            exit 1
+          fi
+          PARALLEL=$(( RUNNER_TOTAL_CAPACITY / RUNNER_CHUNK_COUNT ))
+          [ "$PARALLEL" -lt 1 ] && PARALLEL=1
+          echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel, total capacity ${RUNNER_TOTAL_CAPACITY}) ==="
           echo "Files: ${{ matrix.files }}"
           BATS_TEST_TIMEOUT=60 RUNNER_GROUP="vm0/development-${JOB_REF}" ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --no-parallelize-within-files ${{ matrix.files }}
           echo "✅ Chunk ${{ matrix.index }} tests passed"
         env:
+          RUNNER_TOTAL_CAPACITY: ${{ needs.deploy-runner-start.outputs.total-capacity }}
+          RUNNER_CHUNK_COUNT: ${{ needs.deploy-runner-prepare.outputs.chunk-count }}
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
@@ -1366,14 +1641,125 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
+  # Runner stress test: submit concurrent jobs with mock Claude to validate queue + stability
+  # Only runs on PRs with the 'stress-test' label (opt-in)
+  runner-stress-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
+    needs:
+      [
+        prepare,
+        deploy-web,
+        deploy-runner-prepare,
+        deploy-runner-start,
+        cli-e2e-03-runner,
+      ]
+    if: |
+      github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'stress-test')
+    timeout-minutes: 30
+    env:
+      STRESS_PROMPT: "sleep 10 && echo done"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Setup pnpm global directory
+        run: |
+          mkdir -p $HOME/.local/share/pnpm
+          pnpm config set global-bin-dir $HOME/.local/share/pnpm
+          echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
+
+      - name: Build Sandbox Scripts
+        run: cd turbo && pnpm turbo run build --filter=@vm0/sandbox-scripts
+
+      - name: Build CLI
+        run: cd turbo && pnpm --filter @vm0/cli build
+
+      - name: Setup CLI globally
+        run: cd turbo/apps/cli && pnpm link --global
+
+      - name: Restore test token from cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.vm0
+          key: e2e-token-runner-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            e2e-token-runner-${{ github.run_id }}-
+          fail-on-cache-miss: true
+
+      - name: Bootstrap test account
+        run: |
+          vm0 scope set "e2e-runner" --force
+          vm0 model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
+      - name: Start Cron Simulator
+        run: |
+          chmod +x ./e2e/scripts/cron-simulator.sh
+          ./e2e/scripts/cron-simulator.sh "$VM0_API_URL" 60 &
+          echo "CRON_SIMULATOR_PID=$!" >> $GITHUB_ENV
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
+      - name: Create stress test agent
+        id: agent
+        run: |
+          AGENT_NAME="stress-test-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cat > /tmp/stress-agent.yaml <<EOF
+          version: "1.0"
+          agents:
+            ${AGENT_NAME}:
+              description: "Stress test agent"
+              framework: claude-code
+              experimental_runner:
+                group: vm0/development-${JOB_REF}
+          EOF
+          vm0 compose /tmp/stress-agent.yaml
+          echo "agent-name=${AGENT_NAME}" >> "$GITHUB_OUTPUT"
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+
+      - name: Run stress test
+        run: |
+          TOTAL_CAPACITY="${{ needs.deploy-runner-start.outputs.total-capacity }}"
+          JOB_COUNT=$(( TOTAL_CAPACITY * 2 ))
+          echo "Runner capacity: ${TOTAL_CAPACITY}, submitting ${JOB_COUNT} jobs (2x capacity)"
+          chmod +x ./e2e/scripts/stress-test.sh
+          ./e2e/scripts/stress-test.sh \
+            "${{ steps.agent.outputs.agent-name }}" \
+            "$JOB_COUNT" \
+            "$STRESS_PROMPT" \
+            "30" \
+            "$TOTAL_CAPACITY"
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+
+      - name: Stop Cron Simulator
+        if: always()
+        run: |
+          if [ -n "$CRON_SIMULATOR_PID" ]; then
+            kill "$CRON_SIMULATOR_PID" 2>/dev/null || true
+            echo "Cron simulator stopped"
+          fi
+
   # Stop runner service and clean up after cli-e2e-03-runner completes (or fails/times out)
   # Skip on push to main - runner deployment is only needed for PRs
   cleanup-runner:
     runs-on: ubuntu-latest
-    needs: [prepare, deploy-runner-prepare, deploy-runner-start, cli-e2e-03-runner]
+    needs: [prepare, deploy-runner-prepare, deploy-runner-start, cli-e2e-03-runner, runner-stress-test]
     if: |
       always() &&
-      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
       needs.deploy-runner-prepare.outputs.bin-dir != ''
     steps:
@@ -1429,7 +1815,6 @@ jobs:
         run: |
           pnpm e2b:build
           pnpm e2b:codex:build
-          pnpm e2b:claude-code-github:build
           pnpm e2b:cli:build
 
       - name: Build summary

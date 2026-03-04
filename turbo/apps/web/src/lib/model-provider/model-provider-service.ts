@@ -1,4 +1,4 @@
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, ne, inArray, sql, notExists } from "drizzle-orm";
 import {
   MODEL_PROVIDER_TYPES,
   getFrameworkForType,
@@ -70,14 +70,53 @@ function toModelProviderInfo(params: {
 }
 
 /**
- * Check if user already has a provider for the given framework.
+ * Get all provider types that belong to a given framework.
  */
-async function hasExistingProviderForFramework(
-  clerkUserId: string,
+function getTypesForFramework(framework: ModelProviderFramework): string[] {
+  return Object.keys(MODEL_PROVIDER_TYPES).filter(
+    (t) => getFrameworkForType(t as ModelProviderType) === framework,
+  );
+}
+
+/**
+ * Atomically assign isDefault=true to a provider, but only if no other provider
+ * for the same framework already has isDefault=true.
+ *
+ * Uses a single UPDATE with NOT EXISTS subquery to prevent the race condition
+ * where two concurrent inserts both set isDefault=true.
+ *
+ * @returns true if isDefault was set, false if another default already exists
+ */
+async function assignDefaultIfFirst(
+  scopeId: string,
+  providerId: string,
   framework: ModelProviderFramework,
 ): Promise<boolean> {
-  const allProviders = await listModelProviders(clerkUserId);
-  return allProviders.some((p) => p.framework === framework);
+  const frameworkTypes = getTypesForFramework(framework);
+
+  const result = await globalThis.services.db
+    .update(modelProviders)
+    .set({ isDefault: true })
+    .where(
+      and(
+        eq(modelProviders.id, providerId),
+        notExists(
+          globalThis.services.db
+            .select({ id: sql`1` })
+            .from(modelProviders)
+            .where(
+              and(
+                eq(modelProviders.scopeId, scopeId),
+                eq(modelProviders.isDefault, true),
+                ne(modelProviders.id, providerId),
+                inArray(modelProviders.type, frameworkTypes),
+              ),
+            ),
+        ),
+      ),
+    );
+
+  return (result.rowCount ?? 0) > 0;
 }
 
 /**
@@ -163,6 +202,8 @@ export async function checkSecretExists(
 
 /**
  * Create or update a model provider (legacy single-secret)
+ * Uses atomic INSERT ... ON CONFLICT DO UPDATE to handle concurrent requests safely.
+ *
  * @param selectedModel For providers with model selection, the chosen model
  *
  * Note: Multi-auth providers (like aws-bedrock) should use upsertMultiAuthModelProvider instead
@@ -202,130 +243,18 @@ export async function upsertModelProvider(
     secretName,
   });
 
-  // Check if model provider already exists
+  // Pre-check: does a provider for this type already exist?
+  // Race window is benign — worst case, two concurrent creates both return created:true (cosmetic only)
   const [existingProvider] = await globalThis.services.db
-    .select()
+    .select({ id: modelProviders.id })
     .from(modelProviders)
     .where(
       and(eq(modelProviders.scopeId, scope.id), eq(modelProviders.type, type)),
     )
     .limit(1);
 
-  if (existingProvider) {
-    // Legacy providers should have secretId
-    if (!existingProvider.secretId) {
-      throw badRequest(
-        `Provider "${type}" is missing secret reference. This is an invalid state.`,
-      );
-    }
-
-    // Update existing secret value
-    await globalThis.services.db
-      .update(secrets)
-      .set({ encryptedValue, updatedAt: new Date() })
-      .where(eq(secrets.id, existingProvider.secretId));
-
-    await globalThis.services.db
-      .update(modelProviders)
-      .set({
-        selectedModel: selectedModel ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(modelProviders.id, existingProvider.id));
-
-    log.debug("model provider updated", {
-      providerId: existingProvider.id,
-      type,
-      selectedModel,
-    });
-
-    return {
-      provider: toModelProviderInfo({
-        id: existingProvider.id,
-        type,
-        secretName,
-        isDefault: existingProvider.isDefault,
-        selectedModel: selectedModel ?? null,
-        createdAt: existingProvider.createdAt,
-        updatedAt: new Date(),
-      }),
-      created: false,
-    };
-  }
-
-  // Check if model-provider secret already exists with same name
-  // Note: User secrets are independent and don't conflict
-  const [existingSecret] = await globalThis.services.db
-    .select()
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.scopeId, scope.id),
-        eq(secrets.name, secretName),
-        eq(secrets.type, "model-provider"),
-      ),
-    )
-    .limit(1);
-
-  if (existingSecret) {
-    // Update existing model-provider secret
-    await globalThis.services.db
-      .update(secrets)
-      .set({
-        encryptedValue,
-        updatedAt: new Date(),
-      })
-      .where(eq(secrets.id, existingSecret.id));
-
-    // Check if first for framework (for default assignment)
-    const isFirstForFramework = !(await hasExistingProviderForFramework(
-      clerkUserId,
-      framework,
-    ));
-
-    // Create model provider row
-    const [created] = await globalThis.services.db
-      .insert(modelProviders)
-      .values({
-        scopeId: scope.id,
-        type,
-        secretId: existingSecret.id,
-        isDefault: isFirstForFramework,
-        selectedModel: selectedModel ?? null,
-      })
-      .returning();
-
-    if (!created) {
-      throw new Error("Failed to create model provider");
-    }
-
-    log.debug("model provider created from existing secret", {
-      providerId: created.id,
-      type,
-      selectedModel,
-    });
-
-    return {
-      provider: toModelProviderInfo({
-        id: created.id,
-        type,
-        secretName,
-        isDefault: created.isDefault,
-        selectedModel: created.selectedModel,
-        createdAt: created.createdAt,
-        updatedAt: created.updatedAt,
-      }),
-      created: true,
-    };
-  }
-
-  // Create new model-provider secret and model provider
-  const isFirstForFramework = !(await hasExistingProviderForFramework(
-    clerkUserId,
-    framework,
-  ));
-
-  const [newSecret] = await globalThis.services.db
+  // Atomic secret upsert — handles concurrent requests safely
+  const [upsertedSecret] = await globalThis.services.db
     .insert(secrets)
     .values({
       scopeId: scope.id,
@@ -334,52 +263,71 @@ export async function upsertModelProvider(
       type: "model-provider",
       description: `Model provider secret for ${MODEL_PROVIDER_TYPES[type].label}`,
     })
+    .onConflictDoUpdate({
+      target: [secrets.scopeId, secrets.name, secrets.type],
+      set: { encryptedValue, updatedAt: new Date() },
+    })
     .returning();
 
-  if (!newSecret) {
-    throw new Error("Failed to create secret");
-  }
-
-  const [newProvider] = await globalThis.services.db
+  // Atomic model provider upsert — handles concurrent requests safely
+  const [provider] = await globalThis.services.db
     .insert(modelProviders)
     .values({
       scopeId: scope.id,
       type,
-      secretId: newSecret.id,
-      isDefault: isFirstForFramework,
+      secretId: upsertedSecret!.id,
+      isDefault: false,
       selectedModel: selectedModel ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [modelProviders.scopeId, modelProviders.type],
+      set: {
+        secretId: upsertedSecret!.id,
+        selectedModel: selectedModel ?? null,
+        updatedAt: new Date(),
+      },
     })
     .returning();
 
-  if (!newProvider) {
-    throw new Error("Failed to create model provider");
+  const wasCreated = !existingProvider;
+
+  // Assign default if this is a new provider and no other default exists for the framework
+  if (wasCreated) {
+    const isDefault = await assignDefaultIfFirst(
+      scope.id,
+      provider!.id,
+      framework,
+    );
+    if (isDefault) {
+      provider!.isDefault = true;
+    }
   }
 
-  log.debug("model provider created", {
-    providerId: newProvider.id,
-    secretId: newSecret.id,
+  log.debug(wasCreated ? "model provider created" : "model provider updated", {
+    providerId: provider!.id,
     type,
     selectedModel,
-    isDefault: newProvider.isDefault,
+    isDefault: provider!.isDefault,
   });
 
   return {
     provider: toModelProviderInfo({
-      id: newProvider.id,
+      id: provider!.id,
       type,
       secretName,
-      isDefault: newProvider.isDefault,
-      selectedModel: newProvider.selectedModel,
-      createdAt: newProvider.createdAt,
-      updatedAt: newProvider.updatedAt,
+      isDefault: provider!.isDefault,
+      selectedModel: provider!.selectedModel,
+      createdAt: provider!.createdAt,
+      updatedAt: provider!.updatedAt,
     }),
-    created: true,
+    created: wasCreated,
   };
 }
 
 /**
- * Upsert a single secret for a multi-auth provider
- * Note: Only looks for model-provider type secrets (user secrets are independent)
+ * Upsert a single secret for a multi-auth provider.
+ * Uses atomic INSERT ... ON CONFLICT DO UPDATE to handle concurrent requests safely.
+ * Note: Only targets model-provider type secrets (user secrets are independent)
  */
 async function upsertMultiAuthSecret(
   scopeId: string,
@@ -390,37 +338,19 @@ async function upsertMultiAuthSecret(
 ): Promise<void> {
   const encryptedValue = encryptCredentialValue(value, encryptionKey);
 
-  // Only look for model-provider secrets (user secrets are independent)
-  const [existingSecret] = await globalThis.services.db
-    .select({ id: secrets.id })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.scopeId, scopeId),
-        eq(secrets.name, name),
-        eq(secrets.type, "model-provider"),
-      ),
-    )
-    .limit(1);
-
-  if (existingSecret) {
-    await globalThis.services.db
-      .update(secrets)
-      .set({
-        encryptedValue,
-        description,
-        updatedAt: new Date(),
-      })
-      .where(eq(secrets.id, existingSecret.id));
-  } else {
-    await globalThis.services.db.insert(secrets).values({
+  await globalThis.services.db
+    .insert(secrets)
+    .values({
       scopeId,
       name,
       encryptedValue,
       type: "model-provider",
       description,
+    })
+    .onConflictDoUpdate({
+      target: [secrets.scopeId, secrets.name, secrets.type],
+      set: { encryptedValue, description, updatedAt: new Date() },
     });
-  }
 }
 
 /**
@@ -522,7 +452,7 @@ export async function upsertMultiAuthModelProvider(
     secretNames: Object.keys(secretValues),
   });
 
-  // Check if model provider already exists
+  // Check if model provider already exists (needed for auth method switch cleanup)
   const [existingProvider] = await globalThis.services.db
     .select()
     .from(modelProviders)
@@ -541,7 +471,7 @@ export async function upsertMultiAuthModelProvider(
     );
   }
 
-  // Store/update all secrets
+  // Store/update all secrets atomically
   const secretNames = Object.keys(secretValues);
   const secretDescription = `${MODEL_PROVIDER_TYPES[type].label} secret (${authMethod})`;
 
@@ -555,81 +485,65 @@ export async function upsertMultiAuthModelProvider(
     );
   }
 
-  if (existingProvider) {
-    // Update existing provider
-    await globalThis.services.db
-      .update(modelProviders)
-      .set({
-        authMethod,
-        selectedModel: selectedModel ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(modelProviders.id, existingProvider.id));
-
-    log.debug("multi-auth model provider updated", {
-      providerId: existingProvider.id,
-      type,
-      authMethod,
-      selectedModel,
-    });
-
-    return {
-      provider: toModelProviderInfo({
-        id: existingProvider.id,
-        type,
-        authMethod,
-        secretNames,
-        isDefault: existingProvider.isDefault,
-        selectedModel: selectedModel ?? null,
-        createdAt: existingProvider.createdAt,
-        updatedAt: new Date(),
-      }),
-      created: false,
-    };
-  }
-
-  // Check if first for framework (for default assignment)
-  const isFirstForFramework = !(await hasExistingProviderForFramework(
-    clerkUserId,
-    framework,
-  ));
-
-  // Create new provider (no secretId for multi-auth)
-  const [newProvider] = await globalThis.services.db
+  // Atomic model provider upsert — handles concurrent requests safely
+  const [provider] = await globalThis.services.db
     .insert(modelProviders)
     .values({
       scopeId: scope.id,
       type,
       authMethod,
-      isDefault: isFirstForFramework,
+      isDefault: false,
       selectedModel: selectedModel ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [modelProviders.scopeId, modelProviders.type],
+      set: {
+        authMethod,
+        selectedModel: selectedModel ?? null,
+        updatedAt: new Date(),
+      },
     })
     .returning();
 
-  if (!newProvider) {
-    throw new Error("Failed to create model provider");
+  const wasCreated = !existingProvider;
+
+  // Assign default if this is a new provider and no other default exists for the framework
+  if (wasCreated) {
+    const isDefault = await assignDefaultIfFirst(
+      scope.id,
+      provider!.id,
+      framework,
+    );
+    if (isDefault) {
+      provider!.isDefault = true;
+    }
   }
 
-  log.debug("multi-auth model provider created", {
-    providerId: newProvider.id,
-    type,
-    authMethod,
-    selectedModel,
-    isDefault: newProvider.isDefault,
-  });
+  log.debug(
+    wasCreated
+      ? "multi-auth model provider created"
+      : "multi-auth model provider updated",
+    {
+      providerId: provider!.id,
+      type,
+      authMethod,
+      selectedModel,
+      isDefault: provider!.isDefault,
+    },
+  );
 
   return {
     provider: toModelProviderInfo({
-      id: newProvider.id,
+      id: provider!.id,
       type,
       authMethod,
       secretNames,
-      isDefault: newProvider.isDefault,
-      selectedModel: newProvider.selectedModel,
-      createdAt: newProvider.createdAt,
-      updatedAt: newProvider.updatedAt,
+      isDefault: provider!.isDefault,
+      selectedModel: provider!.selectedModel,
+      createdAt: provider!.createdAt,
+      updatedAt: provider!.updatedAt,
     }),
-    created: true,
+    created: wasCreated,
   };
 }
 

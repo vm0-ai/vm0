@@ -52,7 +52,7 @@ function mockVariables(): VariableResponse[] {
   ];
 }
 
-describe("secrets and variables tab", () => {
+describe("connections tab (secrets and variables)", () => {
   it("shows both secrets and variables in one list", async () => {
     server.use(
       http.get("/api/secrets", () => {
@@ -65,7 +65,7 @@ describe("secrets and variables tab", () => {
 
     await setupPage({
       context,
-      path: "/settings?tab=secrets-and-variables",
+      path: "/settings?tab=connections",
     });
 
     await vi.waitFor(() => {
@@ -96,7 +96,7 @@ describe("secrets and variables tab", () => {
 
     await setupPage({
       context,
-      path: "/settings?tab=secrets-and-variables",
+      path: "/settings?tab=connections",
     });
 
     await vi.waitFor(() => {
@@ -123,7 +123,7 @@ describe("secrets and variables tab", () => {
     });
   });
 
-  it("add dropdown offers Add secret and Add variable", async () => {
+  it("add dialog Custom API tab offers Add secret and Add variable", async () => {
     server.use(
       http.get("/api/secrets", () => {
         return HttpResponse.json({ secrets: [] });
@@ -135,19 +135,21 @@ describe("secrets and variables tab", () => {
 
     await setupPage({
       context,
-      path: "/settings?tab=secrets-and-variables",
+      path: "/settings?tab=connections",
     });
 
-    // Wait for the list to load
     await vi.waitFor(() => {
-      expect(screen.getByText("New secrets and variables")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /add/i })).toBeInTheDocument();
     });
 
-    // Open the add dropdown
-    await user.click(screen.getByText("Add more secrets"));
+    await user.click(screen.getByRole("button", { name: /add/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("tab", { name: /custom api/i }));
 
-    await expect(screen.findByText("Add secret")).resolves.toBeInTheDocument();
-    expect(screen.getByText("Add variable")).toBeInTheDocument();
+    await expect(
+      within(dialog).findByText("Add secret"),
+    ).resolves.toBeInTheDocument();
+    expect(within(dialog).getByText("Add variable")).toBeInTheDocument();
   });
 
   it("backward compat: ?tab=secrets still works", async () => {
@@ -166,9 +168,10 @@ describe("secrets and variables tab", () => {
     await vi.waitFor(() => {
       expect(screen.getByText("API_KEY")).toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("tab", { name: /secrets and variables/i }),
-    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /connections/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("backward compat: ?tab=variables still works", async () => {
@@ -186,9 +189,10 @@ describe("secrets and variables tab", () => {
     await vi.waitFor(() => {
       expect(screen.getByText("API_URL")).toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("tab", { name: /secrets and variables/i }),
-    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /connections/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("shows skeleton loading state before data resolves", async () => {
@@ -209,23 +213,19 @@ describe("secrets and variables tab", () => {
 
     await setupPage({
       context,
-      path: "/settings?tab=secrets-and-variables",
+      path: "/settings?tab=connections",
     });
 
-    // While loading, footer and items should not be visible
-    expect(
-      screen.queryByText("New secrets and variables"),
-    ).not.toBeInTheDocument();
+    // While loading, list items should not be visible
     expect(screen.queryByText("API_KEY")).not.toBeInTheDocument();
 
     // Resolve the delayed response
     resolveSecrets();
 
-    // Now data and footer should appear
+    // Now data should appear
     await vi.waitFor(() => {
       expect(screen.getByText("API_KEY")).toBeInTheDocument();
     });
-    expect(screen.getByText("New secrets and variables")).toBeInTheDocument();
   });
 
   it("can add a new secret via dialog", async () => {
@@ -256,19 +256,24 @@ describe("secrets and variables tab", () => {
 
     await setupPage({
       context,
-      path: "/settings?tab=secrets-and-variables",
+      path: "/settings?tab=connections",
     });
 
     await vi.waitFor(() => {
-      expect(screen.getByText("New secrets and variables")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /add/i })).toBeInTheDocument();
     });
 
-    // Open dropdown and click "Add secret"
-    await user.click(screen.getByText("Add more secrets"));
-    await user.click(await screen.findByText("Add secret"));
+    await user.click(screen.getByRole("button", { name: /add/i }));
+    const addDialog = await screen.findByRole("dialog");
+    await user.click(
+      within(addDialog).getByRole("tab", { name: /custom api/i }),
+    );
+    await user.click(within(addDialog).getByText("Add secret"));
 
-    // Dialog should open
-    const dialog = await screen.findByRole("dialog");
+    // Secret form dialog opens
+    const dialog = await screen.findByRole("dialog", {
+      name: /add secret|new secret/i,
+    });
 
     // Fill in the form
     const nameInput = within(dialog).getByPlaceholderText("MY_API_KEY");
@@ -323,19 +328,24 @@ describe("secrets and variables tab", () => {
 
     await setupPage({
       context,
-      path: "/settings?tab=secrets-and-variables",
+      path: "/settings?tab=connections",
     });
 
     await vi.waitFor(() => {
-      expect(screen.getByText("New secrets and variables")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /add/i })).toBeInTheDocument();
     });
 
-    // Open dropdown and click "Add variable"
-    await user.click(screen.getByText("Add more secrets"));
-    await user.click(await screen.findByText("Add variable"));
+    await user.click(screen.getByRole("button", { name: /add/i }));
+    const addDialog = await screen.findByRole("dialog");
+    await user.click(
+      within(addDialog).getByRole("tab", { name: /custom api/i }),
+    );
+    await user.click(within(addDialog).getByText("Add variable"));
 
-    // Dialog should open
-    const dialog = await screen.findByRole("dialog");
+    // Variable form dialog opens
+    const dialog = await screen.findByRole("dialog", {
+      name: /add variable|new variable/i,
+    });
 
     // Fill in the form
     const nameInput = within(dialog).getByPlaceholderText("MY_VARIABLE");
@@ -374,18 +384,23 @@ describe("secrets and variables tab", () => {
 
     await setupPage({
       context,
-      path: "/settings?tab=secrets-and-variables",
+      path: "/settings?tab=connections",
     });
 
     await vi.waitFor(() => {
-      expect(screen.getByText("New secrets and variables")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /add/i })).toBeInTheDocument();
     });
 
-    // Open dropdown and click "Add secret"
-    await user.click(screen.getByText("Add more secrets"));
-    await user.click(await screen.findByText("Add secret"));
+    await user.click(screen.getByRole("button", { name: /add/i }));
+    const addDialog = await screen.findByRole("dialog");
+    await user.click(
+      within(addDialog).getByRole("tab", { name: /custom api/i }),
+    );
+    await user.click(within(addDialog).getByText("Add secret"));
 
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("dialog", {
+      name: /add secret|new secret/i,
+    });
 
     // Try to submit empty
     const submitButton = within(dialog).getByRole("button", {

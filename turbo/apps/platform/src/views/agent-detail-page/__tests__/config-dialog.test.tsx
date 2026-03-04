@@ -209,17 +209,20 @@ describe("config dialog", () => {
 
     let capturedBody: unknown = null;
     server.use(
-      http.post("/api/agent/composes", async ({ request }) => {
+      http.post("/api/compose/jobs", async ({ request }) => {
         capturedBody = await request.json();
         return HttpResponse.json(
           {
-            composeId: "compose_1",
-            name: "my-agent",
-            versionId: "version_2",
-            action: "existing",
-            updatedAt: "2024-01-02T00:00:00Z",
+            jobId: "job_1",
+            status: "completed",
+            result: {
+              composeId: "compose_1",
+              composeName: "my-agent",
+              versionId: "version_2",
+              warnings: [],
+            },
           },
-          { status: 200 },
+          { status: 201 },
         );
       }),
     );
@@ -243,7 +246,7 @@ describe("config dialog", () => {
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
 
     await vi.waitFor(() => {
       expect(
@@ -258,9 +261,9 @@ describe("config dialog", () => {
     mockAgentDetailAPI();
 
     server.use(
-      http.post("/api/agent/composes", () => {
+      http.post("/api/compose/jobs", () => {
         return HttpResponse.json(
-          { message: "Validation failed" },
+          { error: { message: "Validation failed" } },
           { status: 400 },
         );
       }),
@@ -285,14 +288,14 @@ describe("config dialog", () => {
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
 
     await vi.waitFor(() => {
       expect(screen.getByText("Validation failed")).toBeInTheDocument();
     });
   });
 
-  it("should allow editing agent name and sync to YAML", async () => {
+  it("should display agent name as read-only in Forms tab", async () => {
     mockAgentDetailAPI();
 
     await setupPage({
@@ -321,54 +324,7 @@ describe("config dialog", () => {
     });
 
     const nameInput = screen.getByDisplayValue("my-agent");
-    fireEvent.change(nameInput, { target: { value: "new-agent" } });
-
-    // Switch to YAML tab and verify name change is reflected
-    fireEvent.click(screen.getByRole("tab", { name: "vm0.yaml" }));
-
-    await vi.waitFor(() => {
-      const textarea = document.querySelector("textarea");
-      expect(textarea?.value).toContain("new-agent");
-    });
-  });
-
-  it("should show validation error for invalid agent name", async () => {
-    mockAgentDetailAPI();
-
-    await setupPage({
-      context,
-      path: "/agents/my-agent",
-    });
-
-    await vi.waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "my-agent" }),
-      ).toBeInTheDocument();
-    });
-
-    fireEvent.click(findSettingsIconButton());
-
-    await vi.waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Your agent configs" }),
-      ).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("tab", { name: "Forms" }));
-
-    await vi.waitFor(() => {
-      expect(screen.getByDisplayValue("my-agent")).toBeInTheDocument();
-    });
-
-    const nameInput = screen.getByDisplayValue("my-agent");
-    fireEvent.change(nameInput, { target: { value: "-invalid" } });
-
-    await vi.waitFor(() => {
-      expect(screen.getByText(/Must be 3-64 chars/)).toBeInTheDocument();
-    });
-
-    // Save button should be disabled when name is invalid
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(nameInput).toHaveAttribute("readOnly");
   });
 
   it("should show selected skills and allow removing them", async () => {

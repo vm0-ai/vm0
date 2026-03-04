@@ -4,8 +4,14 @@ import { stringify, parse } from "yaml";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
-import { navigateInReact$ } from "../route.ts";
-import { agentDetail$, fetchAgentDetail$ } from "./agent-detail.ts";
+import {
+  agentDetail$,
+  agentInstructions$,
+  editedContent$,
+  fetchAgentDetail$,
+  refreshAgentInstructions$,
+} from "./agent-detail.ts";
+import { triggerAndPollComposeJob } from "./compose-job.ts";
 import { skillValueToUrl } from "../../data/skills.ts";
 import { AGENT_NAME_REGEX, fetchSkillFrontmatter } from "@vm0/core";
 import type { AgentDetail } from "./types.ts";
@@ -59,11 +65,11 @@ export const setConfigActiveTab$ = command(({ set }, tab: string) => {
 });
 
 // ---------------------------------------------------------------------------
-// Saving state
+// Building state (async compose job in progress)
 // ---------------------------------------------------------------------------
 
-const internalSaving$ = state(false);
-export const configDialogSaving$ = computed((get) => get(internalSaving$));
+const internalBuilding$ = state(false);
+export const configDialogBuilding$ = computed((get) => get(internalBuilding$));
 
 // ---------------------------------------------------------------------------
 // Save error
@@ -88,7 +94,15 @@ export const configDialogValid$ = computed((get) => {
   if (firstKey === undefined || firstKey === "") {
     return false;
   }
-  return AGENT_NAME_REGEX.test(firstKey);
+  if (!AGENT_NAME_REGEX.test(firstKey)) {
+    return false;
+  }
+  // Agent name cannot be changed — reject if it differs from the original
+  const detail = get(agentDetail$);
+  if (detail && firstKey !== detail.name) {
+    return false;
+  }
+  return true;
 });
 
 // ---------------------------------------------------------------------------
@@ -296,37 +310,6 @@ export const updateComposeField$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Update agent name — restructures the agents dictionary key
-// ---------------------------------------------------------------------------
-
-export const updateAgentName$ = command(({ get, set }, newName: string) => {
-  const compose = get(internalEditableCompose$);
-  if (!compose) {
-    return;
-  }
-
-  const agentKeys = Object.keys(compose.agents);
-  const firstKey = agentKeys[0];
-  if (firstKey === undefined || newName === firstKey) {
-    return;
-  }
-
-  const agentDef = compose.agents[firstKey];
-  if (!agentDef) {
-    return;
-  }
-
-  const updated: ComposeContent = {
-    ...compose,
-    agents: { [newName]: agentDef },
-  };
-
-  set(internalEditableCompose$, updated);
-  set(internalYamlText$, stringify(updated));
-  set(internalYamlError$, null);
-});
-
-// ---------------------------------------------------------------------------
 // Update skills — converts values to GitHub URLs
 // ---------------------------------------------------------------------------
 
@@ -363,7 +346,7 @@ export const updateSkills$ = command(({ get, set }, skillValues: string[]) => {
 // Update from YAML tab — parse YAML and update compose
 // ---------------------------------------------------------------------------
 
-export const updateYamlText$ = command(({ set }, text: string) => {
+export const updateYamlText$ = command(({ get, set }, text: string) => {
   set(internalYamlText$, text);
 
   try {
@@ -373,6 +356,19 @@ export const updateYamlText$ = command(({ set }, text: string) => {
     if (!parsed || typeof parsed !== "object" || !parsed.agents) {
       set(internalYamlError$, "Invalid YAML: must contain 'agents' field");
       return;
+    }
+
+    // Agent name cannot be changed via YAML editing
+    const detail = get(agentDetail$);
+    if (detail) {
+      const newAgentKey = Object.keys(parsed.agents)[0];
+      if (newAgentKey && newAgentKey !== detail.name) {
+        set(
+          internalYamlError$,
+          "Agent name cannot be changed. Create a new agent instead.",
+        );
+        return;
+      }
     }
 
     set(internalEditableCompose$, parsed);
@@ -387,60 +383,39 @@ export const updateYamlText$ = command(({ set }, text: string) => {
 });
 
 // ---------------------------------------------------------------------------
-// Save — POST to /api/agent/composes
+// Build — POST to /api/compose/jobs and poll for completion
 // ---------------------------------------------------------------------------
 
-export const saveConfigDialog$ = command(async ({ get, set }) => {
+export const buildConfigDialog$ = command(async ({ get, set }) => {
   const compose = get(internalEditableCompose$);
   const detail = get(agentDetail$);
   if (!compose || !detail) {
     return;
   }
 
-  set(internalSaving$, true);
+  set(internalBuilding$, true);
   set(internalSaveError$, null);
 
   try {
     const fetchFn = get(fetch$);
-    const newAgentKey = Object.keys(compose.agents)[0];
-    const nameChanged = newAgentKey && newAgentKey !== detail.name;
-    const response = await fetchFn("/api/agent/composes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content: compose,
-        ...(nameChanged ? { previousName: detail.name } : {}),
-      }),
-    });
 
-    if (!response.ok) {
-      const errorData = (await response.json().catch(() => null)) as {
-        message?: string;
-      } | null;
-      throw new Error(
-        errorData?.message ?? `Save failed: ${response.statusText}`,
-      );
-    }
+    // Include current instructions text if available
+    const edited = get(editedContent$);
+    const instructions =
+      edited ?? get(agentInstructions$)?.content ?? undefined;
 
-    if (nameChanged) {
-      // Navigate to new agent URL
-      set(internalOpen$, false);
-      toast.success("Agent configuration saved");
-      set(navigateInReact$, "/agents/:name", {
-        pathParams: { name: newAgentKey },
-      });
-    } else {
-      // Refresh agent detail and close dialog
-      await set(fetchAgentDetail$);
-      set(internalOpen$, false);
-      toast.success("Agent configuration saved");
-    }
+    await triggerAndPollComposeJob(fetchFn, compose, instructions);
+
+    await set(fetchAgentDetail$);
+    await set(refreshAgentInstructions$);
+    set(internalOpen$, false);
+    toast.success("Agent built successfully");
   } catch (error) {
     throwIfAbort(error);
-    const message = error instanceof Error ? error.message : "Failed to save";
-    L.error("Failed to save config:", error);
+    const message = error instanceof Error ? error.message : "Failed to build";
+    L.error("Failed to build config:", error);
     set(internalSaveError$, message);
   } finally {
-    set(internalSaving$, false);
+    set(internalBuilding$, false);
   }
 });

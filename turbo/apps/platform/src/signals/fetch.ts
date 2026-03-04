@@ -12,6 +12,29 @@ function getConfiguredApiUrl(): string {
 const CONFIGURED_API_URL = getConfiguredApiUrl();
 
 /**
+ * API base URL for opening external navigation (e.g. connector OAuth popup).
+ * - On localhost: use VITE_API_URL so the popup hits the configured API (e.g. :3000).
+ * - On a non-localhost host (e.g. platform.vm7.ai): derive from current origin
+ *   (e.g. www.vm7.ai) so we never open a localhost URL when the user is remote.
+ */
+export const apiBaseForNavigation$ = computed(() => {
+  const isLocalhost =
+    typeof location !== "undefined" &&
+    (location.hostname === "localhost" || location.hostname === "127.0.0.1");
+  if (isLocalhost) {
+    const base = CONFIGURED_API_URL;
+    return base.endsWith("/") ? base.slice(0, -1) : base;
+  }
+  if (typeof location === "undefined" || !location.origin) {
+    const base = CONFIGURED_API_URL;
+    return base.endsWith("/") ? base.slice(0, -1) : base;
+  }
+  const url = new URL(location.origin);
+  url.hostname = url.hostname.replace("platform", "www");
+  return url.origin;
+});
+
+/**
  * Resolves the API base URL.
  * If VITE_API_URL is http://localhost:3000, derives the URL from the current browser origin
  * by replacing "platform" with "www" in the hostname.
@@ -27,7 +50,7 @@ function resolveApiBase(): string {
   return CONFIGURED_API_URL;
 }
 
-export const apiBase$ = computed(() => {
+const apiBase$ = computed(() => {
   return resolveApiBase();
 });
 

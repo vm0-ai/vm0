@@ -37,7 +37,7 @@ function getS3Client(): S3Client {
 
 /**
  * Get S3 client for generating presigned URLs consumed by external clients
- * (CLI, browsers, public API). Uses S3_PUBLIC_ENDPOINT so the resulting URLs
+ * (CLI, browsers). Uses S3_PUBLIC_ENDPOINT so the resulting URLs
  * are reachable from outside the Docker network. Falls back to the internal
  * endpoint when S3_PUBLIC_ENDPOINT is not set (e.g. SaaS / R2).
  */

@@ -25,12 +25,25 @@ export const composeJobResultSchema = z.object({
 });
 
 /**
- * Create compose job request schema
+ * Compose job source — where the job was initiated from
  */
-export const createComposeJobRequestSchema = z.object({
-  githubUrl: z.string().url().startsWith("https://github.com/"),
-  overwrite: z.boolean().optional().default(false),
-});
+export const composeJobSourceSchema = z.enum(["github", "platform", "slack"]);
+
+/**
+ * Create compose job request schema — supports two input modes:
+ * 1. GitHub URL: provide githubUrl to compose from a GitHub repository
+ * 2. Platform content: provide content (vm0.yaml) and optional instructions
+ */
+export const createComposeJobRequestSchema = z.union([
+  z.object({
+    githubUrl: z.string().url().startsWith("https://github.com/"),
+    overwrite: z.boolean().optional().default(false),
+  }),
+  z.object({
+    content: z.record(z.string(), z.unknown()),
+    instructions: z.string().optional(),
+  }),
+]);
 
 /**
  * Compose job response schema
@@ -38,7 +51,8 @@ export const createComposeJobRequestSchema = z.object({
 export const composeJobResponseSchema = z.object({
   jobId: z.string(),
   status: composeJobStatusSchema,
-  githubUrl: z.string(),
+  githubUrl: z.string().optional(),
+  source: composeJobSourceSchema.optional(),
   result: composeJobResultSchema.optional(),
   error: z.string().optional(),
   createdAt: z.string(),
@@ -47,16 +61,16 @@ export const composeJobResponseSchema = z.object({
 });
 
 /**
- * Compose jobs main contract (/api/compose/from-github)
+ * Compose jobs main contract (/api/compose/jobs)
  */
 export const composeJobsMainContract = c.router({
   /**
-   * POST /api/compose/from-github
-   * Create a new compose job from GitHub URL
+   * POST /api/compose/jobs
+   * Create a new compose job from GitHub URL or platform content
    */
   create: {
     method: "POST",
-    path: "/api/compose/from-github",
+    path: "/api/compose/jobs",
     headers: authHeadersSchema,
     body: createComposeJobRequestSchema,
     responses: {
@@ -65,21 +79,21 @@ export const composeJobsMainContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
     },
-    summary: "Create compose job from GitHub URL",
+    summary: "Create compose job",
   },
 });
 
 /**
- * Compose jobs by ID contract (/api/compose/from-github/:jobId)
+ * Compose jobs by ID contract (/api/compose/jobs/:jobId)
  */
 export const composeJobsByIdContract = c.router({
   /**
-   * GET /api/compose/from-github/:jobId
+   * GET /api/compose/jobs/:jobId
    * Get compose job status and result
    */
   getById: {
     method: "GET",
-    path: "/api/compose/from-github/:jobId",
+    path: "/api/compose/jobs/:jobId",
     headers: authHeadersSchema,
     pathParams: z.object({
       jobId: z.string().uuid(),
@@ -127,6 +141,7 @@ export const webhookComposeCompleteContract = c.router({
 // Export types
 export type ComposeJobStatus = z.infer<typeof composeJobStatusSchema>;
 export type ComposeJobResult = z.infer<typeof composeJobResultSchema>;
+export type ComposeJobSource = z.infer<typeof composeJobSourceSchema>;
 export type CreateComposeJobRequest = z.infer<
   typeof createComposeJobRequestSchema
 >;

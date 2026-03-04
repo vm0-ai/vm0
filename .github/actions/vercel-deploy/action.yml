@@ -103,7 +103,7 @@ runs:
 
           # Deploy prebuilt artifacts (no remote build)
           echo "Deploying prebuilt artifacts..."
-          DEPLOY_CMD="vercel deploy --prebuilt --token=${{ inputs.vercel-token }}"
+          DEPLOY_CMD="vercel deploy --prebuilt --archive=tgz --token=${{ inputs.vercel-token }}"
 
           if [ "${{ inputs.environment }}" == "production" ]; then
             DEPLOY_CMD="$DEPLOY_CMD --prod"
@@ -124,7 +124,7 @@ runs:
           fi
         else
           # === Standard mode: remote build on Vercel ===
-          DEPLOY_CMD="vercel deploy --token=${{ inputs.vercel-token }}"
+          DEPLOY_CMD="vercel deploy --archive=tgz --token=${{ inputs.vercel-token }}"
 
           if [ "${{ inputs.environment }}" == "production" ]; then
             DEPLOY_CMD="$DEPLOY_CMD --prod"

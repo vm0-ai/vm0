@@ -7,6 +7,7 @@ import {
   createTestSchedule,
   enableTestSchedule,
   getTestSchedule,
+  updateTestScheduleState,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
@@ -164,6 +165,48 @@ describe("POST /api/agent/schedules/:name/enable", () => {
 
     expect(response.status).toBe(404);
     expect(data.error.code).toBe("NOT_FOUND");
+  });
+
+  it("should enable loop schedule with nextRunAt set to now", async () => {
+    const schedule = await createTestSchedule(testComposeId, "loop-schedule", {
+      intervalSeconds: 300,
+      prompt: "Loop task",
+    });
+
+    expect(schedule.enabled).toBe(false);
+
+    const before = Date.now();
+    const enabled = await enableTestSchedule(testComposeId, "loop-schedule");
+
+    expect(enabled.enabled).toBe(true);
+    expect(enabled.nextRunAt).not.toBeNull();
+    expect(enabled.consecutiveFailures).toBe(0);
+    // Loop schedules should trigger immediately (nextRunAt ~= now)
+    const nextRunTime = new Date(enabled.nextRunAt!).getTime();
+    expect(nextRunTime).toBeGreaterThanOrEqual(before - 1000);
+    expect(nextRunTime).toBeLessThanOrEqual(Date.now() + 1000);
+  });
+
+  it("should reset consecutiveFailures when re-enabling loop schedule", async () => {
+    const schedule = await createTestSchedule(testComposeId, "loop-reset", {
+      intervalSeconds: 60,
+      prompt: "Reset test",
+    });
+
+    // Enable first
+    await enableTestSchedule(testComposeId, "loop-reset");
+
+    // Simulate failures via test helper
+    await updateTestScheduleState(schedule.id, {
+      consecutiveFailures: 2,
+      enabled: false,
+    });
+
+    // Re-enable
+    const reEnabled = await enableTestSchedule(testComposeId, "loop-reset");
+
+    expect(reEnabled.enabled).toBe(true);
+    expect(reEnabled.consecutiveFailures).toBe(0);
   });
 
   it("should reject unauthenticated request", async () => {

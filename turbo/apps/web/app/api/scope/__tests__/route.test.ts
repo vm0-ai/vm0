@@ -74,6 +74,36 @@ describe("/api/scope", () => {
       expect(data.id).toBeDefined();
     });
 
+    it("should return 400 (not 500) when scope slug already exists", async () => {
+      // First user creates a scope with a slug
+      const userId1 = `dup-slug-user1-${Date.now()}`;
+      const slug = `dup-slug-test-${Date.now()}`;
+
+      mockClerk({ userId: userId1 });
+      const request1 = createTestRequest("http://localhost:3000/api/scope", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug }),
+      });
+      const response1 = await POST(request1);
+      expect(response1.status).toBe(201);
+
+      // Second user tries to create a scope with the same slug
+      // This should return 400 (already exists) not 500 (crash)
+      const userId2 = `dup-slug-user2-${Date.now()}`;
+      mockClerk({ userId: userId2 });
+      const request2 = createTestRequest("http://localhost:3000/api/scope", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug }),
+      });
+      const response2 = await POST(request2);
+      const data = await response2.json();
+
+      expect(response2.status).toBe(400);
+      expect(data.error.message).toContain("already exists");
+    });
+
     it("should reject duplicate scope creation for same user", async () => {
       // Create a user and their first scope
       const userId = `dup-test-user-${Date.now()}`;

@@ -35,6 +35,7 @@ import {
 import { agentsList$ } from "../../signals/agents-page/agents-list.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
 import { AppShell } from "../layout/app-shell.tsx";
+import { Link } from "../router/link.tsx";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -59,7 +60,6 @@ function MissingEnvBanner({
   missingSecrets: string[];
   missingVars: string[];
 }) {
-  const navigate = useSet(navigateInReact$);
   const envVars = getAllConnectorEnvVars();
 
   const hasMissingConnectors = missingSecrets.some((s) => envVars.has(s));
@@ -70,15 +70,6 @@ function MissingEnvBanner({
     return null;
   }
 
-  const navigateToConnections = (tab: "connectors" | "secrets") => {
-    if (agentName) {
-      navigate("/agents/:name/connections", {
-        pathParams: { name: agentName },
-        searchParams: new URLSearchParams({ tab }),
-      });
-    }
-  };
-
   return (
     <div className="flex items-center gap-3 rounded-lg border border-amber-500 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950/30">
       <IconAlertTriangle
@@ -88,22 +79,30 @@ function MissingEnvBanner({
       />
       <p className="text-sm">
         {"Looks like this agent is missing some "}
-        {hasMissingConnectors && (
-          <button
+        {hasMissingConnectors && agentName && (
+          <Link
+            pathname="/agents/:name/connections"
+            options={{
+              pathParams: { name: agentName },
+              searchParams: new URLSearchParams({ tab: "connectors" }),
+            }}
             className="font-medium text-amber-600 hover:underline dark:text-amber-500"
-            onClick={() => navigateToConnections("connectors")}
           >
             connectors
-          </button>
+          </Link>
         )}
         {hasMissingConnectors && hasMissingSecretsOrVars && ", "}
-        {hasMissingSecretsOrVars && (
-          <button
+        {hasMissingSecretsOrVars && agentName && (
+          <Link
+            pathname="/agents/:name/connections"
+            options={{
+              pathParams: { name: agentName },
+              searchParams: new URLSearchParams({ tab: "secrets" }),
+            }}
             className="font-medium text-amber-600 hover:underline dark:text-amber-500"
-            onClick={() => navigateToConnections("secrets")}
           >
             secrets or variables
-          </button>
+          </Link>
         )}
         {". Add them now so it can run without stopping."}
       </p>
@@ -126,8 +125,6 @@ function DefaultAgentSection({
   agentOptions: { name: string }[];
   onAgentChange: (name: string) => void;
 }) {
-  const navigate = useSet(navigateInReact$);
-
   return (
     <div className="flex flex-col gap-4">
       <h3 className="text-base font-medium">Default agent</h3>
@@ -142,18 +139,17 @@ function DefaultAgentSection({
                 {
                   "If you want to manage your agent's model provider, secrets, or connectors, go to "
                 }
-                <button
+                <Link
+                  pathname="/settings"
+                  options={{
+                    searchParams: new URLSearchParams({
+                      tab: "providers",
+                    }),
+                  }}
                   className="text-primary hover:underline"
-                  onClick={() =>
-                    navigate("/settings", {
-                      searchParams: new URLSearchParams({
-                        tab: "providers",
-                      }),
-                    })
-                  }
                 >
                   Settings
-                </button>
+                </Link>
                 .
               </p>
             </>
@@ -266,6 +262,7 @@ export function SlackSettingsPage() {
       breadcrumb={breadcrumb}
       title="VM0 in Slack"
       subtitle="Configure your settings how to run VM0 in Slack Workspace."
+      contentClassName="mx-auto w-full max-w-[1200px]"
     >
       <div className="flex flex-col gap-6 px-6 pb-8">
         {loading ? (
@@ -326,14 +323,14 @@ export function SlackSettingsPage() {
               </div>
             </div>
 
-            {/* Disconnect section */}
+            {/* Uninstall section */}
             <div className="flex flex-col gap-4">
-              <h3 className="text-base font-medium">Disconnect with Slack</h3>
+              <h3 className="text-base font-medium">Uninstall Slack</h3>
               <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
                 <div className="flex flex-1 flex-col gap-1">
-                  <p className="text-sm font-medium">Disconnect with Slack</p>
+                  <p className="text-sm font-medium">Uninstall Slack</p>
                   <p className="text-sm text-muted-foreground">
-                    Your VM0 agent will be removed and disconnect with your
+                    Your VM0 agent will be removed and uninstalled from your
                     Slack workspace.
                   </p>
                 </div>
@@ -342,7 +339,7 @@ export function SlackSettingsPage() {
                   size="sm"
                   onClick={() => openConfirm()}
                 >
-                  Disconnect
+                  Uninstall
                 </Button>
               </div>
             </div>
@@ -360,10 +357,10 @@ export function SlackSettingsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Disconnect Slack</DialogTitle>
+            <DialogTitle>Uninstall Slack</DialogTitle>
             <DialogDescription>
               This will remove your Slack account connection and revoke agent
-              access. You can reconnect at any time.
+              access. You can reinstall at any time.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -371,7 +368,7 @@ export function SlackSettingsPage() {
               Cancel
             </Button>
             <Button variant="destructive" onClick={handleDisconnect}>
-              Disconnect
+              Uninstall
             </Button>
           </DialogFooter>
         </DialogContent>

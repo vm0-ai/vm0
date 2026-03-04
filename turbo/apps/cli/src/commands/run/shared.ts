@@ -1,17 +1,12 @@
 import chalk from "chalk";
 import * as fs from "node:fs";
 import { config as dotenvConfig } from "dotenv";
-import { getEvents, type RunResult } from "../../lib/api";
+import { getEvents } from "../../lib/api";
 import { ApiRequestError } from "../../lib/api/core/client-factory";
 import { parseEvent } from "../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { CodexEventRenderer } from "../../lib/events/codex-event-renderer";
 import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
-import {
-  streamEvents,
-  type StreamResult,
-} from "../../lib/realtime/stream-events";
-
 /**
  * Collector for --secrets and --vars flags
  * Format: KEY=value
@@ -193,39 +188,6 @@ interface EventRenderingOptions {
 }
 
 /**
- * Stream events using Ably realtime (experimental)
- * @returns Stream result with success status and optional session/checkpoint IDs
- */
-export async function streamRealtimeEvents(
-  runId: string,
-  options?: EventRenderingOptions,
-): Promise<StreamResult> {
-  const renderer = new EventRenderer({ verbose: options?.verbose });
-
-  return streamEvents(runId, {
-    onEvent: (event: unknown) => {
-      const eventData = event as Record<string, unknown>;
-      const parsed = parseEvent(eventData);
-      if (parsed) {
-        renderer.render(parsed);
-      }
-    },
-    onRunCompleted: (result) => {
-      EventRenderer.renderRunCompleted(result as RunResult | undefined);
-    },
-    onRunFailed: (error, rid) => {
-      EventRenderer.renderRunFailed(error, rid);
-    },
-    onTimeout: (rid) => {
-      console.error(chalk.red("\n✗ Run timed out"));
-      console.error(
-        chalk.dim(`  (use "vm0 logs ${rid} --system" to view system logs)`),
-      );
-    },
-  });
-}
-
-/**
  * Poll for events until run completes (via run.status field)
  * @returns Poll result with success status and optional session/checkpoint IDs
  */
@@ -359,10 +321,6 @@ export function handleRunError(error: unknown, identifier: string): void {
   if (error instanceof Error) {
     if (error.message.includes("Not authenticated")) {
       console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
-    } else if (error.message.includes("Realtime connection failed")) {
-      console.error(chalk.red("✗ Realtime streaming failed"));
-      console.error(chalk.dim(`  ${error.message}`));
-      console.error(chalk.dim("  Try running without --experimental-realtime"));
     } else if (error.message.startsWith("Version not found:")) {
       console.error(chalk.red(`✗ ${error.message}`));
       console.error(chalk.dim("  Make sure the version hash is correct"));
@@ -398,10 +356,6 @@ export function handleResumeOrContinueError(
   if (error instanceof Error) {
     if (error.message.includes("Not authenticated")) {
       console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
-    } else if (error.message.includes("Realtime connection failed")) {
-      console.error(chalk.red("✗ Realtime streaming failed"));
-      console.error(chalk.dim(`  ${error.message}`));
-      console.error(chalk.dim("  Try running without --experimental-realtime"));
     } else if (error.message.startsWith("Environment file not found:")) {
       console.error(chalk.red(`✗ ${error.message}`));
     } else if (error.message.includes("not found")) {

@@ -123,7 +123,7 @@ export const CONNECTOR_TYPES = {
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
-      scopes: ["https://mail.google.com/"],
+      scopes: ["https://www.googleapis.com/auth/gmail.modify"],
     } as ConnectorOAuthConfig,
   },
   "google-sheets": {
@@ -218,6 +218,39 @@ export const CONNECTOR_TYPES = {
       tokenUrl: "https://oauth2.googleapis.com/token",
       scopes: [
         "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/userinfo.email",
+      ],
+    } as ConnectorOAuthConfig,
+  },
+  "google-calendar": {
+    label: "Google Calendar",
+    helpText:
+      "Connect your Google account to access and manage calendar events",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Google to grant Google Calendar access.",
+        secrets: {
+          GOOGLE_CALENDAR_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          GOOGLE_CALENDAR_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      GOOGLE_CALENDAR_TOKEN: "$secrets.GOOGLE_CALENDAR_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenUrl: "https://oauth2.googleapis.com/token",
+      scopes: [
+        "https://www.googleapis.com/auth/calendar",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
     } as ConnectorOAuthConfig,
@@ -485,6 +518,36 @@ export const CONNECTOR_TYPES = {
       scopes: ["offline_access"],
     } as ConnectorOAuthConfig,
   },
+  reddit: {
+    label: "Reddit",
+    helpText:
+      "Connect your Reddit account to access Reddit discussions and content",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Reddit to grant access.",
+        secrets: {
+          REDDIT_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          REDDIT_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://www.reddit.com/api/v1/authorize",
+      tokenUrl: "https://www.reddit.com/api/v1/access_token",
+      scopes: ["identity", "read"],
+    } as ConnectorOAuthConfig,
+  },
   strava: {
     label: "Strava",
     helpText:
@@ -520,6 +583,73 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  x: {
+    label: "X",
+    helpText:
+      "Connect your X (Twitter) account to read tweets, timelines, and search",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with X to grant read access.",
+        secrets: {
+          X_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          X_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      X_ACCESS_TOKEN: "$secrets.X_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://twitter.com/i/oauth2/authorize",
+      tokenUrl: "https://api.twitter.com/2/oauth2/token",
+      scopes: ["tweet.read", "users.read", "follows.read", "offline.access"],
+    } as ConnectorOAuthConfig,
+  },
+  neon: {
+    label: "Neon",
+    helpText:
+      "Connect your Neon account to manage serverless Postgres databases and projects",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Neon to grant access.",
+        secrets: {
+          NEON_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          NEON_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      NEON_API_KEY: "$secrets.NEON_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://oauth2.neon.tech/oauth2/auth",
+      tokenUrl: "https://oauth2.neon.tech/oauth2/token",
+      scopes: [
+        "openid",
+        "offline_access",
+        "urn:neoncloud:projects:read",
+        "urn:neoncloud:projects:create",
+        "urn:neoncloud:projects:update",
+        "urn:neoncloud:projects:delete",
+      ],
+    } as ConnectorOAuthConfig,
+  },
   "garmin-connect": {
     label: "Garmin Connect",
     helpText:
@@ -550,6 +680,144 @@ export const CONNECTOR_TYPES = {
       scopes: [],
     } as ConnectorOAuthConfig,
   },
+  vercel: {
+    label: "Vercel",
+    helpText:
+      "Connect your Vercel account to manage deployments, projects, and domains",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Vercel to grant access.",
+        secrets: {
+          VERCEL_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          VERCEL_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      VERCEL_TOKEN: "$secrets.VERCEL_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://vercel.com/oauth/authorize",
+      tokenUrl: "https://api.vercel.com/login/oauth/token",
+      scopes: ["openid", "email", "profile", "offline_access"],
+    } as ConnectorOAuthConfig,
+  },
+  sentry: {
+    label: "Sentry",
+    helpText:
+      "Connect your Sentry account to access error tracking and project data",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Sentry to grant access.",
+        secrets: {
+          SENTRY_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          SENTRY_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      SENTRY_TOKEN: "$secrets.SENTRY_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://sentry.io/oauth/authorize/",
+      tokenUrl: "https://sentry.io/oauth/token/",
+      scopes: [
+        "org:read",
+        "project:read",
+        "team:read",
+        "member:read",
+        "event:read",
+        "event:write",
+      ],
+    } as ConnectorOAuthConfig,
+  },
+  "intervals-icu": {
+    label: "Intervals.icu",
+    helpText:
+      "Connect your Intervals.icu account to access training, activity, wellness, and calendar data",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Intervals.icu to grant access.",
+        secrets: {
+          INTERVALS_ICU_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      INTERVALS_ICU_TOKEN: "$secrets.INTERVALS_ICU_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://intervals.icu/oauth/authorize",
+      tokenUrl: "https://intervals.icu/api/oauth/token",
+      scopes: [
+        "ACTIVITY:READ",
+        "ACTIVITY:WRITE",
+        "WELLNESS:READ",
+        "WELLNESS:WRITE",
+        "CALENDAR:READ",
+        "CALENDAR:WRITE",
+      ],
+    } as ConnectorOAuthConfig,
+  },
+  xero: {
+    label: "Xero",
+    helpText:
+      "Connect your Xero account to access accounting data, invoices, and contacts",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Xero to grant access.",
+        secrets: {
+          XERO_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          XERO_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      XERO_TOKEN: "$secrets.XERO_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://login.xero.com/identity/connect/authorize",
+      tokenUrl: "https://identity.xero.com/connect/token",
+      scopes: [
+        "openid",
+        "profile",
+        "email",
+        "offline_access",
+        "accounting.transactions",
+        "accounting.contacts",
+        "accounting.settings",
+      ],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -560,6 +828,7 @@ export const connectorTypeSchema = z.enum([
   "google-sheets",
   "google-docs",
   "google-drive",
+  "google-calendar",
   "notion",
   "computer",
   "slack",
@@ -569,8 +838,15 @@ export const connectorTypeSchema = z.enum([
   "linear",
   "figma",
   "mercury",
+  "reddit",
   "strava",
+  "neon",
   "garmin-connect",
+  "x",
+  "vercel",
+  "sentry",
+  "intervals-icu",
+  "xero",
 ]);
 
 /**
@@ -725,6 +1001,7 @@ export type ConnectorResponse = z.infer<typeof connectorResponseSchema>;
  */
 export const connectorListResponseSchema = z.object({
   connectors: z.array(connectorResponseSchema),
+  configuredTypes: z.array(connectorTypeSchema),
 });
 
 export type ConnectorListResponse = z.infer<typeof connectorListResponseSchema>;

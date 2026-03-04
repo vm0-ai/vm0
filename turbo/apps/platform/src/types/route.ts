@@ -4,6 +4,8 @@ export type RoutePath =
   | "/logs/:id"
   | "/settings"
   | "/settings/slack"
+  | "/settings/github"
+  | "/preferences"
   | "/agents"
   | "/agents/:name"
   | "/agents/:name/logs"
@@ -13,4 +15,7 @@ export type RoutePath =
   | "/provider-setup"
   | "/slack/connect"
   | "/slack/connect/success"
+  | "/settings/telegram"
+  | "/telegram/connect"
+  | "/telegram/connect/success"
   | `/projects/${string}`;

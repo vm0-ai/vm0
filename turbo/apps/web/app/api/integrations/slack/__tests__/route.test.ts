@@ -307,7 +307,7 @@ describe("/api/integrations/slack", () => {
       expect(revokedPermissions).toHaveLength(0);
     });
 
-    it("skips revocation when old agent is SLACK_DEFAULT_AGENT", async () => {
+    it("skips revocation when old agent is VM0_DEFAULT_AGENT", async () => {
       const { userLink, installation } = await givenLinkedSlackUser({
         isAdmin: true,
       });
@@ -319,9 +319,9 @@ describe("/api/integrations/slack", () => {
         installation.defaultComposeId,
       );
 
-      // Set SLACK_DEFAULT_AGENT to match the current default agent
+      // Set VM0_DEFAULT_AGENT to match the current default agent
       vi.stubEnv(
-        "SLACK_DEFAULT_AGENT",
+        "VM0_DEFAULT_AGENT",
         `${defaultCompose!.scopeSlug}/${defaultCompose!.composeName}`,
       );
       reloadEnv();

@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.14.0](https://github.com/vm0-ai/vm0/compare/docs-v2.13.0...docs-v2.14.0) (2026-03-03)
+
+
+### Features
+
+* **docs:** remove apps field reference from agent anatomy page ([#3479](https://github.com/vm0-ai/vm0/issues/3479)) ([8da5878](https://github.com/vm0-ai/vm0/commit/8da5878599607d61733dceff66666ff25ca8a498))
+* **docs:** remove remaining public api v1 references ([#3469](https://github.com/vm0-ai/vm0/issues/3469)) ([d956347](https://github.com/vm0-ai/vm0/commit/d956347feeb87ffb828eedc01e5fc650e074fa9d))
+
 ## [2.13.0](https://github.com/vm0-ai/vm0/compare/docs-v2.12.0...docs-v2.13.0) (2026-02-12)
 
 

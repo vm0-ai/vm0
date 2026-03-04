@@ -470,7 +470,7 @@ async function markRunFailed(
  * Unified run creation pipeline
  *
  * Validates, creates, and dispatches a run in a single call.
- * All callers (API Route, Public API, Schedule, Slack) should use this.
+ * All callers (API Route, Schedule, Slack) should use this.
  *
  * Pipeline:
  * 1. Check concurrent run limit
@@ -534,6 +534,7 @@ export async function createRun(
       vars: params.vars ?? null,
       secretNames: params.secrets ? Object.keys(params.secrets) : null,
       resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
+      continuedFromSessionId: params.sessionId ?? null,
       scheduleId: params.scheduleId ?? null,
       lastHeartbeatAt: new Date(),
     })

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
-import { POST as createComposeJob } from "../../../../compose/from-github/route";
-import { GET as getComposeJob } from "../../../../compose/from-github/[jobId]/route";
+import { POST as createComposeJob } from "../../../../compose/jobs/route";
+import { GET as getComposeJob } from "../../../../compose/jobs/[jobId]/route";
 import {
   createTestRequest,
   createTestComposeJobToken,
@@ -32,17 +32,14 @@ async function createTestComposeJobViaApi(
   // Create CLI token for authenticated request
   const cliToken = await createTestCliToken(userId);
 
-  const request = createTestRequest(
-    "http://localhost:3000/api/compose/from-github",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${cliToken}`,
-      },
-      body: JSON.stringify({ githubUrl }),
+  const request = createTestRequest("http://localhost:3000/api/compose/jobs", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${cliToken}`,
     },
-  );
+    body: JSON.stringify({ githubUrl }),
+  });
   const response = await createComposeJob(request);
   const data = await response.json();
 
@@ -76,7 +73,7 @@ async function getTestComposeJobViaApi(
   const cliToken = await createTestCliToken(userId);
 
   const request = createTestRequest(
-    `http://localhost:3000/api/compose/from-github/${jobId}`,
+    `http://localhost:3000/api/compose/jobs/${jobId}`,
     {
       method: "GET",
       headers: {
@@ -467,7 +464,7 @@ describe("POST /api/webhooks/compose/complete", () => {
       mockClerk({ userId: null });
 
       const createRequest = createTestRequest(
-        "http://localhost:3000/api/compose/from-github",
+        "http://localhost:3000/api/compose/jobs",
         {
           method: "POST",
           headers: {
@@ -588,6 +585,7 @@ describe("POST /api/webhooks/compose/complete", () => {
       // Trigger compose job (sandbox creation is pending)
       const result = await triggerComposeJob({
         userId: userLink.vm0UserId,
+        source: "github",
         githubUrl: "https://github.com/owner/failing-repo",
         userToken: "test-token",
       });

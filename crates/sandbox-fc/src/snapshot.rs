@@ -275,7 +275,7 @@ async fn run_with_firecracker(
     info!("instance started, waiting for guest vsock connection");
 
     // 9. Wait for guest to connect via vsock.
-    let mut guest = match vsock_task.await {
+    let guest = match vsock_task.await {
         Ok(Ok(g)) => g,
         Ok(Err(e)) => return Err(SnapshotError::Vsock(e.to_string())),
         Err(e) => return Err(SnapshotError::Vsock(format!("vsock task: {e}"))),

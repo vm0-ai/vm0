@@ -22,7 +22,6 @@ import {
   scheduleRunsContract,
   credentialsMainContract,
   credentialsByNameContract,
-  realtimeTokenContract,
   agentComposeContentSchema,
   type ApiErrorResponse,
   type ScheduleResponse,
@@ -31,7 +30,6 @@ import {
   type ScheduleRunsResponse,
   type CredentialResponse,
   type CredentialListResponse,
-  type AblyTokenRequest,
 } from "@vm0/core";
 import type { z } from "zod";
 import { getApiUrl, getActiveToken } from "./config";
@@ -1132,32 +1130,6 @@ class ApiClient {
     const errorBody = result.body as ApiErrorResponse;
     const message =
       errorBody.error?.message || `Credential "${name}" not found`;
-    throw new Error(message);
-  }
-
-  /**
-   * Get Ably token for realtime event subscription
-   */
-  async getRealtimeToken(runId: string): Promise<AblyTokenRequest> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
-
-    const client = initClient(realtimeTokenContract, {
-      baseUrl,
-      baseHeaders: headers,
-      jsonQuery: false,
-    });
-
-    const result = await client.create({
-      body: { runId },
-    });
-
-    if (result.status === 200) {
-      return result.body;
-    }
-
-    const errorBody = result.body as ApiErrorResponse;
-    const message = errorBody.error?.message || "Failed to get realtime token";
     throw new Error(message);
   }
 

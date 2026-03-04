@@ -1,6 +1,6 @@
 [package]
 name = "runner"
-version = "0.12.3"
+version = "0.15.1"
 edition.workspace = true
 
 [dependencies]
@@ -29,6 +29,15 @@ tar = { workspace = true }
 tempfile = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
 which = { workspace = true }
+
+# These dev-dependencies exist solely for release-please version tracking:
+# cargo-workspace plugin includes dev-dependencies in its dependency graph,
+# so runner-rs gets auto-bumped when any guest crate version changes.
+[dev-dependencies]
+guest-agent = { workspace = true }
+guest-download = { workspace = true }
+guest-init = { workspace = true }
+guest-mock-claude = { workspace = true }
 
 [lints]
 workspace = true

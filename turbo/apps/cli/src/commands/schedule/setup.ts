@@ -43,6 +43,11 @@ const FREQUENCY_CHOICES = [
     value: "once" as const,
     description: "Run once at specific time",
   },
+  {
+    title: "Loop",
+    value: "loop" as const,
+    description: "Run repeatedly at fixed intervals",
+  },
 ];
 
 const DAY_OF_WEEK_CHOICES = [
@@ -128,6 +133,7 @@ interface SetupOptions {
   frequency?: string;
   time?: string;
   day?: string;
+  interval?: string;
   timezone?: string;
   prompt?: string;
   artifactName: string;
@@ -138,12 +144,15 @@ interface ExistingScheduleDefaults {
   frequency?: ScheduleFrequency;
   day?: number;
   time?: string;
+  intervalSeconds?: number;
 }
 
 interface ScheduleListItem {
   composeName: string;
+  triggerType?: "cron" | "once" | "loop";
   cronExpression?: string | null;
   atTime?: string | null;
+  intervalSeconds?: number | null;
   timezone: string;
   prompt: string;
   vars?: Record<string, string> | null;
@@ -159,7 +168,10 @@ function getExistingDefaults(
 ): ExistingScheduleDefaults {
   const defaults: ExistingScheduleDefaults = {};
 
-  if (existingSchedule?.cronExpression) {
+  if (existingSchedule?.triggerType === "loop") {
+    defaults.frequency = "loop";
+    defaults.intervalSeconds = existingSchedule.intervalSeconds ?? undefined;
+  } else if (existingSchedule?.cronExpression) {
     const parsed = parseFrequencyFromCron(existingSchedule.cronExpression);
     if (parsed) {
       defaults.frequency = parsed.frequency;
@@ -182,13 +194,16 @@ async function gatherFrequency(
 ): Promise<ScheduleFrequency | null> {
   let frequency = optionFrequency as ScheduleFrequency | undefined;
 
-  if (frequency && ["daily", "weekly", "monthly", "once"].includes(frequency)) {
+  if (
+    frequency &&
+    ["daily", "weekly", "monthly", "once", "loop"].includes(frequency)
+  ) {
     return frequency;
   }
 
   if (!isInteractive()) {
     console.error(
-      chalk.red("✗ --frequency is required (daily|weekly|monthly|once)"),
+      chalk.red("✗ --frequency is required (daily|weekly|monthly|once|loop)"),
     );
     process.exit(1);
   }
@@ -415,6 +430,48 @@ async function resolveAgent(agentName: string): Promise<{
 }
 
 /**
+ * Gather interval for loop schedules
+ */
+async function gatherInterval(
+  optionInterval: string | undefined,
+  existingInterval: number | undefined,
+): Promise<number | null> {
+  if (optionInterval) {
+    const val = parseInt(optionInterval, 10);
+    if (isNaN(val) || val < 0) {
+      console.error(
+        chalk.red(
+          "✗ Invalid interval. Must be a non-negative integer (seconds)",
+        ),
+      );
+      process.exit(1);
+    }
+    return val;
+  }
+
+  if (!isInteractive()) {
+    console.error(
+      chalk.red("✗ --interval is required for loop schedules (seconds)"),
+    );
+    process.exit(1);
+  }
+
+  const defaultVal =
+    existingInterval !== undefined ? String(existingInterval) : "300";
+  const result = await promptText(
+    "Interval in seconds (time between runs)",
+    defaultVal,
+    (v: string) => {
+      const n = parseInt(v, 10);
+      if (isNaN(n) || n < 0) return "Must be a non-negative integer";
+      return true;
+    },
+  );
+  if (!result) return null;
+  return parseInt(result, 10);
+}
+
+/**
  * Gather timing configuration (day, time, atTime) based on frequency
  */
 async function gatherTiming(
@@ -425,7 +482,22 @@ async function gatherTiming(
   day: number | undefined;
   time: string | undefined;
   atTime: string | undefined;
+  intervalSeconds: number | undefined;
 } | null> {
+  if (frequency === "loop") {
+    const intervalSeconds = await gatherInterval(
+      options.interval,
+      defaults.intervalSeconds,
+    );
+    if (intervalSeconds === null) return null;
+    return {
+      day: undefined,
+      time: undefined,
+      atTime: undefined,
+      intervalSeconds,
+    };
+  }
+
   if (frequency === "once") {
     const result = await gatherOneTimeSchedule(
       options.day,
@@ -433,7 +505,12 @@ async function gatherTiming(
       defaults.time,
     );
     if (!result) return null;
-    return { day: undefined, time: undefined, atTime: result };
+    return {
+      day: undefined,
+      time: undefined,
+      atTime: result,
+      intervalSeconds: undefined,
+    };
   }
 
   const day =
@@ -445,7 +522,7 @@ async function gatherTiming(
   const time = await gatherRecurringTime(options.time, defaults.time);
   if (!time) return null;
 
-  return { day, time, atTime: undefined };
+  return { day, time, atTime: undefined, intervalSeconds: undefined };
 }
 
 /**
@@ -461,10 +538,12 @@ async function findExistingSchedule(
 interface DeployResult {
   created: boolean;
   schedule: {
+    triggerType?: "cron" | "once" | "loop";
     timezone: string;
     cronExpression?: string | null;
     nextRunAt?: string | null;
     atTime?: string | null;
+    intervalSeconds?: number | null;
   };
 }
 
@@ -481,6 +560,7 @@ async function buildAndDeploy(params: {
   time: string | undefined;
   day: number | undefined;
   atTime: string | undefined;
+  intervalSeconds: number | undefined;
   timezone: string;
   prompt: string;
   artifactName: string;
@@ -488,7 +568,9 @@ async function buildAndDeploy(params: {
   let cronExpression: string | undefined;
   let atTimeISO: string | undefined;
 
-  if (params.atTime) {
+  if (params.frequency === "loop") {
+    // Loop mode: intervalSeconds is passed directly
+  } else if (params.atTime) {
     atTimeISO = toISODateTime(params.atTime);
   } else if (params.time && params.frequency !== "once") {
     cronExpression = generateCronExpression(
@@ -507,6 +589,7 @@ async function buildAndDeploy(params: {
     composeId: params.composeId,
     cronExpression,
     atTime: atTimeISO,
+    intervalSeconds: params.intervalSeconds,
     timezone: params.timezone,
     prompt: params.prompt,
     artifactName: params.artifactName,
@@ -534,7 +617,16 @@ function displayDeployResult(
 
   console.log(chalk.dim(`  Timezone: ${deployResult.schedule.timezone}`));
 
-  if (deployResult.schedule.cronExpression) {
+  if (
+    deployResult.schedule.triggerType === "loop" &&
+    deployResult.schedule.intervalSeconds != null
+  ) {
+    console.log(
+      chalk.dim(
+        `  Mode: Loop (interval ${deployResult.schedule.intervalSeconds}s)`,
+      ),
+    );
+  } else if (deployResult.schedule.cronExpression) {
     console.log(chalk.dim(`  Cron: ${deployResult.schedule.cronExpression}`));
     if (deployResult.schedule.nextRunAt) {
       const nextRun = formatInTimezone(
@@ -630,9 +722,10 @@ export const setupCommand = new Command()
   .name("setup")
   .description("Create or edit a schedule for an agent")
   .argument("<agent-name>", "Agent name to configure schedule for")
-  .option("-f, --frequency <type>", "Frequency: daily|weekly|monthly|once")
+  .option("-f, --frequency <type>", "Frequency: daily|weekly|monthly|once|loop")
   .option("-t, --time <HH:MM>", "Time to run (24-hour format)")
   .option("-d, --day <day>", "Day of week (mon-sun) or day of month (1-31)")
+  .option("-i, --interval <seconds>", "Interval in seconds for loop mode")
   .option("-z, --timezone <tz>", "IANA timezone")
   .option("-p, --prompt <text>", "Prompt to run")
   .option("--artifact-name <name>", "Artifact name", "artifact")
@@ -673,7 +766,7 @@ export const setupCommand = new Command()
         console.log(chalk.dim("Cancelled"));
         return;
       }
-      const { day, time, atTime } = timing;
+      const { day, time, atTime, intervalSeconds } = timing;
 
       // 5. Gather timezone
       const timezone = await gatherTimezone(
@@ -706,6 +799,7 @@ export const setupCommand = new Command()
         time,
         day,
         atTime,
+        intervalSeconds,
         timezone,
         prompt: promptText_,
         artifactName: options.artifactName,

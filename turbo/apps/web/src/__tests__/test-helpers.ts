@@ -120,6 +120,9 @@ interface S3Mocks {
       contentType: string,
     ) => Promise<void>
   >;
+  deleteS3Objects: MockInstance<
+    (bucket: string, keys: string[]) => Promise<void>
+  >;
 }
 
 /**
@@ -332,6 +335,9 @@ export function testContext(): TestContext {
         }),
       putS3Object: vi
         .spyOn(s3Client, "putS3Object")
+        .mockResolvedValue(undefined),
+      deleteS3Objects: vi
+        .spyOn(s3Client, "deleteS3Objects")
         .mockResolvedValue(undefined),
     };
 

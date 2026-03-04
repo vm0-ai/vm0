@@ -131,17 +131,16 @@ vm0 run resume 61cddb1f-b83a-4b89-8785-97df099fe61f "try different approach"
 
 <Accordion title="How do I list all my previous runs?">
 
-Currently, there's no dedicated CLI command to list runs. However, you can:
+You can list your runs using the CLI:
 
-1. **Check your artifacts** to see what agents have produced:
+1. **List recent runs** with the CLI:
    ```bash
-   vm0 artifact list
+   vm0 run list
    ```
 
-2. **Use the API** to query runs:
+2. **Check your artifacts** to see what agents have produced:
    ```bash
-   curl -H "Authorization: Bearer $VM0_TOKEN" \
-     https://api.vm0.ai/v1/runs
+   vm0 artifact list
    ```
 
 3. **View in the web dashboard** at [vm0.ai](https://vm0.ai)
@@ -160,13 +159,6 @@ The Run ID will be displayed immediately. You can then check the logs later:
 
 ```bash
 vm0 logs 11007483-20b2-42b1-8f2a-b42a10186810
-```
-
-Or use the API to check the run status:
-
-```bash
-curl -H "Authorization: Bearer $VM0_TOKEN" \
-  https://api.vm0.ai/v1/runs/11007483-20b2-42b1-8f2a-b42a10186810
 ```
 
 </Accordion>

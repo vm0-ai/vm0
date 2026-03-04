@@ -30,12 +30,7 @@ describe("system image constants", () => {
   });
 
   it("has correct system images array", () => {
-    expect(SYSTEM_IMAGES).toEqual([
-      "claude-code",
-      "codex",
-      "claude-code-github",
-      "codex-github",
-    ]);
+    expect(SYSTEM_IMAGES).toEqual(["claude-code", "codex"]);
   });
 
   it("has correct valid tags", () => {
@@ -89,6 +84,23 @@ describe("resolveSystemImageToE2b", () => {
     it("converts vm0/codex:latest to vm0-codex", () => {
       const result = resolveSystemImageToE2b("codex", "latest");
       expect(result.e2bTemplate).toBe("vm0-codex");
+    });
+  });
+
+  describe("legacy github aliases", () => {
+    it("resolves claude-code-github to vm0-claude-code", () => {
+      const result = resolveSystemImageToE2b("claude-code-github");
+      expect(result.e2bTemplate).toBe("vm0-claude-code");
+    });
+
+    it("resolves codex-github to vm0-codex", () => {
+      const result = resolveSystemImageToE2b("codex-github");
+      expect(result.e2bTemplate).toBe("vm0-codex");
+    });
+
+    it("resolves claude-code-github:latest to vm0-claude-code", () => {
+      const result = resolveSystemImageToE2b("claude-code-github", "latest");
+      expect(result.e2bTemplate).toBe("vm0-claude-code");
     });
   });
 
@@ -146,7 +158,7 @@ describe("getLegacySystemTemplateWarning", () => {
     it("returns warning for vm0-github-cli", () => {
       const warning = getLegacySystemTemplateWarning("vm0-github-cli");
       expect(warning).toContain("deprecated");
-      expect(warning).toContain("apps: [github]");
+      expect(warning).toContain("GitHub CLI is now included in the base image");
     });
 
     it("returns generic warning for other vm0-* formats", () => {

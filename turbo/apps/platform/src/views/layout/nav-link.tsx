@@ -1,4 +1,3 @@
-import { useSet } from "ccstate-react";
 import {
   IconRobot,
   IconCircleDotFilled,
@@ -26,7 +25,7 @@ import {
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
 import type { NavIconName, NavItem } from "../../types/navigation.ts";
-import { navigateInReact$ } from "../../signals/route.ts";
+import { Link } from "../router/link.tsx";
 
 function getIconComponent(name: NavIconName): Icon {
   const map: Record<NavIconName, Icon> = {
@@ -58,45 +57,51 @@ interface NavLinkProps {
 }
 
 export function NavLink({ item, isActive, collapsed }: NavLinkProps) {
-  const navigate = useSet(navigateInReact$);
   const IconComponent = getIconComponent(item.icon);
 
-  const handleClick = () => {
-    if (item.path) {
-      // Clear search params to ensure navigation goes to base route with clean state
-      navigate(item.path, { searchParams: new URLSearchParams() });
-    } else if (item.url) {
-      if (item.newTab) {
-        window.open(item.url, "_blank");
-      } else {
-        window.location.href = item.url;
-      }
-    }
-  };
+  const className = `flex w-full items-center h-8 p-2 rounded-lg text-sm leading-5 transition-colors ${
+    collapsed ? "justify-center" : "gap-2"
+  } ${
+    isActive
+      ? "bg-sidebar-active text-sidebar-primary font-medium"
+      : "text-sidebar-foreground hover:bg-sidebar-accent"
+  }`;
 
-  const button = (
-    <button
-      onClick={handleClick}
-      className={`flex w-full items-center h-8 p-2 rounded-lg text-sm leading-5 transition-colors ${
-        collapsed ? "justify-center" : "gap-2"
-      } ${
-        isActive
-          ? "bg-sidebar-active text-sidebar-primary font-medium"
-          : "text-sidebar-foreground hover:bg-sidebar-accent"
-      }`}
-    >
+  const content = (
+    <>
       {IconComponent && (
         <IconComponent size={16} stroke={1.5} className="shrink-0" />
       )}
       {!collapsed && <span className="truncate">{item.label}</span>}
-    </button>
+    </>
+  );
+
+  // Internal path → use Link for SPA navigation with cmd+click support
+  const element = item.path ? (
+    <Link
+      pathname={item.path}
+      options={{ searchParams: new URLSearchParams() }}
+      className={className}
+    >
+      {content}
+    </Link>
+  ) : (
+    // External URL → native <a> tag
+    <a
+      href={item.url}
+      target={item.newTab ? "_blank" : undefined}
+      rel={item.newTab ? "noopener noreferrer" : undefined}
+      className={className}
+    >
+      {content}
+    </a>
   );
 
   if (collapsed) {
     return (
       <TooltipProvider delayDuration={100}>
         <Tooltip>
-          <TooltipTrigger asChild>{button}</TooltipTrigger>
+          <TooltipTrigger asChild>{element}</TooltipTrigger>
           <TooltipContent side="right">
             <p className="text-xs">{item.label}</p>
           </TooltipContent>
@@ -105,5 +110,5 @@ export function NavLink({ item, isActive, collapsed }: NavLinkProps) {
     );
   }
 
-  return button;
+  return element;
 }

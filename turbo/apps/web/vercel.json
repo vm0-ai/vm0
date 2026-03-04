@@ -18,6 +18,10 @@
     {
       "path": "/api/cron/aggregate-usage",
       "schedule": "5 0 * * *"
+    },
+    {
+      "path": "/api/cron/telegram-cleanup",
+      "schedule": "0 1 * * *"
     }
   ]
 }

@@ -4,11 +4,11 @@ import * as Sentry from "@sentry/react";
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,
 
-  // Only enable in production
-  enabled: import.meta.env.PROD,
+  // Only enable when DSN is configured
+  enabled: !!import.meta.env.VITE_SENTRY_DSN,
 
   // Set environment (Vercel provides VITE_VERCEL_ENV in builds)
-  environment: import.meta.env.VITE_VERCEL_ENV || import.meta.env.MODE,
+  environment: import.meta.env.VITE_VERCEL_ENV,
 
   // Set app tag to distinguish from web app
   initialScope: {
