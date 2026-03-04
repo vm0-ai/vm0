@@ -122,7 +122,7 @@ export async function GET(request: Request) {
   }
 
   // Resolve user scope and get existing secrets, vars, connectors
-  const { scope } = await resolveScope(userId);
+  const { scope } = await resolveScope(userId, authHeader ?? undefined);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(scope.id),
     listVariables(scope.id),
@@ -257,7 +257,10 @@ export async function PATCH(request: Request) {
     }
   } else {
     try {
-      ({ scope: targetScope } = await resolveScope(userId));
+      ({ scope: targetScope } = await resolveScope(
+        userId,
+        authHeader ?? undefined,
+      ));
     } catch (error) {
       if (isNotFound(error)) {
         return NextResponse.json(

@@ -329,7 +329,7 @@ export async function PATCH(request: Request) {
     }
     targetScopeId = targetScope.id;
   } else {
-    const { scope } = await resolveScope(userId);
+    const { scope } = await resolveScope(userId, authHeader ?? undefined);
     targetScopeId = scope.id;
   }
 
