@@ -1,4 +1,3 @@
-// trigger ci
 mod cmd;
 mod config;
 mod deps;
