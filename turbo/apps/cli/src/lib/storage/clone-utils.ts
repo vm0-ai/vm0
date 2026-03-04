@@ -32,7 +32,7 @@ export async function cloneStorage(
   destination: string,
   options: CloneOptions = {},
 ): Promise<CloneResult> {
-  const typeLabel = type === "artifact" ? "artifact" : "volume";
+  const typeLabel = type;
 
   // Check if destination already exists and is non-empty
   const dirStatus = checkDirectoryStatus(destination);
