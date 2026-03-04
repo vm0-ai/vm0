@@ -4,7 +4,6 @@
 #
 # Prerequisites:
 #   - VM0_API_URL: Vercel preview URL (set in ~/.vm0/config.json via test token)
-#   - ANTHROPIC_API_KEY: Real API key for Claude
 #   - Agent already created via `vm0 compose`
 #
 # Usage: ./stress-test.sh <agent_name> <job_count> <prompt> <timeout_minutes> <total_capacity>
@@ -16,11 +15,6 @@ JOB_COUNT="${2:?Error: job_count is required}"
 PROMPT="${3:?Error: prompt is required}"
 TIMEOUT_MINUTES="${4:?Error: timeout_minutes is required}"
 TOTAL_CAPACITY="${5:?Error: total_capacity is required}"
-
-if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-  echo "Error: ANTHROPIC_API_KEY environment variable is required"
-  exit 1
-fi
 
 TIMEOUT_SECONDS=$((TIMEOUT_MINUTES * 60))
 START_TIME=$(date +%s)
@@ -47,9 +41,7 @@ run_job() {
 
   # vm0 run blocks until completion, captures output and exit code
   local output exit_code=0
-  output=$(timeout "${TIMEOUT_SECONDS}" vm0 run "$AGENT_NAME" "$PROMPT" \
-    --secrets "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" \
-    --debug-no-mock-claude 2>&1) || exit_code=$?
+  output=$(timeout "${TIMEOUT_SECONDS}" vm0 run "$AGENT_NAME" "$PROMPT" 2>&1) || exit_code=$?
 
   local job_end
   job_end=$(date +%s)
