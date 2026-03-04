@@ -188,7 +188,6 @@ export const runsMainContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
-      429: apiErrorSchema,
     },
     summary: "Create and execute agent run",
   },
