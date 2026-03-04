@@ -27,6 +27,14 @@ INSERT INTO scope_members (id, scope_id, user_id, role, timezone, notify_email, 
 SELECT gen_random_uuid(), id, owner_id, 'owner', timezone, notify_email, notify_slack, created_at, now()
 FROM scopes WHERE owner_id IS NOT NULL;--> statement-breakpoint
 
+-- Backfill: create scope_members from org_access_tokens (for org members)
+INSERT INTO scope_members (id, scope_id, user_id, role, created_at, updated_at)
+SELECT DISTINCT ON (scope_id, user_id)
+  gen_random_uuid(), scope_id, user_id, role, created_at, now()
+FROM org_access_tokens
+ORDER BY scope_id, user_id, created_at DESC
+ON CONFLICT (scope_id, user_id) DO NOTHING;--> statement-breakpoint
+
 -- Backfill: set userId on resource tables from scope owner
 UPDATE secrets s SET user_id = sc.owner_id FROM scopes sc WHERE s.scope_id = sc.id;--> statement-breakpoint
 UPDATE variables v SET user_id = sc.owner_id FROM scopes sc WHERE v.scope_id = sc.id;--> statement-breakpoint

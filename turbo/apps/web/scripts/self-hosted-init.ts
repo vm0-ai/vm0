@@ -69,7 +69,7 @@ async function main() {
         .values({
           scopeId,
           userId: SELF_HOSTED_USER_ID,
-          role: "owner",
+          role: "admin",
         })
         .onConflictDoNothing();
     }

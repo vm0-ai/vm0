@@ -1,6 +1,10 @@
 import { resolveOrgAccessToken } from "../org/org-token-service";
 import { getScopeBySlug, getScopeById } from "./scope-service";
-import { requireScopeMember, getDefaultScope } from "./scope-member-service";
+import {
+  requireScopeMember,
+  ensureScopeMember,
+  getDefaultScope,
+} from "./scope-member-service";
 import { notFound } from "../errors";
 
 /**
@@ -36,7 +40,13 @@ export async function resolveScope(
     if (orgAuth) {
       const scope = await getScopeById(orgAuth.scopeId);
       if (scope) {
-        const member = await requireScopeMember(scope.id, userId);
+        // Lazy-create: org token was generated after Clerk verification,
+        // so the user is a verified member — ensure scope_members record exists
+        const member = await ensureScopeMember(
+          scope.id,
+          orgAuth.userId,
+          orgAuth.role,
+        );
         return { scope, member };
       }
     }
