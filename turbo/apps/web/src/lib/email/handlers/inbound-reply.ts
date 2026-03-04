@@ -7,9 +7,9 @@ import {
   verifyReplyToken,
   lookupEmailThreadSession,
   computeReplyRecipients,
+  getFromDomain,
   type HandlerResult,
 } from "./shared";
-import { env } from "../../../env";
 import { createRun } from "../../run";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { logger } from "../../logger";
@@ -89,7 +89,7 @@ export async function handleInboundEmailReply(
     to: email.to,
     cc: email.cc,
     replyTo: email.replyTo,
-    botDomain: env().RESEND_FROM_DOMAIN ?? "",
+    botDomain: getFromDomain(),
   });
 
   // 6. Extract inbound Message-ID and References for threading (case-insensitive lookup)
@@ -103,7 +103,7 @@ export async function handleInboundEmailReply(
   );
   const inboundReferences = referencesKey ? headers[referencesKey] : undefined;
 
-  // 6. Extract email body (prefer HTML, fallback to text, strip quotes)
+  // 7. Extract email body (prefer HTML, fallback to text, strip quotes)
   let replyContent = extractEmailBody(email.html, email.text);
   if (!replyContent.trim()) {
     log.debug("Empty reply content after stripping", { emailId });
@@ -113,13 +113,13 @@ export async function handleInboundEmailReply(
     };
   }
 
-  // 6b. Process attachments and append to reply content
+  // 7b. Process attachments and append to reply content
   const attachmentText = await processEmailAttachments(emailId);
   if (attachmentText) {
     replyContent = `${replyContent}\n\n${attachmentText}`;
   }
 
-  // 7. Get compose to find agent name and version
+  // 8. Get compose to find agent name and version
   const [compose] = await globalThis.services.db
     .select({
       name: agentComposes.name,
@@ -139,7 +139,7 @@ export async function handleInboundEmailReply(
     };
   }
 
-  // 8. Build callbacks for email reply notification
+  // 9. Build callbacks for email reply notification
   const callbacks = [
     {
       url: `${getApiUrl()}/api/internal/callbacks/email/reply`,
@@ -155,7 +155,7 @@ export async function handleInboundEmailReply(
     },
   ];
 
-  // 9. Create and dispatch run via unified pipeline
+  // 10. Create and dispatch run via unified pipeline
   const result = await createRun({
     userId: session.userId,
     agentComposeVersionId: compose.headVersionId ?? "",

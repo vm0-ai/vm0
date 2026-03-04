@@ -267,7 +267,7 @@ export function verifyReplyToken(token: string): string | null {
   return isValid ? sessionId : null;
 }
 
-function getFromDomain(): string {
+export function getFromDomain(): string {
   const domain = env().RESEND_FROM_DOMAIN;
   if (!domain) {
     throw new Error("RESEND_FROM_DOMAIN is not configured");
