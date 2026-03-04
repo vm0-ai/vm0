@@ -376,6 +376,7 @@ export {
   webhookComposeCompleteContract,
   composeJobStatusSchema,
   composeJobResultSchema,
+  composeJobSourceSchema,
   createComposeJobRequestSchema,
   composeJobResponseSchema,
   type ComposeJobsMainContract,
@@ -383,6 +384,7 @@ export {
   type WebhookComposeCompleteContract,
   type ComposeJobStatus,
   type ComposeJobResult,
+  type ComposeJobSource,
   type CreateComposeJobRequest,
   type ComposeJobResponse,
 } from "./compose-jobs";

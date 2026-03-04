@@ -1,5 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { composeJobs } from "../../db/schema/compose-job";
+import type { ComposeJobSource } from "../../db/schema/compose-job";
 import { generateComposeJobToken } from "../auth/sandbox-token";
 import { Sandbox } from "@e2b/code-interpreter";
 import { env } from "../../env";
@@ -32,11 +33,11 @@ function getApiUrl(): string {
 }
 
 /**
- * Inline sandbox script for compose-from-github.
+ * Inline sandbox script for compose jobs.
  *
  * This script runs in E2B sandbox and:
- * 1. Installs vm0 CLI
- * 2. Executes `vm0 compose <github_url> --yes --experimental-shared-compose`
+ * 1. Determines compose mode (github URL or platform content)
+ * 2. Executes `vm0 compose <target> --json`
  * 3. Parses CLI output and sends result to webhook
  *
  * Using CLI ensures full feature parity including:
@@ -49,7 +50,9 @@ const { spawnSync } = require('child_process');
 
 // Environment variables
 const JOB_ID = process.env.VM0_JOB_ID || '';
+const COMPOSE_MODE = process.env.VM0_COMPOSE_MODE || 'github';
 const GITHUB_URL = process.env.VM0_GITHUB_URL || '';
+const COMPOSE_FILE = process.env.VM0_COMPOSE_FILE || '';
 const VM0_TOKEN = process.env.VM0_TOKEN || '';
 const VM0_API_URL = process.env.VM0_API_URL || '';
 const WEBHOOK_URL = process.env.VM0_WEBHOOK_URL || '';
@@ -58,7 +61,7 @@ const VERCEL_BYPASS = process.env.VERCEL_PROTECTION_BYPASS || '';
 
 function log(level, msg) {
   const ts = new Date().toISOString();
-  console.error('[' + ts + '] [' + level + '] [compose-github] ' + msg);
+  console.error('[' + ts + '] [' + level + '] [compose-job] ' + msg);
 }
 
 async function httpPost(url, data) {
@@ -108,14 +111,30 @@ async function reportCompletion(success, result, error) {
 }
 
 async function main() {
-  log('INFO', 'Starting compose job: ' + JOB_ID);
-  log('INFO', 'GitHub URL: ' + GITHUB_URL);
-  log('INFO', 'API URL: ' + VM0_API_URL);
+  log('INFO', 'Starting compose job: ' + JOB_ID + ' (mode: ' + COMPOSE_MODE + ')');
 
-  // Validate
-  if (!JOB_ID || !GITHUB_URL || !VM0_TOKEN || !VM0_API_URL || !WEBHOOK_URL || !WEBHOOK_TOKEN) {
+  // Validate common environment variables
+  if (!JOB_ID || !VM0_TOKEN || !VM0_API_URL || !WEBHOOK_URL || !WEBHOOK_TOKEN) {
     await reportCompletion(false, null, 'Missing required environment variables');
     process.exit(1);
+  }
+
+  // Determine compose target based on mode
+  let composeTarget;
+  if (COMPOSE_MODE === 'github') {
+    if (!GITHUB_URL) {
+      await reportCompletion(false, null, 'Missing GitHub URL');
+      process.exit(1);
+    }
+    log('INFO', 'GitHub URL: ' + GITHUB_URL);
+    composeTarget = GITHUB_URL;
+  } else {
+    if (!COMPOSE_FILE) {
+      await reportCompletion(false, null, 'Missing compose file path');
+      process.exit(1);
+    }
+    log('INFO', 'Compose file: ' + COMPOSE_FILE);
+    composeTarget = COMPOSE_FILE;
   }
 
   // Execute vm0 compose with --json for structured output
@@ -123,8 +142,7 @@ async function main() {
   log('INFO', 'Running vm0 compose...');
   const result = spawnSync('vm0', [
     'compose',
-    GITHUB_URL,
-    '--experimental-shared-compose',
+    composeTarget,
     '--json',
   ], {
     env: {
@@ -179,32 +197,68 @@ main().catch(async (error) => {
 `;
 
 /**
+ * Extract instructions filename from compose content.
+ * Looks for the `instructions` field in the first agent's config.
+ */
+function getInstructionsFilename(
+  content: Record<string, unknown>,
+): string | undefined {
+  const agents = content.agents as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  if (!agents) return undefined;
+  const agentName = Object.keys(agents)[0];
+  if (!agentName) return undefined;
+  return agents[agentName]?.instructions as string | undefined;
+}
+
+/**
+ * Compose job sandbox parameters
+ */
+type SandboxComposeParams =
+  | { mode: "github"; githubUrl: string }
+  | {
+      mode: "platform";
+      content: Record<string, unknown>;
+      instructions?: string;
+    };
+
+/**
  * Spawn E2B sandbox for compose job (fire-and-forget)
  */
 async function spawnComposeJobSandbox(
   jobId: string,
-  githubUrl: string,
+  params: SandboxComposeParams,
   userToken: string,
   webhookToken: string,
 ): Promise<void> {
   const apiUrl = getApiUrl();
   const webhookUrl = `${apiUrl}/api/webhooks/compose/complete`;
 
-  log.debug(`Creating sandbox for job ${jobId}...`);
+  log.debug(`Creating sandbox for job ${jobId} (mode: ${params.mode})...`);
+
+  // Build environment variables based on mode
+  const sandboxEnvs: Record<string, string> = {
+    VM0_JOB_ID: jobId,
+    VM0_COMPOSE_MODE: params.mode,
+    VM0_TOKEN: userToken,
+    VM0_API_URL: apiUrl,
+    VM0_WEBHOOK_URL: webhookUrl,
+    VM0_WEBHOOK_TOKEN: webhookToken,
+    ...(env().VERCEL_AUTOMATION_BYPASS_SECRET && {
+      VERCEL_PROTECTION_BYPASS: env().VERCEL_AUTOMATION_BYPASS_SECRET,
+    }),
+  };
+
+  if (params.mode === "github") {
+    sandboxEnvs.VM0_GITHUB_URL = params.githubUrl;
+  } else {
+    sandboxEnvs.VM0_COMPOSE_FILE = "/tmp/compose/vm0.yaml";
+  }
 
   const sandbox = await Sandbox.create(e2bConfig.cliTemplate, {
     timeoutMs: 5 * 60 * 1000,
-    envs: {
-      VM0_JOB_ID: jobId,
-      VM0_GITHUB_URL: githubUrl,
-      VM0_TOKEN: userToken,
-      VM0_API_URL: apiUrl,
-      VM0_WEBHOOK_URL: webhookUrl,
-      VM0_WEBHOOK_TOKEN: webhookToken,
-      ...(env().VERCEL_AUTOMATION_BYPASS_SECRET && {
-        VERCEL_PROTECTION_BYPASS: env().VERCEL_AUTOMATION_BYPASS_SECRET,
-      }),
-    },
+    envs: sandboxEnvs,
   });
 
   log.debug(`Sandbox created: ${sandbox.sandboxId}`);
@@ -218,7 +272,25 @@ async function spawnComposeJobSandbox(
     })
     .where(and(eq(composeJobs.id, jobId), eq(composeJobs.status, "pending")));
 
-  const scriptPath = "/tmp/compose-github.js";
+  // Write compose content files for platform mode
+  if (params.mode === "platform") {
+    const yamlContent = JSON.stringify(params.content, null, 2);
+    await sandbox.files.write("/tmp/compose/vm0.yaml", yamlContent);
+
+    // Write instructions file if provided
+    if (params.instructions) {
+      const instructionsFilename = getInstructionsFilename(params.content);
+      if (instructionsFilename) {
+        await sandbox.files.write(
+          `/tmp/compose/${instructionsFilename}`,
+          params.instructions,
+        );
+      }
+    }
+  }
+
+  // Write and run the compose script
+  const scriptPath = "/tmp/compose-job.js";
   await sandbox.files.write(scriptPath, COMPOSE_SANDBOX_SCRIPT);
 
   sandbox.commands
@@ -263,24 +335,38 @@ async function spawnComposeJobSandbox(
 interface TriggerComposeJobResult {
   jobId: string;
   status: string;
-  githubUrl: string;
+  githubUrl: string | null;
+  source: ComposeJobSource;
   createdAt: Date;
   isExisting: boolean;
 }
 
 /**
- * Trigger a compose-from-github job.
+ * Trigger a compose job from any source.
  * Reusable internal function callable from both the HTTP endpoint and Slack handler.
  *
  * No Slack-specific parameters — pure compose domain.
  */
-export async function triggerComposeJob(params: {
-  userId: string;
-  githubUrl: string;
-  userToken: string;
-  overwrite?: boolean;
-}): Promise<TriggerComposeJobResult> {
-  const { userId, githubUrl, userToken, overwrite = false } = params;
+type TriggerComposeJobParams =
+  | {
+      userId: string;
+      userToken: string;
+      source: "github";
+      githubUrl: string;
+      overwrite?: boolean;
+    }
+  | {
+      userId: string;
+      userToken: string;
+      source: "platform";
+      content: Record<string, unknown>;
+      instructions?: string;
+    };
+
+export async function triggerComposeJob(
+  params: TriggerComposeJobParams,
+): Promise<TriggerComposeJobResult> {
+  const { userId, userToken, source } = params;
 
   // Idempotency: Check for existing active job for this user
   const [existingJob] = await globalThis.services.db
@@ -300,6 +386,7 @@ export async function triggerComposeJob(params: {
       jobId: existingJob.id,
       status: existingJob.status,
       githubUrl: existingJob.githubUrl,
+      source: existingJob.source,
       createdAt: existingJob.createdAt,
       isExisting: true,
     };
@@ -312,9 +399,11 @@ export async function triggerComposeJob(params: {
     .values({
       id: jobId,
       userId,
-      githubUrl,
-      overwrite,
+      source,
       status: "pending",
+      ...(params.source === "github"
+        ? { githubUrl: params.githubUrl, overwrite: params.overwrite ?? false }
+        : { content: params.content, instructions: params.instructions }),
     })
     .returning();
 
@@ -323,8 +412,18 @@ export async function triggerComposeJob(params: {
   // Generate webhook token
   const webhookToken = await generateComposeJobToken(userId, jobId);
 
+  // Build sandbox params
+  const sandboxParams: SandboxComposeParams =
+    params.source === "github"
+      ? { mode: "github", githubUrl: params.githubUrl }
+      : {
+          mode: "platform",
+          content: params.content,
+          instructions: params.instructions,
+        };
+
   // Fire-and-forget: Spawn sandbox asynchronously
-  spawnComposeJobSandbox(jobId, githubUrl, userToken, webhookToken).catch(
+  spawnComposeJobSandbox(jobId, sandboxParams, userToken, webhookToken).catch(
     async (error) => {
       log.error(`Failed to spawn sandbox for job ${jobId}:`, error);
       const errorMessage =
@@ -352,6 +451,7 @@ export async function triggerComposeJob(params: {
     jobId: newJob!.id,
     status: "pending",
     githubUrl: newJob!.githubUrl,
+    source: newJob!.source,
     createdAt: newJob!.createdAt,
     isExisting: false,
   };

@@ -209,17 +209,20 @@ describe("config dialog", () => {
 
     let capturedBody: unknown = null;
     server.use(
-      http.post("/api/agent/composes", async ({ request }) => {
+      http.post("/api/compose/jobs", async ({ request }) => {
         capturedBody = await request.json();
         return HttpResponse.json(
           {
-            composeId: "compose_1",
-            name: "my-agent",
-            versionId: "version_2",
-            action: "existing",
-            updatedAt: "2024-01-02T00:00:00Z",
+            jobId: "job_1",
+            status: "completed",
+            result: {
+              composeId: "compose_1",
+              composeName: "my-agent",
+              versionId: "version_2",
+              warnings: [],
+            },
           },
-          { status: 200 },
+          { status: 201 },
         );
       }),
     );
@@ -243,7 +246,7 @@ describe("config dialog", () => {
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
 
     await vi.waitFor(() => {
       expect(
@@ -258,9 +261,9 @@ describe("config dialog", () => {
     mockAgentDetailAPI();
 
     server.use(
-      http.post("/api/agent/composes", () => {
+      http.post("/api/compose/jobs", () => {
         return HttpResponse.json(
-          { message: "Validation failed" },
+          { error: { message: "Validation failed" } },
           { status: 400 },
         );
       }),
@@ -285,7 +288,7 @@ describe("config dialog", () => {
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
 
     await vi.waitFor(() => {
       expect(screen.getByText("Validation failed")).toBeInTheDocument();

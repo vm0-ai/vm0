@@ -4,6 +4,7 @@ import { pathParams$, searchParams$, updateSearchParams$ } from "../route.ts";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
+import { triggerAndPollComposeJob } from "./compose-job.ts";
 import type { AgentDetail, AgentInstructions } from "./types.ts";
 
 const L = logger("AgentDetail");
@@ -244,37 +245,30 @@ export const cancelEditInstructions$ = command(({ set }) => {
   set(editedInstructionsContent$, null);
 });
 
-const saveInstructionsLoading$ = state(false);
-export const isSavingInstructions$ = computed((get) =>
-  get(saveInstructionsLoading$),
+const buildInstructionsLoading$ = state(false);
+export const isBuildingInstructions$ = computed((get) =>
+  get(buildInstructionsLoading$),
 );
 
-export const saveInstructions$ = command(async ({ get, set }) => {
+export const buildInstructions$ = command(async ({ get, set }) => {
   const detail = get(agentDetail$);
   const edited = get(editedInstructionsContent$);
-  if (!detail || edited === null) {
+  if (!detail || !detail.content || edited === null) {
     return;
   }
 
-  set(saveInstructionsLoading$, true);
+  set(buildInstructionsLoading$, true);
 
   try {
     const fetchFn = get(fetch$);
-    const response = await fetchFn(
-      `/api/agent/composes/${detail.id}/instructions`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: edited }),
-      },
-    );
 
-    if (!response.ok) {
-      throw new Error(`Failed to save instructions: ${response.statusText}`);
-    }
+    // Trigger compose job with current compose content + updated instructions
+    await triggerAndPollComposeJob(fetchFn, detail.content, edited);
+
+    // Refresh agent detail and instructions from server
+    await set(fetchAgentDetail$);
 
     // Optimistically update the instructions state with the saved content
-    // so the UI reflects the change immediately without a re-fetch.
     const current = get(agentInstructions$);
     set(agentInstructionsState$, {
       instructions: {
@@ -287,12 +281,12 @@ export const saveInstructions$ = command(async ({ get, set }) => {
     // Clear editing state
     set(editedInstructionsContent$, null);
 
-    toast.success("Instructions saved");
+    toast.success("Agent built successfully");
   } catch (error) {
     throwIfAbort(error);
-    L.error("Failed to save instructions:", error);
-    toast.error("Failed to save instructions");
+    L.error("Failed to build instructions:", error);
+    toast.error("Failed to build agent");
   } finally {
-    set(saveInstructionsLoading$, false);
+    set(buildInstructionsLoading$, false);
   }
 });

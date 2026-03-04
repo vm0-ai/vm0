@@ -14,10 +14,10 @@ import {
   closeConfigDialog$,
   configActiveTab$,
   setConfigActiveTab$,
-  configDialogSaving$,
+  configDialogBuilding$,
   configDialogSaveError$,
   configDialogValid$,
-  saveConfigDialog$,
+  buildConfigDialog$,
 } from "../../../signals/agent-detail/config-dialog.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 import { YamlTab } from "./yaml-tab.tsx";
@@ -26,12 +26,12 @@ import { FormsTab } from "./forms-tab.tsx";
 export function ConfigDialog() {
   const open = useGet(configDialogOpen$);
   const activeTab = useGet(configActiveTab$);
-  const saving = useGet(configDialogSaving$);
+  const building = useGet(configDialogBuilding$);
   const valid = useGet(configDialogValid$);
   const saveError = useGet(configDialogSaveError$);
   const close = useSet(closeConfigDialog$);
   const setTab = useSet(setConfigActiveTab$);
-  const save = useSet(saveConfigDialog$);
+  const build = useSet(buildConfigDialog$);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && close()}>
@@ -55,14 +55,14 @@ export function ConfigDialog() {
         {saveError && <p className="text-sm text-destructive">{saveError}</p>}
 
         <DialogFooter>
-          <Button variant="outline" onClick={close} disabled={saving}>
+          <Button variant="outline" onClick={close} disabled={building}>
             Cancel
           </Button>
           <Button
-            onClick={() => detach(save(), Reason.DomCallback)}
-            disabled={saving || !valid}
+            onClick={() => detach(build(), Reason.DomCallback)}
+            disabled={building || !valid}
           >
-            {saving ? "Saving..." : "Save"}
+            {building ? "Building..." : "Build"}
           </Button>
         </DialogFooter>
       </DialogContent>

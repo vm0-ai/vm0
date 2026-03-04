@@ -16,7 +16,7 @@ const context = testContext();
 // Shared CLI token for authenticated requests
 let testCliToken: string;
 
-describe("POST /api/compose/from-github", () => {
+describe("POST /api/compose/jobs", () => {
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
@@ -29,7 +29,7 @@ describe("POST /api/compose/from-github", () => {
       mockClerk({ userId: null });
 
       const request = createTestRequest(
-        "http://localhost:3000/api/compose/from-github",
+        "http://localhost:3000/api/compose/jobs",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -49,9 +49,9 @@ describe("POST /api/compose/from-github", () => {
   });
 
   describe("Validation", () => {
-    it("should reject request without githubUrl", async () => {
+    it("should reject request with empty body", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/compose/from-github",
+        "http://localhost:3000/api/compose/jobs",
         {
           method: "POST",
           headers: {
@@ -66,12 +66,12 @@ describe("POST /api/compose/from-github", () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error.message).toContain("githubUrl");
+      expect(data.error.message).toContain("Invalid input");
     });
 
     it("should reject request with invalid GitHub URL", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/compose/from-github",
+        "http://localhost:3000/api/compose/jobs",
         {
           method: "POST",
           headers: {
@@ -95,7 +95,7 @@ describe("POST /api/compose/from-github", () => {
   describe("Job Creation", () => {
     it("should create a new compose job", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/compose/from-github",
+        "http://localhost:3000/api/compose/jobs",
         {
           method: "POST",
           headers: {
@@ -120,7 +120,7 @@ describe("POST /api/compose/from-github", () => {
 
     it("should create a job with overwrite option", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/compose/from-github",
+        "http://localhost:3000/api/compose/jobs",
         {
           method: "POST",
           headers: {
@@ -146,7 +146,7 @@ describe("POST /api/compose/from-github", () => {
     it("should return existing pending job instead of creating new one", async () => {
       // Create first job
       const request1 = createTestRequest(
-        "http://localhost:3000/api/compose/from-github",
+        "http://localhost:3000/api/compose/jobs",
         {
           method: "POST",
           headers: {
@@ -166,7 +166,7 @@ describe("POST /api/compose/from-github", () => {
 
       // Create second job (should return same job)
       const request2 = createTestRequest(
-        "http://localhost:3000/api/compose/from-github",
+        "http://localhost:3000/api/compose/jobs",
         {
           method: "POST",
           headers: {
@@ -193,7 +193,7 @@ describe("POST /api/compose/from-github", () => {
 
       // Create first job
       const request1 = createTestRequest(
-        "http://localhost:3000/api/compose/from-github",
+        "http://localhost:3000/api/compose/jobs",
         {
           method: "POST",
           headers: {
@@ -238,7 +238,7 @@ describe("POST /api/compose/from-github", () => {
 
       // Create second job (should create new job)
       const request2 = createTestRequest(
-        "http://localhost:3000/api/compose/from-github",
+        "http://localhost:3000/api/compose/jobs",
         {
           method: "POST",
           headers: {
@@ -260,7 +260,7 @@ describe("POST /api/compose/from-github", () => {
   });
 });
 
-describe("GET /api/compose/from-github/:jobId", () => {
+describe("GET /api/compose/jobs/:jobId", () => {
   let testJobId: string;
   let testUserId: string;
   let testUserCliToken: string;
@@ -273,7 +273,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
 
     // Create a test job
     const request = createTestRequest(
-      "http://localhost:3000/api/compose/from-github",
+      "http://localhost:3000/api/compose/jobs",
       {
         method: "POST",
         headers: {
@@ -296,7 +296,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
       mockClerk({ userId: null });
 
       const request = createTestRequest(
-        `http://localhost:3000/api/compose/from-github/${testJobId}`,
+        `http://localhost:3000/api/compose/jobs/${testJobId}`,
         {
           method: "GET",
         },
@@ -311,7 +311,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
   describe("Success", () => {
     it("should return job status", async () => {
       const request = createTestRequest(
-        `http://localhost:3000/api/compose/from-github/${testJobId}`,
+        `http://localhost:3000/api/compose/jobs/${testJobId}`,
         {
           method: "GET",
           headers: {
@@ -359,7 +359,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
       await webhookComplete(webhookRequest);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/compose/from-github/${testJobId}`,
+        `http://localhost:3000/api/compose/jobs/${testJobId}`,
         {
           method: "GET",
           headers: {
@@ -403,7 +403,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
       await webhookComplete(webhookRequest);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/compose/from-github/${testJobId}`,
+        `http://localhost:3000/api/compose/jobs/${testJobId}`,
         {
           method: "GET",
           headers: {
@@ -426,7 +426,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
       const nonExistentId = randomUUID();
 
       const request = createTestRequest(
-        `http://localhost:3000/api/compose/from-github/${nonExistentId}`,
+        `http://localhost:3000/api/compose/jobs/${nonExistentId}`,
         {
           method: "GET",
           headers: {
@@ -452,7 +452,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
       mockClerk({ userId: null });
 
       const otherJobRequest = createTestRequest(
-        "http://localhost:3000/api/compose/from-github",
+        "http://localhost:3000/api/compose/jobs",
         {
           method: "POST",
           headers: {
@@ -472,7 +472,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
       // Try to access the other user's job with original user's token
       // Clerk is null, so testUserCliToken will be used for auth
       const request = createTestRequest(
-        `http://localhost:3000/api/compose/from-github/${otherJobId}`,
+        `http://localhost:3000/api/compose/jobs/${otherJobId}`,
         {
           method: "GET",
           headers: {
@@ -488,7 +488,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
 
     it("should return 400 for invalid job ID format", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/compose/from-github/invalid-uuid",
+        "http://localhost:3000/api/compose/jobs/invalid-uuid",
         {
           method: "GET",
           headers: {

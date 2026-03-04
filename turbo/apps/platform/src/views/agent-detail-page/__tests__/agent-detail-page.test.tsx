@@ -196,7 +196,7 @@ describe("agent detail page", () => {
 
     // Save and Discard buttons should appear
     await vi.waitFor(() => {
-      expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Build" })).toBeInTheDocument();
       expect(
         screen.getByRole("button", { name: "Discard" }),
       ).toBeInTheDocument();
@@ -239,7 +239,7 @@ describe("agent detail page", () => {
     });
 
     // Save/Discard should disappear
-    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Build" })).toBeNull();
   });
 
   it("should initialize view mode from query param", async () => {

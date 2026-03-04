@@ -8,8 +8,6 @@ import {
   AGENT_NAME_REGEX,
   SUPPORTED_FRAMEWORKS,
   isSupportedFramework,
-  mergeSkillEnvironment,
-  resolveSkillRef,
 } from "@vm0/core";
 import {
   resolveFrameworkImage,
@@ -27,45 +25,7 @@ import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
-import { uploadSkillFromGitHub } from "../../../../src/lib/skill/upload-skill";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
-
-/**
- * Ensure skill-declared env vars are present in the agent environment.
- * Skills declare required secrets/vars in their SKILL.md frontmatter;
- * this keeps the compose environment consistent whether submitted from
- * the CLI or the platform UI.
- */
-async function resolveSkillEnvVars(
-  agent: AgentComposeYaml["agents"][string],
-): Promise<void> {
-  if (!agent?.skills || agent.skills.length === 0) {
-    return;
-  }
-  // Normalize bare skill names to full GitHub URLs
-  agent.skills = agent.skills.map(resolveSkillRef);
-  const environment = agent.environment ?? {};
-  await mergeSkillEnvironment(agent.skills, environment);
-  if (Object.keys(environment).length > 0) {
-    agent.environment = environment;
-  }
-}
-
-/**
- * Download skill files from GitHub and upload them to storage.
- * Runs in parallel for all skills; skips if already uploaded.
- */
-async function uploadSkills(
-  agent: AgentComposeYaml["agents"][string],
-  ctx: { userId: string; scopeId: string; scopeSlug: string },
-): Promise<void> {
-  if (!agent?.skills || agent.skills.length === 0) {
-    return;
-  }
-  await Promise.all(
-    agent.skills.map((skillUrl) => uploadSkillFromGitHub(skillUrl, ctx)),
-  );
-}
 
 const router = tsr.router(composesMainContract, {
   getByName: async ({ query, headers }) => {
@@ -284,9 +244,6 @@ const router = tsr.router(composesMainContract, {
       };
     }
 
-    // Merge skill-declared environment variables into agent environment
-    await resolveSkillEnvVars(agent);
-
     // Resolve image and working_dir server-side based on framework
     const resolvedImage = resolveFrameworkImage(framework);
     const resolvedWorkingDir = resolveFrameworkWorkingDir(framework);
@@ -320,13 +277,6 @@ const router = tsr.router(composesMainContract, {
         },
       };
     }
-
-    // Download skill files from GitHub and upload to storage
-    await uploadSkills(agent, {
-      userId,
-      scopeId: userScope.id,
-      scopeSlug: userScope.slug,
-    });
 
     // Check compose and version existence in parallel
     const [existingComposes, existingVersions] = await Promise.all([

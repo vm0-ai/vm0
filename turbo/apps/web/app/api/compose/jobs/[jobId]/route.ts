@@ -16,7 +16,8 @@ import type { ComposeJobResult } from "../../../../../src/db/schema/compose-job"
 function formatJobResponse(job: {
   id: string;
   status: string;
-  githubUrl: string;
+  githubUrl: string | null;
+  source?: string | null;
   result: ComposeJobResult | null;
   error: string | null;
   createdAt: Date;
@@ -26,7 +27,8 @@ function formatJobResponse(job: {
   return {
     jobId: job.id,
     status: job.status as "pending" | "running" | "completed" | "failed",
-    githubUrl: job.githubUrl,
+    githubUrl: job.githubUrl ?? undefined,
+    source: (job.source as "github" | "platform" | "slack") ?? undefined,
     result: job.result ?? undefined,
     error: job.error ?? undefined,
     createdAt: job.createdAt.toISOString(),

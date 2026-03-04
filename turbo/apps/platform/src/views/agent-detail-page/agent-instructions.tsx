@@ -10,8 +10,8 @@ import {
   isInstructionsDirty$,
   setEditedContent$,
   cancelEditInstructions$,
-  saveInstructions$,
-  isSavingInstructions$,
+  buildInstructions$,
+  isBuildingInstructions$,
 } from "../../signals/agent-detail/agent-detail.ts";
 import type { AgentInstructions as AgentInstructionsType } from "../../signals/agent-detail/types.ts";
 
@@ -32,8 +32,8 @@ export function AgentInstructions({
   const isDirty = useGet(isInstructionsDirty$);
   const setEdited = useSet(setEditedContent$);
   const cancel = useSet(cancelEditInstructions$);
-  const save = useSet(saveInstructions$);
-  const isSaving = useGet(isSavingInstructions$);
+  const build = useSet(buildInstructions$);
+  const isBuilding = useGet(isBuildingInstructions$);
 
   const displayContent = edited ?? instructions?.content ?? "";
 
@@ -74,17 +74,17 @@ export function AgentInstructions({
                 size="sm"
                 className="h-7 text-xs"
                 onClick={() => cancel()}
-                disabled={isSaving}
+                disabled={isBuilding}
               >
                 Discard
               </Button>
               <Button
                 size="sm"
                 className="h-7 text-xs"
-                onClick={() => void save()}
-                disabled={isSaving}
+                onClick={() => void build()}
+                disabled={isBuilding}
               >
-                {isSaving ? "Saving..." : "Save"}
+                {isBuilding ? "Building..." : "Build"}
               </Button>
             </>
           )}

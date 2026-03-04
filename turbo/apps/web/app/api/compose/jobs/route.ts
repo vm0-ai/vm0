@@ -12,7 +12,7 @@ import { logger } from "../../../../src/lib/logger";
 import { triggerComposeJob } from "../../../../src/lib/compose/trigger-compose-job";
 import type { ComposeJobResult } from "../../../../src/db/schema/compose-job";
 
-const log = logger("api:compose-from-github");
+const log = logger("api:compose-jobs");
 
 /**
  * Format job record for API response
@@ -20,7 +20,8 @@ const log = logger("api:compose-from-github");
 function formatJobResponse(job: {
   id: string;
   status: string;
-  githubUrl: string;
+  githubUrl: string | null;
+  source?: string | null;
   result?: ComposeJobResult | null;
   error?: string | null;
   createdAt: Date;
@@ -30,7 +31,8 @@ function formatJobResponse(job: {
   return {
     jobId: job.id,
     status: job.status as "pending" | "running" | "completed" | "failed",
-    githubUrl: job.githubUrl,
+    githubUrl: job.githubUrl ?? undefined,
+    source: (job.source as "github" | "platform" | "slack") ?? undefined,
     result: job.result ?? undefined,
     error: job.error ?? undefined,
     createdAt: job.createdAt.toISOString(),
@@ -53,8 +55,6 @@ const router = tsr.router(composeJobsMainContract, {
       };
     }
 
-    const { githubUrl, overwrite } = body;
-
     // Extract user token from Authorization header
     const userToken = headers.authorization?.substring(7); // Remove "Bearer "
     if (!userToken) {
@@ -69,12 +69,24 @@ const router = tsr.router(composeJobsMainContract, {
       };
     }
 
-    const result = await triggerComposeJob({
-      userId,
-      githubUrl,
-      userToken,
-      overwrite,
-    });
+    // Dispatch based on input type: GitHub URL or platform content
+    const isGitHubInput = "githubUrl" in body;
+
+    const result = isGitHubInput
+      ? await triggerComposeJob({
+          userId,
+          userToken,
+          source: "github",
+          githubUrl: body.githubUrl,
+          overwrite: body.overwrite,
+        })
+      : await triggerComposeJob({
+          userId,
+          userToken,
+          source: "platform",
+          content: body.content,
+          instructions: body.instructions,
+        });
 
     if (result.isExisting) {
       // Fetch the full job record for the existing job response (may have result/error)
@@ -98,7 +110,8 @@ const router = tsr.router(composeJobsMainContract, {
       body: formatJobResponse({
         id: result.jobId,
         status: result.status,
-        githubUrl: result.githubUrl,
+        githubUrl: result.githubUrl ?? null,
+        source: result.source,
         createdAt: result.createdAt,
       }),
     };

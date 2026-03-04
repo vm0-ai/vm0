@@ -20,8 +20,13 @@ export interface ComposeJobResult {
 }
 
 /**
+ * Compose job source — where the job was initiated from
+ */
+export type ComposeJobSource = "github" | "platform" | "slack";
+
+/**
  * Compose Jobs table
- * Tracks async compose-from-github operations
+ * Tracks async compose operations from any source (GitHub URL, platform UI, Slack)
  * Jobs are retained for 24 hours then cleaned up
  */
 export const composeJobs = pgTable(
@@ -29,8 +34,17 @@ export const composeJobs = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(), // Clerk user ID
-    githubUrl: text("github_url").notNull(),
+    githubUrl: text("github_url"),
     overwrite: boolean("overwrite").default(false).notNull(),
+    // Platform compose: the vm0.yaml content submitted from the UI
+    content: jsonb("content"),
+    // Platform compose: the instructions file content (e.g. CLAUDE.md)
+    instructions: text("instructions"),
+    // Where this job was initiated from
+    source: varchar("source", { length: 20 })
+      .notNull()
+      .default("github")
+      .$type<ComposeJobSource>(),
     // pending -> running -> completed | failed
     status: varchar("status", { length: 20 }).notNull(),
     sandboxId: varchar("sandbox_id", { length: 255 }),

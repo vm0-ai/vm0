@@ -4,7 +4,14 @@ import { stringify, parse } from "yaml";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
-import { agentDetail$, fetchAgentDetail$ } from "./agent-detail.ts";
+import {
+  agentDetail$,
+  agentInstructions$,
+  editedContent$,
+  fetchAgentDetail$,
+  refreshAgentInstructions$,
+} from "./agent-detail.ts";
+import { triggerAndPollComposeJob } from "./compose-job.ts";
 import { skillValueToUrl } from "../../data/skills.ts";
 import { AGENT_NAME_REGEX, fetchSkillFrontmatter } from "@vm0/core";
 import type { AgentDetail } from "./types.ts";
@@ -58,11 +65,11 @@ export const setConfigActiveTab$ = command(({ set }, tab: string) => {
 });
 
 // ---------------------------------------------------------------------------
-// Saving state
+// Building state (async compose job in progress)
 // ---------------------------------------------------------------------------
 
-const internalSaving$ = state(false);
-export const configDialogSaving$ = computed((get) => get(internalSaving$));
+const internalBuilding$ = state(false);
+export const configDialogBuilding$ = computed((get) => get(internalBuilding$));
 
 // ---------------------------------------------------------------------------
 // Save error
@@ -376,45 +383,39 @@ export const updateYamlText$ = command(({ get, set }, text: string) => {
 });
 
 // ---------------------------------------------------------------------------
-// Save — POST to /api/agent/composes
+// Build — POST to /api/compose/jobs and poll for completion
 // ---------------------------------------------------------------------------
 
-export const saveConfigDialog$ = command(async ({ get, set }) => {
+export const buildConfigDialog$ = command(async ({ get, set }) => {
   const compose = get(internalEditableCompose$);
   const detail = get(agentDetail$);
   if (!compose || !detail) {
     return;
   }
 
-  set(internalSaving$, true);
+  set(internalBuilding$, true);
   set(internalSaveError$, null);
 
   try {
     const fetchFn = get(fetch$);
-    const response = await fetchFn("/api/agent/composes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: compose }),
-    });
 
-    if (!response.ok) {
-      const errorData = (await response.json().catch(() => null)) as {
-        message?: string;
-      } | null;
-      throw new Error(
-        errorData?.message ?? `Save failed: ${response.statusText}`,
-      );
-    }
+    // Include current instructions text if available
+    const edited = get(editedContent$);
+    const instructions =
+      edited ?? get(agentInstructions$)?.content ?? undefined;
+
+    await triggerAndPollComposeJob(fetchFn, compose, instructions);
 
     await set(fetchAgentDetail$);
+    await set(refreshAgentInstructions$);
     set(internalOpen$, false);
-    toast.success("Agent configuration saved");
+    toast.success("Agent built successfully");
   } catch (error) {
     throwIfAbort(error);
-    const message = error instanceof Error ? error.message : "Failed to save";
-    L.error("Failed to save config:", error);
+    const message = error instanceof Error ? error.message : "Failed to build";
+    L.error("Failed to build config:", error);
     set(internalSaveError$, message);
   } finally {
-    set(internalSaving$, false);
+    set(internalBuilding$, false);
   }
 });
