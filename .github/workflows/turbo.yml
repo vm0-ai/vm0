@@ -1485,20 +1485,9 @@ jobs:
               --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
               --env USE_MOCK_CLAUDE=true"
 
-            # Health check — temporarily disabled while runner doctor is being reworked.
-            # TODO: re-enable once runner doctor is stable
-            # for attempt in 1 2 3 4 5; do
-            #   sleep 5
-            #   if ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner doctor"; then
-            #     break
-            #   fi
-            #   if [ "$attempt" -eq 5 ]; then
-            #     echo "runner doctor failed after 5 attempts"
-            #     exit 1
-            #   fi
-            #   echo "runner doctor attempt $attempt failed, retrying..."
-            # done
-            sleep 10  # wait for runner to initialize
+            # Health check — filter by name so other PR runners don't cause false positives
+            sleep 5
+            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
             echo "=== Runner started on ${HOST} ==="
           }
 
@@ -1627,33 +1616,25 @@ jobs:
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
           chmod 600 "$HOME/.ssh/runner.pem"
 
-      # Verify runners are deployed — temporarily disabled while runner doctor is being reworked.
-      # TODO: re-enable once runner doctor is stable
-      # - name: Verify runners are deployed
-      #   env:
-      #     METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-      #     METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-      #     BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
-      #   run: |
-      #     SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
-      #     for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-      #       echo "Checking runner on ${HOST}..."
-      #       HEALTHY=false
-      #       for attempt in 1 2 3 4 5; do
-      #         if ssh $SSH_OPTS "${METAL_USER}@${HOST}" "test -x ${BIN_DIR}/runner && ${BIN_DIR}/runner doctor"; then
-      #           HEALTHY=true
-      #           break
-      #         fi
-      #         echo "runner doctor attempt $attempt failed on ${HOST}, retrying in 5s..."
-      #         sleep 5
-      #       done
-      #       if [ "$HEALTHY" != "true" ]; then
-      #         echo ""
-      #         echo "::error::Runner not healthy on ${HOST}. This typically happens when 'Re-run failed jobs' is used after the cleanup step has already run. Use 'Re-run all jobs' to redeploy the runner first."
-      #         exit 1
-      #       fi
-      #     done
-      #     echo "All runners healthy"
+      - name: Verify runners are deployed
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+          HOST_INDEX=0
+          for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
+            HOST_INDEX=$((HOST_INDEX + 1))
+            RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+            echo "Checking runner ${RUNNER_NAME} on ${HOST}..."
+            if ! ssh $SSH_OPTS "${METAL_USER}@${HOST}" "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"; then
+              echo "::error::Runner ${RUNNER_NAME} not healthy on ${HOST}. Use 'Re-run all jobs' to redeploy the runner first."
+              exit 1
+            fi
+          done
+          echo "All runners healthy"
 
       - name: Run Runner E2E Tests (Chunk ${{ matrix.index }})
         run: |
