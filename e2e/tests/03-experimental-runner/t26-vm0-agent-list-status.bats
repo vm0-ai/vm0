@@ -209,7 +209,7 @@ agents:
       AUTH_TOKEN: "${{ secrets.AUTH_TOKEN }}"
 EOF
     # Replace $AGENT_NAME in the file
-    sed -i "s/\$AGENT_NAME/$AGENT_NAME/g" "$TEST_DIR/vm0.yaml"
+    sed -i "s|\$AGENT_NAME|$AGENT_NAME|g; s|\${RUNNER_GROUP}|$RUNNER_GROUP|g" "$TEST_DIR/vm0.yaml"
 
     echo "# Step 2: Run vm0 compose"
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml" --yes
@@ -238,7 +238,7 @@ agents:
       LOG_LEVEL: "${{ vars.LOG_LEVEL }}"
 EOF
     # Replace $AGENT_NAME in the file
-    sed -i "s/\$AGENT_NAME/$AGENT_NAME/g" "$TEST_DIR/vm0.yaml"
+    sed -i "s|\$AGENT_NAME|$AGENT_NAME|g; s|\${RUNNER_GROUP}|$RUNNER_GROUP|g" "$TEST_DIR/vm0.yaml"
 
     echo "# Step 2: Run vm0 compose"
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
@@ -266,7 +266,7 @@ agents:
       DATABASE_URL: "${{ credentials.DB_URL }}"
 EOF
     # Replace $AGENT_NAME in the file
-    sed -i "s/\$AGENT_NAME/$AGENT_NAME/g" "$TEST_DIR/vm0.yaml"
+    sed -i "s|\$AGENT_NAME|$AGENT_NAME|g; s|\${RUNNER_GROUP}|$RUNNER_GROUP|g" "$TEST_DIR/vm0.yaml"
 
     echo "# Step 2: Run vm0 compose"
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
@@ -296,7 +296,7 @@ agents:
       STATIC_VALUE: "hardcoded"
 EOF
     # Replace $AGENT_NAME in the file
-    sed -i "s/\$AGENT_NAME/$AGENT_NAME/g" "$TEST_DIR/vm0.yaml"
+    sed -i "s|\$AGENT_NAME|$AGENT_NAME|g; s|\${RUNNER_GROUP}|$RUNNER_GROUP|g" "$TEST_DIR/vm0.yaml"
 
     echo "# Step 2: Run vm0 compose"
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml" --yes
