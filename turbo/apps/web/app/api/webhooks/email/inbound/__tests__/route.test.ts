@@ -80,7 +80,9 @@ function createWebhookRequest(body: string, headers?: Record<string, string>) {
 /** Extract the first emails.send call args (error reply email) */
 function getErrorReplyArgs() {
   const call = mockResend.emails.send.mock.calls[0];
-  return call?.[0] as { from: string; to: string; subject: string } | undefined;
+  return call?.[0] as
+    | { from: string; to: string; subject: string; react: unknown }
+    | undefined;
 }
 
 describe("POST /api/webhooks/email/inbound", () => {
@@ -381,7 +383,12 @@ describe("POST /api/webhooks/email/inbound", () => {
 
     // Error reply should have been sent
     expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
-    expect(getErrorReplyArgs()?.to).toBe(unregisteredSender);
+    const args = getErrorReplyArgs();
+    expect(args?.to).toBe(unregisteredSender);
+    expect(args?.subject).toBe("Re: test");
+    expect(JSON.stringify(args?.react)).toContain(
+      "not associated with a VM0 account",
+    );
   });
 
   it("should send error reply when reply sender is a different user than session owner", async () => {
@@ -430,7 +437,12 @@ describe("POST /api/webhooks/email/inbound", () => {
 
     // Error reply should have been sent
     expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
-    expect(getErrorReplyArgs()?.to).toBe(userBEmail);
+    const args = getErrorReplyArgs();
+    expect(args?.to).toBe(userBEmail);
+    expect(args?.subject).toBe("Re: test");
+    expect(JSON.stringify(args?.react)).toContain(
+      "Only the original sender can continue",
+    );
   });
 
   it("should send error reply when reply email fails DMARC verification", async () => {
@@ -496,7 +508,10 @@ describe("POST /api/webhooks/email/inbound", () => {
 
     // Error reply should have been sent
     expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
-    expect(getErrorReplyArgs()?.to).toBe(senderEmail);
+    const args = getErrorReplyArgs();
+    expect(args?.to).toBe(senderEmail);
+    expect(args?.subject).toBe("Re: test");
+    expect(JSON.stringify(args?.react)).toContain("DMARC verification failed");
   });
 
   describe("Email Trigger (scope+agent@domain)", () => {
