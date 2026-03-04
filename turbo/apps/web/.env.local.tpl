@@ -78,6 +78,10 @@ STRAVA_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/STRAVA_OAUTH_CLIENT_SE
 GARMIN_CONNECT_OAUTH_CLIENT_ID=op://Development/vm0-env-local/GARMIN_CONNECT_OAUTH_CLIENT_ID
 GARMIN_CONNECT_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/GARMIN_CONNECT_OAUTH_CLIENT_SECRET
 
+# Optional: Vercel OAuth Connector
+VERCEL_OAUTH_CLIENT_ID=op://Development/vm0-env-local/VERCEL_OAUTH_CLIENT_ID
+VERCEL_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/VERCEL_OAUTH_CLIENT_SECRET
+
 # Optional: ngrok (Computer Connector)
 NGROK_API_KEY=op://Development/vm0-env-local/NGROK_API_KEY
 NGROK_COMPUTER_CONNECTOR_DOMAIN=computer.vm7.io

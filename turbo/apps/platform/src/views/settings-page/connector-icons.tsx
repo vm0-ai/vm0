@@ -18,6 +18,7 @@ import notionIcon from "./icons/notion.svg";
 import redditIcon from "./icons/reddit.svg";
 import slackIcon from "./icons/slack.svg";
 import stravaIcon from "./icons/strava.svg";
+import vercelIcon from "./icons/vercel.svg";
 import xIcon from "./icons/x.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
@@ -39,6 +40,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   reddit: redditIcon,
   slack: slackIcon,
   strava: stravaIcon,
+  vercel: vercelIcon,
   x: xIcon,
 });
 

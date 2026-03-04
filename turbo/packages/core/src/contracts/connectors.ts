@@ -643,6 +643,36 @@ export const CONNECTOR_TYPES = {
       scopes: [],
     } as ConnectorOAuthConfig,
   },
+  vercel: {
+    label: "Vercel",
+    helpText:
+      "Connect your Vercel account to manage deployments, projects, and domains",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Vercel to grant access.",
+        secrets: {
+          VERCEL_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          VERCEL_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      VERCEL_TOKEN: "$secrets.VERCEL_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://vercel.com/oauth/authorize",
+      tokenUrl: "https://api.vercel.com/login/oauth/token",
+      scopes: ["openid", "email", "profile", "offline_access"],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -667,6 +697,7 @@ export const connectorTypeSchema = z.enum([
   "strava",
   "garmin-connect",
   "x",
+  "vercel",
 ]);
 
 /**
