@@ -30,5 +30,11 @@ tempfile = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
 which = { workspace = true }
 
+[dev-dependencies]
+guest-agent = { workspace = true }
+guest-download = { workspace = true }
+guest-init = { workspace = true }
+guest-mock-claude = { workspace = true }
+
 [lints]
 workspace = true
