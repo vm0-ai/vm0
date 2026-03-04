@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.33.0](https://github.com/vm0-ai/vm0/compare/core-v8.32.1...core-v8.33.0) (2026-03-04)
+
+
+### Features
+
+* add sentry oauth connector ([#3582](https://github.com/vm0-ai/vm0/issues/3582)) ([b80aa49](https://github.com/vm0-ai/vm0/commit/b80aa49255a0aa493cc217885ed80fad17c5a801))
+* add vercel oauth connector ([#3590](https://github.com/vm0-ai/vm0/issues/3590)) ([b5d8898](https://github.com/vm0-ai/vm0/commit/b5d8898bcca548e1300cc1f14b7ebdfa1a1c57c3)), closes [#3586](https://github.com/vm0-ai/vm0/issues/3586)
+* complete reddit and x connector integration ([#3581](https://github.com/vm0-ai/vm0/issues/3581)) ([c4e038e](https://github.com/vm0-ai/vm0/commit/c4e038ea6dc329aee10df96cb0c5291e5fb9957e))
+
 ## [8.32.1](https://github.com/vm0-ai/vm0/compare/core-v8.32.0...core-v8.32.1) (2026-03-04)
 
 

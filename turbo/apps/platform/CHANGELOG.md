@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.81.0](https://github.com/vm0-ai/vm0/compare/platform-v0.80.0...platform-v0.81.0) (2026-03-04)
+
+
+### Features
+
+* add sentry oauth connector ([#3582](https://github.com/vm0-ai/vm0/issues/3582)) ([b80aa49](https://github.com/vm0-ai/vm0/commit/b80aa49255a0aa493cc217885ed80fad17c5a801))
+* add vercel oauth connector ([#3590](https://github.com/vm0-ai/vm0/issues/3590)) ([b5d8898](https://github.com/vm0-ai/vm0/commit/b5d8898bcca548e1300cc1f14b7ebdfa1a1c57c3)), closes [#3586](https://github.com/vm0-ai/vm0/issues/3586)
+* **platform:** merge connectors and connections tab, unify add flow and settings ([#3519](https://github.com/vm0-ai/vm0/issues/3519)) ([19b0b2e](https://github.com/vm0-ai/vm0/commit/19b0b2e14423d17abc30af0212fe1cbedec15927))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.33.0
+
 ## [0.80.0](https://github.com/vm0-ai/vm0/compare/platform-v0.79.1...platform-v0.80.0) (2026-03-04)
 
 
