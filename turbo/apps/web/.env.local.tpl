@@ -10,37 +10,37 @@ E2B_API_KEY=op://Development/vm0-env-local/E2B_API_KEY
 E2B_TEMPLATE_NAME=vm0-claude-code-dev
 
 # Required: Object Storage (Cloudflare R2)
-R2_ACCOUNT_ID=op://Development/vm0-env-local/r2_account_id
-R2_ACCESS_KEY_ID=op://Development/vm0-env-local/r2_access_key_id
-R2_SECRET_ACCESS_KEY=op://Development/vm0-env-local/r2_secret_access_key
-R2_USER_STORAGES_BUCKET_NAME=op://Development/vm0-env-local/r2_user_storages_bucket_name
+R2_ACCOUNT_ID=op://Development/vm0-env-local/R2_ACCOUNT_ID
+R2_ACCESS_KEY_ID=op://Development/vm0-env-local/R2_ACCESS_KEY_ID
+R2_SECRET_ACCESS_KEY=op://Development/vm0-env-local/R2_SECRET_ACCESS_KEY
+R2_USER_STORAGES_BUCKET_NAME=op://Development/vm0-env-local/R2_USER_STORAGES_BUCKET_NAME
 
 # Optional: Observability (Axiom)
-AXIOM_TOKEN_SESSIONS=op://Development/vm0-env-local/axiom_token_sessions
-AXIOM_TOKEN_TELEMETRY=op://Development/vm0-env-local/axiom_token_telemetry
+AXIOM_TOKEN_SESSIONS=op://Development/vm0-env-local/AXIOM_TOKEN_SESSIONS
+AXIOM_TOKEN_TELEMETRY=op://Development/vm0-env-local/AXIOM_TOKEN_TELEMETRY
 AXIOM_DATASET_SUFFIX=dev
 
 SECRETS_ENCRYPTION_KEY=op://Development/vm0-env-local/SECRETS_ENCRYPTION_KEY
 
 # Optional: Slack Integration
-SLACK_CLIENT_ID=op://Development/vm0-env-local/slack_client_id
-SLACK_CLIENT_SECRET=op://Development/vm0-env-local/slack_client_secret
-SLACK_SIGNING_SECRET=op://Development/vm0-env-local/slack_signing_secret
-SLACK_DEFAULT_AGENT=op://Development/vm0-env-local/slack_default_agent
+SLACK_CLIENT_ID=op://Development/vm0-env-local/SLACK_CLIENT_ID
+SLACK_CLIENT_SECRET=op://Development/vm0-env-local/SLACK_CLIENT_SECRET
+SLACK_SIGNING_SECRET=op://Development/vm0-env-local/SLACK_SIGNING_SECRET
+SLACK_DEFAULT_AGENT=op://Development/vm0-env-local/SLACK_DEFAULT_AGENT
 
 # Required: Claude Code Version URL
 CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest
 
 # Optional: LLM API (OpenRouter)
-OPENROUTER_API_KEY=op://Development/vm0-env-local/openrouter_api_key
+OPENROUTER_API_KEY=op://Development/vm0-env-local/OPENROUTER_API_KEY
 
 # Optional: GitHub OAuth Connector
-GH_OAUTH_CLIENT_ID=op://Development/vm0-env-local/gh_oauth_client_id
-GH_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/gh_oauth_client_secret
+GH_OAUTH_CLIENT_ID=op://Development/vm0-env-local/GH_OAUTH_CLIENT_ID
+GH_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/GH_OAUTH_CLIENT_SECRET
 
 # Optional: Notion OAuth Connector
-NOTION_OAUTH_CLIENT_ID=op://Development/vm0-env-local/notion_oauth_client_id
-NOTION_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/notion_oauth_client_secret
+NOTION_OAUTH_CLIENT_ID=op://Development/vm0-env-local/NOTION_OAUTH_CLIENT_ID
+NOTION_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/NOTION_OAUTH_CLIENT_SECRET
 
 # Optional: Google OAuth Connector (Gmail, Calendar, Drive, etc.)
 GOOGLE_OAUTH_CLIENT_ID=op://Development/vm0-env-local/GOOGLE_OAUTH_CLIENT_ID
