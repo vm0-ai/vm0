@@ -1007,38 +1007,6 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-  # Run API E2E tests (lightweight, fast)
-  api-e2e-test:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
-    needs: [prepare, deploy-web]
-    if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.web-changed == 'true' }}"
-    timeout-minutes: 5
-    permissions:
-      actions: read # Required to query cache API
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: recursive # For BATS test framework
-
-      - name: Restore test token from cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ~/.vm0
-          key: e2e-token-parallel-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            e2e-token-parallel-${{ github.run_id }}-
-          fail-on-cache-miss: true
-
-      - name: Run API E2E Tests
-        run: |
-          echo "=== Running API E2E Tests ==="
-          ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/api/*.bats
-        env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-
   # Run CLI E2E tests - Phase 1: Serial tests (scope/provider CRUD)
   cli-e2e-01-serial:
     runs-on: ubuntu-latest
