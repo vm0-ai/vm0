@@ -58,47 +58,47 @@ export async function runAgentForTelegram(
     callbackContext,
   } = params;
 
-  try {
-    const [compose] = await globalThis.services.db
-      .select()
-      .from(agentComposes)
-      .where(eq(agentComposes.id, composeId))
+  const [compose] = await globalThis.services.db
+    .select()
+    .from(agentComposes)
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+
+  if (!compose) {
+    return {
+      status: "failed",
+      response: "Error: Agent configuration not found.",
+      runId: undefined,
+    };
+  }
+
+  let versionId = compose.headVersionId;
+  if (!versionId) {
+    const [latestVersion] = await globalThis.services.db
+      .select({ id: agentComposeVersions.id })
+      .from(agentComposeVersions)
+      .where(eq(agentComposeVersions.composeId, compose.id))
+      .orderBy(desc(agentComposeVersions.createdAt))
       .limit(1);
 
-    if (!compose) {
+    if (!latestVersion) {
       return {
         status: "failed",
-        response: "Error: Agent configuration not found.",
+        response: "Error: Agent has no versions configured.",
         runId: undefined,
       };
     }
+    versionId = latestVersion.id;
+  }
 
-    let versionId = compose.headVersionId;
-    if (!versionId) {
-      const [latestVersion] = await globalThis.services.db
-        .select({ id: agentComposeVersions.id })
-        .from(agentComposeVersions)
-        .where(eq(agentComposeVersions.composeId, compose.id))
-        .orderBy(desc(agentComposeVersions.createdAt))
-        .limit(1);
+  const fullPrompt = threadContext
+    ? `${threadContext}\n\n# User Prompt\n\n${prompt}`
+    : prompt;
 
-      if (!latestVersion) {
-        return {
-          status: "failed",
-          response: "Error: Agent has no versions configured.",
-          runId: undefined,
-        };
-      }
-      versionId = latestVersion.id;
-    }
+  const callbackUrl = `${getApiUrl()}/api/internal/callbacks/telegram`;
+  const callbackSecret = generateCallbackSecret();
 
-    const fullPrompt = threadContext
-      ? `${threadContext}\n\n# User Prompt\n\n${prompt}`
-      : prompt;
-
-    const callbackUrl = `${getApiUrl()}/api/internal/callbacks/telegram`;
-    const callbackSecret = generateCallbackSecret();
-
+  try {
     const result = await createRun({
       userId,
       agentComposeVersionId: versionId,
@@ -131,12 +131,6 @@ export async function runAgentForTelegram(
         runId: undefined,
       };
     }
-    log.error("Error running agent for Telegram:", error);
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return {
-      status: "failed",
-      response: `Error executing agent: ${message}`,
-      runId: undefined,
-    };
+    throw error;
   }
 }
