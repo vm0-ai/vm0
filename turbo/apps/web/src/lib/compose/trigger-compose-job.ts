@@ -231,7 +231,7 @@ type SandboxComposeParams =
 async function spawnComposeJobSandbox(
   jobId: string,
   params: SandboxComposeParams,
-  userToken: string,
+  cliToken: string,
   webhookToken: string,
 ): Promise<void> {
   const apiUrl = getApiUrl();
@@ -243,7 +243,7 @@ async function spawnComposeJobSandbox(
   const sandboxEnvs: Record<string, string> = {
     VM0_JOB_ID: jobId,
     VM0_COMPOSE_MODE: params.mode,
-    VM0_TOKEN: userToken,
+    VM0_TOKEN: cliToken,
     VM0_API_URL: apiUrl,
     VM0_WEBHOOK_URL: webhookUrl,
     VM0_WEBHOOK_TOKEN: webhookToken,
