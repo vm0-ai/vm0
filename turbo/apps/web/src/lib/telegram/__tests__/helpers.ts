@@ -1,8 +1,10 @@
 import { initServices } from "../../init-services";
 import { telegramInstallations } from "../../../db/schema/telegram-installation";
+import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { telegramMessages } from "../../../db/schema/telegram-message";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { scopes } from "../../../db/schema/scope";
+import { encryptCredentialValue } from "../../crypto/secrets-encryption";
 import { uniqueId } from "../../../__tests__/test-helpers";
 
 /**
@@ -76,4 +78,53 @@ export async function insertTelegramMessage(
     isBot: options.isBot ?? false,
     createdAt: options.createdAt ?? new Date(),
   });
+}
+
+interface CallbackInstallationResult {
+  installationId: string;
+  userLinkId: string;
+}
+
+/**
+ * Create a Telegram installation with properly encrypted bot token and a user link.
+ * Use this for callback endpoint tests that need to decrypt the bot token.
+ */
+export async function createTelegramCallbackInstallation(
+  composeId: string,
+  userId: string,
+  botToken: string,
+): Promise<CallbackInstallationResult> {
+  initServices();
+
+  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
+  const encryptedBotToken = encryptCredentialValue(
+    botToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+
+  const [installation] = await globalThis.services.db
+    .insert(telegramInstallations)
+    .values({
+      telegramBotId: uniqueId("bot"),
+      botUsername: "test_bot",
+      encryptedBotToken,
+      webhookSecret: "webhook-secret",
+      defaultComposeId: composeId,
+      adminUserId: userId,
+    })
+    .returning();
+
+  const [userLink] = await globalThis.services.db
+    .insert(telegramUserLinks)
+    .values({
+      telegramUserId: uniqueId("tg"),
+      installationId: installation!.id,
+      vm0UserId: userId,
+    })
+    .returning();
+
+  return {
+    installationId: installation!.id,
+    userLinkId: userLink!.id,
+  };
 }
