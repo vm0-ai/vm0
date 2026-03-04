@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
-import { verifyCallbackRequest } from "../../../../../src/lib/callback";
+import { verifyCallback } from "../../../../../src/lib/callback";
 import { decryptCredentialValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import { slackInstallations } from "../../../../../src/db/schema/slack-installation";
 import { slackThreadSessions } from "../../../../../src/db/schema/slack-thread-session";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { agentRunCallbacks } from "../../../../../src/db/schema/agent-run-callback";
 import {
   createSlackClient,
   postMessage,
@@ -43,17 +42,9 @@ interface CallbackPayload {
   existingSessionId?: string;
 }
 
-interface CallbackBody {
-  runId: string;
-  status: "completed" | "failed";
-  result?: Record<string, unknown>;
-  error?: string;
-  payload: CallbackPayload;
-}
-
-function parsePayload(body: CallbackBody): CallbackPayload | null {
-  if (!body.payload) return null;
-  const p = body.payload;
+function parsePayload(payload: unknown): CallbackPayload | null {
+  if (!payload || typeof payload !== "object") return null;
+  const p = payload as Record<string, unknown>;
   if (
     typeof p.workspaceId !== "string" ||
     typeof p.channelId !== "string" ||
@@ -65,7 +56,7 @@ function parsePayload(body: CallbackBody): CallbackPayload | null {
   ) {
     return null;
   }
-  return p;
+  return p as unknown as CallbackPayload;
 }
 
 function errorResponse(message: string, status: number): NextResponse {
@@ -227,58 +218,13 @@ async function saveThreadSession(
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
-  const { SECRETS_ENCRYPTION_KEY } = env();
 
-  const rawBody = await request.text();
+  const result = await verifyCallback<CallbackPayload>(request, log);
+  if (!result.ok) return result.response;
 
-  let body: CallbackBody;
-  try {
-    body = JSON.parse(rawBody);
-  } catch {
-    return errorResponse("Invalid JSON body", 400);
-  }
+  const { runId, status, error } = result.data;
 
-  const { runId, status, error } = body;
-
-  if (!runId) {
-    return errorResponse("Missing runId", 400);
-  }
-
-  // Query callback record to get the per-callback secret
-  const [callback] = await globalThis.services.db
-    .select({ encryptedSecret: agentRunCallbacks.encryptedSecret })
-    .from(agentRunCallbacks)
-    .where(eq(agentRunCallbacks.runId, runId))
-    .limit(1);
-
-  if (!callback) {
-    log.warn("Callback record not found", { runId });
-    return errorResponse("Callback not found", 404);
-  }
-
-  const callbackSecret = decryptCredentialValue(
-    callback.encryptedSecret,
-    SECRETS_ENCRYPTION_KEY,
-  );
-
-  const signature = request.headers.get("X-VM0-Signature");
-  const timestamp = request.headers.get("X-VM0-Timestamp");
-  const verification = verifyCallbackRequest(
-    rawBody,
-    callbackSecret,
-    signature,
-    timestamp,
-  );
-
-  if (!verification.valid) {
-    log.warn("Callback signature verification failed", {
-      runId,
-      error: verification.error,
-    });
-    return errorResponse(verification.error ?? "Invalid signature", 401);
-  }
-
-  const payload = parsePayload(body);
+  const payload = parsePayload(result.data.payload);
   if (!payload) {
     return errorResponse("Invalid or missing payload", 400);
   }
@@ -288,6 +234,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     status,
     channelId: payload.channelId,
   });
+
+  const { SECRETS_ENCRYPTION_KEY } = env();
 
   // Get Slack installation for bot token
   const [installation] = await globalThis.services.db

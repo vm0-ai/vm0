@@ -100,8 +100,9 @@ async function dispatchSingleCallback(
   // Decrypt the callback secret
   const secret = decryptCredentialValue(encryptedSecret, encryptionKey);
 
-  // Build callback body
+  // Build callback body (callbackId enables PK-based secret lookup on receivers)
   const body = JSON.stringify({
+    callbackId: id,
     runId,
     status,
     result,
