@@ -1,11 +1,16 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { eq, desc } from "drizzle-orm";
+import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { telegramUserLinks } from "../../../../../src/db/schema/telegram-user-link";
 import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
+
+const linkBodySchema = z.object({
+  installationId: z.string().min(1),
+});
 
 /** Link token expiry: 10 minutes */
 const LINK_TOKEN_TTL_MS = 10 * 60 * 1000;
@@ -115,8 +120,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json()) as { installationId?: string };
-  if (!body.installationId) {
+  const parseResult = linkBodySchema.safeParse(await request.json());
+  if (!parseResult.success) {
     return NextResponse.json(
       {
         error: {
@@ -127,6 +132,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  const body = parseResult.data;
 
   // Look up installation to get botUsername
   const [installation] = await globalThis.services.db

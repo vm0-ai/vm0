@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, eq, desc } from "drizzle-orm";
+import { z } from "zod";
 import {
   extractVariableReferences,
   groupVariablesBySource,
@@ -26,6 +27,10 @@ import {
   getUserScopeByClerkId,
 } from "../../../../src/lib/scope/scope-service";
 import { logger } from "../../../../src/lib/logger";
+
+const patchBodySchema = z.object({
+  agentName: z.string().min(1),
+});
 
 const log = logger("api:telegram:integration");
 
@@ -180,13 +185,14 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const body = (await request.json()) as { agentName?: string };
-  if (!body.agentName) {
+  const parseResult = patchBodySchema.safeParse(await request.json());
+  if (!parseResult.success) {
     return NextResponse.json(
       { error: { message: "agentName is required", code: "BAD_REQUEST" } },
       { status: 400 },
     );
   }
+  const body = parseResult.data;
 
   const db = globalThis.services.db;
 

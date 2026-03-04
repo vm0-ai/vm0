@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
+import { z } from "zod";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
@@ -15,6 +16,11 @@ import {
 import { encryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
 import { generateCallbackSecret } from "../../../../src/lib/callback/hmac";
 import { logger } from "../../../../src/lib/logger";
+
+const registerBodySchema = z.object({
+  botToken: z.string().min(1),
+  defaultAgentId: z.string().optional(),
+});
 
 const log = logger("api:telegram:register");
 
@@ -83,17 +89,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json()) as {
-    botToken?: string;
-    defaultAgentId?: string;
-  };
-
-  if (!body.botToken) {
+  const parseResult = registerBodySchema.safeParse(await request.json());
+  if (!parseResult.success) {
     return NextResponse.json(
       { error: { message: "botToken is required", code: "BAD_REQUEST" } },
       { status: 400 },
     );
   }
+  const body = parseResult.data;
 
   const { SECRETS_ENCRYPTION_KEY } = env();
 
