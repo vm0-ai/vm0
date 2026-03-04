@@ -1,10 +1,11 @@
 import { createHash } from "crypto";
 import { eq, and } from "drizzle-orm";
+import { clerkClient } from "@clerk/nextjs/server";
 import { scopes } from "../../db/schema/scope";
 import { scopeMembers } from "../../db/schema/scope-member";
 import { badRequest, notFound, forbidden } from "../errors";
 import { logger } from "../logger";
-import { env } from "../../env";
+import { env, hasClerkAuth } from "../../env";
 
 const log = logger("service:scope");
 
@@ -112,11 +113,29 @@ export async function createUserScope(clerkUserId: string, slug: string) {
 
   validateScopeSlug(slug);
 
+  // Dual-write: create Clerk Organization so every scope is backed by one.
+  // In self-hosted mode (no Clerk), skip — clerkOrgId stays NULL.
+  let clerkOrgId: string | null = null;
+  if (hasClerkAuth()) {
+    const client = await clerkClient();
+    const clerkOrg = await client.organizations.createOrganization({
+      name: slug,
+      slug,
+      createdBy: clerkUserId,
+    });
+    clerkOrgId = clerkOrg.id;
+  }
+
   // Create scope + admin membership atomically
   const scope = await globalThis.services.db.transaction(async (tx) => {
     const [newScope] = await tx
       .insert(scopes)
-      .values({ slug, type: "personal", ownerId: clerkUserId })
+      .values({
+        slug,
+        type: "personal",
+        ownerId: clerkUserId,
+        clerkOrgId,
+      })
       .onConflictDoNothing({ target: scopes.slug })
       .returning();
 
@@ -133,7 +152,12 @@ export async function createUserScope(clerkUserId: string, slug: string) {
     return newScope;
   });
 
-  log.debug("user scope created", { clerkUserId, scopeId: scope.id, slug });
+  log.debug("user scope created", {
+    clerkUserId,
+    scopeId: scope.id,
+    slug,
+    clerkOrgId,
+  });
 
   return scope;
 }

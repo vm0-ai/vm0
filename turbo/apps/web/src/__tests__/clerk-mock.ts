@@ -60,6 +60,13 @@ export function mockClerk(options: { userId: string | null; email?: string }) {
         return Promise.resolve({ data: [] });
       }),
     },
+    organizations: {
+      createOrganization: vi
+        .fn()
+        .mockImplementation(({ slug }: { slug: string }) =>
+          Promise.resolve({ id: `org_mock_${slug}` }),
+        ),
+    },
   } as unknown as Awaited<ReturnType<typeof clerkClient>>);
 }
 
