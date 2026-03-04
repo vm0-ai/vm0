@@ -1678,7 +1678,7 @@ jobs:
           fi
 
   # Runner stress test: submit concurrent jobs with real Claude to validate queue + stability
-  # Only runs on PRs with the 'needs-runner-pipeline' label (opt-in, costs real API credits)
+  # Only runs on PRs with the 'stress-test' label (opt-in)
   runner-stress-test:
     runs-on: ubuntu-latest
     container:
@@ -1693,7 +1693,7 @@ jobs:
       ]
     if: |
       github.event_name == 'pull_request' &&
-      contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline')
+      contains(github.event.pull_request.labels.*.name, 'stress-test')
     timeout-minutes: 30
     env:
       STRESS_PROMPT: "sleep 10 && echo done"
