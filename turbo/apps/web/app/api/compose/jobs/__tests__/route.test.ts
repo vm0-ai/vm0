@@ -92,7 +92,7 @@ describe("POST /api/compose/jobs", () => {
     });
   });
 
-  describe("Job Creation", () => {
+  describe("Job Creation (GitHub)", () => {
     it("should create a new compose job", async () => {
       const request = createTestRequest(
         "http://localhost:3000/api/compose/jobs",
@@ -115,6 +115,7 @@ describe("POST /api/compose/jobs", () => {
       expect(data.jobId).toBeDefined();
       expect(data.status).toBe("pending");
       expect(data.githubUrl).toBe("https://github.com/owner/repo");
+      expect(data.source).toBe("github");
       expect(data.createdAt).toBeDefined();
     });
 
@@ -139,6 +140,173 @@ describe("POST /api/compose/jobs", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
       expect(data.jobId).toBeDefined();
+    });
+  });
+
+  describe("Job Creation (Platform Content)", () => {
+    const testContent = {
+      version: "1",
+      agents: {
+        "my-agent": {
+          framework: "claude-code",
+          description: "A test agent",
+          skills: ["https://github.com/vm0-ai/vm0-skills/tree/main/github"],
+        },
+      },
+    };
+
+    it("should create a job from platform content", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/compose/jobs",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testCliToken}`,
+          },
+          body: JSON.stringify({ content: testContent }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.jobId).toBeDefined();
+      expect(data.status).toBe("pending");
+      expect(data.source).toBe("platform");
+      expect(data.githubUrl).toBeUndefined();
+    });
+
+    it("should create a job with content and instructions", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/compose/jobs",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testCliToken}`,
+          },
+          body: JSON.stringify({
+            content: testContent,
+            instructions: "# Agent Instructions\nBe helpful.",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.jobId).toBeDefined();
+      expect(data.status).toBe("pending");
+      expect(data.source).toBe("platform");
+    });
+
+    it("should return existing platform job for idempotency", async () => {
+      // Create first platform job
+      const request1 = createTestRequest(
+        "http://localhost:3000/api/compose/jobs",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testCliToken}`,
+          },
+          body: JSON.stringify({ content: testContent }),
+        },
+      );
+
+      const response1 = await POST(request1);
+      expect(response1.status).toBe(201);
+      const data1 = await response1.json();
+
+      // Second request should return same job
+      const request2 = createTestRequest(
+        "http://localhost:3000/api/compose/jobs",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testCliToken}`,
+          },
+          body: JSON.stringify({
+            content: {
+              version: "1",
+              agents: { other: { framework: "codex" } },
+            },
+          }),
+        },
+      );
+
+      const response2 = await POST(request2);
+      expect(response2.status).toBe(200);
+      const data2 = await response2.json();
+      expect(data2.jobId).toBe(data1.jobId);
+    });
+
+    it("should complete a platform content job via webhook", async () => {
+      const user = await context.setupUser();
+      const userCliToken = await createTestCliToken(user.userId);
+
+      // Create job
+      const createRequest = createTestRequest(
+        "http://localhost:3000/api/compose/jobs",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${userCliToken}`,
+          },
+          body: JSON.stringify({ content: testContent }),
+        },
+      );
+
+      const createResponse = await POST(createRequest);
+      expect(createResponse.status).toBe(201);
+      const { jobId } = await createResponse.json();
+
+      // Complete via webhook
+      const sandboxToken = await createTestComposeJobToken(user.userId, jobId);
+      const webhookRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/compose/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sandboxToken}`,
+          },
+          body: JSON.stringify({
+            jobId,
+            success: true,
+            result: {
+              composeId: "platform-compose-id",
+              composeName: "my-agent",
+              versionId: "platform-version-id",
+              warnings: [],
+            },
+          }),
+        },
+      );
+
+      await webhookComplete(webhookRequest);
+
+      // Verify completed status
+      const getRequest = createTestRequest(
+        `http://localhost:3000/api/compose/jobs/${jobId}`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${userCliToken}` },
+        },
+      );
+
+      const getResponse = await GET(getRequest);
+      expect(getResponse.status).toBe(200);
+      const data = await getResponse.json();
+      expect(data.status).toBe("completed");
+      expect(data.result.composeId).toBe("platform-compose-id");
+      expect(data.result.composeName).toBe("my-agent");
+      expect(data.completedAt).toBeDefined();
     });
   });
 
