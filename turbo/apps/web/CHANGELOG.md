@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.65.0](https://github.com/vm0-ai/vm0/compare/web-v12.64.0...web-v12.65.0) (2026-03-04)
+
+
+### Features
+
+* **api:** clean up agent-instructions volume on agent delete ([#3553](https://github.com/vm0-ai/vm0/issues/3553)) ([aeaf791](https://github.com/vm0-ai/vm0/commit/aeaf79126e4d9f1288f8c91b0653480fb020f653))
+
 ## [12.64.0](https://github.com/vm0-ai/vm0/compare/web-v12.63.0...web-v12.64.0) (2026-03-04)
 
 
