@@ -126,7 +126,10 @@ async function tryLinkFromLocalRecord(
 ): Promise<string | null> {
   const db = globalThis.services.db;
   const [existing] = await db
-    .select({ id: githubInstallations.id })
+    .select({
+      id: githubInstallations.id,
+      adminGithubUserId: githubInstallations.adminGithubUserId,
+    })
     .from(githubInstallations)
     .where(eq(githubInstallations.status, "active"))
     .limit(1);
@@ -135,7 +138,16 @@ async function tryLinkFromLocalRecord(
     return null;
   }
 
-  await linkVm0User(db, existing.id, vm0UserId);
+  const githubUserId = await linkVm0User(db, existing.id, vm0UserId);
+
+  // If no admin is set yet, make this user the admin
+  if (!existing.adminGithubUserId && githubUserId) {
+    await db
+      .update(githubInstallations)
+      .set({ adminGithubUserId: githubUserId })
+      .where(eq(githubInstallations.id, existing.id));
+  }
+
   return `${getPlatformUrl()}/settings?tab=integrations`;
 }
 
@@ -200,9 +212,6 @@ async function tryLinkFromGitHubApi(
   );
   const encryptedAccessToken = encryptCredentialValue(token, encryptionKey);
 
-  const adminGithubUserId =
-    ghInstall.account.type === "User" ? String(ghInstall.account.id) : null;
-
   const [newInstall] = await db
     .insert(githubInstallations)
     .values({
@@ -212,12 +221,18 @@ async function tryLinkFromGitHubApi(
       targetType: ghInstall.account.type,
       targetId: String(ghInstall.account.id),
       targetName: ghInstall.account.login,
-      adminGithubUserId,
       defaultComposeId: resolvedComposeId,
     })
     .returning({ id: githubInstallations.id });
 
-  await linkVm0User(db, newInstall!.id, vm0UserId);
+  // Link user and set them as admin (the person who triggered the install)
+  const githubUserId = await linkVm0User(db, newInstall!.id, vm0UserId);
+  if (githubUserId) {
+    await db
+      .update(githubInstallations)
+      .set({ adminGithubUserId: githubUserId })
+      .where(eq(githubInstallations.id, newInstall!.id));
+  }
 
   return `${platformUrl}/settings?tab=integrations`;
 }
