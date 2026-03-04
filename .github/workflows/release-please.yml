@@ -708,25 +708,27 @@ jobs:
             --data-binary "@${ASSET_PATH}" \
             "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?name=${ASSET_NAME}"
 
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
       - name: Deploy to production with Ansible
         env:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          AWS_METAL_RUNNER_SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          echo "$AWS_METAL_RUNNER_SSH_KEY" > ~/.ssh/prod-runner.pem
-          chmod 600 ~/.ssh/prod-runner.pem
           cd ansible
           ansible-playbook \
             -i "${AWS_METAL_RUNNER_HOSTS}," \
             playbooks/provision-metal.yml \
-            --private-key ~/.ssh/prod-runner.pem \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -v
           if [ -n "${GRAFANA_CLOUD_API_KEY}" ]; then
@@ -744,7 +746,6 @@ jobs:
           ansible-playbook \
             -i "${AWS_METAL_RUNNER_HOSTS}," \
             playbooks/deploy-runner.yml \
-            --private-key ~/.ssh/prod-runner.pem \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=https://www.vm0.ai" \

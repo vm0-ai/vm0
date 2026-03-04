@@ -31,14 +31,13 @@ jobs:
         if: steps.check.outputs.should-cleanup == 'true'
         run: pip3 install ansible
 
-      - name: Setup SSH key
+      - name: Setup SSH via Cloudflare Tunnel
         if: steps.check.outputs.should-cleanup == 'true'
-        env:
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       - name: Cleanup turbo runner on all metal hosts
         if: steps.check.outputs.should-cleanup == 'true'
@@ -51,7 +50,6 @@ jobs:
           ansible-playbook \
             -i "${METAL_HOSTS}," \
             playbooks/cleanup-turbo-runner.yml \
-            --private-key "$HOME/.ssh/runner.pem" \
             -e "ansible_user=${METAL_USER}" \
             -e "job_ref=pr-${PR_NUMBER}" \
             -v || true
@@ -67,7 +65,6 @@ jobs:
           ansible-playbook \
             -i "${METAL_HOSTS}," \
             playbooks/cleanup-crates-runner.yml \
-            --private-key "$HOME/.ssh/runner.pem" \
             -e "ansible_user=${METAL_USER}" \
             -e "job_ref=pr-${PR_NUMBER}-test" \
             -v || true

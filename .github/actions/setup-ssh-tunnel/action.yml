@@ -1,0 +1,50 @@
+name: "Setup SSH via Cloudflare Tunnel"
+description: "Install cloudflared and configure SSH to proxy through Cloudflare Tunnel"
+
+inputs:
+  ssh-key:
+    description: "SSH private key for metal runner"
+    required: true
+  cf-access-client-id:
+    description: "Cloudflare Access service token client ID"
+    required: true
+  cf-access-client-secret:
+    description: "Cloudflare Access service token client secret"
+    required: true
+  cloudflared-version:
+    description: "cloudflared version to install"
+    required: false
+    default: "2026.2.0"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install cloudflared
+      shell: bash
+      run: |
+        curl -sfL "https://github.com/cloudflare/cloudflared/releases/download/${{ inputs.cloudflared-version }}/cloudflared-linux-amd64.deb" -o /tmp/cloudflared.deb
+        if command -v sudo &>/dev/null; then
+          sudo dpkg -i /tmp/cloudflared.deb
+        else
+          dpkg -i /tmp/cloudflared.deb
+        fi
+
+    - name: Configure SSH
+      shell: bash
+      env:
+        SSH_KEY: ${{ inputs.ssh-key }}
+        CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+        CF_ACCESS_CLIENT_SECRET: ${{ inputs.cf-access-client-secret }}
+      run: |
+        mkdir -p "$HOME/.ssh"
+        echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+        chmod 600 "$HOME/.ssh/runner.pem"
+        cat > "$HOME/.ssh/config" << EOF
+        Host *
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+          ConnectTimeout 10
+          IdentityFile $HOME/.ssh/runner.pem
+          ProxyCommand cloudflared access ssh --hostname %h --id ${CF_ACCESS_CLIENT_ID} --secret ${CF_ACCESS_CLIENT_SECRET}
+        EOF
+        chmod 600 "$HOME/.ssh/config"

@@ -164,13 +164,12 @@ jobs:
           GUEST_MOCK_CLAUDE_PATH=target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-mock-claude \
           cargo build --profile $CARGO_PROFILE --target $TARGET_TRIPLE -p runner
 
-      - name: Setup SSH
-        env:
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       - name: Select metal host
         id: host
@@ -201,7 +200,6 @@ jobs:
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
           TARGET_DIR="crates/target/${TARGET_TRIPLE}/${CARGO_PROFILE}"
@@ -214,7 +212,6 @@ jobs:
           ansible-playbook \
             -i "${HOST}," \
             playbooks/provision-metal.yml \
-            --private-key $HOME/.ssh/runner.pem \
             -e "ansible_user=${METAL_USER}" \
             -v
           if [ -n "${GRAFANA_CLOUD_API_KEY}" ]; then
@@ -233,21 +230,21 @@ jobs:
 
           # Clean previous run artifacts and upload runner (guests are embedded)
           echo "=== Deploying runner to ${HOST}:${BIN_DIR} ==="
-          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-local && mkdir -p ${BIN_DIR}"
-          scp $SSH_OPTS "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
+          ssh $REMOTE "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-local && mkdir -p ${BIN_DIR}"
+          scp "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
 
           # Clean up old rootfs/snapshots, keep the 3 most recent
-          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 3"
+          ssh $REMOTE "${BIN_DIR}/runner gc --keep-latest 3"
 
           # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
           echo "=== Running setup ==="
-          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner setup"
+          ssh $REMOTE "${BIN_DIR}/runner setup"
 
           # Run build (rootfs via Docker + snapshot via Firecracker)
           # Use tee to stream output in real-time while capturing for hash extraction
           echo "=== Running build ==="
           BUILD_LOG=$(mktemp)
-          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build" | tee "$BUILD_LOG"
+          ssh $REMOTE "${BIN_DIR}/runner build" | tee "$BUILD_LOG"
           ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG" | cut -d= -f2)
           SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG" | cut -d= -f2)
           rm -f "$BUILD_LOG"
@@ -264,13 +261,14 @@ jobs:
     needs: [runner-build]
     timeout-minutes: 5
     steps:
-      - name: Setup SSH
-        env:
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       - name: Run benchmark
         env:
@@ -281,13 +279,12 @@ jobs:
           ROOTFS_HASH: ${{ needs.runner-build.outputs.rootfs-hash }}
           SNAPSHOT_HASH: ${{ needs.runner-build.outputs.snapshot-hash }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
           RUNNER_DIR="~/.vm0-runner/runners/${JOB_REF}-bench"
 
           echo "=== Generating config ==="
-          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+          ssh $REMOTE "${BIN_DIR}/runner config \
             --rootfs-hash ${ROOTFS_HASH} \
             --snapshot-hash ${SNAPSHOT_HASH} \
             --name ${JOB_REF}-bench \
@@ -297,7 +294,7 @@ jobs:
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
           echo "=== Running benchmark ==="
-          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner benchmark \
+          ssh $REMOTE "${BIN_DIR}/runner benchmark \
             --config ${RUNNER_DIR}/runner.yaml \
             'curl -sf --max-time 10 https://httpbin.org/get'"
 
@@ -306,13 +303,14 @@ jobs:
     needs: [runner-build]
     timeout-minutes: 5
     steps:
-      - name: Setup SSH
-        env:
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       - name: Test runner exec
         env:
@@ -323,12 +321,11 @@ jobs:
           ROOTFS_HASH: ${{ needs.runner-build.outputs.rootfs-hash }}
           SNAPSHOT_HASH: ${{ needs.runner-build.outputs.snapshot-hash }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
 
           echo "=== Generating config ==="
-          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+          ssh $REMOTE "${BIN_DIR}/runner config \
             --rootfs-hash ${ROOTFS_HASH} \
             --snapshot-hash ${SNAPSHOT_HASH} \
             --name ${JOB_REF}-exec \
@@ -339,7 +336,7 @@ jobs:
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
           echo "=== Running exec test ==="
-          ssh $SSH_OPTS $REMOTE bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          ssh $REMOTE bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
           BIN_DIR=$1; JOB_REF=$2
           RUNNER_DIR="$HOME/.vm0-runner/runners/${JOB_REF}-exec"
           SVC="${JOB_REF}-exec"
@@ -585,13 +582,14 @@ jobs:
     needs: [runner-build]
     timeout-minutes: 5
     steps:
-      - name: Setup SSH
-        env:
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       - name: Run upgrade test
         env:
@@ -602,14 +600,13 @@ jobs:
           ROOTFS_HASH: ${{ needs.runner-build.outputs.rootfs-hash }}
           SNAPSHOT_HASH: ${{ needs.runner-build.outputs.snapshot-hash }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
           GROUP="vm0/upgrade-${JOB_REF}"
 
           echo "=== Generating configs for runner A and B ==="
           for SUFFIX in upgrade-a upgrade-b; do
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+            ssh $REMOTE "${BIN_DIR}/runner config \
               --rootfs-hash ${ROOTFS_HASH} \
               --snapshot-hash ${SNAPSHOT_HASH} \
               --name ${JOB_REF}-${SUFFIX} \
@@ -621,7 +618,7 @@ jobs:
           done
 
           echo "=== Running upgrade test ==="
-          ssh $SSH_OPTS $REMOTE bash -s -- "${BIN_DIR}" "${JOB_REF}" "${GROUP}" <<'REMOTE_SCRIPT'
+          ssh $REMOTE bash -s -- "${BIN_DIR}" "${JOB_REF}" "${GROUP}" <<'REMOTE_SCRIPT'
           BIN_DIR=$1; JOB_REF=$2; GROUP=$3
           RUNNER_DIR_A="$HOME/.vm0-runner/runners/${JOB_REF}-upgrade-a"
           RUNNER_DIR_B="$HOME/.vm0-runner/runners/${JOB_REF}-upgrade-b"
@@ -707,13 +704,12 @@ jobs:
       - name: Install Ansible
         run: pip3 install ansible
 
-      - name: Setup SSH key
-        env:
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       - name: Cleanup
         env:
@@ -725,7 +721,6 @@ jobs:
           ansible-playbook \
             -i "${HOST}," \
             playbooks/cleanup-crates-runner.yml \
-            --private-key "$HOME/.ssh/runner.pem" \
             -e "ansible_user=${METAL_USER}" \
             -e "job_ref=${JOB_REF}" \
             -v || true

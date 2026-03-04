@@ -1099,13 +1099,12 @@ jobs:
           GUEST_MOCK_CLAUDE_PATH=target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-mock-claude \
           cargo build --profile $CARGO_PROFILE --target $TARGET_TRIPLE -p runner
 
-      - name: Setup SSH
-        env:
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       - name: Resolve metal hosts
         id: host
@@ -1164,7 +1163,6 @@ jobs:
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           TARGET_DIR="crates/target/${TARGET_TRIPLE}/${CARGO_PROFILE}"
 
           # Provision system dependencies on all hosts (idempotent)
@@ -1175,7 +1173,6 @@ jobs:
           ansible-playbook \
             -i "${METAL_HOSTS}," \
             playbooks/provision-metal.yml \
-            --private-key $HOME/.ssh/runner.pem \
             -e "ansible_user=${METAL_USER}" \
             -v
           if [ -n "${GRAFANA_CLOUD_API_KEY}" ]; then
@@ -1200,17 +1197,17 @@ jobs:
             echo "=== Deploying to ${HOST} (runner: ${RUNNER_NAME}) ==="
 
             # Clean previous run artifacts and upload runner (guests are embedded)
-            ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR} && mkdir -p ${BIN_DIR}"
-            scp $SSH_OPTS "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
+            ssh $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR} && mkdir -p ${BIN_DIR}"
+            scp "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
 
             # Clean up old rootfs/snapshots, keep the 3 most recent
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 3"
+            ssh $REMOTE "${BIN_DIR}/runner gc --keep-latest 3"
 
             # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner setup"
+            ssh $REMOTE "${BIN_DIR}/runner setup"
 
             # Run build to create rootfs + snapshot (outputs hashes to stdout)
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
+            ssh $REMOTE "${BIN_DIR}/runner build \
               --vcpu ${RUNNER_VCPU} \
               --memory-mb ${RUNNER_MEMORY_MB}"
             echo "=== Done deploying to ${HOST} ==="
@@ -1271,13 +1268,14 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       )
     steps:
-      - name: Setup SSH
-        env:
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       # Read METAL_HOSTS from secret directly — GitHub Actions masks secret values in job outputs
       - name: Rebuild config and start runner service on all hosts
@@ -1294,8 +1292,6 @@ jobs:
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
-
           start_on_host() {
             local HOST=$1
             local HOST_INDEX=$2
@@ -1310,7 +1306,7 @@ jobs:
             fi
 
             # Generate runner.yaml with real preview URL (no build needed, uses cached hashes)
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+            ssh $REMOTE "${BIN_DIR}/runner config \
               --rootfs-hash ${ROOTFS_HASH} \
               --snapshot-hash ${SNAPSHOT_HASH} \
               --name ${RUNNER_NAME} \
@@ -1322,7 +1318,7 @@ jobs:
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
             # Start as systemd transient service
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner service start \
+            ssh $REMOTE "${BIN_DIR}/runner service start \
               --name ${RUNNER_NAME} \
               --config ${RUNNER_DIR}/runner.yaml \
               --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
@@ -1331,7 +1327,7 @@ jobs:
 
             # Health check — wait for runner startup, then verify
             sleep 5
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
+            ssh $REMOTE "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
             echo "=== Runner started on ${HOST} ==="
           }
 
@@ -1363,7 +1359,7 @@ jobs:
           # Sum auto-detected max_concurrent from all hosts' status.json
           TOTAL=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            MC=$(ssh $SSH_OPTS "${METAL_USER}@${HOST}" "grep -o '\"max_concurrent\": [0-9]*' ${RUNNER_DIR}/status.json | grep -o '[0-9]*'") || true
+            MC=$(ssh "${METAL_USER}@${HOST}" "grep -o '\"max_concurrent\": [0-9]*' ${RUNNER_DIR}/status.json | grep -o '[0-9]*'") || true
             if [ -z "$MC" ] || ! [[ "$MC" =~ ^[0-9]+$ ]]; then
               echo "::error::Failed to read max_concurrent from ${HOST}"
               exit 1
@@ -1452,13 +1448,12 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-      - name: Setup SSH
-        env:
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       - name: Verify runners are deployed
         env:
@@ -1467,15 +1462,18 @@ jobs:
           BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             HOST_INDEX=$((HOST_INDEX + 1))
             RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
             REMOTE="${METAL_USER}@${HOST}"
             echo "Checking runner ${RUNNER_NAME} on ${HOST}..."
-            if ! ssh $SSH_OPTS "$REMOTE" "test -x ${BIN_DIR}/runner"; then
+            if ! ssh "$REMOTE" "test -x ${BIN_DIR}/runner"; then
               echo "::error::Runner binary not found on ${HOST}. The cleanup job may have already run. Use 'Re-run all jobs' to redeploy the runner first."
+              exit 1
+            fi
+            if ! ssh "$REMOTE" "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"; then
+              echo "::error::Runner ${RUNNER_NAME} not healthy on ${HOST}. Use 'Re-run all jobs' to redeploy the runner first."
               exit 1
             fi
           done
@@ -1638,13 +1636,12 @@ jobs:
       - name: Install Ansible
         run: pip3 install ansible
 
-      - name: Setup SSH key
-        env:
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       - name: Cleanup runner on all metal hosts
         env:
@@ -1656,7 +1653,6 @@ jobs:
           ansible-playbook \
             -i "${METAL_HOSTS}," \
             playbooks/cleanup-turbo-runner.yml \
-            --private-key "$HOME/.ssh/runner.pem" \
             -e "ansible_user=${METAL_USER}" \
             -e "job_ref=${JOB_REF}" \
             -v || true
