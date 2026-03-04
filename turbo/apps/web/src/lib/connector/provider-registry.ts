@@ -20,6 +20,7 @@ import { slackHandler } from "./providers/slack-handler";
 import { stravaHandler } from "./providers/strava-handler";
 import { sentryHandler } from "./providers/sentry-handler";
 import { xHandler } from "./providers/x-handler";
+import { xeroHandler } from "./providers/xero-handler";
 
 export type { OAuthTokenResult };
 
@@ -46,6 +47,7 @@ export const PROVIDER_HANDLERS: Record<
   slack: slackHandler,
   strava: stravaHandler,
   x: xHandler,
+  xero: xeroHandler,
 };
 
 /**

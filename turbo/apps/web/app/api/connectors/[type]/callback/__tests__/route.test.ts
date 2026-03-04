@@ -46,6 +46,8 @@ const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
 const REDDIT_USER_INFO_URL = "https://oauth.reddit.com/api/v1/me";
 const X_TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
 const SENTRY_TOKEN_URL = "https://sentry.io/oauth/token/";
+const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
+const XERO_USERINFO_URL = "https://identity.xero.com/connect/userinfo";
 
 /**
  * Create MSW handlers for GitHub OAuth API
@@ -749,6 +751,53 @@ function createSentryOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for Xero OAuth API.
+ * Xero uses a separate userinfo endpoint (OpenID Connect).
+ */
+function createXeroOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  userName?: string | null;
+  email?: string | null;
+  userInfoError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(XERO_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "xero-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "xero-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "bearer",
+        scope:
+          "openid profile email offline_access accounting.transactions accounting.contacts accounting.settings",
+      });
+    }),
+    userInfo: http.get(XERO_USERINFO_URL, () => {
+      if (options.userInfoError) {
+        return HttpResponse.json({ error: "invalid_token" }, { status: 401 });
+      }
+      return HttpResponse.json({
+        sub: options.userId ?? "xero-user-123",
+        name: options.userName !== undefined ? options.userName : "Xero User",
+        email: options.email !== undefined ? options.email : "user@xero.com",
+      });
+    }),
+  });
+}
+
+/**
  * Create a test request with OAuth callback parameters and cookies
  */
 function createCallbackRequest(options: {
@@ -817,6 +866,8 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("X_OAUTH_CLIENT_SECRET", "x-test-client-secret");
     vi.stubEnv("SENTRY_OAUTH_CLIENT_ID", "sentry-test-client-id");
     vi.stubEnv("SENTRY_OAUTH_CLIENT_SECRET", "sentry-test-client-secret");
+    vi.stubEnv("XERO_OAUTH_CLIENT_ID", "xero-test-client-id");
+    vi.stubEnv("XERO_OAUTH_CLIENT_SECRET", "xero-test-client-secret");
     reloadEnv();
   });
 
@@ -3595,6 +3646,161 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       });
       const response = await GET(request, {
         params: Promise.resolve({ type: "sentry" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Xero OAuth Flow", () => {
+    it("should store Xero connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createXeroOAuthMock({
+        accessToken: "xero-access-token",
+        refreshToken: "xero-refresh-token",
+        userId: "xero-user-456",
+        userName: "Xero User",
+        email: "user@xero.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "xero",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "xero" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=xero");
+      expect(location).toContain("username=Xero+User");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/xero",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("xero");
+      expect(connector.externalUsername).toBe("Xero User");
+      expect(connector.externalId).toBe("xero-user-456");
+      expect(connector.externalEmail).toBe("user@xero.com");
+    });
+
+    it("should redirect with error when Xero token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createXeroOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "xero",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "xero" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Xero returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createXeroOAuthMock({
+        accessToken: "xero-access-token",
+        refreshToken: "xero-refresh-token-stored",
+        userId: "xero-user-456",
+        userName: "Xero User",
+        email: "user@xero.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "xero",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "xero" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "XERO_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("xero-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Xero returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 1800; // 30 minutes
+      const { handlers: mswHandlers } = createXeroOAuthMock({
+        accessToken: "xero-access-token",
+        refreshToken: "xero-refresh-token",
+        expiresIn,
+        userId: "xero-user-exp",
+        userName: "Expiring Xero",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "xero",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "xero" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "xero",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Xero user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createXeroOAuthMock({
+        userInfoError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "xero",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "xero" }),
       });
 
       expect(response.status).toBe(307);

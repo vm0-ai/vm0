@@ -117,6 +117,9 @@ function initEnv() {
       // Sentry OAuth (for connector)
       SENTRY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       SENTRY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Xero OAuth (for connector)
+      XERO_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      XERO_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // GitHub App (for issue integration)
       GITHUB_APP_ID: z.string().min(1).optional(),
       GITHUB_APP_SLUG: z.string().min(1).optional(),
@@ -230,6 +233,8 @@ function initEnv() {
       X_OAUTH_CLIENT_SECRET: process.env.X_OAUTH_CLIENT_SECRET,
       SENTRY_OAUTH_CLIENT_ID: process.env.SENTRY_OAUTH_CLIENT_ID,
       SENTRY_OAUTH_CLIENT_SECRET: process.env.SENTRY_OAUTH_CLIENT_SECRET,
+      XERO_OAUTH_CLIENT_ID: process.env.XERO_OAUTH_CLIENT_ID,
+      XERO_OAUTH_CLIENT_SECRET: process.env.XERO_OAUTH_CLIENT_SECRET,
       GITHUB_APP_ID: process.env.GITHUB_APP_ID,
       GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
       GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,

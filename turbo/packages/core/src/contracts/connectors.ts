@@ -680,6 +680,44 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  xero: {
+    label: "Xero",
+    helpText:
+      "Connect your Xero account to access accounting data, invoices, and contacts",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Xero to grant access.",
+        secrets: {
+          XERO_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          XERO_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      XERO_TOKEN: "$secrets.XERO_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://login.xero.com/identity/connect/authorize",
+      tokenUrl: "https://identity.xero.com/connect/token",
+      scopes: [
+        "openid",
+        "profile",
+        "email",
+        "offline_access",
+        "accounting.transactions",
+        "accounting.contacts",
+        "accounting.settings",
+      ],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -705,6 +743,7 @@ export const connectorTypeSchema = z.enum([
   "garmin-connect",
   "x",
   "sentry",
+  "xero",
 ]);
 
 /**
