@@ -6,6 +6,7 @@ import type {
   ActionsBlock,
   Button,
   Checkboxes,
+  RadioButtons,
   Option,
 } from "@slack/web-api";
 import { getPlatformUrl } from "../url";
@@ -630,6 +631,13 @@ export function buildAskUserQuestionBlocks(
   questions: AskUserQuestion[],
   pendingId: string,
 ): (Block | KnownBlock)[] {
+  // Single question + single-select → buttons submit directly on click
+  const directSubmit =
+    questions.length === 1 &&
+    !questions[0]?.multiSelect &&
+    questions[0]?.options &&
+    questions[0].options.length > 0;
+
   const blocks: (Block | KnownBlock)[] = [
     {
       type: "section",
@@ -656,73 +664,83 @@ export function buildAskUserQuestionBlocks(
       continue;
     }
 
-    if (q.multiSelect) {
-      // Checkboxes for multi-select
-      const options: Option[] = q.options.map((opt, oIdx) => ({
+    const options: Option[] = q.options.map((opt, oIdx) => ({
+      text: { type: "plain_text" as const, text: opt.label },
+      description: opt.description
+        ? { type: "plain_text" as const, text: opt.description }
+        : undefined,
+      value: `q${qIdx}_o${oIdx}`,
+    }));
+
+    if (directSubmit) {
+      // Single question + single-select: buttons that submit on click
+      const buttons: Button[] = q.options.map((opt, oIdx) => ({
+        type: "button" as const,
         text: { type: "plain_text" as const, text: opt.label },
-        description: opt.description
-          ? { type: "plain_text" as const, text: opt.description }
-          : undefined,
-        value: `q${qIdx}_o${oIdx}`,
+        action_id: `ask_user_pick_q${qIdx}_o${oIdx}`,
+        value: pendingId,
       }));
 
+      blocks.push({
+        type: "actions",
+        block_id: `ask_user_block_q${qIdx}`,
+        elements: buttons,
+      } as ActionsBlock);
+    } else if (q.multiSelect) {
+      // Checkboxes for multi-select
       const checkboxes: Checkboxes = {
         type: "checkboxes",
         action_id: `ask_user_multi_q${qIdx}`,
         options,
       };
 
-      const actionsBlock: ActionsBlock = {
+      blocks.push({
         type: "actions",
         block_id: `ask_user_block_q${qIdx}`,
         elements: [checkboxes],
+      } as ActionsBlock);
+    } else {
+      // Radio buttons for single-select (multi-question flow)
+      const radioButtons: RadioButtons = {
+        type: "radio_buttons",
+        action_id: `ask_user_q${qIdx}`,
+        options,
       };
 
-      blocks.push(actionsBlock);
-    } else {
-      // Buttons for single-select
-      const buttons: Button[] = q.options.map((opt, oIdx) => ({
-        type: "button" as const,
-        text: { type: "plain_text" as const, text: opt.label },
-        action_id: `ask_user_q${qIdx}_o${oIdx}`,
-        value: pendingId,
-      }));
-
-      const actionsBlock: ActionsBlock = {
+      blocks.push({
         type: "actions",
         block_id: `ask_user_block_q${qIdx}`,
-        elements: buttons,
-      };
-
-      blocks.push(actionsBlock);
+        elements: [radioButtons],
+      } as ActionsBlock);
     }
   }
 
-  // Submit button — always present so multi-question or multi-select
-  // answers are submitted together
-  const submitButton: Button = {
-    type: "button",
-    text: { type: "plain_text", text: "Submit" },
-    action_id: "ask_user_submit",
-    value: pendingId,
-    style: "primary",
-  };
+  if (!directSubmit) {
+    // Submit button for multi-question or multi-select flows
+    const submitButton: Button = {
+      type: "button",
+      text: { type: "plain_text", text: "Submit" },
+      action_id: "ask_user_submit",
+      value: pendingId,
+      style: "primary",
+    };
 
-  blocks.push({
-    type: "actions",
-    block_id: "ask_user_submit_block",
-    elements: [submitButton],
-  } as ActionsBlock);
+    blocks.push({
+      type: "actions",
+      block_id: "ask_user_submit_block",
+      elements: [submitButton],
+    } as ActionsBlock);
 
-  blocks.push({
-    type: "context",
-    elements: [
-      {
-        type: "mrkdwn",
-        text: "_Select your answers above, then click Submit to continue._",
-      },
-    ],
-  });
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: "_Select your answers above, then click Submit to continue._",
+        },
+      ],
+    });
+  }
 
   return blocks;
 }

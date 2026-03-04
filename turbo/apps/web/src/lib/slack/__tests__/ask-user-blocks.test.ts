@@ -9,7 +9,7 @@ import type { AskUserQuestion } from "../blocks";
 describe("buildAskUserQuestionBlocks", () => {
   const pendingId = "pending-123";
 
-  it("should build header and submit button for a single question", () => {
+  it("should build direct-submit buttons for single question single-select", () => {
     const questions: AskUserQuestion[] = [
       {
         question: "Which framework?",
@@ -22,6 +22,9 @@ describe("buildAskUserQuestionBlocks", () => {
     ];
 
     const blocks = buildAskUserQuestionBlocks(questions, pendingId);
+
+    // Header + question + buttons = 3 blocks (no submit button, no context)
+    expect(blocks).toHaveLength(3);
 
     // Header block
     expect(blocks[0]).toMatchObject({
@@ -38,35 +41,21 @@ describe("buildAskUserQuestionBlocks", () => {
       text: { type: "mrkdwn", text: "*Framework:* Which framework?" },
     });
 
-    // Buttons for single-select
+    // Buttons for direct submit
     const actionsBlock = blocks[2] as ActionsBlock;
     expect(actionsBlock.type).toBe("actions");
     expect(actionsBlock.elements).toHaveLength(2);
     expect(actionsBlock.elements[0]).toMatchObject({
       type: "button",
       text: { type: "plain_text", text: "React" },
-      action_id: "ask_user_q0_o0",
+      action_id: "ask_user_pick_q0_o0",
       value: pendingId,
     });
     expect(actionsBlock.elements[1]).toMatchObject({
       type: "button",
       text: { type: "plain_text", text: "Vue" },
-      action_id: "ask_user_q0_o1",
-    });
-
-    // Submit button
-    const submitBlock = blocks[3] as ActionsBlock;
-    expect(submitBlock.block_id).toBe("ask_user_submit_block");
-    expect(submitBlock.elements[0]).toMatchObject({
-      type: "button",
-      action_id: "ask_user_submit",
+      action_id: "ask_user_pick_q0_o1",
       value: pendingId,
-      style: "primary",
-    });
-
-    // Context hint
-    expect(blocks[4]).toMatchObject({
-      type: "context",
     });
   });
 

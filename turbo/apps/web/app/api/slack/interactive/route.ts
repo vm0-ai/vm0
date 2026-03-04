@@ -76,6 +76,20 @@ interface SlackInteractivePayload {
     selected_option?: { value: string };
     selected_options?: Array<{ value: string }>;
   }>;
+  /** Contains current values of all interactive elements in the message */
+  state?: {
+    values: Record<
+      string,
+      Record<
+        string,
+        {
+          type: string;
+          selected_option?: { value: string } | null;
+          selected_options?: Array<{ value: string }>;
+        }
+      >
+    >;
+  };
 }
 
 export async function POST(request: Request) {
@@ -142,10 +156,13 @@ export async function POST(request: Request) {
       handleAskUserSubmit(payload).catch((err: unknown) => {
         log.error("Failed to handle askUserQuestion submit:", err);
       });
+    } else if (/^ask_user_pick_q\d+_o\d+$/.test(action.action_id)) {
+      // Direct-submit button click (single question, single-select)
+      handleDirectPick(payload, action).catch((err: unknown) => {
+        log.error("Failed to handle direct pick:", err);
+      });
     }
-    // Single-select button clicks (ask_user_q*_o*) and checkbox changes
-    // (ask_user_multi_q*) are acknowledged but not acted on until Submit.
-    // Slack stores the UI state client-side.
+    // Radio button and checkbox selections are maintained client-side by Slack.
   }
 
   return new Response("", { status: 200 });
@@ -204,46 +221,110 @@ async function handleHomeDisconnect(
 type SlackAction = NonNullable<SlackInteractivePayload["actions"]>[number];
 
 /**
- * Extract user selections from Slack interactive payload actions.
- *
- * Parses single-select button clicks (ask_user_q{N}_o{M}) and
- * multi-select checkbox selections (ask_user_multi_q{N}).
+ * Handle direct-submit button click (single question, single-select).
+ * The button click IS the answer — no separate Submit step.
  */
-function collectAnswersFromActions(
-  actions: SlackAction[],
+async function handleDirectPick(
+  payload: SlackInteractivePayload,
+  action: SlackAction,
+): Promise<void> {
+  const pendingId = action.value;
+  if (!pendingId) return;
+
+  const match = action.action_id.match(/^ask_user_pick_q(\d+)_o(\d+)$/);
+  if (!match) return;
+
+  const qIdx = parseInt(match[1]!, 10);
+  const oIdx = parseInt(match[2]!, 10);
+
+  // Atomically claim
+  const [claimed] = await globalThis.services.db
+    .update(slackPendingQuestions)
+    .set({ answeredAt: new Date() })
+    .where(
+      and(
+        eq(slackPendingQuestions.id, pendingId),
+        isNull(slackPendingQuestions.answeredAt),
+      ),
+    )
+    .returning();
+
+  if (!claimed) return;
+
+  if (new Date() > claimed.expiresAt) {
+    await updateCardWithError(
+      claimed.slackChannelId,
+      claimed.slackMessageTs,
+      claimed.slackWorkspaceId,
+      "This question has expired. Please ask the agent again.",
+    );
+    return;
+  }
+
+  const parsed = askUserQuestionSchema.safeParse(claimed.questions);
+  if (!parsed.success) return;
+
+  const questions: AskUserQuestion[] = parsed.data;
+  const opt = questions[qIdx]?.options?.[oIdx];
+  if (!opt) return;
+
+  const answers = new Map<number, string[]>();
+  answers.set(qIdx, [opt.label]);
+  const answerPrompt = buildAnswerPrompt(questions, answers);
+
+  // Update card to answered state + dispatch run (reuse shared logic)
+  await finishSubmit(payload, claimed, questions, answers, answerPrompt);
+}
+
+/**
+ * Extract user selections from Slack `state.values`.
+ *
+ * When a block_actions payload is received, `state.values` contains the
+ * current values of ALL interactive elements in the message, keyed by
+ * block_id → action_id.
+ */
+function collectAnswersFromState(
+  stateValues: NonNullable<SlackInteractivePayload["state"]>["values"],
   questions: AskUserQuestion[],
 ): Map<number, string[]> {
   const answers = new Map<number, string[]>();
 
-  for (const act of actions) {
-    // Single-select button: ask_user_q{N}_o{M}
-    const btnMatch = act.action_id.match(/^ask_user_q(\d+)_o(\d+)$/);
-    if (btnMatch) {
-      const qIdx = parseInt(btnMatch[1]!, 10);
-      const oIdx = parseInt(btnMatch[2]!, 10);
-      const opt = questions[qIdx]?.options?.[oIdx];
-      if (opt) {
-        answers.set(qIdx, [opt.label]);
-      }
-    }
+  for (const [blockId, actions] of Object.entries(stateValues)) {
+    // Match block_id pattern: ask_user_block_q{N}
+    const blockMatch = blockId.match(/^ask_user_block_q(\d+)$/);
+    if (!blockMatch) continue;
 
-    // Multi-select checkbox: ask_user_multi_q{N}
-    const multiMatch = act.action_id.match(/^ask_user_multi_q(\d+)$/);
-    if (multiMatch && act.selected_options) {
-      const qIdx = parseInt(multiMatch[1]!, 10);
-      const q = questions[qIdx];
-      const labels: string[] = [];
-      for (const selOpt of act.selected_options) {
-        const optMatch = selOpt.value.match(/^q\d+_o(\d+)$/);
+    const qIdx = parseInt(blockMatch[1]!, 10);
+    const q = questions[qIdx];
+    if (!q) continue;
+
+    for (const element of Object.values(actions)) {
+      // Single-select radio button
+      if (element.selected_option) {
+        const optMatch = element.selected_option.value.match(/^q\d+_o(\d+)$/);
         if (optMatch) {
-          const opt = q?.options?.[parseInt(optMatch[1]!, 10)];
+          const opt = q.options?.[parseInt(optMatch[1]!, 10)];
           if (opt) {
-            labels.push(opt.label);
+            answers.set(qIdx, [opt.label]);
           }
         }
       }
-      if (labels.length > 0) {
-        answers.set(qIdx, labels);
+
+      // Multi-select checkboxes
+      if (element.selected_options && element.selected_options.length > 0) {
+        const labels: string[] = [];
+        for (const selOpt of element.selected_options) {
+          const optMatch = selOpt.value.match(/^q\d+_o(\d+)$/);
+          if (optMatch) {
+            const opt = q.options?.[parseInt(optMatch[1]!, 10)];
+            if (opt) {
+              labels.push(opt.label);
+            }
+          }
+        }
+        if (labels.length > 0) {
+          answers.set(qIdx, labels);
+        }
       }
     }
   }
@@ -374,10 +455,29 @@ async function handleAskUserSubmit(
   }
 
   const questions: AskUserQuestion[] = parsed.data;
-  const answers = collectAnswersFromActions(payload.actions ?? [], questions);
+
+  const answers = collectAnswersFromState(
+    payload.state?.values ?? {},
+    questions,
+  );
   const answerPrompt = buildAnswerPrompt(questions, answers);
 
-  // Update the Slack message to show answered state
+  await finishSubmit(payload, claimed, questions, answers, answerPrompt);
+}
+
+/**
+ * Shared post-submit logic: update the card, set thinking status, dispatch run.
+ * Used by both handleAskUserSubmit and handleDirectPick.
+ */
+async function finishSubmit(
+  payload: SlackInteractivePayload,
+  claimed: typeof slackPendingQuestions.$inferSelect,
+  questions: AskUserQuestion[],
+  answers: Map<number, string[]>,
+  answerPrompt: string,
+): Promise<void> {
+  const pendingId = claimed.id;
+
   const { SECRETS_ENCRYPTION_KEY } = env();
   const [installation] = await globalThis.services.db
     .select()
