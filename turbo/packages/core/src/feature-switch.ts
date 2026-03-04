@@ -135,11 +135,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.XConnector]: {
-    maintainer: "ethan@vm0.ai",
-    enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-  },
+
   [FeatureSwitchKey.RedditConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
@@ -193,7 +189,7 @@ export const CONNECTOR_FEATURE_FLAGS: Partial<
   neon: FeatureSwitchKey.NeonConnector,
   strava: FeatureSwitchKey.StravaConnector,
   "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
-  x: FeatureSwitchKey.XConnector,
+
   reddit: FeatureSwitchKey.RedditConnector,
   vercel: FeatureSwitchKey.VercelConnector,
   sentry: FeatureSwitchKey.SentryConnector,

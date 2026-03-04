@@ -24,7 +24,6 @@ export enum FeatureSwitchKey {
   StravaConnector = "stravaConnector",
   NeonConnector = "neonConnector",
   GarminConnectConnector = "garminConnectConnector",
-  XConnector = "xConnector",
   RedditConnector = "redditConnector",
   VercelConnector = "vercelConnector",
   SentryConnector = "sentryConnector",
