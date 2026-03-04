@@ -1,5 +1,4 @@
 import { eq, desc } from "drizzle-orm";
-import { z } from "zod";
 import {
   agentComposes,
   agentComposeVersions,
@@ -9,48 +8,8 @@ import { isConcurrentRunLimit } from "../../errors";
 import { queryAxiom, getDatasetName, DATASETS } from "../../axiom";
 import { logger } from "../../logger";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
-import type { AskUserQuestion } from "../blocks";
 
 const log = logger("slack:run-agent");
-
-// ---------------------------------------------------------------------------
-// Prompt instructions for ask-user questions
-// ---------------------------------------------------------------------------
-
-export const ASK_USER_PROMPT_INSTRUCTIONS = `# Ask User Questions
-
-When you need user input with a choice of options, output a fenced code block with the \`ask_user\` language tag at the END of your response. Do NOT use the AskUserQuestion CLI tool.
-
-Format:
-\`\`\`ask_user
-{"questions":[{"question":"Your question?","header":"Short Label","options":[{"label":"Option 1","description":"Details"},{"label":"Option 2"}],"multiSelect":false}]}
-\`\`\`
-
-Rules:
-- "question" is required. "header", "options", "multiSelect" are optional.
-- Each option must have "label"; "description" is optional.
-- Set "multiSelect" to true only when the user can pick more than one option.
-- Place the block at the very end of your message, after any explanatory text.`;
-
-// ---------------------------------------------------------------------------
-// Zod schema for ask-user questions (shared with interactive/route.ts)
-// ---------------------------------------------------------------------------
-
-export const askUserQuestionSchema = z.array(
-  z.object({
-    question: z.string(),
-    header: z.string().optional(),
-    options: z
-      .array(
-        z.object({
-          label: z.string(),
-          description: z.string().optional(),
-        }),
-      )
-      .optional(),
-    multiSelect: z.boolean().optional(),
-  }),
-);
 
 /**
  * Slack-specific context to include in the callback payload
@@ -137,14 +96,10 @@ export async function runAgentForSlack(
       versionId = latestVersion.id;
     }
 
-    // Build the full prompt with ask-user instructions and thread context
-    const fullPrompt = [
-      ASK_USER_PROMPT_INSTRUCTIONS,
-      threadContext ? `# Thread Context\n\n${threadContext}` : "",
-      `# User Prompt\n\n${prompt}`,
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+    // Build the full prompt with thread context
+    const fullPrompt = threadContext
+      ? `${threadContext}\n\n# User Prompt\n\n${prompt}`
+      : prompt;
 
     // Build callback for run completion notification
     const callbackUrl = `${getApiUrl()}/api/internal/callbacks/slack`;
@@ -194,53 +149,29 @@ export async function runAgentForSlack(
 }
 
 // ---------------------------------------------------------------------------
-// Ask-user response parser
-// ---------------------------------------------------------------------------
-
-const ASK_USER_BLOCK_RE = /```ask_user\n([\s\S]*?)\n```/;
-
-interface ParsedAskUser {
-  questions: AskUserQuestion[];
-  cleanText: string;
-}
-
-/**
- * Parse an `ask_user` fenced code block from agent text output.
- * Returns the validated questions and the text with the block stripped,
- * or `null` if no valid block is found.
- */
-export function parseAskUserFromResponse(text: string): ParsedAskUser | null {
-  const match = ASK_USER_BLOCK_RE.exec(text);
-  if (!match?.[1]) return null;
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(match[1]);
-  } catch {
-    return null;
-  }
-
-  const questionsSchema = z.object({ questions: askUserQuestionSchema });
-  const result = questionsSchema.safeParse(parsed);
-  if (!result.success) return null;
-
-  const cleanText = text.slice(0, match.index).trimEnd();
-  return { questions: result.data.questions, cleanText };
-}
-
-// ---------------------------------------------------------------------------
 // Axiom result querying
 // ---------------------------------------------------------------------------
 
-export interface RunResultData {
+export interface PermissionDenial {
+  tool_name: string;
+  tool_input?: {
+    questions?: Array<{
+      question: string;
+      header?: string;
+      options?: Array<{ label: string; description?: string }>;
+      multiSelect?: boolean;
+    }>;
+  };
+}
+
+interface RunResultData {
   result?: string;
-  cleanResult?: string;
-  askUserQuestions: AskUserQuestion[];
+  askUserDenials: PermissionDenial[];
 }
 
 /**
- * Query Axiom for the result event data (text output + ask-user questions).
- * Parses ask_user blocks from the agent's text output.
+ * Query Axiom for the result event data (text output + permission denials).
+ * Shared by getRunOutput (text formatting) and the callback handler (raw denials).
  */
 export async function getRunResultData(
   runId: string,
@@ -255,6 +186,7 @@ export async function getRunResultData(
   interface ResultEvent {
     eventData: {
       result?: string;
+      permission_denials?: PermissionDenial[];
     };
   }
 
@@ -264,27 +196,20 @@ export async function getRunResultData(
   }
 
   const event = events[0];
-  const resultText = event?.eventData?.result;
+  const denials = event?.eventData?.permission_denials ?? [];
+  const askUserDenials = denials.filter(
+    (d) => d.tool_name === "AskUserQuestion",
+  );
 
-  if (!resultText) {
-    return { result: undefined, cleanResult: undefined, askUserQuestions: [] };
-  }
-
-  const parsed = parseAskUserFromResponse(resultText);
-  if (parsed) {
-    return {
-      result: resultText,
-      cleanResult: parsed.cleanText,
-      askUserQuestions: parsed.questions,
-    };
-  }
-
-  return { result: resultText, cleanResult: resultText, askUserQuestions: [] };
+  return {
+    result: event?.eventData?.result,
+    askUserDenials,
+  };
 }
 
 /**
  * Query Axiom for the result event to get the agent's output text.
- * Formats ask-user questions as plain text (fallback for non-interactive contexts).
+ * Formats AskUserQuestion denials as plain text (fallback for non-interactive contexts).
  */
 export async function getRunOutput(runId: string): Promise<string | undefined> {
   const data = await getRunResultData(runId);
@@ -292,31 +217,46 @@ export async function getRunOutput(runId: string): Promise<string | undefined> {
     return undefined;
   }
 
-  if (data.askUserQuestions.length > 0) {
-    const formatted = formatAskUserQuestions(data.askUserQuestions);
-    return data.cleanResult ? `${data.cleanResult}\n\n${formatted}` : formatted;
+  if (data.askUserDenials.length > 0) {
+    const formatted = formatAskUserDenials(data.askUserDenials);
+    if (formatted) {
+      return data.result ? `${data.result}\n\n${formatted}` : formatted;
+    }
   }
 
   return data.result;
 }
 
-/**
- * Format ask-user questions as plain text for non-interactive contexts.
- */
-export function formatAskUserQuestions(questions: AskUserQuestion[]): string {
+export function formatAskUserDenials(
+  denials: Array<{
+    tool_input?: {
+      questions?: Array<{
+        question: string;
+        header?: string;
+        options?: Array<{ label: string; description?: string }>;
+        multiSelect?: boolean;
+      }>;
+    };
+  }>,
+): string | undefined {
   const parts: string[] = [];
 
-  for (const q of questions) {
-    parts.push(q.question);
-    if (q.options) {
-      for (const opt of q.options) {
-        const desc = opt.description ? ` — ${opt.description}` : "";
-        parts.push(`  • ${opt.label}${desc}`);
+  for (const denial of denials) {
+    const questions = denial.tool_input?.questions;
+    if (!questions || questions.length === 0) continue;
+
+    for (const q of questions) {
+      parts.push(q.question);
+      if (q.options) {
+        for (const opt of q.options) {
+          const desc = opt.description ? ` — ${opt.description}` : "";
+          parts.push(`  • ${opt.label}${desc}`);
+        }
       }
     }
   }
 
-  return parts.length > 0
-    ? `The agent needs your input to proceed:\n\n${parts.join("\n")}`
-    : "The agent needs your input to proceed.";
+  if (parts.length === 0) return undefined;
+
+  return `The agent needs your input to proceed:\n\n${parts.join("\n")}`;
 }
