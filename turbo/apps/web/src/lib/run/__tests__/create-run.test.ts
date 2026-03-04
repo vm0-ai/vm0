@@ -22,7 +22,7 @@ import {
   type CreateRunParams,
   type CreateRunResult,
 } from "../run-service";
-import { isConcurrentRunLimit, isForbidden, isBadRequest } from "../../errors";
+import { isForbidden, isBadRequest } from "../../errors";
 import { Sandbox } from "@e2b/code-interpreter";
 import { POST as createComposeRoute } from "../../../../app/api/agent/composes/route";
 import { mockClerk } from "../../../__tests__/clerk-mock";
@@ -106,17 +106,24 @@ describe("createRun()", () => {
   });
 
   describe("Concurrent Run Limit", () => {
-    it("should throw ConcurrentRunLimitError when limit reached", async () => {
+    it("should enqueue run when limit reached", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
       reloadEnv();
 
       // Create first run
       await createRun(baseParams({ prompt: "First run" }));
 
-      // Second run should fail
-      await expect(
-        createRun(baseParams({ prompt: "Second run" })),
-      ).rejects.toSatisfy(isConcurrentRunLimit);
+      // Second run should be queued (not rejected)
+      const result = await createRun(baseParams({ prompt: "Second run" }));
+
+      expect(result.status).toBe("queued");
+      expect(result.runId).toBeDefined();
+
+      // Verify queued run record in DB
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.status).toBe("queued");
+      expect(run!.prompt).toBe("Second run");
     });
 
     it("should allow unlimited runs when limit is 0", async () => {

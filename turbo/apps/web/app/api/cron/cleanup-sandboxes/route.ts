@@ -8,6 +8,11 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { eq, inArray } from "drizzle-orm";
 import { killSandbox } from "../../../../src/lib/sandbox/sandbox-service";
+import {
+  cleanupExpiredQueueEntries,
+  drainStaleQueues,
+} from "../../../../src/lib/run/run-queue-service";
+import { executeQueuedRun } from "../../../../src/lib/run/run-service";
 import { logger } from "../../../../src/lib/logger";
 import { env } from "../../../../src/env";
 
@@ -107,6 +112,18 @@ const router = tsr.router(cronCleanupSandboxesContract, {
     }
 
     log.debug(`Found ${expiredRuns.length} expired sandboxes to cleanup`);
+
+    // Run queue maintenance: clean up expired entries and drain stale queues
+    const [expiredQueueCount, drainedCount] = await Promise.all([
+      cleanupExpiredQueueEntries(),
+      drainStaleQueues(executeQueuedRun),
+    ]);
+
+    if (expiredQueueCount > 0 || drainedCount > 0) {
+      log.debug(
+        `Queue maintenance: expired=${expiredQueueCount}, drained=${drainedCount}`,
+      );
+    }
 
     const results: CleanupResult[] = [];
 

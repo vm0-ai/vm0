@@ -8,6 +8,7 @@ const c = initContract();
  * All valid run status values
  */
 export const ALL_RUN_STATUSES = [
+  "queued",
   "pending",
   "running",
   "completed",

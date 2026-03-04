@@ -48,7 +48,13 @@ export interface CreateComposeResponse {
 }
 
 // RunStatus is inlined here to avoid importing the full type
-type RunStatus = "pending" | "running" | "completed" | "failed" | "timeout";
+type RunStatus =
+  | "queued"
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "timeout";
 
 export interface CreateRunResponse {
   runId: string;

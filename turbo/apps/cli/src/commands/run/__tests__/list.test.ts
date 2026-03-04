@@ -153,7 +153,7 @@ describe("run list command", () => {
       await listCommand.parseAsync(["node", "cli", "--all"]);
 
       expect(capturedUrl?.searchParams.get("status")).toBe(
-        "pending,running,completed,failed,timeout",
+        "queued,pending,running,completed,failed,timeout",
       );
     });
 
@@ -214,7 +214,7 @@ describe("run list command", () => {
       await listCommand.parseAsync(["node", "cli", "--since", "7d"]);
 
       expect(capturedUrl?.searchParams.get("status")).toBe(
-        "pending,running,completed,failed,timeout",
+        "queued,pending,running,completed,failed,timeout",
       );
     });
 

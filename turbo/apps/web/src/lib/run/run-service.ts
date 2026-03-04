@@ -13,7 +13,9 @@ import {
   badRequest,
   forbidden,
   concurrentRunLimit,
+  isConcurrentRunLimit,
 } from "../errors";
+import { enqueueRun } from "./run-queue-service";
 import { logger } from "../logger";
 import type { Database } from "../../types/global";
 import type { ExecutionContext } from "./types";
@@ -41,7 +43,7 @@ const log = logger("service:run");
 // Defense-in-depth: exclude pending runs older than this from concurrency check.
 // The cleanup-sandboxes cron job already transitions pending runs to "timeout" after 5 minutes,
 // so this TTL only matters if the cron job fails to run.
-const PENDING_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
+export const PENDING_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 /**
  * Check if user has reached concurrent run limit
@@ -503,7 +505,6 @@ async function markRunFailed(
  * 8. Build execution context
  * 9. Dispatch to executor
  *
- * @throws ConcurrentRunLimitError - concurrent run limit reached
  * @throws ForbiddenError - user cannot access compose
  * @throws BadRequestError - validation failure (missing vars, mutual exclusivity)
  * @throws NotFoundError - compose version not found
@@ -546,37 +547,46 @@ export async function createRun(
   // Step 5: Concurrency check + INSERT in a transaction with advisory lock
   // to prevent TOCTOU race where two concurrent requests both pass the
   // concurrency check before either inserts.
-  const run = await globalThis.services.db.transaction(async (tx) => {
-    // Acquire per-user advisory lock (released when transaction ends)
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId}))`);
+  // On concurrency failure, enqueue the run instead of rejecting.
+  let run;
+  try {
+    run = await globalThis.services.db.transaction(async (tx) => {
+      // Acquire per-user advisory lock (released when transaction ends)
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId}))`);
 
-    // Check concurrent run limit within the serialized transaction
-    await checkRunConcurrencyLimit(userId, undefined, tx);
+      // Check concurrent run limit within the serialized transaction
+      await checkRunConcurrencyLimit(userId, undefined, tx);
 
-    // INSERT within the same transaction
-    const [newRun] = await tx
-      .insert(agentRuns)
-      .values({
-        userId,
-        scopeId,
-        agentComposeVersionId,
-        status: "pending",
-        prompt,
-        vars: params.vars ?? null,
-        secretNames: params.secrets ? Object.keys(params.secrets) : null,
-        resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
-        continuedFromSessionId: params.sessionId ?? null,
-        scheduleId: params.scheduleId ?? null,
-        lastHeartbeatAt: new Date(),
-      })
-      .returning();
+      // INSERT within the same transaction
+      const [newRun] = await tx
+        .insert(agentRuns)
+        .values({
+          userId,
+          scopeId,
+          agentComposeVersionId,
+          status: "pending",
+          prompt,
+          vars: params.vars ?? null,
+          secretNames: params.secrets ? Object.keys(params.secrets) : null,
+          resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
+          continuedFromSessionId: params.sessionId ?? null,
+          scheduleId: params.scheduleId ?? null,
+          lastHeartbeatAt: new Date(),
+        })
+        .returning();
 
-    if (!newRun) {
-      throw new Error("Failed to create run record");
+      if (!newRun) {
+        throw new Error("Failed to create run record");
+      }
+
+      return newRun;
+    });
+  } catch (error) {
+    if (isConcurrentRunLimit(error)) {
+      return enqueueRun({ ...params, scopeId });
     }
-
-    return newRun;
-  });
+    throw error;
+  }
 
   log.debug(`Created run ${run.id} for user ${userId}`);
 
@@ -629,6 +639,108 @@ export async function createRun(
     };
   } catch (error) {
     await markRunFailed(run.id, run.createdAt, error);
+    throw error;
+  }
+}
+
+/**
+ * Execute a previously queued run.
+ *
+ * Runs the createRun pipeline steps 1-10 for an existing agent_runs record.
+ * Re-checks concurrency (another request may have claimed the slot),
+ * then skips INSERT (record already exists) and dispatches.
+ *
+ * Called from drainUserQueue() after dequeuing an entry.
+ *
+ * @throws ConcurrentRunLimitError if the slot was claimed by another request
+ */
+export async function executeQueuedRun(
+  runId: string,
+  params: CreateRunParams,
+): Promise<void> {
+  const { userId, agentComposeVersionId, prompt } = params;
+
+  // Step 1: Re-check concurrency — another request may have claimed the slot
+  await checkRunConcurrencyLimit(userId);
+
+  // Update status from "queued" to "pending"
+  const [run] = await globalThis.services.db
+    .update(agentRuns)
+    .set({
+      status: "pending",
+      lastHeartbeatAt: new Date(),
+    })
+    .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "queued")))
+    .returning();
+
+  if (!run) {
+    throw new Error(`Queued run ${runId} not found or already processed`);
+  }
+
+  log.debug(`Executing queued run ${runId} for user ${userId}`);
+
+  // Steps 2-3: Load compose version/metadata and verify access
+  const { composeContent } = await loadAndAuthorizeCompose(
+    userId,
+    agentComposeVersionId,
+    params.composeId,
+  );
+
+  // Step 4: Validate template vars and image access (for new runs only)
+  if (!params.checkpointId && !params.sessionId) {
+    await validateComposeRequirements(
+      userId,
+      composeContent,
+      params.vars,
+      params.checkEnv,
+      params.scopeId,
+    );
+  }
+
+  // Steps 5 already validated at enqueue time, skip
+
+  // From this point on, errors must mark the run as "failed"
+  try {
+    // Step 7: Register callbacks (if any)
+    if (params.callbacks && params.callbacks.length > 0) {
+      await registerCallbacks(runId, params.callbacks);
+    }
+
+    // Step 8: Generate sandbox token
+    const sandboxToken = await generateSandboxToken(userId, runId);
+
+    // Step 9: Build execution context
+    const context = await buildContext({
+      checkpointId: params.checkpointId,
+      sessionId: params.sessionId,
+      conversationId: params.conversationId,
+      agentComposeVersionId,
+      artifactName: params.artifactName,
+      artifactVersion: params.artifactVersion,
+      vars: params.vars,
+      secrets: params.secrets,
+      volumeVersions: params.volumeVersions,
+      agentCompose: composeContent,
+      prompt,
+      runId,
+      sandboxToken,
+      userId,
+      agentName: params.agentName,
+      resumedFromCheckpointId: params.resumedFromCheckpointId,
+      continuedFromSessionId: params.sessionId,
+      debugNoMockClaude: params.debugNoMockClaude,
+      modelProvider: params.modelProvider,
+      checkEnv: params.checkEnv,
+      apiStartTime: params.apiStartTime,
+      scopeId: params.scopeId,
+    });
+
+    // Step 10: Dispatch to executor
+    const result = await prepareAndDispatchRun(context);
+
+    log.debug(`Queued run ${runId} dispatched with status: ${result.status}`);
+  } catch (error) {
+    await markRunFailed(runId, run.createdAt, error);
     throw error;
   }
 }

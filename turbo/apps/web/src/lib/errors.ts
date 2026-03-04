@@ -47,7 +47,7 @@ interface SchedulePastError extends ApiErrorBase {
   readonly code: "SCHEDULE_PAST";
 }
 
-export interface ConcurrentRunLimitError extends ApiErrorBase {
+interface ConcurrentRunLimitError extends ApiErrorBase {
   readonly name: "ConcurrentRunLimitError";
   readonly statusCode: 429;
   readonly code: "TOO_MANY_REQUESTS";

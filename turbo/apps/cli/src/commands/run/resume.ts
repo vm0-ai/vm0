@@ -1,7 +1,6 @@
 import { Command, Option } from "commander";
 import chalk from "chalk";
 import { getCheckpoint, createRun } from "../../lib/api";
-import { EventRenderer } from "../../lib/events/event-renderer";
 import {
   collectKeyValue,
   collectVolumeVersions,
@@ -10,6 +9,7 @@ import {
   pollEvents,
   showNextSteps,
   handleResumeOrContinueError,
+  renderRunCreated,
 } from "./shared";
 
 export const resumeCommand = new Command()
@@ -124,11 +124,8 @@ export const resumeCommand = new Command()
           process.exit(1);
         }
 
-        // 5. Display run started info
-        EventRenderer.renderRunStarted({
-          runId: response.runId,
-          sandboxId: response.sandboxId,
-        });
+        // 5. Display run started/queued info
+        renderRunCreated(response);
 
         // 6. Poll for events and exit with appropriate code
         const verbose = options.verbose || allOpts.verbose;

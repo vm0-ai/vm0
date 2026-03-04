@@ -343,45 +343,6 @@ describe("run continue command", () => {
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
-
-    it("should handle concurrent run limit error", async () => {
-      server.use(
-        http.post("http://localhost:3000/api/agent/runs", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "You have reached the concurrent agent run limit.",
-                code: "concurrent_run_limit_exceeded",
-              },
-            },
-            { status: 429 },
-          );
-        }),
-      );
-
-      await expect(async () => {
-        await continueCommand.parseAsync([
-          "node",
-          "cli",
-          testSessionId,
-          "test prompt",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Continue failed"),
-      );
-
-      const allErrors = mockConsoleError.mock.calls
-        .map((call) => call[0])
-        .filter((err): err is string => typeof err === "string");
-
-      expect(
-        allErrors.some((err) => err.includes("concurrent agent run limit")),
-      ).toBe(true);
-      expect(allErrors.some((err) => err.includes("vm0 run list"))).toBe(true);
-      expect(allErrors.some((err) => err.includes("vm0 run kill"))).toBe(true);
-    });
   });
 
   describe("--env-file option", () => {

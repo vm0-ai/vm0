@@ -1949,6 +1949,16 @@ export async function findTestRunCallbacks(
     .where(eq(agentRunCallbacks.runId, runId));
 }
 
+export async function findTestQueueEntry(runId: string) {
+  const { agentRunQueue } = await import("../db/schema/agent-run-queue");
+  const [row] = await globalThis.services.db
+    .select()
+    .from(agentRunQueue)
+    .where(eq(agentRunQueue.runId, runId))
+    .limit(1);
+  return row;
+}
+
 export async function findTestSlackInstallation(workspaceId: string) {
   const [row] = await globalThis.services.db
     .select()
@@ -2423,4 +2433,20 @@ export async function countTestTelegramMessages(
     .from(telegramMessages)
     .where(eq(telegramMessages.installationId, installationId));
   return result[0]!.count;
+}
+
+export async function markRunningRunsAsCompleted(userId: string) {
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({ status: "completed", completedAt: new Date() })
+    .where(and(eq(agentRuns.userId, userId), eq(agentRuns.status, "running")));
+}
+
+export async function expireQueueEntry(runId: string) {
+  const { agentRunQueue } = await import("../db/schema/agent-run-queue");
+  // Set expiresAt far enough in the past to avoid any timing issues in CI
+  await globalThis.services.db
+    .update(agentRunQueue)
+    .set({ expiresAt: new Date(Date.now() - 60_000) })
+    .where(eq(agentRunQueue.runId, runId));
 }

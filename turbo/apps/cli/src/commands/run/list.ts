@@ -30,6 +30,8 @@ interface ListOptions {
 function formatRunStatus(status: RunStatus, width?: number): string {
   const paddedStatus = width ? status.padEnd(width) : status;
   switch (status) {
+    case "queued":
+      return chalk.blue(paddedStatus);
     case "running":
       return chalk.green(paddedStatus);
     case "pending":
