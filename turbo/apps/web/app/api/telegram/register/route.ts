@@ -26,7 +26,7 @@ const log = logger("api:telegram:register");
 
 /**
  * Resolve webhook base URL from the request.
- * Uses VERCEL_URL in production, falls back to request origin.
+ * Uses VM0_TUNNEL_URL for local dev, VERCEL_URL in production, falls back to request origin.
  */
 function getWebhookBaseUrl(requestUrl: string): string {
   const { VM0_TUNNEL_URL, VERCEL_URL } = env();

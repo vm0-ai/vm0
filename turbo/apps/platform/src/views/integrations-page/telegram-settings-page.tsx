@@ -131,11 +131,9 @@ function DefaultAgentSection({
       <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
         <div className="flex flex-1 flex-col gap-1">
           {isAdmin ? (
-            <>
-              <p className="text-sm font-medium">
-                Default agent you would like to use in Telegram
-              </p>
-            </>
+            <p className="text-sm font-medium">
+              Default agent you would like to use in Telegram
+            </p>
           ) : (
             <>
               <p className="text-sm font-medium">
