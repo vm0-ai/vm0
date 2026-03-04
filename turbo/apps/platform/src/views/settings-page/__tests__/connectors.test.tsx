@@ -34,13 +34,18 @@ describe("connectors tab", () => {
     await setupPage({
       context,
       path: "/settings?tab=connectors",
-      featureSwitches: { dropboxConnector: true, gmailConnector: true },
+      featureSwitches: {
+        dropboxConnector: true,
+        gmailConnector: true,
+        neonConnector: true,
+      },
     });
 
     expect(screen.getByText("Dropbox")).toBeInTheDocument();
     expect(screen.getByText("GitHub")).toBeInTheDocument();
     expect(screen.getByText("Gmail")).toBeInTheDocument();
     expect(screen.getByText("Linear")).toBeInTheDocument();
+    expect(screen.getByText("Neon")).toBeInTheDocument();
     expect(screen.getByText("Notion")).toBeInTheDocument();
     expect(screen.getByText("Slack")).toBeInTheDocument();
   });

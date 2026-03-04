@@ -613,6 +613,43 @@ export const CONNECTOR_TYPES = {
       scopes: ["tweet.read", "users.read", "follows.read", "offline.access"],
     } as ConnectorOAuthConfig,
   },
+  neon: {
+    label: "Neon",
+    helpText:
+      "Connect your Neon account to manage serverless Postgres databases and projects",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Neon to grant access.",
+        secrets: {
+          NEON_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          NEON_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      NEON_API_KEY: "$secrets.NEON_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://oauth2.neon.tech/oauth2/auth",
+      tokenUrl: "https://oauth2.neon.tech/oauth2/token",
+      scopes: [
+        "openid",
+        "offline_access",
+        "urn:neoncloud:projects:read",
+        "urn:neoncloud:projects:create",
+        "urn:neoncloud:projects:update",
+        "urn:neoncloud:projects:delete",
+      ],
+    } as ConnectorOAuthConfig,
+  },
   "garmin-connect": {
     label: "Garmin Connect",
     helpText:
@@ -665,6 +702,7 @@ export const connectorTypeSchema = z.enum([
   "mercury",
   "reddit",
   "strava",
+  "neon",
   "garmin-connect",
   "x",
 ]);

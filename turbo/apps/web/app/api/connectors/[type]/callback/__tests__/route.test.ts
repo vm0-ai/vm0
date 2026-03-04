@@ -42,6 +42,8 @@ const DEEL_TOKEN_URL = "https://app.deel.com/oauth2/tokens";
 const DEEL_PEOPLE_ME_URL = "https://api.letsdeel.com/rest/v2/people/me";
 const MERCURY_TOKEN_URL = "https://oauth2.mercury.com/oauth2/token";
 const MERCURY_ACCOUNTS_URL = "https://api.mercury.com/api/v1/accounts";
+const NEON_TOKEN_URL = "https://oauth2.neon.tech/oauth2/token";
+const NEON_USER_INFO_URL = "https://console.neon.tech/api/v2/users/me";
 const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
 const REDDIT_USER_INFO_URL = "https://oauth.reddit.com/api/v1/me";
 
@@ -606,6 +608,51 @@ function createMercuryOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for Neon OAuth API
+ */
+function createNeonOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  name?: string | null;
+  email?: string | null;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(NEON_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "neon-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "neon-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "Bearer",
+        scope: "openid offline_access urn:neoncloud:projects:read",
+      });
+    }),
+    userInfo: http.get(NEON_USER_INFO_URL, () => {
+      if (options.userError) {
+        return HttpResponse.json({ message: "Unauthorized" }, { status: 401 });
+      }
+      return HttpResponse.json({
+        id: options.userId ?? "neon-user-123",
+        name: options.name !== undefined ? options.name : "Neon User",
+        email: options.email !== undefined ? options.email : "user@neon.tech",
+      });
+    }),
+  });
+}
+
+/**
  * Create MSW handlers for Reddit OAuth API
  */
 function createRedditOAuthMock(options: {
@@ -711,6 +758,8 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("DEEL_OAUTH_CLIENT_SECRET", "deel-test-client-secret");
     vi.stubEnv("MERCURY_OAUTH_CLIENT_ID", "mercury-test-client-id");
     vi.stubEnv("MERCURY_OAUTH_CLIENT_SECRET", "mercury-test-client-secret");
+    vi.stubEnv("NEON_OAUTH_CLIENT_ID", "neon-test-client-id");
+    vi.stubEnv("NEON_OAUTH_CLIENT_SECRET", "neon-test-client-secret");
     vi.stubEnv("REDDIT_OAUTH_CLIENT_ID", "reddit-test-client-id");
     vi.stubEnv("REDDIT_OAUTH_CLIENT_SECRET", "reddit-test-client-secret");
     reloadEnv();
@@ -3024,6 +3073,158 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       });
       const response = await GET(request, {
         params: Promise.resolve({ type: "mercury" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Neon OAuth Flow", () => {
+    it("should store Neon connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createNeonOAuthMock({
+        accessToken: "neon-access-token",
+        refreshToken: "neon-refresh-token",
+        userId: "neon-user-456",
+        name: "Neon Dev",
+        email: "dev@neon.tech",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "neon",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "neon" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=neon");
+      expect(location).toContain("username=Neon+Dev");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/neon",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("neon");
+      expect(connector.externalUsername).toBe("Neon Dev");
+      expect(connector.externalId).toBe("neon-user-456");
+      expect(connector.externalEmail).toBe("dev@neon.tech");
+    });
+
+    it("should redirect with error when Neon token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createNeonOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "neon",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "neon" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Neon returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createNeonOAuthMock({
+        accessToken: "neon-access-token",
+        refreshToken: "neon-refresh-token-stored",
+        userId: "neon-user-456",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "neon",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "neon" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "NEON_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("neon-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Neon returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 3600;
+      const { handlers: mswHandlers } = createNeonOAuthMock({
+        accessToken: "neon-access-token",
+        refreshToken: "neon-refresh-token",
+        expiresIn,
+        userId: "neon-user-456",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "neon",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "neon" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "neon",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Neon user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createNeonOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "neon",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "neon" }),
       });
 
       expect(response.status).toBe(307);

@@ -125,6 +125,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
+  [FeatureSwitchKey.NeonConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
   [FeatureSwitchKey.GarminConnectConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
@@ -160,6 +165,7 @@ export const CONNECTOR_FEATURE_FLAGS: Partial<
   "google-drive": FeatureSwitchKey.GoogleDriveConnector,
   "google-calendar": FeatureSwitchKey.GoogleCalendarConnector,
   mercury: FeatureSwitchKey.MercuryConnector,
+  neon: FeatureSwitchKey.NeonConnector,
   strava: FeatureSwitchKey.StravaConnector,
   "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
   x: FeatureSwitchKey.XConnector,

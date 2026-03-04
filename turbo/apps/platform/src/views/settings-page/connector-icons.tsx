@@ -14,6 +14,7 @@ import googleDriveIcon from "./icons/google-drive.svg";
 import googleSheetsIcon from "./icons/google-sheets.svg";
 import linearIcon from "./icons/linear.svg";
 import mercuryIcon from "./icons/mercury.svg";
+import neonIcon from "./icons/neon.svg";
 import notionIcon from "./icons/notion.svg";
 import redditIcon from "./icons/reddit.svg";
 import slackIcon from "./icons/slack.svg";
@@ -35,6 +36,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   "google-sheets": googleSheetsIcon,
   linear: linearIcon,
   mercury: mercuryIcon,
+  neon: neonIcon,
   notion: notionIcon,
   reddit: redditIcon,
   slack: slackIcon,
