@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.80.0](https://github.com/vm0-ai/vm0/compare/platform-v0.79.1...platform-v0.80.0) (2026-03-04)
+
+
+### Features
+
+* **github:** add GitHub integration configuration UI ([#3538](https://github.com/vm0-ai/vm0/issues/3538)) ([df1d682](https://github.com/vm0-ai/vm0/commit/df1d68212aae2059a2d8f270eac84be64d2ddc1a))
+
 ## [0.79.1](https://github.com/vm0-ai/vm0/compare/platform-v0.79.0...platform-v0.79.1) (2026-03-04)
 
 

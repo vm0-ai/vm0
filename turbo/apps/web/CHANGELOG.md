@@ -1,5 +1,14 @@
 # Changelog
 
+## [12.66.0](https://github.com/vm0-ai/vm0/compare/web-v12.65.1...web-v12.66.0) (2026-03-04)
+
+
+### Features
+
+* **db:** add telegram integration database schema ([#3542](https://github.com/vm0-ai/vm0/issues/3542)) ([a37ecd6](https://github.com/vm0-ai/vm0/commit/a37ecd60576d960d2e903b069da3f5b7e0b11429))
+* **github:** add GitHub integration configuration UI ([#3538](https://github.com/vm0-ai/vm0/issues/3538)) ([df1d682](https://github.com/vm0-ai/vm0/commit/df1d68212aae2059a2d8f270eac84be64d2ddc1a))
+* **github:** implement callback handler for posting agent responses as issue comments ([#3530](https://github.com/vm0-ai/vm0/issues/3530)) ([83d7710](https://github.com/vm0-ai/vm0/commit/83d77100594c8c9f76f2857d17b42cfd1de7c50f))
+
 ## [12.65.1](https://github.com/vm0-ai/vm0/compare/web-v12.65.0...web-v12.65.1) (2026-03-04)
 
 
