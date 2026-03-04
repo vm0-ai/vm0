@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.69.4](https://github.com/vm0-ai/vm0/compare/web-v12.69.3...web-v12.69.4) (2026-03-04)
+
+
+### Bug Fixes
+
+* **compose:** generate server-side cli token for sandbox auth ([#3658](https://github.com/vm0-ai/vm0/issues/3658)) ([13782bb](https://github.com/vm0-ai/vm0/commit/13782bb292424abd385407f18b465a305dd69d1c))
+
 ## [12.69.3](https://github.com/vm0-ai/vm0/compare/web-v12.69.2...web-v12.69.3) (2026-03-04)
 
 
