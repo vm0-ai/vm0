@@ -1746,7 +1746,7 @@ jobs:
       - name: Create stress test agent
         id: agent
         run: |
-          AGENT_NAME="stress-test-$(date +%s%3N)-$RANDOM"
+          AGENT_NAME="stress-test-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           cat > /tmp/stress-agent.yaml <<EOF
           version: "1.0"
           agents:
