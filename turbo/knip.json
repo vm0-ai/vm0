@@ -113,6 +113,7 @@
     "apps/cli/src/lib/utils/paginate.ts",
     "apps/cli/src/commands/cook/cook.ts",
     "apps/web/src/lib/slack/**",
+    "apps/web/src/lib/telegram/**",
     "apps/web/src/lib/auth/sandbox-token.ts",
     "scripts/rebuild-snapshots.ts",
     "scripts/rebuild-snapshots-from-db.ts"
