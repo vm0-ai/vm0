@@ -1,6 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { testContext } from "../../../../../src/__tests__/test-helpers";
-import { createTelegramInstallation } from "../../../../../src/lib/telegram/__tests__/helpers";
+import { HttpResponse } from "msw";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../src/__tests__/test-helpers";
+import { createTestCompose } from "../../../../../src/__tests__/api-test-helpers";
+import {
+  createTelegramInstallation,
+  createTelegramPendingLinkInstallation,
+} from "../../../../../src/lib/telegram/__tests__/helpers";
+import { GET as linkGET } from "../../../../api/integrations/telegram/link/route";
+import { server } from "../../../../../src/mocks/server";
+import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[installationId]/route";
 
 // Mock Next.js after() to execute synchronously
@@ -20,9 +31,10 @@ async function flushAfterCallbacks() {
   afterPromises.length = 0;
 }
 
-testContext();
+const context = testContext();
 
 const WEBHOOK_SECRET = "webhook-secret";
+const TEST_BOT_TOKEN = "123456:ABC-pending-test";
 
 function createWebhookRequest(
   body: Record<string, unknown>,
@@ -181,5 +193,72 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
       params: Promise.resolve({ installationId }),
     });
     expect(response.status).toBe(400);
+  });
+
+  describe("auto-complete pending link", () => {
+    it("should complete pending link on first DM from admin", async () => {
+      context.setupMocks();
+      const user = await context.setupUser();
+      const { composeId } = await createTestCompose(uniqueId("agent"));
+
+      const pending = await createTelegramPendingLinkInstallation(
+        composeId,
+        user.userId,
+        TEST_BOT_TOKEN,
+      );
+
+      // Set up MSW handlers for Telegram API calls the DM handler makes
+      const sendChatActionHandler = http.post(
+        `https://api.telegram.org/bot${TEST_BOT_TOKEN}/sendChatAction`,
+        () => HttpResponse.json({ ok: true, result: true }),
+      );
+      const sendMessageHandler = http.post(
+        `https://api.telegram.org/bot${TEST_BOT_TOKEN}/sendMessage`,
+        () =>
+          HttpResponse.json({
+            ok: true,
+            result: { message_id: 99, chat: { id: 789 } },
+          }),
+      );
+      server.use(sendChatActionHandler.handler, sendMessageHandler.handler);
+
+      // Verify the link is pending before the webhook
+      const beforeResponse = await linkGET(
+        new Request("http://localhost:3000/api/integrations/telegram/link"),
+      );
+      const beforeData = await beforeResponse.json();
+      expect(beforeData.linked).toBe(true);
+      expect(beforeData.telegramUserId).toBe("pending");
+
+      // Send a DM as the admin (telegramUserId = "789")
+      const telegramUserId = 789;
+      const request = createWebhookRequest({
+        update_id: 100,
+        message: {
+          message_id: 1,
+          chat: { id: telegramUserId, type: "private" },
+          from: { id: telegramUserId, username: "admin_user" },
+          text: "hello bot",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({
+          installationId: pending.installationId,
+        }),
+      });
+      expect(response.status).toBe(200);
+
+      // Flush the after() callback so the DM handler runs
+      await flushAfterCallbacks();
+
+      // Verify the pending link was completed with the real Telegram user ID
+      const afterResponse = await linkGET(
+        new Request("http://localhost:3000/api/integrations/telegram/link"),
+      );
+      const afterData = await afterResponse.json();
+      expect(afterData.linked).toBe(true);
+      expect(afterData.telegramUserId).toBe(String(telegramUserId));
+    });
   });
 });

@@ -132,13 +132,6 @@ export async function storeTelegramMessage(
 }
 
 /**
- * Build the deep link URL for account linking
- */
-export function buildLoginUrl(botUsername: string, linkToken: string): string {
-  return `https://t.me/${botUsername}?start=${linkToken}`;
-}
-
-/**
  * Build the logs URL for a run
  */
 export function buildLogsUrl(runId: string): string {
