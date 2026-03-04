@@ -141,26 +141,9 @@ function DefaultAgentSection({
       <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
         <div className="flex flex-1 flex-col gap-1">
           {isAdmin ? (
-            <>
-              <p className="text-sm font-medium">
-                Default agent you would like to use in Slack
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {
-                  "If you want to manage your agent's model provider, secrets, or connectors, go to "
-                }
-                <Link
-                  pathname="/settings"
-                  options={{
-                    searchParams: new URLSearchParams({ tab: "providers" }),
-                  }}
-                  className="text-primary hover:underline"
-                >
-                  Settings
-                </Link>
-                .
-              </p>
-            </>
+            <p className="text-sm font-medium">
+              Default agent you would like to use in Slack
+            </p>
           ) : (
             <>
               <p className="text-sm font-medium">
@@ -331,14 +314,14 @@ export function SlackSettingsPage() {
               </div>
             </div>
 
-            {/* Disconnect section */}
+            {/* Uninstall section */}
             <div className="flex flex-col gap-4">
-              <h3 className="text-base font-medium">Disconnect with Slack</h3>
+              <h3 className="text-base font-medium">Uninstall Slack</h3>
               <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
                 <div className="flex flex-1 flex-col gap-1">
-                  <p className="text-sm font-medium">Disconnect with Slack</p>
+                  <p className="text-sm font-medium">Uninstall Slack</p>
                   <p className="text-sm text-muted-foreground">
-                    Your VM0 agent will be removed and disconnect with your
+                    Your VM0 agent will be removed and uninstalled from your
                     Slack workspace.
                   </p>
                 </div>
@@ -347,7 +330,7 @@ export function SlackSettingsPage() {
                   size="sm"
                   onClick={() => openConfirm()}
                 >
-                  Disconnect
+                  Uninstall
                 </Button>
               </div>
             </div>
@@ -365,10 +348,10 @@ export function SlackSettingsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Disconnect Slack</DialogTitle>
+            <DialogTitle>Uninstall Slack</DialogTitle>
             <DialogDescription>
               This will remove your Slack account connection and revoke agent
-              access. You can reconnect at any time.
+              access. You can reinstall at any time.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -376,7 +359,7 @@ export function SlackSettingsPage() {
               Cancel
             </Button>
             <Button variant="destructive" onClick={handleDisconnect}>
-              Disconnect
+              Uninstall
             </Button>
           </DialogFooter>
         </DialogContent>

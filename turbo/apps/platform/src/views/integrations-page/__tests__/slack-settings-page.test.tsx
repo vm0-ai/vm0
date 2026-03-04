@@ -36,12 +36,12 @@ describe("slack settings page", () => {
     expect(screen.getByText("/vm0 disconnect")).toBeInTheDocument();
     expect(screen.getByText("/vm0 settings")).toBeInTheDocument();
 
-    // Disconnect section (heading + button)
+    // Uninstall section (heading + button)
     expect(
-      screen.getByRole("heading", { name: "Disconnect with Slack" }),
+      screen.getByRole("heading", { name: "Uninstall Slack" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /disconnect/i }),
+      screen.getByRole("button", { name: /uninstall/i }),
     ).toBeInTheDocument();
   });
 
@@ -104,28 +104,28 @@ describe("slack settings page", () => {
     ).toBeInTheDocument();
   });
 
-  it("opens disconnect confirmation dialog", async () => {
+  it("opens uninstall confirmation dialog", async () => {
     await setupPage({ context, path: "/settings/slack" });
 
-    // Click the disconnect button
-    const disconnectButton = screen.getByRole("button", {
-      name: /disconnect/i,
+    // Click the uninstall button
+    const uninstallButton = screen.getByRole("button", {
+      name: /uninstall/i,
     });
-    await user.click(disconnectButton);
+    await user.click(uninstallButton);
 
     // Confirm dialog should appear
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Disconnect Slack")).toBeInTheDocument();
+    expect(within(dialog).getByText("Uninstall Slack")).toBeInTheDocument();
     expect(
       within(dialog).getByText(/remove your Slack account connection/),
     ).toBeInTheDocument();
 
-    // Should have Cancel and Disconnect buttons
+    // Should have Cancel and Uninstall buttons
     expect(
       within(dialog).getByRole("button", { name: /cancel/i }),
     ).toBeInTheDocument();
     expect(
-      within(dialog).getByRole("button", { name: /disconnect/i }),
+      within(dialog).getByRole("button", { name: /uninstall/i }),
     ).toBeInTheDocument();
   });
 
@@ -163,14 +163,14 @@ describe("slack settings page", () => {
     expect(screen.getByText("shared-agent")).toBeInTheDocument();
   });
 
-  it("closes disconnect dialog on cancel", async () => {
+  it("closes uninstall dialog on cancel", async () => {
     await setupPage({ context, path: "/settings/slack" });
 
     // Open the dialog
-    const disconnectButton = screen.getByRole("button", {
-      name: /disconnect/i,
+    const uninstallButton = screen.getByRole("button", {
+      name: /uninstall/i,
     });
-    await user.click(disconnectButton);
+    await user.click(uninstallButton);
 
     const dialog = await screen.findByRole("dialog");
     const cancelButton = within(dialog).getByRole("button", {

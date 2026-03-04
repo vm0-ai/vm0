@@ -15,8 +15,10 @@ import { googleSheetsHandler } from "./providers/google-sheets-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
 import { notionHandler } from "./providers/notion-handler";
+import { redditHandler } from "./providers/reddit-handler";
 import { slackHandler } from "./providers/slack-handler";
 import { stravaHandler } from "./providers/strava-handler";
+import { xHandler } from "./providers/x-handler";
 
 export type { OAuthTokenResult };
 
@@ -38,8 +40,10 @@ export const PROVIDER_HANDLERS: Record<
   linear: linearHandler,
   mercury: mercuryHandler,
   notion: notionHandler,
+  reddit: redditHandler,
   slack: slackHandler,
   strava: stravaHandler,
+  x: xHandler,
 };
 
 /**

@@ -91,7 +91,7 @@ function ConnectorRow({
               onClick={() => openDisconnect(item.type)}
               className="w-full rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
             >
-              Disconnect
+              Uninstall
             </button>
           </PopoverContent>
         </Popover>

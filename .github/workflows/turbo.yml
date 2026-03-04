@@ -11,7 +11,6 @@ env:
   # Sandbox VM parameters for runner build
   RUNNER_VCPU: 2
   RUNNER_MEMORY_MB: 2048
-  RUNNER_MAX_CONCURRENT: 4
 
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'merge_group' && format('merge-queue-{0}', github.run_id) || 'staging') }}
@@ -678,7 +677,7 @@ jobs:
       - name: Deploy Web to Vercel
         id: deploy
         run: |
-          DEPLOY_CMD="vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}"
+          DEPLOY_CMD="vercel deploy --prebuilt --archive=tgz --token=${{ secrets.VERCEL_TOKEN }}"
           DEPLOY_CMD="$DEPLOY_CMD --meta branch=${{ github.head_ref || github.ref_name }}"
           DEPLOY_CMD="$DEPLOY_CMD --meta pr=${{ needs.prepare.outputs.job-ref }}"
 
@@ -774,18 +773,37 @@ jobs:
           deployment-id: ${{ steps.deployment.outputs.deployment_id }}
           deployment-env: ${{ steps.deployment.outputs.env }}
 
-      # Step 6: Generate test token for E2E tests (runs in parallel with e2e-auth)
-      - name: Generate E2E test token
-        run: e2e/scripts/generate-test-token.sh
+      # Step 6: Generate test tokens for E2E tests (one per test user)
+      - name: Generate E2E test tokens
+        run: |
+          for variant in serial parallel runner; do
+            e2e/scripts/generate-test-token.sh "$variant"
+            cp ~/.vm0/config.json "/tmp/e2e-token-${variant}.json"
+          done
         env:
           VM0_API_URL: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-      - name: Save test token to cache
+      - run: cp /tmp/e2e-token-serial.json ~/.vm0/config.json
+      - name: Save serial token to cache
         uses: actions/cache/save@v5
         with:
           path: ~/.vm0
-          key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          key: e2e-token-serial-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - run: cp /tmp/e2e-token-parallel.json ~/.vm0/config.json
+      - name: Save parallel token to cache
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.vm0
+          key: e2e-token-parallel-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - run: cp /tmp/e2e-token-runner.json ~/.vm0/config.json
+      - name: Save runner token to cache
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.vm0
+          key: e2e-token-runner-${{ github.run_id }}-${{ github.run_attempt }}
 
   # Deploy docs application
   deploy-docs:
@@ -959,9 +977,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.vm0
-          key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          key: e2e-token-parallel-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            e2e-token-${{ github.run_id }}-
+            e2e-token-parallel-${{ github.run_id }}-
           fail-on-cache-miss: true
 
       - name: Run API E2E Tests
@@ -972,7 +990,7 @@ jobs:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-  # Run CLI E2E tests - Phase 1: Serial tests (establishes e2e-stable scope)
+  # Run CLI E2E tests - Phase 1: Serial tests (scope/provider CRUD)
   cli-e2e-01-serial:
     runs-on: ubuntu-latest
     container:
@@ -1026,9 +1044,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.vm0
-          key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          key: e2e-token-serial-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            e2e-token-${{ github.run_id }}-
+            e2e-token-serial-${{ github.run_id }}-
           fail-on-cache-miss: true
 
       - name: Start Cron Simulator
@@ -1065,7 +1083,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260203
-    needs: [prepare, cli-e2e-01-serial, deploy-web]
+    needs: [prepare, deploy-web]
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
@@ -1106,10 +1124,18 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.vm0
-          key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          key: e2e-token-parallel-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            e2e-token-${{ github.run_id }}-
+            e2e-token-parallel-${{ github.run_id }}-
           fail-on-cache-miss: true
+
+      - name: Bootstrap test account
+        run: |
+          vm0 scope set "e2e-parallel" --force
+          vm0 model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Start Cron Simulator
         run: |
@@ -1159,10 +1185,10 @@ jobs:
         needs.prepare.outputs.ci-changed == 'true'
       )
     outputs:
-      host-count: ${{ steps.host.outputs.host-count }}
       bin-dir: ${{ steps.host.outputs.bin-dir }}
       runner-dir: ${{ steps.host.outputs.runner-dir }}
       runner-matrix: ${{ steps.runner-matrix.outputs.matrix }}
+      chunk-count: ${{ steps.runner-matrix.outputs.chunk-count }}
       rootfs-hash: ${{ steps.deploy.outputs.rootfs-hash }}
       snapshot-hash: ${{ steps.deploy.outputs.snapshot-hash }}
     steps:
@@ -1209,15 +1235,16 @@ jobs:
             echo "::error::AWS_METAL_RUNNER_HOSTS is empty"
             exit 1
           fi
-          echo "host-count=${NUM_HOSTS}" >> "$GITHUB_OUTPUT"
           echo "Deploying to ${NUM_HOSTS} metal hosts"
 
       - name: Generate runner E2E test matrix
         id: runner-matrix
         shell: bash
         run: |
-          # Split test files across metal hosts, balanced by test count
-          NUM_CHUNKS=${{ steps.host.outputs.host-count }}
+          # Split test files into fixed chunks for parallel bats execution
+          NUM_FILES=$(ls e2e/tests/03-experimental-runner/*.bats 2>/dev/null | wc -l)
+          NUM_CHUNKS=4
+          [ "$NUM_CHUNKS" -gt "$NUM_FILES" ] && NUM_CHUNKS=$NUM_FILES
 
           # Count tests per file, sort heaviest first
           mapfile -t SORTED < <(
@@ -1247,6 +1274,7 @@ jobs:
             echo "Chunk $((i+1)): ${CHUNK_COUNTS[$i]} tests"
           done
           echo "matrix=${CHUNKS}]" >> $GITHUB_OUTPUT
+          echo "chunk-count=${NUM_CHUNKS}" >> $GITHUB_OUTPUT
 
       - name: Deploy binaries and build rootfs/snapshot on all metal hosts
         id: deploy
@@ -1341,6 +1369,8 @@ jobs:
   deploy-runner-start:
     runs-on: ubuntu-latest
     needs: [prepare, deploy-runner-prepare, deploy-web]
+    outputs:
+      total-capacity: ${{ steps.start.outputs.total-capacity }}
     timeout-minutes: 2
     if: |
       github.event_name != 'push' &&
@@ -1361,6 +1391,7 @@ jobs:
 
       # Read METAL_HOSTS from secret directly — GitHub Actions masks secret values in job outputs
       - name: Rebuild config and start runner service on all hosts
+        id: start
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
@@ -1391,7 +1422,6 @@ jobs:
               --runner-dirname ${JOB_REF} \
               --vcpu ${RUNNER_VCPU} \
               --memory-mb ${RUNNER_MEMORY_MB} \
-              --max-concurrent ${RUNNER_MAX_CONCURRENT} \
               --api-url ${PREVIEW_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
@@ -1443,6 +1473,20 @@ jobs:
             exit 1
           fi
 
+          # Sum auto-detected max_concurrent from all hosts' status.json
+          TOTAL=0
+          for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
+            MC=$(ssh $SSH_OPTS "${METAL_USER}@${HOST}" "grep -o '\"max_concurrent\": [0-9]*' ${RUNNER_DIR}/status.json | grep -o '[0-9]*'") || true
+            if [ -z "$MC" ] || ! [[ "$MC" =~ ^[0-9]+$ ]]; then
+              echo "::error::Failed to read max_concurrent from ${HOST}"
+              exit 1
+            fi
+            echo "Host ${HOST}: max_concurrent=${MC}"
+            TOTAL=$((TOTAL + MC))
+          done
+          echo "total-capacity=${TOTAL}" >> "$GITHUB_OUTPUT"
+          echo "Total capacity across all hosts: ${TOTAL}"
+
   # Run CLI E2E tests - Phase 3: Runner tests (needs runner deployed)
   # Skip on push to main - runner tests are only needed for PRs
   cli-e2e-03-runner:
@@ -1452,15 +1496,11 @@ jobs:
     needs:
       [
         prepare,
-        cli-e2e-01-serial,
-        cli-e2e-02-parallel,
         deploy-web,
         deploy-runner-prepare,
         deploy-runner-start,
       ]
     if: |
-      always() &&
-      (needs.cli-e2e-02-parallel.result == 'success' || needs.cli-e2e-02-parallel.result == 'skipped') &&
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
@@ -1501,10 +1541,18 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.vm0
-          key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          key: e2e-token-runner-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            e2e-token-${{ github.run_id }}-
+            e2e-token-runner-${{ github.run_id }}-
           fail-on-cache-miss: true
+
+      - name: Bootstrap test account
+        run: |
+          vm0 scope set "e2e-runner" --force
+          vm0 model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Start Cron Simulator
         run: |
@@ -1552,12 +1600,19 @@ jobs:
 
       - name: Run Runner E2E Tests (Chunk ${{ matrix.index }})
         run: |
-          PARALLEL=${RUNNER_MAX_CONCURRENT}
-          echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel) ==="
+          if [ -z "$RUNNER_CHUNK_COUNT" ] || [ "$RUNNER_CHUNK_COUNT" -eq 0 ]; then
+            echo "::error::RUNNER_CHUNK_COUNT is empty or zero"
+            exit 1
+          fi
+          PARALLEL=$(( RUNNER_TOTAL_CAPACITY / RUNNER_CHUNK_COUNT ))
+          [ "$PARALLEL" -lt 1 ] && PARALLEL=1
+          echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel, total capacity ${RUNNER_TOTAL_CAPACITY}) ==="
           echo "Files: ${{ matrix.files }}"
           BATS_TEST_TIMEOUT=60 RUNNER_GROUP="vm0/development-${JOB_REF}" ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --no-parallelize-within-files ${{ matrix.files }}
           echo "✅ Chunk ${{ matrix.index }} tests passed"
         env:
+          RUNNER_TOTAL_CAPACITY: ${{ needs.deploy-runner-start.outputs.total-capacity }}
+          RUNNER_CHUNK_COUNT: ${{ needs.deploy-runner-prepare.outputs.chunk-count }}
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"

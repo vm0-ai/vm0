@@ -2,11 +2,11 @@
 DB_DRIVER=pg
 
 # Required: Authentication (Clerk)
-CLERK_SECRET_KEY=op://Development/vm0-env-local/clerk_secret_key
-CLERK_PUBLISHABLE_KEY=op://Development/vm0-env-local/clerk_publishable_key
+CLERK_SECRET_KEY=op://Development/vm0-env-local/CLERK_SECRET_KEY
+CLERK_PUBLISHABLE_KEY=op://Development/vm0-env-local/CLERK_PUBLISHABLE_KEY
 
 # Required: Sandbox Runtime (E2B)
-E2B_API_KEY=op://Development/vm0-env-local/e2b_api_key
+E2B_API_KEY=op://Development/vm0-env-local/E2B_API_KEY
 E2B_TEMPLATE_NAME=vm0-claude-code-dev
 
 # Required: Object Storage (Cloudflare R2)
@@ -100,3 +100,11 @@ SENTRY_PROJECT=
 
 # Optional: VM0 Admin Users (comma-separated emails for super-admin access)
 # VM0_ADMIN_USERS=lancy@vm0.ai,ethan@vm0.ai
+
+# Optional: Github App for Integration
+GITHUB_APP_CLIENT_ID=op://Development/vm0-env-local/GITHUB_APP_CLIENT_ID
+GITHUB_APP_CLIENT_SECRET=op://Development/vm0-env-local/GITHUB_APP_CLIENT_SECRET
+GITHUB_APP_ID=op://Development/vm0-env-local/GITHUB_APP_ID
+GITHUB_APP_PRIVATE_KEY=op://Development/vm0-env-local/GITHUB_APP_PRIVATE_KEY
+GITHUB_APP_SLUG=op://Development/vm0-env-local/GITHUB_APP_SLUG
+GITHUB_APP_WEBHOOK_SECRET=op://Development/vm0-env-local/GITHUB_APP_WEBHOOK_SECRET

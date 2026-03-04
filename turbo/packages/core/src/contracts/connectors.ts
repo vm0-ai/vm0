@@ -123,7 +123,7 @@ export const CONNECTOR_TYPES = {
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
-      scopes: ["https://mail.google.com/"],
+      scopes: ["https://www.googleapis.com/auth/gmail.modify"],
     } as ConnectorOAuthConfig,
   },
   "google-sheets": {
@@ -518,6 +518,36 @@ export const CONNECTOR_TYPES = {
       scopes: ["offline_access"],
     } as ConnectorOAuthConfig,
   },
+  reddit: {
+    label: "Reddit",
+    helpText:
+      "Connect your Reddit account to access Reddit discussions and content",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Reddit to grant access.",
+        secrets: {
+          REDDIT_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          REDDIT_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://www.reddit.com/api/v1/authorize",
+      tokenUrl: "https://www.reddit.com/api/v1/access_token",
+      scopes: ["identity", "read"],
+    } as ConnectorOAuthConfig,
+  },
   strava: {
     label: "Strava",
     helpText:
@@ -551,6 +581,36 @@ export const CONNECTOR_TYPES = {
         "activity:read_all",
         "activity:write",
       ],
+    } as ConnectorOAuthConfig,
+  },
+  x: {
+    label: "X",
+    helpText:
+      "Connect your X (Twitter) account to read tweets, timelines, and search",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with X to grant read access.",
+        secrets: {
+          X_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          X_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      X_ACCESS_TOKEN: "$secrets.X_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://twitter.com/i/oauth2/authorize",
+      tokenUrl: "https://api.twitter.com/2/oauth2/token",
+      scopes: ["tweet.read", "users.read", "follows.read", "offline.access"],
     } as ConnectorOAuthConfig,
   },
   "garmin-connect": {
@@ -603,8 +663,10 @@ export const connectorTypeSchema = z.enum([
   "linear",
   "figma",
   "mercury",
+  "reddit",
   "strava",
   "garmin-connect",
+  "x",
 ]);
 
 /**

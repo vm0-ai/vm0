@@ -15,8 +15,10 @@ import googleSheetsIcon from "./icons/google-sheets.svg";
 import linearIcon from "./icons/linear.svg";
 import mercuryIcon from "./icons/mercury.svg";
 import notionIcon from "./icons/notion.svg";
+import redditIcon from "./icons/reddit.svg";
 import slackIcon from "./icons/slack.svg";
 import stravaIcon from "./icons/strava.svg";
+import xIcon from "./icons/x.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   computer: computerIcon,
@@ -34,8 +36,10 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   linear: linearIcon,
   mercury: mercuryIcon,
   notion: notionIcon,
+  reddit: redditIcon,
   slack: slackIcon,
   strava: stravaIcon,
+  x: xIcon,
 });
 
 export function ConnectorIcon({

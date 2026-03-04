@@ -14,7 +14,6 @@ import { killSandbox } from "../../../../../src/lib/sandbox/sandbox-service";
 import type { ArtifactSnapshot } from "../../../../../src/lib/checkpoint";
 import type { RunResult } from "../../../../../src/lib/run/types";
 import { logger } from "../../../../../src/lib/logger";
-import { publishStatus } from "../../../../../src/lib/realtime/client";
 import { dispatchCallbacks } from "../../../../../src/lib/callback";
 import { after } from "next/server";
 
@@ -153,13 +152,6 @@ const router = tsr.router(webhookCompleteContract, {
 
       finalStatus = "completed";
       log.debug(`Run ${body.runId} completed successfully`);
-
-      // Publish completion status to Ably for realtime streaming to CLI
-      await publishStatus(
-        body.runId,
-        "completed",
-        result as unknown as Record<string, unknown>,
-      );
     } else {
       // Failure: store error in run table
       const errorMessage =
@@ -177,9 +169,6 @@ const router = tsr.router(webhookCompleteContract, {
 
       finalStatus = "failed";
       log.warn(`Run ${body.runId} failed: ${errorMessage}`);
-
-      // Publish failure status to Ably for realtime streaming to CLI
-      await publishStatus(body.runId, "failed", undefined, errorMessage);
     }
 
     // Dispatch all registered callbacks (non-blocking)

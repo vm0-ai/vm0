@@ -42,6 +42,8 @@ const DEEL_TOKEN_URL = "https://app.deel.com/oauth2/tokens";
 const DEEL_PEOPLE_ME_URL = "https://api.letsdeel.com/rest/v2/people/me";
 const MERCURY_TOKEN_URL = "https://oauth2.mercury.com/oauth2/token";
 const MERCURY_ACCOUNTS_URL = "https://api.mercury.com/api/v1/accounts";
+const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
+const REDDIT_USER_INFO_URL = "https://oauth.reddit.com/api/v1/me";
 
 /**
  * Create MSW handlers for GitHub OAuth API
@@ -604,6 +606,49 @@ function createMercuryOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for Reddit OAuth API
+ */
+function createRedditOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  username?: string;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(REDDIT_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "reddit-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "reddit-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "bearer",
+        scope: "identity read",
+      });
+    }),
+    userInfo: http.get(REDDIT_USER_INFO_URL, () => {
+      if (options.userError) {
+        return HttpResponse.json({ message: "Unauthorized" }, { status: 401 });
+      }
+      return HttpResponse.json({
+        id: options.userId ?? "abc123",
+        name: options.username ?? "testreddituser",
+      });
+    }),
+  });
+}
+
+/**
  * Create a test request with OAuth callback parameters and cookies
  */
 function createCallbackRequest(options: {
@@ -666,6 +711,8 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("DEEL_OAUTH_CLIENT_SECRET", "deel-test-client-secret");
     vi.stubEnv("MERCURY_OAUTH_CLIENT_ID", "mercury-test-client-id");
     vi.stubEnv("MERCURY_OAUTH_CLIENT_SECRET", "mercury-test-client-secret");
+    vi.stubEnv("REDDIT_OAUTH_CLIENT_ID", "reddit-test-client-id");
+    vi.stubEnv("REDDIT_OAUTH_CLIENT_SECRET", "reddit-test-client-secret");
     reloadEnv();
   });
 
@@ -2977,6 +3024,158 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       });
       const response = await GET(request, {
         params: Promise.resolve({ type: "mercury" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Reddit OAuth Flow", () => {
+    it("should store Reddit connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createRedditOAuthMock({
+        accessToken: "reddit-access-token",
+        refreshToken: "reddit-refresh-token",
+        userId: "xyz789",
+        username: "reddituser",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "reddit",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "reddit" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=reddit");
+      expect(location).toContain("username=reddituser");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/reddit",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("reddit");
+      expect(connector.externalUsername).toBe("reddituser");
+      expect(connector.externalId).toBe("xyz789");
+      expect(connector.externalEmail).toBeNull();
+    });
+
+    it("should redirect with error when Reddit token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createRedditOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "reddit",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "reddit" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Reddit returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createRedditOAuthMock({
+        accessToken: "reddit-access-token",
+        refreshToken: "reddit-refresh-token-stored",
+        userId: "xyz789",
+        username: "reddituser",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "reddit",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "reddit" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "REDDIT_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("reddit-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Reddit returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 3600;
+      const { handlers: mswHandlers } = createRedditOAuthMock({
+        accessToken: "reddit-access-token",
+        refreshToken: "reddit-refresh-token",
+        expiresIn,
+        userId: "xyz789",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "reddit",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "reddit" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "reddit",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Reddit user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createRedditOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "reddit",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "reddit" }),
       });
 
       expect(response.status).toBe(307);

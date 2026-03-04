@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.13.0...runner-rs-v0.14.0) (2026-03-04)
+
+
+### Features
+
+* **runner:** auto-calculate max_concurrent from host resources ([#3528](https://github.com/vm0-ai/vm0/issues/3528)) ([eee7ead](https://github.com/vm0-ai/vm0/commit/eee7ead8925bfdfd51269b116041a745df0564a6))
+
 ## [0.13.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.12.3...runner-rs-v0.13.0) (2026-03-03)
 
 

@@ -28,12 +28,6 @@ teardown() {
     true
 }
 
-teardown_file() {
-    # Set a stable scope at the end for subsequent parallel tests to use
-    # This ensures all tests in 02-parallel have a consistent scope
-    $CLI_COMMAND scope set "e2e-stable" --force >/dev/null 2>&1 || true
-}
-
 # ============================================
 # Scope Status Tests (requires network)
 # ============================================

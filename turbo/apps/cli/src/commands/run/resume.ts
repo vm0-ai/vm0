@@ -8,7 +8,6 @@ import {
   isUUID,
   loadValues,
   pollEvents,
-  streamRealtimeEvents,
   showNextSteps,
   handleResumeOrContinueError,
 } from "./shared";
@@ -41,10 +40,6 @@ export const resumeCommand = new Command()
     {},
   )
   .option(
-    "--experimental-realtime",
-    "Use realtime event streaming instead of polling (experimental)",
-  )
-  .option(
     "--model-provider <type>",
     "Override model provider (e.g., anthropic-api-key)",
   )
@@ -59,7 +54,6 @@ export const resumeCommand = new Command()
         envFile?: string;
         vars: Record<string, string>;
         secrets: Record<string, string>;
-        experimentalRealtime?: boolean;
         modelProvider?: string;
         verbose?: boolean;
         checkEnv?: boolean;
@@ -74,7 +68,6 @@ export const resumeCommand = new Command()
         vars: Record<string, string>;
         secrets: Record<string, string>;
         volumeVersion: Record<string, string>;
-        experimentalRealtime?: boolean;
         modelProvider?: string;
         verbose?: boolean;
         checkEnv?: boolean;
@@ -137,13 +130,9 @@ export const resumeCommand = new Command()
           sandboxId: response.sandboxId,
         });
 
-        // 6. Poll or stream for events and exit with appropriate code
-        const experimentalRealtime =
-          options.experimentalRealtime || allOpts.experimentalRealtime;
+        // 6. Poll for events and exit with appropriate code
         const verbose = options.verbose || allOpts.verbose;
-        const result = experimentalRealtime
-          ? await streamRealtimeEvents(response.runId, { verbose })
-          : await pollEvents(response.runId, { verbose });
+        const result = await pollEvents(response.runId, { verbose });
         if (!result.succeeded) {
           process.exit(1);
         }

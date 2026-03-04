@@ -39,6 +39,9 @@ const vm0Plugin = {
 /**
  * A shared ESLint configuration for the repository.
  *
+ * IMPORTANT: All workspace lint scripts MUST use `--max-warnings 0`.
+ * This is a hard team requirement — do NOT remove it from any package.json.
+ *
  * @type {import("eslint").Linter.Config[]}
  * */
 export const config = [

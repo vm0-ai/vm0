@@ -3,17 +3,22 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { composesByIdContract } from "@vm0/core";
+import { composesByIdContract, getInstructionsStorageName } from "@vm0/core";
 import { and, eq, inArray } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
+import { storages } from "../../../../../src/db/schema/storage";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../../src/lib/agent/permission-service";
+import {
+  listS3Objects,
+  deleteS3Objects,
+} from "../../../../../src/lib/s3/s3-client";
 import type { AgentComposeYaml } from "../../../../../src/types/agent-compose";
 
 const router = tsr.router(composesByIdContract, {
@@ -148,6 +153,37 @@ const router = tsr.router(composesByIdContract, {
     await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.id, params.id));
+
+    // 5. Clean up agent-instructions volume (DB + S3)
+    const storageName = getInstructionsStorageName(compose.name);
+    const [storage] = await globalThis.services.db
+      .select({ id: storages.id, s3Prefix: storages.s3Prefix })
+      .from(storages)
+      .where(
+        and(
+          eq(storages.scopeId, compose.scopeId),
+          eq(storages.name, storageName),
+          eq(storages.type, "volume"),
+        ),
+      )
+      .limit(1);
+
+    if (storage) {
+      // Delete DB record (CASCADE removes storage_versions)
+      await globalThis.services.db
+        .delete(storages)
+        .where(eq(storages.id, storage.id));
+
+      // Delete S3 objects under the storage prefix
+      const bucketName = globalThis.services.env.R2_USER_STORAGES_BUCKET_NAME;
+      const objects = await listS3Objects(bucketName, storage.s3Prefix);
+      if (objects.length > 0) {
+        await deleteS3Objects(
+          bucketName,
+          objects.map((o) => o.key),
+        );
+      }
+    }
 
     return { status: 204 as const, body: undefined };
   },
