@@ -314,7 +314,8 @@ function collectAnswersFromState(
 }
 
 /**
- * Build a human-readable answer prompt from questions and selected answers.
+ * Build a human-readable answer prompt from selected answers.
+ * The agent already has session context, so we only include what the user chose.
  */
 function buildAnswerPrompt(
   questions: AskUserQuestion[],
@@ -324,9 +325,7 @@ function buildAnswerPrompt(
   for (let qIdx = 0; qIdx < questions.length; qIdx++) {
     const selected = answers.get(qIdx);
     if (selected && selected.length > 0) {
-      parts.push(
-        `The user was asked: "${questions[qIdx]!.question}" and selected: "${selected.join(", ")}"`,
-      );
+      parts.push(`The user selected: "${selected.join(", ")}"`);
     }
   }
   return parts.length > 0
