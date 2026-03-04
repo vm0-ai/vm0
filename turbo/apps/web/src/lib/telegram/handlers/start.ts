@@ -124,9 +124,17 @@ export async function handleStartCommand(
   });
 }
 
+/** HMAC-SHA256 produces 32 bytes = 43 base64url characters (no padding) */
+const SIGNATURE_LENGTH = 43;
+
 /**
  * Create a signed link token for account linking.
  * Uses HMAC-SHA256 with a simple JSON payload + expiry.
+ *
+ * Token format: base64url(payload) + base64url(hmac) concatenated without
+ * separator. Telegram deep link start parameters only allow A-Za-z0-9_-
+ * so we cannot use '.' or any other special character as a delimiter.
+ * The signature is always 43 chars (SHA-256), so we split from the end.
  */
 export function createLinkToken(
   vm0UserId: string,
@@ -145,7 +153,7 @@ export function createLinkToken(
     .update(data)
     .digest("base64url");
 
-  return `${data}.${signature}`;
+  return `${data}${signature}`;
 }
 
 /**
@@ -156,10 +164,10 @@ export function verifyLinkToken(
   token: string,
   secretKey: string,
 ): LinkTokenPayload | null {
-  const parts = token.split(".");
-  if (parts.length !== 2) return null;
+  if (token.length <= SIGNATURE_LENGTH) return null;
 
-  const [data, signature] = parts as [string, string];
+  const data = token.slice(0, -SIGNATURE_LENGTH);
+  const signature = token.slice(-SIGNATURE_LENGTH);
 
   const expectedSignature = crypto
     .createHmac("sha256", secretKey)
