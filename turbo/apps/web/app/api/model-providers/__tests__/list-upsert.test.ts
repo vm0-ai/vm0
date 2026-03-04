@@ -211,6 +211,31 @@ describe("PUT /api/model-providers (single-secret)", () => {
     expect(body.provider.selectedModel).toBeNull();
   });
 
+  it("should handle concurrent upsert requests without errors", async () => {
+    // Fire multiple concurrent upsert requests for the same provider type
+    const concurrentRequests = Array.from({ length: 5 }, () =>
+      upsertProvider({
+        type: "claude-code-oauth-token",
+        secret: "concurrent-test-token",
+      }),
+    );
+
+    const responses = await Promise.all(concurrentRequests);
+
+    // All should succeed (either 200 or 201, never 500)
+    for (const response of responses) {
+      expect([200, 201]).toContain(response.status);
+    }
+
+    // Should result in exactly one provider
+    const listResponse = await listProviders();
+    const listBody = await listResponse.json();
+    const oauthProviders = listBody.modelProviders.filter(
+      (p: { type: string }) => p.type === "claude-code-oauth-token",
+    );
+    expect(oauthProviders).toHaveLength(1);
+  });
+
   it("should allow same secret name for user and model-provider types", async () => {
     // Create a user-type secret with the same name
     await createTestSecret("ANTHROPIC_API_KEY", "user-secret-value");
