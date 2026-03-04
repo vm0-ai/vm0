@@ -1,4 +1,4 @@
-import { eq, lt, and, or, count, gt, sql } from "drizzle-orm";
+import { eq, lt, and, or, count, gt, sql, inArray } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
 import { env } from "../../env";
@@ -8,6 +8,7 @@ import {
   encryptSecretsMap,
   decryptSecretsMap,
 } from "../crypto/secrets-encryption";
+import { PENDING_RUN_TTL_MS } from "./run-service";
 import type { CreateRunParams, CreateRunResult } from "./run-service";
 
 const log = logger("service:run-queue");
@@ -36,42 +37,46 @@ export async function enqueueRun(
 ): Promise<CreateRunResult> {
   const { userId, agentComposeVersionId, prompt } = params;
 
-  // Insert agent_runs with "queued" status (user-visible)
-  const [run] = await globalThis.services.db
-    .insert(agentRuns)
-    .values({
-      userId,
-      agentComposeVersionId,
-      status: "queued",
-      prompt,
-      vars: params.vars ?? null,
-      secretNames: params.secrets ? Object.keys(params.secrets) : null,
-      resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
-      scheduleId: params.scheduleId ?? null,
-      lastHeartbeatAt: new Date(),
-    })
-    .returning();
-
-  if (!run) {
-    throw new Error("Failed to create queued run record");
-  }
-
   // Encrypt the full CreateRunParams for later replay
-  // Serialize params to JSON, then encrypt as a secrets map entry
   const paramsJson = JSON.stringify(params);
   const encryptedParams = encryptSecretsMap(
     { __params: paramsJson },
     env().SECRETS_ENCRYPTION_KEY,
   );
 
-  // Insert into queue table
+  // Insert agent_runs + queue entry atomically to prevent orphaned records
   const expiresAt = new Date(Date.now() + QUEUE_TTL_MS);
-  await globalThis.services.db.insert(agentRunQueue).values({
-    runId: run.id,
-    userId,
-    encryptedParams,
-    createdAt: run.createdAt,
-    expiresAt,
+
+  const run = await globalThis.services.db.transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(agentRuns)
+      .values({
+        userId,
+        agentComposeVersionId,
+        status: "queued",
+        prompt,
+        vars: params.vars ?? null,
+        secretNames: params.secrets ? Object.keys(params.secrets) : null,
+        resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
+        continuedFromSessionId: params.sessionId ?? null,
+        scheduleId: params.scheduleId ?? null,
+        lastHeartbeatAt: new Date(),
+      })
+      .returning();
+
+    if (!inserted) {
+      throw new Error("Failed to create queued run record");
+    }
+
+    await tx.insert(agentRunQueue).values({
+      runId: inserted.id,
+      userId,
+      encryptedParams,
+      createdAt: inserted.createdAt,
+      expiresAt,
+    });
+
+    return inserted;
   });
 
   log.debug(`Enqueued run ${run.id} for user ${userId}`);
@@ -105,6 +110,7 @@ export async function drainUserQueue(
   userId: string,
   execute: QueuedRunExecutor,
 ): Promise<void> {
+  const encryptionKey = env().SECRETS_ENCRYPTION_KEY;
   let entry = await dequeueNext(userId);
 
   while (entry) {
@@ -113,7 +119,7 @@ export async function drainUserQueue(
     // Decrypt CreateRunParams
     const decryptedMap = decryptSecretsMap(
       entry.encrypted_params,
-      env().SECRETS_ENCRYPTION_KEY,
+      encryptionKey,
     );
     if (!decryptedMap?.__params) {
       log.error(`Failed to decrypt params for queued run ${runId}`);
@@ -212,22 +218,21 @@ export async function cleanupExpiredQueueEntries(): Promise<number> {
     return 0;
   }
 
-  for (const entry of expiredEntries) {
-    // Delete queue entry
-    await globalThis.services.db
-      .delete(agentRunQueue)
-      .where(eq(agentRunQueue.runId, entry.runId));
+  const runIds = expiredEntries.map((e) => e.runId);
 
-    // Mark run as timeout
-    await globalThis.services.db
-      .update(agentRuns)
-      .set({
-        status: "timeout",
-        completedAt: now,
-        error: "Queued run expired (exceeded queue TTL)",
-      })
-      .where(eq(agentRuns.id, entry.runId));
-  }
+  // Batch delete queue entries and mark runs as timeout
+  await globalThis.services.db
+    .delete(agentRunQueue)
+    .where(inArray(agentRunQueue.runId, runIds));
+
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({
+      status: "timeout",
+      completedAt: now,
+      error: "Queued run expired (exceeded queue TTL)",
+    })
+    .where(inArray(agentRuns.id, runIds));
 
   log.debug(`Cleaned up ${expiredEntries.length} expired queue entries`);
   return expiredEntries.length;
@@ -242,7 +247,6 @@ export async function cleanupExpiredQueueEntries(): Promise<number> {
 export async function drainStaleQueues(
   execute: QueuedRunExecutor,
 ): Promise<number> {
-  const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
   const staleThreshold = new Date(Date.now() - PENDING_RUN_TTL_MS);
 
   // Find distinct users with queued runs
