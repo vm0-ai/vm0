@@ -1,4 +1,4 @@
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { eq, desc } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -43,12 +43,10 @@ export function verifyLinkToken(
     .digest("base64url");
 
   // Timing-safe comparison
-  if (expectedSig.length !== sig.length) return null;
-  let result = 0;
-  for (let i = 0; i < expectedSig.length; i++) {
-    result |= expectedSig.charCodeAt(i) ^ sig.charCodeAt(i);
-  }
-  if (result !== 0) return null;
+  const expectedBuf = Buffer.from(expectedSig);
+  const sigBuf = Buffer.from(sig);
+  if (expectedBuf.length !== sigBuf.length) return null;
+  if (!timingSafeEqual(expectedBuf, sigBuf)) return null;
 
   const payload = JSON.parse(
     Buffer.from(data, "base64url").toString(),
