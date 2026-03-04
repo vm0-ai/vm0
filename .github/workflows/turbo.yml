@@ -1436,6 +1436,12 @@ jobs:
             local REMOTE="${METAL_USER}@${HOST}"
             echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
 
+            # Guard: ensure binary exists (fails fast on "Re-run failed jobs" without prepare)
+            if ! ssh $SSH_OPTS "$REMOTE" "test -x ${BIN_DIR}/runner"; then
+              echo "::error::Runner binary not found on ${HOST}. Use 'Re-run all jobs' to redeploy the runner first."
+              return 1
+            fi
+
             # Generate runner.yaml with real preview URL (no build needed, uses cached hashes)
             ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
               --rootfs-hash ${ROOTFS_HASH} \
