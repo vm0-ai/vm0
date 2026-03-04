@@ -329,12 +329,13 @@ export async function leaveOrganization(
  */
 export async function getUserAccessibleScopes(
   clerkUserId: string,
-): Promise<Array<{ slug: string; role: string }>> {
+): Promise<Array<{ slug: string; role: string; type: string }>> {
   // Query all scopes the user is a member of via scope_members
   const memberScopes = await globalThis.services.db
     .select({
       slug: scopes.slug,
       role: scopeMembers.role,
+      type: scopes.type,
     })
     .from(scopeMembers)
     .innerJoin(scopes, eq(scopeMembers.scopeId, scopes.id))
@@ -343,6 +344,7 @@ export async function getUserAccessibleScopes(
   return memberScopes.map((s) => ({
     slug: s.slug,
     role: s.role,
+    type: s.type,
   }));
 }
 

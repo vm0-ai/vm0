@@ -11,6 +11,9 @@ const c = initContract();
 export const scopeListItemSchema = z.object({
   slug: z.string(),
   role: z.string(),
+  // Deprecated: kept for backward compat with old CLI versions.
+  // Will be removed in Phase 3 when the column is dropped.
+  type: z.string().optional(),
 });
 export type ScopeListItem = z.infer<typeof scopeListItemSchema>;
 
