@@ -12,6 +12,10 @@ on:
       - 'crates/**'
       - '.github/workflows/crates.yml'
 
+concurrency:
+  group: crates-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   detect:
     runs-on: ubuntu-latest
