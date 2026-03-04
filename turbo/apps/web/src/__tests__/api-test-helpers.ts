@@ -28,6 +28,7 @@ import { agentRunCallbacks } from "../db/schema/agent-run-callback";
 import { agentSchedules } from "../db/schema/agent-schedule";
 import { telegramInstallations } from "../db/schema/telegram-installation";
 import { telegramMessages } from "../db/schema/telegram-message";
+import { telegramUserLinks } from "../db/schema/telegram-user-link";
 import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
@@ -2191,14 +2192,18 @@ export async function findTestGitHubIssueSession(
 
 /**
  * Create a Telegram installation with all required parent records.
+ * Optionally auto-creates a user link for testing integration endpoints.
  * Returns the installation ID for use as a foreign key.
  */
-export async function createTestTelegramInstallation(): Promise<string> {
+export async function createTestTelegramInstallation(options?: {
+  adminUserId?: string;
+  vm0UserId?: string;
+}): Promise<string> {
   initServices();
   const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
 
   const suffix = uniqueId("tg");
-  const adminUserId = uniqueId("test-admin");
+  const adminUserId = options?.adminUserId ?? uniqueId("test-admin");
 
   const [scope] = await globalThis.services.db
     .insert(scopes)
@@ -2232,6 +2237,18 @@ export async function createTestTelegramInstallation(): Promise<string> {
       adminUserId,
     })
     .returning();
+
+  // Auto-create user link if vm0UserId is provided
+  if (options?.vm0UserId) {
+    await globalThis.services.db
+      .insert(telegramUserLinks)
+      .values({
+        telegramUserId: suffix,
+        installationId: installation!.id,
+        vm0UserId: options.vm0UserId,
+      })
+      .onConflictDoNothing();
+  }
 
   return installation!.id;
 }
