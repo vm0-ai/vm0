@@ -643,6 +643,43 @@ export const CONNECTOR_TYPES = {
       scopes: [],
     } as ConnectorOAuthConfig,
   },
+  sentry: {
+    label: "Sentry",
+    helpText:
+      "Connect your Sentry account to access error tracking and project data",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Sentry to grant access.",
+        secrets: {
+          SENTRY_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          SENTRY_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      SENTRY_TOKEN: "$secrets.SENTRY_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://sentry.io/oauth/authorize/",
+      tokenUrl: "https://sentry.io/oauth/token/",
+      scopes: [
+        "org:read",
+        "project:read",
+        "team:read",
+        "member:read",
+        "event:read",
+        "event:write",
+      ],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -667,6 +704,7 @@ export const connectorTypeSchema = z.enum([
   "strava",
   "garmin-connect",
   "x",
+  "sentry",
 ]);
 
 /**

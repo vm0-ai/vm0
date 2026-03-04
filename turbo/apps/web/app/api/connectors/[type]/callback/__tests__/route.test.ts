@@ -44,6 +44,7 @@ const MERCURY_TOKEN_URL = "https://oauth2.mercury.com/oauth2/token";
 const MERCURY_ACCOUNTS_URL = "https://api.mercury.com/api/v1/accounts";
 const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
 const REDDIT_USER_INFO_URL = "https://oauth.reddit.com/api/v1/me";
+const SENTRY_TOKEN_URL = "https://sentry.io/oauth/token/";
 
 /**
  * Create MSW handlers for GitHub OAuth API
@@ -649,6 +650,48 @@ function createRedditOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for Sentry OAuth API
+ * Sentry embeds user info directly in the token response.
+ */
+function createSentryOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  userName?: string | null;
+  email?: string | null;
+}) {
+  return handlers({
+    tokenExchange: http.post(SENTRY_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "sentry-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "sentry-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "bearer",
+        scope:
+          "org:read project:read team:read member:read event:read event:write",
+        user: {
+          id: options.userId ?? "sentry-user-123",
+          name:
+            options.userName !== undefined ? options.userName : "Sentry User",
+          email: options.email !== undefined ? options.email : "user@sentry.io",
+        },
+      });
+    }),
+  });
+}
+
+/**
  * Create a test request with OAuth callback parameters and cookies
  */
 function createCallbackRequest(options: {
@@ -713,6 +756,8 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("MERCURY_OAUTH_CLIENT_SECRET", "mercury-test-client-secret");
     vi.stubEnv("REDDIT_OAUTH_CLIENT_ID", "reddit-test-client-id");
     vi.stubEnv("REDDIT_OAUTH_CLIENT_SECRET", "reddit-test-client-secret");
+    vi.stubEnv("SENTRY_OAUTH_CLIENT_ID", "sentry-test-client-id");
+    vi.stubEnv("SENTRY_OAUTH_CLIENT_SECRET", "sentry-test-client-secret");
     reloadEnv();
   });
 
@@ -3176,6 +3221,172 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       });
       const response = await GET(request, {
         params: Promise.resolve({ type: "reddit" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Sentry OAuth Flow", () => {
+    it("should store Sentry connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createSentryOAuthMock({
+        accessToken: "sentry-access-token",
+        refreshToken: "sentry-refresh-token",
+        userId: "sentry-user-456",
+        userName: "Sentry User",
+        email: "user@sentry.io",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "sentry",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "sentry" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=sentry");
+      expect(location).toContain("username=Sentry+User");
+
+      // Verify connector was stored via API
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/sentry",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("sentry");
+      expect(connector.externalUsername).toBe("Sentry User");
+      expect(connector.externalId).toBe("sentry-user-456");
+      expect(connector.externalEmail).toBe("user@sentry.io");
+    });
+
+    it("should redirect with error when Sentry token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createSentryOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "sentry",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "sentry" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Sentry returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createSentryOAuthMock({
+        accessToken: "sentry-access-token",
+        refreshToken: "sentry-refresh-token-stored",
+        userId: "sentry-user-456",
+        userName: "Sentry User",
+        email: "user@sentry.io",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "sentry",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "sentry" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      // Verify refresh token was stored as a secret
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "SENTRY_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("sentry-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Sentry returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 2592000; // 30 days
+      const { handlers: mswHandlers } = createSentryOAuthMock({
+        accessToken: "sentry-access-token",
+        refreshToken: "sentry-refresh-token",
+        expiresIn,
+        userId: "sentry-user-exp",
+        userName: "Expiring Sentry",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "sentry",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "sentry" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "sentry",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Sentry token response has no user info", async () => {
+      await context.setupUser();
+
+      // Manually create a mock that returns a token but no user info
+      const { handlers: mswHandlers } = handlers({
+        tokenExchange: http.post(SENTRY_TOKEN_URL, () => {
+          return HttpResponse.json({
+            access_token: "sentry-access-token",
+            refresh_token: "sentry-refresh-token",
+            token_type: "bearer",
+            scope: "org:read",
+            // No user field
+          });
+        }),
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "sentry",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "sentry" }),
       });
 
       expect(response.status).toBe(307);
