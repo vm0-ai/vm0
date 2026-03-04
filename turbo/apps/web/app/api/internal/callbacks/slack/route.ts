@@ -101,6 +101,7 @@ async function postAskUserInteractiveCard(
   resultData: { askUserDenials: PermissionDenial[] },
   payload: CallbackPayload,
   runId: string,
+  resolvedSessionId: string | undefined,
 ): Promise<void> {
   const allQuestions: AskUserQuestion[] = [];
   for (const denial of resultData.askUserDenials) {
@@ -125,7 +126,7 @@ async function postAskUserInteractiveCard(
       userLinkId: payload.userLinkId,
       composeId: payload.composeId,
       agentName: payload.agentName,
-      sessionId: payload.existingSessionId ?? undefined,
+      sessionId: resolvedSessionId,
       questions: allQuestions,
       expiresAt,
     })
@@ -172,12 +173,13 @@ function buildResponseText(
 
 /**
  * Save or update the Slack thread → agent session mapping.
+ * Returns the resolved session ID (existing or newly discovered).
  */
 async function saveThreadSession(
   payload: CallbackPayload,
   runId: string,
   status: string,
-): Promise<void> {
+): Promise<string | undefined> {
   const {
     channelId,
     threadTs,
@@ -194,7 +196,7 @@ async function saveThreadSession(
     .limit(1);
 
   if (!run) {
-    return;
+    return existingSessionId;
   }
 
   if (!existingSessionId) {
@@ -215,7 +217,10 @@ async function saveThreadSession(
         })
         .onConflictDoNothing();
     }
-  } else if (status === "completed") {
+    return newSessionId;
+  }
+
+  if (status === "completed") {
     await globalThis.services.db
       .update(slackThreadSessions)
       .set({
@@ -230,6 +235,7 @@ async function saveThreadSession(
         ),
       );
   }
+  return existingSessionId;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -321,6 +327,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const hasAskUserDenials = resultData && resultData.askUserDenials.length > 0;
   const responseText = buildResponseText(status, error, resultData);
 
+  // Resolve session before posting interactive card so the pending question
+  // gets the correct sessionId (on first run, the session doesn't exist yet
+  // when the callback payload was constructed).
+  const resolvedSessionId = await saveThreadSession(payload, runId, status);
+
   // Post text response (if any content)
   if (responseText) {
     const logsUrl = buildLogsUrl(runId);
@@ -338,10 +349,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Post interactive card for askUserQuestion denials
   if (hasAskUserDenials) {
-    await postAskUserInteractiveCard(client, resultData, payload, runId);
+    await postAskUserInteractiveCard(
+      client,
+      resultData,
+      payload,
+      runId,
+      resolvedSessionId,
+    );
   }
-
-  await saveThreadSession(payload, runId, status);
 
   // Clear assistant thinking status
   try {
