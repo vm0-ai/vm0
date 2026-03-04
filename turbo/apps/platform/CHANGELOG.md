@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.80.0](https://github.com/vm0-ai/vm0/compare/platform-v0.79.1...platform-v0.80.0) (2026-03-04)
+
+
+### Features
+
+* **github:** add GitHub integration configuration UI ([#3538](https://github.com/vm0-ai/vm0/issues/3538)) ([df1d682](https://github.com/vm0-ai/vm0/commit/df1d68212aae2059a2d8f270eac84be64d2ddc1a))
+
+## [0.79.1](https://github.com/vm0-ai/vm0/compare/platform-v0.79.0...platform-v0.79.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* **platform:** remove agent rename to fix storage reference bug ([#3545](https://github.com/vm0-ai/vm0/issues/3545)) ([c8c5156](https://github.com/vm0-ai/vm0/commit/c8c5156160cafe54b1049585df32eed7b440d94f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.32.1
+
 ## [0.79.0](https://github.com/vm0-ai/vm0/compare/platform-v0.78.0...platform-v0.79.0) (2026-03-04)
 
 

@@ -1,6 +1,5 @@
 export {
   getAgentSessionWithConversation,
-  findOrCreateAgentSession,
   createAgentSession,
   updateAgentSession,
   listAgentSessions,

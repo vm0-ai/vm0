@@ -79,41 +79,31 @@ function MissingEnvBanner({
       />
       <p className="text-sm">
         {"Looks like this agent is missing some "}
-        {hasMissingConnectors &&
-          (agentName ? (
-            <Link
-              pathname="/agents/:name/connections"
-              options={{
-                pathParams: { name: agentName },
-                searchParams: new URLSearchParams({ tab: "connectors" }),
-              }}
-              className="font-medium text-amber-600 hover:underline dark:text-amber-500"
-            >
-              connectors
-            </Link>
-          ) : (
-            <span className="font-medium text-amber-600 dark:text-amber-500">
-              connectors
-            </span>
-          ))}
+        {hasMissingConnectors && agentName && (
+          <Link
+            pathname="/agents/:name/connections"
+            options={{
+              pathParams: { name: agentName },
+              searchParams: new URLSearchParams({ tab: "connectors" }),
+            }}
+            className="font-medium text-amber-600 hover:underline dark:text-amber-500"
+          >
+            connectors
+          </Link>
+        )}
         {hasMissingConnectors && hasMissingSecretsOrVars && ", "}
-        {hasMissingSecretsOrVars &&
-          (agentName ? (
-            <Link
-              pathname="/agents/:name/connections"
-              options={{
-                pathParams: { name: agentName },
-                searchParams: new URLSearchParams({ tab: "secrets" }),
-              }}
-              className="font-medium text-amber-600 hover:underline dark:text-amber-500"
-            >
-              secrets or variables
-            </Link>
-          ) : (
-            <span className="font-medium text-amber-600 dark:text-amber-500">
-              secrets or variables
-            </span>
-          ))}
+        {hasMissingSecretsOrVars && agentName && (
+          <Link
+            pathname="/agents/:name/connections"
+            options={{
+              pathParams: { name: agentName },
+              searchParams: new URLSearchParams({ tab: "secrets" }),
+            }}
+            className="font-medium text-amber-600 hover:underline dark:text-amber-500"
+          >
+            secrets or variables
+          </Link>
+        )}
         {". Add them now so it can run without stopping."}
       </p>
     </div>
@@ -141,9 +131,28 @@ function DefaultAgentSection({
       <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
         <div className="flex flex-1 flex-col gap-1">
           {isAdmin ? (
-            <p className="text-sm font-medium">
-              Default agent you would like to use in Slack
-            </p>
+            <>
+              <p className="text-sm font-medium">
+                Default agent you would like to use in Slack
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {
+                  "If you want to manage your agent's model provider, secrets, or connectors, go to "
+                }
+                <Link
+                  pathname="/settings"
+                  options={{
+                    searchParams: new URLSearchParams({
+                      tab: "providers",
+                    }),
+                  }}
+                  className="text-primary hover:underline"
+                >
+                  Settings
+                </Link>
+                .
+              </p>
+            </>
           ) : (
             <>
               <p className="text-sm font-medium">
@@ -231,7 +240,6 @@ export function SlackSettingsPage() {
       (async () => {
         await disconnect();
         closeConfirm();
-        // Programmatic post-action redirect — not a user-clickable link
         navigate("/settings", {
           searchParams: new URLSearchParams({ tab: "integrations" }),
         });
@@ -254,6 +262,7 @@ export function SlackSettingsPage() {
       breadcrumb={breadcrumb}
       title="VM0 in Slack"
       subtitle="Configure your settings how to run VM0 in Slack Workspace."
+      contentClassName="mx-auto w-full max-w-[1200px]"
     >
       <div className="flex flex-col gap-6 px-6 pb-8">
         {loading ? (

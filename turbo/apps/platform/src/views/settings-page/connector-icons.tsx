@@ -17,6 +17,7 @@ import mercuryIcon from "./icons/mercury.svg";
 import neonIcon from "./icons/neon.svg";
 import notionIcon from "./icons/notion.svg";
 import redditIcon from "./icons/reddit.svg";
+import sentryIcon from "./icons/sentry.svg";
 import slackIcon from "./icons/slack.svg";
 import stravaIcon from "./icons/strava.svg";
 import xIcon from "./icons/x.svg";
@@ -39,6 +40,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   neon: neonIcon,
   notion: notionIcon,
   reddit: redditIcon,
+  sentry: sentryIcon,
   slack: slackIcon,
   strava: stravaIcon,
   x: xIcon,

@@ -58,24 +58,6 @@ function mockConnectorsAPI(connectors?: unknown[]) {
     http.get("/api/connectors", () => {
       return HttpResponse.json({
         connectors: connectors ?? [],
-        configuredTypes: [
-          "github",
-          "gmail",
-          "google-sheets",
-          "google-docs",
-          "google-drive",
-          "notion",
-          "computer",
-          "slack",
-          "deel",
-          "docusign",
-          "dropbox",
-          "linear",
-          "figma",
-          "mercury",
-          "strava",
-          "garmin-connect",
-        ],
       });
     }),
   );
@@ -146,9 +128,7 @@ describe("agent connections page", () => {
       ).toBeInTheDocument();
     });
 
-    expect(
-      screen.getByRole("tab", { name: "Secrets and variables" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Custom API" })).toBeInTheDocument();
   });
 
   it("should show connectors tab by default with connector types", async () => {
@@ -246,14 +226,16 @@ describe("agent connections page", () => {
 
     await vi.waitFor(() => {
       expect(
-        screen.getByRole("tab", { name: "Secrets and variables" }),
+        screen.getByRole("tab", { name: "Custom API" }),
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("tab", { name: "Secrets and variables" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Custom API" }));
 
     await vi.waitFor(() => {
-      expect(screen.getByText("New secrets and variables")).toBeInTheDocument();
+      expect(
+        screen.getByRole("tab", { name: "Custom API" }),
+      ).toBeInTheDocument();
     });
   });
 

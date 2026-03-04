@@ -1,0 +1,182 @@
+import { getConnectorOAuthConfig } from "@vm0/core";
+import { z } from "zod";
+
+interface SentryUserInfo {
+  id: string;
+  name: string | null;
+  email: string | null;
+}
+
+interface SentryTokenResult {
+  accessToken: string;
+  refreshToken: string | null;
+  expiresIn?: number;
+  scopes: string[];
+  userInfo: SentryUserInfo;
+}
+
+interface SentryRefreshResult {
+  accessToken: string;
+  refreshToken: string | null;
+}
+
+/**
+ * Build Sentry OAuth authorization URL.
+ */
+export function buildSentryAuthorizationUrl(
+  clientId: string,
+  redirectUri: string,
+  state: string,
+): string {
+  const oauthConfig = getConnectorOAuthConfig("sentry");
+  if (!oauthConfig) {
+    throw new Error("Sentry OAuth config not found");
+  }
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: oauthConfig.scopes.join(" "),
+    state,
+  });
+
+  return `${oauthConfig.authorizationUrl}?${params.toString()}`;
+}
+
+/**
+ * Exchange authorization code for access token and user info.
+ * Sentry embeds user info directly in the token response.
+ */
+export async function exchangeSentryCode(
+  clientId: string,
+  clientSecret: string,
+  code: string,
+  redirectUri: string,
+): Promise<SentryTokenResult> {
+  const oauthConfig = getConnectorOAuthConfig("sentry");
+  if (!oauthConfig) {
+    throw new Error("Sentry OAuth config not found");
+  }
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+      redirect_uri: redirectUri,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Sentry token exchange failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
+      scope: z.string().optional(),
+      token_type: z.string().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+      user: z
+        .object({
+          id: z.string(),
+          name: z.string().nullable().optional(),
+          email: z.string().nullable().optional(),
+        })
+        .optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+
+  if (!data.access_token) {
+    throw new Error("No access token in Sentry response");
+  }
+
+  if (!data.user) {
+    throw new Error("No user info in Sentry token response");
+  }
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
+    scopes: data.scope ? data.scope.split(" ") : [],
+    userInfo: {
+      id: data.user.id,
+      name: data.user.name ?? null,
+      email: data.user.email ?? null,
+    },
+  };
+}
+
+/**
+ * Refresh a Sentry access token using the refresh token.
+ */
+export async function refreshSentryToken(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<SentryRefreshResult> {
+  const oauthConfig = getConnectorOAuthConfig("sentry");
+  if (!oauthConfig) {
+    throw new Error("Sentry OAuth config not found");
+  }
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Sentry token refresh failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+
+  if (!data.access_token) {
+    throw new Error("No access token in Sentry refresh response");
+  }
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
+  };
+}
+
+/**
+ * Get the primary secret name for Sentry connector (the access token).
+ */
+export function getSentrySecretName(): string {
+  return "SENTRY_ACCESS_TOKEN";
+}

@@ -16,6 +16,7 @@ export function HomePage() {
         title="Welcome. Let's build your agent fast."
         subtitle="Follow the steps below and let it run."
         gradientBackground
+        contentClassName="mx-auto w-full max-w-[1200px]"
       >
         <div className="flex flex-col gap-10 px-6 pb-8">
           <>

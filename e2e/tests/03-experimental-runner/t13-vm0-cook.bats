@@ -34,7 +34,8 @@ agents:
   $AGENT_NAME:
     description: "E2E test agent for cook command"
     framework: claude-code
-    image: "vm0/claude-code:dev"
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     volumes:
       - ${VOLUME_NAME}:/home/user/data
     working_dir: /home/user/workspace
@@ -107,7 +108,8 @@ agents:
   $AGENT_NAME:
     description: "E2E test agent for env check"
     framework: claude-code
-    image: "vm0/claude-code:dev"
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
     environment:
       API_KEY: \${{ vars.E2E_TEST_VAR }}
@@ -144,6 +146,8 @@ agents:
   $AGENT_NAME:
     description: "E2E test agent for cook with skills"
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF

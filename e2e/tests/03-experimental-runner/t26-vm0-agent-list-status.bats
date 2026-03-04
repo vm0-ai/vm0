@@ -41,7 +41,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for list command"
     framework: claude-code
-    image: "vm0/claude-code:dev"
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -67,7 +68,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for version format"
     framework: claude-code
-    image: "vm0/claude-code:dev"
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -95,7 +97,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for status command"
     framework: claude-code
-    image: "vm0/claude-code:dev"
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -121,7 +124,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for version specifier"
     framework: claude-code
-    image: "vm0/claude-code:dev"
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -146,7 +150,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for latest tag"
     framework: claude-code
-    image: "vm0/claude-code:dev"
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -170,7 +175,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for no-sources flag"
     framework: claude-code
-    image: "vm0/claude-code:dev"
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -196,12 +202,14 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     environment:
       API_KEY: "${{ secrets.MY_API_KEY }}"
       AUTH_TOKEN: "${{ secrets.AUTH_TOKEN }}"
 EOF
     # Replace $AGENT_NAME in the file
-    sed -i "s/\$AGENT_NAME/$AGENT_NAME/g" "$TEST_DIR/vm0.yaml"
+    sed -i "s|\$AGENT_NAME|$AGENT_NAME|g; s|\${RUNNER_GROUP}|$RUNNER_GROUP|g" "$TEST_DIR/vm0.yaml"
 
     echo "# Step 2: Run vm0 compose"
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml" --yes
@@ -223,12 +231,14 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     environment:
       DEBUG_MODE: "${{ vars.DEBUG }}"
       LOG_LEVEL: "${{ vars.LOG_LEVEL }}"
 EOF
     # Replace $AGENT_NAME in the file
-    sed -i "s/\$AGENT_NAME/$AGENT_NAME/g" "$TEST_DIR/vm0.yaml"
+    sed -i "s|\$AGENT_NAME|$AGENT_NAME|g; s|\${RUNNER_GROUP}|$RUNNER_GROUP|g" "$TEST_DIR/vm0.yaml"
 
     echo "# Step 2: Run vm0 compose"
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
@@ -250,11 +260,13 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     environment:
       DATABASE_URL: "${{ credentials.DB_URL }}"
 EOF
     # Replace $AGENT_NAME in the file
-    sed -i "s/\$AGENT_NAME/$AGENT_NAME/g" "$TEST_DIR/vm0.yaml"
+    sed -i "s|\$AGENT_NAME|$AGENT_NAME|g; s|\${RUNNER_GROUP}|$RUNNER_GROUP|g" "$TEST_DIR/vm0.yaml"
 
     echo "# Step 2: Run vm0 compose"
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
@@ -275,6 +287,8 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
     environment:
       API_KEY: "${{ secrets.API_KEY }}"
       DEBUG: "${{ vars.DEBUG }}"
@@ -282,7 +296,7 @@ agents:
       STATIC_VALUE: "hardcoded"
 EOF
     # Replace $AGENT_NAME in the file
-    sed -i "s/\$AGENT_NAME/$AGENT_NAME/g" "$TEST_DIR/vm0.yaml"
+    sed -i "s|\$AGENT_NAME|$AGENT_NAME|g; s|\${RUNNER_GROUP}|$RUNNER_GROUP|g" "$TEST_DIR/vm0.yaml"
 
     echo "# Step 2: Run vm0 compose"
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml" --yes
@@ -312,6 +326,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for delete command"
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
 EOF
 
     echo "# Step 2: Run vm0 compose to create the agent"
@@ -343,6 +359,8 @@ agents:
   $AGENT_NAME:
     description: "Test agent for rm alias"
     framework: claude-code
+    experimental_runner:
+      group: ${RUNNER_GROUP}
 EOF
 
     echo "# Step 2: Run vm0 compose to create the agent"

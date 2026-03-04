@@ -5,12 +5,7 @@ import { searchParams$, updateSearchParams$ } from "../route.ts";
 // Tab types
 // ---------------------------------------------------------------------------
 
-export type SettingsTab =
-  | "providers"
-  | "connectors"
-  | "secrets-and-variables"
-  | "integrations"
-  | "notifications";
+export type SettingsTab = "providers" | "connections" | "integrations";
 
 // ---------------------------------------------------------------------------
 // Internal state
@@ -30,17 +25,19 @@ export const activeTab$ = computed((get) => get(internalActiveTab$));
 
 function isValidTab(value: string): value is SettingsTab {
   return (
-    value === "providers" ||
-    value === "connectors" ||
-    value === "secrets-and-variables" ||
-    value === "integrations" ||
-    value === "notifications"
+    value === "providers" || value === "connections" || value === "integrations"
   );
 }
 
-/** Legacy tab values that map to the merged tab. */
-function isLegacySecretsOrVariablesTab(value: string): boolean {
-  return value === "secrets" || value === "variables";
+/** Legacy tab values that map to the Connections tab. */
+function isLegacyConnectionsTab(value: string): boolean {
+  return (
+    value === "connectors" ||
+    value === "connectors-and-secrets" ||
+    value === "secrets-and-variables" ||
+    value === "secrets" ||
+    value === "variables"
+  );
 }
 
 /**
@@ -54,8 +51,11 @@ export const initSettingsTabs$ = command(({ get, set }) => {
   if (tab) {
     if (isValidTab(tab)) {
       set(internalActiveTab$, tab);
-    } else if (isLegacySecretsOrVariablesTab(tab)) {
-      set(internalActiveTab$, "secrets-and-variables");
+    } else if (isLegacyConnectionsTab(tab)) {
+      set(internalActiveTab$, "connections");
+    } else if (tab === "notifications") {
+      // Notifications moved to /preferences; fall back to default tab.
+      set(internalActiveTab$, "providers");
     }
   }
 });

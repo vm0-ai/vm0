@@ -1,10 +1,17 @@
-import { Button } from "@vm0/ui/components/ui/button";
+import { Card } from "@vm0/ui/components/ui/card";
+import { CopyButton } from "@vm0/ui/components/ui/copy-button";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@vm0/ui/components/ui/tooltip";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@vm0/ui/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@vm0/ui/components/ui/popover";
 import {
   Table,
   TableBody,
@@ -15,7 +22,7 @@ import {
 } from "@vm0/ui/components/ui/table";
 import { AppShell } from "../layout/app-shell.tsx";
 import { AgentsListSkeleton } from "./agents-list-skeleton.tsx";
-import { useGet, useLastResolved, useResolved } from "ccstate-react";
+import { useGet, useLastResolved, useResolved, useSet } from "ccstate-react";
 import {
   agentsList$,
   agentsLoading$,
@@ -23,11 +30,14 @@ import {
   schedules$,
   agentsMissingItems$,
   getAgentScheduleStatus,
+  manageAgentDialogOpen$,
+  setManageAgentDialogOpen$,
 } from "../../signals/agents-page/agents-list.ts";
 import { defaultModelProvider$ } from "../../signals/external/model-providers.ts";
-import { useNavigationHandler } from "../router/link.tsx";
+import { navigateInReact$ } from "../../signals/route.ts";
 import { getUILabel } from "../settings-page/provider-ui-config.ts";
 import { Bed, Settings, Clock, AlertTriangle } from "lucide-react";
+import { IconDotsVertical, IconTerminal } from "@tabler/icons-react";
 import type { ComposeListItem } from "@vm0/core";
 
 export function AgentsPage() {
@@ -36,6 +46,7 @@ export function AgentsPage() {
       breadcrumb={["Agents"]}
       title="Agents"
       subtitle="Your agents, their schedules, and when they were last updated"
+      contentClassName="mx-auto w-full max-w-[1200px]"
     >
       <div className="flex flex-col gap-5 px-4 sm:px-6 pb-8">
         <AgentsListSection />
@@ -51,9 +62,14 @@ function AgentsListSection() {
   const loading = useGet(agentsLoading$);
   const error = useGet(agentsError$);
   const defaultProvider = useResolved(defaultModelProvider$);
+  const manageDialogAgentName = useGet(manageAgentDialogOpen$);
+  const setManageAgentDialogOpen = useSet(setManageAgentDialogOpen$);
 
   // Create a map for quick lookup
   const missingMap = new Map(missingItems?.map((a) => [a.agentName, a]));
+  const manageDialogAgent = manageDialogAgentName
+    ? agents.find((a) => a.name === manageDialogAgentName)
+    : null;
 
   if (loading) {
     return <AgentsListSkeleton />;
@@ -88,51 +104,134 @@ function AgentsListSection() {
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="h-10 px-3 w-[25%] min-w-[120px]">
-            <span className="block truncate whitespace-nowrap">
-              Your agents
-            </span>
-          </TableHead>
-          <TableHead className="h-10 px-3 w-[25%] min-w-[120px]">
-            <span className="block truncate whitespace-nowrap">
-              Model provider
-            </span>
-          </TableHead>
-          <TableHead className="h-10 px-3 w-[20%] min-w-[120px]">
-            <span className="block truncate whitespace-nowrap">
-              Schedule status
-            </span>
-          </TableHead>
-          <TableHead className="h-10 pl-3 pr-6 w-[20%] min-w-[100px]">
-            <span className="block truncate whitespace-nowrap">Last edit</span>
-          </TableHead>
-          <TableHead className="h-10 w-12" />
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {agents.map((agent) => {
-          const hasSchedule = getAgentScheduleStatus(agent.name, schedules);
-          const missing = missingMap.get(agent.name);
-          const missingCount = missing
-            ? missing.missingSecrets.length + missing.missingVariables.length
-            : 0;
-          return (
-            <AgentRow
-              key={agent.name}
-              agent={agent}
-              hasSchedule={hasSchedule}
-              missingCount={missingCount}
-              modelProviderLabel={
-                defaultProvider ? getUILabel(defaultProvider.type) : "N/A"
-              }
-            />
-          );
-        })}
-      </TableBody>
-    </Table>
+    <>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="h-10 px-3 w-[25%] min-w-[120px]">
+              <span className="block truncate whitespace-nowrap">
+                Your agents
+              </span>
+            </TableHead>
+            <TableHead className="h-10 px-3 w-[25%] min-w-[120px]">
+              <span className="block truncate whitespace-nowrap">
+                Model provider
+              </span>
+            </TableHead>
+            <TableHead className="h-10 px-3 w-[20%] min-w-[120px]">
+              <span className="block truncate whitespace-nowrap">
+                Schedule status
+              </span>
+            </TableHead>
+            <TableHead className="h-10 pl-3 pr-6 w-[20%] min-w-[100px]">
+              <span className="block truncate whitespace-nowrap">
+                Last edit
+              </span>
+            </TableHead>
+            <TableHead className="h-10 w-12" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {agents.map((agent) => {
+            const hasSchedule = getAgentScheduleStatus(agent.name, schedules);
+            const missing = missingMap.get(agent.name);
+            const missingCount = missing
+              ? missing.missingSecrets.length + missing.missingVariables.length
+              : 0;
+            return (
+              <AgentRow
+                key={agent.name}
+                agent={agent}
+                hasSchedule={hasSchedule}
+                missingCount={missingCount}
+                modelProviderLabel={
+                  defaultProvider ? getUILabel(defaultProvider.type) : "N/A"
+                }
+                onOpenManageDialog={setManageAgentDialogOpen}
+              />
+            );
+          })}
+        </TableBody>
+      </Table>
+      {manageDialogAgent && (
+        <ManageAgentDialog
+          agent={manageDialogAgent}
+          open
+          onOpenChange={(open) => !open && setManageAgentDialogOpen(null)}
+        />
+      )}
+    </>
+  );
+}
+
+function ManageAgentDialog({
+  agent,
+  open,
+  onOpenChange,
+}: {
+  agent: ComposeListItem;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const manageCmd = `/vm0-agent manage ${agent.name}`;
+  const scheduleCmd = `/vm0-agent schedule ${agent.name}`;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Manage {agent.name}</DialogTitle>
+          <DialogDescription>
+            How to manage this agent in Claude Code
+          </DialogDescription>
+        </DialogHeader>
+        <section className="flex flex-col gap-6">
+          <div>
+            <h2 className="text-base font-medium text-foreground mb-2">
+              1. Manage my agent
+            </h2>
+            <p className="text-sm text-muted-foreground mb-3">
+              Optimize and modify your agent in Claude Code:
+            </p>
+            <Card className="flex items-center justify-between p-4 font-mono">
+              <code className="text-sm overflow-x-auto text-muted-foreground">
+                {manageCmd}
+              </code>
+              <CopyButton text={manageCmd} />
+            </Card>
+          </div>
+          <div>
+            <h2 className="text-base font-medium text-foreground mb-2">
+              2. Schedule my agent
+            </h2>
+            <p className="text-sm text-muted-foreground mb-3">
+              Configure schedule for your agent:
+            </p>
+            <Card className="flex items-center justify-between p-4 font-mono">
+              <code className="text-sm overflow-x-auto text-muted-foreground">
+                {scheduleCmd}
+              </code>
+              <CopyButton text={scheduleCmd} />
+            </Card>
+          </div>
+          <div>
+            <h2 className="text-base font-medium text-foreground mb-2">
+              Troubleshooting
+            </h2>
+            <p className="text-sm text-muted-foreground mb-3">
+              If you encounter any issues, run this command in your terminal
+              before entering Claude Code to initialize the vm0-agent skill:
+            </p>
+            <Card className="flex items-center justify-between p-4 font-mono">
+              <code className="text-sm overflow-x-auto text-muted-foreground">
+                vm0 setup-claude
+              </code>
+              <CopyButton text="vm0 setup-claude" />
+            </Card>
+          </div>
+        </section>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -141,89 +240,114 @@ function AgentRow({
   hasSchedule,
   missingCount,
   modelProviderLabel,
+  onOpenManageDialog,
 }: {
   agent: ComposeListItem;
   hasSchedule: boolean;
   missingCount: number;
   modelProviderLabel: string;
+  onOpenManageDialog: (agentName: string) => void;
 }) {
-  const { onClick: handleRowClick } = useNavigationHandler("/agents/:name", {
-    pathParams: { name: agent.name },
-  });
+  const navigate = useSet(navigateInReact$);
+
+  const handleRowClick = () =>
+    navigate("/agents/:name", {
+      pathParams: { name: agent.name },
+    });
 
   return (
-    <TableRow className="h-[53px]">
-      <TableCell
-        className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]"
-        onClick={handleRowClick}
-      >
-        <div className="flex flex-col gap-1">
-          <span className="block truncate whitespace-nowrap font-medium">
-            {agent.name}
-          </span>
-          {missingCount > 0 && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-destructive">
-              <AlertTriangle className="h-3 w-3 flex-shrink-0" />
-              <span className="truncate">
-                Missing {missingCount} environment variable
-                {missingCount > 1 ? "s" : ""}
+    <>
+      <TableRow className="h-[53px]">
+        <TableCell
+          className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]"
+          onClick={handleRowClick}
+        >
+          <div className="flex flex-col gap-1">
+            <span className="block truncate whitespace-nowrap font-medium">
+              {agent.name}
+            </span>
+            {missingCount > 0 && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-destructive">
+                <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">
+                  Missing {missingCount} environment variable
+                  {missingCount > 1 ? "s" : ""}
+                </span>
               </span>
-            </span>
-          )}
-        </div>
-      </TableCell>
-      <TableCell
-        className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]"
-        onClick={handleRowClick}
-      >
-        <span className="block truncate whitespace-nowrap text-sm">
-          {modelProviderLabel}
-        </span>
-      </TableCell>
-      <TableCell
-        className="px-3 py-2 cursor-pointer w-[20%] min-w-[120px]"
-        onClick={handleRowClick}
-      >
-        <div className="truncate whitespace-nowrap">
-          {hasSchedule ? (
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-              <Clock className="h-3 w-3 text-sky-600" />
-              Scheduled
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-              <Bed className="h-3 w-3 text-sky-600" />
-              No schedule
-            </span>
-          )}
-        </div>
-      </TableCell>
-      <TableCell
-        className="pl-3 pr-6 py-2 cursor-pointer w-[20%] min-w-[100px]"
-        onClick={handleRowClick}
-      >
-        <span className="block truncate whitespace-nowrap text-sm">
-          {new Date(agent.updatedAt).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })}
-        </span>
-      </TableCell>
-      <TableCell className="pl-0 pr-4 py-2 w-12">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" onClick={handleRowClick}>
-                <Settings className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>View details</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </TableCell>
-    </TableRow>
+            )}
+          </div>
+        </TableCell>
+        <TableCell
+          className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]"
+          onClick={handleRowClick}
+        >
+          <span className="block truncate whitespace-nowrap text-sm">
+            {modelProviderLabel}
+          </span>
+        </TableCell>
+        <TableCell
+          className="px-3 py-2 cursor-pointer w-[20%] min-w-[120px]"
+          onClick={handleRowClick}
+        >
+          <div className="truncate whitespace-nowrap">
+            {hasSchedule ? (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+                <Clock className="h-3 w-3 text-sky-600" />
+                Scheduled
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+                <Bed className="h-3 w-3 text-sky-600" />
+                No schedule
+              </span>
+            )}
+          </div>
+        </TableCell>
+        <TableCell
+          className="pl-3 pr-6 py-2 cursor-pointer w-[20%] min-w-[100px]"
+          onClick={handleRowClick}
+        >
+          <span className="block truncate whitespace-nowrap text-sm">
+            {new Date(agent.updatedAt).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </span>
+        </TableCell>
+        <TableCell className="pl-0 pr-4 py-2 w-12">
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="icon-button shrink-0"
+                aria-label="Agent options"
+              >
+                <IconDotsVertical size={18} className="text-foreground" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="flex flex-col gap-1 w-auto min-w-[11rem] p-2"
+            >
+              <button
+                onClick={handleRowClick}
+                className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm text-left whitespace-nowrap hover:bg-accent hover:text-accent-foreground transition-colors"
+              >
+                <Settings className="h-4 w-4 shrink-0" />
+                View details
+              </button>
+              <button
+                onClick={() => onOpenManageDialog(agent.name)}
+                className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm text-left whitespace-nowrap hover:bg-accent hover:text-accent-foreground transition-colors"
+              >
+                <IconTerminal className="h-4 w-4 shrink-0" />
+                Manage in Claude Code
+              </button>
+            </PopoverContent>
+          </Popover>
+        </TableCell>
+      </TableRow>
+    </>
   );
 }

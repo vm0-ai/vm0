@@ -18,7 +18,19 @@ import {
 } from "../external/model-providers.ts";
 
 // ---------------------------------------------------------------------------
-// Dialog state
+// Add provider dialog (list of provider type cards)
+// ---------------------------------------------------------------------------
+
+const internalAddProviderDialogOpen$ = state(false);
+export const addProviderDialogOpen$ = computed((get) =>
+  get(internalAddProviderDialogOpen$),
+);
+export const setAddProviderDialogOpen$ = command(({ set }, open: boolean) => {
+  set(internalAddProviderDialogOpen$, open);
+});
+
+// ---------------------------------------------------------------------------
+// Dialog state (add/edit single provider form)
 // ---------------------------------------------------------------------------
 
 interface DialogState {
@@ -106,14 +118,6 @@ export const configuredProviders$ = computed(async (get) => {
 export const defaultProvider$ = computed(async (get) => {
   const providers = await get(configuredProviders$);
   return providers.find((p) => p.isDefault) ?? null;
-});
-
-export const availableProviderTypes$ = computed(async (get) => {
-  const providers = await get(configuredProviders$);
-  const configuredTypes = new Set(providers.map((p) => p.type));
-  return (Object.keys(MODEL_PROVIDER_TYPES) as ModelProviderType[]).filter(
-    (type) => !configuredTypes.has(type),
-  );
 });
 
 // ---------------------------------------------------------------------------

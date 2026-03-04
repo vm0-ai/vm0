@@ -27,7 +27,7 @@ export function ProviderRow({
 
   return (
     <div
-      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl ${isFirst ? "rounded-t-xl" : ""}`}
+      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl transition-colors hover:bg-muted/50 ${isFirst ? "rounded-t-xl" : ""}`}
     >
       <div className="shrink-0">
         <ProviderIcon type={provider.type} size={28} />

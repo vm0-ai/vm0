@@ -11,6 +11,7 @@ import { setupHomePage$ } from "./home/home-page.ts";
 import { setupLogsPage$ } from "./logs-page/logs-page.ts";
 import { setupLogDetailPage$ } from "./logs-page/log-detail-page.ts";
 import { setupSettingsPage$ } from "./settings-page/settings-page.ts";
+import { setupPreferencesPage$ } from "./preferences-page/preferences-page.ts";
 import { setupAgentsPage$ } from "./agents-page/agents-page.ts";
 import { setupAgentDetailPage$ } from "./agent-detail/agent-detail-page.ts";
 import { setupAgentLogsPage$ } from "./agent-detail/agent-logs-page.ts";
@@ -23,6 +24,7 @@ import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupPlaygroundPage$ } from "./playground-page/playground-page.ts";
 import { setupEnvironmentVariablesSetupPage$ } from "./environment-variables-setup/setup-page.ts";
 import { setupSlackSettingsPage$ } from "./integrations-page/slack-settings-page.ts";
+import { setupGitHubSettingsPage$ } from "./integrations-page/github-settings-page.ts";
 import { setupProviderSetupPage$ } from "./provider-setup/provider-setup-page.ts";
 import { setupSlackConnectPage$ } from "./slack-connect/slack-connect-page.ts";
 import { setupSlackConnectSuccessPage$ } from "./slack-connect/slack-connect-success-page.ts";
@@ -47,6 +49,10 @@ const ROUTE_CONFIG = [
     setup: setupScopeRequiredPageWrapper(setupSettingsPage$),
   },
   {
+    path: "/preferences",
+    setup: setupAuthPageWrapper(setupPreferencesPage$),
+  },
+  {
     path: "/agents/:name/logs/:id",
     setup: setupScopeRequiredPageWrapper(setupAgentLogDetailPage$),
   },
@@ -69,6 +75,10 @@ const ROUTE_CONFIG = [
   {
     path: "/settings/slack",
     setup: setupScopeRequiredPageWrapper(setupSlackSettingsPage$),
+  },
+  {
+    path: "/settings/github",
+    setup: setupScopeRequiredPageWrapper(setupGitHubSettingsPage$),
   },
   {
     path: "/environment-variables-setup",

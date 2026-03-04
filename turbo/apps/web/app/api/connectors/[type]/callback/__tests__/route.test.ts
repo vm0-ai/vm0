@@ -46,6 +46,8 @@ const NEON_TOKEN_URL = "https://oauth2.neon.tech/oauth2/token";
 const NEON_USER_INFO_URL = "https://console.neon.tech/api/v2/users/me";
 const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
 const REDDIT_USER_INFO_URL = "https://oauth.reddit.com/api/v1/me";
+const X_TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
+const SENTRY_TOKEN_URL = "https://sentry.io/oauth/token/";
 
 /**
  * Create MSW handlers for GitHub OAuth API
@@ -696,6 +698,104 @@ function createRedditOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for X (Twitter) OAuth API
+ */
+function createXOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  username?: string;
+  userError?: boolean;
+}) {
+  return handlers({
+    tokenExchange: http.post(X_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "x-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "x-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "bearer",
+        scope: "tweet.read users.read follows.read offline.access",
+      });
+    }),
+    userInfo: http.get("https://api.twitter.com/2/users/me", ({ request }) => {
+      const url = new URL(request.url);
+      if (!url.searchParams.get("user.fields")) {
+        return HttpResponse.json(
+          { errors: [{ message: "Missing fields" }] },
+          { status: 400 },
+        );
+      }
+      if (options.userError) {
+        return HttpResponse.json(
+          { errors: [{ message: "Unauthorized" }] },
+          { status: 401 },
+        );
+      }
+      return HttpResponse.json({
+        data: {
+          id: options.userId ?? "x-user-123",
+          username: options.username ?? "testxuser",
+          name: "Test X User",
+        },
+      });
+    }),
+  });
+}
+
+/**
+ * Create MSW handlers for Sentry OAuth API
+ * Sentry embeds user info directly in the token response.
+ */
+function createSentryOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresIn?: number;
+  tokenError?: string;
+  userId?: string;
+  userName?: string | null;
+  email?: string | null;
+}) {
+  return handlers({
+    tokenExchange: http.post(SENTRY_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "sentry-test-access-token",
+        refresh_token:
+          options.refreshToken !== undefined
+            ? options.refreshToken
+            : "sentry-test-refresh-token",
+        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
+        token_type: "bearer",
+        scope:
+          "org:read project:read team:read member:read event:read event:write",
+        user: {
+          id: options.userId ?? "sentry-user-123",
+          name:
+            options.userName !== undefined ? options.userName : "Sentry User",
+          email: options.email !== undefined ? options.email : "user@sentry.io",
+        },
+      });
+    }),
+  });
+}
+
+/**
  * Create a test request with OAuth callback parameters and cookies
  */
 function createCallbackRequest(options: {
@@ -762,6 +862,10 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("NEON_OAUTH_CLIENT_SECRET", "neon-test-client-secret");
     vi.stubEnv("REDDIT_OAUTH_CLIENT_ID", "reddit-test-client-id");
     vi.stubEnv("REDDIT_OAUTH_CLIENT_SECRET", "reddit-test-client-secret");
+    vi.stubEnv("X_OAUTH_CLIENT_ID", "x-test-client-id");
+    vi.stubEnv("X_OAUTH_CLIENT_SECRET", "x-test-client-secret");
+    vi.stubEnv("SENTRY_OAUTH_CLIENT_ID", "sentry-test-client-id");
+    vi.stubEnv("SENTRY_OAUTH_CLIENT_SECRET", "sentry-test-client-secret");
     reloadEnv();
   });
 
@@ -3377,6 +3481,321 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       });
       const response = await GET(request, {
         params: Promise.resolve({ type: "reddit" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("X OAuth Flow", () => {
+    it("should store X connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createXOAuthMock({
+        accessToken: "x-access-token",
+        refreshToken: "x-refresh-token",
+        userId: "x-user-456",
+        username: "xuser",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "x",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "x" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=x");
+      expect(location).toContain("username=xuser");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/x",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("x");
+      expect(connector.externalUsername).toBe("xuser");
+      expect(connector.externalId).toBe("x-user-456");
+      expect(connector.externalEmail).toBeNull();
+    });
+
+    it("should redirect with error when X token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createXOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "x",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "x" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when X returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createXOAuthMock({
+        accessToken: "x-access-token",
+        refreshToken: "x-refresh-token-stored",
+        userId: "x-user-456",
+        username: "xuser",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "x",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "x" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "X_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("x-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when X returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 7200;
+      const { handlers: mswHandlers } = createXOAuthMock({
+        accessToken: "x-access-token",
+        refreshToken: "x-refresh-token",
+        expiresIn,
+        userId: "x-user-456",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "x",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "x" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "x",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when X user info fetch fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createXOAuthMock({
+        userError: true,
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "x",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "x" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+  });
+
+  describe("Sentry OAuth Flow", () => {
+    it("should store Sentry connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createSentryOAuthMock({
+        accessToken: "sentry-access-token",
+        refreshToken: "sentry-refresh-token",
+        userId: "sentry-user-456",
+        userName: "Sentry User",
+        email: "user@sentry.io",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "sentry",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "sentry" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=sentry");
+      expect(location).toContain("username=Sentry+User");
+
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/sentry",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("sentry");
+      expect(connector.externalUsername).toBe("Sentry User");
+      expect(connector.externalId).toBe("sentry-user-456");
+      expect(connector.externalEmail).toBe("user@sentry.io");
+    });
+
+    it("should redirect with error when Sentry token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createSentryOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "sentry",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "sentry" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should store refresh token as a secret when Sentry returns one", async () => {
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createSentryOAuthMock({
+        accessToken: "sentry-access-token",
+        refreshToken: "sentry-refresh-token-stored",
+        userId: "sentry-user-456",
+        userName: "Sentry User",
+        email: "user@sentry.io",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "sentry",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "sentry" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const refreshToken = await findTestConnectorSecret(
+        user.scopeId,
+        "SENTRY_REFRESH_TOKEN",
+      );
+      expect(refreshToken).toBe("sentry-refresh-token-stored");
+    });
+
+    it("should set tokenExpiresAt when Sentry returns expires_in", async () => {
+      const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+
+      const expiresIn = 2592000; // 30 days
+      const { handlers: mswHandlers } = createSentryOAuthMock({
+        accessToken: "sentry-access-token",
+        refreshToken: "sentry-refresh-token",
+        expiresIn,
+        userId: "sentry-user-exp",
+        userName: "Expiring Sentry",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "sentry",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "sentry" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.scopeId,
+        "sentry",
+      );
+      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
+      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
+    });
+
+    it("should redirect with error when Sentry token response has no user info", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = handlers({
+        tokenExchange: http.post(SENTRY_TOKEN_URL, () => {
+          return HttpResponse.json({
+            access_token: "sentry-access-token",
+            refresh_token: "sentry-refresh-token",
+            token_type: "bearer",
+            scope: "org:read",
+            // No user field
+          });
+        }),
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "sentry",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "sentry" }),
       });
 
       expect(response.status).toBe(307);

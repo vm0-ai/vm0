@@ -7,7 +7,6 @@ import {
   setActiveTab$,
   type SettingsTab,
 } from "../../signals/settings-page/settings-tabs.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { DefaultProviderCard } from "./default-provider-card.tsx";
 import { ProviderList } from "./provider-list.tsx";
 import { ProviderDialog } from "./provider-dialog.tsx";
@@ -23,32 +22,31 @@ import {
   SlackIntegrationCard,
   GitHubIntegrationCard,
 } from "../integrations-page/integrations-page.tsx";
-import { NotificationSettings } from "./notification-settings.tsx";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { mergedItems$ } from "../../signals/settings-page/secrets-and-variables.ts";
 
 export function SettingsPage() {
   const tab = useGet(activeTab$);
   const setTab = useSet(setActiveTab$);
   const featureSwitches = useLastResolved(featureSwitch$);
+  const mergedItems = useLastResolved(mergedItems$);
 
   return (
     <AppShell
       breadcrumb={["Settings"]}
       title="Settings"
       subtitle="Configure your model providers, connectors, secrets, and variables"
+      contentClassName="mx-auto w-full max-w-[1200px]"
     >
       <div className="flex flex-col gap-6 px-6 pb-8">
         <Tabs
           value={tab}
           onValueChange={(value) => setTab(value as SettingsTab)}
         >
-          <TabsList>
+          <TabsList className="w-fit">
             <TabsTrigger value="providers">Model Providers</TabsTrigger>
-            <TabsTrigger value="connectors">Connectors</TabsTrigger>
-            <TabsTrigger value="secrets-and-variables">
-              Secrets and variables
-            </TabsTrigger>
+            <TabsTrigger value="connections">Connections</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
-            <TabsTrigger value="notifications">Notifications</TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -61,16 +59,20 @@ export function SettingsPage() {
           </>
         )}
 
-        {tab === "connectors" && (
+        {tab === "connections" && (
           <>
             <ConnectorList />
             <DisconnectConnectorDialog />
-          </>
-        )}
-
-        {tab === "secrets-and-variables" && (
-          <>
-            <SecretsAndVariablesList />
+            {(mergedItems === undefined || mergedItems.length > 0) && (
+              <section className="flex flex-col gap-4">
+                {mergedItems !== undefined && mergedItems.length > 0 && (
+                  <h3 className="text-base font-medium text-foreground">
+                    Custom API
+                  </h3>
+                )}
+                <SecretsAndVariablesList />
+              </section>
+            )}
             <SecretDialog />
             <DeleteSecretDialog />
             <VariableDialog />
@@ -86,8 +88,6 @@ export function SettingsPage() {
             )}
           </div>
         )}
-
-        {tab === "notifications" && <NotificationSettings />}
       </div>
     </AppShell>
   );

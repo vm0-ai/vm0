@@ -9,6 +9,8 @@ interface AppShellProps {
   subtitle?: string;
   children: ReactNode;
   gradientBackground?: boolean;
+  /** Optional class for wrapping title + children (e.g. max-width and centering) */
+  contentClassName?: string;
 }
 
 /**
@@ -29,8 +31,16 @@ export function AppShell({
   subtitle,
   children,
   gradientBackground,
+  contentClassName,
 }: AppShellProps) {
   const normalizedBreadcrumb = normalizeBreadcrumb(breadcrumb);
+
+  const mainContent = (
+    <>
+      {title && <PageHeader title={title} subtitle={subtitle} />}
+      {children}
+    </>
+  );
 
   return (
     <div className="flex h-dvh">
@@ -40,8 +50,11 @@ export function AppShell({
         <main
           className={`flex-1 overflow-auto ${gradientBackground ? "bg-background" : ""}`}
         >
-          {title && <PageHeader title={title} subtitle={subtitle} />}
-          {children}
+          {contentClassName ? (
+            <div className={contentClassName}>{mainContent}</div>
+          ) : (
+            mainContent
+          )}
         </main>
       </div>
     </div>

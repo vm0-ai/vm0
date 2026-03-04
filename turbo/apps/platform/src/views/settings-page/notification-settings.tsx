@@ -33,8 +33,8 @@ export function NotificationSettings() {
       <div className="flex flex-col gap-1">
         <h3 className="text-base font-medium text-foreground">Notifications</h3>
         <p className="text-sm text-muted-foreground">
-          Manage how you receive notifications about agent runs, errors, and
-          updates.
+          Choose how you get notified when scheduled agent runs complete or
+          fail.
         </p>
       </div>
 
@@ -54,8 +54,7 @@ export function NotificationSettings() {
               Email Notifications
             </div>
             <div className="text-sm text-muted-foreground">
-              Receive email notifications for agent run completions, errors, and
-              important updates.
+              Receive an email when a scheduled agent run completes or fails.
             </div>
           </div>
           <div className="shrink-0">
@@ -81,8 +80,7 @@ export function NotificationSettings() {
               Slack Notifications
             </div>
             <div className="text-sm text-muted-foreground">
-              Send notifications to your Slack workspace when agents complete
-              runs or encounter errors.
+              Get a Slack DM when a scheduled agent run completes or fails.
             </div>
           </div>
           <div className="shrink-0">
