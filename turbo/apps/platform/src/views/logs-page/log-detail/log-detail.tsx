@@ -13,7 +13,10 @@ export function LogDetailPage() {
   ];
 
   return (
-    <AppShell breadcrumb={breadcrumb}>
+    <AppShell
+      breadcrumb={breadcrumb}
+      contentClassName="mx-auto w-full max-w-[1200px]"
+    >
       <div className="h-full flex flex-col">
         {logId ? (
           <LogDetailContent />

@@ -44,8 +44,13 @@ describe("settings page", () => {
 
     await setupPage({ context, path: "/settings" });
 
-    // Should show "New model provider" button but no provider rows
-    expect(screen.getByText("New model provider")).toBeInTheDocument();
+    // Should show empty state and Add button but no provider rows
+    expect(
+      screen.getByText(
+        /No providers configured. Click Add model provider to add one/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add/i })).toBeInTheDocument();
     expect(
       screen.queryByText("Claude Code (OAuth token)"),
     ).not.toBeInTheDocument();
@@ -83,15 +88,22 @@ describe("settings page", () => {
 
     await setupPage({ context, path: "/settings" });
 
-    // Click "Add more model provider" to open dropdown
-    const addButton = screen.getByText("Add more model provider");
+    // Click Add to open add provider dialog
+    const addButton = screen.getByRole("button", { name: /add/i });
     await user.click(addButton);
 
-    // Select "Anthropic API key" from the menu
-    const anthropicOption = await screen.findByText("Anthropic API key");
-    await user.click(anthropicOption);
+    // In add provider dialog, click Add on Anthropic API key card
+    const addProviderDialog = await screen.findByRole("dialog", {
+      name: /add model provider/i,
+    });
+    const anthropicCard = within(addProviderDialog).getByTestId(
+      "provider-card-anthropic-api-key",
+    );
+    await user.click(
+      within(anthropicCard).getByRole("button", { name: /^add$/i }),
+    );
 
-    // Dialog should open with API key input
+    // Provider form dialog should open with API key input
     const dialog = await screen.findByRole("dialog");
     expect(
       within(dialog).getByText("Add your Anthropic API key"),
@@ -149,15 +161,20 @@ describe("settings page", () => {
 
     await setupPage({ context, path: "/settings" });
 
-    // Open add provider menu
-    const addButton = screen.getByText("Add more model provider");
+    // Click Add to open add provider dialog
+    const addButton = screen.getByRole("button", { name: /add/i });
     await user.click(addButton);
 
-    // Select Z.AI (GLM) provider
-    const zaiOption = await screen.findByText("Z.AI (GLM)");
-    await user.click(zaiOption);
+    // In add provider dialog, click Add on Z.AI (GLM) card
+    const addProviderDialog = await screen.findByRole("dialog", {
+      name: /add model provider/i,
+    });
+    const zaiCard = within(addProviderDialog).getByTestId(
+      "provider-card-zai-api-key",
+    );
+    await user.click(within(zaiCard).getByRole("button", { name: /^add$/i }));
 
-    // Dialog should open with model selector
+    // Provider form dialog should open with model selector
     const dialog = await screen.findByRole("dialog");
 
     // Select glm-5 model via store (Radix Select doesn't render options in jsdom)

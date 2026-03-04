@@ -21,7 +21,7 @@ describe("notification settings", () => {
       }),
     );
 
-    await setupPage({ context, path: "/settings?tab=notifications" });
+    await setupPage({ context, path: "/preferences" });
 
     // Should show notification settings content
     await vi.waitFor(() => {
@@ -61,7 +61,7 @@ describe("notification settings", () => {
       }),
     );
 
-    await setupPage({ context, path: "/settings?tab=notifications" });
+    await setupPage({ context, path: "/preferences" });
 
     await vi.waitFor(() => {
       expect(screen.getByText("Email Notifications")).toBeInTheDocument();
@@ -99,7 +99,7 @@ describe("notification settings", () => {
       }),
     );
 
-    await setupPage({ context, path: "/settings?tab=notifications" });
+    await setupPage({ context, path: "/preferences" });
 
     await vi.waitFor(() => {
       expect(screen.getByText("Slack Notifications")).toBeInTheDocument();
@@ -130,7 +130,7 @@ describe("notification settings", () => {
       }),
     );
 
-    await setupPage({ context, path: "/settings?tab=notifications" });
+    await setupPage({ context, path: "/preferences" });
 
     await vi.waitFor(() => {
       expect(screen.getByText("Email Notifications")).toBeInTheDocument();

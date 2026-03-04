@@ -1,9 +1,5 @@
 import { useLastResolved, useSet } from "ccstate-react";
-import {
-  IconPlus,
-  IconDotsVertical,
-  IconChevronDown,
-} from "@tabler/icons-react";
+import { IconDotsVertical } from "@tabler/icons-react";
 import {
   Popover,
   PopoverContent,
@@ -15,12 +11,10 @@ import {
   type MergedItem,
 } from "../../signals/settings-page/secrets-and-variables.ts";
 import {
-  openAddSecretDialog$,
   openEditSecretDialog$,
   openDeleteSecretDialog$,
 } from "../../signals/settings-page/secrets.ts";
 import {
-  openAddVariableDialog$,
   openEditVariableDialog$,
   openDeleteVariableDialog$,
 } from "../../signals/settings-page/variables.ts";
@@ -38,16 +32,19 @@ function truncateValue(value: string, maxLength = 60): string {
 function SecretRow({
   secret,
   isFirst,
+  index,
 }: {
   secret: SecretResponse;
   isFirst: boolean;
+  index: number;
 }) {
   const openEdit = useSet(openEditSecretDialog$);
   const openDelete = useSet(openDeleteSecretDialog$);
 
   return (
     <div
-      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl ${isFirst ? "rounded-t-xl" : ""}`}
+      className={`relative z-[var(--row-z)] flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl transition-colors hover:bg-muted/50 ${isFirst ? "rounded-t-xl" : ""}`}
+      style={{ "--row-z": index } as React.CSSProperties}
     >
       <div className="flex flex-1 flex-col gap-1 min-w-0">
         <div className="text-sm font-medium text-foreground font-mono">
@@ -96,16 +93,19 @@ function SecretRow({
 function VariableRow({
   variable,
   isFirst,
+  index,
 }: {
   variable: VariableResponse;
   isFirst: boolean;
+  index: number;
 }) {
   const openEdit = useSet(openEditVariableDialog$);
   const openDelete = useSet(openDeleteVariableDialog$);
 
   return (
     <div
-      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl ${isFirst ? "rounded-t-xl" : ""}`}
+      className={`relative z-[var(--row-z)] flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl transition-colors hover:bg-muted/50 ${isFirst ? "rounded-t-xl" : ""}`}
+      style={{ "--row-z": index } as React.CSSProperties}
     >
       <div className="flex flex-1 flex-col gap-1 min-w-0">
         <div className="text-sm font-medium text-foreground font-mono">
@@ -156,54 +156,20 @@ function VariableRow({
 // Item row dispatcher
 // ---------------------------------------------------------------------------
 
-function ItemRow({ item, isFirst }: { item: MergedItem; isFirst: boolean }) {
+function ItemRow({
+  item,
+  isFirst,
+  index,
+}: {
+  item: MergedItem;
+  isFirst: boolean;
+  index: number;
+}) {
   if (item.kind === "secret") {
-    return <SecretRow secret={item.data} isFirst={isFirst} />;
+    return <SecretRow secret={item.data} isFirst={isFirst} index={index} />;
   }
 
-  return <VariableRow variable={item.data} isFirst={isFirst} />;
-}
-
-// ---------------------------------------------------------------------------
-// Add dropdown
-// ---------------------------------------------------------------------------
-
-function AddDropdown() {
-  const openAddSecret = useSet(openAddSecretDialog$);
-  const openAddVariable = useSet(openAddVariableDialog$);
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button className="flex items-center self-start shrink-0 rounded-md border border-border bg-background overflow-hidden hover:bg-muted transition-colors">
-          <span className="border-r border-border px-4 py-2 text-sm font-medium text-foreground">
-            Add more secrets
-          </span>
-          <span className="pl-2 pr-3 py-2">
-            <IconChevronDown
-              size={16}
-              stroke={1.5}
-              className="text-foreground"
-            />
-          </span>
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="flex flex-col gap-1 w-44 p-2">
-        <button
-          onClick={() => openAddSecret()}
-          className="w-full rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors"
-        >
-          Add secret
-        </button>
-        <button
-          onClick={() => openAddVariable()}
-          className="w-full rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors"
-        >
-          Add variable
-        </button>
-      </PopoverContent>
-    </Popover>
-  );
+  return <VariableRow variable={item.data} isFirst={isFirst} index={index} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -233,29 +199,9 @@ export function SecretsAndVariablesList() {
               key={`${item.kind}-${item.name}`}
               item={item}
               isFirst={index === 0}
+              index={index}
             />
           ))}
-
-      {items && (
-        <div
-          className={`flex flex-col gap-4 border border-border bg-card p-4 rounded-b-xl sm:flex-row sm:items-center ${items.length === 0 ? "rounded-t-xl" : ""}`}
-        >
-          <div className="flex flex-1 items-center gap-4 min-w-0">
-            <div className="flex shrink-0 items-center justify-center size-[28px]">
-              <IconPlus size={24} stroke={1.5} className="text-foreground" />
-            </div>
-            <div className="flex flex-1 flex-col gap-1 min-w-0">
-              <div className="text-sm font-medium text-foreground">
-                New secrets and variables
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Custom API keys and variables
-              </div>
-            </div>
-          </div>
-          <AddDropdown />
-        </div>
-      )}
     </div>
   );
 }

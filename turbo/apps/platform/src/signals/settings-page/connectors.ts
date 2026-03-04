@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   CONNECTOR_TYPES,
-  CONNECTOR_FEATURE_FLAGS,
+  FeatureSwitchKey,
   type ConnectorType,
   type ConnectorResponse,
 } from "@vm0/core";
@@ -12,8 +12,14 @@ import {
   reloadConnectors$,
   deleteConnector$,
 } from "../external/connectors.ts";
-import { apiBase$ } from "../fetch.ts";
+import { apiBaseForNavigation$, fetch$ } from "../fetch.ts";
+import { throwIfAbort } from "../utils.ts";
 import { delay } from "signal-timers";
+import { localStorageSignals } from "../external/local-storage.ts";
+
+const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
+const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
+  localStorageSignals(HIDDEN_CONNECTIONS_STORAGE_KEY);
 
 // ---------------------------------------------------------------------------
 // Derived state
@@ -29,21 +35,47 @@ export interface ConnectorTypeWithStatus {
   helpText: string;
   connected: boolean;
   connector: ConnectorResponse | null;
+  /** True if at least one agent references this connector (env mapping). */
+  usedByAgent?: boolean;
 }
 
+/**
+ * Maps connector types that are gated behind a feature flag to their
+ * corresponding feature switch key.  Connectors not listed here are
+ * always visible.
+ */
+const CONNECTOR_FEATURE_FLAGS = Object.freeze<
+  Partial<Record<ConnectorType, FeatureSwitchKey>>
+>({
+  computer: FeatureSwitchKey.ComputerConnector,
+  deel: FeatureSwitchKey.DeelConnector,
+  docusign: FeatureSwitchKey.DocuSignConnector,
+  dropbox: FeatureSwitchKey.DropboxConnector,
+  figma: FeatureSwitchKey.FigmaConnector,
+  gmail: FeatureSwitchKey.GmailConnector,
+  "google-sheets": FeatureSwitchKey.GoogleSheetsConnector,
+  "google-docs": FeatureSwitchKey.GoogleDocsConnector,
+  "google-drive": FeatureSwitchKey.GoogleDriveConnector,
+  strava: FeatureSwitchKey.StravaConnector,
+  "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
+});
+
 export const allConnectorTypes$ = computed(async (get) => {
-  const { connectors, configuredTypes } = await get(connectors$);
+  const { connectors } = await get(connectors$);
   const connectorMap = new Map(connectors.map((c) => [c.type, c]));
   const features = await get(featureSwitch$);
-  const configuredSet = new Set(configuredTypes);
 
   return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
-      if (!configuredSet.has(type)) {
-        return false;
-      }
       const flag = CONNECTOR_FEATURE_FLAGS[type];
       if (flag && !features?.[flag]) {
+        return false;
+      }
+      // Filter mercury connector based on feature flag
+      if (
+        type === "mercury" &&
+        !features?.[FeatureSwitchKey.MercuryConnector]
+      ) {
         return false;
       }
       return true;
@@ -62,6 +94,129 @@ export const allConnectorTypes$ = computed(async (get) => {
 });
 
 // ---------------------------------------------------------------------------
+// Connector types used by any agent (from required-env)
+// ---------------------------------------------------------------------------
+
+const connectorTypesUsedByAgents$ = computed(
+  async (get): Promise<Set<ConnectorType>> => {
+    const fetchFn = get(fetch$);
+    const resp = await fetchFn("/api/agent/required-env");
+    if (!resp.ok) {
+      return new Set();
+    }
+    const data = (await resp.json()) as {
+      agents: { requiredSecrets: string[]; requiredVariables: string[] }[];
+    };
+    const requiredNames = new Set<string>();
+    for (const agent of data.agents ?? []) {
+      for (const name of agent.requiredSecrets ?? []) {
+        requiredNames.add(name);
+      }
+    }
+    const used = new Set<ConnectorType>();
+    for (const type of Object.keys(CONNECTOR_TYPES) as ConnectorType[]) {
+      if (type === "computer") {
+        continue;
+      }
+      const config = CONNECTOR_TYPES[type];
+      const mapping = config.environmentMapping as
+        | Record<string, string>
+        | undefined;
+      if (!mapping) {
+        continue;
+      }
+      for (const [envVar, ref] of Object.entries(mapping)) {
+        if (requiredNames.has(envVar)) {
+          used.add(type);
+          break;
+        }
+        const secretName = ref.startsWith("$secrets.")
+          ? ref.slice("$secrets.".length)
+          : null;
+        if (secretName && requiredNames.has(secretName)) {
+          used.add(type);
+          break;
+        }
+      }
+    }
+    return used;
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Hidden connector types (removed from list by user; persisted in localStorage)
+// ---------------------------------------------------------------------------
+
+const hiddenConnectorTypes$ = computed((get): Set<ConnectorType> => {
+  const raw = get(hiddenConnectorTypesRaw$);
+  if (!raw) {
+    return new Set();
+  }
+  try {
+    const arr = JSON.parse(raw) as string[];
+    return new Set(arr as ConnectorType[]);
+  } catch (error) {
+    throwIfAbort(error);
+    return new Set();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Add connection dialog state
+// ---------------------------------------------------------------------------
+
+const internalAddConnectionDialogOpen$ = state(false);
+export const addConnectionDialogOpen$ = computed((get) =>
+  get(internalAddConnectionDialogOpen$),
+);
+export const setAddConnectionDialogOpen$ = command(({ set }, open: boolean) => {
+  set(internalAddConnectionDialogOpen$, open);
+});
+
+const internalAddConnectionDialogTab$ = state<"connectors" | "custom-api">(
+  "connectors",
+);
+export const addConnectionDialogTab$ = computed((get) =>
+  get(internalAddConnectionDialogTab$),
+);
+export const setAddConnectionDialogTab$ = command(
+  ({ set }, tab: "connectors" | "custom-api") => {
+    set(internalAddConnectionDialogTab$, tab);
+  },
+);
+
+/** Remove a connector type from the connections list (does not disconnect). */
+export const removeFromConnectionsList$ = command(
+  ({ get, set }, type: ConnectorType) => {
+    const hidden = new Set(get(hiddenConnectorTypes$));
+    hidden.add(type);
+    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Connections list items (connected + used by agents, minus hidden)
+// ---------------------------------------------------------------------------
+
+export const connectionsListItems$ = computed(async (get) => {
+  const [allTypes, usedByAgents, hidden] = await Promise.all([
+    get(allConnectorTypes$),
+    get(connectorTypesUsedByAgents$),
+    get(hiddenConnectorTypes$),
+  ]);
+  return allTypes
+    .filter(
+      (item) =>
+        (item.connected || usedByAgents.has(item.type)) &&
+        !hidden.has(item.type),
+    )
+    .map((item) => ({
+      ...item,
+      usedByAgent: usedByAgents.has(item.type),
+    }));
+});
+
+// ---------------------------------------------------------------------------
 // Polling state (for connect flow)
 // ---------------------------------------------------------------------------
 
@@ -77,8 +232,7 @@ export const pollingConnectorType$ = computed((get) =>
 
 export const connectConnector$ = command(
   async ({ get, set }, type: ConnectorType, signal: AbortSignal) => {
-    const apiBase = get(apiBase$);
-    const baseUrl = apiBase.endsWith("/") ? apiBase.slice(0, -1) : apiBase;
+    const baseUrl = get(apiBaseForNavigation$);
 
     set(internalPollingType$, type);
 
@@ -104,6 +258,10 @@ export const connectConnector$ = command(
       signal.throwIfAborted();
 
       set(internalPollingType$, null);
+      // Show in connections list again when user connects
+      const hidden = new Set(get(hiddenConnectorTypes$));
+      hidden.delete(type);
+      set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
       break;
     }
   },

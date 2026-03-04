@@ -11,8 +11,8 @@ import {
   githubIntegrationNotLinked$,
   githubInstallUrl$,
 } from "../../signals/integrations-page/github-integration.ts";
-import { Link } from "../router/link.tsx";
 import githubIcon from "../settings-page/icons/github.svg";
+import { Link } from "../router/link.tsx";
 
 function IntegrationCardSkeleton() {
   return (
@@ -39,7 +39,7 @@ export function SlackIntegrationCard() {
   }
 
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
+    <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/50">
       <div className="shrink-0">
         <img src="/slack-icon.svg" alt="Slack" className="h-7 w-7" />
       </div>
@@ -78,7 +78,7 @@ export function GitHubIntegrationCard() {
   }
 
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
+    <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/50">
       <div className="shrink-0">
         <img src={githubIcon} alt="GitHub" className="h-7 w-7" />
       </div>
@@ -98,8 +98,8 @@ export function GitHubIntegrationCard() {
             </Button>
           ) : null
         ) : (
-          <Button variant="outline" size="sm" asChild>
-            <Link pathname="/settings/github">Settings</Link>
+          <Button variant="outline" size="sm" disabled>
+            Installed
           </Button>
         )}
       </div>
