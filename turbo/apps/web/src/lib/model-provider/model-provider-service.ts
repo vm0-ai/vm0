@@ -1,4 +1,4 @@
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, ne, inArray, sql, notExists } from "drizzle-orm";
 import {
   MODEL_PROVIDER_TYPES,
   getFrameworkForType,
@@ -70,53 +70,53 @@ function toModelProviderInfo(params: {
 }
 
 /**
- * Assign isDefault=true to a provider if no other provider for the same framework
- * already has isDefault=true. Safe to call after atomic upsert.
+ * Get all provider types that belong to a given framework.
+ */
+function getTypesForFramework(framework: ModelProviderFramework): string[] {
+  return Object.keys(MODEL_PROVIDER_TYPES).filter(
+    (t) => getFrameworkForType(t as ModelProviderType) === framework,
+  );
+}
+
+/**
+ * Atomically assign isDefault=true to a provider, but only if no other provider
+ * for the same framework already has isDefault=true.
+ *
+ * Uses a single UPDATE with NOT EXISTS subquery to prevent the race condition
+ * where two concurrent inserts both set isDefault=true.
+ *
+ * @returns true if isDefault was set, false if another default already exists
  */
 async function assignDefaultIfFirst(
   scopeId: string,
   providerId: string,
   framework: ModelProviderFramework,
-): Promise<void> {
-  const allScopeProviders = await globalThis.services.db
-    .select({
-      id: modelProviders.id,
-      type: modelProviders.type,
-      isDefault: modelProviders.isDefault,
-    })
-    .from(modelProviders)
-    .where(eq(modelProviders.scopeId, scopeId));
+): Promise<boolean> {
+  const frameworkTypes = getTypesForFramework(framework);
 
-  const hasDefaultForFramework = allScopeProviders.some(
-    (p) =>
-      p.id !== providerId &&
-      p.isDefault &&
-      getFrameworkForType(p.type as ModelProviderType) === framework,
-  );
-
-  if (!hasDefaultForFramework) {
-    await globalThis.services.db
-      .update(modelProviders)
-      .set({ isDefault: true })
-      .where(eq(modelProviders.id, providerId));
-  }
-}
-
-/**
- * Get a single model provider by ID within a scope.
- */
-async function getProviderById(scopeId: string, providerId: string) {
-  const [provider] = await globalThis.services.db
-    .select()
-    .from(modelProviders)
+  const result = await globalThis.services.db
+    .update(modelProviders)
+    .set({ isDefault: true })
     .where(
       and(
-        eq(modelProviders.scopeId, scopeId),
         eq(modelProviders.id, providerId),
+        notExists(
+          globalThis.services.db
+            .select({ id: sql`1` })
+            .from(modelProviders)
+            .where(
+              and(
+                eq(modelProviders.scopeId, scopeId),
+                eq(modelProviders.isDefault, true),
+                ne(modelProviders.id, providerId),
+                inArray(modelProviders.type, frameworkTypes),
+              ),
+            ),
+        ),
       ),
-    )
-    .limit(1);
-  return provider!;
+    );
+
+  return (result.rowCount ?? 0) > 0;
 }
 
 /**
@@ -243,6 +243,16 @@ export async function upsertModelProvider(
     secretName,
   });
 
+  // Pre-check: does a provider for this type already exist?
+  // Race window is benign — worst case, two concurrent creates both return created:true (cosmetic only)
+  const [existingProvider] = await globalThis.services.db
+    .select({ id: modelProviders.id })
+    .from(modelProviders)
+    .where(
+      and(eq(modelProviders.scopeId, scope.id), eq(modelProviders.type, type)),
+    )
+    .limit(1);
+
   // Atomic secret upsert — handles concurrent requests safely
   const [upsertedSecret] = await globalThis.services.db
     .insert(secrets)
@@ -279,38 +289,36 @@ export async function upsertModelProvider(
     })
     .returning();
 
-  // Determine if the provider was just created (INSERT) or updated (ON CONFLICT)
-  // For INSERT: both timestamps come from schema defaults (identical)
-  // For UPDATE: updatedAt is explicitly set to new Date() (different from createdAt)
-  const wasCreated =
-    provider!.createdAt.getTime() === provider!.updatedAt.getTime();
+  const wasCreated = !existingProvider;
 
   // Assign default if this is a new provider and no other default exists for the framework
   if (wasCreated) {
-    await assignDefaultIfFirst(scope.id, provider!.id, framework);
+    const isDefault = await assignDefaultIfFirst(
+      scope.id,
+      provider!.id,
+      framework,
+    );
+    if (isDefault) {
+      provider!.isDefault = true;
+    }
   }
 
-  // Re-read isDefault since it may have been updated
-  const finalProvider = wasCreated
-    ? await getProviderById(scope.id, provider!.id)
-    : provider!;
-
   log.debug(wasCreated ? "model provider created" : "model provider updated", {
-    providerId: finalProvider.id,
+    providerId: provider!.id,
     type,
     selectedModel,
-    isDefault: finalProvider.isDefault,
+    isDefault: provider!.isDefault,
   });
 
   return {
     provider: toModelProviderInfo({
-      id: finalProvider.id,
+      id: provider!.id,
       type,
       secretName,
-      isDefault: finalProvider.isDefault,
-      selectedModel: finalProvider.selectedModel,
-      createdAt: finalProvider.createdAt,
-      updatedAt: finalProvider.updatedAt,
+      isDefault: provider!.isDefault,
+      selectedModel: provider!.selectedModel,
+      createdAt: provider!.createdAt,
+      updatedAt: provider!.updatedAt,
     }),
     created: wasCreated,
   };
@@ -497,42 +505,43 @@ export async function upsertMultiAuthModelProvider(
     })
     .returning();
 
-  const wasCreated =
-    provider!.createdAt.getTime() === provider!.updatedAt.getTime();
+  const wasCreated = !existingProvider;
 
   // Assign default if this is a new provider and no other default exists for the framework
   if (wasCreated) {
-    await assignDefaultIfFirst(scope.id, provider!.id, framework);
+    const isDefault = await assignDefaultIfFirst(
+      scope.id,
+      provider!.id,
+      framework,
+    );
+    if (isDefault) {
+      provider!.isDefault = true;
+    }
   }
-
-  // Re-read isDefault since it may have been updated
-  const finalProvider = wasCreated
-    ? await getProviderById(scope.id, provider!.id)
-    : provider!;
 
   log.debug(
     wasCreated
       ? "multi-auth model provider created"
       : "multi-auth model provider updated",
     {
-      providerId: finalProvider.id,
+      providerId: provider!.id,
       type,
       authMethod,
       selectedModel,
-      isDefault: finalProvider.isDefault,
+      isDefault: provider!.isDefault,
     },
   );
 
   return {
     provider: toModelProviderInfo({
-      id: finalProvider.id,
+      id: provider!.id,
       type,
       authMethod,
       secretNames,
-      isDefault: finalProvider.isDefault,
-      selectedModel: finalProvider.selectedModel,
-      createdAt: finalProvider.createdAt,
-      updatedAt: finalProvider.updatedAt,
+      isDefault: provider!.isDefault,
+      selectedModel: provider!.selectedModel,
+      createdAt: provider!.createdAt,
+      updatedAt: provider!.updatedAt,
     }),
     created: wasCreated,
   };
