@@ -120,8 +120,8 @@ describe("callTelegramApi", () => {
           return HttpResponse.json(
             {
               ok: false,
-              description: "Too Many Requests: retry after 1",
-              parameters: { retry_after: 1 },
+              description: "Too Many Requests: retry after 0.001",
+              parameters: { retry_after: 0.001 },
             },
             { status: 429 },
           );
@@ -141,6 +141,30 @@ describe("callTelegramApi", () => {
 
     expect(result).toEqual({ message_id: 1, chat: { id: 42 }, text: "hello" });
     expect(callCount).toBe(2);
+  });
+
+  it("should throw after max retries on persistent 429", async () => {
+    const handler = http.post(
+      `https://api.telegram.org/bot${TEST_TOKEN}/sendMessage`,
+      () => {
+        return HttpResponse.json(
+          {
+            ok: false,
+            description: "Too Many Requests: retry after 0.001",
+            parameters: { retry_after: 0.001 },
+          },
+          { status: 429 },
+        );
+      },
+    );
+    server.use(handler.handler);
+
+    await expect(
+      callTelegramApi(TEST_TOKEN, "sendMessage", { chat_id: 42 }),
+    ).rejects.toThrow("Telegram API error (sendMessage): Too Many Requests");
+
+    // Should have been called 4 times (1 initial + 3 retries)
+    expect(handler.mocked).toHaveBeenCalledTimes(4);
   });
 });
 

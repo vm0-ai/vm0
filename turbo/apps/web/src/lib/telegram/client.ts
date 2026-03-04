@@ -3,6 +3,7 @@ import { logger } from "../logger";
 const log = logger("telegram:client");
 
 const TELEGRAM_API_BASE = "https://api.telegram.org/bot";
+const MAX_RETRIES = 3;
 
 interface TelegramApiResponse<T> {
   ok: boolean;
@@ -49,6 +50,7 @@ export async function callTelegramApi<T>(
   token: string,
   method: string,
   params?: Record<string, unknown>,
+  _retryCount = 0,
 ): Promise<T> {
   const url = `${TELEGRAM_API_BASE}${token}/${method}`;
 
@@ -61,11 +63,19 @@ export async function callTelegramApi<T>(
   const data = (await response.json()) as TelegramApiResponse<T>;
 
   if (!response.ok || !data.ok) {
-    if (response.status === 429 && data.parameters?.retry_after) {
+    if (
+      response.status === 429 &&
+      data.parameters?.retry_after &&
+      _retryCount < MAX_RETRIES
+    ) {
       const retryAfter = data.parameters.retry_after;
-      log.warn("Rate limited by Telegram, retrying", { method, retryAfter });
+      log.warn("Rate limited by Telegram, retrying", {
+        method,
+        retryAfter,
+        attempt: _retryCount + 1,
+      });
       await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
-      return callTelegramApi<T>(token, method, params);
+      return callTelegramApi<T>(token, method, params, _retryCount + 1);
     }
 
     throw new Error(
