@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.69.1](https://github.com/vm0-ai/vm0/compare/web-v12.69.0...web-v12.69.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* correct 1password reference key for platform url in env template ([#3624](https://github.com/vm0-ai/vm0/issues/3624)) ([71aa437](https://github.com/vm0-ai/vm0/commit/71aa4377578442a5c09bf01543d9034347780f44))
+
 ## [12.69.0](https://github.com/vm0-ai/vm0/compare/web-v12.68.0...web-v12.69.0) (2026-03-04)
 
 
