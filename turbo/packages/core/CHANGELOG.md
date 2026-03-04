@@ -1,5 +1,15 @@
 # Changelog
 
+## [8.34.0](https://github.com/vm0-ai/vm0/compare/core-v8.33.0...core-v8.34.0) (2026-03-04)
+
+
+### Features
+
+* add intervals.icu oauth connector ([#3608](https://github.com/vm0-ai/vm0/issues/3608)) ([6bae2a2](https://github.com/vm0-ai/vm0/commit/6bae2a24c261527f4c1d1467f52b7611501ad5b5)), closes [#3606](https://github.com/vm0-ai/vm0/issues/3606)
+* add xero oauth connector ([#3601](https://github.com/vm0-ai/vm0/issues/3601)) ([40e51d4](https://github.com/vm0-ai/vm0/commit/40e51d4a0246d1c419a554d62f5112ef5ff980b6)), closes [#3598](https://github.com/vm0-ai/vm0/issues/3598)
+* **compose:** migrate platform compose to e2b sandbox execution ([#3593](https://github.com/vm0-ai/vm0/issues/3593)) ([cbed13c](https://github.com/vm0-ai/vm0/commit/cbed13c2901ac87b38e3c1041b43f431b670d2c6))
+* **connectors:** add neon oauth connector ([#3591](https://github.com/vm0-ai/vm0/issues/3591)) ([5024986](https://github.com/vm0-ai/vm0/commit/5024986a1f4d2440b503f1b5dbf9bda7267c55f3))
+
 ## [8.33.0](https://github.com/vm0-ai/vm0/compare/core-v8.32.1...core-v8.33.0) (2026-03-04)
 
 

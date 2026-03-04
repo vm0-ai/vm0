@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.44.0](https://github.com/vm0-ai/vm0/compare/cli-v9.43.2...cli-v9.44.0) (2026-03-04)
+
+
+### Features
+
+* **compose:** migrate platform compose to e2b sandbox execution ([#3593](https://github.com/vm0-ai/vm0/issues/3593)) ([cbed13c](https://github.com/vm0-ai/vm0/commit/cbed13c2901ac87b38e3c1041b43f431b670d2c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.34.0
+
 ## [9.43.2](https://github.com/vm0-ai/vm0/compare/cli-v9.43.1...cli-v9.43.2) (2026-03-04)
 
 
