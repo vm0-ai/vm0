@@ -3,6 +3,7 @@ import {
   buildRedditAuthorizationUrl,
   exchangeRedditCode,
   getRedditSecretName,
+  refreshRedditToken,
 } from "./reddit";
 
 export const redditHandler: ProviderHandler = {
@@ -30,4 +31,5 @@ export const redditHandler: ProviderHandler = {
   getClientSecret: (e) => e.REDDIT_OAUTH_CLIENT_SECRET,
   getSecretName: getRedditSecretName,
   getRefreshSecretName: () => "REDDIT_REFRESH_TOKEN",
+  refreshToken: refreshRedditToken,
 };

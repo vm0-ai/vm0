@@ -23,6 +23,8 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     vi.stubEnv("MERCURY_OAUTH_CLIENT_SECRET", "mercury-test-client-secret");
     vi.stubEnv("REDDIT_OAUTH_CLIENT_ID", "reddit-test-client-id");
     vi.stubEnv("REDDIT_OAUTH_CLIENT_SECRET", "reddit-test-client-secret");
+    vi.stubEnv("X_OAUTH_CLIENT_ID", "x-test-client-id");
+    vi.stubEnv("X_OAUTH_CLIENT_SECRET", "x-test-client-secret");
     reloadEnv();
   });
 
@@ -272,6 +274,29 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
       expect(location).toContain("response_type=code");
       expect(location).toContain("scope=identity+read");
       expect(location).toContain("duration=permanent");
+      expect(location).toContain("state=");
+    });
+  });
+
+  describe("X connector", () => {
+    it("should redirect to X OAuth with PKCE parameters", async () => {
+      await context.setupUser();
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/connectors/x/authorize",
+      );
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "x" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("twitter.com/i/oauth2/authorize");
+      expect(location).toContain("client_id=x-test-client-id");
+      expect(location).toContain("redirect_uri=");
+      expect(location).toContain("response_type=code");
+      expect(location).toContain("code_challenge=");
+      expect(location).toContain("code_challenge_method=S256");
       expect(location).toContain("state=");
     });
   });
