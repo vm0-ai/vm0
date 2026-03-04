@@ -163,7 +163,7 @@ jobs:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           JOB_REF: ${{ github.event_name == 'pull_request' && format('pr-{0}-test', github.event.pull_request.number) || 'main-test' }}
         run: |
-          NUM_HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | wc -l)
+          NUM_HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | grep -c .)
           HASH=$(echo -n "$JOB_REF" | md5sum | cut -c1-8)
           HOST_INDEX=$(( 0x$HASH % NUM_HOSTS ))
           HOST=$(echo "$METAL_HOSTS" | tr ',' '\n' | sed -n "$((HOST_INDEX + 1))p")
