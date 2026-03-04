@@ -321,15 +321,17 @@ function buildAnswerPrompt(
   questions: AskUserQuestion[],
   answers: Map<number, string[]>,
 ): string {
-  const parts: string[] = [];
+  const items: string[] = [];
   for (let qIdx = 0; qIdx < questions.length; qIdx++) {
     const selected = answers.get(qIdx);
-    if (selected && selected.length > 0) {
-      parts.push(`The user selected: "${selected.join(", ")}"`);
+    if (selected) {
+      for (const label of selected) {
+        items.push(`- ${label}`);
+      }
     }
   }
-  return parts.length > 0
-    ? parts.join("\n")
+  return items.length > 0
+    ? items.join("\n")
     : "The user submitted the form without making a selection.";
 }
 
