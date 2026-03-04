@@ -2,8 +2,14 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createHmac } from "crypto";
 import { WebClient } from "@slack/web-api";
 import { POST } from "../route";
-import { testContext } from "../../../../../src/__tests__/test-helpers";
-import { givenLinkedSlackUser } from "../../../../../src/__tests__/slack/api-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../src/__tests__/test-helpers";
+import {
+  givenLinkedSlackUser,
+  givenPendingQuestion,
+} from "../../../../../src/__tests__/slack/api-helpers";
 
 // Mock only external dependencies (third-party packages)
 
@@ -218,6 +224,132 @@ describe("POST /api/slack/interactive", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
+    });
+  });
+
+  describe("Ask User - Authorization", () => {
+    it("rejects direct-pick from unauthorized user and rolls back answeredAt", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
+      const { pendingId, channelId } = await givenPendingQuestion(
+        userLink,
+        installation,
+      );
+
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.chat.postEphemeral.mockClear();
+
+      const unauthorizedUserId = uniqueId("U-intruder");
+
+      // Unauthorized user clicks a direct-pick button
+      const body = buildInteractiveBody({
+        type: "block_actions",
+        user: {
+          id: unauthorizedUserId,
+          username: "intruder",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
+        channel: { id: channelId },
+        actions: [
+          {
+            action_id: "ask_user_pick_q0_o0",
+            block_id: "ask_user_block_q0",
+            value: pendingId,
+          },
+        ],
+      });
+      const request = createSignedSlackRequest(body);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      // Wait for background handler to complete
+      await vi.waitFor(
+        () => {
+          expect(mockClient.chat.postEphemeral).toHaveBeenCalledWith(
+            expect.objectContaining({
+              channel: channelId,
+              user: unauthorizedUserId,
+              text: expect.stringContaining("Only the person who started"),
+            }),
+          );
+        },
+        { timeout: 5000 },
+      );
+
+      // Card should NOT have been updated (no updateMessage call for answered state)
+      expect(mockClient.chat.update).not.toHaveBeenCalled();
+    });
+
+    it("allows authorized user to submit after unauthorized attempt", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
+      const { pendingId, channelId } = await givenPendingQuestion(
+        userLink,
+        installation,
+      );
+
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.chat.postEphemeral.mockClear();
+      mockClient.chat.update.mockClear();
+
+      // 1. Unauthorized user tries first
+      const intruderId = uniqueId("U-intruder");
+      const intruderBody = buildInteractiveBody({
+        type: "block_actions",
+        user: {
+          id: intruderId,
+          username: "intruder",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
+        channel: { id: channelId },
+        actions: [
+          {
+            action_id: "ask_user_pick_q0_o0",
+            block_id: "ask_user_block_q0",
+            value: pendingId,
+          },
+        ],
+      });
+      await POST(createSignedSlackRequest(intruderBody));
+
+      // Wait for rejection to complete
+      await vi.waitFor(
+        () => {
+          expect(mockClient.chat.postEphemeral).toHaveBeenCalled();
+        },
+        { timeout: 5000 },
+      );
+
+      mockClient.chat.update.mockClear();
+
+      // 2. Authorized user submits — should still work (answeredAt was rolled back)
+      const authorizedBody = buildInteractiveBody({
+        type: "block_actions",
+        user: {
+          id: userLink.slackUserId,
+          username: "realuser",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
+        channel: { id: channelId },
+        actions: [
+          {
+            action_id: "ask_user_pick_q0_o0",
+            block_id: "ask_user_block_q0",
+            value: pendingId,
+          },
+        ],
+      });
+      await POST(createSignedSlackRequest(authorizedBody));
+
+      // Wait for card update (answered state)
+      await vi.waitFor(
+        () => {
+          expect(mockClient.chat.update).toHaveBeenCalled();
+        },
+        { timeout: 5000 },
+      );
     });
   });
 });

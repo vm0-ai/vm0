@@ -255,6 +255,64 @@ export async function givenUserHasAgent(
 }
 
 /**
+ * Create a pending ask-user question for testing interactive handlers.
+ */
+export async function givenPendingQuestion(
+  userLink: LinkedUserResult["userLink"],
+  installation: WorkspaceInstallationResult["installation"],
+  options: {
+    channelId?: string;
+    threadTs?: string;
+    messageTs?: string;
+    questions?: Array<{
+      question: string;
+      header: string;
+      options: Array<{ label: string; description: string }>;
+      multiSelect: boolean;
+    }>;
+  } = {},
+): Promise<{
+  pendingId: string;
+  channelId: string;
+}> {
+  initServices();
+  const { slackPendingQuestions } = await import(
+    "../../db/schema/slack-pending-question"
+  );
+
+  const channelId = options.channelId ?? "C-test-channel";
+  const questions = options.questions ?? [
+    {
+      question: "Which option?",
+      header: "Choice",
+      options: [
+        { label: "Option A", description: "First option" },
+        { label: "Option B", description: "Second option" },
+      ],
+      multiSelect: false,
+    },
+  ];
+
+  const [pending] = await globalThis.services.db
+    .insert(slackPendingQuestions)
+    .values({
+      runId: uniqueId("run"),
+      slackWorkspaceId: installation.slackWorkspaceId,
+      slackChannelId: channelId,
+      slackThreadTs: options.threadTs ?? "thread.ts",
+      slackMessageTs: options.messageTs ?? "card.ts",
+      userLinkId: userLink.id,
+      composeId: installation.defaultComposeId,
+      agentName: "test-agent",
+      questions,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    })
+    .returning({ id: slackPendingQuestions.id });
+
+  return { pendingId: pending!.id, channelId };
+}
+
+/**
  * Given the workspace agent has been removed (compose no longer exists).
  * Points defaultComposeId to a non-existent UUID so getWorkspaceAgent
  * naturally returns undefined. Uses session_replication_role to bypass

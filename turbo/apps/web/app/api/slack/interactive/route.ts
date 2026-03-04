@@ -206,6 +206,61 @@ async function handleHomeDisconnect(
 type SlackAction = NonNullable<SlackInteractivePayload["actions"]>[number];
 
 /**
+ * Verify the submitting user is the initiator of the pending question.
+ * If not, roll back `answeredAt` so the real user can still answer,
+ * and post an ephemeral rejection to the unauthorized user.
+ */
+async function validateSubmitter(
+  claimed: typeof slackPendingQuestions.$inferSelect,
+  slackUserId: string,
+): Promise<boolean> {
+  const [userLink] = await globalThis.services.db
+    .select({ slackUserId: slackUserLinks.slackUserId })
+    .from(slackUserLinks)
+    .where(eq(slackUserLinks.id, claimed.userLinkId))
+    .limit(1);
+
+  if (userLink && userLink.slackUserId === slackUserId) {
+    return true;
+  }
+
+  // Roll back answeredAt so the real user can still answer
+  await globalThis.services.db
+    .update(slackPendingQuestions)
+    .set({ answeredAt: null })
+    .where(eq(slackPendingQuestions.id, claimed.id));
+
+  // Post ephemeral rejection to the unauthorized user
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, claimed.slackWorkspaceId))
+    .limit(1);
+
+  if (installation) {
+    const botToken = decryptCredentialValue(
+      installation.encryptedBotToken,
+      SECRETS_ENCRYPTION_KEY,
+    );
+    const client = createSlackClient(botToken);
+    await client.chat.postEphemeral({
+      channel: claimed.slackChannelId,
+      user: slackUserId,
+      text: "Only the person who started this conversation can answer this question.",
+    });
+  }
+
+  log.warn("Unauthorized ask-user submit attempt", {
+    pendingId: claimed.id,
+    expectedUserLinkId: claimed.userLinkId,
+    actualSlackUserId: slackUserId,
+  });
+
+  return false;
+}
+
+/**
  * Handle direct-submit button click (single question, single-select).
  * The button click IS the answer — no separate Submit step.
  */
@@ -238,6 +293,10 @@ async function handleDirectPick(
     .returning();
 
   if (!claimed) return;
+
+  // Verify the submitting user is the initiator
+  const authorized = await validateSubmitter(claimed, payload.user.id);
+  if (!authorized) return;
 
   const parsed = askUserQuestionSchema.safeParse(claimed.questions);
   if (!parsed.success) return;
@@ -397,6 +456,10 @@ async function handleAskUserSubmit(
     });
     return;
   }
+
+  // Verify the submitting user is the initiator
+  const authorized = await validateSubmitter(claimed, payload.user.id);
+  if (!authorized) return;
 
   // Validate JSONB questions data at runtime
   const parsed = askUserQuestionSchema.safeParse(claimed.questions);
