@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.67.0](https://github.com/vm0-ai/vm0/compare/web-v12.66.0...web-v12.67.0) (2026-03-04)
+
+
+### Features
+
+* add sentry oauth connector ([#3582](https://github.com/vm0-ai/vm0/issues/3582)) ([b80aa49](https://github.com/vm0-ai/vm0/commit/b80aa49255a0aa493cc217885ed80fad17c5a801))
+* add vercel oauth connector ([#3590](https://github.com/vm0-ai/vm0/issues/3590)) ([b5d8898](https://github.com/vm0-ai/vm0/commit/b5d8898bcca548e1300cc1f14b7ebdfa1a1c57c3)), closes [#3586](https://github.com/vm0-ai/vm0/issues/3586)
+* complete reddit and x connector integration ([#3581](https://github.com/vm0-ai/vm0/issues/3581)) ([c4e038e](https://github.com/vm0-ai/vm0/commit/c4e038ea6dc329aee10df96cb0c5291e5fb9957e))
+* **telegram:** add bot api client library ([#3580](https://github.com/vm0-ai/vm0/issues/3580)) ([032f49e](https://github.com/vm0-ai/vm0/commit/032f49eb020c36d350e90d779d6553353d88afa3))
+* **telegram:** add message retention cleanup cron job ([#3579](https://github.com/vm0-ai/vm0/issues/3579)) ([acd8ce6](https://github.com/vm0-ai/vm0/commit/acd8ce6318c7cb581546d08671d142c96e9b0cc5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.33.0
+
 ## [12.66.0](https://github.com/vm0-ai/vm0/compare/web-v12.65.1...web-v12.66.0) (2026-03-04)
 
 

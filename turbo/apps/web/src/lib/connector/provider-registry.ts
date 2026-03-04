@@ -14,6 +14,7 @@ import { googleDriveHandler } from "./providers/google-drive-handler";
 import { googleSheetsHandler } from "./providers/google-sheets-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
+import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
 import { redditHandler } from "./providers/reddit-handler";
 import { slackHandler } from "./providers/slack-handler";
@@ -22,6 +23,7 @@ import { intervalsIcuHandler } from "./providers/intervals-icu-handler";
 import { sentryHandler } from "./providers/sentry-handler";
 import { vercelHandler } from "./providers/vercel-handler";
 import { xHandler } from "./providers/x-handler";
+import { xeroHandler } from "./providers/xero-handler";
 
 export type { OAuthTokenResult };
 
@@ -42,6 +44,7 @@ export const PROVIDER_HANDLERS: Record<
   "google-sheets": googleSheetsHandler,
   linear: linearHandler,
   mercury: mercuryHandler,
+  neon: neonHandler,
   notion: notionHandler,
   reddit: redditHandler,
   "intervals-icu": intervalsIcuHandler,
@@ -50,6 +53,7 @@ export const PROVIDER_HANDLERS: Record<
   strava: stravaHandler,
   vercel: vercelHandler,
   x: xHandler,
+  xero: xeroHandler,
 };
 
 /**

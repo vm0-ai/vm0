@@ -102,6 +102,9 @@ function initEnv() {
       // Mercury OAuth (for connector)
       MERCURY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       MERCURY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Neon OAuth (for connector)
+      NEON_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      NEON_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Reddit OAuth (for connector)
       REDDIT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       REDDIT_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -123,6 +126,9 @@ function initEnv() {
       // Intervals.icu OAuth (for connector)
       INTERVALS_ICU_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       INTERVALS_ICU_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Xero OAuth (for connector)
+      XERO_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      XERO_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // GitHub App (for issue integration)
       GITHUB_APP_ID: z.string().min(1).optional(),
       GITHUB_APP_SLUG: z.string().min(1).optional(),
@@ -224,6 +230,8 @@ function initEnv() {
       FIGMA_OAUTH_CLIENT_SECRET: process.env.FIGMA_OAUTH_CLIENT_SECRET,
       MERCURY_OAUTH_CLIENT_ID: process.env.MERCURY_OAUTH_CLIENT_ID,
       MERCURY_OAUTH_CLIENT_SECRET: process.env.MERCURY_OAUTH_CLIENT_SECRET,
+      NEON_OAUTH_CLIENT_ID: process.env.NEON_OAUTH_CLIENT_ID,
+      NEON_OAUTH_CLIENT_SECRET: process.env.NEON_OAUTH_CLIENT_SECRET,
       REDDIT_OAUTH_CLIENT_ID: process.env.REDDIT_OAUTH_CLIENT_ID,
       REDDIT_OAUTH_CLIENT_SECRET: process.env.REDDIT_OAUTH_CLIENT_SECRET,
       STRAVA_OAUTH_CLIENT_ID: process.env.STRAVA_OAUTH_CLIENT_ID,
@@ -241,6 +249,8 @@ function initEnv() {
       INTERVALS_ICU_OAUTH_CLIENT_ID: process.env.INTERVALS_ICU_OAUTH_CLIENT_ID,
       INTERVALS_ICU_OAUTH_CLIENT_SECRET:
         process.env.INTERVALS_ICU_OAUTH_CLIENT_SECRET,
+      XERO_OAUTH_CLIENT_ID: process.env.XERO_OAUTH_CLIENT_ID,
+      XERO_OAUTH_CLIENT_SECRET: process.env.XERO_OAUTH_CLIENT_SECRET,
       GITHUB_APP_ID: process.env.GITHUB_APP_ID,
       GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
       GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,

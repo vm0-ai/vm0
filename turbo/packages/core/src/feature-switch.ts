@@ -125,6 +125,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
+  [FeatureSwitchKey.NeonConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
   [FeatureSwitchKey.GarminConnectConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
@@ -155,6 +160,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
+  [FeatureSwitchKey.XeroConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
   [FeatureSwitchKey.GitHubIntegration]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
@@ -180,6 +190,7 @@ export const CONNECTOR_FEATURE_FLAGS: Partial<
   "google-drive": FeatureSwitchKey.GoogleDriveConnector,
   "google-calendar": FeatureSwitchKey.GoogleCalendarConnector,
   mercury: FeatureSwitchKey.MercuryConnector,
+  neon: FeatureSwitchKey.NeonConnector,
   strava: FeatureSwitchKey.StravaConnector,
   "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
   x: FeatureSwitchKey.XConnector,
@@ -187,6 +198,7 @@ export const CONNECTOR_FEATURE_FLAGS: Partial<
   vercel: FeatureSwitchKey.VercelConnector,
   sentry: FeatureSwitchKey.SentryConnector,
   "intervals-icu": FeatureSwitchKey.IntervalsIcuConnector,
+  xero: FeatureSwitchKey.XeroConnector,
 };
 
 /**
