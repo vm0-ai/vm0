@@ -240,7 +240,7 @@ export async function GET(request: Request) {
  * Looks up the user's GitHub connector to find their GitHub user ID.
  * If no connector exists, the link is skipped (user can link later).
  */
-async function linkVm0User(
+export async function linkVm0User(
   db: typeof globalThis.services.db,
   installRecordId: string,
   vm0UserId: string,

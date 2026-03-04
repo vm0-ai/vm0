@@ -118,6 +118,42 @@ export async function getInstallationInfo(
   };
 }
 
+interface AppInstallation {
+  id: number;
+  account: { id: number; login: string; type: string };
+}
+
+/**
+ * List all installations of this GitHub App.
+ *
+ * Uses the App JWT to authenticate. Returns every org/user that has
+ * the app installed. Useful for detecting pre-existing installations
+ * that are missing from the local database.
+ *
+ * @see https://docs.github.com/en/rest/apps/apps#list-installations-for-the-authenticated-app
+ */
+export async function listAppInstallations(
+  appId: string,
+  privateKeyBase64: string,
+): Promise<AppInstallation[]> {
+  const jwt = createAppJWT(appId, privateKeyBase64);
+
+  const res = await fetch("https://api.github.com/app/installations", {
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Failed to list app installations: ${res.status} ${body}`);
+  }
+
+  return (await res.json()) as AppInstallation[];
+}
+
 function base64url(str: string): string {
   return Buffer.from(str)
     .toString("base64")
