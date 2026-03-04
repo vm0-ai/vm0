@@ -1,15 +1,16 @@
 #!/bin/bash
 # Manage Cloudflare Tunnels for SSH access to metal machines.
 #
-# Uses the cloudflared CLI directly — no API token needed.
-# Authenticates via `cloudflared tunnel login` (browser-based, one-time).
+# Uses the Cloudflare API with remotely-managed tunnels.
+# No `cloudflared tunnel login` needed — only an API token.
 #
-# Provision: creates tunnel + DNS locally, deploys credentials + config to host via SSH.
-# Deprovision: deletes tunnel from Cloudflare (no SSH needed).
+# Required environment variables:
+#   CLOUDFLARE_API_TOKEN   — API token with Account:Cloudflare Tunnel:Edit + Zone:DNS:Edit + Zone:Zone:Read
+#   CLOUDFLARE_ACCOUNT_ID  — Cloudflare account ID
 #
 # Usage:
 #   scripts/cloudflared-ssh.sh provision <host> [--domain vm3.ai] [--user ubuntu] [--version 2026.2.0]
-#   scripts/cloudflared-ssh.sh deprovision <host> [--domain vm3.ai]
+#   scripts/cloudflared-ssh.sh deprovision <host> [--domain vm3.ai] [--user ubuntu]
 #
 # Examples:
 #   scripts/cloudflared-ssh.sh provision prod-1.aws.vm3.ai
@@ -24,16 +25,51 @@ DEFAULT_VERSION="2026.2.0"
 log() { echo -e "\033[1;34m[cloudflared-ssh]\033[0m $1" >&2; }
 err() { echo -e "\033[1;31m[cloudflared-ssh]\033[0m $1" >&2; }
 
-# --- Ensure cloudflared is installed and authenticated ---
-ensure_auth() {
-  if ! command -v cloudflared &>/dev/null; then
-    err "cloudflared is not installed. Run this inside the devcontainer."
+# --- Validate required environment variables ---
+require_env() {
+  for var in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+    if [[ -z "${!var:-}" ]]; then
+      err "Required env var ${var} is not set"
+      exit 1
+    fi
+  done
+}
+
+# --- Cloudflare API helper ---
+cf_api() {
+  local method="$1" endpoint="$2" data="${3:-}"
+  local args=(-sSL -X "$method"
+    -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"
+    -H "Content-Type: application/json"
+    "https://api.cloudflare.com/client/v4${endpoint}")
+  [[ -n "$data" ]] && args+=(-d "$data")
+  curl "${args[@]}"
+}
+
+# --- Resolve zone ID from domain name ---
+get_zone_id() {
+  local domain="$1"
+  local zone_id
+  zone_id=$(cf_api GET "/zones?name=${domain}" | jq -r '.result[0].id // empty')
+  if [[ -z "$zone_id" ]]; then
+    err "Could not find zone ID for domain '${domain}'. Check API token permissions."
     exit 1
   fi
-  if [[ ! -f "$HOME/.cloudflared/cert.pem" ]]; then
-    log "Not authenticated. Running cloudflared tunnel login..."
-    cloudflared tunnel login
-  fi
+  echo "$zone_id"
+}
+
+# --- Get tunnel ID by name (empty if not found) ---
+get_tunnel_id() {
+  local name="$1"
+  cf_api GET "/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel?name=${name}&is_deleted=false" \
+    | jq -r '.result[0].id // empty'
+}
+
+# --- Get tunnel token ---
+get_tunnel_token() {
+  local tunnel_id="$1"
+  cf_api GET "/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel/${tunnel_id}/token" \
+    | jq -r '.result // empty'
 }
 
 # --- Derive names from host ---
@@ -46,12 +82,6 @@ parse_host() {
   PREFIX="${host%%.*}"
   TUNNEL_NAME="${PREFIX}-ssh"
   TUNNEL_FQDN="${TUNNEL_NAME}.${domain}"
-}
-
-# --- Get tunnel ID by name (empty if not found) ---
-get_tunnel_id() {
-  local name="$1"
-  cloudflared tunnel list --name "$name" 2>/dev/null | { grep "$name" || true; } | awk '{print $1}'
 }
 
 # ==========================================
@@ -74,8 +104,10 @@ do_provision() {
     exit 1
   fi
 
-  ensure_auth
+  require_env
   parse_host "$host" "$domain"
+  local zone_id
+  zone_id=$(get_zone_id "$domain")
   log "Provisioning tunnel ${TUNNEL_FQDN} for ${host}"
 
   # Step 1: Create or reuse tunnel
@@ -86,30 +118,55 @@ do_provision() {
     log "Reusing existing tunnel: ${TUNNEL_NAME} (${tunnel_id})"
   else
     log "Creating tunnel: ${TUNNEL_NAME}"
-    cloudflared tunnel create "$TUNNEL_NAME"
-    tunnel_id=$(get_tunnel_id "$TUNNEL_NAME")
+    local create_resp
+    create_resp=$(cf_api POST "/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel" \
+      "{\"name\":\"${TUNNEL_NAME}\",\"config_src\":\"cloudflare\",\"tunnel_secret\":\"$(openssl rand -base64 32)\"}")
+    tunnel_id=$(echo "$create_resp" | jq -r '.result.id // empty')
     if [[ -z "$tunnel_id" ]]; then
-      err "Failed to create tunnel"
+      err "Failed to create tunnel: $(echo "$create_resp" | jq -r '.errors')"
       exit 1
     fi
     log "Created tunnel: ${tunnel_id}"
   fi
 
-  # Verify credentials file exists locally
-  local creds_file="$HOME/.cloudflared/${tunnel_id}.json"
-  if [[ ! -f "$creds_file" ]]; then
-    err "Credentials file not found: ${creds_file}"
-    err "Tunnel may have been created on a different machine. Delete and recreate:"
-    err "  cloudflared tunnel delete ${TUNNEL_NAME}"
-    err "  $0 provision ${host}"
+  # Step 2: Configure ingress rules
+  log "Configuring ingress: ${TUNNEL_FQDN} -> ssh://localhost:22"
+  local config_resp
+  config_resp=$(cf_api PUT "/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel/${tunnel_id}/configurations" \
+    "{\"config\":{\"ingress\":[{\"hostname\":\"${TUNNEL_FQDN}\",\"service\":\"ssh://localhost:22\"},{\"service\":\"http_status:404\"}]}}")
+  if [[ "$(echo "$config_resp" | jq -r '.success')" != "true" ]]; then
+    err "Failed to configure ingress: $(echo "$config_resp" | jq -r '.errors')"
     exit 1
   fi
 
-  # Step 2: Create DNS route
-  log "Configuring DNS: ${TUNNEL_FQDN}"
-  cloudflared tunnel route dns --overwrite-dns "$TUNNEL_NAME" "$TUNNEL_FQDN"
+  # Step 3: Create or update DNS CNAME record
+  log "Configuring DNS: ${TUNNEL_FQDN} -> ${tunnel_id}.cfargotunnel.com"
+  local existing_record_id
+  existing_record_id=$(cf_api GET "/zones/${zone_id}/dns_records?type=CNAME&name=${TUNNEL_FQDN}" \
+    | jq -r '.result[0].id // empty')
 
-  # Step 3: Deploy to host via SSH
+  local dns_data="{\"type\":\"CNAME\",\"name\":\"${TUNNEL_FQDN}\",\"content\":\"${tunnel_id}.cfargotunnel.com\",\"proxied\":true}"
+  local dns_resp
+  if [[ -n "$existing_record_id" ]]; then
+    dns_resp=$(cf_api PUT "/zones/${zone_id}/dns_records/${existing_record_id}" "$dns_data")
+  else
+    dns_resp=$(cf_api POST "/zones/${zone_id}/dns_records" "$dns_data")
+  fi
+  if [[ "$(echo "$dns_resp" | jq -r '.success')" != "true" ]]; then
+    err "Failed to configure DNS: $(echo "$dns_resp" | jq -r '.errors')"
+    exit 1
+  fi
+  log "DNS record configured"
+
+  # Step 4: Get tunnel token
+  local tunnel_token
+  tunnel_token=$(get_tunnel_token "$tunnel_id")
+  if [[ -z "$tunnel_token" ]]; then
+    err "Failed to retrieve tunnel token"
+    exit 1
+  fi
+
+  # Step 5: Deploy to host via SSH
   local remote="${user}@${host}"
   log "Deploying cloudflared ${version} to ${host}..."
 
@@ -127,27 +184,13 @@ do_provision() {
   fi
 INSTALL_SCRIPT
 
-  # Upload credentials file
-  ssh "$remote" "sudo mkdir -p /etc/cloudflared"
-  scp "$creds_file" "${remote}:/tmp/cloudflared-creds.json"
-  ssh "$remote" "sudo mv /tmp/cloudflared-creds.json /etc/cloudflared/${tunnel_id}.json && sudo chmod 600 /etc/cloudflared/${tunnel_id}.json"
-
-  # Create config file (unquoted heredoc — variables expanded locally)
-  ssh "$remote" "sudo tee /etc/cloudflared/config.yml > /dev/null" <<EOF
-tunnel: ${tunnel_id}
-credentials-file: /etc/cloudflared/${tunnel_id}.json
-ingress:
-  - hostname: ${TUNNEL_FQDN}
-    service: ssh://localhost:22
-  - service: http_status:404
-EOF
-
-  # Install and start service
-  ssh "$remote" bash <<'SERVICE_SCRIPT'
+  # Install service with token (no config files needed)
+  ssh "$remote" bash -s -- "$tunnel_token" <<'SERVICE_SCRIPT'
   set -euo pipefail
+  TOKEN="$1"
   sudo cloudflared service uninstall 2>/dev/null || true
   echo "Installing cloudflared service..."
-  sudo cloudflared service install
+  sudo cloudflared service install "$TOKEN"
   sudo systemctl enable cloudflared
   sudo systemctl start cloudflared
 
@@ -168,22 +211,25 @@ SERVICE_SCRIPT
 # Deprovision
 # ==========================================
 do_deprovision() {
-  local host="" domain="$DEFAULT_DOMAIN"
+  local host="" domain="$DEFAULT_DOMAIN" user="$DEFAULT_USER"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --domain) domain="$2"; shift 2 ;;
+      --user)   user="$2"; shift 2 ;;
       -*)       err "Unknown option: $1"; exit 1 ;;
       *)        host="$1"; shift ;;
     esac
   done
   if [[ -z "$host" ]]; then
-    err "Usage: $0 deprovision <host> [--domain vm3.ai]"
+    err "Usage: $0 deprovision <host> [--domain vm3.ai] [--user ubuntu]"
     exit 1
   fi
 
-  ensure_auth
+  require_env
   parse_host "$host" "$domain"
+  local zone_id
+  zone_id=$(get_zone_id "$domain")
   log "Deprovisioning tunnel ${TUNNEL_FQDN}"
 
   local tunnel_id
@@ -194,23 +240,36 @@ do_deprovision() {
     return
   fi
 
-  # Step 1: Clean up active connections
-  log "Cleaning up connections for ${TUNNEL_NAME}..."
-  cloudflared tunnel cleanup "$TUNNEL_NAME" || true
+  # Step 1: Uninstall service on host
+  local remote="${user}@${host}"
+  log "Stopping cloudflared service on ${host}..."
+  ssh "$remote" "sudo cloudflared service uninstall 2>/dev/null || true" || \
+    log "Warning: could not SSH to ${host} to uninstall service (host may be down)"
 
-  # Step 2: Delete tunnel
+  # Step 2: Delete tunnel (cascade forces disconnect of active connections)
   log "Deleting tunnel ${TUNNEL_NAME} (${tunnel_id})..."
-  cloudflared tunnel delete --force "$TUNNEL_NAME"
+  local del_resp
+  del_resp=$(cf_api DELETE "/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel/${tunnel_id}?cascade=true")
+  if [[ "$(echo "$del_resp" | jq -r '.success')" != "true" ]]; then
+    err "Failed to delete tunnel: $(echo "$del_resp" | jq -r '.errors')"
+    exit 1
+  fi
 
-  # Step 3: Clean up local credentials file
-  local creds_file="$HOME/.cloudflared/${tunnel_id}.json"
-  if [[ -f "$creds_file" ]]; then
-    rm "$creds_file"
-    log "Removed local credentials: ${creds_file}"
+  # Step 3: Delete DNS record
+  local record_id
+  record_id=$(cf_api GET "/zones/${zone_id}/dns_records?type=CNAME&name=${TUNNEL_FQDN}" \
+    | jq -r '.result[0].id // empty')
+  if [[ -n "$record_id" ]]; then
+    local dns_del_resp
+    dns_del_resp=$(cf_api DELETE "/zones/${zone_id}/dns_records/${record_id}")
+    if [[ "$(echo "$dns_del_resp" | jq -r '.success')" != "true" ]]; then
+      err "Warning: failed to delete DNS record: $(echo "$dns_del_resp" | jq -r '.errors')"
+    else
+      log "Deleted DNS record for ${TUNNEL_FQDN}"
+    fi
   fi
 
   log "Done! Tunnel ${TUNNEL_NAME} removed"
-  log "Note: DNS record for ${TUNNEL_FQDN} may need manual cleanup in Cloudflare dashboard"
 }
 
 # ==========================================
