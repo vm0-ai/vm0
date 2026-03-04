@@ -331,7 +331,7 @@ function buildAnswerPrompt(
     }
   }
   return items.length > 0
-    ? items.join("\n")
+    ? `User selected:\n${items.join("\n")}`
     : "The user submitted the form without making a selection.";
 }
 
