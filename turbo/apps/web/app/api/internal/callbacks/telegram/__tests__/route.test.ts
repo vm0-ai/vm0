@@ -119,7 +119,7 @@ async function setupTelegramCallback() {
   const { secret } = await createTestCallback({
     runId,
     url: "http://localhost/api/internal/callbacks/telegram",
-    payload,
+    payload: { ...payload },
   });
 
   return {
