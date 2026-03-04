@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.69.3](https://github.com/vm0-ai/vm0/compare/web-v12.69.2...web-v12.69.3) (2026-03-04)
+
+
+### Bug Fixes
+
+* **callback:** use callback id for signature verification to fix multi-callback runs ([#3633](https://github.com/vm0-ai/vm0/issues/3633)) ([711d4d6](https://github.com/vm0-ai/vm0/commit/711d4d607c63abc3bd8adb99c96ff62ffb4ea2b1))
+
 ## [12.69.2](https://github.com/vm0-ai/vm0/compare/web-v12.69.1...web-v12.69.2) (2026-03-04)
 
 
