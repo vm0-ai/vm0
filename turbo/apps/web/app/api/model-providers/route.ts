@@ -6,6 +6,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
+import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import {
   listModelProviders,
   upsertModelProvider,
@@ -28,7 +29,8 @@ const router = tsr.router(modelProvidersMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const providers = await listModelProviders(userId);
+    const { scope } = await resolveScope(userId, headers.authorization);
+    const providers = await listModelProviders(scope.id);
 
     return {
       status: 200 as const,
@@ -65,6 +67,8 @@ const router = tsr.router(modelProvidersMainContract, {
     log.debug("upserting model provider", { userId, type, selectedModel });
 
     try {
+      const { scope } = await resolveScope(userId, headers.authorization);
+
       // Determine if this is a multi-auth provider or legacy provider
       const isMultiAuth = hasAuthMethods(type);
 
@@ -80,6 +84,7 @@ const router = tsr.router(modelProvidersMainContract, {
           );
         }
         const result = await upsertMultiAuthModelProvider(
+          scope.id,
           userId,
           type,
           authMethod,
@@ -97,6 +102,7 @@ const router = tsr.router(modelProvidersMainContract, {
           );
         }
         const result = await upsertModelProvider(
+          scope.id,
           userId,
           type,
           secret,

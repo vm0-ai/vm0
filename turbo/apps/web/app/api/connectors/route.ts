@@ -2,6 +2,7 @@ import { createHandler, tsr } from "../../../src/lib/ts-rest-handler";
 import { connectorsMainContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
+import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import { listConnectors } from "../../../src/lib/connector/connector-service";
 import { getConfiguredConnectorTypes } from "../../../src/lib/connector/provider-registry";
 
@@ -17,7 +18,8 @@ const router = tsr.router(connectorsMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const connectorList = await listConnectors(userId);
+    const { scope } = await resolveScope(userId, headers.authorization);
+    const connectorList = await listConnectors(scope.id);
     const configuredTypes = getConfiguredConnectorTypes(
       globalThis.services.env,
     );

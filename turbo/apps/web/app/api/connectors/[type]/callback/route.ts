@@ -4,6 +4,7 @@ import { connectorTypeSchema } from "@vm0/core";
 import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
+import { resolveScope } from "../../../../../src/lib/scope/resolve-scope";
 import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
 import { connectorSessions } from "../../../../../src/db/schema/connector-session";
 import { logger } from "../../../../../src/lib/logger";
@@ -171,7 +172,10 @@ export async function GET(
     const refreshSecretName = handler.getRefreshSecretName?.();
 
     // Store connector and secret
+    const authHeader = request.headers.get("authorization") ?? undefined;
+    const { scope } = await resolveScope(userId, authHeader);
     const { created } = await upsertOAuthConnector(
+      scope.id,
       userId,
       connectorType,
       accessToken,

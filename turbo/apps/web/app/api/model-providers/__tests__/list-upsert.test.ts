@@ -142,17 +142,6 @@ describe("PUT /api/model-providers (single-secret)", () => {
     expect(updateBody.provider.id).toBe(createBody.provider.id);
   });
 
-  it("should return 400 when user has no scope", async () => {
-    mockClerk({ userId: "nonexistent-user-no-scope" });
-
-    const response = await upsertProvider({
-      type: "anthropic-api-key",
-      secret: "test-key",
-    });
-
-    expect(response.status).toBe(400);
-  });
-
   it("should set first provider as default for framework", async () => {
     const response = await upsertProvider({
       type: "anthropic-api-key",

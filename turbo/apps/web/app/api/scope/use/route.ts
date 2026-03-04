@@ -31,7 +31,6 @@ export async function POST(request: Request) {
       scope: {
         id: result.scope.id,
         slug: result.scope.slug,
-        type: result.scope.type,
         createdAt: result.scope.createdAt.toISOString(),
         updatedAt: result.scope.updatedAt.toISOString(),
       },

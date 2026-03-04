@@ -38,13 +38,13 @@ describe("scope list command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
-  it("should display scopes with types", async () => {
+  it("should display scopes with roles", async () => {
     server.use(
       http.get("http://localhost:3000/api/scope/list", () => {
         return HttpResponse.json({
           scopes: [
-            { slug: "personal-user", type: "personal" },
-            { slug: "my-org", type: "organization", role: "admin" },
+            { slug: "personal-user", role: "admin" },
+            { slug: "my-org", role: "admin" },
           ],
           active: undefined,
         });
@@ -55,9 +55,9 @@ describe("scope list command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("personal-user");
-    expect(logCalls).toContain("personal");
+    expect(logCalls).toContain("admin");
     expect(logCalls).toContain("my-org");
-    expect(logCalls).toContain("organization");
+    expect(logCalls).toContain("admin");
   });
 
   it("should mark current scope", async () => {
@@ -65,8 +65,8 @@ describe("scope list command", () => {
       http.get("http://localhost:3000/api/scope/list", () => {
         return HttpResponse.json({
           scopes: [
-            { slug: "personal-user", type: "personal" },
-            { slug: "my-org", type: "organization", role: "admin" },
+            { slug: "personal-user", role: "admin" },
+            { slug: "my-org", role: "admin" },
           ],
           active: undefined,
         });

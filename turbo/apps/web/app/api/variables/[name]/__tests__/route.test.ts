@@ -105,17 +105,6 @@ describe("GET /api/variables/:name - Get Variable", () => {
     const response2 = await GET(request2);
     expect(response2.status).toBe(200);
   });
-
-  it("should return 404 for user without scope", async () => {
-    mockClerk({ userId: `user-no-scope-${Date.now()}` });
-
-    const request = createTestRequest(
-      "http://localhost:3000/api/variables/ANY_VAR",
-    );
-    const response = await GET(request);
-
-    expect(response.status).toBe(404);
-  });
 });
 
 describe("DELETE /api/variables/:name - Delete Variable", () => {

@@ -2,9 +2,9 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { getOrgStatus } from "../../../lib/api";
 
-export const statusCommand = new Command()
-  .name("status")
-  .description("View organization status and members")
+export const membersCommand = new Command()
+  .name("members")
+  .description("View scope members")
   .action(async () => {
     try {
       const status = await getOrgStatus();
@@ -27,9 +27,7 @@ export const statusCommand = new Command()
       if (error instanceof Error) {
         if (error.message.includes("Organization access token required")) {
           console.error(
-            chalk.red(
-              "✗ No active organization scope. Run: vm0 scope use <org-slug>",
-            ),
+            chalk.red("✗ No active scope selected. Run: vm0 scope use <slug>"),
           );
         } else {
           console.error(chalk.red(`✗ ${error.message}`));

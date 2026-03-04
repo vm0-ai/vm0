@@ -12,14 +12,14 @@ export const useCommand = new Command()
     try {
       if (options.personal) {
         await clearOrgToken();
-        console.log(chalk.green("✓ Switched to personal scope."));
+        console.log(chalk.green("✓ Switched to default scope."));
         return;
       }
 
       if (!slug) {
         console.error(
           chalk.red(
-            "✗ Scope slug is required. Use --personal to switch to personal scope.",
+            "✗ Scope slug is required. Use --personal to switch to default scope.",
           ),
         );
         process.exit(1);
@@ -29,17 +29,10 @@ export const useCommand = new Command()
 
       if (result.token) {
         await setOrgToken(result.token, result.expiresAt, result.scope.slug);
-        console.log(
-          chalk.green(
-            `✓ Switched to scope: ${result.scope.slug} (organization)`,
-          ),
-        );
       } else {
         await clearOrgToken();
-        console.log(
-          chalk.green(`✓ Switched to scope: ${result.scope.slug} (personal)`),
-        );
       }
+      console.log(chalk.green(`✓ Switched to scope: ${result.scope.slug}`));
     } catch (error) {
       if (error instanceof Error) {
         console.error(chalk.red(`✗ ${error.message}`));

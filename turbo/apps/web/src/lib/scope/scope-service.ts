@@ -1,9 +1,9 @@
 import { createHash } from "crypto";
 import { eq, and } from "drizzle-orm";
 import { scopes } from "../../db/schema/scope";
+import { scopeMembers } from "../../db/schema/scope-member";
 import { badRequest, notFound, forbidden } from "../errors";
 import { logger } from "../logger";
-import type { ScopeType } from "../../db/schema/scope";
 import { env } from "../../env";
 
 const log = logger("service:scope");
@@ -93,34 +93,6 @@ export async function getScopeById(scopeId: string) {
 }
 
 /**
- * Create a new scope.
- * Uses atomic INSERT ... ON CONFLICT DO NOTHING to handle concurrent requests safely.
- */
-async function createScope(slug: string, type: ScopeType, ownerId?: string) {
-  validateScopeSlug(slug);
-
-  log.debug("creating scope", { slug, type, ownerId });
-
-  const [scope] = await globalThis.services.db
-    .insert(scopes)
-    .values({
-      slug,
-      type,
-      ownerId,
-    })
-    .onConflictDoNothing({ target: scopes.slug })
-    .returning();
-
-  if (!scope) {
-    throw badRequest(`Scope "${slug}" already exists`);
-  }
-
-  log.debug("scope created", { scopeId: scope.id, slug });
-
-  return scope;
-}
-
-/**
  * Create a personal scope for a user and link it to their user record
  * This is the main entry point for setting up a user's scope
  */
@@ -138,8 +110,28 @@ export async function createUserScope(clerkUserId: string, slug: string) {
     );
   }
 
-  // Create the scope
-  const scope = await createScope(slug, "personal", clerkUserId);
+  validateScopeSlug(slug);
+
+  // Create scope + admin membership atomically
+  const scope = await globalThis.services.db.transaction(async (tx) => {
+    const [newScope] = await tx
+      .insert(scopes)
+      .values({ slug, type: "personal", ownerId: clerkUserId })
+      .onConflictDoNothing({ target: scopes.slug })
+      .returning();
+
+    if (!newScope) {
+      throw badRequest(`Scope "${slug}" already exists`);
+    }
+
+    await tx.insert(scopeMembers).values({
+      scopeId: newScope.id,
+      userId: clerkUserId,
+      role: "admin",
+    });
+
+    return newScope;
+  });
 
   log.debug("user scope created", { clerkUserId, scopeId: scope.id, slug });
 
@@ -213,27 +205,6 @@ export async function updateScopeSlug(
   log.debug("scope slug updated", { scopeId, newSlug });
 
   return updated!;
-}
-
-/**
- * Check if a user can access a scope (read)
- * - Personal scopes: only owner
- * - Organization scopes: check membership (future)
- */
-export async function canAccessScope(
-  clerkUserId: string,
-  scopeId: string,
-): Promise<boolean> {
-  const scope = await getScopeById(scopeId);
-  if (!scope) return false;
-
-  // Personal scopes: owner only
-  if (scope.type === "personal") {
-    return scope.ownerId === clerkUserId;
-  }
-
-  // Organization scopes: check membership (future)
-  return false;
 }
 
 /**

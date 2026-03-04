@@ -26,6 +26,7 @@ export const variables = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     value: text("value").notNull(),
     description: text("description"),
+    userId: text("user_id"), // Scope member who owns this variable (nullable for backfill)
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

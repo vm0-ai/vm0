@@ -70,7 +70,6 @@ describe("/api/scope", () => {
 
       expect(response.status).toBe(201);
       expect(data.slug).toBe(slug);
-      expect(data.type).toBe("personal");
       expect(data.id).toBeDefined();
     });
 
@@ -303,7 +302,6 @@ describe("/api/scope", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.type).toBe("personal");
       expect(data.id).toBeDefined();
       expect(data.slug).toBeDefined();
     });
@@ -346,7 +344,6 @@ describe("/api/scope", () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.type).toBe("organization");
       expect(data.slug).toBe(slug);
     });
   });
@@ -394,7 +391,6 @@ describe("/api/scope", () => {
 
       const data = await response.json();
       expect(data.slug).toBe(newSlug);
-      expect(data.type).toBe("organization");
     });
   });
 });

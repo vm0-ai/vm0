@@ -5,14 +5,12 @@ import { clearOrgToken } from "../../../lib/api/config";
 
 export const leaveCommand = new Command()
   .name("leave")
-  .description("Leave the current organization")
+  .description("Leave the current scope")
   .action(async () => {
     try {
       await leaveOrg();
       await clearOrgToken();
-      console.log(
-        chalk.green("✓ Left organization. Switched to personal scope."),
-      );
+      console.log(chalk.green("✓ Left scope. Switched to default scope."));
     } catch (error) {
       if (error instanceof Error) {
         console.error(chalk.red(`✗ ${error.message}`));

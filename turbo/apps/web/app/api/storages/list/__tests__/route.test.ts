@@ -32,18 +32,6 @@ describe("GET /api/storages/list", () => {
     expect(body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("should return 400 when user has no scope", async () => {
-    // Create a user without a scope by mocking a different userId
-    // that has no scope in the database
-    mockClerk({ userId: "user-without-scope" });
-
-    const response = await listStorages("artifact");
-    const body = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(body.error.code).toBe("BAD_REQUEST");
-  });
-
   it("should return 200 with empty array when no storages exist", async () => {
     const response = await listStorages("artifact");
     const body = await response.json();

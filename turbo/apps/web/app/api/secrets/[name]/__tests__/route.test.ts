@@ -106,17 +106,6 @@ describe("GET /api/secrets/:name - Get Secret", () => {
     const response2 = await GET(request2);
     expect(response2.status).toBe(200);
   });
-
-  it("should return 404 for user without scope", async () => {
-    mockClerk({ userId: `user-no-scope-${Date.now()}` });
-
-    const request = createTestRequest(
-      "http://localhost:3000/api/secrets/ANY_KEY",
-    );
-    const response = await GET(request);
-
-    expect(response.status).toBe(404);
-  });
 });
 
 describe("DELETE /api/secrets/:name - Delete Secret", () => {

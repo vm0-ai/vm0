@@ -8,7 +8,6 @@ import { connectors } from "../../db/schema/connector";
 import { secrets } from "../../db/schema/secret";
 import { notFound, badRequest } from "../errors";
 import { logger } from "../logger";
-import { getUserScopeByClerkId } from "../scope/scope-service";
 import { upsertSecretByScope } from "../secret/secret-service";
 import { PROVIDER_HANDLERS } from "./provider-registry";
 
@@ -34,16 +33,11 @@ function getSecretNameForConnector(type: ConnectorType): string {
 }
 
 /**
- * List all connectors for a user
+ * List all connectors for a scope
  */
 export async function listConnectors(
-  clerkUserId: string,
+  scopeId: string,
 ): Promise<ConnectorResponse[]> {
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    return [];
-  }
-
   const result = await globalThis.services.db
     .select({
       id: connectors.id,
@@ -57,7 +51,7 @@ export async function listConnectors(
       updatedAt: connectors.updatedAt,
     })
     .from(connectors)
-    .where(eq(connectors.scopeId, scope.id))
+    .where(eq(connectors.scopeId, scopeId))
     .orderBy(connectors.type);
 
   return result.map((row) => ({
@@ -77,14 +71,9 @@ export async function listConnectors(
  * Get a specific connector by type
  */
 export async function getConnector(
-  clerkUserId: string,
+  scopeId: string,
   type: ConnectorType,
 ): Promise<ConnectorResponse | null> {
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    return null;
-  }
-
   const result = await globalThis.services.db
     .select({
       id: connectors.id,
@@ -98,7 +87,7 @@ export async function getConnector(
       updatedAt: connectors.updatedAt,
     })
     .from(connectors)
-    .where(and(eq(connectors.scopeId, scope.id), eq(connectors.type, type)))
+    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.type, type)))
     .limit(1);
 
   if (!result[0]) {
@@ -130,7 +119,8 @@ interface ExternalUserInfo {
  * Also stores the associated secret with type="connector"
  */
 export async function upsertOAuthConnector(
-  clerkUserId: string,
+  scopeId: string,
+  userId: string,
   type: ConnectorType,
   accessToken: string,
   userInfo: ExternalUserInfo,
@@ -141,11 +131,6 @@ export async function upsertOAuthConnector(
     expiresIn?: number;
   },
 ): Promise<{ connector: ConnectorResponse; created: boolean }> {
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    throw notFound("User scope not found");
-  }
-
   const secretName = getSecretNameForConnector(type);
   const db = globalThis.services.db;
   const tokenExpiresAt =
@@ -157,14 +142,14 @@ export async function upsertOAuthConnector(
   const existingConnector = await db
     .select({ id: connectors.id })
     .from(connectors)
-    .where(and(eq(connectors.scopeId, scope.id), eq(connectors.type, type)))
+    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.type, type)))
     .limit(1);
 
   const isUpdate = existingConnector.length > 0;
 
   // Upsert access token secret
   await upsertSecretByScope(
-    scope.id,
+    scopeId,
     secretName,
     accessToken,
     "connector",
@@ -174,7 +159,7 @@ export async function upsertOAuthConnector(
   // Upsert refresh token secret if provided
   if (options?.refreshToken && options.refreshSecretName) {
     await upsertSecretByScope(
-      scope.id,
+      scopeId,
       options.refreshSecretName,
       options.refreshToken,
       "connector",
@@ -223,7 +208,8 @@ export async function upsertOAuthConnector(
     const [created] = await db
       .insert(connectors)
       .values({
-        scopeId: scope.id,
+        scopeId,
+        userId,
         type,
         authMethod: "oauth",
         externalId: userInfo.id,
@@ -262,14 +248,9 @@ export async function upsertOAuthConnector(
  * Delete a connector and its associated secret
  */
 export async function deleteConnector(
-  clerkUserId: string,
+  scopeId: string,
   type: ConnectorType,
 ): Promise<void> {
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    throw notFound("Connector not found");
-  }
-
   const secretName = getSecretNameForConnector(type);
   const db = globalThis.services.db;
 
@@ -277,7 +258,7 @@ export async function deleteConnector(
   const [existing] = await db
     .select({ id: connectors.id })
     .from(connectors)
-    .where(and(eq(connectors.scopeId, scope.id), eq(connectors.type, type)))
+    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.type, type)))
     .limit(1);
 
   if (!existing) {
@@ -292,30 +273,25 @@ export async function deleteConnector(
     .delete(secrets)
     .where(
       and(
-        eq(secrets.scopeId, scope.id),
+        eq(secrets.scopeId, scopeId),
         eq(secrets.name, secretName),
         eq(secrets.type, "connector"),
       ),
     );
 
-  log.debug("connector deleted", { scopeId: scope.id, type });
+  log.debug("connector deleted", { scopeId, type });
 }
 
 /**
  * Create or update a connector secret (e.g., refresh token)
  */
 export async function upsertConnectorSecret(
-  clerkUserId: string,
+  scopeId: string,
   secretName: string,
   secretValue: string,
 ): Promise<void> {
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    throw notFound("User scope not found");
-  }
-
   await upsertSecretByScope(
-    scope.id,
+    scopeId,
     secretName,
     secretValue,
     "connector",

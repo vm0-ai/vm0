@@ -5,6 +5,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { resolveScope } from "../../../../../src/lib/scope/resolve-scope";
 import { updateModelProviderModel } from "../../../../../src/lib/model-provider/model-provider-service";
 import { logger } from "../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../src/lib/errors";
@@ -30,8 +31,9 @@ const router = tsr.router(modelProvidersUpdateModelContract, {
     });
 
     try {
+      const { scope } = await resolveScope(userId, headers.authorization);
       const provider = await updateModelProviderModel(
-        userId,
+        scope.id,
         params.type,
         body.selectedModel,
       );

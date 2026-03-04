@@ -10,6 +10,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import {
   getSecret,
   deleteSecret,
@@ -31,7 +32,8 @@ const router = tsr.router(secretsByNameContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const secret = await getSecret(userId, params.name);
+    const { scope } = await resolveScope(userId, headers.authorization);
+    const secret = await getSecret(scope.id, params.name);
     if (!secret) {
       return createErrorResponse(
         "NOT_FOUND",
@@ -66,7 +68,8 @@ const router = tsr.router(secretsByNameContract, {
     log.debug("deleting secret", { userId, name: params.name });
 
     try {
-      await deleteSecret(userId, params.name);
+      const { scope } = await resolveScope(userId, headers.authorization);
+      await deleteSecret(scope.id, params.name);
 
       return {
         status: 204 as const,

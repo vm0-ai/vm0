@@ -6,6 +6,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { resolveScope } from "../../../../../src/lib/scope/resolve-scope";
 import { checkSecretExists } from "../../../../../src/lib/model-provider/model-provider-service";
 
 const router = tsr.router(modelProvidersCheckContract, {
@@ -20,7 +21,8 @@ const router = tsr.router(modelProvidersCheckContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const result = await checkSecretExists(userId, params.type);
+    const { scope } = await resolveScope(userId, headers.authorization);
+    const result = await checkSecretExists(scope.id, params.type);
 
     return {
       status: 200 as const,

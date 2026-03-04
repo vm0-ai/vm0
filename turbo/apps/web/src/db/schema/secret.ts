@@ -27,6 +27,7 @@ export const secrets = pgTable(
     encryptedValue: text("encrypted_value").notNull(),
     description: text("description"),
     type: varchar("type", { length: 50 }).notNull().default("user"),
+    userId: text("user_id"), // Scope member who owns this secret (nullable for backfill)
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

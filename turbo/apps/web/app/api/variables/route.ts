@@ -10,6 +10,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
+import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import {
   listVariables,
   setVariable,
@@ -31,7 +32,8 @@ const router = tsr.router(variablesMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const vars = await listVariables(userId);
+    const { scope } = await resolveScope(userId, headers.authorization);
+    const vars = await listVariables(scope.id);
 
     return {
       status: 200 as const,
@@ -64,7 +66,14 @@ const router = tsr.router(variablesMainContract, {
     log.debug("setting variable", { userId, name });
 
     try {
-      const variable = await setVariable(userId, name, value, description);
+      const { scope } = await resolveScope(userId, headers.authorization);
+      const variable = await setVariable(
+        scope.id,
+        userId,
+        name,
+        value,
+        description,
+      );
 
       return {
         status: 200 as const,

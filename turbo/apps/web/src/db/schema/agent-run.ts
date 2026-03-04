@@ -11,6 +11,7 @@ import {
 import { sql } from "drizzle-orm";
 import { agentComposeVersions } from "./agent-compose";
 import { agentSchedules } from "./agent-schedule";
+import { scopes } from "./scope";
 
 /**
  * Agent Runs table
@@ -22,6 +23,7 @@ export const agentRuns = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(), // Clerk user ID - owner of this run
+    scopeId: uuid("scope_id").references(() => scopes.id), // Scope this run belongs to (nullable for backfill)
     agentComposeVersionId: varchar("agent_compose_version_id", {
       length: 64,
     }).references(() => agentComposeVersions.id, { onDelete: "set null" }),

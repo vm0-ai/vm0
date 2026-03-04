@@ -8,7 +8,6 @@ import {
   listTestSchedules,
   createTestSecret,
   createTestVariable,
-  createScopedCompose,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -342,34 +341,6 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
 
       expect(response.status).toBe(404);
       expect(data.error.code).toBe("NOT_FOUND");
-    });
-
-    it("should reject schedule for organization-scoped compose", async () => {
-      const { composeId } = await createScopedCompose(
-        user.userId,
-        "organization",
-      );
-
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/schedules",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            composeId,
-            name: "org-schedule",
-            cronExpression: "0 9 * * *",
-            timezone: "UTC",
-            prompt: "Test org rejection",
-          }),
-        },
-      );
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error.message).toContain("organization-scoped");
     });
   });
 

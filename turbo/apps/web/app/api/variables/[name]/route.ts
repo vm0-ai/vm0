@@ -10,6 +10,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import {
   getVariable,
   deleteVariable,
@@ -31,7 +32,8 @@ const router = tsr.router(variablesByNameContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const variable = await getVariable(userId, params.name);
+    const { scope } = await resolveScope(userId, headers.authorization);
+    const variable = await getVariable(scope.id, params.name);
     if (!variable) {
       return createErrorResponse(
         "NOT_FOUND",
@@ -66,7 +68,8 @@ const router = tsr.router(variablesByNameContract, {
     log.debug("deleting variable", { userId, name: params.name });
 
     try {
-      await deleteVariable(userId, params.name);
+      const { scope } = await resolveScope(userId, headers.authorization);
+      await deleteVariable(scope.id, params.name);
 
       return {
         status: 204 as const,

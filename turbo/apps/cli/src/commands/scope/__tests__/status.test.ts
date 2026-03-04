@@ -72,7 +72,6 @@ describe("scope status command", () => {
           return HttpResponse.json({
             id: "test-id",
             slug: "testuser",
-            type: "personal",
             createdAt: "2024-01-01T00:00:00Z",
             updatedAt: "2024-01-01T00:00:00Z",
           });
@@ -86,9 +85,6 @@ describe("scope status command", () => {
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("testuser"),
-      );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("personal"),
       );
     });
   });

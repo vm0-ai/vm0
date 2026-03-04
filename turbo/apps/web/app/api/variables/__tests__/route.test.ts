@@ -24,17 +24,6 @@ describe("GET /api/variables - List Variables", () => {
     expect(data.error.message).toContain("Not authenticated");
   });
 
-  it("should return empty array for user without scope", async () => {
-    mockClerk({ userId: `user-no-scope-${Date.now()}` });
-
-    const request = createTestRequest("http://localhost:3000/api/variables");
-    const response = await GET(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.variables).toEqual([]);
-  });
-
   it("should return empty array when no variables exist", async () => {
     await context.setupUser();
 
@@ -135,24 +124,6 @@ describe("PUT /api/variables - Set Variable", () => {
 
     expect(response.status).toBe(401);
     expect(data.error.message).toContain("Not authenticated");
-  });
-
-  it("should require scope to be configured", async () => {
-    mockClerk({ userId: `user-no-scope-${Date.now()}` });
-
-    const request = createTestRequest("http://localhost:3000/api/variables", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "TEST_VAR",
-        value: "value",
-      }),
-    });
-    const response = await PUT(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(data.error.message).toContain("scope");
   });
 
   it("should create a variable successfully", async () => {

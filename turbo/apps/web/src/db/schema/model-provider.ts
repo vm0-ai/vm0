@@ -1,6 +1,7 @@
 import {
   pgTable,
   uuid,
+  text,
   varchar,
   boolean,
   timestamp,
@@ -34,6 +35,7 @@ export const modelProviders = pgTable(
     authMethod: varchar("auth_method", { length: 50 }),
     isDefault: boolean("is_default").notNull().default(false),
     selectedModel: varchar("selected_model", { length: 255 }),
+    userId: text("user_id"), // Scope member who owns this provider (nullable for backfill)
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

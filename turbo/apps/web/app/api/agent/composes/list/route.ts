@@ -6,10 +6,7 @@ import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { eq, desc } from "drizzle-orm";
 import { resolveScope } from "../../../../../src/lib/scope/resolve-scope";
-import {
-  getScopeBySlug,
-  canAccessScope,
-} from "../../../../../src/lib/scope/scope-service";
+import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 import { getEmailSharedAgents } from "../../../../../src/lib/agent/permission-service";
 
 const router = tsr.router(composesListContract, {
@@ -26,25 +23,25 @@ const router = tsr.router(composesListContract, {
       };
     }
 
-    // Resolve scope: use provided scope or fall back to user's default scope
+    // Resolve scope: use ?scope= slug, vm0_org_* token, or default scope
     let scopeId: string;
-    if (query.scope) {
-      const scope = await getScopeBySlug(query.scope);
-      if (!scope) {
+    try {
+      const { scope: resolvedScope } = await resolveScope(
+        userId,
+        headers.authorization,
+        query.scope,
+      );
+      scopeId = resolvedScope.id;
+    } catch (error) {
+      if (isNotFound(error)) {
         return {
           status: 400 as const,
           body: {
-            error: {
-              message: `Scope not found: ${query.scope}`,
-              code: "BAD_REQUEST",
-            },
+            error: { message: error.message, code: "BAD_REQUEST" },
           },
         };
       }
-
-      // Check if user has access to this scope
-      const hasAccess = await canAccessScope(userId, scope.id);
-      if (!hasAccess) {
+      if (isForbidden(error)) {
         return {
           status: 403 as const,
           body: {
@@ -55,23 +52,7 @@ const router = tsr.router(composesListContract, {
           },
         };
       }
-
-      scopeId = scope.id;
-    } else {
-      const userScope = await resolveScope(userId, headers.authorization);
-      if (!userScope) {
-        return {
-          status: 400 as const,
-          body: {
-            error: {
-              message:
-                "Please set up your scope first. Login again with: vm0 login",
-              code: "BAD_REQUEST",
-            },
-          },
-        };
-      }
-      scopeId = userScope.id;
+      throw error;
     }
 
     // Query own composes for this scope

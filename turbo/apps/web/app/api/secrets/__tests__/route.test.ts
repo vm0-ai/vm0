@@ -24,17 +24,6 @@ describe("GET /api/secrets - List Secrets", () => {
     expect(data.error.message).toContain("Not authenticated");
   });
 
-  it("should return empty array for user without scope", async () => {
-    mockClerk({ userId: `user-no-scope-${Date.now()}` });
-
-    const request = createTestRequest("http://localhost:3000/api/secrets");
-    const response = await GET(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.secrets).toEqual([]);
-  });
-
   it("should return empty array when no secrets exist", async () => {
     await context.setupUser();
 
@@ -136,24 +125,6 @@ describe("PUT /api/secrets - Set Secret", () => {
 
     expect(response.status).toBe(401);
     expect(data.error.message).toContain("Not authenticated");
-  });
-
-  it("should require scope to be configured", async () => {
-    mockClerk({ userId: `user-no-scope-${Date.now()}` });
-
-    const request = createTestRequest("http://localhost:3000/api/secrets", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "TEST_KEY",
-        value: "secret",
-      }),
-    });
-    const response = await PUT(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(data.error.message).toContain("scope");
   });
 
   it("should create a secret successfully", async () => {

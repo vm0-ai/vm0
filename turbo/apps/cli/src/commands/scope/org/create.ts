@@ -5,8 +5,8 @@ import { setOrgToken } from "../../../lib/api/config";
 
 export const createCommand = new Command()
   .name("create")
-  .description("Create a new organization")
-  .argument("<slug>", "Organization slug (e.g., myteam)")
+  .description("Create a new team scope")
+  .argument("<slug>", "Scope slug (e.g., myteam)")
   .action(async (slug: string) => {
     try {
       await createOrg(slug);
@@ -22,9 +22,7 @@ export const createCommand = new Command()
         );
       }
 
-      console.log(
-        chalk.green(`✓ Organization '${slug}' created. Switched to org scope.`),
-      );
+      console.log(chalk.green(`✓ Scope '${slug}' created and activated.`));
     } catch (error) {
       if (error instanceof Error) {
         console.error(chalk.red(`✗ ${error.message}`));

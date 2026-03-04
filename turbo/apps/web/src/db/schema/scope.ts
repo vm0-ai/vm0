@@ -29,6 +29,7 @@ export const scopes = pgTable(
     slug: varchar("slug", { length: 64 }).notNull().unique(),
     type: scopeTypeEnum("type").notNull().default("personal"),
     ownerId: text("owner_id"), // Clerk user ID
+    createdBy: text("created_by"), // Copy of ownerId for Phase 3 migration
     timezone: varchar("timezone", { length: 50 }), // IANA timezone (e.g., "Asia/Shanghai")
     clerkOrgId: text("clerk_org_id"), // Clerk Organization ID, null for personal scopes
     notifyEmail: boolean("notify_email").default(false).notNull(),

@@ -22,10 +22,9 @@ import { listConnectors } from "../../../../src/lib/connector/connector-service"
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
 import { deleteWebhook } from "../../../../src/lib/telegram/client";
-import {
-  getScopeBySlug,
-  getUserScopeByClerkId,
-} from "../../../../src/lib/scope/scope-service";
+import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
+import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { isNotFound } from "../../../../src/lib/errors";
 import { logger } from "../../../../src/lib/logger";
 
 const patchBodySchema = z.object({
@@ -122,11 +121,12 @@ export async function GET(request: Request) {
     }
   }
 
-  // Get user's existing secrets, vars, connectors
+  // Resolve user scope and get existing secrets, vars, connectors
+  const { scope } = await resolveScope(userId);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(userId),
-    listVariables(userId),
-    listConnectors(userId),
+    listSecrets(scope.id),
+    listVariables(scope.id),
+    listConnectors(scope.id),
   ]);
 
   const connectorProvided = getConnectorProvidedSecretNames(
@@ -246,15 +246,27 @@ export async function PATCH(request: Request) {
     slashIndex === -1 ? null : body.agentName.slice(0, slashIndex);
 
   // Resolve target scope
-  const targetScope = scopeSlug
-    ? await getScopeBySlug(scopeSlug)
-    : await getUserScopeByClerkId(userId);
-
-  if (!targetScope) {
-    return NextResponse.json(
-      { error: { message: "Scope not found", code: "BAD_REQUEST" } },
-      { status: 400 },
-    );
+  let targetScope;
+  if (scopeSlug) {
+    targetScope = await getScopeBySlug(scopeSlug);
+    if (!targetScope) {
+      return NextResponse.json(
+        { error: { message: "Scope not found", code: "BAD_REQUEST" } },
+        { status: 400 },
+      );
+    }
+  } else {
+    try {
+      ({ scope: targetScope } = await resolveScope(userId));
+    } catch (error) {
+      if (isNotFound(error)) {
+        return NextResponse.json(
+          { error: { message: "No scope configured", code: "BAD_REQUEST" } },
+          { status: 400 },
+        );
+      }
+      throw error;
+    }
   }
 
   // Find agent

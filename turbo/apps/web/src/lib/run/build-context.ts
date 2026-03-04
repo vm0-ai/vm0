@@ -26,7 +26,7 @@ import {
   type ConversationResolution,
 } from "./resolvers";
 import { expandEnvironmentFromCompose } from "./environment";
-import { getUserScopeByClerkId } from "../scope/scope-service";
+import { getDefaultScope } from "../scope/scope-member-service";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
@@ -169,7 +169,7 @@ interface ModelProviderCredentialResult {
  * For providers with environment mapping (e.g., moonshot), resolves all env vars
  */
 async function resolveModelProviderCredential(
-  userId: string,
+  scopeId: string,
   framework: string,
   hasExplicitModelProviderConfig: boolean,
   existingCredentials: Record<string, string> | undefined,
@@ -185,14 +185,9 @@ async function resolveModelProviderCredential(
     return { credentials, injectedEnvVars: undefined };
   }
 
-  const userScope = await getUserScopeByClerkId(userId);
-  if (!userScope) {
-    return { credentials, injectedEnvVars: undefined };
-  }
-
   // Resolve model provider type (explicit or default)
   const providerType = await resolveProviderType(
-    userScope.id,
+    scopeId,
     framework as ModelProviderFramework,
     explicitModelProvider,
   );
@@ -208,7 +203,7 @@ async function resolveModelProviderCredential(
 
   // Get selected model from default provider if available
   const defaultProvider = await getDefaultModelProvider(
-    userScope.id,
+    scopeId,
     framework as ModelProviderFramework,
   );
   const selectedModel = defaultProvider?.selectedModel ?? undefined;
@@ -235,7 +230,7 @@ async function resolveModelProviderCredential(
 
     // Fetch all model-provider credentials by name
     const allCredentialValues = await getSecretValues(
-      userScope.id,
+      scopeId,
       "model-provider",
     );
     const credentialsMap: Record<string, string> = {};
@@ -283,7 +278,7 @@ async function resolveModelProviderCredential(
   }
 
   const credentialValue = await getSecretValue(
-    userScope.id,
+    scopeId,
     credentialName,
     "model-provider",
   );
@@ -320,7 +315,7 @@ async function resolveModelProviderCredential(
  */
 async function refreshConnectorAccessToken(
   connectorType: string,
-  userId: string,
+  scopeId: string,
   connectorSecrets: Record<string, string>,
 ): Promise<string | null> {
   const handler =
@@ -357,10 +352,10 @@ async function refreshConnectorAccessToken(
     );
 
     // Persist new tokens to database
-    await upsertConnectorSecret(userId, accessTokenSecret, result.accessToken);
+    await upsertConnectorSecret(scopeId, accessTokenSecret, result.accessToken);
     if (result.refreshToken) {
       await upsertConnectorSecret(
-        userId,
+        scopeId,
         refreshTokenSecret,
         result.refreshToken,
       );
@@ -394,32 +389,24 @@ interface ConnectorCredentialResult {
  * Resolve and inject connector credentials if any connectors are connected.
  * For each connected connector, resolves its environmentMapping to produce
  * environment variables (e.g., GH_TOKEN, GITHUB_TOKEN for GitHub connector).
- *
- * Resolves scope once and queries both connectors and secrets directly,
- * avoiding redundant getUserScopeByClerkId calls.
  */
 async function resolveConnectorCredentials(
-  userId: string,
+  scopeId: string,
   existingCredentials: Record<string, string> | undefined,
 ): Promise<ConnectorCredentialResult> {
   let credentials = existingCredentials;
-
-  const userScope = await getUserScopeByClerkId(userId);
-  if (!userScope) {
-    return { credentials, injectedEnvVars: undefined };
-  }
 
   // Query connected connectors directly (only need the type for environmentMapping)
   const userConnectors = await globalThis.services.db
     .select({ type: connectors.type })
     .from(connectors)
-    .where(eq(connectors.scopeId, userScope.id));
+    .where(eq(connectors.scopeId, scopeId));
 
   if (userConnectors.length === 0) {
     return { credentials, injectedEnvVars: undefined };
   }
 
-  const connectorSecrets = await getSecretValues(userScope.id, "connector");
+  const connectorSecrets = await getSecretValues(scopeId, "connector");
   if (Object.keys(connectorSecrets).length === 0) {
     return { credentials, injectedEnvVars: undefined };
   }
@@ -438,7 +425,7 @@ async function resolveConnectorCredentials(
     if (handler?.refreshToken) {
       await refreshConnectorAccessToken(
         connectorType.data,
-        userId,
+        scopeId,
         connectorSecrets,
       );
     }
@@ -473,7 +460,7 @@ async function resolveConnectorCredentials(
  * Fetch credentials referenced in compose environment
  */
 async function fetchReferencedCredentials(
-  userId: string,
+  scopeId: string,
   environment: Record<string, string> | undefined,
 ): Promise<Record<string, string> | undefined> {
   if (!environment) {
@@ -493,15 +480,10 @@ async function fetchReferencedCredentials(
   ];
   log.debug(`Secrets referenced in environment: ${referencedNames.join(", ")}`);
 
-  const userScope = await getUserScopeByClerkId(userId);
-  if (!userScope) {
-    return undefined;
-  }
-
   // Only fetch user secrets for variable expansion (model-provider secrets are isolated)
-  const userSecrets = await getSecretValues(userScope.id, "user");
+  const userSecrets = await getSecretValues(scopeId, "user");
   log.debug(
-    `Fetched ${Object.keys(userSecrets).length} user secret(s) from scope ${userScope.slug}`,
+    `Fetched ${Object.keys(userSecrets).length} user secret(s) from scope ${scopeId}`,
   );
   return userSecrets;
 }
@@ -614,23 +596,16 @@ function mergeConnectorSecretsForReferences(
  * @returns Merged variables (CLI takes precedence)
  */
 async function fetchAndMergeVariables(
-  userId: string,
+  scopeId: string,
   cliVars: Record<string, string> | undefined,
-  scopeId?: string,
 ): Promise<Record<string, string> | undefined> {
-  const userScope = scopeId ? null : await getUserScopeByClerkId(userId);
-  const resolvedScopeId = scopeId ?? userScope?.id;
-  if (!resolvedScopeId) {
-    return cliVars;
-  }
-
-  const storedVars = await getVariableValues(resolvedScopeId);
+  const storedVars = await getVariableValues(scopeId);
   if (Object.keys(storedVars).length === 0) {
     return cliVars;
   }
 
   log.debug(
-    `Fetched ${Object.keys(storedVars).length} stored variable(s) from scope ${userScope?.slug ?? resolvedScopeId}`,
+    `Fetched ${Object.keys(storedVars).length} stored variable(s) from scope ${scopeId}`,
   );
 
   // Merge: CLI vars override stored vars
@@ -672,8 +647,8 @@ interface BuildContextParams {
   checkEnv?: boolean;
   // API start time for E2E timing metrics
   apiStartTime?: number;
-  // Caller-resolved scope ID for variable resolution (org-aware).
-  // When provided, used instead of getUserScopeByClerkId fallback.
+  // Caller-resolved scope ID for credential/variable resolution.
+  // When not provided, resolved via getDefaultScope fallback.
   scopeId?: string;
 }
 
@@ -730,7 +705,7 @@ async function loadAgentComposeForNewRun(
  * Extracted from buildExecutionContext to reduce complexity.
  */
 async function resolveCredentialsAndEnvironment(
-  userId: string,
+  scopeId: string,
   agentCompose: unknown,
   firstAgent:
     | { environment?: Record<string, string>; framework?: string }
@@ -740,7 +715,7 @@ async function resolveCredentialsAndEnvironment(
   modelProvider: string | undefined,
   runId: string,
   checkEnv: boolean | undefined,
-  scopeId?: string,
+  userId: string,
 ): Promise<{
   secrets: Record<string, string> | undefined;
   credentials: Record<string, string> | undefined;
@@ -757,7 +732,7 @@ async function resolveCredentialsAndEnvironment(
     (async () => {
       // Fetch secrets/credentials referenced in environment
       const dbSecrets = await fetchReferencedCredentials(
-        userId,
+        scopeId,
         firstAgent?.environment,
       );
 
@@ -768,7 +743,7 @@ async function resolveCredentialsAndEnvironment(
       let credentials: Record<string, string> | undefined = dbSecrets;
 
       const modelProviderResult = await resolveModelProviderCredential(
-        userId,
+        scopeId,
         framework,
         hasExplicitModelProviderConfig,
         credentials,
@@ -779,7 +754,7 @@ async function resolveCredentialsAndEnvironment(
 
       // Resolve connector credentials (GH_TOKEN, GITHUB_TOKEN, etc.)
       const connectorResult = await resolveConnectorCredentials(
-        userId,
+        scopeId,
         credentials,
       );
       credentials = connectorResult.credentials;
@@ -795,7 +770,7 @@ async function resolveCredentialsAndEnvironment(
 
       return { secrets, credentials, modelProviderEnvVars };
     })(),
-    fetchAndMergeVariables(userId, vars, scopeId),
+    fetchAndMergeVariables(scopeId, vars),
   ]);
 
   const { secrets, credentials } = credentialChainResult;
@@ -834,6 +809,11 @@ async function resolveCredentialsAndEnvironment(
  * @param params Unified run parameters
  * @returns Execution context for executors
  */
+async function resolveScopeId(params: BuildContextParams): Promise<string> {
+  if (params.scopeId) return params.scopeId;
+  return (await getDefaultScope(params.userId)).scope.id;
+}
+
 export async function buildExecutionContext(
   params: BuildContextParams,
 ): Promise<ExecutionContext> {
@@ -913,6 +893,9 @@ export async function buildExecutionContext(
     throw notFound("Agent compose could not be loaded");
   }
 
+  // Resolve scope ID once for all credential/variable resolution
+  const scopeId = await resolveScopeId(params);
+
   // Step 4: Fetch secrets/credentials from user's scope and merge with CLI secrets
   // Extract compose structure
   const compose = agentCompose as {
@@ -931,7 +914,7 @@ export async function buildExecutionContext(
     credentials: resolvedCredentials,
     environment,
   } = await resolveCredentialsAndEnvironment(
-    params.userId,
+    scopeId,
     agentCompose,
     firstAgent,
     vars,
@@ -939,7 +922,7 @@ export async function buildExecutionContext(
     params.modelProvider,
     params.runId,
     params.checkEnv,
-    params.scopeId,
+    params.userId,
   );
   secrets = resolvedSecrets;
 

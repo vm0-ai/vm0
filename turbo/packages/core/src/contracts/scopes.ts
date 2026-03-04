@@ -5,12 +5,6 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 /**
- * Scope type enum
- */
-export const scopeTypeSchema = z.enum(["personal", "organization"]);
-export type ScopeTypeContract = z.infer<typeof scopeTypeSchema>;
-
-/**
  * Scope slug validation
  * - 3-64 characters (or 1-2 for single/double char slugs)
  * - lowercase letters, numbers, and hyphens only
@@ -32,7 +26,6 @@ export const scopeSlugSchema = z
 export const scopeResponseSchema = z.object({
   id: z.string().uuid(),
   slug: z.string(),
-  type: scopeTypeSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
 });

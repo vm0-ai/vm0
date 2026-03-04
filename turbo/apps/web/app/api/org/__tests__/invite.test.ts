@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { POST as createOrgRoute } from "../route";
 import { POST } from "../invite/route";
 import { POST as switchScopeRoute } from "../../scope/use/route";
+import { GET as listScopesRoute } from "../../scope/list/route";
 import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
@@ -93,5 +94,40 @@ describe("POST /api/org/invite - Invite Member", () => {
 
     const inviteData = await inviteRes.json();
     expect(inviteData.message).toContain("new-member@example.com");
+  });
+
+  it("should create scope_members record when invitee has existing account", async () => {
+    const user = await context.setupUser();
+    const { token, slug } = await createOrgAndGetToken(user.userId);
+
+    const inviteReq = createTestRequest(
+      "http://localhost:3000/api/org/invite",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: "existing-user@example.com" }),
+      },
+    );
+    const inviteRes = await POST(inviteReq);
+    expect(inviteRes.status).toBe(200);
+
+    // Verify scope_members record was created for the invitee
+    // by listing scopes as the invited user — they should see the org scope.
+    // The Clerk mock maps "existing-user@example.com" to userId "user_existing-user"
+    mockClerk({ userId: "user_existing-user" });
+
+    const listReq = createTestRequest("http://localhost:3000/api/scope/list");
+    const listRes = await listScopesRoute(listReq);
+    expect(listRes.status).toBe(200);
+
+    const listData = await listRes.json();
+    const orgScope = listData.scopes.find(
+      (s: { slug: string }) => s.slug === slug,
+    );
+    expect(orgScope).toBeDefined();
+    expect(orgScope.role).toBe("member");
   });
 });

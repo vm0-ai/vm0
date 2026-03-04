@@ -36,7 +36,7 @@ describe("GET /api/scope/list - Scope List", () => {
     expect(data.scopes.length).toBeGreaterThanOrEqual(1);
 
     const personal = data.scopes.find(
-      (s: { type: string }) => s.type === "personal",
+      (s: { slug: string; role: string }) => s.role === "admin",
     );
     expect(personal).toBeDefined();
   });
@@ -68,14 +68,37 @@ describe("GET /api/scope/list - Scope List", () => {
     expect(data.scopes.length).toBeGreaterThanOrEqual(2);
 
     const personal = data.scopes.find(
-      (s: { type: string }) => s.type === "personal",
+      (s: { slug: string; role: string }) => s.role === "admin",
     );
     expect(personal).toBeDefined();
 
     const org = data.scopes.find(
-      (s: { type: string }) => s.type === "organization",
+      (s: { slug: string; role: string }) => s.slug === slug,
     );
     expect(org).toBeDefined();
     expect(org.slug).toBe(slug);
+  });
+
+  it("should only return scopes where user has scope_members record", async () => {
+    // User A creates a scope
+    const userA = await context.setupUser({ prefix: "user-a" });
+
+    // User B creates a separate scope
+    await context.setupUser({ prefix: "user-b" });
+
+    // List scopes for User B — should NOT include User A's scope
+    const listReq = createTestRequest("http://localhost:3000/api/scope/list");
+    const listRes = await GET(listReq);
+    expect(listRes.status).toBe(200);
+
+    const data = await listRes.json();
+
+    // User B should only see their own scope, not User A's
+    const slugs = data.scopes.map((s: { slug: string }) => s.slug);
+    expect(slugs).not.toContain(
+      expect.stringContaining(userA.userId.replace("user-a-", "scope-")),
+    );
+    expect(data.scopes.length).toBe(1);
+    expect(data.scopes[0].role).toBe("admin");
   });
 });

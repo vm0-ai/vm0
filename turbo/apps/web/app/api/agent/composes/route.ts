@@ -22,7 +22,6 @@ import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
-import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
@@ -41,38 +40,13 @@ const router = tsr.router(composesMainContract, {
       };
     }
 
-    // Resolve scope: use provided scope or fall back to user's default scope
-    let scopeId: string;
-    if (query.scope) {
-      const scope = await getScopeBySlug(query.scope);
-      if (!scope) {
-        return {
-          status: 400 as const,
-          body: {
-            error: {
-              message: `Scope not found: ${query.scope}`,
-              code: "BAD_REQUEST",
-            },
-          },
-        };
-      }
-      scopeId = scope.id;
-    } else {
-      const userScope = await resolveScope(userId, headers.authorization);
-      if (!userScope) {
-        return {
-          status: 400 as const,
-          body: {
-            error: {
-              message:
-                "Please set up your scope first. Login again with: vm0 login",
-              code: "BAD_REQUEST",
-            },
-          },
-        };
-      }
-      scopeId = userScope.id;
-    }
+    // Resolve scope: use ?scope= slug, vm0_org_* token, or default scope
+    const { scope: resolvedScope } = await resolveScope(
+      userId,
+      headers.authorization,
+      query.scope,
+    );
+    const scopeId = resolvedScope.id;
 
     // JOIN compose + version in a single query
     const [result] = await globalThis.services.db
@@ -264,19 +238,10 @@ const router = tsr.router(composesMainContract, {
     const versionId = computeComposeVersionId(resolvedContent);
 
     // Get user's scope (required for compose creation)
-    const userScope = await resolveScope(userId, headers.authorization);
-    if (!userScope) {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            message:
-              "Please set up your scope first. Login again with: vm0 login",
-            code: "BAD_REQUEST",
-          },
-        },
-      };
-    }
+    const { scope: userScope } = await resolveScope(
+      userId,
+      headers.authorization,
+    );
 
     // Check compose and version existence in parallel
     const [existingComposes, existingVersions] = await Promise.all([

@@ -47,7 +47,6 @@ describe("scope use command", () => {
           scope: {
             id: "scope-1",
             slug: "my-org",
-            type: "organization",
             createdAt: "2025-01-01T00:00:00Z",
             updatedAt: "2025-01-01T00:00:00Z",
           },
@@ -61,14 +60,13 @@ describe("scope use command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("my-org");
-    expect(logCalls).toContain("organization");
   });
 
   it("should switch to personal scope with --personal flag", async () => {
     await useCommand.parseAsync(["node", "cli", "--personal"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("personal scope");
+    expect(logCalls).toContain("default scope");
   });
 
   it("should require slug argument without --personal", async () => {

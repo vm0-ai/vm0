@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { initContract, authHeadersSchema } from "./base";
 import { apiErrorSchema } from "./errors";
-import { scopeTypeSchema, scopeResponseSchema } from "./scopes";
+import { scopeResponseSchema } from "./scopes";
 
 const c = initContract();
 
@@ -10,8 +10,7 @@ const c = initContract();
  */
 export const scopeListItemSchema = z.object({
   slug: z.string(),
-  type: scopeTypeSchema,
-  role: z.string().optional(),
+  role: z.string(),
 });
 export type ScopeListItem = z.infer<typeof scopeListItemSchema>;
 

@@ -2,7 +2,6 @@ import { eq, and } from "drizzle-orm";
 import { variables } from "../../db/schema/variable";
 import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
-import { getUserScopeByClerkId } from "../scope/scope-service";
 
 const log = logger("service:variable");
 
@@ -40,16 +39,9 @@ interface VariableInfo {
 }
 
 /**
- * List all variables for a user's scope (includes values)
+ * List all variables for a scope (includes values)
  */
-export async function listVariables(
-  clerkUserId: string,
-): Promise<VariableInfo[]> {
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    return [];
-  }
-
+export async function listVariables(scopeId: string): Promise<VariableInfo[]> {
   const result = await globalThis.services.db
     .select({
       id: variables.id,
@@ -60,24 +52,19 @@ export async function listVariables(
       updatedAt: variables.updatedAt,
     })
     .from(variables)
-    .where(eq(variables.scopeId, scope.id))
+    .where(eq(variables.scopeId, scopeId))
     .orderBy(variables.name);
 
   return result;
 }
 
 /**
- * Get a variable by name for a user's scope (includes value)
+ * Get a variable by name for a scope (includes value)
  */
 export async function getVariable(
-  clerkUserId: string,
+  scopeId: string,
   name: string,
 ): Promise<VariableInfo | null> {
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    return null;
-  }
-
   const result = await globalThis.services.db
     .select({
       id: variables.id,
@@ -88,7 +75,7 @@ export async function getVariable(
       updatedAt: variables.updatedAt,
     })
     .from(variables)
-    .where(and(eq(variables.scopeId, scope.id), eq(variables.name, name)))
+    .where(and(eq(variables.scopeId, scopeId), eq(variables.name, name)))
     .limit(1);
 
   if (!result[0]) {
@@ -125,27 +112,21 @@ export async function getVariableValues(
  * Create or update a variable (upsert)
  */
 export async function setVariable(
-  clerkUserId: string,
+  scopeId: string,
+  userId: string,
   name: string,
   value: string,
   description?: string,
 ): Promise<VariableInfo> {
   validateVariableName(name);
 
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    throw badRequest(
-      "You need to configure a scope first. Run `vm0 scope create` to set up your scope.",
-    );
-  }
-
-  log.debug("setting variable", { scopeId: scope.id, name });
+  log.debug("setting variable", { scopeId, name });
 
   // Check if variable exists
   const existing = await globalThis.services.db
     .select({ id: variables.id })
     .from(variables)
-    .where(and(eq(variables.scopeId, scope.id), eq(variables.name, name)))
+    .where(and(eq(variables.scopeId, scopeId), eq(variables.name, name)))
     .limit(1);
 
   if (existing[0]) {
@@ -175,10 +156,11 @@ export async function setVariable(
   const [created] = await globalThis.services.db
     .insert(variables)
     .values({
-      scopeId: scope.id,
+      scopeId,
       name,
       value,
       description: description ?? null,
+      userId,
     })
     .returning({
       id: variables.id,
@@ -197,19 +179,14 @@ export async function setVariable(
  * Delete a variable by name
  */
 export async function deleteVariable(
-  clerkUserId: string,
+  scopeId: string,
   name: string,
 ): Promise<void> {
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    throw notFound("Variable not found");
-  }
-
   // Check if this variable exists
   const [variable] = await globalThis.services.db
     .select({ id: variables.id })
     .from(variables)
-    .where(and(eq(variables.scopeId, scope.id), eq(variables.name, name)))
+    .where(and(eq(variables.scopeId, scopeId), eq(variables.name, name)))
     .limit(1);
 
   if (!variable) {
@@ -220,5 +197,5 @@ export async function deleteVariable(
     .delete(variables)
     .where(eq(variables.id, variable.id));
 
-  log.debug("variable deleted", { scopeId: scope.id, name });
+  log.debug("variable deleted", { scopeId, name });
 }

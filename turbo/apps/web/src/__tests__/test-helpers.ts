@@ -48,6 +48,7 @@ import { slackUserLinks } from "../db/schema/slack-user-link";
 import { agentComposes } from "../db/schema/agent-compose";
 import { connectors } from "../db/schema/connector";
 import { scopes } from "../db/schema/scope";
+import { scopeMembers } from "../db/schema/scope-member";
 import { encryptCredentialValue } from "../lib/crypto/secrets-encryption";
 import { env } from "../env";
 
@@ -525,6 +526,12 @@ export function testContext(): TestContext {
         throw new Error("Failed to create scope for installation");
       }
 
+      await globalThis.services.db.insert(scopeMembers).values({
+        scopeId: scopeData.id,
+        userId: adminUserId,
+        role: "admin",
+      });
+
       const [compose] = await globalThis.services.db
         .insert(agentComposes)
         .values({
@@ -623,6 +630,12 @@ export function testContext(): TestContext {
     if (!scopeData) {
       throw new Error("Failed to create scope");
     }
+
+    await globalThis.services.db.insert(scopeMembers).values({
+      scopeId: scopeData.id,
+      userId: vm0UserId,
+      role: "admin",
+    });
 
     // Create a compose for this user
     const [compose] = await globalThis.services.db

@@ -75,7 +75,7 @@ describe("POST /api/scope/use - Scope Use", () => {
     const listData = await listRes.json();
 
     const personal = listData.scopes.find(
-      (s: { type: string }) => s.type === "personal",
+      (s: { role: string }) => s.role === "admin",
     );
     expect(personal).toBeDefined();
 
@@ -89,7 +89,6 @@ describe("POST /api/scope/use - Scope Use", () => {
     expect(useRes.status).toBe(200);
 
     const data = await useRes.json();
-    expect(data.scope.type).toBe("personal");
     expect(data.token).toBe("");
     expect(data.expiresAt).toBe("");
   });

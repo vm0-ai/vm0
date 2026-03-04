@@ -12,6 +12,7 @@ import { eq, sql as sqlTag } from "drizzle-orm";
 import postgres from "postgres";
 
 import { scopes } from "../src/db/schema/scope";
+import { scopeMembers } from "../src/db/schema/scope-member";
 import { users } from "../src/db/schema/user";
 import {
   SELF_HOSTED_USER_ID,
@@ -59,6 +60,18 @@ async function main() {
         .where(eq(scopes.slug, SELF_HOSTED_SCOPE_SLUG))
         .limit(1);
       scopeId = existingScope?.id;
+    }
+
+    // Create scope_members record for the default user
+    if (scopeId) {
+      await db
+        .insert(scopeMembers)
+        .values({
+          scopeId,
+          userId: SELF_HOSTED_USER_ID,
+          role: "owner",
+        })
+        .onConflictDoNothing();
     }
 
     // Create the default user with the well-known UUID

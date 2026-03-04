@@ -12,7 +12,6 @@ import { secrets } from "../../db/schema/secret";
 import { decryptCredentialValue } from "../crypto";
 import { badRequest, conflict, notFound } from "../errors";
 import { logger } from "../logger";
-import { getUserScopeByClerkId } from "../scope/scope-service";
 import { upsertSecretByScope } from "../secret/secret-service";
 import {
   findOrCreateBotUser,
@@ -39,19 +38,15 @@ const COMPUTER_SECRETS = [
  * and its 4 secrets (AUTHTOKEN, TOKEN, ENDPOINT, DOMAIN).
  */
 export async function createComputerConnector(
-  clerkUserId: string,
+  scopeId: string,
+  userId: string,
 ): Promise<ComputerConnectorCreateResponse> {
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    throw notFound("User scope not found");
-  }
-
   // Check for existing connector
   const [existing] = await globalThis.services.db
     .select({ id: connectors.id })
     .from(connectors)
     .where(
-      and(eq(connectors.scopeId, scope.id), eq(connectors.type, "computer")),
+      and(eq(connectors.scopeId, scopeId), eq(connectors.type, "computer")),
     )
     .limit(1);
 
@@ -67,11 +62,11 @@ export async function createComputerConnector(
 
   // Generate unique subdomain name for this user
   // Truncate scope ID to keep subdomain short (ngrok has length limits)
-  const scopeIdShort = scope.id.substring(0, 8);
+  const scopeIdShort = scopeId.substring(0, 8);
   const subdomainName = `vm0-user-${scopeIdShort}`;
-  const endpointPrefix = `vm0-user-${scope.id}`;
+  const endpointPrefix = `vm0-user-${scopeId}`;
 
-  const botUserName = `vm0-user-${scope.id}`;
+  const botUserName = `vm0-user-${scopeId}`;
 
   // Provision ngrok resources
   const botUser = await findOrCreateBotUser(apiKey, botUserName);
@@ -142,7 +137,8 @@ export async function createComputerConnector(
   const [connectorRow] = await db
     .insert(connectors)
     .values({
-      scopeId: scope.id,
+      scopeId,
+      userId,
       type: "computer",
       authMethod: "api",
       externalId: botUser.id,
@@ -159,21 +155,21 @@ export async function createComputerConnector(
   // Store secrets (ngrok token is one-time use, returned to client only)
   await Promise.all([
     upsertSecretByScope(
-      scope.id,
+      scopeId,
       "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
       bridgeToken,
       "connector",
       "Computer connector: COMPUTER_CONNECTOR_BRIDGE_TOKEN",
     ),
     upsertSecretByScope(
-      scope.id,
+      scopeId,
       "COMPUTER_CONNECTOR_DOMAIN_ID",
       reservedDomain.id,
       "connector",
       "Computer connector: COMPUTER_CONNECTOR_DOMAIN_ID",
     ),
     upsertSecretByScope(
-      scope.id,
+      scopeId,
       "COMPUTER_CONNECTOR_DOMAIN",
       domain,
       "connector",
@@ -218,14 +214,7 @@ async function safeDeleteNgrokResource(
 /**
  * Delete the computer connector and revoke ngrok credentials.
  */
-export async function deleteComputerConnector(
-  clerkUserId: string,
-): Promise<void> {
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    throw notFound("Computer connector not found");
-  }
-
+export async function deleteComputerConnector(scopeId: string): Promise<void> {
   const db = globalThis.services.db;
 
   const [connector] = await db
@@ -237,7 +226,7 @@ export async function deleteComputerConnector(
     })
     .from(connectors)
     .where(
-      and(eq(connectors.scopeId, scope.id), eq(connectors.type, "computer")),
+      and(eq(connectors.scopeId, scopeId), eq(connectors.type, "computer")),
     )
     .limit(1);
 
@@ -271,7 +260,7 @@ export async function deleteComputerConnector(
       .from(secrets)
       .where(
         and(
-          eq(secrets.scopeId, scope.id),
+          eq(secrets.scopeId, scopeId),
           eq(secrets.name, "COMPUTER_CONNECTOR_DOMAIN_ID"),
           eq(secrets.type, "connector"),
         ),
@@ -302,12 +291,12 @@ export async function deleteComputerConnector(
       .delete(secrets)
       .where(
         and(
-          eq(secrets.scopeId, scope.id),
+          eq(secrets.scopeId, scopeId),
           eq(secrets.name, secretName),
           eq(secrets.type, "connector"),
         ),
       );
   }
 
-  log.debug("Computer connector deleted", { scopeId: scope.id });
+  log.debug("Computer connector deleted", { scopeId });
 }

@@ -1,4 +1,5 @@
 import { eq, and } from "drizzle-orm";
+import { scopeMembers } from "../../db/schema/scope-member";
 import { scopes } from "../../db/schema/scope";
 import { badRequest } from "../errors";
 
@@ -21,40 +22,50 @@ function isValidTimezone(timezone: string): boolean {
 }
 
 /**
- * Get user preferences by Clerk user ID
- * Timezone is stored on the user's personal scope
+ * Get user preferences from scope_members (personal scope membership)
  */
 export async function getUserPreferences(
-  clerkUserId: string,
+  userId: string,
 ): Promise<UserPreferences> {
-  const [scope] = await globalThis.services.db
+  const [result] = await globalThis.services.db
     .select({
-      timezone: scopes.timezone,
-      notifyEmail: scopes.notifyEmail,
-      notifySlack: scopes.notifySlack,
+      timezone: scopeMembers.timezone,
+      notifyEmail: scopeMembers.notifyEmail,
+      notifySlack: scopeMembers.notifySlack,
     })
-    .from(scopes)
-    .where(and(eq(scopes.ownerId, clerkUserId), eq(scopes.type, "personal")));
+    .from(scopeMembers)
+    .innerJoin(scopes, eq(scopeMembers.scopeId, scopes.id))
+    .where(and(eq(scopeMembers.userId, userId), eq(scopes.type, "personal")));
 
   return {
-    timezone: scope?.timezone ?? null,
-    notifyEmail: scope?.notifyEmail ?? false,
-    notifySlack: scope?.notifySlack ?? true,
+    timezone: result?.timezone ?? null,
+    notifyEmail: result?.notifyEmail ?? false,
+    notifySlack: result?.notifySlack ?? true,
   };
 }
 
 /**
- * Update user preferences by Clerk user ID
- * Timezone is stored on the user's personal scope
+ * Update user preferences on scope_members (personal scope membership)
  */
 export async function updateUserPreferences(
-  clerkUserId: string,
+  userId: string,
   prefs: { timezone?: string; notifyEmail?: boolean; notifySlack?: boolean },
 ): Promise<UserPreferences> {
   if (prefs.timezone !== undefined) {
     if (!isValidTimezone(prefs.timezone)) {
       throw badRequest(`Invalid timezone: ${prefs.timezone}`);
     }
+  }
+
+  // Find the member record for user's personal scope
+  const [memberRecord] = await globalThis.services.db
+    .select({ id: scopeMembers.id })
+    .from(scopeMembers)
+    .innerJoin(scopes, eq(scopeMembers.scopeId, scopes.id))
+    .where(and(eq(scopeMembers.userId, userId), eq(scopes.type, "personal")));
+
+  if (!memberRecord) {
+    throw badRequest("User has no personal scope membership");
   }
 
   const setValues: Record<string, unknown> = { updatedAt: new Date() };
@@ -69,13 +80,13 @@ export async function updateUserPreferences(
   }
 
   const [updated] = await globalThis.services.db
-    .update(scopes)
+    .update(scopeMembers)
     .set(setValues)
-    .where(and(eq(scopes.ownerId, clerkUserId), eq(scopes.type, "personal")))
+    .where(eq(scopeMembers.id, memberRecord.id))
     .returning({
-      timezone: scopes.timezone,
-      notifyEmail: scopes.notifyEmail,
-      notifySlack: scopes.notifySlack,
+      timezone: scopeMembers.timezone,
+      notifyEmail: scopeMembers.notifyEmail,
+      notifySlack: scopeMembers.notifySlack,
     });
 
   return {
@@ -89,22 +100,31 @@ export async function updateUserPreferences(
  * Set user timezone if not already set (for auto-detection on first login)
  */
 export async function setTimezoneIfNotSet(
-  clerkUserId: string,
+  userId: string,
   timezone: string,
 ): Promise<void> {
   if (!isValidTimezone(timezone)) {
     return; // Silently ignore invalid timezone during auto-detection
   }
 
-  const { timezone: existingTimezone } = await getUserPreferences(clerkUserId);
+  const { timezone: existingTimezone } = await getUserPreferences(userId);
 
   if (existingTimezone === null) {
-    await globalThis.services.db
-      .update(scopes)
-      .set({
-        timezone,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(scopes.ownerId, clerkUserId), eq(scopes.type, "personal")));
+    // Find the member record for user's personal scope
+    const [memberRecord] = await globalThis.services.db
+      .select({ id: scopeMembers.id })
+      .from(scopeMembers)
+      .innerJoin(scopes, eq(scopeMembers.scopeId, scopes.id))
+      .where(and(eq(scopeMembers.userId, userId), eq(scopes.type, "personal")));
+
+    if (memberRecord) {
+      await globalThis.services.db
+        .update(scopeMembers)
+        .set({
+          timezone,
+          updatedAt: new Date(),
+        })
+        .where(eq(scopeMembers.id, memberRecord.id));
+    }
   }
 }

@@ -12,7 +12,7 @@ import {
 } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
 import { connectors } from "../../db/schema/connector";
-import { scopes, type ScopeType } from "../../db/schema/scope";
+import { scopes } from "../../db/schema/scope";
 import { decryptSecretsMap } from "../crypto";
 import {
   notFound,
@@ -23,7 +23,6 @@ import {
 } from "../errors";
 import { logger } from "../logger";
 import { createRun } from "../run/run-service";
-import { getUserScopeByClerkId } from "../scope/scope-service";
 import { getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
 import { getUserPreferences } from "../user/user-preferences-service";
@@ -221,7 +220,6 @@ async function verifyComposeOwnership(
 ): Promise<{
   compose: typeof agentComposes.$inferSelect;
   scopeSlug: string;
-  scopeType: ScopeType;
 }> {
   const [compose] = await globalThis.services.db
     .select()
@@ -235,7 +233,7 @@ async function verifyComposeOwnership(
     throw notFound("Agent compose not found or not owned by user");
   }
 
-  // Get scope slug and type for response
+  // Get scope slug for response
   const [scope] = await globalThis.services.db
     .select()
     .from(scopes)
@@ -245,7 +243,6 @@ async function verifyComposeOwnership(
   return {
     compose,
     scopeSlug: scope?.slug ?? "default",
-    scopeType: scope?.type ?? "personal",
   };
 }
 
@@ -254,7 +251,6 @@ async function verifyComposeOwnership(
  */
 async function validateRequiredConfig(
   compose: typeof agentComposes.$inferSelect,
-  userId: string,
 ): Promise<void> {
   if (!compose.headVersionId) return;
 
@@ -268,35 +264,27 @@ async function validateRequiredConfig(
 
   const required = extractRequiredConfiguration(version.content);
 
-  // Fetch platform-managed secrets and vars
-  const userScope = await getUserScopeByClerkId(userId);
-  let platformSecretNames: string[] = [];
-  let platformVarNames: string[] = [];
+  // Fetch platform-managed secrets and vars from compose's scope
+  const platformSecrets = await getSecretValues(compose.scopeId, "user");
+  const platformSecretNames = Object.keys(platformSecrets);
+  log.debug(
+    `Fetched ${platformSecretNames.length} platform secret(s) for validation`,
+  );
 
-  let connectorProvidedNames = new Set<string>();
+  const platformVars = await getVariableValues(compose.scopeId);
+  const platformVarNames = Object.keys(platformVars);
+  log.debug(
+    `Fetched ${platformVarNames.length} platform variable(s) for validation`,
+  );
 
-  if (userScope) {
-    const platformSecrets = await getSecretValues(userScope.id, "user");
-    platformSecretNames = Object.keys(platformSecrets);
-    log.debug(
-      `Fetched ${platformSecretNames.length} platform secret(s) for validation`,
-    );
-
-    const platformVars = await getVariableValues(userScope.id);
-    platformVarNames = Object.keys(platformVars);
-    log.debug(
-      `Fetched ${platformVarNames.length} platform variable(s) for validation`,
-    );
-
-    // Query connected connectors to exclude their provided secrets
-    const userConnectors = await globalThis.services.db
-      .select({ type: connectors.type })
-      .from(connectors)
-      .where(eq(connectors.scopeId, userScope.id));
-    connectorProvidedNames = getConnectorProvidedSecretNames(
-      userConnectors.map((c) => c.type),
-    );
-  }
+  // Query connected connectors to exclude their provided secrets
+  const userConnectors = await globalThis.services.db
+    .select({ type: connectors.type })
+    .from(connectors)
+    .where(eq(connectors.scopeId, compose.scopeId));
+  const connectorProvidedNames = getConnectorProvidedSecretNames(
+    userConnectors.map((c) => c.type),
+  );
 
   const missingSecrets = required.secrets.filter(
     (name) =>
@@ -350,17 +338,10 @@ export async function deploySchedule(
   );
 
   // Verify user owns the compose
-  const { compose, scopeSlug, scopeType } = await verifyComposeOwnership(
+  const { compose, scopeSlug } = await verifyComposeOwnership(
     userId,
     request.composeId,
   );
-
-  // Reject organization-scoped agents (schedules resolve secrets from personal scope)
-  if (scopeType === "organization") {
-    throw badRequest(
-      "Schedules are not supported for organization-scoped agents",
-    );
-  }
 
   // Validate timezone
   if (!isValidTimezone(request.timezone)) {
@@ -395,7 +376,7 @@ export async function deploySchedule(
   }
 
   // Validate required secrets/vars against platform tables
-  await validateRequiredConfig(compose, userId);
+  await validateRequiredConfig(compose);
 
   const { triggerType, nextRunAt } = resolveTrigger(request);
 

@@ -20,10 +20,8 @@ import { listSecrets } from "../../../../src/lib/secret/secret-service";
 import { listVariables } from "../../../../src/lib/variable/variable-service";
 import { listConnectors } from "../../../../src/lib/connector/connector-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
-import {
-  getScopeBySlug,
-  getUserScopeByClerkId,
-} from "../../../../src/lib/scope/scope-service";
+import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
+import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 
 /**
  * GET /api/integrations/github
@@ -118,11 +116,17 @@ export async function GET(request: Request) {
     }
   }
 
+  // Resolve user's scope for resource queries
+  const { scope: userScope } = await resolveScope(
+    userId,
+    authHeader ?? undefined,
+  );
+
   // Get user's existing secrets, vars, connectors
   const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(userId),
-    listVariables(userId),
-    listConnectors(userId),
+    listSecrets(userScope.id),
+    listVariables(userScope.id),
+    listConnectors(userScope.id),
   ]);
 
   const connectorProvided = getConnectorProvidedSecretNames(
@@ -299,15 +303,19 @@ export async function PATCH(request: Request) {
     slashIndex === -1 ? null : body.agentName.slice(0, slashIndex);
 
   // Resolve target scope
-  const targetScope = scopeSlug
-    ? await getScopeBySlug(scopeSlug)
-    : await getUserScopeByClerkId(userId);
-
-  if (!targetScope) {
-    return NextResponse.json(
-      { error: { message: "Scope not found", code: "BAD_REQUEST" } },
-      { status: 400 },
-    );
+  let targetScopeId: string;
+  if (scopeSlug) {
+    const targetScope = await getScopeBySlug(scopeSlug);
+    if (!targetScope) {
+      return NextResponse.json(
+        { error: { message: "Scope not found", code: "BAD_REQUEST" } },
+        { status: 400 },
+      );
+    }
+    targetScopeId = targetScope.id;
+  } else {
+    const { scope } = await resolveScope(userId, authHeader ?? undefined);
+    targetScopeId = scope.id;
   }
 
   // Find agent compose by name in target scope
@@ -316,7 +324,7 @@ export async function PATCH(request: Request) {
     .from(agentComposes)
     .where(
       and(
-        eq(agentComposes.scopeId, targetScope.id),
+        eq(agentComposes.scopeId, targetScopeId),
         eq(agentComposes.name, agentName),
       ),
     )

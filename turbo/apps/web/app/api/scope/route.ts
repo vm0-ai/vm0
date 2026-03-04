@@ -32,24 +32,27 @@ const router = tsr.router(scopeContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const scope = await resolveScope(userId, headers.authorization);
-    if (!scope) {
-      return createErrorResponse(
-        "NOT_FOUND",
-        "No scope configured. Set your scope with: vm0 scope set <slug>",
-      );
-    }
+    try {
+      const { scope } = await resolveScope(userId, headers.authorization);
 
-    return {
-      status: 200 as const,
-      body: {
-        id: scope.id,
-        slug: scope.slug,
-        type: scope.type,
-        createdAt: scope.createdAt.toISOString(),
-        updatedAt: scope.updatedAt.toISOString(),
-      },
-    };
+      return {
+        status: 200 as const,
+        body: {
+          id: scope.id,
+          slug: scope.slug,
+          createdAt: scope.createdAt.toISOString(),
+          updatedAt: scope.updatedAt.toISOString(),
+        },
+      };
+    } catch (error) {
+      if (isNotFound(error)) {
+        return createErrorResponse(
+          "NOT_FOUND",
+          "No scope configured. Set your scope with: vm0 scope set <slug>",
+        );
+      }
+      throw error;
+    }
   },
 
   /**
@@ -75,7 +78,6 @@ const router = tsr.router(scopeContract, {
         body: {
           id: scope.id,
           slug: scope.slug,
-          type: scope.type,
           createdAt: scope.createdAt.toISOString(),
           updatedAt: scope.updatedAt.toISOString(),
         },
@@ -116,12 +118,20 @@ const router = tsr.router(scopeContract, {
 
     log.debug("updating scope", { userId, slug, force });
 
-    const existingScope = await resolveScope(userId, headers.authorization);
-    if (!existingScope) {
-      return createErrorResponse(
-        "NOT_FOUND",
-        "No scope configured. Set your scope with: vm0 scope set <slug>",
-      );
+    let existingScope;
+    try {
+      ({ scope: existingScope } = await resolveScope(
+        userId,
+        headers.authorization,
+      ));
+    } catch (error) {
+      if (isNotFound(error)) {
+        return createErrorResponse(
+          "NOT_FOUND",
+          "No scope configured. Set your scope with: vm0 scope set <slug>",
+        );
+      }
+      throw error;
     }
 
     try {
@@ -137,7 +147,6 @@ const router = tsr.router(scopeContract, {
         body: {
           id: scope.id,
           slug: scope.slug,
-          type: scope.type,
           createdAt: scope.createdAt.toISOString(),
           updatedAt: scope.updatedAt.toISOString(),
         },

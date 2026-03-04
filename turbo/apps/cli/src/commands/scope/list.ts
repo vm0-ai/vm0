@@ -16,12 +16,9 @@ export const listCommand = new Command()
       for (const scope of result.scopes) {
         const isCurrent = scope.slug === activeScope;
         const marker = isCurrent ? chalk.green("* ") : "  ";
-        const typeLabel =
-          scope.type === "organization"
-            ? `organization${scope.role ? `, ${scope.role}` : ""}`
-            : "personal";
+        const roleLabel = scope.role ? ` (${scope.role})` : "";
         const currentLabel = isCurrent ? chalk.dim(" ← current") : "";
-        console.log(`${marker}${scope.slug} (${typeLabel})${currentLabel}`);
+        console.log(`${marker}${scope.slug}${roleLabel}${currentLabel}`);
       }
     } catch (error) {
       if (error instanceof Error) {

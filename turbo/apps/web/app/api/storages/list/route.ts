@@ -31,18 +31,10 @@ const router = tsr.router(storagesListContract, {
     const { type: storageType } = query;
 
     // Resolve user's scope
-    const userScope = await resolveScope(userId, headers.authorization);
-    if (!userScope) {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            message: "User scope not found. Please run: vm0 auth login",
-            code: "BAD_REQUEST",
-          },
-        },
-      };
-    }
+    const { scope: userScope } = await resolveScope(
+      userId,
+      headers.authorization,
+    );
 
     log.debug(`Listing ${storageType}s for scope ${userScope.slug}`);
 

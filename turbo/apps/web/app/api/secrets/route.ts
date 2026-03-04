@@ -6,6 +6,7 @@ import {
 import { secretsMainContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
+import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import { listSecrets, setSecret } from "../../../src/lib/secret/secret-service";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest } from "../../../src/lib/errors";
@@ -24,7 +25,8 @@ const router = tsr.router(secretsMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const secrets = await listSecrets(userId);
+    const { scope } = await resolveScope(userId, headers.authorization);
+    const secrets = await listSecrets(scope.id);
 
     return {
       status: 200 as const,
@@ -57,7 +59,14 @@ const router = tsr.router(secretsMainContract, {
     log.debug("setting secret", { userId, name });
 
     try {
-      const secret = await setSecret(userId, name, value, description);
+      const { scope } = await resolveScope(userId, headers.authorization);
+      const secret = await setSecret(
+        scope.id,
+        userId,
+        name,
+        value,
+        description,
+      );
 
       return {
         status: 200 as const,

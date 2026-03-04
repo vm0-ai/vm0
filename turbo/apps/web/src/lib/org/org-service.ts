@@ -1,12 +1,9 @@
 import { clerkClient } from "@clerk/nextjs/server";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { scopes } from "../../db/schema/scope";
+import { scopeMembers } from "../../db/schema/scope-member";
 import { badRequest, forbidden, notFound } from "../errors";
-import {
-  getUserScopeByClerkId,
-  getScopeBySlug,
-  isVm0Admin,
-} from "../scope/scope-service";
+import { getScopeBySlug, isVm0Admin } from "../scope/scope-service";
 import {
   generateOrgAccessToken,
   revokeOrgAccessTokens,
@@ -84,21 +81,30 @@ export async function createOrganization(clerkUserId: string, slug: string) {
     createdBy: clerkUserId,
   });
 
-  // Create local scope
-  const result = await globalThis.services.db
-    .insert(scopes)
-    .values({
-      slug,
-      type: "organization",
-      ownerId: clerkUserId,
-      clerkOrgId: clerkOrg.id,
-    })
-    .returning();
+  // Create local scope + admin membership atomically
+  const scope = await globalThis.services.db.transaction(async (tx) => {
+    const [newScope] = await tx
+      .insert(scopes)
+      .values({
+        slug,
+        type: "organization",
+        ownerId: clerkUserId,
+        clerkOrgId: clerkOrg.id,
+      })
+      .returning();
 
-  const scope = result[0];
-  if (!scope) {
-    throw new Error("Failed to create organization scope");
-  }
+    if (!newScope) {
+      throw new Error("Failed to create organization scope");
+    }
+
+    await tx.insert(scopeMembers).values({
+      scopeId: newScope.id,
+      userId: clerkUserId,
+      role: "admin",
+    });
+
+    return newScope;
+  });
 
   log.debug("Organization created", {
     scopeId: scope.id,
@@ -194,6 +200,21 @@ export async function inviteMember(
     role: "org:member",
   });
 
+  // Resolve invitee's Clerk user ID (if they already have an account)
+  // and create scope_members record eagerly so they have access immediately.
+  const users = await client.users.getUserList({ emailAddress: [email] });
+  if (users.data.length > 0) {
+    const inviteeUserId = users.data[0]!.id;
+    await globalThis.services.db
+      .insert(scopeMembers)
+      .values({
+        scopeId,
+        userId: inviteeUserId,
+        role: "member",
+      })
+      .onConflictDoNothing();
+  }
+
   log.debug("Invitation sent", { scopeId, email });
 }
 
@@ -247,6 +268,16 @@ export async function removeMember(
     userId: targetUserId,
   });
 
+  // Remove from scope_members
+  await globalThis.services.db
+    .delete(scopeMembers)
+    .where(
+      and(
+        eq(scopeMembers.scopeId, scopeId),
+        eq(scopeMembers.userId, targetUserId),
+      ),
+    );
+
   // Instant token revocation
   await revokeOrgAccessTokens(targetUserId, scopeId);
 
@@ -277,6 +308,16 @@ export async function leaveOrganization(
     userId: clerkUserId,
   });
 
+  // Remove from scope_members
+  await globalThis.services.db
+    .delete(scopeMembers)
+    .where(
+      and(
+        eq(scopeMembers.scopeId, scopeId),
+        eq(scopeMembers.userId, clerkUserId),
+      ),
+    );
+
   // Instant token revocation
   await revokeOrgAccessTokens(clerkUserId, scopeId);
 
@@ -286,58 +327,23 @@ export async function leaveOrganization(
 /**
  * Get all scopes accessible to a user (personal + org memberships).
  */
-export async function getUserAccessibleScopes(clerkUserId: string) {
-  const results: Array<{
-    slug: string;
-    type: "personal" | "organization";
-    role?: OrgRole;
-  }> = [];
+export async function getUserAccessibleScopes(
+  clerkUserId: string,
+): Promise<Array<{ slug: string; role: string }>> {
+  // Query all scopes the user is a member of via scope_members
+  const memberScopes = await globalThis.services.db
+    .select({
+      slug: scopes.slug,
+      role: scopeMembers.role,
+    })
+    .from(scopeMembers)
+    .innerJoin(scopes, eq(scopeMembers.scopeId, scopes.id))
+    .where(eq(scopeMembers.userId, clerkUserId));
 
-  // Get personal scope
-  const personalScope = await getUserScopeByClerkId(clerkUserId);
-  if (personalScope) {
-    results.push({
-      slug: personalScope.slug,
-      type: "personal",
-    });
-  }
-
-  // Get org memberships from Clerk
-  const client = await clerkClient();
-  const memberships = await client.users.getOrganizationMembershipList({
-    userId: clerkUserId,
-  });
-
-  if (memberships.data.length === 0) {
-    return results;
-  }
-
-  // Batch-query all org scopes instead of N+1
-  const clerkOrgIds = memberships.data.map((m) => m.organization.id);
-  const orgScopes = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(
-      and(
-        inArray(scopes.clerkOrgId, clerkOrgIds),
-        eq(scopes.type, "organization"),
-      ),
-    );
-
-  const scopeByClerkOrgId = new Map(orgScopes.map((s) => [s.clerkOrgId, s]));
-
-  for (const membership of memberships.data) {
-    const scope = scopeByClerkOrgId.get(membership.organization.id);
-    if (scope) {
-      results.push({
-        slug: scope.slug,
-        type: "organization",
-        role: mapClerkRole(membership.role),
-      });
-    }
-  }
-
-  return results;
+  return memberScopes.map((s) => ({
+    slug: s.slug,
+    role: s.role,
+  }));
 }
 
 /**
@@ -383,6 +389,14 @@ export async function verifyAndActivateScope(
     }
 
     const role = mapClerkRole(membership.role);
+
+    // Lazy-create scope_members record for users who joined via Clerk
+    // but don't yet have a local membership record (e.g. accepted invite)
+    await globalThis.services.db
+      .insert(scopeMembers)
+      .values({ scopeId: scope.id, userId: clerkUserId, role })
+      .onConflictDoNothing();
+
     const { token, expiresAt } = await generateOrgAccessToken(
       clerkUserId,
       scope.id,

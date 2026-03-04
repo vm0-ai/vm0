@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
-import { statusCommand } from "../status";
+import { membersCommand } from "../status";
 import chalk from "chalk";
 
 describe("org status command", () => {
@@ -54,7 +54,7 @@ describe("org status command", () => {
       }),
     );
 
-    await statusCommand.parseAsync(["node", "cli"]);
+    await membersCommand.parseAsync(["node", "cli"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("my-team");
@@ -80,11 +80,11 @@ describe("org status command", () => {
     );
 
     await expect(async () => {
-      await statusCommand.parseAsync(["node", "cli"]);
+      await membersCommand.parseAsync(["node", "cli"]);
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("No active organization scope"),
+      expect.stringContaining("No active scope selected"),
     );
     expect(mockExit).toHaveBeenCalledWith(1);
   });

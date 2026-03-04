@@ -80,7 +80,7 @@ import {
   agentComposeVersions,
 } from "../db/schema/agent-compose";
 import { agentPermissions } from "../db/schema/agent-permission";
-import { scopes, type ScopeType } from "../db/schema/scope";
+import { scopes } from "../db/schema/scope";
 import { conversations } from "../db/schema/conversation";
 import { uniqueId } from "./test-helpers";
 
@@ -2012,39 +2012,6 @@ export async function createTestRunnerJob(
   });
 
   return { runId: run!.id };
-}
-
-/**
- * Create a compose under a specific scope type for testing.
- * Useful for testing scope-based restrictions (e.g., org scope rejection).
- *
- * @param userId - The user ID to own the compose
- * @param scopeType - The scope type ("personal", "organization", "system")
- * @returns The created compose and scope IDs
- */
-export async function createScopedCompose(
-  userId: string,
-  scopeType: ScopeType,
-): Promise<{ composeId: string; scopeId: string }> {
-  const [scope] = await globalThis.services.db
-    .insert(scopes)
-    .values({
-      slug: uniqueId(`test-${scopeType}`),
-      type: scopeType,
-      ownerId: userId,
-    })
-    .returning();
-
-  const [compose] = await globalThis.services.db
-    .insert(agentComposes)
-    .values({
-      userId,
-      scopeId: scope!.id,
-      name: uniqueId(`${scopeType}-agent`),
-    })
-    .returning();
-
-  return { composeId: compose!.id, scopeId: scope!.id };
 }
 
 /**

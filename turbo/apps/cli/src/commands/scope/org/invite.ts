@@ -4,7 +4,7 @@ import { inviteMember } from "../../../lib/api";
 
 export const inviteCommand = new Command()
   .name("invite")
-  .description("Invite a member to the organization")
+  .description("Invite a member to the current scope")
   .requiredOption("--email <email>", "Email address of the member to invite")
   .action(async (options: { email: string }) => {
     try {

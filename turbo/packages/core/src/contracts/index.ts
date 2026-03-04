@@ -157,13 +157,11 @@ export {
 } from "./proxy";
 export {
   scopeContract,
-  scopeTypeSchema,
   scopeSlugSchema,
   scopeResponseSchema,
   createScopeRequestSchema,
   updateScopeRequestSchema,
   type ScopeContract,
-  type ScopeTypeContract,
   type ScopeResponse,
   type CreateScopeRequest,
   type UpdateScopeRequest,

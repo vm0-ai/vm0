@@ -2,6 +2,7 @@ import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { connectorsByTypeContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import {
   getConnector,
   deleteConnector,
@@ -20,7 +21,8 @@ const router = tsr.router(connectorsByTypeContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const connector = await getConnector(userId, params.type);
+    const { scope } = await resolveScope(userId, headers.authorization);
+    const connector = await getConnector(scope.id, params.type);
 
     if (!connector) {
       return createErrorResponse("NOT_FOUND", "Connector not found");
@@ -44,7 +46,8 @@ const router = tsr.router(connectorsByTypeContract, {
     }
 
     try {
-      await deleteConnector(userId, params.type);
+      const { scope } = await resolveScope(userId, headers.authorization);
+      await deleteConnector(scope.id, params.type);
 
       return {
         status: 204 as const,

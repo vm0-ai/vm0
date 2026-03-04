@@ -1,6 +1,7 @@
 import { eq, and, or, ne, desc } from "drizzle-orm";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { agentPermissions } from "../../db/schema/agent-permission";
+import { scopeMembers } from "../../db/schema/scope-member";
 import { scopes } from "../../db/schema/scope";
 import { logger } from "../logger";
 
@@ -22,7 +23,21 @@ export async function canAccessCompose(
   // 1. Owner always has access
   if (compose.userId === userId) return true;
 
-  // 2. Check ACL
+  // 2. Check scope membership (members of the scope can access its agents)
+  const [member] = await globalThis.services.db
+    .select({ id: scopeMembers.id })
+    .from(scopeMembers)
+    .where(
+      and(
+        eq(scopeMembers.scopeId, compose.scopeId),
+        eq(scopeMembers.userId, userId),
+      ),
+    )
+    .limit(1);
+
+  if (member) return true;
+
+  // 3. Check ACL
   const permissionResult = await globalThis.services.db
     .select()
     .from(agentPermissions)

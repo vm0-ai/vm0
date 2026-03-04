@@ -457,9 +457,9 @@ const router = tsr.router(runsMainContract, {
       `Resolved agentComposeVersionId: ${resolved.agentComposeVersionId}`,
     );
 
-    // Resolve scope for variable/secret resolution (supports org scope via auth header).
+    // Resolve scope for variable/secret resolution.
     // The actual variable fetching happens in build-context.ts.
-    const scope = await resolveScope(userId, headers.authorization);
+    const { scope } = await resolveScope(userId, headers.authorization);
 
     // Delegate run creation, validation, and dispatch to createRun()
     try {
@@ -482,7 +482,7 @@ const router = tsr.router(runsMainContract, {
         modelProvider: body.modelProvider,
         checkEnv: body.checkEnv,
         apiStartTime,
-        scopeId: scope?.id,
+        scopeId: scope.id,
       });
 
       log.debug(

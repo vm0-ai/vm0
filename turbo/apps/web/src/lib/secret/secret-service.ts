@@ -4,7 +4,6 @@ import { secrets } from "../../db/schema/secret";
 import { encryptCredentialValue, decryptCredentialValue } from "../crypto";
 import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
-import { getUserScopeByClerkId } from "../scope/scope-service";
 
 const log = logger("service:secret");
 
@@ -42,14 +41,9 @@ interface SecretInfo {
 }
 
 /**
- * List all secrets for a user's scope (metadata only, no values)
+ * List all secrets for a scope (metadata only, no values)
  */
-export async function listSecrets(clerkUserId: string): Promise<SecretInfo[]> {
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    return [];
-  }
-
+export async function listSecrets(scopeId: string): Promise<SecretInfo[]> {
   const result = await globalThis.services.db
     .select({
       id: secrets.id,
@@ -60,7 +54,7 @@ export async function listSecrets(clerkUserId: string): Promise<SecretInfo[]> {
       updatedAt: secrets.updatedAt,
     })
     .from(secrets)
-    .where(eq(secrets.scopeId, scope.id))
+    .where(eq(secrets.scopeId, scopeId))
     .orderBy(secrets.name);
 
   return result.map((row) => ({
@@ -74,14 +68,9 @@ export async function listSecrets(clerkUserId: string): Promise<SecretInfo[]> {
  * Only returns user-type secrets; model-provider secrets are managed via model-provider commands
  */
 export async function getSecret(
-  clerkUserId: string,
+  scopeId: string,
   name: string,
 ): Promise<SecretInfo | null> {
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    return null;
-  }
-
   const result = await globalThis.services.db
     .select({
       id: secrets.id,
@@ -94,7 +83,7 @@ export async function getSecret(
     .from(secrets)
     .where(
       and(
-        eq(secrets.scopeId, scope.id),
+        eq(secrets.scopeId, scopeId),
         eq(secrets.name, name),
         eq(secrets.type, "user"),
       ),
@@ -223,24 +212,18 @@ export async function upsertSecretByScope(
  * Create or update a secret (upsert)
  */
 export async function setSecret(
-  clerkUserId: string,
+  scopeId: string,
+  userId: string,
   name: string,
   value: string,
   description?: string,
 ): Promise<SecretInfo> {
   validateSecretName(name);
 
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    throw badRequest(
-      "You need to configure a scope first. Run `vm0 scope create` to set up your scope.",
-    );
-  }
-
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   const encryptedValue = encryptCredentialValue(value, encryptionKey);
 
-  log.debug("setting secret", { scopeId: scope.id, name });
+  log.debug("setting secret", { scopeId, name });
 
   // Check if user secret exists with same name
   // Note: We only check for user type to allow coexistence with model-provider secrets
@@ -249,7 +232,7 @@ export async function setSecret(
     .from(secrets)
     .where(
       and(
-        eq(secrets.scopeId, scope.id),
+        eq(secrets.scopeId, scopeId),
         eq(secrets.name, name),
         eq(secrets.type, "user"),
       ),
@@ -286,10 +269,11 @@ export async function setSecret(
   const [created] = await globalThis.services.db
     .insert(secrets)
     .values({
-      scopeId: scope.id,
+      scopeId,
       name,
       encryptedValue,
       description: description ?? null,
+      userId,
     })
     .returning({
       id: secrets.id,
@@ -312,21 +296,16 @@ export async function setSecret(
  * Note: Model-provider secrets are managed via model-provider commands
  */
 export async function deleteSecret(
-  clerkUserId: string,
+  scopeId: string,
   name: string,
 ): Promise<void> {
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    throw notFound("Secret not found");
-  }
-
   // Check if this user secret exists
   const [secret] = await globalThis.services.db
     .select({ id: secrets.id })
     .from(secrets)
     .where(
       and(
-        eq(secrets.scopeId, scope.id),
+        eq(secrets.scopeId, scopeId),
         eq(secrets.name, name),
         eq(secrets.type, "user"),
       ),
@@ -339,5 +318,5 @@ export async function deleteSecret(
 
   await globalThis.services.db.delete(secrets).where(eq(secrets.id, secret.id));
 
-  log.debug("secret deleted", { scopeId: scope.id, name });
+  log.debug("secret deleted", { scopeId, name });
 }
