@@ -630,12 +630,21 @@ export function buildAskUserQuestionBlocks(
   questions: AskUserQuestion[],
   pendingId: string,
 ): (Block | KnownBlock)[] {
+  // Slack enforces max 50 blocks per message and 25 elements per actions block.
+  // Cap questions and options to stay well within limits.
+  const MAX_QUESTIONS = 10;
+  const MAX_OPTIONS = 10;
+  const cappedQuestions = questions.slice(0, MAX_QUESTIONS).map((q) => ({
+    ...q,
+    options: q.options?.slice(0, MAX_OPTIONS),
+  }));
+
   // Single question + single-select → buttons submit directly on click
   const directSubmit =
-    questions.length === 1 &&
-    !questions[0]?.multiSelect &&
-    questions[0]?.options &&
-    questions[0].options.length > 0;
+    cappedQuestions.length === 1 &&
+    !cappedQuestions[0]?.multiSelect &&
+    cappedQuestions[0]?.options &&
+    cappedQuestions[0].options.length > 0;
 
   const blocks: (Block | KnownBlock)[] = [
     {
@@ -647,8 +656,8 @@ export function buildAskUserQuestionBlocks(
     },
   ];
 
-  for (let qIdx = 0; qIdx < questions.length; qIdx++) {
-    const q = questions[qIdx]!;
+  for (let qIdx = 0; qIdx < cappedQuestions.length; qIdx++) {
+    const q = cappedQuestions[qIdx]!;
     const headerText = q.header ? `*${q.header}:* ` : "";
 
     blocks.push({

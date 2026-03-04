@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, gte } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import {
@@ -222,29 +222,22 @@ async function handleDirectPick(
   const qIdx = parseInt(match[1]!, 10);
   const oIdx = parseInt(match[2]!, 10);
 
-  // Atomically claim
+  // Atomically claim — also reject expired records in the WHERE clause
+  // so that claiming an expired record is impossible.
+  const now = new Date();
   const [claimed] = await globalThis.services.db
     .update(slackPendingQuestions)
-    .set({ answeredAt: new Date() })
+    .set({ answeredAt: now })
     .where(
       and(
         eq(slackPendingQuestions.id, pendingId),
         isNull(slackPendingQuestions.answeredAt),
+        gte(slackPendingQuestions.expiresAt, now),
       ),
     )
     .returning();
 
   if (!claimed) return;
-
-  if (new Date() > claimed.expiresAt) {
-    await updateCardWithError(
-      claimed.slackChannelId,
-      claimed.slackMessageTs,
-      claimed.slackWorkspaceId,
-      "This question has expired. Please ask the agent again.",
-    );
-    return;
-  }
 
   const parsed = askUserQuestionSchema.safeParse(claimed.questions);
   if (!parsed.success) return;
@@ -383,32 +376,25 @@ async function handleAskUserSubmit(
   }
 
   // Atomically mark as answered — only the first submit wins.
-  // The WHERE clause includes `answeredAt IS NULL` so a concurrent
-  // second click will match zero rows.
+  // The WHERE clause includes `answeredAt IS NULL` and expiry check
+  // so a concurrent second click or expired question matches zero rows.
+  const now = new Date();
   const [claimed] = await globalThis.services.db
     .update(slackPendingQuestions)
-    .set({ answeredAt: new Date() })
+    .set({ answeredAt: now })
     .where(
       and(
         eq(slackPendingQuestions.id, pendingId),
         isNull(slackPendingQuestions.answeredAt),
+        gte(slackPendingQuestions.expiresAt, now),
       ),
     )
     .returning();
 
   if (!claimed) {
-    log.warn("Pending question not found or already answered", { pendingId });
-    return;
-  }
-
-  if (new Date() > claimed.expiresAt) {
-    log.warn("Pending question expired", { pendingId });
-    await updateCardWithError(
-      claimed.slackChannelId,
-      claimed.slackMessageTs,
-      claimed.slackWorkspaceId,
-      "This question has expired. Please ask the agent again.",
-    );
+    log.warn("Pending question not found, already answered, or expired", {
+      pendingId,
+    });
     return;
   }
 
