@@ -1,4 +1,5 @@
 node_modules
+.pnpm-store/
 dist
 packages/sandbox-scripts/src/dist/bundled.ts
 pnpm-lock.yaml

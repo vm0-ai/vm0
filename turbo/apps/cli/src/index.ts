@@ -2,6 +2,7 @@
 // Sentry must be initialized before any other imports
 import "./instrument.js";
 import { Command } from "commander";
+import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import { authCommand } from "./commands/auth";
 import { infoCommand } from "./commands/info";
 import { composeCommand } from "./commands/compose";
@@ -67,6 +68,7 @@ if (
   process.argv[1]?.endsWith("index.ts") ||
   process.argv[1]?.endsWith("vm0")
 ) {
+  configureGlobalProxyFromEnv();
   program.parse();
 }
 // test comment Thu Feb 18 2026 v2
