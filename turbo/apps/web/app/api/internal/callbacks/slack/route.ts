@@ -13,13 +13,21 @@ import {
   postMessage,
   setThreadStatus,
   buildAgentResponseMessage,
+  buildAskUserQuestionBlocks,
   detectDeepLinks,
 } from "../../../../../src/lib/slack";
-import { getRunOutput } from "../../../../../src/lib/slack/handlers/run-agent";
+import {
+  getRunResultData,
+  formatAskUserDenials,
+} from "../../../../../src/lib/slack/handlers/run-agent";
 import { buildLogsUrl } from "../../../../../src/lib/slack/handlers/shared";
 import { getPlatformUrl } from "../../../../../src/lib/url";
+import { slackPendingQuestions } from "../../../../../src/db/schema/slack-pending-question";
 import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/logger";
+import type { AskUserQuestion } from "../../../../../src/lib/slack";
+import type { WebClient } from "@slack/web-api";
+import type { PermissionDenial } from "../../../../../src/lib/slack/handlers/run-agent";
 
 const log = logger("callback:slack");
 
@@ -84,14 +92,152 @@ async function findNewSessionId(
   return newSession?.id;
 }
 
+/**
+ * Post an interactive Block Kit card for askUserQuestion denials.
+ * Creates a pending question record and sends the card to Slack.
+ */
+async function postAskUserInteractiveCard(
+  client: WebClient,
+  resultData: { askUserDenials: PermissionDenial[] },
+  payload: CallbackPayload,
+  runId: string,
+): Promise<void> {
+  const allQuestions: AskUserQuestion[] = [];
+  for (const denial of resultData.askUserDenials) {
+    const questions = denial.tool_input?.questions;
+    if (questions) {
+      allQuestions.push(...questions);
+    }
+  }
+
+  if (allQuestions.length === 0) {
+    return;
+  }
+
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+  const [pending] = await globalThis.services.db
+    .insert(slackPendingQuestions)
+    .values({
+      runId,
+      slackWorkspaceId: payload.workspaceId,
+      slackChannelId: payload.channelId,
+      slackThreadTs: payload.threadTs,
+      userLinkId: payload.userLinkId,
+      composeId: payload.composeId,
+      agentName: payload.agentName,
+      sessionId: payload.existingSessionId ?? undefined,
+      questions: allQuestions,
+      expiresAt,
+    })
+    .returning({ id: slackPendingQuestions.id });
+
+  if (!pending) {
+    return;
+  }
+
+  const fallbackText = formatAskUserDenials(resultData.askUserDenials);
+  const cardBlocks = buildAskUserQuestionBlocks(allQuestions, pending.id);
+
+  const cardResult = await postMessage(
+    client,
+    payload.channelId,
+    fallbackText ?? "The agent needs your input.",
+    { threadTs: payload.threadTs, blocks: cardBlocks },
+  );
+
+  if (cardResult.ts) {
+    await globalThis.services.db
+      .update(slackPendingQuestions)
+      .set({ slackMessageTs: cardResult.ts })
+      .where(eq(slackPendingQuestions.id, pending.id));
+  }
+}
+
+/**
+ * Build the text response based on run status and result data.
+ */
+function buildResponseText(
+  status: string,
+  error: string | undefined,
+  resultData: Awaited<ReturnType<typeof getRunResultData>>,
+): string {
+  if (status !== "completed") {
+    return `Error: ${error ?? "Agent execution failed."}`;
+  }
+  if (resultData && resultData.askUserDenials.length > 0) {
+    return resultData.result ?? "";
+  }
+  return resultData?.result ?? "Task completed successfully.";
+}
+
+/**
+ * Save or update the Slack thread → agent session mapping.
+ */
+async function saveThreadSession(
+  payload: CallbackPayload,
+  runId: string,
+  status: string,
+): Promise<void> {
+  const {
+    channelId,
+    threadTs,
+    messageTs,
+    userLinkId,
+    composeId,
+    existingSessionId,
+  } = payload;
+
+  const [run] = await globalThis.services.db
+    .select({ userId: agentRuns.userId, createdAt: agentRuns.createdAt })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+
+  if (!run) {
+    return;
+  }
+
+  if (!existingSessionId) {
+    const newSessionId = await findNewSessionId(
+      run.userId,
+      composeId,
+      run.createdAt,
+    );
+    if (newSessionId) {
+      await globalThis.services.db
+        .insert(slackThreadSessions)
+        .values({
+          slackUserLinkId: userLinkId,
+          slackChannelId: channelId,
+          slackThreadTs: threadTs,
+          agentSessionId: newSessionId,
+          lastProcessedMessageTs: messageTs,
+        })
+        .onConflictDoNothing();
+    }
+  } else if (status === "completed") {
+    await globalThis.services.db
+      .update(slackThreadSessions)
+      .set({
+        lastProcessedMessageTs: messageTs,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(slackThreadSessions.slackUserLinkId, userLinkId),
+          eq(slackThreadSessions.slackChannelId, channelId),
+          eq(slackThreadSessions.slackThreadTs, threadTs),
+        ),
+      );
+  }
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
   const { SECRETS_ENCRYPTION_KEY } = env();
 
-  // Read raw body for signature verification
   const rawBody = await request.text();
 
-  // Parse body first to get runId for callback lookup
   let body: CallbackBody;
   try {
     body = JSON.parse(rawBody);
@@ -117,16 +263,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return errorResponse("Callback not found", 404);
   }
 
-  // Decrypt the per-callback secret
   const callbackSecret = decryptCredentialValue(
     callback.encryptedSecret,
     SECRETS_ENCRYPTION_KEY,
   );
 
-  // Verify signature using the per-callback secret
   const signature = request.headers.get("X-VM0-Signature");
   const timestamp = request.headers.get("X-VM0-Timestamp");
-
   const verification = verifyCallbackRequest(
     rawBody,
     callbackSecret,
@@ -143,33 +286,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const payload = parsePayload(body);
-
   if (!payload) {
     return errorResponse("Invalid or missing payload", 400);
   }
 
-  const {
-    workspaceId,
-    channelId,
-    threadTs,
-    messageTs,
-    userLinkId,
-    agentName,
-    composeId,
-    existingSessionId,
-  } = payload;
-
-  log.debug("Processing Slack callback", { runId, status, channelId });
+  log.debug("Processing Slack callback", {
+    runId,
+    status,
+    channelId: payload.channelId,
+  });
 
   // Get Slack installation for bot token
   const [installation] = await globalThis.services.db
     .select()
     .from(slackInstallations)
-    .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
+    .where(eq(slackInstallations.slackWorkspaceId, payload.workspaceId))
     .limit(1);
 
   if (!installation) {
-    log.error("Slack installation not found", { workspaceId });
+    log.error("Slack installation not found", {
+      workspaceId: payload.workspaceId,
+    });
     return errorResponse("Slack installation not found", 404);
   }
 
@@ -179,80 +316,40 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   );
   const client = createSlackClient(botToken);
 
-  // Query Axiom for the agent's output
-  const output = status === "completed" ? await getRunOutput(runId) : undefined;
+  const resultData =
+    status === "completed" ? await getRunResultData(runId) : undefined;
+  const hasAskUserDenials = resultData && resultData.askUserDenials.length > 0;
+  const responseText = buildResponseText(status, error, resultData);
 
-  // Build response message
-  const responseText =
-    status === "completed"
-      ? (output ?? "Task completed successfully.")
-      : `Error: ${error ?? "Agent execution failed."}`;
-
-  const logsUrl = buildLogsUrl(runId);
-  const deepLinks = detectDeepLinks(responseText, getPlatformUrl());
-
-  // Post response to Slack
-  await postMessage(client, channelId, responseText, {
-    threadTs,
-    blocks: buildAgentResponseMessage(
-      responseText,
-      agentName,
-      logsUrl,
-      deepLinks,
-    ),
-  });
-
-  // Get run to find userId for session lookup
-  const [run] = await globalThis.services.db
-    .select({ userId: agentRuns.userId, createdAt: agentRuns.createdAt })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, runId))
-    .limit(1);
-
-  // Save thread session mapping
-  if (run) {
-    const newSessionId = !existingSessionId
-      ? await findNewSessionId(run.userId, composeId, run.createdAt)
-      : undefined;
-
-    if (!existingSessionId && newSessionId) {
-      // New thread — create mapping
-      await globalThis.services.db
-        .insert(slackThreadSessions)
-        .values({
-          slackUserLinkId: userLinkId,
-          slackChannelId: channelId,
-          slackThreadTs: threadTs,
-          agentSessionId: newSessionId,
-          lastProcessedMessageTs: messageTs,
-        })
-        .onConflictDoNothing();
-    } else if (existingSessionId && status === "completed") {
-      // Existing thread, successful run — update lastProcessedMessageTs
-      await globalThis.services.db
-        .update(slackThreadSessions)
-        .set({
-          lastProcessedMessageTs: messageTs,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(slackThreadSessions.slackUserLinkId, userLinkId),
-            eq(slackThreadSessions.slackChannelId, channelId),
-            eq(slackThreadSessions.slackThreadTs, threadTs),
-          ),
-        );
-    }
+  // Post text response (if any content)
+  if (responseText) {
+    const logsUrl = buildLogsUrl(runId);
+    const deepLinks = detectDeepLinks(responseText, getPlatformUrl());
+    await postMessage(client, payload.channelId, responseText, {
+      threadTs: payload.threadTs,
+      blocks: buildAgentResponseMessage(
+        responseText,
+        payload.agentName,
+        logsUrl,
+        deepLinks,
+      ),
+    });
   }
+
+  // Post interactive card for askUserQuestion denials
+  if (hasAskUserDenials) {
+    await postAskUserInteractiveCard(client, resultData, payload, runId);
+  }
+
+  await saveThreadSession(payload, runId, status);
 
   // Clear assistant thinking status
   try {
-    await setThreadStatus(client, channelId, threadTs, "");
+    await setThreadStatus(client, payload.channelId, payload.threadTs, "");
   } catch (err) {
     log.debug("Failed to clear thread status", { runId, error: err });
   }
 
   log.debug("Slack callback processed successfully", { runId });
-
   return NextResponse.json({ success: true });
 }

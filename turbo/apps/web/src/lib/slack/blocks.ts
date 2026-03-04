@@ -1,4 +1,13 @@
-import type { Block, KnownBlock, View, SectionBlock } from "@slack/web-api";
+import type {
+  Block,
+  KnownBlock,
+  View,
+  SectionBlock,
+  ActionsBlock,
+  Button,
+  Checkboxes,
+  Option,
+} from "@slack/web-api";
 import { getPlatformUrl } from "../url";
 
 const SLACK_DOCS_URL = "https://docs.vm0.ai/docs/integrations/slack";
@@ -591,6 +600,173 @@ export function buildAgentResponseMessage(
  * @param loginUrl - URL to the OAuth login page
  * @returns Block Kit blocks
  */
+// ---------------------------------------------------------------------------
+// askUserQuestion interactive cards
+// ---------------------------------------------------------------------------
+
+/**
+ * Question shape from AskUserQuestion tool_input
+ */
+export interface AskUserQuestion {
+  question: string;
+  header?: string;
+  options?: Array<{ label: string; description?: string }>;
+  multiSelect?: boolean;
+}
+
+/**
+ * Build Block Kit blocks for an askUserQuestion interactive card.
+ *
+ * - Single-select questions render as buttons (one per option).
+ * - Multi-select questions render as checkboxes with a submit button.
+ * - When there are multiple questions, a "Submit" button is appended
+ *   so the user can confirm all selections at once.
+ *
+ * @param questions - The questions array from AskUserQuestion denial
+ * @param pendingId - The slack_pending_questions record ID (used as button value)
+ * @returns Block Kit blocks
+ */
+export function buildAskUserQuestionBlocks(
+  questions: AskUserQuestion[],
+  pendingId: string,
+): (Block | KnownBlock)[] {
+  const blocks: (Block | KnownBlock)[] = [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: ":raising_hand: *The agent needs your input to proceed:*",
+      },
+    },
+  ];
+
+  for (let qIdx = 0; qIdx < questions.length; qIdx++) {
+    const q = questions[qIdx]!;
+    const headerText = q.header ? `*${q.header}:* ` : "";
+
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `${headerText}${q.question}`,
+      },
+    });
+
+    if (!q.options || q.options.length === 0) {
+      continue;
+    }
+
+    if (q.multiSelect) {
+      // Checkboxes for multi-select
+      const options: Option[] = q.options.map((opt, oIdx) => ({
+        text: { type: "plain_text" as const, text: opt.label },
+        description: opt.description
+          ? { type: "plain_text" as const, text: opt.description }
+          : undefined,
+        value: `q${qIdx}_o${oIdx}`,
+      }));
+
+      const checkboxes: Checkboxes = {
+        type: "checkboxes",
+        action_id: `ask_user_multi_q${qIdx}`,
+        options,
+      };
+
+      const actionsBlock: ActionsBlock = {
+        type: "actions",
+        block_id: `ask_user_block_q${qIdx}`,
+        elements: [checkboxes],
+      };
+
+      blocks.push(actionsBlock);
+    } else {
+      // Buttons for single-select
+      const buttons: Button[] = q.options.map((opt, oIdx) => ({
+        type: "button" as const,
+        text: { type: "plain_text" as const, text: opt.label },
+        action_id: `ask_user_q${qIdx}_o${oIdx}`,
+        value: pendingId,
+      }));
+
+      const actionsBlock: ActionsBlock = {
+        type: "actions",
+        block_id: `ask_user_block_q${qIdx}`,
+        elements: buttons,
+      };
+
+      blocks.push(actionsBlock);
+    }
+  }
+
+  // Submit button — always present so multi-question or multi-select
+  // answers are submitted together
+  const submitButton: Button = {
+    type: "button",
+    text: { type: "plain_text", text: "Submit" },
+    action_id: "ask_user_submit",
+    value: pendingId,
+    style: "primary",
+  };
+
+  blocks.push({
+    type: "actions",
+    block_id: "ask_user_submit_block",
+    elements: [submitButton],
+  } as ActionsBlock);
+
+  blocks.push({
+    type: "context",
+    elements: [
+      {
+        type: "mrkdwn",
+        text: "_Select your answers above, then click Submit to continue._",
+      },
+    ],
+  });
+
+  return blocks;
+}
+
+/**
+ * Build blocks showing the user's answers after submission.
+ * Replaces the interactive card once the user clicks Submit.
+ */
+export function buildAskUserAnsweredBlocks(
+  questions: AskUserQuestion[],
+  answers: Map<number, string[]>,
+  agentName: string,
+): (Block | KnownBlock)[] {
+  const blocks: (Block | KnownBlock)[] = [
+    {
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `:white_check_mark: *Answered — ${agentName} is continuing...*`,
+        },
+      ],
+    },
+  ];
+
+  for (let qIdx = 0; qIdx < questions.length; qIdx++) {
+    const q = questions[qIdx]!;
+    const selected = answers.get(qIdx) ?? [];
+    const headerText = q.header ? `*${q.header}:* ` : "";
+    const selectedText =
+      selected.length > 0 ? selected.join(", ") : "_No selection_";
+
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `${headerText}${q.question}\n:arrow_right: ${selectedText}`,
+      },
+    });
+  }
+
+  return blocks;
+}
+
 export function buildLoginMessage(loginUrl: string): (Block | KnownBlock)[] {
   return [
     {

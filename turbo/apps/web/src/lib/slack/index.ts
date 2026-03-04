@@ -37,6 +37,7 @@ export { verifySlackSignature, getSlackSignatureHeaders } from "./verify";
 export {
   createSlackClient,
   postMessage,
+  updateMessage,
   setThreadStatus,
   openModal,
   updateModal,
@@ -55,8 +56,11 @@ export {
   buildSuccessMessage,
   buildMarkdownMessage,
   buildAgentResponseMessage,
+  buildAskUserQuestionBlocks,
+  buildAskUserAnsweredBlocks,
   detectDeepLinks,
 } from "./blocks";
+export type { AskUserQuestion } from "./blocks";
 
 // Thread context
 export {

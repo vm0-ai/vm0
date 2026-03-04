@@ -148,28 +148,40 @@ export async function runAgentForSlack(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Axiom result querying
+// ---------------------------------------------------------------------------
+
+export interface PermissionDenial {
+  tool_name: string;
+  tool_input?: {
+    questions?: Array<{
+      question: string;
+      header?: string;
+      options?: Array<{ label: string; description?: string }>;
+      multiSelect?: boolean;
+    }>;
+  };
+}
+
+interface RunResultData {
+  result?: string;
+  askUserDenials: PermissionDenial[];
+}
+
 /**
- * Query Axiom for the result event to get the agent's output text
+ * Query Axiom for the result event data (text output + permission denials).
+ * Shared by getRunOutput (text formatting) and the callback handler (raw denials).
  */
-export async function getRunOutput(runId: string): Promise<string | undefined> {
+export async function getRunResultData(
+  runId: string,
+): Promise<RunResultData | undefined> {
   const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
   const apl = `['${dataset}']
 | where runId == "${runId}"
 | where eventType == "result"
 | order by sequenceNumber desc
 | limit 1`;
-
-  interface PermissionDenial {
-    tool_name: string;
-    tool_input?: {
-      questions?: Array<{
-        question: string;
-        header?: string;
-        options?: Array<{ label: string; description?: string }>;
-        multiSelect?: boolean;
-      }>;
-    };
-  }
 
   interface ResultEvent {
     eventData: {
@@ -184,21 +196,35 @@ export async function getRunOutput(runId: string): Promise<string | undefined> {
   }
 
   const event = events[0];
-  const result = event?.eventData?.result;
-  const denials = event?.eventData?.permission_denials;
+  const denials = event?.eventData?.permission_denials ?? [];
+  const askUserDenials = denials.filter(
+    (d) => d.tool_name === "AskUserQuestion",
+  );
 
-  // When AskUserQuestion was denied (sandbox/non-interactive mode),
-  // format the questions as readable text so the Slack user can see
-  // what the agent wanted to ask.
-  const askDenials = denials?.filter((d) => d.tool_name === "AskUserQuestion");
-  if (askDenials && askDenials.length > 0) {
-    const formatted = formatAskUserDenials(askDenials);
+  return {
+    result: event?.eventData?.result,
+    askUserDenials,
+  };
+}
+
+/**
+ * Query Axiom for the result event to get the agent's output text.
+ * Formats AskUserQuestion denials as plain text (fallback for non-interactive contexts).
+ */
+export async function getRunOutput(runId: string): Promise<string | undefined> {
+  const data = await getRunResultData(runId);
+  if (!data) {
+    return undefined;
+  }
+
+  if (data.askUserDenials.length > 0) {
+    const formatted = formatAskUserDenials(data.askUserDenials);
     if (formatted) {
-      return result ? `${result}\n\n${formatted}` : formatted;
+      return data.result ? `${data.result}\n\n${formatted}` : formatted;
     }
   }
 
-  return result;
+  return data.result;
 }
 
 export function formatAskUserDenials(
