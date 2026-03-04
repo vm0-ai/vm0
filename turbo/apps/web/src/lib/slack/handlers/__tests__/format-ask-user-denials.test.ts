@@ -1,14 +1,98 @@
 import { describe, it, expect } from "vitest";
-import { formatAskUserDenials } from "../run-agent";
+import { parseAskUserFromResponse, formatAskUserQuestions } from "../run-agent";
 
-describe("formatAskUserDenials", () => {
+describe("parseAskUserFromResponse", () => {
+  it("should parse a valid ask_user block", () => {
+    const text = `Some response text.
+
+\`\`\`ask_user
+{"questions":[{"question":"Which framework?","header":"Framework","options":[{"label":"React","description":"UI library"},{"label":"Vue"}],"multiSelect":false}]}
+\`\`\``;
+
+    const result = parseAskUserFromResponse(text);
+
+    expect(result).not.toBeNull();
+    expect(result!.questions).toHaveLength(1);
+    expect(result!.questions[0]!.question).toBe("Which framework?");
+    expect(result!.questions[0]!.header).toBe("Framework");
+    expect(result!.questions[0]!.options).toHaveLength(2);
+    expect(result!.cleanText).toBe("Some response text.");
+  });
+
+  it("should return null when no ask_user block is present", () => {
+    const result = parseAskUserFromResponse("Just some plain text.");
+    expect(result).toBeNull();
+  });
+
+  it("should return null for invalid JSON in ask_user block", () => {
+    const text = `Text.
+
+\`\`\`ask_user
+{invalid json}
+\`\`\``;
+
+    const result = parseAskUserFromResponse(text);
+    expect(result).toBeNull();
+  });
+
+  it("should return null when JSON does not match schema", () => {
+    const text = `Text.
+
+\`\`\`ask_user
+{"questions":[{"invalid":"field"}]}
+\`\`\``;
+
+    const result = parseAskUserFromResponse(text);
+    expect(result).toBeNull();
+  });
+
+  it("should strip the ask_user block from cleanText", () => {
+    const text = `Here is my analysis.\n\nI need some input.\n\n\`\`\`ask_user\n{"questions":[{"question":"Pick one?"}]}\n\`\`\``;
+
+    const result = parseAskUserFromResponse(text);
+
+    expect(result).not.toBeNull();
+    expect(result!.cleanText).toBe(
+      "Here is my analysis.\n\nI need some input.",
+    );
+  });
+
+  it("should handle ask_user block with no preceding text", () => {
+    const text = `\`\`\`ask_user\n{"questions":[{"question":"Pick one?"}]}\n\`\`\``;
+
+    const result = parseAskUserFromResponse(text);
+
+    expect(result).not.toBeNull();
+    expect(result!.cleanText).toBe("");
+    expect(result!.questions).toHaveLength(1);
+  });
+
+  it("should parse multiple questions", () => {
+    const text = `Response.\n\n\`\`\`ask_user\n{"questions":[{"question":"Q1?"},{"question":"Q2?","multiSelect":true}]}\n\`\`\``;
+
+    const result = parseAskUserFromResponse(text);
+
+    expect(result).not.toBeNull();
+    expect(result!.questions).toHaveLength(2);
+    expect(result!.questions[1]!.multiSelect).toBe(true);
+  });
+
+  it("should handle questions with optional fields omitted", () => {
+    const text = `Text.\n\n\`\`\`ask_user\n{"questions":[{"question":"Simple question?"}]}\n\`\`\``;
+
+    const result = parseAskUserFromResponse(text);
+
+    expect(result).not.toBeNull();
+    expect(result!.questions[0]!.header).toBeUndefined();
+    expect(result!.questions[0]!.options).toBeUndefined();
+    expect(result!.questions[0]!.multiSelect).toBeUndefined();
+  });
+});
+
+describe("formatAskUserQuestions", () => {
   it("should format a single question without options", () => {
-    const result = formatAskUserDenials([
-      {
-        tool_input: {
-          questions: [{ question: "Which database should I use?" }],
-        },
-      },
+    const result = formatAskUserQuestions([
+      { question: "Which database should I use?" },
     ]);
 
     expect(result).toBe(
@@ -17,19 +101,13 @@ describe("formatAskUserDenials", () => {
   });
 
   it("should format a question with options", () => {
-    const result = formatAskUserDenials([
+    const result = formatAskUserQuestions([
       {
-        tool_input: {
-          questions: [
-            {
-              question: "Which framework do you prefer?",
-              options: [
-                { label: "React", description: "A UI library" },
-                { label: "Vue", description: "A progressive framework" },
-              ],
-            },
-          ],
-        },
+        question: "Which framework do you prefer?",
+        options: [
+          { label: "React", description: "A UI library" },
+          { label: "Vue", description: "A progressive framework" },
+        ],
       },
     ]);
 
@@ -39,16 +117,10 @@ describe("formatAskUserDenials", () => {
   });
 
   it("should format options without descriptions", () => {
-    const result = formatAskUserDenials([
+    const result = formatAskUserQuestions([
       {
-        tool_input: {
-          questions: [
-            {
-              question: "Pick one:",
-              options: [{ label: "Option A" }, { label: "Option B" }],
-            },
-          ],
-        },
+        question: "Pick one:",
+        options: [{ label: "Option A" }, { label: "Option B" }],
       },
     ]);
 
@@ -57,65 +129,18 @@ describe("formatAskUserDenials", () => {
     expect(result).not.toContain("\u2014");
   });
 
-  it("should format multiple questions from a single denial", () => {
-    const result = formatAskUserDenials([
-      {
-        tool_input: {
-          questions: [
-            { question: "First question?" },
-            { question: "Second question?" },
-          ],
-        },
-      },
+  it("should format multiple questions", () => {
+    const result = formatAskUserQuestions([
+      { question: "First question?" },
+      { question: "Second question?" },
     ]);
 
     expect(result).toContain("First question?");
     expect(result).toContain("Second question?");
   });
 
-  it("should format multiple denials", () => {
-    const result = formatAskUserDenials([
-      {
-        tool_input: {
-          questions: [{ question: "Question from denial 1" }],
-        },
-      },
-      {
-        tool_input: {
-          questions: [{ question: "Question from denial 2" }],
-        },
-      },
-    ]);
-
-    expect(result).toContain("Question from denial 1");
-    expect(result).toContain("Question from denial 2");
-  });
-
-  it("should return undefined for empty denials array", () => {
-    const result = formatAskUserDenials([]);
-    expect(result).toBeUndefined();
-  });
-
-  it("should return undefined when denials have no questions", () => {
-    const result = formatAskUserDenials([
-      { tool_input: { questions: [] } },
-      { tool_input: undefined },
-      {},
-    ]);
-
-    expect(result).toBeUndefined();
-  });
-
-  it("should skip denials without tool_input and include ones with questions", () => {
-    const result = formatAskUserDenials([
-      {},
-      {
-        tool_input: {
-          questions: [{ question: "Valid question" }],
-        },
-      },
-    ]);
-
-    expect(result).toContain("Valid question");
+  it("should return fallback for empty questions array", () => {
+    const result = formatAskUserQuestions([]);
+    expect(result).toBe("The agent needs your input to proceed.");
   });
 });

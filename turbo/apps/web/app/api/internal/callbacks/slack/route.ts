@@ -18,7 +18,7 @@ import {
 } from "../../../../../src/lib/slack";
 import {
   getRunResultData,
-  formatAskUserDenials,
+  formatAskUserQuestions,
 } from "../../../../../src/lib/slack/handlers/run-agent";
 import { buildLogsUrl } from "../../../../../src/lib/slack/handlers/shared";
 import { getPlatformUrl } from "../../../../../src/lib/url";
@@ -27,7 +27,7 @@ import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/logger";
 import type { AskUserQuestion } from "../../../../../src/lib/slack";
 import type { WebClient } from "@slack/web-api";
-import type { PermissionDenial } from "../../../../../src/lib/slack/handlers/run-agent";
+import type { RunResultData } from "../../../../../src/lib/slack/handlers/run-agent";
 
 const log = logger("callback:slack");
 
@@ -93,24 +93,16 @@ async function findNewSessionId(
 }
 
 /**
- * Post an interactive Block Kit card for askUserQuestion denials.
+ * Post an interactive Block Kit card for ask-user questions.
  * Creates a pending question record and sends the card to Slack.
  */
 async function postAskUserInteractiveCard(
   client: WebClient,
-  resultData: { askUserDenials: PermissionDenial[] },
+  questions: AskUserQuestion[],
   payload: CallbackPayload,
   runId: string,
 ): Promise<void> {
-  const allQuestions: AskUserQuestion[] = [];
-  for (const denial of resultData.askUserDenials) {
-    const questions = denial.tool_input?.questions;
-    if (questions) {
-      allQuestions.push(...questions);
-    }
-  }
-
-  if (allQuestions.length === 0) {
+  if (questions.length === 0) {
     return;
   }
 
@@ -126,7 +118,7 @@ async function postAskUserInteractiveCard(
       composeId: payload.composeId,
       agentName: payload.agentName,
       sessionId: payload.existingSessionId ?? undefined,
-      questions: allQuestions,
+      questions,
       expiresAt,
     })
     .returning({ id: slackPendingQuestions.id });
@@ -135,13 +127,13 @@ async function postAskUserInteractiveCard(
     return;
   }
 
-  const fallbackText = formatAskUserDenials(resultData.askUserDenials);
-  const cardBlocks = buildAskUserQuestionBlocks(allQuestions, pending.id);
+  const fallbackText = formatAskUserQuestions(questions);
+  const cardBlocks = buildAskUserQuestionBlocks(questions, pending.id);
 
   const cardResult = await postMessage(
     client,
     payload.channelId,
-    fallbackText ?? "The agent needs your input.",
+    fallbackText,
     { threadTs: payload.threadTs, blocks: cardBlocks },
   );
 
@@ -155,19 +147,20 @@ async function postAskUserInteractiveCard(
 
 /**
  * Build the text response based on run status and result data.
+ * Uses cleanResult (with ask_user block stripped) when questions are present.
  */
 function buildResponseText(
   status: string,
   error: string | undefined,
-  resultData: Awaited<ReturnType<typeof getRunResultData>>,
+  resultData: RunResultData | undefined,
 ): string {
   if (status !== "completed") {
     return `Error: ${error ?? "Agent execution failed."}`;
   }
-  if (resultData && resultData.askUserDenials.length > 0) {
-    return resultData.result ?? "";
+  if (resultData && resultData.askUserQuestions.length > 0) {
+    return resultData.cleanResult ?? "";
   }
-  return resultData?.result ?? "Task completed successfully.";
+  return resultData?.cleanResult ?? "Task completed successfully.";
 }
 
 /**
@@ -318,7 +311,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const resultData =
     status === "completed" ? await getRunResultData(runId) : undefined;
-  const hasAskUserDenials = resultData && resultData.askUserDenials.length > 0;
+  const hasAskUserQuestions =
+    resultData && resultData.askUserQuestions.length > 0;
   const responseText = buildResponseText(status, error, resultData);
 
   // Post text response (if any content)
@@ -336,9 +330,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   }
 
-  // Post interactive card for askUserQuestion denials
-  if (hasAskUserDenials) {
-    await postAskUserInteractiveCard(client, resultData, payload, runId);
+  // Post interactive card for ask-user questions
+  if (hasAskUserQuestions) {
+    await postAskUserInteractiveCard(
+      client,
+      resultData.askUserQuestions,
+      payload,
+      runId,
+    );
   }
 
   await saveThreadSession(payload, runId, status);

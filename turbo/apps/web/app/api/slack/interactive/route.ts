@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { eq, and, isNull } from "drizzle-orm";
-import { z } from "zod";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import {
@@ -20,25 +19,12 @@ import {
   buildErrorMessage,
 } from "../../../../src/lib/slack";
 import type { AskUserQuestion } from "../../../../src/lib/slack";
-import { runAgentForSlack } from "../../../../src/lib/slack/handlers/run-agent";
+import {
+  runAgentForSlack,
+  askUserQuestionSchema,
+} from "../../../../src/lib/slack/handlers/run-agent";
 import type { SlackCallbackContext } from "../../../../src/lib/slack/handlers/run-agent";
 import { logger } from "../../../../src/lib/logger";
-
-const askUserQuestionSchema = z.array(
-  z.object({
-    question: z.string(),
-    header: z.string().optional(),
-    options: z
-      .array(
-        z.object({
-          label: z.string(),
-          description: z.string().optional(),
-        }),
-      )
-      .optional(),
-    multiSelect: z.boolean().optional(),
-  }),
-);
 
 const log = logger("slack:interactive");
 
