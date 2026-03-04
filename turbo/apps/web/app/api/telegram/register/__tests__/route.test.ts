@@ -8,6 +8,7 @@ import {
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { createTestCompose } from "../../../../../src/__tests__/api-test-helpers";
 import { GET as linkGET } from "../../../../api/integrations/telegram/link/route";
+import { PENDING_TELEGRAM_USER_ID } from "../../../../../src/lib/telegram/handlers/shared";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 
@@ -139,7 +140,7 @@ describe("POST /api/telegram/register", () => {
     const linkData = await linkResponse.json();
     expect(linkResponse.status).toBe(200);
     expect(linkData.linked).toBe(true);
-    expect(linkData.telegramUserId).toBe("pending");
+    expect(linkData.telegramUserId).toBe(PENDING_TELEGRAM_USER_ID);
 
     expect(getMeHandler.mocked).toHaveBeenCalledTimes(1);
     expect(setWebhookHandler.mocked).toHaveBeenCalledTimes(1);

@@ -5,6 +5,7 @@ import { telegramMessages } from "../../../db/schema/telegram-message";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { scopes } from "../../../db/schema/scope";
 import { encryptCredentialValue } from "../../crypto/secrets-encryption";
+import { PENDING_TELEGRAM_USER_ID } from "../handlers/shared";
 import { uniqueId } from "../../../__tests__/test-helpers";
 
 /**
@@ -119,7 +120,7 @@ export async function createTelegramPendingLinkInstallation(
   const [userLink] = await globalThis.services.db
     .insert(telegramUserLinks)
     .values({
-      telegramUserId: "pending",
+      telegramUserId: PENDING_TELEGRAM_USER_ID,
       installationId: installation!.id,
       vm0UserId,
     })

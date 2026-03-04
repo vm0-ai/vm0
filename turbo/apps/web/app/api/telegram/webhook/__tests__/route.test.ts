@@ -10,6 +10,7 @@ import {
   createTelegramPendingLinkInstallation,
 } from "../../../../../src/lib/telegram/__tests__/helpers";
 import { GET as linkGET } from "../../../../api/integrations/telegram/link/route";
+import { PENDING_TELEGRAM_USER_ID } from "../../../../../src/lib/telegram/handlers/shared";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[installationId]/route";
@@ -228,7 +229,7 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
       );
       const beforeData = await beforeResponse.json();
       expect(beforeData.linked).toBe(true);
-      expect(beforeData.telegramUserId).toBe("pending");
+      expect(beforeData.telegramUserId).toBe(PENDING_TELEGRAM_USER_ID);
 
       // Send a DM as the admin (telegramUserId = "789")
       const telegramUserId = 789;

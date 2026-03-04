@@ -1,6 +1,5 @@
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { telegramInstallations } from "../../../db/schema/telegram-installation";
-import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createTelegramClient, sendMessage, sendChatAction } from "../client";
@@ -11,7 +10,7 @@ import {
   storeTelegramMessage,
   getWorkspaceAgent,
   resolveSessionCompose,
-  completePendingLink,
+  resolveUserLink,
 } from "./shared";
 import { logger } from "../../logger";
 
@@ -60,29 +59,8 @@ export async function handleTelegramDirectMessage(
   );
   const client = createTelegramClient(botToken);
 
-  // 2. Check user link
-  let [userLink] = await globalThis.services.db
-    .select()
-    .from(telegramUserLinks)
-    .where(
-      and(
-        eq(telegramUserLinks.telegramUserId, fromUserId),
-        eq(telegramUserLinks.installationId, installationId),
-      ),
-    )
-    .limit(1);
-
-  // 2b. Auto-complete pending link if no direct match
-  if (!userLink) {
-    const completed = await completePendingLink(installationId, fromUserId);
-    if (completed) {
-      userLink = completed;
-      log.info("Auto-completed pending link", {
-        installationId,
-        telegramUserId: fromUserId,
-      });
-    }
-  }
+  // 2. Check user link (auto-completes pending link if needed)
+  const userLink = await resolveUserLink(installationId, fromUserId);
 
   if (!userLink) {
     await sendMessage(
