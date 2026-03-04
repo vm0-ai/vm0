@@ -10,6 +10,11 @@ import {
 } from "../../scope/scope-service";
 import { validateAgentSession } from "../../run";
 import { ensureArtifactExists } from "../../storage/storage-service";
+import {
+  sendMessage,
+  type TelegramClient,
+  type TelegramSentMessage,
+} from "../client";
 import { logger } from "../../logger";
 
 const log = logger("telegram:shared");
@@ -190,4 +195,23 @@ export async function resolveSessionCompose(
     };
   }
   return undefined;
+}
+
+/**
+ * Send a thinking placeholder message that persists until the agent responds.
+ * Returns the sent message so its ID can be passed to the callback for deletion.
+ */
+export async function sendThinkingMessage(
+  client: TelegramClient,
+  chatId: string | number,
+  agentName: string,
+  options?: { replyToMessageId?: number },
+): Promise<TelegramSentMessage | undefined> {
+  const text = `<i>${agentName} is thinking...</i>`;
+  try {
+    return await sendMessage(client, chatId, text, options);
+  } catch (err) {
+    log.warn("Failed to send thinking message", { chatId, error: err });
+    return undefined;
+  }
 }

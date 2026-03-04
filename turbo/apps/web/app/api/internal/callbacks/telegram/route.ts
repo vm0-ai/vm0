@@ -9,11 +9,11 @@ import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import {
   createTelegramClient,
   sendMessage,
-  sendChatAction,
+  deleteMessage,
 } from "../../../../../src/lib/telegram/client";
 import {
-  markdownToTelegramHtml,
   splitMessage,
+  buildTelegramResponse,
 } from "../../../../../src/lib/telegram/format";
 import { getRunOutput } from "../../../../../src/lib/slack/handlers/run-agent";
 import {
@@ -34,6 +34,8 @@ interface CallbackPayload {
   agentName: string;
   composeId: string;
   existingSessionId: string | null;
+  isDM: boolean;
+  thinkingMessageId: string | null;
 }
 
 function parsePayload(payload: unknown): CallbackPayload | null {
@@ -49,7 +51,19 @@ function parsePayload(payload: unknown): CallbackPayload | null {
   ) {
     return null;
   }
-  return p as unknown as CallbackPayload;
+  return {
+    installationId: p.installationId,
+    chatId: p.chatId,
+    messageId: p.messageId,
+    userLinkId: p.userLinkId,
+    agentName: p.agentName,
+    composeId: p.composeId,
+    existingSessionId:
+      typeof p.existingSessionId === "string" ? p.existingSessionId : null,
+    isDM: p.isDM === true,
+    thinkingMessageId:
+      typeof p.thinkingMessageId === "string" ? p.thinkingMessageId : null,
+  };
 }
 
 function errorResponse(message: string, status: number): NextResponse {
@@ -97,6 +111,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     agentName,
     composeId,
     existingSessionId,
+    isDM,
+    thinkingMessageId,
   } = payload;
 
   log.debug("Processing Telegram callback", { runId, status, chatId });
@@ -124,8 +140,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   );
   const client = createTelegramClient(botToken);
 
-  // Send typing indicator before posting
-  await sendChatAction(client, chatId, "typing");
+  // Delete thinking placeholder message
+  if (thinkingMessageId) {
+    try {
+      await deleteMessage(client, chatId, Number(thinkingMessageId));
+    } catch (err) {
+      log.debug("Failed to delete thinking message", {
+        thinkingMessageId,
+        error: err,
+      });
+    }
+  }
 
   // Query Axiom for the agent's output
   const output = status === "completed" ? await getRunOutput(runId) : undefined;
@@ -137,18 +162,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? (output ?? "Task completed successfully.")
       : `Error: ${error ?? "Agent execution failed."}`;
 
-  const footer = `\n\n<a href="${logsUrl}">View logs</a> · ${agentName}`;
-
-  // Convert markdown to Telegram HTML and split if needed
-  const htmlOutput = markdownToTelegramHtml(responseText) + footer;
+  // Build structured response with bot header and footer
+  const htmlOutput = buildTelegramResponse(responseText, agentName, logsUrl);
   const chunks = splitMessage(htmlOutput);
 
-  // Send response message(s) as reply to user's original message
+  // In DMs, don't reply-to (no quote noise); in groups, reply for threading
+  const replyOptions = isDM
+    ? undefined
+    : { replyToMessageId: Number(messageId) };
+
+  // Send response message(s)
   let botReplyMessageId: number | undefined;
   for (const chunk of chunks) {
-    const sent = await sendMessage(client, chatId, chunk, {
-      replyToMessageId: Number(messageId),
-    });
+    const sent = await sendMessage(client, chatId, chunk, replyOptions);
     // Capture first reply message_id as thread anchor
     if (botReplyMessageId === undefined) {
       botReplyMessageId = sent.message_id;

@@ -21,6 +21,8 @@ export interface TelegramCallbackContext {
   agentName: string;
   composeId: string;
   existingSessionId: string | null;
+  isDM: boolean;
+  thinkingMessageId: string | null;
 }
 
 interface RunAgentParams {

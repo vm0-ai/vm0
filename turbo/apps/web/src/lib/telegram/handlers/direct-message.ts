@@ -3,7 +3,8 @@ import { telegramInstallations } from "../../../db/schema/telegram-installation"
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
-import { createTelegramClient, sendMessage, sendChatAction } from "../client";
+import { createTelegramClient, sendMessage } from "../client";
+import { sendThinkingMessage } from "./shared";
 import { fetchTelegramContext } from "../context";
 import { runAgentForTelegram } from "./run-agent";
 import {
@@ -93,8 +94,8 @@ export async function handleTelegramDirectMessage(
   }
   let agentName = defaultAgent.name;
 
-  // 4. Send typing indicator
-  await sendChatAction(client, chatId, "typing");
+  // 4. Send thinking placeholder message
+  const thinkingMessage = await sendThinkingMessage(client, chatId, agentName);
 
   // 5. Store incoming message
   await storeTelegramMessage(installationId, chatId, message);
@@ -146,6 +147,10 @@ export async function handleTelegramDirectMessage(
       agentName,
       composeId,
       existingSessionId: existingSessionId ?? null,
+      isDM: true,
+      thinkingMessageId: thinkingMessage
+        ? String(thinkingMessage.message_id)
+        : null,
     },
   });
 

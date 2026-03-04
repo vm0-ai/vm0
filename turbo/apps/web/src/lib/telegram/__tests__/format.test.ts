@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { escapeHtml, markdownToTelegramHtml, splitMessage } from "../format";
+import {
+  escapeHtml,
+  markdownToTelegramHtml,
+  splitMessage,
+  buildTelegramResponse,
+} from "../format";
 
 describe("escapeHtml", () => {
   it("should escape &, <, >", () => {
@@ -51,6 +56,54 @@ describe("markdownToTelegramHtml", () => {
 
   it("should escape HTML entities inside formatted text", () => {
     expect(markdownToTelegramHtml("**a < b**")).toBe("<b>a &lt; b</b>");
+  });
+});
+
+describe("buildTelegramResponse", () => {
+  it("should include agent name header, content, and footer", () => {
+    const result = buildTelegramResponse(
+      "Hello world",
+      "TestBot",
+      "https://example.com/logs/123",
+    );
+
+    expect(result).toContain("<b>TestBot</b>");
+    expect(result).toContain("Hello world");
+    expect(result).toContain(
+      '<a href="https://example.com/logs/123">View logs</a>',
+    );
+    expect(result).toContain("· TestBot");
+  });
+
+  it("should separate header, content, and footer with line breaks", () => {
+    const result = buildTelegramResponse(
+      "content",
+      "Bot",
+      "https://example.com/logs",
+    );
+
+    // Header + blank line + content + blank line + separator + footer
+    expect(result).toMatch(/^<b>Bot<\/b>\n\ncontent\n\n─\n/);
+  });
+
+  it("should escape HTML in agent name", () => {
+    const result = buildTelegramResponse(
+      "hi",
+      "Bot <script>",
+      "https://example.com/logs",
+    );
+
+    expect(result).toContain("<b>Bot &lt;script&gt;</b>");
+  });
+
+  it("should convert markdown content to Telegram HTML", () => {
+    const result = buildTelegramResponse(
+      "**bold** and `code`",
+      "Bot",
+      "https://example.com/logs",
+    );
+
+    expect(result).toContain("<b>bold</b> and <code>code</code>");
   });
 });
 

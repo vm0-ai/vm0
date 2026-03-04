@@ -31,6 +31,8 @@ interface TelegramCallbackPayload {
   agentName: string;
   composeId: string;
   existingSessionId: string | null;
+  isDM: boolean;
+  thinkingMessageId: string | null;
 }
 
 function telegramSendMessage() {
@@ -44,9 +46,9 @@ function telegramSendMessage() {
   );
 }
 
-function telegramSendChatAction() {
+function telegramDeleteMessage() {
   return http.post(
-    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/sendChatAction`,
+    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/deleteMessage`,
     () => HttpResponse.json({ ok: true, result: true }),
   );
 }
@@ -114,6 +116,8 @@ async function setupTelegramCallback() {
     agentName: "test-agent",
     composeId,
     existingSessionId: null,
+    isDM: false,
+    thinkingMessageId: "100",
   };
 
   const { secret } = await createTestCallback({
@@ -208,9 +212,9 @@ describe("POST /api/internal/callbacks/telegram", () => {
     it("should return 200 and send message on completed run", async () => {
       const { runId, payload, secret } = await setupTelegramCallback();
 
-      const sendChatActionHandler = telegramSendChatAction();
+      const deleteMessageHandler = telegramDeleteMessage();
       const sendMessageHandler = telegramSendMessage();
-      server.use(sendChatActionHandler.handler, sendMessageHandler.handler);
+      server.use(deleteMessageHandler.handler, sendMessageHandler.handler);
 
       const request = createCallbackRequest(
         { runId, status: "completed", payload },
@@ -223,16 +227,16 @@ describe("POST /api/internal/callbacks/telegram", () => {
       expect(data.success).toBe(true);
 
       // Telegram API was called
-      expect(sendChatActionHandler.mocked).toHaveBeenCalledTimes(1);
+      expect(deleteMessageHandler.mocked).toHaveBeenCalledTimes(1);
       expect(sendMessageHandler.mocked).toHaveBeenCalledTimes(1);
     });
 
     it("should return 200 and send error message on failed run", async () => {
       const { runId, payload, secret } = await setupTelegramCallback();
 
-      const sendChatActionHandler = telegramSendChatAction();
+      const deleteMessageHandler = telegramDeleteMessage();
       const sendMessageHandler = telegramSendMessage();
-      server.use(sendChatActionHandler.handler, sendMessageHandler.handler);
+      server.use(deleteMessageHandler.handler, sendMessageHandler.handler);
 
       const request = createCallbackRequest(
         {
@@ -258,9 +262,9 @@ describe("POST /api/internal/callbacks/telegram", () => {
       const { runId, payload, secret, userId, composeId } =
         await setupTelegramCallback();
 
-      const sendChatActionHandler = telegramSendChatAction();
+      const deleteMessageHandler = telegramDeleteMessage();
       const sendMessageHandler = telegramSendMessage();
-      server.use(sendChatActionHandler.handler, sendMessageHandler.handler);
+      server.use(deleteMessageHandler.handler, sendMessageHandler.handler);
 
       // Create an agent session for findNewSessionId
       await createTestAgentSession(userId, composeId);
@@ -277,9 +281,9 @@ describe("POST /api/internal/callbacks/telegram", () => {
     it("should process existing session callback without error", async () => {
       const { runId, payload, secret } = await setupTelegramCallback();
 
-      const sendChatActionHandler = telegramSendChatAction();
+      const deleteMessageHandler = telegramDeleteMessage();
       const sendMessageHandler = telegramSendMessage();
-      server.use(sendChatActionHandler.handler, sendMessageHandler.handler);
+      server.use(deleteMessageHandler.handler, sendMessageHandler.handler);
 
       const request = createCallbackRequest(
         {
