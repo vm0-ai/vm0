@@ -181,20 +181,13 @@ export async function resolveSessionCompose(
   sessionId: string,
   userId: string,
 ): Promise<{ composeId: string; agentName: string } | undefined> {
-  try {
-    const sessionData = await validateAgentSession(sessionId, userId);
-    const agent = await getWorkspaceAgent(sessionData.agentComposeId);
-    if (agent) {
-      return {
-        composeId: sessionData.agentComposeId,
-        agentName: agent.name,
-      };
-    }
-  } catch (error) {
-    log.warn("Failed to resolve session compose, using workspace default", {
-      sessionId,
-      error,
-    });
+  const sessionData = await validateAgentSession(sessionId, userId);
+  const agent = await getWorkspaceAgent(sessionData.agentComposeId);
+  if (agent) {
+    return {
+      composeId: sessionData.agentComposeId,
+      agentName: agent.name,
+    };
   }
   return undefined;
 }
