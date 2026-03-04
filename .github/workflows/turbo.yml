@@ -1696,7 +1696,7 @@ jobs:
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline')
     timeout-minutes: 30
     env:
-      STRESS_PROMPT: "Run this exact command: sleep 60 && echo done"
+      STRESS_PROMPT: "sleep 10 && echo done"
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
