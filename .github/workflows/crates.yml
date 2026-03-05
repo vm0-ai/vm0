@@ -339,7 +339,8 @@ jobs:
           # Start transient runner service
           echo "--- Starting runner ---"
           "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true \
+            --balloon-reclaim
 
           # Submit a long-running job in background (keeps sandbox alive during tests)
           echo "--- Submitting long-running job ---"
@@ -376,6 +377,25 @@ jobs:
           OUTPUT=$("$BIN_DIR/runner" exec "$PREFIX" -- hostname)
           [ -n "$OUTPUT" ] || fail "prefix match returned empty output"
           echo "PASS: prefix matching"
+
+          # Test 4: balloon memory reclaim
+          echo "--- Test: balloon inflate ---"
+          API_SOCK="/run/vm0/sock/$RUN_ID/api.sock"
+
+          # Wait for balloon controller to tick and driver to respond
+          sleep 10
+
+          # Host-side: verify balloon inflated via API
+          STATS=$(sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics)
+          ACTUAL=$(echo "$STATS" | python3 -c "import sys,json; print(json.load(sys.stdin)['actual_mib'])")
+          [ "$ACTUAL" -gt 0 ] || fail "balloon did not inflate: actual_mib=$ACTUAL"
+          echo "PASS: balloon inflate (actual_mib=$ACTUAL)"
+
+          # Guest-side: verify MemAvailable decreased
+          AVAIL=$("$BIN_DIR/runner" exec "$RUN_ID" -- awk '/MemAvailable/ {print $2}' /proc/meminfo)
+          # With 2048 MiB VM and balloon inflated, MemAvailable should be well below 1536 MiB
+          [ "$AVAIL" -lt 1536000 ] || fail "MemAvailable too high after balloon: ${AVAIL}kB (expected < 1536000kB)"
+          echo "PASS: guest MemAvailable reduced (${AVAIL}kB)"
 
           # Stop transient service (kills sandbox, submit terminates naturally)
           "$BIN_DIR/runner" service stop --name "$SVC"
