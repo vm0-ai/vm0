@@ -37,9 +37,10 @@ vm0 schedule setup my-agent
 ```
 
 The CLI will prompt for:
-- **Frequency**: daily, weekly, monthly, or one-time
-- **Time**: When to run (HH:MM format)
+- **Frequency**: daily, weekly, monthly, one-time, or loop
+- **Time**: When to run (HH:MM format, for daily/weekly/monthly)
 - **Day**: Day of week or month (for weekly/monthly)
+- **Interval**: Seconds between runs (for loop)
 - **Timezone**: Your local timezone (auto-detected)
 - **Prompt**: The prompt to send to the agent
 
@@ -59,14 +60,14 @@ vm0 schedule setup my-agent \
 
 | Option | Description |
 | ------ | ----------- |
-| `-f, --frequency <type>` | Schedule frequency: `daily`, `weekly`, `monthly`, `once` |
+| `-f, --frequency <type>` | Schedule frequency: `daily`, `weekly`, `monthly`, `once`, `loop` |
 | `-t, --time <HH:MM>` | Time to run (24-hour format) |
 | `-d, --day <day>` | Day of week (`mon`-`sun`) or month (`1`-`31`) |
+| `-i, --interval <seconds>` | Interval in seconds for loop mode |
 | `-z, --timezone <tz>` | IANA timezone (e.g., `America/New_York`) |
 | `-p, --prompt <text>` | Prompt to run |
-| `--var <KEY=value>` | Pass variable (repeatable) |
-| `--secret <KEY=value>` | Pass secret (repeatable) |
 | `--artifact-name <name>` | Artifact name (default: `artifact`) |
+| `-e, --enable` | Enable schedule immediately after creation |
 
 ## Schedule Frequencies
 
@@ -89,6 +90,13 @@ vm0 schedule setup my-agent --frequency monthly --day 1 --time 09:00
 ```bash
 vm0 schedule setup my-agent --frequency once --day 2024-12-25 --time 09:00
 ```
+
+### Loop
+```bash
+vm0 schedule setup my-agent --frequency loop --interval 300 --prompt "check for updates"
+```
+
+Runs repeatedly at a fixed interval. The `--interval` flag specifies the number of seconds between runs.
 
 ## Managing Schedules
 
@@ -131,16 +139,14 @@ vm0 schedule delete my-agent
 
 ## Passing Variables and Secrets
 
-**Recommended: Use Platform Storage**
-
-Store secrets on the platform once, and they're automatically available for all scheduled runs:
+Variables and secrets for scheduled runs are inherited from the agent's platform-stored values. Store them once, and they are automatically available for all scheduled runs:
 
 ```bash
 vm0 variable set ENV production
 vm0 secret set API_KEY sk-xxx
 ```
 
-Then set up your schedule without passing secrets:
+Then set up your schedule:
 
 ```bash
 vm0 schedule setup my-agent \
@@ -148,23 +154,6 @@ vm0 schedule setup my-agent \
   --time 09:00 \
   --prompt "deploy to production"
 ```
-
-**Alternative: Schedule-Specific Values**
-
-For schedule-specific overrides, pass values in the setup command:
-
-```bash
-vm0 schedule setup my-agent \
-  --frequency daily \
-  --time 09:00 \
-  --prompt "deploy to production" \
-  --var ENV=production \
-  --secret API_KEY=sk-xxx
-```
-
-<Callout type="info">
-Schedule-specific values (`--var`, `--secret`) override Platform-stored values for that schedule only. Other schedules and manual runs still use Platform-stored values.
-</Callout>
 
 The agent can access these via `${{ vars.ENV }}` and `${{ secrets.API_KEY }}`.
 
@@ -176,7 +165,13 @@ See [Environment Variables](/docs/core-concept/environment-variable) for more de
 
 <Accordion title="When are schedules created vs enabled?">
 
-Schedules are created in a **disabled** state by default. This is a safety measure to let you review the configuration before activating. After setup, run:
+In **interactive mode**, `vm0 schedule setup` prompts you to enable the schedule after creation (default: yes). In **non-interactive mode**, schedules are created in a disabled state unless you pass the `--enable` flag:
+
+```bash
+vm0 schedule setup my-agent --frequency daily --time 09:00 --prompt "daily report" --enable
+```
+
+You can also enable a schedule at any time with:
 
 ```bash
 vm0 schedule enable my-agent

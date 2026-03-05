@@ -23,12 +23,19 @@ vm0 run my-agent:abc123 "build a todo app"
 
 ## Options
 
-| Option                      | Description                           |
-| --------------------------- | ------------------------------------- |
-| `--vars <KEY=value>`        | Pass variables for `${{ vars.xxx }}`  |
-| `--secrets <KEY=value>`     | Pass secrets for `${{ secrets.xxx }}` |
-| `--artifact-name <name>`    | Use persistent artifact storage       |
-| `--artifact-version <hash>` | Use specific artifact version         |
+| Option                           | Description                                                          |
+| -------------------------------- | -------------------------------------------------------------------- |
+| `--vars <KEY=value>`             | Pass variables for `${{ vars.xxx }}`                                 |
+| `--secrets <KEY=value>`          | Pass secrets for `${{ secrets.xxx }}`                                |
+| `--artifact-name <name>`         | Use persistent artifact storage                                      |
+| `--artifact-version <hash>`      | Use specific artifact version                                        |
+| `--env-file <path>`              | Load environment variables from file (priority: CLI flags > file > env vars) |
+| `--volume-version <name=version>` | Volume version override (repeatable, format: volumeName=version)     |
+| `--conversation <id>`            | Resume from conversation ID (for fine-grained control)               |
+| `--model-provider <type>`        | Override model provider (e.g., anthropic-api-key)                    |
+| `--verbose`                      | Show full tool inputs and outputs                                    |
+| `--check-env`                    | Validate secrets and vars before running                             |
+| `--experimental-shared-agent`    | Allow running agents shared by other users                           |
 
 ### Passing Variables and Secrets
 

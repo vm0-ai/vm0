@@ -129,14 +129,16 @@ Environment files are **not** automatically loaded. You must explicitly specify 
 When the same value is defined in multiple places, VM0 uses this priority order:
 
 1. **CLI flags** (`--vars`, `--secrets`) - highest priority
-2. **Platform-stored values** - medium priority
-3. **`--env-file`** values - lowest priority
+2. **Platform-stored values** - set via `vm0 secret set` / `vm0 variable set`
+3. **`--env-file`** values - loaded from the file specified with `--env-file`
+4. **Process environment** (`process.env`) - lowest priority fallback
 
 Example:
 
 ```bash
 # Platform has: vm0 secret set API_KEY stored-value
 # .env file contains: API_KEY=from-env-file
+# Shell environment has: export API_KEY=from-shell-env
 
 # CLI value wins over everything
 vm0 run my-agent "prompt" --secrets API_KEY=from-cli --env-file .env
@@ -149,6 +151,10 @@ vm0 run my-agent "prompt" --env-file .env
 # Without Platform-stored value, --env-file is used
 vm0 run my-agent "prompt" --env-file .env
 # Result: API_KEY = "from-env-file"
+
+# Without any of the above, falls back to process environment
+vm0 run my-agent "prompt"
+# Result: API_KEY = "from-shell-env"
 ```
 
 ## Best Practices
