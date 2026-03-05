@@ -15,22 +15,13 @@ import {
 } from "../../../../../src/lib/telegram/handlers/commands";
 import { storeTelegramMessage } from "../../../../../src/lib/telegram/handlers/shared";
 import { logger } from "../../../../../src/lib/logger";
+import type { TelegramHandlerUpdate } from "../../../../../src/lib/telegram/handlers/types";
 
 const log = logger("telegram:webhook");
 
-interface TelegramUpdate {
+interface TelegramWebhookUpdate {
   update_id: number;
-  message?: {
-    message_id: number;
-    chat: { id: number; type: string };
-    from?: { id: number; username?: string; is_bot?: boolean };
-    text?: string;
-    entities?: Array<{ type: string; offset: number; length: number }>;
-    reply_to_message?: {
-      message_id: number;
-      from?: { id: number; is_bot?: boolean };
-    };
-  };
+  message?: TelegramHandlerUpdate["message"];
 }
 
 /**
@@ -79,9 +70,9 @@ export async function POST(
   }
 
   // Parse update
-  let update: TelegramUpdate;
+  let update: TelegramWebhookUpdate;
   try {
-    update = (await request.json()) as TelegramUpdate;
+    update = (await request.json()) as TelegramWebhookUpdate;
   } catch {
     return new Response("Bad Request", { status: 400 });
   }

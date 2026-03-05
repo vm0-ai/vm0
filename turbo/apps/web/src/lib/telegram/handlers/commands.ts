@@ -10,17 +10,9 @@ import { getPlatformUrl } from "../../url";
 import { getUserEmail } from "../../auth/get-user-email";
 import { removePermission } from "../../agent/permission-service";
 import { logger } from "../../logger";
+import type { TelegramHandlerUpdate } from "./types";
 
 const log = logger("telegram:commands");
-
-interface TelegramUpdate {
-  message: {
-    message_id: number;
-    chat: { id: number; type: string };
-    from?: { id: number; username?: string; is_bot?: boolean };
-    text?: string;
-  };
-}
 
 /**
  * Handle /connect command
@@ -29,7 +21,7 @@ interface TelegramUpdate {
  * If not, directs them to the platform to connect their account.
  */
 export async function handleConnectCommand(
-  update: TelegramUpdate,
+  update: TelegramHandlerUpdate,
   installationId: string,
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
@@ -80,7 +72,7 @@ export async function handleConnectCommand(
  * Removes the user link and revokes agent permission.
  */
 export async function handleDisconnectCommand(
-  update: TelegramUpdate,
+  update: TelegramHandlerUpdate,
   installationId: string,
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
@@ -141,7 +133,7 @@ export async function handleDisconnectCommand(
  * Sends a link to the platform settings page with admin-aware description.
  */
 export async function handleSettingsCommand(
-  update: TelegramUpdate,
+  update: TelegramHandlerUpdate,
   installationId: string,
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
@@ -186,7 +178,7 @@ export async function handleSettingsCommand(
  * Lists available commands and usage info.
  */
 export async function handleHelpCommand(
-  update: TelegramUpdate,
+  update: TelegramHandlerUpdate,
   installationId: string,
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();

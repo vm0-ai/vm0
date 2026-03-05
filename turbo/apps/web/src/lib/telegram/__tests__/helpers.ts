@@ -1,3 +1,4 @@
+import { eq, and } from "drizzle-orm";
 import { initServices } from "../../init-services";
 import { telegramInstallations } from "../../../db/schema/telegram-installation";
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
@@ -146,6 +147,7 @@ export async function createTelegramCallbackInstallation(
   composeId: string,
   userId: string,
   botToken: string,
+  options?: { telegramUserId?: string },
 ): Promise<CallbackInstallationResult> {
   initServices();
 
@@ -170,7 +172,7 @@ export async function createTelegramCallbackInstallation(
   const [userLink] = await globalThis.services.db
     .insert(telegramUserLinks)
     .values({
-      telegramUserId: uniqueId("tg"),
+      telegramUserId: options?.telegramUserId ?? uniqueId("tg"),
       installationId: installation!.id,
       vm0UserId: userId,
     })
@@ -180,4 +182,27 @@ export async function createTelegramCallbackInstallation(
     installationId: installation!.id,
     userLinkId: userLink!.id,
   };
+}
+
+/**
+ * Check whether a user link exists for a given installation and telegram user ID.
+ * Returns true if the link exists, false otherwise.
+ */
+export async function telegramUserLinkExists(
+  installationId: string,
+  telegramUserId: string,
+): Promise<boolean> {
+  initServices();
+
+  const [row] = await globalThis.services.db
+    .select({ id: telegramUserLinks.id })
+    .from(telegramUserLinks)
+    .where(
+      and(
+        eq(telegramUserLinks.installationId, installationId),
+        eq(telegramUserLinks.telegramUserId, telegramUserId),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
 }

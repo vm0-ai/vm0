@@ -7,17 +7,9 @@ import { createTelegramClient, sendMessage } from "../client";
 import { resolveUserLink, getWorkspaceAgent } from "./shared";
 import { escapeHtml } from "../format";
 import { logger } from "../../logger";
+import type { TelegramHandlerUpdate } from "./types";
 
 const log = logger("telegram:new-session");
-
-interface TelegramUpdate {
-  message: {
-    message_id: number;
-    chat: { id: number; type: string };
-    from?: { id: number; username?: string; is_bot?: boolean };
-    text?: string;
-  };
-}
 
 /**
  * Handle /new_session command
@@ -26,7 +18,7 @@ interface TelegramUpdate {
  * Only works in private chats (DMs).
  */
 export async function handleNewSessionCommand(
-  update: TelegramUpdate,
+  update: TelegramHandlerUpdate,
   installationId: string,
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();

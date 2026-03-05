@@ -14,19 +14,9 @@ import {
   resolveUserLink,
 } from "./shared";
 import { logger } from "../../logger";
+import type { TelegramHandlerUpdate } from "./types";
 
 const log = logger("telegram:mention");
-
-interface TelegramUpdate {
-  message: {
-    message_id: number;
-    chat: { id: number; type: string };
-    from?: { id: number; username?: string; is_bot?: boolean };
-    text?: string;
-    entities?: Array<{ type: string; offset: number; length: number }>;
-    reply_to_message?: { message_id: number; from?: { is_bot?: boolean } };
-  };
-}
 
 /**
  * Handle a group @mention of the bot
@@ -44,7 +34,7 @@ interface TelegramUpdate {
  * 10. Dispatch agent run
  */
 export async function handleTelegramMention(
-  update: TelegramUpdate,
+  update: TelegramHandlerUpdate,
   installationId: string,
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();

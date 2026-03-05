@@ -6,21 +6,13 @@ import { env } from "../../../env";
 import { createTelegramClient, sendMessage } from "../client";
 import { ensureScopeAndArtifact } from "./shared";
 import { logger } from "../../logger";
+import type { TelegramHandlerUpdate } from "./types";
 import crypto from "crypto";
 
 const log = logger("telegram:start");
 
 /** Token expiry in seconds (10 minutes) */
 const TOKEN_EXPIRY_SECONDS = 600;
-
-interface TelegramUpdate {
-  message: {
-    message_id: number;
-    chat: { id: number; type: string };
-    from?: { id: number; username?: string; is_bot?: boolean };
-    text?: string;
-  };
-}
 
 interface LinkTokenPayload {
   vm0UserId: string;
@@ -37,7 +29,7 @@ interface LinkTokenPayload {
  * 3. Token present → validate, create user link, send confirmation
  */
 export async function handleStartCommand(
-  update: TelegramUpdate,
+  update: TelegramHandlerUpdate,
   installationId: string,
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
