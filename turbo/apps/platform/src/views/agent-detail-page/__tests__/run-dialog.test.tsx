@@ -9,6 +9,7 @@ import {
   setRunDialogFrequency$,
   setRunDialogMinute$,
   setRunDialogDate$,
+  setRunDialogIntervalSeconds$,
 } from "../../../signals/agent-detail/run-dialog.ts";
 
 const context = testContext();
@@ -496,6 +497,92 @@ describe("run dialog", () => {
     expect(
       screen.getByRole("heading", { name: "Run this agent" }),
     ).toBeInTheDocument();
+  });
+
+  it("should create loop schedule with intervalSeconds", async () => {
+    mockAgentDetailAPI();
+
+    let capturedBody: unknown = null;
+    server.use(
+      http.post("/api/agent/schedules", async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json(
+          {
+            id: "schedule_loop",
+            composeId: "compose_1",
+            composeName: "my-agent",
+            scopeSlug: "test-user",
+            name: "default",
+            triggerType: "loop",
+            cronExpression: null,
+            atTime: null,
+            intervalSeconds: 600,
+            timezone: "UTC",
+            prompt: "Monitor dashboard",
+            vars: null,
+            secretNames: null,
+            artifactName: null,
+            artifactVersion: null,
+            volumeVersions: null,
+            enabled: true,
+            nextRunAt: null,
+            lastRunAt: null,
+            retryStartedAt: null,
+            consecutiveFailures: 0,
+            createdAt: "2024-01-01T00:00:00Z",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Run/ }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Run this agent" }),
+      ).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByPlaceholderText(
+      "Describe your task in natural language.",
+    );
+    fireEvent.change(textarea, { target: { value: "Monitor dashboard" } });
+
+    // Set time option to "loop" and provide an interval
+    act(() => {
+      context.store.set(setRunDialogTimeOption$, "loop");
+      context.store.set(setRunDialogIntervalSeconds$, "600");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Run this agent" }),
+      ).not.toBeInTheDocument();
+    });
+
+    // Verify schedule API was called with intervalSeconds (no cronExpression, no atTime)
+    const body = capturedBody as Record<string, unknown>;
+    expect(body.composeId).toBe("compose_1");
+    expect(body.intervalSeconds).toBe(600);
+    expect(body.cronExpression).toBeUndefined();
+    expect(body.atTime).toBeUndefined();
+    expect(body.prompt).toBe("Monitor dashboard");
+    expect(body.name).toBe("default");
   });
 
   it("should close dialog on Cancel", async () => {
