@@ -26,7 +26,6 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  cn,
 } from "@vm0/ui";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "../settings-page/connector-icons";
