@@ -169,12 +169,12 @@ echo ""
 echo "=== The following commands will be executed ==="
 echo ""
 echo "  # Dev (repo-level)"
-echo "  echo \"${dev_id}\" | gh variable set ${CLIENT_ID}"
-echo "  echo \"$(mask "$dev_secret")\" | gh secret set ${CLIENT_SECRET}"
+echo "  echo \"${dev_id}\" | gh variable --repo vm0-ai/vm0 set ${CLIENT_ID}"
+echo "  echo \"$(mask "$dev_secret")\" | gh secret --repo vm0-ai/vm0 set ${CLIENT_SECRET}"
 echo ""
 echo "  # Production"
-echo "  echo \"${prod_id}\" | gh variable set ${CLIENT_ID} -e production"
-echo "  echo \"$(mask "$prod_secret")\" | gh secret set ${CLIENT_SECRET} -e production"
+echo "  echo \"${prod_id}\" | gh variable --repo vm0-ai/vm0 set ${CLIENT_ID} -e production"
+echo "  echo \"$(mask "$prod_secret")\" | gh secret --repo vm0-ai/vm0 set ${CLIENT_SECRET} -e production"
 echo ""
 read -rp "Proceed? [y/N] " confirm
 if [[ ! "$confirm" =~ ^[Yy] ]]; then
@@ -186,17 +186,17 @@ echo ""
 echo "=== Syncing to GitHub ==="
 
 # Dev (repo-level)
-echo "$dev_id" | gh variable set "$CLIENT_ID"
+echo "$dev_id" | gh variable --repo vm0-ai/vm0 set "$CLIENT_ID"
 echo "  Set repo variable: ${CLIENT_ID}"
 
-echo "$dev_secret" | gh secret set "$CLIENT_SECRET"
+echo "$dev_secret" | gh secret --repo vm0-ai/vm0 set "$CLIENT_SECRET"
 echo "  Set repo secret:   ${CLIENT_SECRET}"
 
 # Prod (production environment)
-echo "$prod_id" | gh variable set "$CLIENT_ID" -e production
+echo "$prod_id" | gh variable --repo vm0-ai/vm0 set "$CLIENT_ID" -e production
 echo "  Set production variable: ${CLIENT_ID}"
 
-echo "$prod_secret" | gh secret set "$CLIENT_SECRET" -e production
+echo "$prod_secret" | gh secret --repo vm0-ai/vm0 set "$CLIENT_SECRET" -e production
 echo "  Set production secret:   ${CLIENT_SECRET}"
 
 echo ""
