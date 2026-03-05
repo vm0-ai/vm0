@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.73.0](https://github.com/vm0-ai/vm0/compare/web-v12.72.0...web-v12.73.0) (2026-03-05)
+
+
+### Features
+
+* **telegram:** persistent thinking, clean dm replies, structured format ([#3650](https://github.com/vm0-ai/vm0/issues/3650)) ([74616d1](https://github.com/vm0-ai/vm0/commit/74616d1e4409dd7c8ff008eb6364fe84402ef07e))
+
+
+### Bug Fixes
+
+* **github:** detect existing app installations before redirecting ([#3642](https://github.com/vm0-ai/vm0/issues/3642)) ([7b094f4](https://github.com/vm0-ai/vm0/commit/7b094f490c88887420b076faa9e2186acdabf009))
+
 ## [12.72.0](https://github.com/vm0-ai/vm0/compare/web-v12.71.0...web-v12.72.0) (2026-03-05)
 
 

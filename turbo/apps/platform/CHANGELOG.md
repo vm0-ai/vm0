@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.84.1](https://github.com/vm0-ai/vm0/compare/platform-v0.84.0...platform-v0.84.1) (2026-03-05)
+
+
+### Bug Fixes
+
+* **github:** detect existing app installations before redirecting ([#3642](https://github.com/vm0-ai/vm0/issues/3642)) ([7b094f4](https://github.com/vm0-ai/vm0/commit/7b094f490c88887420b076faa9e2186acdabf009))
+
 ## [0.84.0](https://github.com/vm0-ai/vm0/compare/platform-v0.83.0...platform-v0.84.0) (2026-03-05)
 
 

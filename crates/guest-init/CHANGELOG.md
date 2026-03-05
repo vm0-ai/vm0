@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.2](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.1...guest-init-v0.14.2) (2026-03-05)
+
+
+### Bug Fixes
+
+* **guest-init:** configure aggressive tcp keepalive to detect dead connections ([#3673](https://github.com/vm0-ai/vm0/issues/3673)) ([6bf5cb9](https://github.com/vm0-ai/vm0/commit/6bf5cb927da3202dbfb0f0f968f1e3942ed18d0d)), closes [#3670](https://github.com/vm0-ai/vm0/issues/3670)
+
 ## [0.14.1](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.0...guest-init-v0.14.1) (2026-03-04)
 
 ## [0.14.0](https://github.com/vm0-ai/vm0/compare/guest-init-v0.13.0...guest-init-v0.14.0) (2026-03-04)

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.15.1...runner-rs-v0.16.0) (2026-03-05)
+
+
+### Features
+
+* **runner:** add concurrency-factor parameter for cpu overcommit ([#3669](https://github.com/vm0-ai/vm0/issues/3669)) ([528afa4](https://github.com/vm0-ai/vm0/commit/528afa4c9d6670abcfef0ce412ba12568e196295))
+
 ## [0.15.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.15.0...runner-rs-v0.15.1) (2026-03-04)
 
 
