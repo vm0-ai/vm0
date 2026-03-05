@@ -13,6 +13,8 @@ import {
   resolveSessionCompose,
   resolveUserLink,
 } from "./shared";
+import { escapeHtml } from "../format";
+import { getPlatformUrl } from "../../url";
 import { logger } from "../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -64,10 +66,12 @@ export async function handleTelegramMention(
   const userLink = await resolveUserLink(installationId, fromUserId);
 
   if (!userLink) {
+    const platformUrl = getPlatformUrl();
+    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}`;
     await sendMessage(
       client,
       chatId,
-      "Please link your account first. Use /connect to get started.",
+      `Please connect your account first:\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
       { replyToMessageId: message.message_id },
     );
     return;

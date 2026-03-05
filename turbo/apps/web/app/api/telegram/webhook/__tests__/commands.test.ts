@@ -352,7 +352,7 @@ describe("Telegram bot commands", () => {
       await flushAfterCallbacks();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("link your account");
+      expect(sendMsg.calls[0]?.text).toContain("connect your account");
     });
 
     it("should be ignored in group chats", async () => {
