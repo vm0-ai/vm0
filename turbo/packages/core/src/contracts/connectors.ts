@@ -765,14 +765,7 @@ export const CONNECTOR_TYPES = {
     oauth: {
       authorizationUrl: "https://intervals.icu/oauth/authorize",
       tokenUrl: "https://intervals.icu/api/oauth/token",
-      scopes: [
-        "ACTIVITY:READ",
-        "ACTIVITY:WRITE",
-        "WELLNESS:READ",
-        "WELLNESS:WRITE",
-        "CALENDAR:READ",
-        "CALENDAR:WRITE",
-      ],
+      scopes: ["ACTIVITY", "WELLNESS", "CALENDAR", "SETTINGS", "LIBRARY"],
     } as ConnectorOAuthConfig,
   },
   xero: {
