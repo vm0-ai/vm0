@@ -35,12 +35,17 @@ export const modelProviders = pgTable(
     authMethod: varchar("auth_method", { length: 50 }),
     isDefault: boolean("is_default").notNull().default(false),
     selectedModel: varchar("selected_model", { length: 255 }),
-    userId: text("user_id"), // Scope member who owns this provider (nullable for backfill)
+    userId: text("user_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex("idx_model_providers_scope_type").on(table.scopeId, table.type),
+    // One provider per type per user within a scope
+    uniqueIndex("idx_model_providers_scope_user_type").on(
+      table.scopeId,
+      table.userId,
+      table.type,
+    ),
     index("idx_model_providers_scope").on(table.scopeId),
     index("idx_model_providers_secret").on(table.secretId),
   ],

@@ -28,7 +28,6 @@ import * as connectorSchema from "./schema/connector";
 import * as usageDailySchema from "./schema/usage-daily";
 import * as emailThreadSessionSchema from "./schema/email-thread-session";
 import * as emailReplyRequestSchema from "./schema/email-reply-request";
-import * as orgAccessTokenSchema from "./schema/org-access-token";
 import * as githubInstallationSchema from "./schema/github-installation";
 import * as githubUserLinkSchema from "./schema/github-user-link";
 import * as githubIssueSessionSchema from "./schema/github-issue-session";
@@ -69,7 +68,6 @@ export const schema = {
   ...usageDailySchema,
   ...emailThreadSessionSchema,
   ...emailReplyRequestSchema,
-  ...orgAccessTokenSchema,
   ...githubInstallationSchema,
   ...githubUserLinkSchema,
   ...githubIssueSessionSchema,
