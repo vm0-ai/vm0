@@ -17,9 +17,8 @@ import { users } from "../src/db/schema/user";
 import {
   SELF_HOSTED_USER_ID,
   SELF_HOSTED_SCOPE_SLUG,
+  SELF_HOSTED_CLERK_ORG_ID,
 } from "../src/lib/auth/constants";
-
-const SELF_HOSTED_CLERK_ORG_ID = "org_self_hosted";
 
 async function main() {
   if (!process.env.DATABASE_URL) {

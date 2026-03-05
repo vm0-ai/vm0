@@ -9,8 +9,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../../mocks/server";
-import { membersCommand } from "../status";
+import { server } from "../../../mocks/server";
+import { membersCommand } from "../members";
 import chalk from "chalk";
 
 describe("org status command", () => {

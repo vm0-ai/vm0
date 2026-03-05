@@ -1,5 +1,5 @@
 /**
- * Tests for org leave command
+ * Tests for org create command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -9,20 +9,20 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../../mocks/server";
-import { leaveCommand } from "../leave";
+import { server } from "../../../mocks/server";
+import { createCommand } from "../create-scope";
 import chalk from "chalk";
 
-vi.mock("../../../../lib/api/config", async (importOriginal) => {
+vi.mock("../../../lib/api/config", async (importOriginal) => {
   const original =
-    await importOriginal<typeof import("../../../../lib/api/config")>();
+    await importOriginal<typeof import("../../../lib/api/config")>();
   return {
     ...original,
     loadConfig: vi.fn().mockResolvedValue({ activeScope: undefined }),
   };
 });
 
-describe("org leave command", () => {
+describe("org create command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -37,43 +37,56 @@ describe("org leave command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
-  it("should leave org and show success", async () => {
+  it("should create org and auto-switch scope, show success", async () => {
     server.use(
-      http.post("http://localhost:3000/api/org/leave", () => {
-        return HttpResponse.json({
-          message: "Left organization",
-        });
+      http.post("http://localhost:3000/api/org", () => {
+        return HttpResponse.json(
+          {
+            slug: "my-team",
+            role: "admin",
+            members: [
+              {
+                userId: "user-1",
+                email: "",
+                role: "admin",
+                joinedAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            createdAt: "2025-01-01T00:00:00Z",
+          },
+          { status: 201 },
+        );
       }),
     );
 
-    await leaveCommand.parseAsync(["node", "cli"]);
+    await createCommand.parseAsync(["node", "cli", "my-team"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("Left scope");
-    expect(logCalls).toContain("default scope");
+    expect(logCalls).toContain("my-team");
+    expect(logCalls).toContain("created");
   });
 
-  it("should handle admin-cannot-leave error", async () => {
+  it("should handle 'already own an organization' error", async () => {
     server.use(
-      http.post("http://localhost:3000/api/org/leave", () => {
+      http.post("http://localhost:3000/api/org", () => {
         return HttpResponse.json(
           {
             error: {
-              message: "Admin cannot leave the organization",
-              code: "FORBIDDEN",
+              message: "You already own an organization",
+              code: "BAD_REQUEST",
             },
           },
-          { status: 403 },
+          { status: 400 },
         );
       }),
     );
 
     await expect(async () => {
-      await leaveCommand.parseAsync(["node", "cli"]);
+      await createCommand.parseAsync(["node", "cli", "new-org"]);
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("Admin cannot leave"),
+      expect.stringContaining("already own an organization"),
     );
     expect(mockExit).toHaveBeenCalledWith(1);
   });

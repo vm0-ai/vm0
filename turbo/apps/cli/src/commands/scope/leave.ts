@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { leaveOrg } from "../../../lib/api";
-import { saveConfig } from "../../../lib/api/config";
+import { leaveOrg } from "../../lib/api";
+import { saveConfig } from "../../lib/api/config";
 
 export const leaveCommand = new Command()
   .name("leave")

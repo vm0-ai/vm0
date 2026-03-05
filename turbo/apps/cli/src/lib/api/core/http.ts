@@ -1,5 +1,29 @@
 import { getBaseUrl } from "./client-factory";
-import { getActiveToken } from "../config";
+import { getActiveToken, loadConfig } from "../config";
+
+/**
+ * Append ?scope=<activeScope> to a path if activeScope is configured
+ * and the path doesn't already include a scope param.
+ */
+async function appendScopeParam(path: string): Promise<string> {
+  const config = await loadConfig();
+  const activeScope = config.activeScope;
+  if (!activeScope) {
+    return path;
+  }
+
+  // Check if scope param already exists
+  const queryStart = path.indexOf("?");
+  if (queryStart !== -1) {
+    const params = new URLSearchParams(path.slice(queryStart));
+    if (params.has("scope")) {
+      return path;
+    }
+    return `${path}&scope=${encodeURIComponent(activeScope)}`;
+  }
+
+  return `${path}?scope=${encodeURIComponent(activeScope)}`;
+}
 
 /**
  * Get headers for raw HTTP requests (used for non-ts-rest endpoints)
@@ -29,8 +53,9 @@ async function getRawHeaders(): Promise<Record<string, string>> {
 export async function httpGet(path: string): Promise<Response> {
   const baseUrl = await getBaseUrl();
   const headers = await getRawHeaders();
+  const scopedPath = await appendScopeParam(path);
 
-  return fetch(`${baseUrl}${path}`, {
+  return fetch(`${baseUrl}${scopedPath}`, {
     method: "GET",
     headers,
   });
@@ -42,8 +67,9 @@ export async function httpGet(path: string): Promise<Response> {
 export async function httpPost(path: string, body: unknown): Promise<Response> {
   const baseUrl = await getBaseUrl();
   const headers = await getRawHeaders();
+  const scopedPath = await appendScopeParam(path);
 
-  return fetch(`${baseUrl}${path}`, {
+  return fetch(`${baseUrl}${scopedPath}`, {
     method: "POST",
     headers: {
       ...headers,
@@ -59,8 +85,9 @@ export async function httpPost(path: string, body: unknown): Promise<Response> {
 export async function httpDelete(path: string): Promise<Response> {
   const baseUrl = await getBaseUrl();
   const headers = await getRawHeaders();
+  const scopedPath = await appendScopeParam(path);
 
-  return fetch(`${baseUrl}${path}`, {
+  return fetch(`${baseUrl}${scopedPath}`, {
     method: "DELETE",
     headers,
   });

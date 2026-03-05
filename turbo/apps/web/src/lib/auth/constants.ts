@@ -9,3 +9,5 @@ export const SELF_HOSTED_USER_ID = "00000000-0000-0000-0000-000000000000";
 export const SELF_HOSTED_USER_EMAIL = "admin@localhost";
 
 export const SELF_HOSTED_SCOPE_SLUG = "self-hosted";
+
+export const SELF_HOSTED_CLERK_ORG_ID = "org_self_hosted";

@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { createOrg } from "../../../lib/api";
-import { saveConfig } from "../../../lib/api/config";
+import { createOrg } from "../../lib/api";
+import { saveConfig } from "../../lib/api/config";
 
 export const createCommand = new Command()
   .name("create")

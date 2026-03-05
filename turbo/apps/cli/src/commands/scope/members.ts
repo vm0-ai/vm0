@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getOrgStatus } from "../../../lib/api";
+import { getOrgStatus } from "../../lib/api";
 
 export const membersCommand = new Command()
   .name("members")

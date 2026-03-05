@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { inviteMember } from "../../../lib/api";
+import { inviteMember } from "../../lib/api";
 
 export const inviteCommand = new Command()
   .name("invite")

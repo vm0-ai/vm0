@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { removeMember } from "../../../lib/api";
+import { removeMember } from "../../lib/api";
 
 export const removeCommand = new Command()
   .name("remove")
