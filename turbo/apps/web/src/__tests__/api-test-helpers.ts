@@ -2255,6 +2255,7 @@ export async function findTestGitHubIssueSession(
 export async function createTestTelegramInstallation(options?: {
   adminUserId?: string;
   vm0UserId?: string;
+  telegramBotId?: string;
 }): Promise<string> {
   initServices();
   const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
@@ -2283,8 +2284,8 @@ export async function createTestTelegramInstallation(options?: {
   const [installation] = await globalThis.services.db
     .insert(telegramInstallations)
     .values({
-      telegramBotId: suffix,
-      botUsername: `bot_${suffix}`,
+      telegramBotId: options?.telegramBotId ?? suffix,
+      botUsername: `bot_${options?.telegramBotId ?? suffix}`,
       encryptedBotToken: encryptCredentialValue(
         "test-bot-token",
         SECRETS_ENCRYPTION_KEY,

@@ -48,7 +48,10 @@ export async function GET(request: Request) {
     });
   }
 
-  // If not linked, check if a specific bot was requested via ?botId= param
+  // If not linked, check if a specific bot was requested via ?botId= param.
+  // This returns the installation ID and botUsername so the frontend can show
+  // a re-link UI. Actual linking is gated by an HMAC-signed deep link token
+  // that must be activated via Telegram interaction (see /start handler).
   const url = new URL(request.url);
   const botId = url.searchParams.get("botId");
 
