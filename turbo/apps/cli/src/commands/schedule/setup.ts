@@ -130,6 +130,7 @@ function parseFrequencyFromCron(
 }
 
 interface SetupOptions {
+  name?: string;
   frequency?: string;
   time?: string;
   day?: string;
@@ -148,6 +149,7 @@ interface ExistingScheduleDefaults {
 }
 
 interface ScheduleListItem {
+  name: string;
   composeName: string;
   triggerType?: "cron" | "once" | "loop";
   cronExpression?: string | null;
@@ -411,7 +413,10 @@ async function gatherPromptText(
 /**
  * Resolve agent and get composeId with content
  */
-async function resolveAgent(agentName: string): Promise<{
+async function resolveAgent(
+  agentName: string,
+  scheduleName?: string,
+): Promise<{
   composeId: string;
   scheduleName: string;
   composeContent: unknown;
@@ -424,7 +429,7 @@ async function resolveAgent(agentName: string): Promise<{
   }
   return {
     composeId: compose.id,
-    scheduleName: `${agentName}-schedule`,
+    scheduleName: scheduleName || `${agentName}-schedule`,
     composeContent: compose.content,
   };
 }
@@ -526,13 +531,16 @@ async function gatherTiming(
 }
 
 /**
- * Find existing schedule for agent
+ * Find existing schedule for agent by schedule name
  */
 async function findExistingSchedule(
   agentName: string,
+  scheduleName: string,
 ): Promise<ScheduleListItem | undefined> {
   const { schedules } = await listSchedules();
-  return schedules.find((s) => s.composeName === agentName);
+  return schedules.find(
+    (s) => s.composeName === agentName && s.name === scheduleName,
+  );
 }
 
 interface DeployResult {
@@ -722,6 +730,10 @@ export const setupCommand = new Command()
   .name("setup")
   .description("Create or edit a schedule for an agent")
   .argument("<agent-name>", "Agent name to configure schedule for")
+  .option(
+    "-n, --name <schedule-name>",
+    "Schedule name (default: <agent>-schedule)",
+  )
   .option("-f, --frequency <type>", "Frequency: daily|weekly|monthly|once|loop")
   .option("-t, --time <HH:MM>", "Time to run (24-hour format)")
   .option("-d, --day <day>", "Day of week (mon-sun) or day of month (1-31)")
@@ -735,10 +747,16 @@ export const setupCommand = new Command()
       // 1. Resolve agent to composeId and get content
       // Note: composeContent is resolved but validation of required secrets/vars
       // is now done server-side against platform tables
-      const { composeId, scheduleName } = await resolveAgent(agentName);
+      const { composeId, scheduleName } = await resolveAgent(
+        agentName,
+        options.name,
+      );
 
       // 2. Check for existing schedule
-      const existingSchedule = await findExistingSchedule(agentName);
+      const existingSchedule = await findExistingSchedule(
+        agentName,
+        scheduleName,
+      );
 
       console.log(
         chalk.dim(

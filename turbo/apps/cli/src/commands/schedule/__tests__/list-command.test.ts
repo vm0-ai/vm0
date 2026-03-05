@@ -110,7 +110,9 @@ describe("schedule list command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("my-agent");
+      expect(logCalls).toContain("my-agent-schedule");
       expect(logCalls).toContain("other-agent");
+      expect(logCalls).toContain("other-agent-schedule");
       expect(logCalls).toContain("0 9 * * *");
       expect(logCalls).toContain("UTC");
     });
@@ -186,6 +188,76 @@ describe("schedule list command", () => {
       expect(logCalls).toContain("vm0 schedule setup");
     });
 
+    it("should display multiple schedules for same agent", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({
+            schedules: [
+              {
+                id: "schedule-1",
+                composeId: "compose-1",
+                composeName: "my-agent",
+                scopeSlug: "user-test",
+                name: "daily-report",
+                triggerType: "cron",
+                cronExpression: "0 9 * * *",
+                atTime: null,
+                intervalSeconds: null,
+                timezone: "UTC",
+                prompt: "Daily report",
+                vars: null,
+                secretNames: null,
+                artifactName: null,
+                artifactVersion: null,
+                volumeVersions: null,
+                enabled: true,
+                nextRunAt: new Date(Date.now() + 86400000).toISOString(),
+                lastRunAt: null,
+                retryStartedAt: null,
+                consecutiveFailures: 0,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+              {
+                id: "schedule-2",
+                composeId: "compose-1",
+                composeName: "my-agent",
+                scopeSlug: "user-test",
+                name: "weekly-cleanup",
+                triggerType: "cron",
+                cronExpression: "0 10 * * 1",
+                atTime: null,
+                intervalSeconds: null,
+                timezone: "UTC",
+                prompt: "Weekly cleanup",
+                vars: null,
+                secretNames: null,
+                artifactName: null,
+                artifactVersion: null,
+                volumeVersions: null,
+                enabled: true,
+                nextRunAt: new Date(Date.now() + 86400000).toISOString(),
+                lastRunAt: null,
+                retryStartedAt: null,
+                consecutiveFailures: 0,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+          });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      // Both schedules for same agent should be shown
+      expect(logCalls).toContain("daily-report");
+      expect(logCalls).toContain("weekly-cleanup");
+      expect(logCalls).toContain("0 9 * * *");
+      expect(logCalls).toContain("0 10 * * 1");
+    });
+
     it("should show table header with correct columns", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/schedules", () => {
@@ -220,6 +292,7 @@ describe("schedule list command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("AGENT");
+      expect(logCalls).toContain("SCHEDULE");
       expect(logCalls).toContain("TRIGGER");
       expect(logCalls).toContain("STATUS");
       expect(logCalls).toContain("NEXT RUN");

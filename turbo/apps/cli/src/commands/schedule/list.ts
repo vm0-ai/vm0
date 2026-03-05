@@ -25,6 +25,10 @@ export const listCommand = new Command()
         5,
         ...result.schedules.map((s) => s.composeName.length),
       );
+      const scheduleWidth = Math.max(
+        8,
+        ...result.schedules.map((s) => s.name.length),
+      );
       const triggerWidth = Math.max(
         7,
         ...result.schedules.map((s) =>
@@ -37,6 +41,7 @@ export const listCommand = new Command()
       // Print header
       const header = [
         "AGENT".padEnd(agentWidth),
+        "SCHEDULE".padEnd(scheduleWidth),
         "TRIGGER".padEnd(triggerWidth),
         "STATUS".padEnd(8),
         "NEXT RUN",
@@ -59,6 +64,7 @@ export const listCommand = new Command()
 
         const row = [
           schedule.composeName.padEnd(agentWidth),
+          schedule.name.padEnd(scheduleWidth),
           trigger.padEnd(triggerWidth),
           status.padEnd(8 + (schedule.enabled ? 0 : 2)), // Account for chalk chars
           nextRun,

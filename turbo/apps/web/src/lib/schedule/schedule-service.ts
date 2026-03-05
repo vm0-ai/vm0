@@ -369,21 +369,6 @@ export async function deploySchedule(
     )
     .limit(1);
 
-  // Initial version: enforce 1:1 constraint (one schedule per agent)
-  if (!existing) {
-    const existingSchedules = await globalThis.services.db
-      .select()
-      .from(agentSchedules)
-      .where(eq(agentSchedules.composeId, request.composeId))
-      .limit(1);
-
-    if (existingSchedules.length > 0) {
-      throw badRequest(
-        "This agent already has a schedule. Please edit the existing schedule or delete it first.",
-      );
-    }
-  }
-
   // Validate required secrets/vars against platform tables
   await validateRequiredConfig(compose);
 

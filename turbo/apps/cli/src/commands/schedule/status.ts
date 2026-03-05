@@ -182,33 +182,39 @@ export const statusCommand = new Command()
   .description("Show detailed status of a schedule")
   .argument("<agent-name>", "Agent name")
   .option(
+    "-n, --name <schedule-name>",
+    "Schedule name (required when agent has multiple schedules)",
+  )
+  .option(
     "-l, --limit <number>",
     "Number of recent runs to show (0 to hide)",
     "5",
   )
-  .action(async (agentName: string, options: { limit: string }) => {
-    try {
-      const resolved = await resolveScheduleByAgent(agentName);
-      const { name, composeId } = resolved;
+  .action(
+    async (agentName: string, options: { name?: string; limit: string }) => {
+      try {
+        const resolved = await resolveScheduleByAgent(agentName, options.name);
+        const { name, composeId } = resolved;
 
-      const schedule = await getScheduleByName({ name, composeId });
+        const schedule = await getScheduleByName({ name, composeId });
 
-      console.log();
-      console.log(`Schedule for agent: ${chalk.cyan(agentName)}`);
-      console.log(chalk.dim("━".repeat(50)));
+        console.log();
+        console.log(`Schedule for agent: ${chalk.cyan(agentName)}`);
+        console.log(chalk.dim("━".repeat(50)));
 
-      printRunConfiguration(schedule);
-      printTimeSchedule(schedule);
+        printRunConfiguration(schedule);
+        printTimeSchedule(schedule);
 
-      const parsed = parseInt(options.limit, 10);
-      const limit = Math.min(
-        Math.max(0, Number.isNaN(parsed) ? 5 : parsed),
-        100,
-      );
-      await printRecentRuns(name, composeId, limit);
+        const parsed = parseInt(options.limit, 10);
+        const limit = Math.min(
+          Math.max(0, Number.isNaN(parsed) ? 5 : parsed),
+          100,
+        );
+        await printRecentRuns(name, composeId, limit);
 
-      console.log();
-    } catch (error) {
-      handleStatusError(error, agentName);
-    }
-  });
+        console.log();
+      } catch (error) {
+        handleStatusError(error, agentName);
+      }
+    },
+  );

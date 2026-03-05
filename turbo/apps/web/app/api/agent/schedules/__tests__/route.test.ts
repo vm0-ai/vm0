@@ -344,15 +344,15 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
     });
   });
 
-  describe("Schedule Limit", () => {
-    it("should reject creating second schedule for same agent (1:1 constraint)", async () => {
+  describe("Multiple Schedules (1:N)", () => {
+    it("should allow creating multiple schedules for same agent with different names", async () => {
       // Create first schedule
       await createTestSchedule(testComposeId, "first-schedule", {
         cronExpression: "0 8 * * *",
         prompt: "First",
       });
 
-      // Try to create second schedule with different name
+      // Create second schedule with different name
       const request = createTestRequest(
         "http://localhost:3000/api/agent/schedules",
         {
@@ -371,8 +371,16 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(400);
-      expect(data.error.message).toContain("already has a schedule");
+      expect(response.status).toBe(201);
+      expect(data.created).toBe(true);
+      expect(data.schedule.name).toBe("second-schedule");
+
+      // Verify both schedules exist
+      const schedules = await listTestSchedules();
+      const agentSchedules = schedules.filter(
+        (s) => s.composeId === testComposeId,
+      );
+      expect(agentSchedules.length).toBe(2);
     });
   });
 

@@ -7,10 +7,14 @@ export const enableCommand = new Command()
   .name("enable")
   .description("Enable a schedule")
   .argument("<agent-name>", "Agent name")
-  .action(async (agentName: string) => {
+  .option(
+    "-n, --name <schedule-name>",
+    "Schedule name (required when agent has multiple schedules)",
+  )
+  .action(async (agentName: string, options: { name?: string }) => {
     try {
       // Resolve schedule by agent name
-      const resolved = await resolveScheduleByAgent(agentName);
+      const resolved = await resolveScheduleByAgent(agentName, options.name);
 
       // Call API
       await enableSchedule({
