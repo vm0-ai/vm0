@@ -339,8 +339,7 @@ jobs:
           # Start transient runner service
           echo "--- Starting runner ---"
           "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true \
-            --balloon-reclaim
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
 
           # Submit a long-running job in background (keeps sandbox alive during tests)
           echo "--- Submitting long-running job ---"
@@ -378,8 +377,87 @@ jobs:
           [ -n "$OUTPUT" ] || fail "prefix match returned empty output"
           echo "PASS: prefix matching"
 
-          # Test 4a: balloon idle inflate
-          echo "--- Test: balloon idle inflate ---"
+          # Stop transient service (kills sandbox, submit terminates naturally)
+          "$BIN_DIR/runner" service stop --name "$SVC"
+          trap - EXIT
+
+          echo "=== Exec test passed ==="
+          REMOTE_SCRIPT
+
+  runner-balloon:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      - name: Test balloon memory reclaim
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          ROOTFS_HASH: ${{ needs.runner-build.outputs.rootfs-hash }}
+          SNAPSHOT_HASH: ${{ needs.runner-build.outputs.snapshot-hash }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+          REMOTE="${METAL_USER}@${HOST}"
+          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+
+          echo "=== Generating config ==="
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+            --rootfs-hash ${ROOTFS_HASH} \
+            --snapshot-hash ${SNAPSHOT_HASH} \
+            --name ${JOB_REF}-balloon \
+            --group vm0/balloon-${JOB_REF} \
+            --runner-dirname ${JOB_REF}-balloon \
+            --max-concurrent 2 \
+            --api-url https://not-a-real-server.test \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "=== Running balloon test ==="
+          ssh $SSH_OPTS $REMOTE bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          BIN_DIR=$1; JOB_REF=$2
+          RUNNER_DIR="$HOME/.vm0-runner/runners/${JOB_REF}-balloon"
+          SVC="${JOB_REF}-balloon"
+          GROUP="vm0/balloon-${JOB_REF}"
+
+          fail() { echo "FAIL: $1"; exit 1; }
+
+          cleanup() {
+            echo "--- Cleanup ---"
+            "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          # Start transient runner service with balloon reclaim enabled
+          echo "--- Starting runner ---"
+          "$BIN_DIR/runner" service start --name "$SVC" \
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true \
+            --balloon-reclaim
+
+          # Submit a long-running job in background (keeps sandbox alive during tests)
+          echo "--- Submitting long-running job ---"
+          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
+
+          # Wait for sandbox control socket
+          echo "--- Waiting for sandbox control socket ---"
+          for i in $(seq 1 60); do
+            RUN_ID=$(grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
+              "$RUNNER_DIR/status.json" 2>/dev/null | head -1)
+            [ -n "$RUN_ID" ] && [ -S "/run/vm0/sock/$RUN_ID/control.sock" ] && break
+            RUN_ID=""
+            sleep 1
+          done
+          [ -z "$RUN_ID" ] && fail "control socket not found after 60s"
+          echo "Found sandbox: $RUN_ID"
+
           API_SOCK="/run/vm0/sock/$RUN_ID/api.sock"
 
           # Helper: read current balloon actual_mib
@@ -388,7 +466,8 @@ jobs:
               | jq '.actual_mib // 0' 2>/dev/null || echo 0
           }
 
-          # Poll until balloon inflates (controller ticks every 5s, allow up to 20s)
+          # Test 1: idle inflate — balloon reclaims idle guest memory
+          echo "--- Test: balloon idle inflate ---"
           ACTUAL=0
           for i in $(seq 1 20); do
             ACTUAL=$(balloon_mib)
@@ -398,19 +477,18 @@ jobs:
           [ "$ACTUAL" -gt 0 ] || fail "balloon did not inflate: actual_mib=$ACTUAL"
           echo "PASS: balloon idle inflate (actual_mib=$ACTUAL)"
 
-          # Guest-side: verify MemAvailable decreased
+          # Verify guest-side: MemAvailable decreased
           AVAIL=$("$BIN_DIR/runner" exec "$RUN_ID" -- grep MemAvailable /proc/meminfo | tr -s ' ' | cut -d' ' -f2)
           [ "$AVAIL" -lt 1536000 ] || fail "MemAvailable too high after balloon: ${AVAIL}kB (expected < 1536000kB)"
           echo "PASS: guest MemAvailable reduced (${AVAIL}kB)"
 
-          # Test 4b: balloon deflate under memory pressure
+          # Test 2: deflate — balloon gives memory back under guest pressure
           echo "--- Test: balloon deflate under pressure ---"
           BEFORE_DEFLATE=$ACTUAL
 
           # Allocate 350 MiB in guest via tmpfs to push free memory below deflate threshold (192 MiB)
           "$BIN_DIR/runner" exec "$RUN_ID" -- dd if=/dev/zero of=/dev/shm/balloon-test bs=1M count=350 2>/dev/null
 
-          # Poll until balloon deflates
           for i in $(seq 1 20); do
             ACTUAL=$(balloon_mib)
             [ "$ACTUAL" -lt "$BEFORE_DEFLATE" ] && break
@@ -419,14 +497,12 @@ jobs:
           [ "$ACTUAL" -lt "$BEFORE_DEFLATE" ] || fail "balloon did not deflate: actual_mib=$ACTUAL (was $BEFORE_DEFLATE)"
           echo "PASS: balloon deflate (actual_mib=$ACTUAL, was $BEFORE_DEFLATE)"
 
-          # Test 4c: balloon re-inflate after memory release
+          # Test 3: re-inflate — balloon reclaims again after guest releases memory
           echo "--- Test: balloon re-inflate after release ---"
           BEFORE_REINFLATE=$ACTUAL
 
-          # Release the 350 MiB allocation
           "$BIN_DIR/runner" exec "$RUN_ID" -- rm /dev/shm/balloon-test
 
-          # Poll until balloon re-inflates
           for i in $(seq 1 20); do
             ACTUAL=$(balloon_mib)
             [ "$ACTUAL" -gt "$BEFORE_REINFLATE" ] && break
@@ -435,11 +511,11 @@ jobs:
           [ "$ACTUAL" -gt "$BEFORE_REINFLATE" ] || fail "balloon did not re-inflate: actual_mib=$ACTUAL (was $BEFORE_REINFLATE)"
           echo "PASS: balloon re-inflate (actual_mib=$ACTUAL, was $BEFORE_REINFLATE)"
 
-          # Stop transient service (kills sandbox, submit terminates naturally)
+          # Stop transient service
           "$BIN_DIR/runner" service stop --name "$SVC"
           trap - EXIT
 
-          echo "=== Exec test passed ==="
+          echo "=== Balloon test passed ==="
           REMOTE_SCRIPT
 
   runner-upgrade-local:
@@ -559,7 +635,7 @@ jobs:
 
   runner-cleanup:
     runs-on: ubuntu-latest
-    needs: [runner-build, runner-benchmark, runner-exec, runner-upgrade-local]
+    needs: [runner-build, runner-benchmark, runner-exec, runner-balloon, runner-upgrade-local]
     if: ${{ always() && needs.runner-build.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v6
