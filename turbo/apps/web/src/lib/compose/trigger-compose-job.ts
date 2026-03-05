@@ -313,6 +313,9 @@ async function spawnComposeJobSandbox(
       log.error(`  stderr: ${stderr}`);
 
       const truncatedError = errorMessage.slice(0, 1000);
+      // Wrap in try/catch to prevent unhandled rejection: this is already
+      // inside a fire-and-forget .catch() handler, so a DB failure here
+      // must not propagate as a second unhandled rejection.
       try {
         await globalThis.services.db
           .update(composeJobs)
@@ -430,13 +433,21 @@ export async function triggerComposeJob(
       )
       .limit(1);
 
-    log.debug(`Returning existing job ${existingJob!.id} for user ${userId}`);
+    // The active job may have completed between the INSERT conflict and this
+    // SELECT (rare race). Fail fast instead of masking with non-null assertion.
+    if (!existingJob) {
+      throw new Error(
+        `Active compose job not found for user ${userId} after insert conflict`,
+      );
+    }
+
+    log.debug(`Returning existing job ${existingJob.id} for user ${userId}`);
     return {
-      jobId: existingJob!.id,
-      status: existingJob!.status,
-      githubUrl: existingJob!.githubUrl,
-      source: existingJob!.source,
-      createdAt: existingJob!.createdAt,
+      jobId: existingJob.id,
+      status: existingJob.status,
+      githubUrl: existingJob.githubUrl,
+      source: existingJob.source,
+      createdAt: existingJob.createdAt,
       isExisting: true,
     };
   }
@@ -463,6 +474,9 @@ export async function triggerComposeJob(
       log.error(`Failed to spawn sandbox for job ${jobId}:`, error);
       const errorMessage =
         error instanceof Error ? error.message : "Failed to create sandbox";
+      // Wrap in try/catch to prevent unhandled rejection: this is already
+      // inside a fire-and-forget .catch() handler, so a DB failure here
+      // must not propagate as a second unhandled rejection.
       try {
         await globalThis.services.db
           .update(composeJobs)
