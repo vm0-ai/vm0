@@ -1,9 +1,13 @@
 import { createHash } from "crypto";
-import { eq, and, asc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { scopes } from "../../db/schema/scope";
 import { scopeMembers } from "../../db/schema/scope-member";
-import { requireScopeMember } from "./scope-member-service";
+import {
+  requireScopeMember,
+  getPrimaryAdminMembership,
+  getDefaultScope,
+} from "./scope-member-service";
 import { badRequest, notFound, forbidden } from "../errors";
 import { logger } from "../logger";
 import { env, hasClerkAuth } from "../../env";
@@ -100,19 +104,15 @@ export async function getScopeBySlug(slug: string) {
  */
 export async function createUserScope(clerkUserId: string, slug: string) {
   // Check if user already has a scope via scope_members (admin role)
-  const existingMembership = await globalThis.services.db
-    .select({ scope: scopes })
-    .from(scopeMembers)
-    .innerJoin(scopes, eq(scopeMembers.scopeId, scopes.id))
-    .where(
-      and(eq(scopeMembers.userId, clerkUserId), eq(scopeMembers.role, "admin")),
-    )
-    .orderBy(asc(scopeMembers.createdAt))
-    .limit(1);
-
-  if (existingMembership.length > 0) {
+  const existingAdmin = await getPrimaryAdminMembership(clerkUserId);
+  if (existingAdmin) {
+    const [existingScope] = await globalThis.services.db
+      .select({ slug: scopes.slug })
+      .from(scopes)
+      .where(eq(scopes.id, existingAdmin.scopeId))
+      .limit(1);
     throw badRequest(
-      `You already have a scope: ${existingMembership[0]!.scope.slug}. Use --force to change it.`,
+      `You already have a scope: ${existingScope?.slug ?? existingAdmin.scopeId}. Use --force to change it.`,
     );
   }
 
@@ -144,7 +144,7 @@ export async function createUserScope(clerkUserId: string, slug: string) {
       .insert(scopes)
       .values({
         slug,
-        clerkOrgId: clerkOrgId ?? "",
+        clerkOrgId: clerkOrgId ?? `pending_${Date.now()}`,
       })
       .onConflictDoNothing({ target: scopes.slug })
       .returning();
@@ -175,19 +175,15 @@ export async function createUserScope(clerkUserId: string, slug: string) {
 /**
  * Get a user's scope by their Clerk ID.
  * Finds the first scope where the user is an admin member.
+ * Returns the scope record or null if none found.
  */
 export async function getUserScopeByClerkId(clerkUserId: string) {
-  const result = await globalThis.services.db
-    .select({ scope: scopes })
-    .from(scopeMembers)
-    .innerJoin(scopes, eq(scopeMembers.scopeId, scopes.id))
-    .where(
-      and(eq(scopeMembers.userId, clerkUserId), eq(scopeMembers.role, "admin")),
-    )
-    .orderBy(asc(scopeMembers.createdAt))
-    .limit(1);
-
-  return result[0]?.scope ?? null;
+  try {
+    const { scope } = await getDefaultScope(clerkUserId);
+    return scope;
+  } catch {
+    return null;
+  }
 }
 
 /**

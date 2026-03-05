@@ -25,7 +25,7 @@ const router = tsr.router(secretsMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { scope } = await resolveScope(userId, headers.authorization);
+    const { scope } = await resolveScope(userId);
     const secrets = await listSecrets(scope.id, userId);
 
     return {
@@ -59,7 +59,7 @@ const router = tsr.router(secretsMainContract, {
     log.debug("setting secret", { userId, name });
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
+      const { scope } = await resolveScope(userId);
       const secret = await setSecret(
         scope.id,
         userId,

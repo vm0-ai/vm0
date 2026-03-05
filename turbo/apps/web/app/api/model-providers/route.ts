@@ -29,7 +29,7 @@ const router = tsr.router(modelProvidersMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { scope } = await resolveScope(userId, headers.authorization);
+    const { scope } = await resolveScope(userId);
     const providers = await listModelProviders(scope.id, userId);
 
     return {
@@ -67,7 +67,7 @@ const router = tsr.router(modelProvidersMainContract, {
     log.debug("upserting model provider", { userId, type, selectedModel });
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
+      const { scope } = await resolveScope(userId);
 
       // Determine if this is a multi-auth provider or legacy provider
       const isMultiAuth = hasAuthMethods(type);

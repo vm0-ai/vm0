@@ -458,7 +458,7 @@ const router = tsr.router(runsMainContract, {
 
     // Resolve scope for variable/secret resolution.
     // The actual variable fetching happens in build-context.ts.
-    const { scope } = await resolveScope(userId, headers.authorization);
+    const { scope } = await resolveScope(userId);
 
     // Delegate run creation, validation, and dispatch to createRun()
     try {

@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
-import { requireScopeMember } from "../../../../src/lib/scope/scope-member-service";
+import { requireScopeFromRequest } from "../../../../src/lib/scope/resolve-scope";
 import { inviteMember } from "../../../../src/lib/org/org-service";
-import { isNotFound, isForbidden } from "../../../../src/lib/errors";
+import {
+  isBadRequest,
+  isNotFound,
+  isForbidden,
+} from "../../../../src/lib/errors";
 
 export async function POST(request: Request) {
   initServices();
@@ -18,30 +21,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const url = new URL(request.url);
-  const scopeSlug = url.searchParams.get("scope");
-  if (!scopeSlug) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "scope query parameter is required",
-          code: "BAD_REQUEST",
-        },
-      },
-      { status: 400 },
-    );
-  }
-
-  const scope = await getScopeBySlug(scopeSlug);
-  if (!scope) {
-    return NextResponse.json(
-      { error: { message: "Scope not found", code: "NOT_FOUND" } },
-      { status: 404 },
-    );
-  }
-
-  const member = await requireScopeMember(scope.id, userId);
-
   const body = (await request.json()) as { email: string };
   if (!body.email) {
     return NextResponse.json(
@@ -51,14 +30,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    await inviteMember(
-      scope.id,
-      member.role as "admin" | "member",
-      body.email,
-      userId,
-    );
+    const { scope, member } = await requireScopeFromRequest(request, userId);
+    await inviteMember(userId, scope.id, member.role, body.email);
     return NextResponse.json({ message: `Invitation sent to ${body.email}` });
   } catch (error) {
+    if (isBadRequest(error)) {
+      return NextResponse.json(
+        { error: { message: error.message, code: "BAD_REQUEST" } },
+        { status: 400 },
+      );
+    }
     if (isForbidden(error)) {
       return NextResponse.json(
         { error: { message: error.message, code: "FORBIDDEN" } },

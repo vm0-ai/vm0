@@ -32,7 +32,7 @@ const router = tsr.router(variablesMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { scope } = await resolveScope(userId, headers.authorization);
+    const { scope } = await resolveScope(userId);
     const vars = await listVariables(scope.id, userId);
 
     return {
@@ -66,7 +66,7 @@ const router = tsr.router(variablesMainContract, {
     log.debug("setting variable", { userId, name });
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
+      const { scope } = await resolveScope(userId);
       const variable = await setVariable(
         scope.id,
         userId,

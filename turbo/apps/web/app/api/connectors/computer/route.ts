@@ -27,7 +27,7 @@ const router = tsr.router(computerConnectorContract, {
     }
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
+      const { scope } = await resolveScope(userId);
       const result = await createComputerConnector(scope.id, userId);
       return { status: 200 as const, body: result };
     } catch (error) {
@@ -52,7 +52,7 @@ const router = tsr.router(computerConnectorContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { scope } = await resolveScope(userId, headers.authorization);
+    const { scope } = await resolveScope(userId);
     const connector = await getConnector(scope.id, userId, "computer");
     if (!connector) {
       return createErrorResponse("NOT_FOUND", "Computer connector not found");
@@ -73,7 +73,7 @@ const router = tsr.router(computerConnectorContract, {
     }
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
+      const { scope } = await resolveScope(userId);
       await deleteComputerConnector(scope.id);
       return { status: 204 as const, body: undefined };
     } catch (error) {

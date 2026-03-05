@@ -32,10 +32,7 @@ const router = tsr.router(storagesDownloadContract, {
     }
 
     // Resolve user's scope
-    const { scope: userScope } = await resolveScope(
-      userId,
-      headers.authorization,
-    );
+    const { scope: userScope } = await resolveScope(userId);
 
     const { name: storageName, type: storageType, version: versionId } = query;
 

@@ -30,7 +30,7 @@ const router = tsr.router(modelProvidersSetDefaultContract, {
     });
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
+      const { scope } = await resolveScope(userId);
       const provider = await setModelProviderDefault(
         scope.id,
         userId,

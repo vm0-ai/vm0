@@ -36,10 +36,7 @@ const router = tsr.router(storagesCommitContract, {
     }
 
     // Resolve user's scope
-    const { scope: userScope } = await resolveScope(
-      userId,
-      headers.authorization,
-    );
+    const { scope: userScope } = await resolveScope(userId);
 
     const { storageName, storageType, versionId, files, runId, message } = body;
 

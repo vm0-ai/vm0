@@ -4,6 +4,7 @@ import { scopes } from "../../db/schema/scope";
 import { scopeMembers } from "../../db/schema/scope-member";
 import { badRequest, forbidden, notFound } from "../errors";
 import { getScopeBySlug, isVm0Admin } from "../scope/scope-service";
+import { getPrimaryAdminMembership } from "../scope/scope-member-service";
 import { getUserEmail } from "../auth/get-user-email";
 import { logger } from "../logger";
 import type { OrgRole } from "@vm0/core";
@@ -49,18 +50,15 @@ export async function createOrganization(clerkUserId: string, slug: string) {
   }
 
   // Check one-org-per-user limit via scope_members (admin memberships)
-  const existingAdmin = await globalThis.services.db
-    .select({ slug: scopes.slug })
-    .from(scopeMembers)
-    .innerJoin(scopes, eq(scopeMembers.scopeId, scopes.id))
-    .where(
-      and(eq(scopeMembers.userId, clerkUserId), eq(scopeMembers.role, "admin")),
-    )
-    .limit(1);
-
-  if (existingAdmin.length > 0) {
+  const existingAdmin = await getPrimaryAdminMembership(clerkUserId);
+  if (existingAdmin) {
+    const [existingScope] = await globalThis.services.db
+      .select({ slug: scopes.slug })
+      .from(scopes)
+      .where(eq(scopes.id, existingAdmin.scopeId))
+      .limit(1);
     throw badRequest(
-      `You already own an organization: ${existingAdmin[0]!.slug}`,
+      `You already own an organization: ${existingScope?.slug ?? existingAdmin.scopeId}`,
     );
   }
 
@@ -176,10 +174,10 @@ export async function getOrganizationStatus(
  * Requires admin role.
  */
 export async function inviteMember(
+  callerUserId: string,
   scopeId: string,
   role: OrgRole,
   email: string,
-  callerUserId: string,
 ) {
   if (role !== "admin") {
     throw forbidden("Only admins can invite members");

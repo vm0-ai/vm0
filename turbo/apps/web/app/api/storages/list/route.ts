@@ -31,10 +31,7 @@ const router = tsr.router(storagesListContract, {
     const { type: storageType } = query;
 
     // Resolve user's scope
-    const { scope: userScope } = await resolveScope(
-      userId,
-      headers.authorization,
-    );
+    const { scope: userScope } = await resolveScope(userId);
 
     log.debug(`Listing ${storageType}s for scope ${userScope.slug}`);
 

@@ -1,6 +1,7 @@
-import { eq, and, asc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { scopeMembers } from "../../db/schema/scope-member";
 import { badRequest } from "../errors";
+import { getPrimaryAdminMembership } from "../scope/scope-member-service";
 
 interface UserPreferences {
   timezone: string | null;
@@ -21,27 +22,12 @@ function isValidTimezone(timezone: string): boolean {
 }
 
 /**
- * Find the user's primary scope membership (first admin membership by creation date).
- * Preferences are stored on the scope_members record.
- */
-async function findPrimaryMembership(userId: string) {
-  const [record] = await globalThis.services.db
-    .select()
-    .from(scopeMembers)
-    .where(and(eq(scopeMembers.userId, userId), eq(scopeMembers.role, "admin")))
-    .orderBy(asc(scopeMembers.createdAt))
-    .limit(1);
-
-  return record ?? null;
-}
-
-/**
  * Get user preferences from scope_members (primary admin membership)
  */
 export async function getUserPreferences(
   userId: string,
 ): Promise<UserPreferences> {
-  const member = await findPrimaryMembership(userId);
+  const member = await getPrimaryAdminMembership(userId);
 
   return {
     timezone: member?.timezone ?? null,
@@ -63,7 +49,7 @@ export async function updateUserPreferences(
     }
   }
 
-  const memberRecord = await findPrimaryMembership(userId);
+  const memberRecord = await getPrimaryAdminMembership(userId);
 
   if (!memberRecord) {
     throw badRequest("User has no scope membership");
@@ -111,7 +97,7 @@ export async function setTimezoneIfNotSet(
   const { timezone: existingTimezone } = await getUserPreferences(userId);
 
   if (existingTimezone === null) {
-    const memberRecord = await findPrimaryMembership(userId);
+    const memberRecord = await getPrimaryAdminMembership(userId);
 
     if (memberRecord) {
       await globalThis.services.db

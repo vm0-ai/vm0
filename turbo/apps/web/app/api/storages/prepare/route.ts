@@ -98,10 +98,7 @@ const router = tsr.router(storagesPrepareContract, {
     }
 
     // Resolve user's scope
-    const { scope: userScope } = await resolveScope(
-      userId,
-      headers.authorization,
-    );
+    const { scope: userScope } = await resolveScope(userId);
 
     const {
       storageName,

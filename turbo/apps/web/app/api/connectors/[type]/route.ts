@@ -21,7 +21,7 @@ const router = tsr.router(connectorsByTypeContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { scope } = await resolveScope(userId, headers.authorization);
+    const { scope } = await resolveScope(userId);
     const connector = await getConnector(scope.id, userId, params.type);
 
     if (!connector) {
@@ -46,7 +46,7 @@ const router = tsr.router(connectorsByTypeContract, {
     }
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
+      const { scope } = await resolveScope(userId);
       await deleteConnector(scope.id, userId, params.type);
 
       return {

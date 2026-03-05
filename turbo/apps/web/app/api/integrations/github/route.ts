@@ -117,10 +117,7 @@ export async function GET(request: Request) {
   }
 
   // Resolve user's scope for resource queries
-  const { scope: userScope } = await resolveScope(
-    userId,
-    authHeader ?? undefined,
-  );
+  const { scope: userScope } = await resolveScope(userId);
 
   // Get user's existing secrets, vars, connectors
   const [userSecrets, userVars, userConnectors] = await Promise.all([
@@ -314,7 +311,7 @@ export async function PATCH(request: Request) {
     }
     targetScopeId = targetScope.id;
   } else {
-    const { scope } = await resolveScope(userId, authHeader ?? undefined);
+    const { scope } = await resolveScope(userId);
     targetScopeId = scope.id;
   }
 

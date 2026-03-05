@@ -600,7 +600,7 @@ export async function createRun(
       modelProvider: params.modelProvider,
       checkEnv: params.checkEnv,
       apiStartTime,
-      scopeId: params.scopeId,
+      scopeId,
     });
 
     // Step 10: Dispatch to executor

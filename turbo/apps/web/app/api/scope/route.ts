@@ -20,9 +20,8 @@ const router = tsr.router(scopeContract, {
   /**
    * GET /api/scope - Get current user's scope
    *
-   * Returns the active scope based on the auth token:
-   * - vm0_org_* token → org scope
-   * - vm0_live_* token → personal scope
+   * Resolves the active scope via ?scope=<slug> query param,
+   * or falls back to the user's default scope (first admin membership).
    */
   get: async ({ headers }) => {
     initServices();
@@ -33,7 +32,7 @@ const router = tsr.router(scopeContract, {
     }
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
+      const { scope } = await resolveScope(userId);
 
       return {
         status: 200 as const,
@@ -102,9 +101,8 @@ const router = tsr.router(scopeContract, {
   /**
    * PUT /api/scope - Update active scope slug
    *
-   * Resolves the active scope based on the auth token:
-   * - vm0_org_* token → updates org scope
-   * - vm0_live_* token → updates personal scope
+   * Resolves the active scope via ?scope=<slug> query param,
+   * or falls back to the user's default scope (first admin membership).
    */
   update: async ({ body, headers }) => {
     initServices();
@@ -120,10 +118,7 @@ const router = tsr.router(scopeContract, {
 
     let existingScope;
     try {
-      ({ scope: existingScope } = await resolveScope(
-        userId,
-        headers.authorization,
-      ));
+      ({ scope: existingScope } = await resolveScope(userId));
     } catch (error) {
       if (isNotFound(error)) {
         return createErrorResponse(

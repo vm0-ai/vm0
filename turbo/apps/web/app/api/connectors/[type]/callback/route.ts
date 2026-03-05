@@ -172,8 +172,7 @@ export async function GET(
     const refreshSecretName = handler.getRefreshSecretName?.();
 
     // Store connector and secret
-    const authHeader = request.headers.get("authorization") ?? undefined;
-    const { scope } = await resolveScope(userId, authHeader);
+    const { scope } = await resolveScope(userId);
     const { created } = await upsertOAuthConnector(
       scope.id,
       userId,

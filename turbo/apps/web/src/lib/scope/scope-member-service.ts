@@ -2,6 +2,7 @@ import { eq, and, asc } from "drizzle-orm";
 import { scopeMembers } from "../../db/schema/scope-member";
 import { scopes } from "../../db/schema/scope";
 import { forbidden, notFound } from "../errors";
+import type { OrgRole } from "@vm0/core";
 
 /**
  * Get a scope member record for a specific user in a scope
@@ -19,14 +20,29 @@ async function getScopeMember(scopeId: string, userId: string) {
 }
 
 /**
- * Require a user to be a member of a scope, or throw 403
+ * Require a user to be a member of a scope, or throw 403.
+ * Returns the member record with role typed as OrgRole.
  */
 export async function requireScopeMember(scopeId: string, userId: string) {
   const member = await getScopeMember(scopeId, userId);
   if (!member) {
     throw forbidden("You are not a member of this scope");
   }
-  return member;
+  return { ...member, role: member.role as OrgRole };
+}
+
+/**
+ * Find the user's primary admin membership (first admin membership by creation date).
+ * Returns the raw scope_members record, or null if none found.
+ */
+export async function getPrimaryAdminMembership(userId: string) {
+  const [record] = await globalThis.services.db
+    .select()
+    .from(scopeMembers)
+    .where(and(eq(scopeMembers.userId, userId), eq(scopeMembers.role, "admin")))
+    .orderBy(asc(scopeMembers.createdAt))
+    .limit(1);
+  return record ?? null;
 }
 
 /**
