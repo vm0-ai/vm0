@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.36.0](https://github.com/vm0-ai/vm0/compare/core-v8.35.0...core-v8.36.0) (2026-03-05)
+
+
+### Features
+
+* **vercel:** switch to integration oauth flow ([#3676](https://github.com/vm0-ai/vm0/issues/3676)) ([c35545b](https://github.com/vm0-ai/vm0/commit/c35545be2c3d180a0e82baa02d852db078ff65f1))
+
 ## [8.35.0](https://github.com/vm0-ai/vm0/compare/core-v8.34.0...core-v8.35.0) (2026-03-05)
 
 

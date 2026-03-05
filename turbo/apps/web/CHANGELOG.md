@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.74.0](https://github.com/vm0-ai/vm0/compare/web-v12.73.0...web-v12.74.0) (2026-03-05)
+
+
+### Features
+
+* **vercel:** switch to integration oauth flow ([#3676](https://github.com/vm0-ai/vm0/issues/3676)) ([c35545b](https://github.com/vm0-ai/vm0/commit/c35545be2c3d180a0e82baa02d852db078ff65f1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.36.0
+
 ## [12.73.0](https://github.com/vm0-ai/vm0/compare/web-v12.72.0...web-v12.73.0) (2026-03-05)
 
 
