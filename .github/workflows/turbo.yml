@@ -1221,8 +1221,13 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install mold linker
+        env:
+          MOLD_VERSION: "2.40.4"
         run: |
-          apt-get update && apt-get install -y mold
+          curl -fsSL "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-x86_64-linux.tar.gz" \
+            | tar xz --strip-components=2 -C /usr/local/bin "mold-${MOLD_VERSION}-x86_64-linux/bin/mold"
+          ln -sf /usr/local/bin/mold /usr/local/bin/ld.mold
+          ln -sf /usr/local/bin/mold /usr/local/bin/aarch64-linux-gnu-ld.mold
 
       - uses: Swatinem/rust-cache@v2
         with:
