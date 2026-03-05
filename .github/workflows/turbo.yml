@@ -1338,8 +1338,8 @@ jobs:
             ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR} && mkdir -p ${BIN_DIR}"
             scp $SSH_OPTS "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
 
-            # Clean up old rootfs/snapshots, keep the 2 most recent
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 2"
+            # Clean up old rootfs/snapshots, keep the 3 most recent
+            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 3"
 
             # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
             ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner setup"
