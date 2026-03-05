@@ -13,7 +13,7 @@ const router = tsr.router(modelProvidersCheckContract, {
   /**
    * GET /api/model-providers/check/:type - Check if secret exists
    */
-  check: async ({ params, headers }) => {
+  check: async ({ params, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -21,7 +21,8 @@ const router = tsr.router(modelProvidersCheckContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { scope } = await resolveScope(userId);
+    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const { scope } = await resolveScope(userId, scopeSlug);
     const result = await checkSecretExists(scope.id, userId, params.type);
 
     return {

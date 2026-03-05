@@ -16,7 +16,7 @@ const router = tsr.router(modelProvidersSetDefaultContract, {
   /**
    * POST /api/model-providers/:type/set-default - Set model provider as default
    */
-  setDefault: async ({ params, headers }) => {
+  setDefault: async ({ params, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -30,7 +30,8 @@ const router = tsr.router(modelProvidersSetDefaultContract, {
     });
 
     try {
-      const { scope } = await resolveScope(userId);
+      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const { scope } = await resolveScope(userId, scopeSlug);
       const provider = await setModelProviderDefault(
         scope.id,
         userId,

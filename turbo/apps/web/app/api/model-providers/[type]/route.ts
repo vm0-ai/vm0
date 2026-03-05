@@ -13,7 +13,7 @@ const router = tsr.router(modelProvidersByTypeContract, {
   /**
    * DELETE /api/model-providers/:type - Delete a model provider
    */
-  delete: async ({ params, headers }) => {
+  delete: async ({ params, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -24,7 +24,8 @@ const router = tsr.router(modelProvidersByTypeContract, {
     log.debug("deleting model provider", { userId, type: params.type });
 
     try {
-      const { scope } = await resolveScope(userId);
+      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const { scope } = await resolveScope(userId, scopeSlug);
       await deleteModelProvider(scope.id, userId, params.type);
 
       return {

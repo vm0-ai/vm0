@@ -11,6 +11,7 @@ import {
 import { badRequest, notFound, forbidden } from "../errors";
 import { logger } from "../logger";
 import { env, hasClerkAuth } from "../../env";
+import { SELF_HOSTED_CLERK_ORG_ID } from "../auth/constants";
 
 const log = logger("service:scope");
 
@@ -119,23 +120,18 @@ export async function createUserScope(clerkUserId: string, slug: string) {
   validateScopeSlug(slug);
 
   // Create Clerk Organization so every scope is backed by one.
-  // Best-effort — if Clerk fails, scope is still created (clerkOrgId stays
-  // NULL and will be filled by a backfill).
-  let clerkOrgId: string | null = null;
+  // If Clerk auth is configured, org creation is required (fail-fast).
+  // If self-hosted (no Clerk), use the well-known sentinel ID.
+  let clerkOrgId: string;
   if (hasClerkAuth()) {
-    try {
-      const client = await clerkClient();
-      const clerkOrg = await client.organizations.createOrganization({
-        name: slug,
-        createdBy: clerkUserId,
-      });
-      clerkOrgId = clerkOrg.id;
-    } catch (err) {
-      log.warn("Failed to create Clerk org for scope, continuing without it", {
-        slug,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    const client = await clerkClient();
+    const clerkOrg = await client.organizations.createOrganization({
+      name: slug,
+      createdBy: clerkUserId,
+    });
+    clerkOrgId = clerkOrg.id;
+  } else {
+    clerkOrgId = SELF_HOSTED_CLERK_ORG_ID;
   }
 
   // Create scope + admin membership atomically
@@ -144,7 +140,7 @@ export async function createUserScope(clerkUserId: string, slug: string) {
       .insert(scopes)
       .values({
         slug,
-        clerkOrgId: clerkOrgId ?? `pending_${Date.now()}`,
+        clerkOrgId,
       })
       .onConflictDoNothing({ target: scopes.slug })
       .returning();

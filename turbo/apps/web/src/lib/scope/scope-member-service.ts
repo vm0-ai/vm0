@@ -7,7 +7,7 @@ import type { OrgRole } from "@vm0/core";
 /**
  * Get a scope member record for a specific user in a scope
  */
-async function getScopeMember(scopeId: string, userId: string) {
+export async function getScopeMember(scopeId: string, userId: string) {
   const result = await globalThis.services.db
     .select()
     .from(scopeMembers)

@@ -1,13 +1,75 @@
+import { clerkClient } from "@clerk/nextjs/server";
+import { scopeMembers } from "../../db/schema/scope-member";
+import { hasClerkAuth } from "../../env";
+import { isForbidden, badRequest, notFound } from "../errors";
+import type { OrgRole } from "@vm0/core";
 import { getScopeBySlug } from "./scope-service";
-import { requireScopeMember, getDefaultScope } from "./scope-member-service";
-import { badRequest, notFound } from "../errors";
+import {
+  requireScopeMember,
+  getDefaultScope,
+  getScopeMember,
+} from "./scope-member-service";
+
+import type { scopes } from "../../db/schema/scope";
+
+type Scope = typeof scopes.$inferSelect;
+
+/**
+ * Verify a user's Clerk org membership and lazily create a scope_members record.
+ *
+ * Only attempts sync when:
+ * - Clerk auth is configured
+ * - The scope has a real Clerk org ID (not a sentinel like "pending_*" or "org_self_hosted")
+ *
+ * Returns the new scope member record, or null if the user is not a Clerk member.
+ */
+async function syncClerkMembership(scope: Scope, userId: string) {
+  if (
+    !hasClerkAuth() ||
+    scope.clerkOrgId.startsWith("pending_") ||
+    scope.clerkOrgId === "org_self_hosted"
+  ) {
+    return null;
+  }
+
+  try {
+    const client = await clerkClient();
+    const memberships =
+      await client.organizations.getOrganizationMembershipList({
+        organizationId: scope.clerkOrgId,
+      });
+
+    const membership = memberships.data.find(
+      (m) => m.publicUserData?.userId === userId,
+    );
+    if (!membership) return null;
+
+    const role = membership.role === "org:admin" ? "admin" : "member";
+
+    // Create scope_members record
+    const [member] = await globalThis.services.db
+      .insert(scopeMembers)
+      .values({ scopeId: scope.id, userId, role })
+      .onConflictDoNothing()
+      .returning();
+
+    // If onConflictDoNothing returned nothing, the record was created by another concurrent request
+    const record = member ?? (await getScopeMember(scope.id, userId));
+    if (!record) return null;
+    return { ...record, role: record.role as OrgRole };
+  } catch {
+    // Clerk API call failed — cannot verify membership
+    return null;
+  }
+}
 
 /**
  * Resolve scope from request context using scope_members.
  *
  * Resolution order:
- * 1. ?scope=<slug> query param → look up scope, verify membership
- * 2. Fallback → user's default scope (first owned scope from scope_members)
+ * 1. ?scope=<slug> query param -> look up scope, verify membership
+ *    - If not in scope_members, try to sync from Clerk org membership
+ * 2. Fallback -> user's default scope (first owned scope from scope_members)
  *
  * Returns { scope, member } for the resolved scope.
  */
@@ -16,8 +78,18 @@ export async function resolveScope(userId: string, scopeSlug?: string | null) {
   if (scopeSlug) {
     const scope = await getScopeBySlug(scopeSlug);
     if (!scope) throw notFound("Scope not found");
-    const member = await requireScopeMember(scope.id, userId);
-    return { scope, member };
+
+    try {
+      const member = await requireScopeMember(scope.id, userId);
+      return { scope, member };
+    } catch (error) {
+      if (!isForbidden(error) || !scope.clerkOrgId) throw error;
+
+      // User not in scope_members — check Clerk org membership
+      const member = await syncClerkMembership(scope, userId);
+      if (!member) throw error; // Not a Clerk member either
+      return { scope, member };
+    }
   }
 
   // 2. Default scope fallback
@@ -44,6 +116,16 @@ export async function requireScopeFromRequest(
   if (!scope) {
     throw notFound("Scope not found");
   }
-  const member = await requireScopeMember(scope.id, userId);
-  return { scope, member };
+
+  try {
+    const member = await requireScopeMember(scope.id, userId);
+    return { scope, member };
+  } catch (error) {
+    if (!isForbidden(error) || !scope.clerkOrgId) throw error;
+
+    // User not in scope_members — check Clerk org membership
+    const member = await syncClerkMembership(scope, userId);
+    if (!member) throw error; // Not a Clerk member either
+    return { scope, member };
+  }
 }

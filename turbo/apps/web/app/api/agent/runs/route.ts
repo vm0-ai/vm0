@@ -399,7 +399,7 @@ const router = tsr.router(runsMainContract, {
       },
     };
   },
-  create: async ({ body, headers }) => {
+  create: async ({ body, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -458,7 +458,8 @@ const router = tsr.router(runsMainContract, {
 
     // Resolve scope for variable/secret resolution.
     // The actual variable fetching happens in build-context.ts.
-    const { scope } = await resolveScope(userId);
+    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const { scope } = await resolveScope(userId, scopeSlug);
 
     // Delegate run creation, validation, and dispatch to createRun()
     try {
