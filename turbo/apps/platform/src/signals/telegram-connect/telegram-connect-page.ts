@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { updatePage$ } from "../react-router.ts";
-import { navigate$ } from "../route.ts";
+import { navigate$, searchParams$ } from "../route.ts";
 import { hasAnyModelProvider$ } from "../external/model-providers.ts";
 import { throwIfAbort } from "../utils.ts";
 import { initTelegramConnect$ } from "./telegram-connect.ts";
@@ -34,6 +34,9 @@ export const setupTelegramConnectPage$ = command(
       return;
     }
 
-    await set(initTelegramConnect$);
+    // Pass ?bot= param to init so it can look up existing installation
+    const params = get(searchParams$);
+    const botId = params.get("bot") ?? undefined;
+    await set(initTelegramConnect$, botId);
   },
 );

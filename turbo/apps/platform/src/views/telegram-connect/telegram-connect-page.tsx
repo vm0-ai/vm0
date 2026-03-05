@@ -7,18 +7,22 @@ import {
   telegramConnectStatus$,
   telegramConnectIsLinked$,
   telegramConnectError$,
+  telegramConnectInstallation$,
   telegramBotToken$,
   setTelegramBotToken$,
   registerTelegramBot$,
+  linkTelegramBot$,
 } from "../../signals/telegram-connect/telegram-connect.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 
 export function TelegramConnectPage() {
   const status = useGet(telegramConnectStatus$);
   const isLinked = useGet(telegramConnectIsLinked$);
+  const installation = useGet(telegramConnectInstallation$);
   const error = useGet(telegramConnectError$);
   const theme = useGet(theme$);
   const registerBot = useSet(registerTelegramBot$);
+  const linkBot = useSet(linkTelegramBot$);
   const navigate = useSet(navigateInReact$);
   const botToken = useGet(telegramBotToken$);
   const setBotToken = useSet(setTelegramBotToken$);
@@ -42,10 +46,31 @@ export function TelegramConnectPage() {
     );
   };
 
+  const handleLink = () => {
+    if (!installation) {
+      return;
+    }
+    detach(
+      (async () => {
+        const result = await linkBot(installation.id);
+        if (result.success) {
+          const successParams = new URLSearchParams();
+          successParams.set("bot", result.botUsername);
+          navigate("/telegram/connect/success", {
+            searchParams: successParams,
+          });
+        }
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
   const backgroundGradient =
     theme === "dark"
       ? "linear-gradient(91deg, rgba(255, 200, 176, 0.15) 0%, rgba(166, 222, 255, 0.15) 51%, rgba(255, 231, 162, 0.15) 100%), linear-gradient(90deg, hsl(var(--background)) 0%, hsl(var(--background)) 100%)"
       : "linear-gradient(91deg, rgba(255, 200, 176, 0.26) 0%, rgba(166, 222, 255, 0.26) 51%, rgba(255, 231, 162, 0.26) 100%), linear-gradient(90deg, hsl(var(--background)) 0%, hsl(var(--background)) 100%)";
+
+  const isLinking = status === "linking";
 
   return (
     <div
@@ -100,6 +125,54 @@ export function TelegramConnectPage() {
                   Go to Settings
                 </Button>
               </div>
+            ) : installation ? (
+              /* Re-link to existing bot */
+              <>
+                <div className="flex flex-col gap-1 text-center text-foreground">
+                  <h1 className="text-lg font-medium leading-7">
+                    Link Your Account
+                  </h1>
+                  <p className="text-sm leading-5 text-muted-foreground">
+                    A Telegram bot{" "}
+                    <span className="font-medium text-foreground">
+                      @{installation.botUsername}
+                    </span>{" "}
+                    is already installed. Link your account to start using it.
+                  </p>
+                </div>
+
+                {/* Error Message */}
+                {error && (
+                  <div className="w-full rounded-md bg-destructive/10 p-2 text-center text-xs text-destructive">
+                    {error}
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex flex-col gap-4">
+                  <Button
+                    onClick={handleLink}
+                    disabled={isLinking}
+                    className="w-full"
+                  >
+                    {isLinking ? "Linking..." : "Link Account"}
+                  </Button>
+                  <Button
+                    className="w-full"
+                    variant="outline"
+                    onClick={() =>
+                      navigate("/settings", {
+                        searchParams: new URLSearchParams({
+                          tab: "integrations",
+                        }),
+                      })
+                    }
+                    disabled={isLinking}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </>
             ) : (
               /* Registration form */
               <>

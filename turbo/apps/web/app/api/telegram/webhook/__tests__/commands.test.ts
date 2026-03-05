@@ -123,7 +123,7 @@ describe("Telegram bot commands", () => {
       expect(sendMsg.calls[0]?.text).toContain("already connected");
     });
 
-    it("should send platform link when user is not connected", async () => {
+    it("should send platform link with bot param when user is not connected", async () => {
       const sendMsg = telegramSendMessage();
       server.use(sendMsg.handler);
 
@@ -144,7 +144,7 @@ describe("Telegram bot commands", () => {
       await flushAfterCallbacks();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("settings/telegram");
+      expect(sendMsg.calls[0]?.text).toContain("/telegram/connect?bot=");
     });
   });
 

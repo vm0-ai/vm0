@@ -59,10 +59,11 @@ export async function handleConnectCommand(
   }
 
   const platformUrl = getPlatformUrl();
+  const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}`;
   await sendMessage(
     client,
     chatId,
-    `Visit the platform to connect your account:\n<a href="${escapeHtml(platformUrl)}/settings/telegram">Open Platform</a>`,
+    `Visit the platform to connect your account:\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
   );
 }
 
