@@ -228,6 +228,17 @@ async function main() {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(`${idx} ✗ scope "${scope.slug}" — ${message}`);
+        if (
+          typeof err === "object" &&
+          err !== null &&
+          "errors" in err &&
+          Array.isArray((err as Record<string, unknown>).errors)
+        ) {
+          console.error(
+            `     details:`,
+            JSON.stringify((err as { errors: unknown[] }).errors, null, 2),
+          );
+        }
         stats.failed++;
       }
     }
