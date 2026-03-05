@@ -25,12 +25,8 @@ describe("telegram connect success page", () => {
 
     expect(context.store.get(pathname$)).toBe("/telegram/connect/success");
 
-    expect(screen.getByText("Telegram bot installed")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Your Telegram bot is now installed on VM0. You can start using it right away.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Telegram Bot Connected")).toBeInTheDocument();
+    expect(screen.getByText(/Your account is linked/)).toBeInTheDocument();
 
     // Should show Telegram button
     const telegramButton = screen.getByRole("button", {
@@ -52,7 +48,7 @@ describe("telegram connect success page", () => {
       path: "/telegram/connect/success",
     });
 
-    expect(screen.getByText("Telegram bot installed")).toBeInTheDocument();
+    expect(screen.getByText("Telegram Bot Connected")).toBeInTheDocument();
 
     // Should NOT show "Open in Telegram" button
     expect(
