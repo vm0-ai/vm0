@@ -60,17 +60,16 @@ interface RichTextElement {
   usergroup_id?: string;
   channel_id?: string;
   range?: string;
-  style?: RichTextStyle;
+  style?: RichTextStyle | string;
+  indent?: number;
+  offset?: number;
+  language?: string;
   elements?: RichTextElement[];
 }
 
 interface SlackBlock {
   type: string;
   elements?: RichTextElement[];
-  style?: string;
-  indent?: number;
-  offset?: number;
-  language?: string;
 }
 
 interface SlackMessage {
@@ -144,9 +143,10 @@ function isSupportedImageType(file: SlackFile): boolean {
  */
 function applyTextStyle(
   text: string,
-  style: RichTextStyle | undefined,
+  style: RichTextStyle | string | undefined,
 ): string {
-  if (style?.code) return `\`${text}\``;
+  if (typeof style === "string" || !style) return text;
+  if (style.code) return `\`${text}\``;
   let result = text;
   if (style?.bold) result = `**${result}**`;
   if (style?.italic) result = `_${result}_`;
@@ -214,8 +214,9 @@ export function extractTextFromBlocks(
           const items = section.elements ?? [];
           const indent = "  ".repeat(section.indent ?? 0);
           items.forEach((item, i) => {
+            const listStyle = section.style as string | undefined;
             const bullet =
-              section.style === "ordered"
+              listStyle === "ordered"
                 ? `${(section.offset ?? 0) + i + 1}.`
                 : "-";
             const text = inlineElementsToText(item.elements ?? []);
