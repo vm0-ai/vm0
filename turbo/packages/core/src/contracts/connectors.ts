@@ -345,7 +345,7 @@ export const CONNECTOR_TYPES = {
     oauth: {
       authorizationUrl: "https://account.docusign.com/oauth/auth",
       tokenUrl: "https://account.docusign.com/oauth/token",
-      scopes: ["signature"],
+      scopes: ["signature", "extended", "openid"],
     } as ConnectorOAuthConfig,
   },
   dropbox: {

@@ -23,18 +23,51 @@ interface DocuSignRefreshResult {
 }
 
 /**
- * Build DocuSign OAuth authorization URL.
- * Requests offline access to obtain a refresh token.
+ * Derive a PKCE code_verifier deterministically from the OAuth state.
  */
-export function buildDocuSignAuthorizationUrl(
+async function deriveCodeVerifier(state: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(state + ":docusign-pkce-verifier");
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return base64UrlEncode(new Uint8Array(hash));
+}
+
+/**
+ * Compute the PKCE code_challenge from a code_verifier using S256.
+ */
+async function computeCodeChallenge(codeVerifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(codeVerifier);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return base64UrlEncode(new Uint8Array(hash));
+}
+
+/**
+ * Base64url encode a byte array (RFC 7636).
+ */
+function base64UrlEncode(bytes: Uint8Array): string {
+  const binString = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
+  return btoa(binString)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/**
+ * Build DocuSign OAuth authorization URL with PKCE code_challenge.
+ */
+export async function buildDocuSignAuthorizationUrl(
   clientId: string,
   redirectUri: string,
   state: string,
-): string {
+): Promise<string> {
   const oauthConfig = getConnectorOAuthConfig("docusign");
   if (!oauthConfig) {
     throw new Error("DocuSign OAuth config not found");
   }
+
+  const codeVerifier = await deriveCodeVerifier(state);
+  const codeChallenge = await computeCodeChallenge(codeVerifier);
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -42,13 +75,15 @@ export function buildDocuSignAuthorizationUrl(
     response_type: "code",
     scope: oauthConfig.scopes.join(" "),
     state,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
   });
 
   return `${oauthConfig.authorizationUrl}?${params.toString()}`;
 }
 
 /**
- * Exchange authorization code for access token and user info.
+ * Exchange authorization code for access token and user info with PKCE code_verifier.
  * DocuSign uses Basic auth (Base64 of clientId:clientSecret) for token exchange.
  */
 export async function exchangeDocuSignCode(
@@ -56,12 +91,14 @@ export async function exchangeDocuSignCode(
   clientSecret: string,
   code: string,
   redirectUri: string,
+  state: string,
 ): Promise<DocuSignTokenResult> {
   const oauthConfig = getConnectorOAuthConfig("docusign");
   if (!oauthConfig) {
     throw new Error("DocuSign OAuth config not found");
   }
 
+  const codeVerifier = await deriveCodeVerifier(state);
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
@@ -74,13 +111,17 @@ export async function exchangeDocuSignCode(
     },
     body: new URLSearchParams({
       code,
+      code_verifier: codeVerifier,
       redirect_uri: redirectUri,
       grant_type: "authorization_code",
     }),
   });
 
   if (!response.ok) {
-    throw new Error(`DocuSign token exchange failed: ${response.status}`);
+    const errorBody = await response.text();
+    throw new Error(
+      `DocuSign token exchange failed: ${response.status} ${errorBody}`,
+    );
   }
 
   const data = z
@@ -115,7 +156,7 @@ export async function exchangeDocuSignCode(
 
 /**
  * Refresh a DocuSign access token using the refresh token.
- * DocuSign uses Basic Auth for token requests.
+ * DocuSign uses Basic Auth for token requests. PKCE is not required for refresh.
  * Returns new access token and new refresh token (both must be stored).
  */
 export async function refreshDocuSignToken(

@@ -8,12 +8,18 @@ import {
 
 export const docusignHandler: ProviderHandler = {
   buildAuthUrl: buildDocuSignAuthorizationUrl,
-  async exchangeCode(clientId, clientSecret, code, redirectUri) {
+  async exchangeCode(clientId, clientSecret, code, redirectUri, state) {
+    if (!state) {
+      throw new Error(
+        "DocuSign PKCE requires state for code_verifier derivation",
+      );
+    }
     const result = await exchangeDocuSignCode(
       clientId,
       clientSecret,
       code,
       redirectUri,
+      state,
     );
     return {
       accessToken: result.accessToken,
