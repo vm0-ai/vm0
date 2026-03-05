@@ -38,20 +38,23 @@ interface OAuthState {
 }
 
 function parseOAuthState(state: string | null): OAuthState {
+  const result: OAuthState = { vm0UserId: null, composeId: null, sig: null };
   if (!state) {
-    return { vm0UserId: null, composeId: null, sig: null };
+    return result;
   }
-
-  const parsed = JSON.parse(state) as {
-    vm0UserId?: string;
-    composeId?: string;
-    sig?: string;
-  };
-  return {
-    vm0UserId: parsed.vm0UserId ?? null,
-    composeId: parsed.composeId ?? null,
-    sig: parsed.sig ?? null,
-  };
+  try {
+    const parsed = JSON.parse(state) as {
+      vm0UserId?: string;
+      composeId?: string;
+      sig?: string;
+    };
+    result.vm0UserId = parsed.vm0UserId ?? null;
+    result.composeId = parsed.composeId ?? null;
+    result.sig = parsed.sig ?? null;
+  } catch {
+    // Ignore parse errors - return default empty state
+  }
+  return result;
 }
 
 export async function GET(request: Request) {

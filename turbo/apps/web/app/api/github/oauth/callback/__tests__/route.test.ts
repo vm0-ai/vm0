@@ -208,6 +208,23 @@ describe("/api/github/oauth/callback", () => {
     expect(installation.defaultComposeId).toBe(composeId);
   });
 
+  it("should handle invalid JSON state without crashing", async () => {
+    mockClerk({ userId: uniqueId("gh-user") });
+    await createTestScope(uniqueId("gh-scope"));
+    await createTestCompose("gh-test-agent");
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/github/oauth/callback?installation_id=12345&setup_action=install&state=not-json`,
+    );
+    const response = await GET(request);
+
+    // Should not crash - proceeds with null state values (no vm0UserId means no sig check)
+    // With null composeId, it falls back to resolveDefaultAgentComposeId
+    expect(response.status).toBe(307);
+    const location = response.headers.get("Location");
+    expect(location).toContain("settings?tab=integrations");
+  });
+
   it("should skip creation when installation already exists", async () => {
     const userId = uniqueId("gh-user");
     mockClerk({ userId });
