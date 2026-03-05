@@ -13,8 +13,10 @@ function makeSchedule(overrides?: Record<string, unknown>) {
     composeName: "my-agent",
     scopeSlug: "test-user",
     name: "default",
+    triggerType: "cron",
     cronExpression: "30 14 * * 1-5",
     atTime: null,
+    intervalSeconds: null,
     timezone: "UTC",
     prompt: "Daily standup summary",
     vars: null,
@@ -26,6 +28,7 @@ function makeSchedule(overrides?: Record<string, unknown>) {
     nextRunAt: null,
     lastRunAt: null,
     retryStartedAt: null,
+    consecutiveFailures: 0,
     createdAt: "2024-01-01T00:00:00Z",
     updatedAt: "2024-01-01T00:00:00Z",
     ...overrides,
@@ -375,5 +378,114 @@ describe("schedule dialog", () => {
     await vi.waitFor(() => {
       expect(screen.queryByText("Scheduled")).not.toBeInTheDocument();
     });
+  });
+
+  it("should show Scheduled badge for loop schedule", async () => {
+    mockAgentDetailAPI({
+      withSchedule: true,
+      schedule: {
+        triggerType: "loop",
+        cronExpression: null,
+        intervalSeconds: 300,
+        prompt: "Continuous monitoring",
+      },
+    });
+
+    await setupPage({ context, path: "/agents/my-agent" });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("Scheduled")).toBeInTheDocument();
+    });
+  });
+
+  it("should open edit dialog with loop fields for loop schedule", async () => {
+    mockAgentDetailAPI({
+      withSchedule: true,
+      schedule: {
+        triggerType: "loop",
+        cronExpression: null,
+        intervalSeconds: 300,
+        prompt: "Continuous monitoring",
+      },
+    });
+
+    await setupPage({ context, path: "/agents/my-agent" });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("Scheduled")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit schedule" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Edit this schedule" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByDisplayValue("Continuous monitoring"),
+    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue("300")).toBeInTheDocument();
+  });
+
+  it("should save loop schedule with intervalSeconds", async () => {
+    mockAgentDetailAPI({
+      withSchedule: true,
+      schedule: {
+        triggerType: "loop",
+        cronExpression: null,
+        intervalSeconds: 300,
+        prompt: "Continuous monitoring",
+      },
+    });
+
+    let capturedBody: unknown = null;
+    server.use(
+      http.post("/api/agent/schedules", async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json(
+          makeSchedule({
+            triggerType: "loop",
+            cronExpression: null,
+            intervalSeconds: 300,
+            prompt: "Updated monitoring",
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+
+    await setupPage({ context, path: "/agents/my-agent" });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("Scheduled")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit schedule" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Edit this schedule" }),
+      ).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByDisplayValue("Continuous monitoring");
+    fireEvent.change(textarea, { target: { value: "Updated monitoring" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Edit this schedule" }),
+      ).not.toBeInTheDocument();
+    });
+
+    const body = capturedBody as Record<string, unknown>;
+    expect(body.composeId).toBe("compose_1");
+    expect(body.intervalSeconds).toBe(300);
+    expect(body.cronExpression).toBeUndefined();
+    expect(body.atTime).toBeUndefined();
+    expect(body.prompt).toBe("Updated monitoring");
   });
 });
