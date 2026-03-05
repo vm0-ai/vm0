@@ -142,20 +142,20 @@ describe("GET /api/cron/execute-schedules", () => {
     });
   });
 
+  function authenticatedCronRequest() {
+    return createTestRequest(
+      "http://localhost:3000/api/cron/execute-schedules",
+      {
+        headers: { Authorization: "Bearer test-secret" },
+      },
+    );
+  }
+
   describe("Schedule Triggering", () => {
     beforeEach(() => {
       vi.stubEnv("CRON_SECRET", "test-secret");
       reloadEnv();
     });
-
-    function authenticatedCronRequest() {
-      return createTestRequest(
-        "http://localhost:3000/api/cron/execute-schedules",
-        {
-          headers: { Authorization: "Bearer test-secret" },
-        },
-      );
-    }
 
     it("should execute due cron schedule", async () => {
       // 1. Mock time to 8:00 AM UTC
@@ -256,15 +256,6 @@ describe("GET /api/cron/execute-schedules", () => {
       reloadEnv();
     });
 
-    function authenticatedCronRequest() {
-      return createTestRequest(
-        "http://localhost:3000/api/cron/execute-schedules",
-        {
-          headers: { Authorization: "Bearer test-secret" },
-        },
-      );
-    }
-
     it("should execute due loop schedule and set nextRunAt to null", async () => {
       // 1. Create and enable a loop schedule (nextRunAt = now on enable)
       await createTestSchedule(testComposeId, "loop-trigger-test", {
@@ -318,21 +309,10 @@ describe("GET /api/cron/execute-schedules", () => {
   });
 
   describe("Concurrency Queue", () => {
-    const cronSecret = "test-secret";
-
     beforeEach(() => {
-      vi.stubEnv("CRON_SECRET", cronSecret);
+      vi.stubEnv("CRON_SECRET", "test-secret");
       reloadEnv();
     });
-
-    function authenticatedCronRequest() {
-      return createTestRequest(
-        "http://localhost:3000/api/cron/execute-schedules",
-        {
-          headers: { Authorization: `Bearer ${cronSecret}` },
-        },
-      );
-    }
 
     it("should enqueue scheduled run when blocked by concurrency limit", async () => {
       // 1. Set time to 8:00 AM

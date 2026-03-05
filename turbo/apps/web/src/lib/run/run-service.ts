@@ -489,6 +489,68 @@ async function markRunFailed(
 }
 
 /**
+ * Shared dispatch pipeline for steps 6-10 of the run creation flow.
+ * Used by both createRun (new runs) and executeQueuedRun (dequeued runs).
+ */
+async function buildAndDispatchRun(opts: {
+  runId: string;
+  createdAt: Date;
+  params: CreateRunParams;
+  composeContent: AgentComposeYaml;
+  apiStartTime: number;
+  scopeId: string | undefined;
+}): Promise<{ status: string; sandboxId?: string }> {
+  const { runId, createdAt, params, composeContent, apiStartTime, scopeId } =
+    opts;
+  const { userId, agentComposeVersionId, prompt } = params;
+
+  try {
+    // Register callbacks (if any)
+    if (params.callbacks && params.callbacks.length > 0) {
+      await registerCallbacks(runId, params.callbacks);
+    }
+
+    // Generate sandbox token
+    const sandboxToken = await generateSandboxToken(userId, runId);
+
+    // Build execution context
+    const context = await buildContext({
+      checkpointId: params.checkpointId,
+      sessionId: params.sessionId,
+      conversationId: params.conversationId,
+      agentComposeVersionId,
+      artifactName: params.artifactName,
+      artifactVersion: params.artifactVersion,
+      vars: params.vars,
+      secrets: params.secrets,
+      volumeVersions: params.volumeVersions,
+      agentCompose: composeContent,
+      prompt,
+      runId,
+      sandboxToken,
+      userId,
+      agentName: params.agentName,
+      resumedFromCheckpointId: params.resumedFromCheckpointId,
+      continuedFromSessionId: params.sessionId,
+      debugNoMockClaude: params.debugNoMockClaude,
+      modelProvider: params.modelProvider,
+      checkEnv: params.checkEnv,
+      apiStartTime,
+      scopeId,
+    });
+
+    // Dispatch to executor
+    const result = await prepareAndDispatchRun(context);
+
+    log.debug(`Run ${runId} dispatched with status: ${result.status}`);
+    return result;
+  } catch (error) {
+    await markRunFailed(runId, createdAt, error);
+    throw error;
+  }
+}
+
+/**
  * Unified run creation pipeline
  *
  * Validates, creates, and dispatches a run in a single call.
@@ -590,57 +652,21 @@ export async function createRun(
 
   log.debug(`Created run ${run.id} for user ${userId}`);
 
-  // From this point on, errors must mark the run as "failed"
-  try {
-    // Step 6: Register callbacks (if any)
-    if (params.callbacks && params.callbacks.length > 0) {
-      await registerCallbacks(run.id, params.callbacks);
-    }
+  const result = await buildAndDispatchRun({
+    runId: run.id,
+    createdAt: run.createdAt,
+    params,
+    composeContent,
+    apiStartTime,
+    scopeId,
+  });
 
-    // Step 7: Generate sandbox token
-    const sandboxToken = await generateSandboxToken(userId, run.id);
-
-    // Step 8: Build execution context (pass pre-loaded compose to avoid double fetch)
-    const context = await buildContext({
-      checkpointId: params.checkpointId,
-      sessionId: params.sessionId,
-      conversationId: params.conversationId,
-      agentComposeVersionId,
-      artifactName: params.artifactName,
-      artifactVersion: params.artifactVersion,
-      vars: params.vars,
-      secrets: params.secrets,
-      volumeVersions: params.volumeVersions,
-      agentCompose: composeContent,
-      prompt,
-      runId: run.id,
-      sandboxToken,
-      userId,
-      agentName: params.agentName,
-      resumedFromCheckpointId: params.resumedFromCheckpointId,
-      continuedFromSessionId: params.sessionId,
-      debugNoMockClaude: params.debugNoMockClaude,
-      modelProvider: params.modelProvider,
-      checkEnv: params.checkEnv,
-      apiStartTime,
-      scopeId,
-    });
-
-    // Step 9: Dispatch to executor
-    const result = await prepareAndDispatchRun(context);
-
-    log.debug(`Run ${run.id} dispatched with status: ${result.status}`);
-
-    return {
-      runId: run.id,
-      status: result.status,
-      sandboxId: result.sandboxId,
-      createdAt: run.createdAt,
-    };
-  } catch (error) {
-    await markRunFailed(run.id, run.createdAt, error);
-    throw error;
-  }
+  return {
+    runId: run.id,
+    status: result.status,
+    sandboxId: result.sandboxId,
+    createdAt: run.createdAt,
+  };
 }
 
 /**
@@ -703,48 +729,12 @@ export async function executeQueuedRun(
 
   // Steps 5 already validated at enqueue time, skip
 
-  // From this point on, errors must mark the run as "failed"
-  try {
-    // Step 7: Register callbacks (if any)
-    if (params.callbacks && params.callbacks.length > 0) {
-      await registerCallbacks(runId, params.callbacks);
-    }
-
-    // Step 8: Generate sandbox token
-    const sandboxToken = await generateSandboxToken(userId, runId);
-
-    // Step 9: Build execution context
-    const context = await buildContext({
-      checkpointId: params.checkpointId,
-      sessionId: params.sessionId,
-      conversationId: params.conversationId,
-      agentComposeVersionId,
-      artifactName: params.artifactName,
-      artifactVersion: params.artifactVersion,
-      vars: params.vars,
-      secrets: params.secrets,
-      volumeVersions: params.volumeVersions,
-      agentCompose: composeContent,
-      prompt,
-      runId,
-      sandboxToken,
-      userId,
-      agentName: params.agentName,
-      resumedFromCheckpointId: params.resumedFromCheckpointId,
-      continuedFromSessionId: params.sessionId,
-      debugNoMockClaude: params.debugNoMockClaude,
-      modelProvider: params.modelProvider,
-      checkEnv: params.checkEnv,
-      apiStartTime,
-      scopeId: params.scopeId,
-    });
-
-    // Step 10: Dispatch to executor
-    const result = await prepareAndDispatchRun(context);
-
-    log.debug(`Queued run ${runId} dispatched with status: ${result.status}`);
-  } catch (error) {
-    await markRunFailed(runId, run.createdAt, error);
-    throw error;
-  }
+  await buildAndDispatchRun({
+    runId,
+    createdAt: run.createdAt,
+    params,
+    composeContent,
+    apiStartTime,
+    scopeId: params.scopeId,
+  });
 }

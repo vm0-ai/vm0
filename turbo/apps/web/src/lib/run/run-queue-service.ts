@@ -213,23 +213,19 @@ async function dequeueNext(userId: string): Promise<QueueEntry | undefined> {
 export async function cleanupExpiredQueueEntries(): Promise<number> {
   const now = new Date();
 
-  // Find expired entries
-  const expiredEntries = await globalThis.services.db
-    .select({ runId: agentRunQueue.runId })
-    .from(agentRunQueue)
-    .where(lt(agentRunQueue.expiresAt, now));
+  // Delete expired entries and collect their run IDs in one query
+  const deleted = await globalThis.services.db
+    .delete(agentRunQueue)
+    .where(lt(agentRunQueue.expiresAt, now))
+    .returning({ runId: agentRunQueue.runId });
 
-  if (expiredEntries.length === 0) {
+  if (deleted.length === 0) {
     return 0;
   }
 
-  const runIds = expiredEntries.map((e) => e.runId);
+  const runIds = deleted.map((e) => e.runId);
 
-  // Batch delete queue entries and mark runs as timeout
-  await globalThis.services.db
-    .delete(agentRunQueue)
-    .where(inArray(agentRunQueue.runId, runIds));
-
+  // Mark associated runs as timeout
   await globalThis.services.db
     .update(agentRuns)
     .set({
@@ -239,8 +235,8 @@ export async function cleanupExpiredQueueEntries(): Promise<number> {
     })
     .where(inArray(agentRuns.id, runIds));
 
-  log.debug(`Cleaned up ${expiredEntries.length} expired queue entries`);
-  return expiredEntries.length;
+  log.debug(`Cleaned up ${deleted.length} expired queue entries`);
+  return deleted.length;
 }
 
 /**
