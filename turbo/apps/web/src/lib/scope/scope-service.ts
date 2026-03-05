@@ -69,6 +69,19 @@ function validateScopeSlug(slug: string): void {
 }
 
 /**
+ * Get a scope by its ID
+ */
+async function getScopeById(scopeId: string) {
+  const result = await globalThis.services.db
+    .select()
+    .from(scopes)
+    .where(eq(scopes.id, scopeId))
+    .limit(1);
+
+  return result[0] ?? null;
+}
+
+/**
  * Get a scope by its slug
  */
 export async function getScopeBySlug(slug: string) {

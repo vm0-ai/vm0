@@ -11,6 +11,7 @@ const context = testContext();
 
 /**
  * Helper to create an org and return its slug.
+ * Uses a fresh user (no existing scope) to avoid the one-org-per-user limit.
  */
 async function createOrg(userId: string) {
   const slug = uniqueId("org");
@@ -26,7 +27,11 @@ async function createOrg(userId: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ slug }),
   });
-  await createOrgRoute(createReq);
+  const res = await createOrgRoute(createReq);
+  if (res.status !== 201) {
+    const body = await res.json();
+    throw new Error(`Failed to create org: ${body.error?.message}`);
+  }
 
   return { slug, orgId };
 }
@@ -55,7 +60,8 @@ describe("POST /api/org/invite - Invite Member", () => {
   });
 
   it("should require scope query parameter", async () => {
-    await context.setupUser();
+    const userId = uniqueId("invite-user");
+    mockClerk({ userId });
 
     const request = createTestRequest("http://localhost:3000/api/org/invite", {
       method: "POST",
@@ -70,8 +76,8 @@ describe("POST /api/org/invite - Invite Member", () => {
   });
 
   it("should invite member and return success message", async () => {
-    const user = await context.setupUser();
-    const { slug } = await createOrg(user.userId);
+    const userId = uniqueId("invite-admin");
+    const { slug } = await createOrg(userId);
 
     const inviteReq = createTestRequest(
       `http://localhost:3000/api/org/invite?scope=${slug}`,
@@ -89,8 +95,8 @@ describe("POST /api/org/invite - Invite Member", () => {
   });
 
   it("should create scope_members record when invitee has existing account", async () => {
-    const user = await context.setupUser();
-    const { slug } = await createOrg(user.userId);
+    const userId = uniqueId("invite-admin2");
+    const { slug } = await createOrg(userId);
 
     const inviteReq = createTestRequest(
       `http://localhost:3000/api/org/invite?scope=${slug}`,

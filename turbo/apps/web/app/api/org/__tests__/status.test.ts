@@ -27,7 +27,8 @@ describe("GET /api/org/status - Organization Status", () => {
   });
 
   it("should require scope query parameter", async () => {
-    await context.setupUser();
+    const userId = uniqueId("status-user");
+    mockClerk({ userId });
 
     const request = createTestRequest("http://localhost:3000/api/org/status");
     const response = await GET(request);
@@ -38,16 +39,16 @@ describe("GET /api/org/status - Organization Status", () => {
   });
 
   it("should return org status with members", async () => {
-    const user = await context.setupUser();
+    const userId = uniqueId("status-admin");
     const slug = uniqueId("org");
-    const orgId = `org_${user.userId}`;
+    const orgId = `org_${userId}`;
     setupClerkOrgMock({
-      userId: user.userId,
+      userId,
       orgId,
-      memberships: [{ userId: user.userId, role: "org:admin" }],
+      memberships: [{ userId, role: "org:admin" }],
     });
 
-    // Create org
+    // Create org (fresh user, no existing scope)
     const createReq = createTestRequest("http://localhost:3000/api/org", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

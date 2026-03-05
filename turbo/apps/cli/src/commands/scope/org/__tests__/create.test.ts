@@ -18,8 +18,6 @@ vi.mock("../../../../lib/api/config", async (importOriginal) => {
     await importOriginal<typeof import("../../../../lib/api/config")>();
   return {
     ...original,
-    setOrgToken: vi.fn().mockResolvedValue(undefined),
-    clearOrgToken: vi.fn().mockResolvedValue(undefined),
     loadConfig: vi.fn().mockResolvedValue({ activeScope: undefined }),
   };
 });
@@ -58,19 +56,6 @@ describe("org create command", () => {
           },
           { status: 201 },
         );
-      }),
-      http.post("http://localhost:3000/api/scope/use", () => {
-        return HttpResponse.json({
-          scope: {
-            id: "scope-1",
-            slug: "my-team",
-            type: "organization",
-            createdAt: "2025-01-01T00:00:00Z",
-            updatedAt: "2025-01-01T00:00:00Z",
-          },
-          token: "vm0_org_test-token",
-          expiresAt: "2025-01-01T02:00:00Z",
-        });
       }),
     );
 

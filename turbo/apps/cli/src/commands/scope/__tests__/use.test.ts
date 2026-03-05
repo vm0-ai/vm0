@@ -18,8 +18,6 @@ vi.mock("../../../lib/api/config", async (importOriginal) => {
     await importOriginal<typeof import("../../../lib/api/config")>();
   return {
     ...original,
-    setOrgToken: vi.fn().mockResolvedValue(undefined),
-    clearOrgToken: vi.fn().mockResolvedValue(undefined),
     loadConfig: vi.fn().mockResolvedValue({ activeScope: undefined }),
   };
 });
@@ -41,16 +39,10 @@ describe("scope use command", () => {
 
   it("should switch to org scope and show success", async () => {
     server.use(
-      http.post("http://localhost:3000/api/scope/use", () => {
+      http.get("http://localhost:3000/api/scope/list", () => {
         return HttpResponse.json({
-          scope: {
-            id: "scope-1",
-            slug: "my-org",
-            createdAt: "2025-01-01T00:00:00Z",
-            updatedAt: "2025-01-01T00:00:00Z",
-          },
-          token: "vm0_org_test-token",
-          expiresAt: "2025-01-01T02:00:00Z",
+          scopes: [{ slug: "my-org", role: "admin" }],
+          active: undefined,
         });
       }),
     );
@@ -79,18 +71,13 @@ describe("scope use command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("should handle API error", async () => {
+  it("should handle scope not found", async () => {
     server.use(
-      http.post("http://localhost:3000/api/scope/use", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Scope not found",
-              code: "NOT_FOUND",
-            },
-          },
-          { status: 404 },
-        );
+      http.get("http://localhost:3000/api/scope/list", () => {
+        return HttpResponse.json({
+          scopes: [],
+          active: undefined,
+        });
       }),
     );
 
@@ -99,8 +86,30 @@ describe("scope use command", () => {
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("Scope not found"),
+      expect.stringContaining("not found"),
     );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("should handle API error", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/scope/list", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              message: "Internal server error",
+              code: "INTERNAL_ERROR",
+            },
+          },
+          { status: 500 },
+        );
+      }),
+    );
+
+    await expect(async () => {
+      await useCommand.parseAsync(["node", "cli", "nonexistent"]);
+    }).rejects.toThrow("process.exit called");
+
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

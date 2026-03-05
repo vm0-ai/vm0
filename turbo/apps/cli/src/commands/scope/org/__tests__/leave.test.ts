@@ -18,7 +18,6 @@ vi.mock("../../../../lib/api/config", async (importOriginal) => {
     await importOriginal<typeof import("../../../../lib/api/config")>();
   return {
     ...original,
-    clearOrgToken: vi.fn().mockResolvedValue(undefined),
     loadConfig: vi.fn().mockResolvedValue({ activeScope: undefined }),
   };
 });

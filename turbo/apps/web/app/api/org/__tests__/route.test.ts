@@ -28,9 +28,10 @@ describe("POST /api/org - Create Organization", () => {
   });
 
   it("should create org and return 201 with slug, role, members", async () => {
-    const user = await context.setupUser();
+    // Use a fresh user without an existing scope (don't call setupUser)
+    const userId = uniqueId("org-creator");
     const slug = uniqueId("org");
-    setupClerkOrgMock({ userId: user.userId });
+    setupClerkOrgMock({ userId });
 
     const request = createTestRequest("http://localhost:3000/api/org", {
       method: "POST",
@@ -50,10 +51,10 @@ describe("POST /api/org - Create Organization", () => {
   });
 
   it("should reject duplicate org", async () => {
-    const user = await context.setupUser();
+    // First user creates an org
+    const userId1 = uniqueId("org-user1");
     const slug1 = uniqueId("org");
-    const slug2 = uniqueId("org");
-    setupClerkOrgMock({ userId: user.userId });
+    setupClerkOrgMock({ userId: userId1 });
 
     const request1 = createTestRequest("http://localhost:3000/api/org", {
       method: "POST",
@@ -63,6 +64,8 @@ describe("POST /api/org - Create Organization", () => {
     const response1 = await POST(request1);
     expect(response1.status).toBe(201);
 
+    // Same user tries to create another org — should fail
+    const slug2 = uniqueId("org");
     const request2 = createTestRequest("http://localhost:3000/api/org", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

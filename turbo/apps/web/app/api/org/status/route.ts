@@ -40,22 +40,21 @@ export async function GET(request: Request) {
     );
   }
 
-  await requireScopeMember(scope.id, userId);
-
   try {
+    await requireScopeMember(scope.id, userId);
     const status = await getOrganizationStatus(userId, scope.id);
     return NextResponse.json(status);
   } catch (error) {
-    if (isNotFound(error)) {
-      return NextResponse.json(
-        { error: { message: error.message, code: "NOT_FOUND" } },
-        { status: 404 },
-      );
-    }
     if (isForbidden(error)) {
       return NextResponse.json(
         { error: { message: error.message, code: "FORBIDDEN" } },
         { status: 403 },
+      );
+    }
+    if (isNotFound(error)) {
+      return NextResponse.json(
+        { error: { message: error.message, code: "NOT_FOUND" } },
+        { status: 404 },
       );
     }
     throw error;
