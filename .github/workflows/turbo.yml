@@ -1473,7 +1473,8 @@ jobs:
               --name ${RUNNER_NAME} \
               --config ${RUNNER_DIR}/runner.yaml \
               --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
-              --env USE_MOCK_CLAUDE=true"
+              --env USE_MOCK_CLAUDE=true \
+              --balloon-reclaim"
 
             # Health check — filter by name so other PR runners don't cause false positives
             sleep 5
