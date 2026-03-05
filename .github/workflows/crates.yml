@@ -462,7 +462,7 @@ jobs:
 
           # Helper: read current balloon actual_mib
           balloon_mib() {
-            sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics \
+            curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics \
               | jq '.actual_mib // 0' 2>/dev/null || echo 0
           }
 
