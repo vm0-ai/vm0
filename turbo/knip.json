@@ -10,13 +10,14 @@
         "middleware.cors.ts",
         "i18n.ts",
         "navigation.ts",
-        "scripts/*.ts",
+        "scripts/**/*.ts",
         "**/__tests__/**/*.{test,spec}.{ts,tsx}",
         "**/*.{test,spec}.{ts,tsx}"
       ],
       "project": ["**/*.{ts,tsx}", "scripts/**/*.ts"],
       "ignoreDependencies": [
         "e2b",
+        "@clerk/backend",
         "@testing-library/react",
         "@types/tar",
         "import-in-the-middle",
