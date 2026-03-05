@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { telegramInstallations } from "../../../db/schema/telegram-installation";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
-import { createTelegramClient, sendMessage } from "../client";
+import { createTelegramClient, sendMessage, deleteMessage } from "../client";
 import { sendThinkingMessage } from "./shared";
 import { fetchTelegramContext } from "../context";
 import { runAgentForTelegram } from "./run-agent";
@@ -178,6 +178,9 @@ export async function handleTelegramMention(
 
   if (status === "failed") {
     log.error("Failed to dispatch agent run", { response });
+    if (thinkingMessage) {
+      await deleteMessage(client, chatId, thinkingMessage.message_id);
+    }
     await sendMessage(
       client,
       chatId,
