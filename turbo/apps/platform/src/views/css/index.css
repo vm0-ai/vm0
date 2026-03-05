@@ -24,6 +24,23 @@
   --color-sidebar-accent: hsl(var(--gray-100));
 }
 
+/* Zero left nav: use background token; lighter dividers so nav lines are subtle. */
+.zero-nav {
+  --color-sidebar: hsl(var(--background));
+  --color-sidebar-accent: hsl(var(--muted));
+  --color-sidebar-active: hsl(var(--primary-100));
+  --color-sidebar-border: hsl(35 10% 91%);
+  --color-divider: hsl(35 10% 91%);
+}
+
+/* Lighter icons and "Recent dialogue" label; other styles unchanged */
+.zero-nav svg {
+  opacity: 0.7;
+}
+.zero-nav .zero-nav-recent-label {
+  opacity: 0.55;
+}
+
 @layer base {
   *,
   *::before,
@@ -236,4 +253,62 @@ details > summary > span:first-child {
 
 details[open] > summary > span:first-child {
   transform: rotate(90deg);
+}
+
+/* Zero workspace: soft texture + gentle gradient — documents, records, thinking, meeting notes.
+   Grid is on ::before with z-index: -1; container has z-index: 0 so the texture stays behind content only. */
+/* Document card body: serif for reading */
+.zero-doc-card-content {
+  font-family: Georgia, "Times New Roman", "SimSun", serif;
+}
+
+.zero-workspace-bg {
+  position: relative;
+  z-index: 0;
+}
+
+.zero-workspace-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-color: hsl(var(--background));
+  background-image:
+    radial-gradient(
+      ellipse 120% 80% at 50% -20%,
+      hsl(var(--background-50) / 0.5),
+      transparent 50%
+    ),
+    radial-gradient(
+      circle at center,
+      hsl(var(--foreground) / 0.06) 1px,
+      transparent 1px
+    );
+  background-size:
+    100% 100%,
+    14px 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .zero-workspace-bg::before {
+    background-image:
+      radial-gradient(
+        ellipse 100% 70% at 50% 0%,
+        hsl(var(--background-50) / 0.4),
+        transparent 48%
+      ),
+      radial-gradient(
+        circle at center,
+        hsl(var(--foreground) / 0.05) 1px,
+        transparent 1px
+      );
+    background-size:
+      100% 100%,
+      14px 14px;
+  }
+
+  .zero-nav {
+    --color-sidebar-border: hsl(35 8% 22%);
+    --color-divider: hsl(35 8% 22%);
+  }
 }

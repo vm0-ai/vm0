@@ -1,5 +1,6 @@
 export type RoutePath =
   | "/"
+  | "/zero"
   | "/logs"
   | "/logs/:id"
   | "/settings"
