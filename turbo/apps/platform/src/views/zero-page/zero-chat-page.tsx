@@ -824,7 +824,7 @@ export function ZeroChatPage({
                       <Button
                         size="sm"
                         className="rounded-lg h-9 w-9 p-0 shrink-0"
-                        onClick={handleSend}
+                        onClick={() => handleSend()}
                         disabled={!input.trim()}
                         aria-label="Send"
                       >
@@ -911,7 +911,7 @@ export function ZeroChatPage({
                     <Button
                       size="sm"
                       className="rounded-lg h-9 w-9 p-0 shrink-0"
-                      onClick={handleSend}
+                      onClick={() => handleSend()}
                       disabled={!input.trim()}
                       aria-label="Send"
                     >
