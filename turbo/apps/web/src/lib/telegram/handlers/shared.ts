@@ -69,6 +69,7 @@ export async function saveTelegramThreadSession(opts: {
   userLinkId: string;
   chatId: string;
   rootMessageId: string;
+  previousRootMessageId: string | undefined;
   existingSessionId: string | undefined;
   newSessionId: string | undefined;
   messageId: string;
@@ -78,6 +79,7 @@ export async function saveTelegramThreadSession(opts: {
     userLinkId,
     chatId,
     rootMessageId,
+    previousRootMessageId,
     existingSessionId,
     newSessionId,
     messageId,
@@ -100,10 +102,13 @@ export async function saveTelegramThreadSession(opts: {
     existingSessionId &&
     (runStatus === "completed" || runStatus === "timeout")
   ) {
-    // Existing thread, successful run — update lastProcessedMessageId
+    // Existing thread, successful run — update rootMessageId to bot's latest
+    // reply so the user can continue by replying to any bot response.
+    const matchRootMessageId = previousRootMessageId ?? rootMessageId;
     await globalThis.services.db
       .update(telegramThreadSessions)
       .set({
+        rootMessageId,
         lastProcessedMessageId: messageId,
         updatedAt: new Date(),
       })
@@ -111,7 +116,7 @@ export async function saveTelegramThreadSession(opts: {
         and(
           eq(telegramThreadSessions.telegramUserLinkId, userLinkId),
           eq(telegramThreadSessions.chatId, chatId),
-          eq(telegramThreadSessions.rootMessageId, rootMessageId),
+          eq(telegramThreadSessions.rootMessageId, matchRootMessageId),
         ),
       );
   }

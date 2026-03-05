@@ -17,6 +17,7 @@ export interface TelegramCallbackContext {
   installationId: string;
   chatId: string;
   messageId: string;
+  rootMessageId: string | null;
   userLinkId: string;
   agentName: string;
   composeId: string;

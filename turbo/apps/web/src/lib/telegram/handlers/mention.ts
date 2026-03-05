@@ -165,6 +165,7 @@ export async function handleTelegramMention(
       installationId,
       chatId,
       messageId: String(message.message_id),
+      rootMessageId: rootMessageId ?? null,
       userLinkId: userLink.id,
       agentName,
       composeId,

@@ -137,6 +137,7 @@ export async function handleTelegramDirectMessage(
       installationId,
       chatId,
       messageId: String(message.message_id),
+      rootMessageId: "dm",
       userLinkId: userLink.id,
       agentName,
       composeId,

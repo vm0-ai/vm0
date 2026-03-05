@@ -33,6 +33,7 @@ interface CallbackPayload {
   installationId: string;
   chatId: string;
   messageId: string;
+  rootMessageId: string | null;
   userLinkId: string;
   agentName: string;
   composeId: string;
@@ -58,6 +59,7 @@ function parsePayload(payload: unknown): CallbackPayload | null {
     installationId: p.installationId,
     chatId: p.chatId,
     messageId: p.messageId,
+    rootMessageId: typeof p.rootMessageId === "string" ? p.rootMessageId : null,
     userLinkId: p.userLinkId,
     agentName: p.agentName,
     composeId: p.composeId,
@@ -110,6 +112,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     installationId,
     chatId,
     messageId,
+    rootMessageId: payloadRootMessageId,
     userLinkId,
     agentName,
     composeId,
@@ -217,17 +220,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? await findNewSessionId(run.userId, composeId, run.createdAt)
       : undefined;
 
-    // For DMs, always use "dm" sentinel; for groups, use message-based anchors
-    const rootMessageId = isDM
-      ? "dm"
-      : existingSessionId
-        ? messageId // Existing thread — use original anchor
-        : String(botReplyMessageId); // New thread — bot's reply is the anchor
+    // Use bot's latest reply as rootMessageId so the user can continue
+    // the session by replying to any bot response.
+    const newRootMessageId = isDM ? "dm" : String(botReplyMessageId);
 
     await saveTelegramThreadSession({
       userLinkId,
       chatId,
-      rootMessageId,
+      rootMessageId: newRootMessageId,
+      previousRootMessageId: payloadRootMessageId ?? undefined,
       existingSessionId: existingSessionId ?? undefined,
       newSessionId,
       messageId,
