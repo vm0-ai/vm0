@@ -217,7 +217,10 @@ async function safeDeleteNgrokResource(
 /**
  * Delete the computer connector and revoke ngrok credentials.
  */
-export async function deleteComputerConnector(scopeId: string): Promise<void> {
+export async function deleteComputerConnector(
+  scopeId: string,
+  userId: string,
+): Promise<void> {
   const db = globalThis.services.db;
 
   const [connector] = await db
@@ -229,7 +232,11 @@ export async function deleteComputerConnector(scopeId: string): Promise<void> {
     })
     .from(connectors)
     .where(
-      and(eq(connectors.scopeId, scopeId), eq(connectors.type, "computer")),
+      and(
+        eq(connectors.scopeId, scopeId),
+        eq(connectors.userId, userId),
+        eq(connectors.type, "computer"),
+      ),
     )
     .limit(1);
 
@@ -264,6 +271,7 @@ export async function deleteComputerConnector(scopeId: string): Promise<void> {
       .where(
         and(
           eq(secrets.scopeId, scopeId),
+          eq(secrets.userId, userId),
           eq(secrets.name, "COMPUTER_CONNECTOR_DOMAIN_ID"),
           eq(secrets.type, "connector"),
         ),
@@ -295,6 +303,7 @@ export async function deleteComputerConnector(scopeId: string): Promise<void> {
       .where(
         and(
           eq(secrets.scopeId, scopeId),
+          eq(secrets.userId, userId),
           eq(secrets.name, secretName),
           eq(secrets.type, "connector"),
         ),

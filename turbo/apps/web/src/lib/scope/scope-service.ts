@@ -8,7 +8,7 @@ import {
   getPrimaryAdminMembership,
   getDefaultScope,
 } from "./scope-member-service";
-import { badRequest, notFound, forbidden } from "../errors";
+import { badRequest, notFound, forbidden, isNotFound } from "../errors";
 import { logger } from "../logger";
 import { env, hasClerkAuth } from "../../env";
 import { SELF_HOSTED_CLERK_ORG_ID } from "../auth/constants";
@@ -177,8 +177,9 @@ export async function getUserScopeByClerkId(clerkUserId: string) {
   try {
     const { scope } = await getDefaultScope(clerkUserId);
     return scope;
-  } catch {
-    return null;
+  } catch (error) {
+    if (isNotFound(error)) return null;
+    throw error;
   }
 }
 

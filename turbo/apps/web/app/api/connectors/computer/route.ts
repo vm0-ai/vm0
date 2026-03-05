@@ -77,7 +77,7 @@ const router = tsr.router(computerConnectorContract, {
     try {
       const scopeSlug = new URL(request.url).searchParams.get("scope");
       const { scope } = await resolveScope(userId, scopeSlug);
-      await deleteComputerConnector(scope.id);
+      await deleteComputerConnector(scope.id, userId);
       return { status: 204 as const, body: undefined };
     } catch (error) {
       if (isNotFound(error)) {
