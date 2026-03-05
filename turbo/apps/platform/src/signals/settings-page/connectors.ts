@@ -3,6 +3,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   CONNECTOR_TYPES,
   FeatureSwitchKey,
+  hasRequiredScopes,
   type ConnectorType,
   type ConnectorResponse,
 } from "@vm0/core";
@@ -37,6 +38,8 @@ export interface ConnectorTypeWithStatus {
   connector: ConnectorResponse | null;
   /** True if at least one agent references this connector (env mapping). */
   usedByAgent?: boolean;
+  /** True if stored OAuth scopes don't cover all currently required scopes. */
+  scopeMismatch: boolean;
 }
 
 /**
@@ -89,6 +92,8 @@ export const allConnectorTypes$ = computed(async (get) => {
         helpText: config.helpText,
         connected: connector !== null,
         connector,
+        scopeMismatch:
+          connector !== null && !hasRequiredScopes(type, connector.oauthScopes),
       };
     });
 });

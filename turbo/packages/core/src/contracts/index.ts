@@ -407,6 +407,7 @@ export {
   getConnectorDerivedNames,
   getConnectorProvidedSecretNames,
   getConnectorOAuthConfig,
+  hasRequiredScopes,
   type ConnectorsMainContract,
   type ConnectorsByTypeContract,
   type ConnectorSessionsContract,

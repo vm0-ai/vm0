@@ -968,6 +968,23 @@ export function getConnectorOAuthConfig(
 }
 
 /**
+ * Check if stored OAuth scopes cover all required scopes for a connector type.
+ * Returns true if no OAuth config exists (non-OAuth connector) or all required scopes are present.
+ * Returns false if storedScopes is null (legacy connector) or missing any required scope.
+ */
+export function hasRequiredScopes(
+  connectorType: ConnectorType,
+  storedScopes: string[] | null,
+): boolean {
+  const oauthConfig = getConnectorOAuthConfig(connectorType);
+  if (!oauthConfig) return true;
+  if (oauthConfig.scopes.length === 0) return true;
+  if (!storedScopes) return false;
+  const storedSet = new Set(storedScopes);
+  return oauthConfig.scopes.every((s) => storedSet.has(s));
+}
+
+/**
  * Connector response schema
  */
 export const connectorResponseSchema = z.object({
