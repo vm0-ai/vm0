@@ -36,7 +36,6 @@ pub fn memory_mb() -> RunnerResult<usize> {
 /// `cpu_factor` is a multiplier applied to host CPU count before division,
 /// enabling CPU overcommit for I/O-bound workloads (e.g. 2.0 = 2x overcommit).
 /// Memory side is always 1:1 since Firecracker pre-allocates `mem_size_mib`.
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub fn compute_max_concurrent(
     host_cpus: usize,
     host_memory_mb: usize,
@@ -44,7 +43,8 @@ pub fn compute_max_concurrent(
     memory_mb: u32,
     cpu_factor: f64,
 ) -> usize {
-    let effective_cpus = (host_cpus as f64 * cpu_factor).floor() as usize;
+    let effective = (host_cpus as f64 * cpu_factor).floor();
+    let effective_cpus = (effective.clamp(0.0, usize::MAX as f64)) as usize;
     std::cmp::min(
         effective_cpus / vcpu as usize,
         host_memory_mb / memory_mb as usize,
