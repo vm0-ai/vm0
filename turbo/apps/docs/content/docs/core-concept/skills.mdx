@@ -16,15 +16,27 @@ agents:
   my-agent:
     framework: claude-code
     skills: # [!code highlight]
+      - slack # [!code highlight]
       - https://github.com/anthropics/skills/tree/main/skills/pdf # [!code highlight]
-      - https://github.com/vm0-ai/vm0-skills/tree/main/slack # [!code highlight]
 ```
 
-Each skill is specified as a GitHub URL pointing to a directory containing the skill definition.
+Each skill can be specified as either a **bare name** or a **full GitHub URL**.
 
-## Skill URL Format
+## Bare Skill Name
 
-Skills must be GitHub tree URLs in the format:
+You can reference skills from the [vm0-ai/vm0-skills](https://github.com/vm0-ai/vm0-skills) repository by their bare name. The bare name is automatically resolved to a full GitHub URL on the `main` branch:
+
+```yaml title="vm0.yaml"
+skills:
+  - slack                    # Resolves to https://github.com/vm0-ai/vm0-skills/tree/main/slack
+  - firecrawl                # Resolves to https://github.com/vm0-ai/vm0-skills/tree/main/firecrawl
+```
+
+A bare name is any string that does not contain `/` or start with `https://`. This shorthand only works for skills hosted in the default `vm0-ai/vm0-skills` repository. For skills in other repositories, use the full GitHub URL.
+
+## Full GitHub URL
+
+For skills outside the default repository, or to pin to a specific branch, tag, or commit, use the full GitHub tree URL format:
 
 ```
 https://github.com/{owner}/{repo}/tree/{ref}/{path}
@@ -38,9 +50,10 @@ The `{ref}` can be:
 
 **Examples:**
 
-| Skill                 | URL                                                                |
+| Skill                 | Syntax                                                             |
 | --------------------- | ------------------------------------------------------------------ |
-| PDF (main branch)     | `https://github.com/anthropics/skills/tree/main/skills/pdf`        |
+| Slack (bare name)     | `slack`                                                             |
+| PDF (full URL)        | `https://github.com/anthropics/skills/tree/main/skills/pdf`        |
 | Slack (pinned to tag) | `https://github.com/vm0-ai/vm0-skills/tree/v1.0/slack`             |
 | GitHub CLI            | `https://github.com/vm0-ai/vm0-skills/tree/main/skills/github-cli` |
 
@@ -65,4 +78,4 @@ See the [Agent Skills](/docs/agent-skills) section for detailed documentation on
 - [Hacker News](/docs/agent-skills/hackernews) - Tech news
 - [Runway](/docs/agent-skills/runway) - Video generation
 
-Browse all 60+ skills at [vm0-ai/vm0-skills](https://github.com/vm0-ai/vm0-skills).
+Browse all 80+ skills at [vm0-ai/vm0-skills](https://github.com/vm0-ai/vm0-skills).
