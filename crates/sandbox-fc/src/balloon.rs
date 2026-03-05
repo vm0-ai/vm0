@@ -281,6 +281,17 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tick_no_deflate_when_available_memory_missing() {
+        // free_memory present but low (no inflate), available_memory absent — should not deflate.
+        let stats = r#"{"target_mib":512,"actual_mib":512,"target_pages":131072,"actual_pages":131072,"free_memory":52428800}"#;
+        let patch = run_tick_with_mock(stats, 1536).await;
+        assert!(
+            patch.is_none(),
+            "expected no PATCH when available_memory missing"
+        );
+    }
+
+    #[tokio::test]
     async fn tick_handles_api_error() {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
         let sock_path = dir.path().join("balloon-err.sock");
