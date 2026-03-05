@@ -60,7 +60,7 @@ tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts --migrate
 ## How It Works
 
 1. Queries all scopes where `clerkOrgId IS NULL`, ordered by `createdAt`
-2. For each scope, calls Clerk `createOrganization` with the scope's slug and owner
+2. For each scope, calls Clerk `createOrganization` with the scope's name and owner
 3. Updates the scope row with the new `clerkOrgId`
 4. Reports a summary with success/failure counts
 
@@ -71,7 +71,6 @@ already-processed scopes are skipped automatically.
 
 ### Error Handling
 
-- **Slug conflict** (HTTP 422): retries with a random suffix (up to 3 attempts)
 - **Rate limit / server error** (429, 5xx): exponential backoff (up to 3 attempts)
 - **Permanent error**: logs and skips the scope; does not block other scopes
 - **Throttling**: ~100ms delay between Clerk API calls (~10 req/s)

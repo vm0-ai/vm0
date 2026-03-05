@@ -76,59 +76,32 @@ function getStatus(err: unknown): number | undefined {
   return undefined;
 }
 
-function hasErrorCode(err: unknown, code: string): boolean {
-  if (
-    typeof err === "object" &&
-    err !== null &&
-    "errors" in err &&
-    Array.isArray((err as Record<string, unknown>).errors)
-  ) {
-    return (err as { errors: Array<{ code?: string }> }).errors.some(
-      (e) => e.code === code,
-    );
-  }
-  return false;
-}
-
-function isSlugConflict(err: unknown): boolean {
-  return getStatus(err) === 422 && hasErrorCode(err, "form_identifier_exists");
-}
-
 function isTransientError(err: unknown): boolean {
   const status = getStatus(err);
   return status === 429 || (status !== undefined && status >= 500);
 }
 
-function randomSuffix(): string {
-  return Math.random().toString(36).slice(2, 6);
-}
-
 /**
- * Create a Clerk Organization with retry logic for slug conflicts and
- * transient errors.
+ * Create a Clerk Organization with retry logic for transient errors.
+ * Only passes `name` — no slug, letting Clerk auto-generate one.
  */
 async function createClerkOrg(
   client: {
     organizations: {
       createOrganization: (params: {
         name: string;
-        slug: string;
         createdBy?: string;
       }) => Promise<{ id: string }>;
     };
   },
-  slug: string,
+  name: string,
   ownerId: string | null,
 ): Promise<string> {
   const MAX_ATTEMPTS = 3;
-  let currentSlug = slug;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const params: { name: string; slug: string; createdBy?: string } = {
-        name: currentSlug,
-        slug: currentSlug,
-      };
+      const params: { name: string; createdBy?: string } = { name };
       if (ownerId) {
         params.createdBy = ownerId;
       }
@@ -136,14 +109,6 @@ async function createClerkOrg(
       const org = await client.organizations.createOrganization(params);
       return org.id;
     } catch (err) {
-      if (isSlugConflict(err) && attempt < MAX_ATTEMPTS) {
-        currentSlug = `${slug}-${randomSuffix()}`;
-        console.warn(
-          `  Slug conflict for "${slug}", retrying with "${currentSlug}" (attempt ${attempt + 1}/${MAX_ATTEMPTS})`,
-        );
-        continue;
-      }
-
       if (isTransientError(err) && attempt < MAX_ATTEMPTS) {
         const backoff = Math.pow(2, attempt) * 1000;
         console.warn(
@@ -184,7 +149,6 @@ async function main() {
     organizations: {
       createOrganization: (params: {
         name: string;
-        slug: string;
         createdBy?: string;
       }) => Promise<{ id: string }>;
     };
