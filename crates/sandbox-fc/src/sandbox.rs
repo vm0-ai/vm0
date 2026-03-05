@@ -83,6 +83,8 @@ pub struct FirecrackerSandbox {
     crash_notify: Arc<Notify>,
     /// Control socket server for `runner exec`.
     control_server: Option<tokio::task::JoinHandle<()>>,
+    /// Balloon memory reclaim controller.
+    balloon_controller: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl FirecrackerSandbox {
@@ -108,6 +110,7 @@ impl FirecrackerSandbox {
             guest: Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>)),
             crash_notify: Arc::new(Notify::new()),
             control_server: None,
+            balloon_controller: None,
         }
     }
 
@@ -329,6 +332,9 @@ impl Drop for FirecrackerSandbox {
         if let Some(h) = self.control_server.take() {
             h.abort();
         }
+        if let Some(h) = self.balloon_controller.take() {
+            h.abort();
+        }
         // If the process is still alive (e.g. owning task panicked before
         // explicit cleanup), kill the entire process group synchronously.
         // `kill_on_drop(true)` only sends SIGKILL to the direct child (`sudo`);
@@ -465,6 +471,15 @@ impl Sandbox for FirecrackerSandbox {
             Arc::clone(&self.guest),
         ));
 
+        // Spawn balloon controller if enabled and in snapshot mode.
+        if self.factory_config.balloon_reclaim && self.factory_config.snapshot.is_some() {
+            self.balloon_controller = Some(crate::balloon::spawn(
+                self.sock_paths.api_sock().to_owned(),
+                self.config.resources.memory_mb,
+                Arc::clone(&self.crash_notify),
+            ));
+        }
+
         info!(id = %self.id, "sandbox started");
         Ok(())
     }
@@ -475,6 +490,9 @@ impl Sandbox for FirecrackerSandbox {
         }
 
         if let Some(h) = self.control_server.take() {
+            h.abort();
+        }
+        if let Some(h) = self.balloon_controller.take() {
             h.abort();
         }
 
@@ -500,6 +518,9 @@ impl Sandbox for FirecrackerSandbox {
             return Ok(());
         }
         if let Some(h) = self.control_server.take() {
+            h.abort();
+        }
+        if let Some(h) = self.balloon_controller.take() {
             h.abort();
         }
         self.guest.lock().await.take();
