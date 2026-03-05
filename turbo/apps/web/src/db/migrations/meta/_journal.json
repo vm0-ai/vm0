@@ -743,6 +743,13 @@
       "when": 1772703622916,
       "tag": "0105_friendly_excalibur",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1772716800000,
+      "tag": "0106_add_compose_jobs_user_active_unique",
+      "breakpoints": true
     }
   ]
 }

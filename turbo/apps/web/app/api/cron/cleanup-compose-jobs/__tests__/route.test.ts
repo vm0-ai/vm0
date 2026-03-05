@@ -55,10 +55,12 @@ describe("GET /api/cron/cleanup-compose-jobs", () => {
     const pendingId = await createTestComposeJob({
       status: "pending",
       createdAt: staleTime,
+      userId: "cleanup-test-user-1",
     });
     const runningId = await createTestComposeJob({
       status: "running",
       createdAt: staleTime,
+      userId: "cleanup-test-user-2",
     });
 
     const response = await GET(cronRequest("test-cron-secret"));
@@ -106,10 +108,12 @@ describe("GET /api/cron/cleanup-compose-jobs", () => {
     const id1 = await createTestComposeJob({
       status: "pending",
       createdAt: staleTime,
+      userId: "cleanup-test-user-3",
     });
     const id2 = await createTestComposeJob({
       status: "running",
       createdAt: staleTime,
+      userId: "cleanup-test-user-4",
     });
 
     const response = await GET(cronRequest("test-cron-secret"));
