@@ -166,6 +166,11 @@ impl FirecrackerSandbox {
                 "guest_cid": 3,
                 "uds_path": vsock_path,
             },
+            "balloon": {
+                "amount_mib": 0,
+                "deflate_on_oom": true,
+                "stats_polling_interval_s": 0,
+            },
         })
     }
 

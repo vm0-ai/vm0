@@ -238,7 +238,7 @@ async fn run_with_firecracker(
 
     info!("firecracker API ready");
 
-    // 6. Configure VM via API (6 parallel PUT calls).
+    // 6. Configure VM via API (7 parallel PUT calls).
     let kernel_path = config.kernel_path.display().to_string();
     let rootfs_path = config.rootfs_path.display().to_string();
     let overlay_path = paths.overlay().display().to_string();
@@ -254,6 +254,7 @@ async fn run_with_firecracker(
         client.configure_drive("overlay", &overlay_path, false, false),
         client.configure_network_interface("eth0", GUEST_NETWORK.guest_mac, GUEST_NETWORK.tap_name),
         client.configure_vsock(3, &vsock_uds_str),
+        client.configure_balloon(0, true, 0),
     )?;
 
     info!("VM configured");

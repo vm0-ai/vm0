@@ -210,6 +210,28 @@ impl<'a> ApiClient<'a> {
         .await
     }
 
+    /// Configure the balloon device via PUT /balloon.
+    ///
+    /// Must be called before starting the instance. With `deflate_on_oom` enabled,
+    /// the balloon automatically deflates to return memory to the guest when it
+    /// faces OOM pressure, preventing the OOM killer from terminating processes.
+    pub async fn configure_balloon(
+        &self,
+        amount_mib: u32,
+        deflate_on_oom: bool,
+        stats_polling_interval_s: u32,
+    ) -> Result<(), ApiError> {
+        self.put_json(
+            "/balloon",
+            &serde_json::json!({
+                "amount_mib": amount_mib,
+                "deflate_on_oom": deflate_on_oom,
+                "stats_polling_interval_s": stats_polling_interval_s,
+            }),
+        )
+        .await
+    }
+
     /// Start the VM instance via PUT /actions.
     pub async fn start_instance(&self) -> Result<(), ApiError> {
         self.request_with_timeout(
@@ -926,6 +948,43 @@ mod tests {
 
         let client = ApiClient::new(&sock_path);
         let result = client.start_instance().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn configure_balloon_succeeds_on_204() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-balloon.sock");
+
+        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
+            panic!("bind {}: {e}", sock_path.display());
+        });
+
+        tokio::spawn(async move {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await;
+
+            let req = String::from_utf8_lossy(&buf);
+            assert!(req.starts_with("PUT /balloon"), "got: {req}");
+            assert!(req.contains("amount_mib"), "missing amount_mib in: {req}");
+            assert!(
+                req.contains("deflate_on_oom"),
+                "missing deflate_on_oom in: {req}"
+            );
+            assert!(
+                req.contains("stats_polling_interval_s"),
+                "missing stats_polling_interval_s in: {req}"
+            );
+
+            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
+            let _ = stream.write_all(response.as_bytes()).await;
+        });
+
+        let client = ApiClient::new(&sock_path);
+        let result = client.configure_balloon(0, true, 0).await;
         assert!(result.is_ok());
     }
 
