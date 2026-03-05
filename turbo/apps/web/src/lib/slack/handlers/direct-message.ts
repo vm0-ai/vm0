@@ -130,16 +130,21 @@ export async function handleDirectMessage(
     });
   }
 
-  // 6b. If continuing session, use session's compose instead of workspace default
+  // 6b. Validate session's agent matches current default — discard if changed
   if (existingSessionId) {
     const sessionCompose = await resolveSessionCompose(
       existingSessionId,
       userLink.vm0UserId,
     );
-    if (sessionCompose) {
-      composeId = sessionCompose.composeId;
-      agentName = sessionCompose.agentName;
-      log.debug("Using session compose", { composeId, agentName });
+    if (sessionCompose && sessionCompose.composeId === composeId) {
+      log.debug("Continuing session with same agent", { composeId });
+    } else {
+      log.debug("Agent changed, starting new session", {
+        sessionComposeId: sessionCompose?.composeId,
+        currentComposeId: composeId,
+      });
+      existingSessionId = undefined;
+      lastProcessedMessageTs = undefined;
     }
   }
 

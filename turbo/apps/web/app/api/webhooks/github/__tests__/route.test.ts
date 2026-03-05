@@ -167,6 +167,22 @@ describe("POST /api/webhooks/github", () => {
     // Reload env after stubbing
     reloadEnv();
 
+    // Mock GitHub API: installation token + issue comments (used by context fetching)
+    server.use(
+      http.post(
+        "https://api.github.com/app/installations/:id/access_tokens",
+        () =>
+          HttpResponse.json({
+            token: "ghs_test",
+            expires_at: "2099-01-01T00:00:00Z",
+          }),
+      ),
+      http.get(
+        "https://api.github.com/repos/:owner/:repo/issues/:num/comments",
+        () => HttpResponse.json([]),
+      ),
+    );
+
     // Mock createRun to prevent actual sandbox dispatch
     createRunSpy = vi.spyOn(runModule, "createRun").mockResolvedValue({
       runId: "test-run-id",
@@ -250,8 +266,7 @@ describe("POST /api/webhooks/github", () => {
         prompt: string;
         callbacks: Array<{ payload: { issueNumber: number } }>;
       };
-      expect(callArgs.prompt).toContain("Test Issue");
-      expect(callArgs.prompt).toContain("test issue body");
+      expect(callArgs.prompt).toContain("This is a test issue body");
       expect(callArgs.callbacks[0]!.payload.issueNumber).toBe(42);
     });
 
@@ -369,12 +384,13 @@ describe("POST /api/webhooks/github", () => {
 
       expect(createRunSpy).toHaveBeenCalledTimes(1);
       const callArgs = createRunSpy.mock.calls[0]![0] as { prompt: string };
-      expect(callArgs.prompt).toContain("No description provided");
+      // When body is null, falls back to issue title
+      expect(callArgs.prompt).toContain("Test Issue");
     });
   });
 
   describe("Issue Comment Event", () => {
-    it("should trigger agent for comment on issue with vm0-agent label", async () => {
+    it("should NOT trigger for comment on issue with vm0-agent label but no mention", async () => {
       const { ghInstallationId, githubUserId } =
         await givenGitHubInstallation();
 
@@ -392,10 +408,8 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createRunSpy).toHaveBeenCalledTimes(1);
-      const callArgs = createRunSpy.mock.calls[0]![0] as { prompt: string };
-      expect(callArgs.prompt).toContain("Can you help me fix this?");
-      expect(callArgs.prompt).toContain("Test Issue");
+      // Label alone should NOT trigger — bot mention is required
+      expect(createRunSpy).not.toHaveBeenCalled();
     });
 
     it("should trigger agent for comment mentioning @bot", async () => {
@@ -655,8 +669,8 @@ describe("POST /api/webhooks/github", () => {
       const request = createGitHubWebhookRequest(
         "issue_comment",
         buildIssueCommentPayload({
-          labels: [{ id: 1, name: "vm0-agent" }],
-          commentBody: "Follow-up question",
+          labels: [],
+          commentBody: `@${TEST_APP_SLUG}[bot] Follow-up question`,
           installationId: ghInstallationId,
           senderId: Number(githubUserId),
         }),

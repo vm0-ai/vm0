@@ -25,7 +25,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Start tunnel and capture URL
+# Start tunnel and capture URL (TUNNEL_HOSTNAME is forwarded if set)
 TUNNEL_URL=$("$REPO_ROOT/scripts/tunnel.sh" "$PORT")
 
 echo ""

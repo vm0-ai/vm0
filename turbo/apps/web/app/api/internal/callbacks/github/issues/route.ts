@@ -7,7 +7,9 @@ import { githubIssueSessions } from "../../../../../../src/db/schema/github-issu
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { getInstallationAccessToken } from "../../../../../../src/lib/github/github-app";
-import { getRunOutput } from "../../../../../../src/lib/slack/handlers/run-agent";
+import { getRunResultData } from "../../../../../../src/lib/slack/handlers/run-agent";
+import { getPlatformUrl } from "../../../../../../src/lib/url";
+import { detectDeepLinks } from "../../../../../../src/lib/deep-links";
 import { env } from "../../../../../../src/env";
 import { logger } from "../../../../../../src/lib/logger";
 
@@ -18,7 +20,11 @@ interface CallbackPayload {
   repo: string; // "owner/repo"
   issueNumber: number;
   composeId: string;
+  agentName: string;
   existingSessionId?: string;
+  triggerCommentId?: string;
+  triggerCommentBody?: string;
+  triggerReactionId?: string;
 }
 
 function parsePayload(payload: unknown): CallbackPayload | null {
@@ -28,7 +34,8 @@ function parsePayload(payload: unknown): CallbackPayload | null {
     typeof p.installationId !== "string" ||
     typeof p.repo !== "string" ||
     typeof p.issueNumber !== "number" ||
-    typeof p.composeId !== "string"
+    typeof p.composeId !== "string" ||
+    typeof p.agentName !== "string"
   ) {
     return null;
   }
@@ -60,19 +67,92 @@ async function findNewSessionId(
 }
 
 /**
- * Format agent output as a GitHub issue comment with attribution footer.
+ * Format agent output as a GitHub issue comment.
+ * Mirrors Slack's block layout: agent name header, content, deep links, logs footer.
  */
-function formatGitHubComment(
-  output: string,
-  status: "completed" | "failed",
-  error?: string,
-): string {
-  const body =
+function formatGitHubComment(opts: {
+  status: "completed" | "failed";
+  agentName: string;
+  runId: string;
+  repo: string;
+  issueNumber: number;
+  output?: string;
+  error?: string;
+  triggerCommentId?: string;
+  triggerCommentBody?: string;
+}): string {
+  const {
+    status,
+    agentName,
+    runId,
+    repo,
+    issueNumber,
+    output,
+    error,
+    triggerCommentId,
+    triggerCommentBody,
+  } = opts;
+  const platformUrl = getPlatformUrl();
+  const logsUrl = `${platformUrl}/agents/${encodeURIComponent(agentName)}/logs/${encodeURIComponent(runId)}`;
+  const content =
     status === "completed"
-      ? output || "Task completed successfully."
+      ? (output ?? "Task completed successfully.")
       : `**Error:** ${error ?? "Agent execution failed."}`;
 
-  return `${body}\n\n---\n*🤖 Powered by [VM0](https://vm0.com)*`;
+  const parts: string[] = [];
+
+  // Quote the triggering comment when replying to an @mention
+  if (triggerCommentBody) {
+    const quoted = triggerCommentBody
+      .split("\n")
+      .map((line) => `> ${line}`)
+      .join("\n");
+    parts.push(quoted, "");
+  }
+
+  parts.push(`<sub>🤖 **${agentName}**</sub>`, "", content, "");
+
+  // Detect deep links for missing connectors, model providers, etc.
+  const deepLinks = detectDeepLinks(content, platformUrl, agentName);
+  if (deepLinks.length > 0) {
+    const linkText = deepLinks
+      .map((link) => `${link.emoji} [${link.label}](${link.url})`)
+      .join(" · ");
+    parts.push(`<sub>${linkText}</sub>`, "");
+  }
+
+  parts.push(`<sub>📋 [View logs](${logsUrl})</sub>`);
+
+  return parts.join("\n");
+}
+
+/**
+ * Remove a reaction from a GitHub issue comment.
+ */
+async function removeCommentReaction(
+  token: string,
+  repo: string,
+  commentId: string,
+  reactionId: string,
+): Promise<void> {
+  const res = await fetch(
+    `https://api.github.com/repos/${repo}/issues/comments/${commentId}/reactions/${reactionId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    },
+  );
+  if (!res.ok) {
+    log.warn("Failed to remove reaction", {
+      commentId,
+      reactionId,
+      status: res.status,
+    });
+  }
 }
 
 /**
@@ -163,16 +243,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   );
 
   // Query Axiom for the agent's output
-  const output = status === "completed" ? await getRunOutput(runId) : undefined;
+  const resultData =
+    status === "completed" ? await getRunResultData(runId) : undefined;
 
   // Format and post comment to GitHub issue
-  const commentBody = formatGitHubComment(output ?? "", status, error);
+  const commentBody = formatGitHubComment({
+    status,
+    agentName: payload.agentName,
+    runId,
+    repo,
+    issueNumber,
+    output: resultData?.result,
+    error,
+    triggerCommentId: payload.triggerCommentId,
+    triggerCommentBody: payload.triggerCommentBody,
+  });
   const commentId = await postIssueComment(
     token,
     repo,
     issueNumber,
     commentBody,
   );
+
+  // Remove 👀 reaction now that the agent has responded
+  if (payload.triggerCommentId && payload.triggerReactionId) {
+    await removeCommentReaction(
+      token,
+      repo,
+      payload.triggerCommentId,
+      payload.triggerReactionId,
+    );
+  }
 
   // Get run to find userId for session lookup
   const [run] = await globalThis.services.db

@@ -126,15 +126,21 @@ export async function handleTelegramMention(
     lastProcessedMessageId = session.lastProcessedMessageId;
   }
 
-  // 8b. If continuing session, use session's compose
+  // 8b. Validate session's agent matches current default — discard if changed
   if (existingSessionId) {
     const sessionCompose = await resolveSessionCompose(
       existingSessionId,
       userLink.vm0UserId,
     );
-    if (sessionCompose) {
-      composeId = sessionCompose.composeId;
-      agentName = sessionCompose.agentName;
+    if (sessionCompose && sessionCompose.composeId === composeId) {
+      log.debug("Continuing session with same agent", { composeId });
+    } else {
+      log.debug("Agent changed, starting new session", {
+        sessionComposeId: sessionCompose?.composeId,
+        currentComposeId: composeId,
+      });
+      existingSessionId = undefined;
+      lastProcessedMessageId = undefined;
     }
   }
 

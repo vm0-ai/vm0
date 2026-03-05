@@ -145,7 +145,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // Get run output and session ID
-  const logsUrl = buildLogsUrl(runId);
+  const logsUrl = buildLogsUrl(runId, compose.name);
   const rawOutput = status === "completed" ? await getRunOutput(runId) : null;
   const output = formatOutput(status, rawOutput, error);
 

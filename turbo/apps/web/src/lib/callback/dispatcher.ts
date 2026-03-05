@@ -95,7 +95,15 @@ async function dispatchSingleCallback(
   error: string | undefined,
   encryptionKey: string,
 ): Promise<DispatchResult> {
-  const { id, url, encryptedSecret, payload } = callback;
+  const { id, encryptedSecret, payload } = callback;
+
+  // In local dev, rewrite self-referencing tunnel URLs to localhost to avoid
+  // hairpin (server fetching its own tunnel URL times out via cloudflare).
+  const url =
+    process.env.NODE_ENV === "development" &&
+    callback.url.startsWith("https://tunnel-")
+      ? callback.url.replace(/^https:\/\/tunnel-[^/]+/, "http://localhost:3000")
+      : callback.url;
 
   // Decrypt the callback secret
   const secret = decryptCredentialValue(encryptedSecret, encryptionKey);
