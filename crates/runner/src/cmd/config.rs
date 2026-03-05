@@ -3,8 +3,8 @@ use clap::Args;
 use sandbox_fc::SnapshotOutputPaths;
 
 use crate::config::{
-    self, DEFAULT_MAX_CONCURRENT, DEFAULT_MEMORY_MB, DEFAULT_VCPU, FirecrackerConfig, RunnerConfig,
-    SandboxConfig, ServerConfig,
+    self, DEFAULT_CONCURRENCY_FACTOR, DEFAULT_MAX_CONCURRENT, DEFAULT_MEMORY_MB, DEFAULT_VCPU,
+    FirecrackerConfig, RunnerConfig, SandboxConfig, ServerConfig,
 };
 use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};
 use crate::error::{RunnerError, RunnerResult};
@@ -38,6 +38,9 @@ pub struct ConfigArgs {
     /// Maximum concurrent VMs (0 = auto-detect from host CPU/memory)
     #[arg(long, default_value_t = DEFAULT_MAX_CONCURRENT)]
     max_concurrent: usize,
+    /// CPU overcommit factor for auto-detected concurrency (default: 1.0)
+    #[arg(long, default_value_t = DEFAULT_CONCURRENCY_FACTOR)]
+    concurrency_factor: f64,
 
     /// vm0 API URL
     #[arg(long, env = "VM0_API_URL")]
@@ -93,6 +96,7 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
             vcpu: args.vcpu,
             memory_mb: args.memory_mb,
             max_concurrent: args.max_concurrent,
+            concurrency_factor: args.concurrency_factor,
         },
         server: Some(ServerConfig {
             url: args.api_url,
