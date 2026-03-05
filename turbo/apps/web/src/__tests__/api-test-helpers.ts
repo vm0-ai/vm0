@@ -81,6 +81,7 @@ import {
 } from "../db/schema/agent-compose";
 import { agentPermissions } from "../db/schema/agent-permission";
 import { scopes } from "../db/schema/scope";
+import { scopeMembers } from "../db/schema/scope-member";
 import { conversations } from "../db/schema/conversation";
 import { uniqueId } from "./test-helpers";
 
@@ -480,6 +481,7 @@ async function createTestComposeVersion(
 async function createTestRunDirect(
   userId: string,
   versionId: string,
+  scopeId: string,
   options?: {
     status?: string;
     prompt?: string;
@@ -490,6 +492,7 @@ async function createTestRunDirect(
     .insert(agentRuns)
     .values({
       userId,
+      scopeId,
       agentComposeVersionId: versionId,
       status: options?.status ?? "running",
       prompt: options?.prompt ?? "test prompt",
@@ -525,10 +528,19 @@ export async function createTestSessionWithConversation(
   userId: string,
   agentComposeId: string,
 ): Promise<{ id: string }> {
+  // Look up scopeId from the compose
+  const [compose] = await globalThis.services.db
+    .select({ scopeId: agentComposes.scopeId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, agentComposeId))
+    .limit(1);
+  if (!compose) {
+    throw new Error(`Compose ${agentComposeId} not found`);
+  }
   // Create compose version
   const versionId = await createTestComposeVersion(agentComposeId, userId);
   // Create run
-  const run = await createTestRunDirect(userId, versionId, {
+  const run = await createTestRunDirect(userId, versionId, compose.scopeId, {
     status: "completed",
   });
   // Create conversation
@@ -1298,11 +1310,26 @@ export async function insertStalePendingRun(
   agentComposeVersionId: string,
   ageMs: number = 20 * 60 * 1000,
 ): Promise<string> {
+  // Look up scopeId from the compose version
+  const [version] = await globalThis.services.db
+    .select({ scopeId: agentComposes.scopeId })
+    .from(agentComposeVersions)
+    .innerJoin(
+      agentComposes,
+      eq(agentComposes.id, agentComposeVersions.composeId),
+    )
+    .where(eq(agentComposeVersions.id, agentComposeVersionId))
+    .limit(1);
+  if (!version) {
+    throw new Error(`Compose version ${agentComposeVersionId} not found`);
+  }
+
   const staleCreatedAt = new Date(Date.now() - ageMs);
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
+      scopeId: version.scopeId,
       agentComposeVersionId,
       status: "pending",
       prompt: "Stale pending run",
@@ -1371,14 +1398,30 @@ export async function createTestConnector(
     externalEmail?: string;
     oauthScopes?: string[];
     accessToken?: string;
+    userId?: string;
   },
 ): Promise<typeof connectors.$inferSelect> {
   const type = options?.type ?? "github";
+
+  // Resolve userId: use provided value or look up from scope_members
+  let userId = options?.userId;
+  if (!userId) {
+    const [member] = await globalThis.services.db
+      .select({ userId: scopeMembers.userId })
+      .from(scopeMembers)
+      .where(eq(scopeMembers.scopeId, scopeId))
+      .limit(1);
+    if (!member) {
+      throw new Error(`No scope member found for scope ${scopeId}`);
+    }
+    userId = member.userId;
+  }
 
   const [connector] = await globalThis.services.db
     .insert(connectors)
     .values({
       scopeId,
+      userId,
       type,
       authMethod: options?.authMethod ?? "oauth",
       externalId: options?.externalId ?? "12345",
@@ -1396,6 +1439,7 @@ export async function createTestConnector(
 
   await globalThis.services.db.insert(secrets).values({
     scopeId,
+    userId,
     name: secretName,
     type: "connector",
     encryptedValue,
@@ -1576,10 +1620,25 @@ export async function createCompletedTestRun(options: {
   startedAt: Date;
   completedAt: Date;
 }): Promise<string> {
+  // Look up scopeId from the compose version
+  const [version] = await globalThis.services.db
+    .select({ scopeId: agentComposes.scopeId })
+    .from(agentComposeVersions)
+    .innerJoin(
+      agentComposes,
+      eq(agentComposes.id, agentComposeVersions.composeId),
+    )
+    .where(eq(agentComposeVersions.id, options.composeVersionId))
+    .limit(1);
+  if (!version) {
+    throw new Error(`Compose version ${options.composeVersionId} not found`);
+  }
+
   const [row] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId: options.userId,
+      scopeId: version.scopeId,
       agentComposeVersionId: options.composeVersionId,
       status: "completed",
       prompt: "test",
@@ -1979,10 +2038,25 @@ export async function createTestRunnerJob(
   runnerGroup: string,
   contextOverrides?: Partial<StoredExecutionContext>,
 ): Promise<{ runId: string }> {
+  // Look up scopeId from the compose version
+  const [version] = await globalThis.services.db
+    .select({ scopeId: agentComposes.scopeId })
+    .from(agentComposeVersions)
+    .innerJoin(
+      agentComposes,
+      eq(agentComposes.id, agentComposeVersions.composeId),
+    )
+    .where(eq(agentComposeVersions.id, versionId))
+    .limit(1);
+  if (!version) {
+    throw new Error(`Compose version ${versionId} not found`);
+  }
+
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
+      scopeId: version.scopeId,
       agentComposeVersionId: versionId,
       status: "pending",
       prompt: "test prompt",
@@ -2267,10 +2341,15 @@ export async function createTestTelegramInstallation(options?: {
     .insert(scopes)
     .values({
       slug: uniqueId("scope"),
-      type: "personal",
-      ownerId: adminUserId,
+      clerkOrgId: uniqueId("org"),
     })
     .returning();
+
+  await globalThis.services.db.insert(scopeMembers).values({
+    scopeId: scope!.id,
+    userId: adminUserId,
+    role: "admin",
+  });
 
   const [compose] = await globalThis.services.db
     .insert(agentComposes)

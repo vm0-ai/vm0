@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import {
   extractVariableReferences,
   groupVariablesBySource,
@@ -69,6 +69,7 @@ const MODEL_PROVIDER_ENV_VARS = [
  */
 async function resolveProviderType(
   scopeId: string,
+  userId: string,
   framework: ModelProviderFramework,
   explicitModelProvider?: string,
 ): Promise<ModelProviderType> {
@@ -83,7 +84,11 @@ async function resolveProviderType(
   }
 
   // Get default provider for framework
-  const defaultProvider = await getDefaultModelProvider(scopeId, framework);
+  const defaultProvider = await getDefaultModelProvider(
+    scopeId,
+    userId,
+    framework,
+  );
   if (!defaultProvider?.type) {
     throw badRequest(
       "No model provider configured. " +
@@ -170,6 +175,7 @@ interface ModelProviderCredentialResult {
  */
 async function resolveModelProviderCredential(
   scopeId: string,
+  userId: string,
   framework: string,
   hasExplicitModelProviderConfig: boolean,
   existingCredentials: Record<string, string> | undefined,
@@ -188,6 +194,7 @@ async function resolveModelProviderCredential(
   // Resolve model provider type (explicit or default)
   const providerType = await resolveProviderType(
     scopeId,
+    userId,
     framework as ModelProviderFramework,
     explicitModelProvider,
   );
@@ -204,6 +211,7 @@ async function resolveModelProviderCredential(
   // Get selected model from default provider if available
   const defaultProvider = await getDefaultModelProvider(
     scopeId,
+    userId,
     framework as ModelProviderFramework,
   );
   const selectedModel = defaultProvider?.selectedModel ?? undefined;
@@ -231,6 +239,7 @@ async function resolveModelProviderCredential(
     // Fetch all model-provider credentials by name
     const allCredentialValues = await getSecretValues(
       scopeId,
+      userId,
       "model-provider",
     );
     const credentialsMap: Record<string, string> = {};
@@ -279,6 +288,7 @@ async function resolveModelProviderCredential(
 
   const credentialValue = await getSecretValue(
     scopeId,
+    userId,
     credentialName,
     "model-provider",
   );
@@ -316,6 +326,7 @@ async function resolveModelProviderCredential(
 async function refreshConnectorAccessToken(
   connectorType: string,
   scopeId: string,
+  userId: string,
   connectorSecrets: Record<string, string>,
 ): Promise<string | null> {
   const handler =
@@ -352,10 +363,16 @@ async function refreshConnectorAccessToken(
     );
 
     // Persist new tokens to database
-    await upsertConnectorSecret(scopeId, accessTokenSecret, result.accessToken);
+    await upsertConnectorSecret(
+      scopeId,
+      userId,
+      accessTokenSecret,
+      result.accessToken,
+    );
     if (result.refreshToken) {
       await upsertConnectorSecret(
         scopeId,
+        userId,
         refreshTokenSecret,
         result.refreshToken,
       );
@@ -392,6 +409,7 @@ interface ConnectorCredentialResult {
  */
 async function resolveConnectorCredentials(
   scopeId: string,
+  userId: string,
   existingCredentials: Record<string, string> | undefined,
 ): Promise<ConnectorCredentialResult> {
   let credentials = existingCredentials;
@@ -400,13 +418,13 @@ async function resolveConnectorCredentials(
   const userConnectors = await globalThis.services.db
     .select({ type: connectors.type })
     .from(connectors)
-    .where(eq(connectors.scopeId, scopeId));
+    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.userId, userId)));
 
   if (userConnectors.length === 0) {
     return { credentials, injectedEnvVars: undefined };
   }
 
-  const connectorSecrets = await getSecretValues(scopeId, "connector");
+  const connectorSecrets = await getSecretValues(scopeId, userId, "connector");
   if (Object.keys(connectorSecrets).length === 0) {
     return { credentials, injectedEnvVars: undefined };
   }
@@ -426,6 +444,7 @@ async function resolveConnectorCredentials(
       await refreshConnectorAccessToken(
         connectorType.data,
         scopeId,
+        userId,
         connectorSecrets,
       );
     }
@@ -461,6 +480,7 @@ async function resolveConnectorCredentials(
  */
 async function fetchReferencedCredentials(
   scopeId: string,
+  userId: string,
   environment: Record<string, string> | undefined,
 ): Promise<Record<string, string> | undefined> {
   if (!environment) {
@@ -481,7 +501,7 @@ async function fetchReferencedCredentials(
   log.debug(`Secrets referenced in environment: ${referencedNames.join(", ")}`);
 
   // Only fetch user secrets for variable expansion (model-provider secrets are isolated)
-  const userSecrets = await getSecretValues(scopeId, "user");
+  const userSecrets = await getSecretValues(scopeId, userId, "user");
   log.debug(
     `Fetched ${Object.keys(userSecrets).length} user secret(s) from scope ${scopeId}`,
   );
@@ -597,9 +617,10 @@ function mergeConnectorSecretsForReferences(
  */
 async function fetchAndMergeVariables(
   scopeId: string,
+  userId: string,
   cliVars: Record<string, string> | undefined,
 ): Promise<Record<string, string> | undefined> {
-  const storedVars = await getVariableValues(scopeId);
+  const storedVars = await getVariableValues(scopeId, userId);
   if (Object.keys(storedVars).length === 0) {
     return cliVars;
   }
@@ -733,6 +754,7 @@ async function resolveCredentialsAndEnvironment(
       // Fetch secrets/credentials referenced in environment
       const dbSecrets = await fetchReferencedCredentials(
         scopeId,
+        userId,
         firstAgent?.environment,
       );
 
@@ -744,6 +766,7 @@ async function resolveCredentialsAndEnvironment(
 
       const modelProviderResult = await resolveModelProviderCredential(
         scopeId,
+        userId,
         framework,
         hasExplicitModelProviderConfig,
         credentials,
@@ -755,6 +778,7 @@ async function resolveCredentialsAndEnvironment(
       // Resolve connector credentials (GH_TOKEN, GITHUB_TOKEN, etc.)
       const connectorResult = await resolveConnectorCredentials(
         scopeId,
+        userId,
         credentials,
       );
       credentials = connectorResult.credentials;
@@ -770,7 +794,7 @@ async function resolveCredentialsAndEnvironment(
 
       return { secrets, credentials, modelProviderEnvVars };
     })(),
-    fetchAndMergeVariables(scopeId, vars),
+    fetchAndMergeVariables(scopeId, userId, vars),
   ]);
 
   const { secrets, credentials } = credentialChainResult;

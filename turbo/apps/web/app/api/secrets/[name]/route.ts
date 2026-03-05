@@ -33,7 +33,7 @@ const router = tsr.router(secretsByNameContract, {
     }
 
     const { scope } = await resolveScope(userId, headers.authorization);
-    const secret = await getSecret(scope.id, params.name);
+    const secret = await getSecret(scope.id, userId, params.name);
     if (!secret) {
       return createErrorResponse(
         "NOT_FOUND",
@@ -69,7 +69,7 @@ const router = tsr.router(secretsByNameContract, {
 
     try {
       const { scope } = await resolveScope(userId, headers.authorization);
-      await deleteSecret(scope.id, params.name);
+      await deleteSecret(scope.id, userId, params.name);
 
       return {
         status: 204 as const,

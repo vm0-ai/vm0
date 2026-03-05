@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import { requireOrgAuth } from "../../../../src/lib/org/require-org-auth";
+import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
+import { requireScopeMember } from "../../../../src/lib/scope/scope-member-service";
 import { removeMember } from "../../../../src/lib/org/org-service";
 import {
   isNotFound,
@@ -21,15 +22,29 @@ export async function DELETE(request: Request) {
     );
   }
 
-  const orgResult = await requireOrgAuth(authHeader);
-  if (!orgResult.ok) {
+  const url = new URL(request.url);
+  const scopeSlug = url.searchParams.get("scope");
+  if (!scopeSlug) {
     return NextResponse.json(
       {
-        error: { message: orgResult.error.message, code: orgResult.error.code },
+        error: {
+          message: "scope query parameter is required",
+          code: "BAD_REQUEST",
+        },
       },
-      { status: orgResult.error.status },
+      { status: 400 },
     );
   }
+
+  const scope = await getScopeBySlug(scopeSlug);
+  if (!scope) {
+    return NextResponse.json(
+      { error: { message: "Scope not found", code: "NOT_FOUND" } },
+      { status: 404 },
+    );
+  }
+
+  const member = await requireScopeMember(scope.id, userId);
 
   const body = (await request.json()) as { email: string };
   if (!body.email) {
@@ -42,8 +57,8 @@ export async function DELETE(request: Request) {
   try {
     await removeMember(
       userId,
-      orgResult.auth.scopeId,
-      orgResult.auth.role,
+      scope.id,
+      member.role as "admin" | "member",
       body.email,
     );
     return NextResponse.json({

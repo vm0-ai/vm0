@@ -2,7 +2,6 @@ import { eq, and, gt } from "drizzle-orm";
 import { cliTokens } from "../../db/schema/cli-tokens";
 import { isSandboxToken } from "./sandbox-token";
 import { getAuthProvider } from "./auth-provider";
-import { resolveOrgAccessToken } from "../org/org-token-service";
 import { logger } from "../logger";
 
 const log = logger("auth:user");
@@ -36,13 +35,6 @@ export async function getUserId(authHeader?: string): Promise<string | null> {
   if (isSandboxToken(token)) {
     log.debug("Rejected sandbox JWT token on normal API endpoint");
     return null;
-  }
-
-  // Check for org access token (vm0_org_)
-  if (token.startsWith("vm0_org_")) {
-    const orgAuth = await resolveOrgAccessToken(token);
-    if (!orgAuth) return null;
-    return orgAuth.userId;
   }
 
   // Check for CLI token format (vm0_live_)

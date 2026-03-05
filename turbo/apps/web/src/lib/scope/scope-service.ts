@@ -1,8 +1,9 @@
 import { createHash } from "crypto";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { scopes } from "../../db/schema/scope";
 import { scopeMembers } from "../../db/schema/scope-member";
+import { requireScopeMember } from "./scope-member-service";
 import { badRequest, notFound, forbidden } from "../errors";
 import { logger } from "../logger";
 import { env, hasClerkAuth } from "../../env";
@@ -81,41 +82,32 @@ export async function getScopeBySlug(slug: string) {
 }
 
 /**
- * Get a scope by its ID
- */
-export async function getScopeById(scopeId: string) {
-  const result = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(eq(scopes.id, scopeId))
-    .limit(1);
-
-  return result[0] ?? null;
-}
-
-/**
  * Create a personal scope for a user and link it to their user record
  * This is the main entry point for setting up a user's scope
  */
 export async function createUserScope(clerkUserId: string, slug: string) {
-  // First check if user already has a scope via ownerId
-  const existingScope = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(and(eq(scopes.ownerId, clerkUserId), eq(scopes.type, "personal")))
+  // Check if user already has a scope via scope_members (admin role)
+  const existingMembership = await globalThis.services.db
+    .select({ scope: scopes })
+    .from(scopeMembers)
+    .innerJoin(scopes, eq(scopeMembers.scopeId, scopes.id))
+    .where(
+      and(eq(scopeMembers.userId, clerkUserId), eq(scopeMembers.role, "admin")),
+    )
+    .orderBy(asc(scopeMembers.createdAt))
     .limit(1);
 
-  if (existingScope.length > 0) {
+  if (existingMembership.length > 0) {
     throw badRequest(
-      `You already have a scope: ${existingScope[0]!.slug}. Use --force to change it.`,
+      `You already have a scope: ${existingMembership[0]!.scope.slug}. Use --force to change it.`,
     );
   }
 
   validateScopeSlug(slug);
 
-  // Dual-write: create Clerk Organization so every scope is backed by one.
+  // Create Clerk Organization so every scope is backed by one.
   // Best-effort — if Clerk fails, scope is still created (clerkOrgId stays
-  // NULL and will be filled by the batch backfill before Phase 3).
+  // NULL and will be filled by a backfill).
   let clerkOrgId: string | null = null;
   if (hasClerkAuth()) {
     try {
@@ -139,9 +131,7 @@ export async function createUserScope(clerkUserId: string, slug: string) {
       .insert(scopes)
       .values({
         slug,
-        type: "personal",
-        ownerId: clerkUserId,
-        clerkOrgId,
+        clerkOrgId: clerkOrgId ?? "",
       })
       .onConflictDoNothing({ target: scopes.slug })
       .returning();
@@ -170,16 +160,21 @@ export async function createUserScope(clerkUserId: string, slug: string) {
 }
 
 /**
- * Get a user's scope by their Clerk ID
+ * Get a user's scope by their Clerk ID.
+ * Finds the first scope where the user is an admin member.
  */
 export async function getUserScopeByClerkId(clerkUserId: string) {
   const result = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(and(eq(scopes.ownerId, clerkUserId), eq(scopes.type, "personal")))
+    .select({ scope: scopes })
+    .from(scopeMembers)
+    .innerJoin(scopes, eq(scopeMembers.scopeId, scopes.id))
+    .where(
+      and(eq(scopeMembers.userId, clerkUserId), eq(scopeMembers.role, "admin")),
+    )
+    .orderBy(asc(scopeMembers.createdAt))
     .limit(1);
 
-  return result[0] ?? null;
+  return result[0]?.scope ?? null;
 }
 
 /**
@@ -198,10 +193,8 @@ export async function updateScopeSlug(
     throw notFound("Scope not found");
   }
 
-  // Verify ownership
-  if (scope.ownerId !== clerkUserId) {
-    throw forbidden("You don't have permission to modify this scope");
-  }
+  // Verify membership (requireScopeMember throws 403 if not a member)
+  await requireScopeMember(scopeId, clerkUserId);
 
   // Require force flag for slug changes
   if (!force) {

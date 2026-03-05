@@ -26,7 +26,7 @@ const router = tsr.router(secretsMainContract, {
     }
 
     const { scope } = await resolveScope(userId, headers.authorization);
-    const secrets = await listSecrets(scope.id);
+    const secrets = await listSecrets(scope.id, userId);
 
     return {
       status: 200 as const,

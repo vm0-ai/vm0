@@ -37,6 +37,7 @@ function getSecretNameForConnector(type: ConnectorType): string {
  */
 export async function listConnectors(
   scopeId: string,
+  userId: string,
 ): Promise<ConnectorResponse[]> {
   const result = await globalThis.services.db
     .select({
@@ -51,7 +52,7 @@ export async function listConnectors(
       updatedAt: connectors.updatedAt,
     })
     .from(connectors)
-    .where(eq(connectors.scopeId, scopeId))
+    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.userId, userId)))
     .orderBy(connectors.type);
 
   return result.map((row) => ({
@@ -72,6 +73,7 @@ export async function listConnectors(
  */
 export async function getConnector(
   scopeId: string,
+  userId: string,
   type: ConnectorType,
 ): Promise<ConnectorResponse | null> {
   const result = await globalThis.services.db
@@ -87,7 +89,13 @@ export async function getConnector(
       updatedAt: connectors.updatedAt,
     })
     .from(connectors)
-    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.type, type)))
+    .where(
+      and(
+        eq(connectors.scopeId, scopeId),
+        eq(connectors.userId, userId),
+        eq(connectors.type, type),
+      ),
+    )
     .limit(1);
 
   if (!result[0]) {
@@ -142,7 +150,13 @@ export async function upsertOAuthConnector(
   const existingConnector = await db
     .select({ id: connectors.id })
     .from(connectors)
-    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.type, type)))
+    .where(
+      and(
+        eq(connectors.scopeId, scopeId),
+        eq(connectors.userId, userId),
+        eq(connectors.type, type),
+      ),
+    )
     .limit(1);
 
   const isUpdate = existingConnector.length > 0;
@@ -150,6 +164,7 @@ export async function upsertOAuthConnector(
   // Upsert access token secret
   await upsertSecretByScope(
     scopeId,
+    userId,
     secretName,
     accessToken,
     "connector",
@@ -160,6 +175,7 @@ export async function upsertOAuthConnector(
   if (options?.refreshToken && options.refreshSecretName) {
     await upsertSecretByScope(
       scopeId,
+      userId,
       options.refreshSecretName,
       options.refreshToken,
       "connector",
@@ -249,6 +265,7 @@ export async function upsertOAuthConnector(
  */
 export async function deleteConnector(
   scopeId: string,
+  userId: string,
   type: ConnectorType,
 ): Promise<void> {
   const secretName = getSecretNameForConnector(type);
@@ -258,7 +275,13 @@ export async function deleteConnector(
   const [existing] = await db
     .select({ id: connectors.id })
     .from(connectors)
-    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.type, type)))
+    .where(
+      and(
+        eq(connectors.scopeId, scopeId),
+        eq(connectors.userId, userId),
+        eq(connectors.type, type),
+      ),
+    )
     .limit(1);
 
   if (!existing) {
@@ -274,6 +297,7 @@ export async function deleteConnector(
     .where(
       and(
         eq(secrets.scopeId, scopeId),
+        eq(secrets.userId, userId),
         eq(secrets.name, secretName),
         eq(secrets.type, "connector"),
       ),
@@ -287,11 +311,13 @@ export async function deleteConnector(
  */
 export async function upsertConnectorSecret(
   scopeId: string,
+  userId: string,
   secretName: string,
   secretValue: string,
 ): Promise<void> {
   await upsertSecretByScope(
     scopeId,
+    userId,
     secretName,
     secretValue,
     "connector",

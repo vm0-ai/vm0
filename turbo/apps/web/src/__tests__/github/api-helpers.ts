@@ -12,6 +12,7 @@ import { initServices } from "../../lib/init-services";
 import { env } from "../../env";
 import { encryptCredentialValue } from "../../lib/crypto/secrets-encryption";
 import { scopes } from "../../db/schema/scope";
+import { scopeMembers } from "../../db/schema/scope-member";
 import {
   agentComposes,
   agentComposeVersions,
@@ -54,8 +55,14 @@ export async function givenGitHubInstallation(
   // Create scope
   const [scope] = await globalThis.services.db
     .insert(scopes)
-    .values({ slug: scopeSlug, type: "personal", ownerId: userId })
+    .values({ slug: scopeSlug, clerkOrgId: uniqueId("org") })
     .returning();
+
+  await globalThis.services.db.insert(scopeMembers).values({
+    scopeId: scope!.id,
+    userId,
+    role: "admin",
+  });
 
   // Create compose
   const [compose] = await globalThis.services.db

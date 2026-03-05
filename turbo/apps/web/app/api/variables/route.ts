@@ -33,7 +33,7 @@ const router = tsr.router(variablesMainContract, {
     }
 
     const { scope } = await resolveScope(userId, headers.authorization);
-    const vars = await listVariables(scope.id);
+    const vars = await listVariables(scope.id, userId);
 
     return {
       status: 200 as const,

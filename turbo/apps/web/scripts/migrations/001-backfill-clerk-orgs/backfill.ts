@@ -214,15 +214,17 @@ async function main() {
 
   try {
     // Fetch scopes with NULL clerkOrgId, optionally filtered by ownerId
+    // Note: scopes.ownerId was removed from the Drizzle schema (Phase 2),
+    // so we use raw SQL column references for this legacy migration script.
     const whereClause = USER_ID
-      ? and(isNull(scopes.clerkOrgId), eq(scopes.ownerId, USER_ID))
+      ? and(isNull(scopes.clerkOrgId), sql`"scopes"."owner_id" = ${USER_ID}`)
       : isNull(scopes.clerkOrgId);
 
     const nullScopes: ScopeRow[] = await db
       .select({
         id: scopes.id,
         slug: scopes.slug,
-        ownerId: scopes.ownerId,
+        ownerId: sql<string | null>`"scopes"."owner_id"`,
       })
       .from(scopes)
       .where(whereClause)

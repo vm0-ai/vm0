@@ -2,7 +2,6 @@ import { eq, and, asc } from "drizzle-orm";
 import { scopeMembers } from "../../db/schema/scope-member";
 import { scopes } from "../../db/schema/scope";
 import { forbidden, notFound } from "../errors";
-import type { OrgRole } from "@vm0/core";
 
 /**
  * Get a scope member record for a specific user in a scope
@@ -27,29 +26,6 @@ export async function requireScopeMember(scopeId: string, userId: string) {
   if (!member) {
     throw forbidden("You are not a member of this scope");
   }
-  return member;
-}
-
-/**
- * Ensure a scope_members record exists for the given user+scope.
- * Lazy-creates the record if missing (org token was generated after Clerk
- * verification, so the user is a verified member).
- */
-export async function ensureScopeMember(
-  scopeId: string,
-  userId: string,
-  role: OrgRole,
-) {
-  const existing = await getScopeMember(scopeId, userId);
-  if (existing) return existing;
-
-  await globalThis.services.db
-    .insert(scopeMembers)
-    .values({ scopeId, userId, role })
-    .onConflictDoNothing();
-
-  const member = await getScopeMember(scopeId, userId);
-  if (!member) throw forbidden("You are not a member of this scope");
   return member;
 }
 

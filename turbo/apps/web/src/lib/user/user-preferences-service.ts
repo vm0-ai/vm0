@@ -1,6 +1,5 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { scopeMembers } from "../../db/schema/scope-member";
-import { scopes } from "../../db/schema/scope";
 import { badRequest } from "../errors";
 
 interface UserPreferences {
@@ -22,30 +21,37 @@ function isValidTimezone(timezone: string): boolean {
 }
 
 /**
- * Get user preferences from scope_members (personal scope membership)
+ * Find the user's primary scope membership (first admin membership by creation date).
+ * Preferences are stored on the scope_members record.
+ */
+async function findPrimaryMembership(userId: string) {
+  const [record] = await globalThis.services.db
+    .select()
+    .from(scopeMembers)
+    .where(and(eq(scopeMembers.userId, userId), eq(scopeMembers.role, "admin")))
+    .orderBy(asc(scopeMembers.createdAt))
+    .limit(1);
+
+  return record ?? null;
+}
+
+/**
+ * Get user preferences from scope_members (primary admin membership)
  */
 export async function getUserPreferences(
   userId: string,
 ): Promise<UserPreferences> {
-  const [result] = await globalThis.services.db
-    .select({
-      timezone: scopeMembers.timezone,
-      notifyEmail: scopeMembers.notifyEmail,
-      notifySlack: scopeMembers.notifySlack,
-    })
-    .from(scopeMembers)
-    .innerJoin(scopes, eq(scopeMembers.scopeId, scopes.id))
-    .where(and(eq(scopeMembers.userId, userId), eq(scopes.type, "personal")));
+  const member = await findPrimaryMembership(userId);
 
   return {
-    timezone: result?.timezone ?? null,
-    notifyEmail: result?.notifyEmail ?? false,
-    notifySlack: result?.notifySlack ?? true,
+    timezone: member?.timezone ?? null,
+    notifyEmail: member?.notifyEmail ?? false,
+    notifySlack: member?.notifySlack ?? true,
   };
 }
 
 /**
- * Update user preferences on scope_members (personal scope membership)
+ * Update user preferences on scope_members (primary admin membership)
  */
 export async function updateUserPreferences(
   userId: string,
@@ -57,15 +63,10 @@ export async function updateUserPreferences(
     }
   }
 
-  // Find the member record for user's personal scope
-  const [memberRecord] = await globalThis.services.db
-    .select({ id: scopeMembers.id })
-    .from(scopeMembers)
-    .innerJoin(scopes, eq(scopeMembers.scopeId, scopes.id))
-    .where(and(eq(scopeMembers.userId, userId), eq(scopes.type, "personal")));
+  const memberRecord = await findPrimaryMembership(userId);
 
   if (!memberRecord) {
-    throw badRequest("User has no personal scope membership");
+    throw badRequest("User has no scope membership");
   }
 
   const setValues: Record<string, unknown> = { updatedAt: new Date() };
@@ -110,12 +111,7 @@ export async function setTimezoneIfNotSet(
   const { timezone: existingTimezone } = await getUserPreferences(userId);
 
   if (existingTimezone === null) {
-    // Find the member record for user's personal scope
-    const [memberRecord] = await globalThis.services.db
-      .select({ id: scopeMembers.id })
-      .from(scopeMembers)
-      .innerJoin(scopes, eq(scopeMembers.scopeId, scopes.id))
-      .where(and(eq(scopeMembers.userId, userId), eq(scopes.type, "personal")));
+    const memberRecord = await findPrimaryMembership(userId);
 
     if (memberRecord) {
       await globalThis.services.db

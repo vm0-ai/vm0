@@ -31,6 +31,7 @@ import { getUserEmail } from "../auth/get-user-email";
 import { extractTemplateVars } from "../config-validator";
 
 import { getUserScopeByClerkId } from "../scope/scope-service";
+import { getDefaultScope } from "../scope/scope-member-service";
 import { getVariableValues } from "../variable/variable-service";
 import { encryptCredentialValue } from "../crypto/secrets-encryption";
 
@@ -416,7 +417,7 @@ async function validateComposeRequirements(
       const resolvedScopeId =
         scopeId ?? (await getUserScopeByClerkId(userId))?.id;
       const storedVars = resolvedScopeId
-        ? await getVariableValues(resolvedScopeId)
+        ? await getVariableValues(resolvedScopeId, userId)
         : {};
       const allVars = { ...storedVars, ...vars };
       const missingVars = requiredVars.filter(
@@ -539,11 +540,15 @@ export async function createRun(
     );
   }
 
+  // Resolve scope ID for the run record
+  const scopeId = params.scopeId ?? (await getDefaultScope(userId)).scope.id;
+
   // Step 6: INSERT agentRuns
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
+      scopeId,
       agentComposeVersionId,
       status: "pending",
       prompt,

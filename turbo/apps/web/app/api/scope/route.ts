@@ -40,7 +40,6 @@ const router = tsr.router(scopeContract, {
         body: {
           id: scope.id,
           slug: scope.slug,
-          type: scope.type,
           createdAt: scope.createdAt.toISOString(),
           updatedAt: scope.updatedAt.toISOString(),
         },
@@ -79,7 +78,6 @@ const router = tsr.router(scopeContract, {
         body: {
           id: scope.id,
           slug: scope.slug,
-          type: scope.type,
           createdAt: scope.createdAt.toISOString(),
           updatedAt: scope.updatedAt.toISOString(),
         },
@@ -149,7 +147,6 @@ const router = tsr.router(scopeContract, {
         body: {
           id: scope.id,
           slug: scope.slug,
-          type: scope.type,
           createdAt: scope.createdAt.toISOString(),
           updatedAt: scope.updatedAt.toISOString(),
         },

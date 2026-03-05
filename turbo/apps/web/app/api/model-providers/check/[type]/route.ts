@@ -22,7 +22,7 @@ const router = tsr.router(modelProvidersCheckContract, {
     }
 
     const { scope } = await resolveScope(userId, headers.authorization);
-    const result = await checkSecretExists(scope.id, params.type);
+    const result = await checkSecretExists(scope.id, userId, params.type);
 
     return {
       status: 200 as const,

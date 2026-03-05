@@ -53,7 +53,7 @@ const router = tsr.router(computerConnectorContract, {
     }
 
     const { scope } = await resolveScope(userId, headers.authorization);
-    const connector = await getConnector(scope.id, "computer");
+    const connector = await getConnector(scope.id, userId, "computer");
     if (!connector) {
       return createErrorResponse("NOT_FOUND", "Computer connector not found");
     }

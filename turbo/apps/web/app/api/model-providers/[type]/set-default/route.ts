@@ -31,7 +31,11 @@ const router = tsr.router(modelProvidersSetDefaultContract, {
 
     try {
       const { scope } = await resolveScope(userId, headers.authorization);
-      const provider = await setModelProviderDefault(scope.id, params.type);
+      const provider = await setModelProviderDefault(
+        scope.id,
+        userId,
+        params.type,
+      );
 
       return {
         status: 200 as const,

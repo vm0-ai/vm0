@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import { requireOrgAuth } from "../../../../src/lib/org/require-org-auth";
+import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
+import { requireScopeMember } from "../../../../src/lib/scope/scope-member-service";
 import { getOrganizationStatus } from "../../../../src/lib/org/org-service";
 import { isNotFound, isForbidden } from "../../../../src/lib/errors";
 
@@ -17,18 +18,32 @@ export async function GET(request: Request) {
     );
   }
 
-  const orgResult = await requireOrgAuth(authHeader);
-  if (!orgResult.ok) {
+  const url = new URL(request.url);
+  const scopeSlug = url.searchParams.get("scope");
+  if (!scopeSlug) {
     return NextResponse.json(
       {
-        error: { message: orgResult.error.message, code: orgResult.error.code },
+        error: {
+          message: "scope query parameter is required",
+          code: "BAD_REQUEST",
+        },
       },
-      { status: orgResult.error.status },
+      { status: 400 },
     );
   }
 
+  const scope = await getScopeBySlug(scopeSlug);
+  if (!scope) {
+    return NextResponse.json(
+      { error: { message: "Scope not found", code: "NOT_FOUND" } },
+      { status: 404 },
+    );
+  }
+
+  await requireScopeMember(scope.id, userId);
+
   try {
-    const status = await getOrganizationStatus(userId, orgResult.auth.scopeId);
+    const status = await getOrganizationStatus(userId, scope.id);
     return NextResponse.json(status);
   } catch (error) {
     if (isNotFound(error)) {

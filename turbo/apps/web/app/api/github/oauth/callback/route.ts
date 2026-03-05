@@ -7,7 +7,6 @@ import { encryptCredentialValue } from "../../../../../src/lib/crypto/secrets-en
 import { githubInstallations } from "../../../../../src/db/schema/github-installation";
 import { githubUserLinks } from "../../../../../src/db/schema/github-user-link";
 import { connectors } from "../../../../../src/db/schema/connector";
-import { scopes } from "../../../../../src/db/schema/scope";
 import {
   getInstallationAccessToken,
   getInstallationInfo,
@@ -249,8 +248,7 @@ export async function linkVm0User(
   const [connector] = await db
     .select({ externalId: connectors.externalId })
     .from(connectors)
-    .innerJoin(scopes, eq(scopes.id, connectors.scopeId))
-    .where(and(eq(scopes.ownerId, vm0UserId), eq(connectors.type, "github")))
+    .where(and(eq(connectors.userId, vm0UserId), eq(connectors.type, "github")))
     .limit(1);
 
   if (!connector?.externalId) {

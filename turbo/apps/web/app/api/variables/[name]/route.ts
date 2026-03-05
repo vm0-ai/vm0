@@ -33,7 +33,7 @@ const router = tsr.router(variablesByNameContract, {
     }
 
     const { scope } = await resolveScope(userId, headers.authorization);
-    const variable = await getVariable(scope.id, params.name);
+    const variable = await getVariable(scope.id, userId, params.name);
     if (!variable) {
       return createErrorResponse(
         "NOT_FOUND",
@@ -69,7 +69,7 @@ const router = tsr.router(variablesByNameContract, {
 
     try {
       const { scope } = await resolveScope(userId, headers.authorization);
-      await deleteVariable(scope.id, params.name);
+      await deleteVariable(scope.id, userId, params.name);
 
       return {
         status: 204 as const,

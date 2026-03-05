@@ -34,6 +34,7 @@ const router = tsr.router(modelProvidersUpdateModelContract, {
       const { scope } = await resolveScope(userId, headers.authorization);
       const provider = await updateModelProviderModel(
         scope.id,
+        userId,
         params.type,
         body.selectedModel,
       );

@@ -129,9 +129,9 @@ export async function GET(request: Request) {
     authHeader ?? undefined,
   );
   const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(userScope.id),
-    listVariables(userScope.id),
-    listConnectors(userScope.id),
+    listSecrets(userScope.id, userId),
+    listVariables(userScope.id, userId),
+    listConnectors(userScope.id, userId),
   ]);
 
   const connectorProvided = getConnectorProvidedSecretNames(

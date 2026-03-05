@@ -30,7 +30,7 @@ const router = tsr.router(modelProvidersMainContract, {
     }
 
     const { scope } = await resolveScope(userId, headers.authorization);
-    const providers = await listModelProviders(scope.id);
+    const providers = await listModelProviders(scope.id, userId);
 
     return {
       status: 200 as const,

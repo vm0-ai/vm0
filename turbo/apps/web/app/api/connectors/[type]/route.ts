@@ -22,7 +22,7 @@ const router = tsr.router(connectorsByTypeContract, {
     }
 
     const { scope } = await resolveScope(userId, headers.authorization);
-    const connector = await getConnector(scope.id, params.type);
+    const connector = await getConnector(scope.id, userId, params.type);
 
     if (!connector) {
       return createErrorResponse("NOT_FOUND", "Connector not found");
@@ -47,7 +47,7 @@ const router = tsr.router(connectorsByTypeContract, {
 
     try {
       const { scope } = await resolveScope(userId, headers.authorization);
-      await deleteConnector(scope.id, params.type);
+      await deleteConnector(scope.id, userId, params.type);
 
       return {
         status: 204 as const,

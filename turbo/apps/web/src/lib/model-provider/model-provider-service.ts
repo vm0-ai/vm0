@@ -123,6 +123,7 @@ async function assignDefaultIfFirst(
  */
 export async function listModelProviders(
   scopeId: string,
+  userId: string,
 ): Promise<ModelProviderInfo[]> {
   // Use leftJoin to include multi-auth providers that don't have secretId
   const result = await globalThis.services.db
@@ -138,7 +139,12 @@ export async function listModelProviders(
     })
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
-    .where(eq(modelProviders.scopeId, scopeId))
+    .where(
+      and(
+        eq(modelProviders.scopeId, scopeId),
+        eq(modelProviders.userId, userId),
+      ),
+    )
     .orderBy(modelProviders.type);
 
   return result.map((row) =>
@@ -161,6 +167,7 @@ export async function listModelProviders(
  */
 export async function checkSecretExists(
   scopeId: string,
+  userId: string,
   type: ModelProviderType,
 ): Promise<{ exists: boolean }> {
   // Multi-auth providers don't have a single secretName
@@ -180,6 +187,7 @@ export async function checkSecretExists(
     .where(
       and(
         eq(secrets.scopeId, scopeId),
+        eq(secrets.userId, userId),
         eq(secrets.name, secretName),
         eq(secrets.type, "model-provider"),
       ),
@@ -232,7 +240,11 @@ export async function upsertModelProvider(
     .select({ id: modelProviders.id })
     .from(modelProviders)
     .where(
-      and(eq(modelProviders.scopeId, scopeId), eq(modelProviders.type, type)),
+      and(
+        eq(modelProviders.scopeId, scopeId),
+        eq(modelProviders.userId, userId),
+        eq(modelProviders.type, type),
+      ),
     )
     .limit(1);
 
@@ -241,13 +253,14 @@ export async function upsertModelProvider(
     .insert(secrets)
     .values({
       scopeId,
+      userId,
       name: secretName,
       encryptedValue,
       type: "model-provider",
       description: `Model provider secret for ${MODEL_PROVIDER_TYPES[type].label}`,
     })
     .onConflictDoUpdate({
-      target: [secrets.scopeId, secrets.name, secrets.type],
+      target: [secrets.scopeId, secrets.userId, secrets.name, secrets.type],
       set: { encryptedValue, updatedAt: new Date() },
     })
     .returning();
@@ -264,7 +277,11 @@ export async function upsertModelProvider(
       selectedModel: selectedModel ?? null,
     })
     .onConflictDoUpdate({
-      target: [modelProviders.scopeId, modelProviders.type],
+      target: [
+        modelProviders.scopeId,
+        modelProviders.userId,
+        modelProviders.type,
+      ],
       set: {
         secretId: upsertedSecret!.id,
         selectedModel: selectedModel ?? null,
@@ -315,6 +332,7 @@ export async function upsertModelProvider(
  */
 async function upsertMultiAuthSecret(
   scopeId: string,
+  userId: string,
   name: string,
   value: string,
   description: string,
@@ -326,13 +344,14 @@ async function upsertMultiAuthSecret(
     .insert(secrets)
     .values({
       scopeId,
+      userId,
       name,
       encryptedValue,
       type: "model-provider",
       description,
     })
     .onConflictDoUpdate({
-      target: [secrets.scopeId, secrets.name, secrets.type],
+      target: [secrets.scopeId, secrets.userId, secrets.name, secrets.type],
       set: { encryptedValue, description, updatedAt: new Date() },
     });
 }
@@ -342,6 +361,7 @@ async function upsertMultiAuthSecret(
  */
 async function cleanupOldAuthMethodSecrets(
   scopeId: string,
+  userId: string,
   type: ModelProviderType,
   oldAuthMethod: string,
   newSecretNames: string[],
@@ -359,6 +379,7 @@ async function cleanupOldAuthMethodSecrets(
       .where(
         and(
           eq(secrets.scopeId, scopeId),
+          eq(secrets.userId, userId),
           inArray(secrets.name, secretsToDelete),
         ),
       );
@@ -435,7 +456,11 @@ export async function upsertMultiAuthModelProvider(
     .select()
     .from(modelProviders)
     .where(
-      and(eq(modelProviders.scopeId, scopeId), eq(modelProviders.type, type)),
+      and(
+        eq(modelProviders.scopeId, scopeId),
+        eq(modelProviders.userId, userId),
+        eq(modelProviders.type, type),
+      ),
     )
     .limit(1);
 
@@ -443,6 +468,7 @@ export async function upsertMultiAuthModelProvider(
   if (existingProvider && existingProvider.authMethod !== authMethod) {
     await cleanupOldAuthMethodSecrets(
       scopeId,
+      userId,
       type,
       existingProvider.authMethod ?? "",
       Object.keys(secretValues),
@@ -456,6 +482,7 @@ export async function upsertMultiAuthModelProvider(
   for (const [name, value] of Object.entries(secretValues)) {
     await upsertMultiAuthSecret(
       scopeId,
+      userId,
       name,
       value,
       secretDescription,
@@ -475,7 +502,11 @@ export async function upsertMultiAuthModelProvider(
       selectedModel: selectedModel ?? null,
     })
     .onConflictDoUpdate({
-      target: [modelProviders.scopeId, modelProviders.type],
+      target: [
+        modelProviders.scopeId,
+        modelProviders.userId,
+        modelProviders.type,
+      ],
       set: {
         authMethod,
         selectedModel: selectedModel ?? null,
@@ -542,6 +573,7 @@ export async function convertSecretToModelProvider(): Promise<never> {
  */
 export async function deleteModelProvider(
   scopeId: string,
+  userId: string,
   type: ModelProviderType,
 ): Promise<void> {
   const framework = getFrameworkForType(type);
@@ -551,7 +583,11 @@ export async function deleteModelProvider(
     .select()
     .from(modelProviders)
     .where(
-      and(eq(modelProviders.scopeId, scopeId), eq(modelProviders.type, type)),
+      and(
+        eq(modelProviders.scopeId, scopeId),
+        eq(modelProviders.userId, userId),
+        eq(modelProviders.type, type),
+      ),
     )
     .limit(1);
 
@@ -580,6 +616,7 @@ export async function deleteModelProvider(
           .where(
             and(
               eq(secrets.scopeId, scopeId),
+              eq(secrets.userId, userId),
               inArray(secrets.name, secretNames),
             ),
           );
@@ -629,6 +666,7 @@ export async function deleteModelProvider(
  */
 export async function setModelProviderDefault(
   scopeId: string,
+  userId: string,
   type: ModelProviderType,
 ): Promise<ModelProviderInfo> {
   const framework = getFrameworkForType(type);
@@ -640,7 +678,11 @@ export async function setModelProviderDefault(
     .select()
     .from(modelProviders)
     .where(
-      and(eq(modelProviders.scopeId, scopeId), eq(modelProviders.type, type)),
+      and(
+        eq(modelProviders.scopeId, scopeId),
+        eq(modelProviders.userId, userId),
+        eq(modelProviders.type, type),
+      ),
     )
     .limit(1);
 
@@ -709,6 +751,7 @@ export async function setModelProviderDefault(
  */
 export async function updateModelProviderModel(
   scopeId: string,
+  userId: string,
   type: ModelProviderType,
   selectedModel?: string,
 ): Promise<ModelProviderInfo> {
@@ -720,7 +763,11 @@ export async function updateModelProviderModel(
     .select()
     .from(modelProviders)
     .where(
-      and(eq(modelProviders.scopeId, scopeId), eq(modelProviders.type, type)),
+      and(
+        eq(modelProviders.scopeId, scopeId),
+        eq(modelProviders.userId, userId),
+        eq(modelProviders.type, type),
+      ),
     )
     .limit(1);
 
@@ -761,6 +808,7 @@ export async function updateModelProviderModel(
  */
 export async function getDefaultModelProvider(
   scopeId: string,
+  userId: string,
   framework: ModelProviderFramework,
 ): Promise<ModelProviderInfo | null> {
   // Use leftJoin to include multi-auth providers that don't have secretId
@@ -777,7 +825,12 @@ export async function getDefaultModelProvider(
     })
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
-    .where(eq(modelProviders.scopeId, scopeId));
+    .where(
+      and(
+        eq(modelProviders.scopeId, scopeId),
+        eq(modelProviders.userId, userId),
+      ),
+    );
 
   const defaultProvider = allProviders.find(
     (p) =>

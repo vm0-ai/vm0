@@ -19,7 +19,7 @@ const router = tsr.router(connectorsMainContract, {
     }
 
     const { scope } = await resolveScope(userId, headers.authorization);
-    const connectorList = await listConnectors(scope.id);
+    const connectorList = await listConnectors(scope.id, userId);
     const configuredTypes = getConfiguredConnectorTypes(
       globalThis.services.env,
     );

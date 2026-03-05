@@ -25,7 +25,7 @@ const router = tsr.router(modelProvidersByTypeContract, {
 
     try {
       const { scope } = await resolveScope(userId, headers.authorization);
-      await deleteModelProvider(scope.id, params.type);
+      await deleteModelProvider(scope.id, userId, params.type);
 
       return {
         status: 204 as const,

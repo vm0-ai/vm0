@@ -265,13 +265,17 @@ async function validateRequiredConfig(
   const required = extractRequiredConfiguration(version.content);
 
   // Fetch platform-managed secrets and vars from compose's scope
-  const platformSecrets = await getSecretValues(compose.scopeId, "user");
+  const platformSecrets = await getSecretValues(
+    compose.scopeId,
+    compose.userId,
+    "user",
+  );
   const platformSecretNames = Object.keys(platformSecrets);
   log.debug(
     `Fetched ${platformSecretNames.length} platform secret(s) for validation`,
   );
 
-  const platformVars = await getVariableValues(compose.scopeId);
+  const platformVars = await getVariableValues(compose.scopeId, compose.userId);
   const platformVarNames = Object.keys(platformVars);
   log.debug(
     `Fetched ${platformVarNames.length} platform variable(s) for validation`,
@@ -281,7 +285,12 @@ async function validateRequiredConfig(
   const userConnectors = await globalThis.services.db
     .select({ type: connectors.type })
     .from(connectors)
-    .where(eq(connectors.scopeId, compose.scopeId));
+    .where(
+      and(
+        eq(connectors.scopeId, compose.scopeId),
+        eq(connectors.userId, compose.userId),
+      ),
+    );
   const connectorProvidedNames = getConnectorProvidedSecretNames(
     userConnectors.map((c) => c.type),
   );
@@ -845,7 +854,7 @@ async function advanceScheduleState(
  */
 async function handleConcurrencyFailure(
   schedule: typeof agentSchedules.$inferSelect,
-  compose: { userId: string; headVersionId: string },
+  compose: { userId: string; headVersionId: string; scopeId: string },
   error: ConcurrentRunLimitError,
 ): Promise<boolean> {
   const now = new Date();
@@ -855,6 +864,7 @@ async function handleConcurrencyFailure(
     .insert(agentRuns)
     .values({
       userId: compose.userId,
+      scopeId: compose.scopeId,
       agentComposeVersionId: compose.headVersionId,
       scheduleId: schedule.id,
       status: "failed",
@@ -1005,7 +1015,11 @@ async function executeSchedule(
 
       const retryScheduled = await handleConcurrencyFailure(
         schedule,
-        { userId: compose.userId, headVersionId: compose.headVersionId },
+        {
+          userId: compose.userId,
+          headVersionId: compose.headVersionId,
+          scopeId: compose.scopeId,
+        },
         error,
       );
 

@@ -156,6 +156,7 @@ export async function createComputerConnector(
   await Promise.all([
     upsertSecretByScope(
       scopeId,
+      userId,
       "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
       bridgeToken,
       "connector",
@@ -163,6 +164,7 @@ export async function createComputerConnector(
     ),
     upsertSecretByScope(
       scopeId,
+      userId,
       "COMPUTER_CONNECTOR_DOMAIN_ID",
       reservedDomain.id,
       "connector",
@@ -170,6 +172,7 @@ export async function createComputerConnector(
     ),
     upsertSecretByScope(
       scopeId,
+      userId,
       "COMPUTER_CONNECTOR_DOMAIN",
       domain,
       "connector",
