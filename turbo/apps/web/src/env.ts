@@ -121,6 +121,7 @@ function initEnv() {
       // Vercel OAuth (for connector)
       VERCEL_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       VERCEL_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      VERCEL_INTEGRATION_SLUG: z.string().min(1).optional(),
       // Sentry OAuth (for connector)
       SENTRY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       SENTRY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -246,6 +247,7 @@ function initEnv() {
       X_OAUTH_CLIENT_SECRET: process.env.X_OAUTH_CLIENT_SECRET,
       VERCEL_OAUTH_CLIENT_ID: process.env.VERCEL_OAUTH_CLIENT_ID,
       VERCEL_OAUTH_CLIENT_SECRET: process.env.VERCEL_OAUTH_CLIENT_SECRET,
+      VERCEL_INTEGRATION_SLUG: process.env.VERCEL_INTEGRATION_SLUG,
       SENTRY_OAUTH_CLIENT_ID: process.env.SENTRY_OAUTH_CLIENT_ID,
       SENTRY_OAUTH_CLIENT_SECRET: process.env.SENTRY_OAUTH_CLIENT_SECRET,
       INTERVALS_ICU_OAUTH_CLIENT_ID: process.env.INTERVALS_ICU_OAUTH_CLIENT_ID,

@@ -93,6 +93,7 @@ X_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/X_OAUTH_CLIENT_SECRET
 # Optional: Vercel OAuth Connector
 VERCEL_OAUTH_CLIENT_ID=op://Development/vm0-env-local/VERCEL_OAUTH_CLIENT_ID
 VERCEL_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/VERCEL_OAUTH_CLIENT_SECRET
+VERCEL_INTEGRATION_SLUG=op://Development/vm0-env-local/VERCEL_INTEGRATION_SLUG
 
 # Optional: Sentry OAuth Connector
 SENTRY_OAUTH_CLIENT_ID=op://Development/vm0-env-local/SENTRY_OAUTH_CLIENT_ID

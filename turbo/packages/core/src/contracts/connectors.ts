@@ -27,7 +27,7 @@ export interface ConnectorAuthMethodConfig {
  * OAuth configuration for connectors that support OAuth flow
  */
 export interface ConnectorOAuthConfig {
-  authorizationUrl: string;
+  authorizationUrl?: string;
   tokenUrl: string;
   scopes: string[];
 }
@@ -693,10 +693,6 @@ export const CONNECTOR_TYPES = {
             label: "Access Token",
             required: true,
           },
-          VERCEL_REFRESH_TOKEN: {
-            label: "Refresh Token",
-            required: true,
-          },
         },
       },
     } as Record<string, ConnectorAuthMethodConfig>,
@@ -705,9 +701,8 @@ export const CONNECTOR_TYPES = {
       VERCEL_TOKEN: "$secrets.VERCEL_ACCESS_TOKEN",
     } as Record<string, string>,
     oauth: {
-      authorizationUrl: "https://vercel.com/oauth/authorize",
-      tokenUrl: "https://api.vercel.com/login/oauth/token",
-      scopes: ["openid", "email", "profile", "offline_access"],
+      tokenUrl: "https://api.vercel.com/v2/oauth/access_token",
+      scopes: [],
     } as ConnectorOAuthConfig,
   },
   sentry: {

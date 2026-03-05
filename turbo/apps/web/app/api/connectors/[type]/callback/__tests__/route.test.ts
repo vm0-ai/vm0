@@ -47,8 +47,8 @@ const NEON_USER_INFO_URL = "https://console.neon.tech/api/v2/users/me";
 const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
 const REDDIT_USER_INFO_URL = "https://oauth.reddit.com/api/v1/me";
 const X_TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
-const VERCEL_TOKEN_URL = "https://api.vercel.com/login/oauth/token";
-const VERCEL_USERINFO_URL = "https://api.vercel.com/login/oauth/userinfo";
+const VERCEL_TOKEN_URL = "https://api.vercel.com/v2/oauth/access_token";
+const VERCEL_USERINFO_URL = "https://api.vercel.com/v2/user";
 const SENTRY_TOKEN_URL = "https://sentry.io/oauth/token/";
 const INTERVALS_ICU_TOKEN_URL = "https://intervals.icu/api/oauth/token";
 const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
@@ -763,8 +763,6 @@ function createXOAuthMock(options: {
  */
 function createVercelOAuthMock(options: {
   accessToken?: string;
-  refreshToken?: string | null;
-  expiresIn?: number;
   tokenError?: string;
   userId?: string;
   username?: string;
@@ -781,24 +779,22 @@ function createVercelOAuthMock(options: {
       }
       return HttpResponse.json({
         access_token: options.accessToken ?? "vercel-test-access-token",
-        refresh_token:
-          options.refreshToken !== undefined
-            ? options.refreshToken
-            : "vercel-test-refresh-token",
-        ...(options.expiresIn != null ? { expires_in: options.expiresIn } : {}),
         token_type: "Bearer",
-        scope: "openid email profile offline_access",
+        team_id: null,
+        installation_id: "icfg_test123",
       });
     }),
-    userInfo: http.post(VERCEL_USERINFO_URL, () => {
+    userInfo: http.get(VERCEL_USERINFO_URL, () => {
       if (options.userError) {
         return HttpResponse.json({ message: "Unauthorized" }, { status: 401 });
       }
       return HttpResponse.json({
-        sub: options.userId ?? "abc123vercel",
-        preferred_username: options.username ?? "verceluser",
-        email: options.email !== undefined ? options.email : "user@vercel.com",
-        name: "Vercel User",
+        user: {
+          id: options.userId ?? "abc123vercel",
+          username: options.username ?? "verceluser",
+          email:
+            options.email !== undefined ? options.email : "user@vercel.com",
+        },
       });
     }),
   });
@@ -990,6 +986,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("X_OAUTH_CLIENT_SECRET", "x-test-client-secret");
     vi.stubEnv("VERCEL_OAUTH_CLIENT_ID", "vercel-test-client-id");
     vi.stubEnv("VERCEL_OAUTH_CLIENT_SECRET", "vercel-test-client-secret");
+    vi.stubEnv("VERCEL_INTEGRATION_SLUG", "vm0-test");
     vi.stubEnv("SENTRY_OAUTH_CLIENT_ID", "sentry-test-client-id");
     vi.stubEnv("SENTRY_OAUTH_CLIENT_SECRET", "sentry-test-client-secret");
     vi.stubEnv("INTERVALS_ICU_OAUTH_CLIENT_ID", "intervals-icu-test-client-id");
@@ -3780,7 +3777,6 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       const { handlers: mswHandlers } = createVercelOAuthMock({
         accessToken: "vercel-access-token",
-        refreshToken: "vercel-refresh-token",
         userId: "vercel123",
         username: "verceluser",
         email: "user@vercel.com",
@@ -3837,70 +3833,6 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
       const location = response.headers.get("location");
       expect(location).toContain("/connector/error");
-    });
-
-    it("should store refresh token as a secret when Vercel returns one", async () => {
-      const user = await context.setupUser();
-
-      const { handlers: mswHandlers } = createVercelOAuthMock({
-        accessToken: "vercel-access-token",
-        refreshToken: "vercel-refresh-token-stored",
-        userId: "vercel123",
-        username: "verceluser",
-      });
-      server.use(...mswHandlers);
-
-      const request = createCallbackRequest({
-        code: "valid-code",
-        state: "test-state",
-        savedState: "test-state",
-        connectorType: "vercel",
-      });
-      const response = await GET(request, {
-        params: Promise.resolve({ type: "vercel" }),
-      });
-
-      expect(response.status).toBe(307);
-
-      const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
-        "VERCEL_REFRESH_TOKEN",
-      );
-      expect(refreshToken).toBe("vercel-refresh-token-stored");
-    });
-
-    it("should set tokenExpiresAt when Vercel returns expires_in", async () => {
-      const user = await context.setupUser();
-      const frozenNow = 1700000000000;
-      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
-
-      const expiresIn = 3600;
-      const { handlers: mswHandlers } = createVercelOAuthMock({
-        accessToken: "vercel-access-token",
-        refreshToken: "vercel-refresh-token",
-        expiresIn,
-        userId: "vercel123",
-      });
-      server.use(...mswHandlers);
-
-      const request = createCallbackRequest({
-        code: "valid-code",
-        state: "test-state",
-        savedState: "test-state",
-        connectorType: "vercel",
-      });
-      const response = await GET(request, {
-        params: Promise.resolve({ type: "vercel" }),
-      });
-
-      expect(response.status).toBe(307);
-
-      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
-        "vercel",
-      );
-      const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
-      expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
     });
 
     it("should redirect with error when Vercel user info fetch fails", async () => {
