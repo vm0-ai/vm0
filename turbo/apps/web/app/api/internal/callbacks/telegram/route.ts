@@ -162,7 +162,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const output = status === "completed" ? await getRunOutput(runId) : undefined;
 
   // Build response text
-  const logsUrl = buildLogsUrl(runId);
+  const logsUrl = buildLogsUrl(runId, agentName);
   const responseText =
     status === "completed"
       ? (output ?? "Task completed successfully.")

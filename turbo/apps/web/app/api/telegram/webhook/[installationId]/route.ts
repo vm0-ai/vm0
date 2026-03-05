@@ -7,6 +7,12 @@ import { handleTelegramMention } from "../../../../../src/lib/telegram/handlers/
 import { handleTelegramDirectMessage } from "../../../../../src/lib/telegram/handlers/direct-message";
 import { handleStartCommand } from "../../../../../src/lib/telegram/handlers/start";
 import { handleNewSessionCommand } from "../../../../../src/lib/telegram/handlers/new-session";
+import {
+  handleConnectCommand,
+  handleDisconnectCommand,
+  handleSettingsCommand,
+  handleHelpCommand,
+} from "../../../../../src/lib/telegram/handlers/commands";
 import { storeTelegramMessage } from "../../../../../src/lib/telegram/handlers/shared";
 import { logger } from "../../../../../src/lib/logger";
 
@@ -35,6 +41,10 @@ interface TelegramUpdate {
  * Routing:
  * - /start command → handleStartCommand
  * - /new_session command → handleNewSessionCommand
+ * - /connect command → handleConnectCommand
+ * - /disconnect command → handleDisconnectCommand
+ * - /settings command → handleSettingsCommand
+ * - /help command → handleHelpCommand
  * - Private chat (DM) → handleTelegramDirectMessage
  * - Bot @mention in group → handleTelegramMention
  * - Reply to bot message → handleTelegramMention (continuation)
@@ -96,6 +106,30 @@ export async function POST(
       // /new_session command
       if (message.text?.startsWith("/new_session")) {
         await handleNewSessionCommand({ message }, installationId);
+        return;
+      }
+
+      // /connect command
+      if (message.text?.startsWith("/connect")) {
+        await handleConnectCommand({ message }, installationId);
+        return;
+      }
+
+      // /disconnect command
+      if (message.text?.startsWith("/disconnect")) {
+        await handleDisconnectCommand({ message }, installationId);
+        return;
+      }
+
+      // /settings command
+      if (message.text?.startsWith("/settings")) {
+        await handleSettingsCommand({ message }, installationId);
+        return;
+      }
+
+      // /help command
+      if (message.text?.startsWith("/help")) {
+        await handleHelpCommand({ message }, installationId);
         return;
       }
 

@@ -145,10 +145,10 @@ export async function storeTelegramMessage(
 }
 
 /**
- * Build the logs URL for a run
+ * Build the logs URL for a run, linking to the agent detail logs page.
  */
-export function buildLogsUrl(runId: string): string {
-  return `${getPlatformUrl()}/logs/${runId}`;
+export function buildLogsUrl(runId: string, agentName: string): string {
+  return `${getPlatformUrl()}/agents/${encodeURIComponent(agentName)}/logs/${encodeURIComponent(runId)}`;
 }
 
 /**
