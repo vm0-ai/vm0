@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.47.0](https://github.com/vm0-ai/vm0/compare/cli-v9.46.0...cli-v9.47.0) (2026-03-05)
+
+
+### Features
+
+* **cli:** add HTTP proxy support via undici EnvHttpProxyAgent ([#3594](https://github.com/vm0-ai/vm0/issues/3594)) ([51e119a](https://github.com/vm0-ai/vm0/commit/51e119adb7913c4fd456b216573390083d1b8ff2))
+
 ## [9.46.0](https://github.com/vm0-ai/vm0/compare/cli-v9.45.2...cli-v9.46.0) (2026-03-05)
 
 
