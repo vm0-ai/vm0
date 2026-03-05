@@ -14,7 +14,7 @@ type: volume
 
 ## Fields
 
-| Field  | Type   | Required | Description                                                                   |
-| ------ | ------ | -------- | ----------------------------------------------------------------------------- |
-| `name` | string | Yes      | Unique name for the storage (3-64 chars, lowercase letters, numbers, hyphens) |
-| `type` | string | Yes      | Storage type: `volume` or `artifact`                                          |
+| Field  | Type   | Required | Default  | Description                                                                   |
+| ------ | ------ | -------- | -------- | ----------------------------------------------------------------------------- |
+| `name` | string | Yes      | -        | Unique name for the storage. Must be 3-64 characters, lowercase letters, numbers, and hyphens only. Must start and end with an alphanumeric character. No consecutive hyphens (`--`) allowed |
+| `type` | string | No       | `volume` | Storage type: `volume` or `artifact`                                          |
