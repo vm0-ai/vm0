@@ -25,6 +25,7 @@ import {
 import { isConcurrentRunLimit, isForbidden, isBadRequest } from "../../errors";
 import { Sandbox } from "@e2b/code-interpreter";
 import { POST as createComposeRoute } from "../../../../app/api/agent/composes/route";
+import { mockClerk } from "../../../__tests__/clerk-mock";
 
 const context = testContext();
 
@@ -481,6 +482,39 @@ describe("createRun()", () => {
       const result = await createRun(
         baseParams({ agentComposeVersionId: compose.versionId }),
       );
+
+      expect(result.status).toBe("running");
+    });
+  });
+
+  describe("Domain-based Runner Rollout", () => {
+    it("should route @vm0.ai users to runner when RUNNER_DEFAULT_GROUP is set", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      mockClerk({ userId: user.userId, email: "team@vm0.ai" });
+
+      const result = await createRun(baseParams());
+
+      expect(result.status).toBe("pending");
+    });
+
+    it("should route non-vm0.ai users to E2B when RUNNER_DEFAULT_GROUP is set", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      mockClerk({ userId: user.userId, email: "user@example.com" });
+
+      const result = await createRun(baseParams());
+
+      expect(result.status).toBe("running");
+    });
+
+    it("should skip domain check when RUNNER_DEFAULT_GROUP is not set", async () => {
+      // RUNNER_DEFAULT_GROUP is not set by default in test env
+      mockClerk({ userId: user.userId, email: "team@vm0.ai" });
+
+      const result = await createRun(baseParams());
 
       expect(result.status).toBe("running");
     });
