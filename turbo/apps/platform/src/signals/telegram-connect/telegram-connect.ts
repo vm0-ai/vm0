@@ -20,7 +20,6 @@ interface TelegramConnectState {
     | "error";
   isLinked: boolean;
   installation: TelegramInstallationInfo | null;
-  telegramUserId: string | null;
   error: string | null;
 }
 
@@ -36,7 +35,6 @@ const telegramConnectState$ = state<TelegramConnectState>({
   status: "checking",
   isLinked: false,
   installation: null,
-  telegramUserId: null,
   error: null,
 });
 
@@ -66,12 +64,11 @@ export const setTelegramBotToken$ = command(({ set }, value: string) => {
  * When botId is provided, also checks for an existing installation to enable re-linking.
  */
 export const initTelegramConnect$ = command(
-  async ({ get, set }, botId?: string, telegramUserId?: string) => {
+  async ({ get, set }, botId?: string) => {
     set(telegramConnectState$, {
       status: "checking",
       isLinked: false,
       installation: null,
-      telegramUserId: telegramUserId ?? null,
       error: null,
     });
 
@@ -96,7 +93,6 @@ export const initTelegramConnect$ = command(
         status: "ready",
         isLinked: data.linked,
         installation: data.installation ?? null,
-        telegramUserId: telegramUserId ?? null,
         error: null,
       });
     } catch (error) {
@@ -106,7 +102,6 @@ export const initTelegramConnect$ = command(
         status: "error",
         isLinked: false,
         installation: null,
-        telegramUserId: null,
         error: "Failed to check connection status. Please try again.",
       });
     }
@@ -133,14 +128,10 @@ export const linkTelegramBot$ = command(
 
     try {
       const fetchFn = get(fetch$);
-      const telegramUserId = get(telegramConnectState$).telegramUserId;
       const response = await fetchFn("/api/integrations/telegram/link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          installationId,
-          ...(telegramUserId ? { telegramUserId } : {}),
-        }),
+        body: JSON.stringify({ installationId }),
       });
 
       if (!response.ok) {

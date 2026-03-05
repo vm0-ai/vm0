@@ -51,7 +51,7 @@ export async function handleNewSessionCommand(
   const userLink = await resolveUserLink(installationId, fromUserId);
   if (!userLink) {
     const platformUrl = getPlatformUrl();
-    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}&uid=${fromUserId}`;
+    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}`;
     await sendMessage(
       client,
       chatId,

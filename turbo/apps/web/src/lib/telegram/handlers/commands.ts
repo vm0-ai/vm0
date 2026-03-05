@@ -65,7 +65,7 @@ export async function handleConnectCommand(
   }
 
   const platformUrl = getPlatformUrl();
-  const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}&uid=${fromUserId}`;
+  const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}`;
   await sendMessage(
     client,
     chatId,
@@ -180,7 +180,7 @@ export async function handleSettingsCommand(
 
   if (!userLink) {
     const platformUrl = getPlatformUrl();
-    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}&uid=${fromUserId}`;
+    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}`;
     await sendMessage(
       client,
       chatId,

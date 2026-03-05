@@ -34,10 +34,9 @@ export const setupTelegramConnectPage$ = command(
       return;
     }
 
-    // Pass ?bot= and ?uid= params to init so it can look up existing installation
+    // Pass ?bot= param to init so it can look up existing installation
     const params = get(searchParams$);
     const botId = params.get("bot") ?? undefined;
-    const telegramUserId = params.get("uid") ?? undefined;
-    await set(initTelegramConnect$, botId, telegramUserId);
+    await set(initTelegramConnect$, botId);
   },
 );
