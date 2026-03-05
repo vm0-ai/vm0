@@ -172,8 +172,9 @@ export async function GET(
     const refreshSecretName = handler.getRefreshSecretName?.();
 
     // Store connector and secret
-    const scopeSlug = url.searchParams.get("scope");
-    const { scope } = await resolveScope(userId, scopeSlug);
+    // Note: do not read "scope" from the callback URL — OAuth providers (e.g., Monday.com)
+    // may append OAuth scopes as ?scope=... which would be mistaken for an app scope slug.
+    const { scope } = await resolveScope(userId);
     const { created } = await upsertOAuthConnector(
       scope.id,
       userId,

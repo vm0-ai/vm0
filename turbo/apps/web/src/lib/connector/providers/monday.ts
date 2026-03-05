@@ -190,7 +190,7 @@ async function fetchMondayUserInfo(
         .object({
           me: z
             .object({
-              id: z.number().optional(),
+              id: z.union([z.string(), z.number()]).optional(),
               name: z.string().nullable().optional(),
               email: z.string().nullable().optional(),
             })
