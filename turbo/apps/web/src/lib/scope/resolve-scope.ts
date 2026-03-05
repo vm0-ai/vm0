@@ -2,6 +2,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { scopeMembers } from "../../db/schema/scope-member";
 import { hasClerkAuth } from "../../env";
 import { isForbidden, badRequest, notFound } from "../errors";
+import { logger } from "../logger";
 import type { OrgRole } from "@vm0/core";
 import { getScopeBySlug } from "./scope-service";
 import {
@@ -11,6 +12,8 @@ import {
 } from "./scope-member-service";
 
 import type { scopes } from "../../db/schema/scope";
+
+const log = logger("scope:resolve");
 
 type Scope = typeof scopes.$inferSelect;
 
@@ -57,8 +60,14 @@ async function syncClerkMembership(scope: Scope, userId: string) {
     const record = member ?? (await getScopeMember(scope.id, userId));
     if (!record) return null;
     return { ...record, role: record.role as OrgRole };
-  } catch {
+  } catch (error) {
     // Clerk API call failed — cannot verify membership
+    log.error("syncClerkMembership failed", {
+      scopeId: scope.id,
+      userId,
+      clerkOrgId: scope.clerkOrgId,
+      error,
+    });
     return null;
   }
 }
