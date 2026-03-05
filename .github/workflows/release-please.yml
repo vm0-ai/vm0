@@ -259,6 +259,11 @@ jobs:
             RESEND_WEBHOOK_SECRET=${{ secrets.RESEND_WEBHOOK_SECRET }}
             RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
             VM0_ADMIN_USERS=${{ vars.VM0_ADMIN_USERS }}
+            GITHUB_APP_SLUG=${{ vars.VM0_GITHUB_APP_SLUG }}
+            GITHUB_APP_CLIENT_ID=${{ vars.VM0_GITHUB_APP_CLIENT_ID }}
+            GITHUB_APP_CLIENT_SECRET=${{ secrets.VM0_GITHUB_APP_CLIENT_SECRET }}
+            GITHUB_APP_WEBHOOK_SECRET=${{ secrets.VM0_GITHUB_APP_WEBHOOK_SECRET }}
+            GITHUB_APP_PRIVATE_KEY=${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
 
       - name: Calculate duration
         id: duration
