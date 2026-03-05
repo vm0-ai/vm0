@@ -6,6 +6,7 @@ import { ZeroProductionPage } from "./zero-production-page.tsx";
 import { ZeroActivityPage } from "./zero-activity-page.tsx";
 import { ZeroWorksPage } from "./zero-works-page.tsx";
 import { ZeroTeamPage } from "./zero-team-page.tsx";
+import { ZeroSchedulePage } from "./zero-schedule-page.tsx";
 
 const RECENT_ID_TO_SCENARIO: Record<string, DemoScenarioId> = {
   "1": "rich-summary",
@@ -25,11 +26,12 @@ interface ZeroContentProps {
 const SECTION_TITLES: Record<ZeroNavId, string> = {
   chat: "Chat with Zero",
   meet: "Meet Zero",
-  job: "Zero's job",
-  production: "Zero's production",
-  activity: "Zero's activity",
+  schedule: "Schedule",
+  job: "Zero's team",
+  production: "Documents",
+  activity: "Activities",
   works: "Where Zero works",
-  team: "Zero's team",
+  team: "Workspace settings",
   account: "Account",
 };
 
@@ -55,6 +57,9 @@ export function ZeroContent({
   if (sectionId === "meet") {
     return <ZeroMeetPage />;
   }
+  if (sectionId === "schedule") {
+    return <ZeroSchedulePage />;
+  }
   if (sectionId === "job") {
     return <ZeroJobsPage />;
   }
@@ -76,17 +81,17 @@ export function ZeroContent({
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <header className="shrink-0 border-b border-divider bg-transparent px-4 sm:px-6 pt-6 sm:pt-6 pb-4 sm:pb-5">
-        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
+        <h1 className="text-lg font-semibold tracking-tight text-foreground">
           {title}
         </h1>
-        <p className="mt-1 text-sm sm:text-base text-muted-foreground">
+        <p className="mt-0.5 text-sm text-muted-foreground">
           {recentLabel
             ? "Continue your dialogue with Zero"
             : "Zero — your AI assistant"}
         </p>
       </header>
       <main className="flex-1 overflow-auto px-4 sm:px-6 pb-8">
-        <div className="mx-auto max-w-[1200px]">
+        <div className="mx-auto max-w-[900px]">
           <div className="rounded-xl border border-border bg-card p-6">
             <p className="text-sm text-muted-foreground">
               Content for “{title}” will appear here.

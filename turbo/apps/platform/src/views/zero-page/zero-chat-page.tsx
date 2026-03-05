@@ -750,7 +750,7 @@ export function ZeroChatPage({
           </div>
         </header>
         <main className="flex-1 overflow-auto px-4 sm:px-6 py-4">
-          <div className="mx-auto max-w-[748px] flex flex-col gap-6 pb-4">
+          <div className="mx-auto max-w-[900px] flex flex-col gap-6 pb-4">
             {scenariosToShow.map((scene) => (
               <ChatScenarioBlock
                 key={scene.id}
@@ -776,7 +776,7 @@ export function ZeroChatPage({
           </div>
         </main>
         <footer className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-8">
-          <div className="mx-auto max-w-[748px] grid grid-cols-[48px_1fr] gap-3">
+          <div className="mx-auto max-w-[900px] grid grid-cols-[48px_1fr] gap-3">
             <div className="w-9 shrink-0" />
             <Card className="w-full min-w-0 rounded-2xl border border-border/60 bg-card shadow-[0_2px_8px_rgba(0,0,0,0.06)] overflow-hidden transition-colors duration-200">
               <CardContent className="p-0">
@@ -850,7 +850,7 @@ export function ZeroChatPage({
       />
 
       <main className="flex flex-1 flex-col justify-center overflow-auto px-4 sm:px-6 py-12">
-        <div className="mx-auto max-w-[700px] flex flex-col items-center gap-8 -mt-24">
+        <div className="mx-auto max-w-[900px] flex flex-col items-center gap-8 -mt-24">
           <div className="flex items-center gap-4 w-full">
             <img
               src="/zero-avatar.png"

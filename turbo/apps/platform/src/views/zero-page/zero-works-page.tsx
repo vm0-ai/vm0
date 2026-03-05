@@ -54,10 +54,10 @@ export function ZeroWorksPage() {
     <div className="flex flex-1 flex-col min-h-0">
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
         <div className="mx-auto max-w-[900px]">
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+          <h1 className="text-lg font-semibold tracking-tight text-foreground">
             Where Zero works
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-0.5 text-sm text-muted-foreground">
             Connect with Zero through these channels
           </p>
           <div className="mt-4 relative">
