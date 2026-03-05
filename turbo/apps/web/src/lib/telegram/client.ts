@@ -149,23 +149,6 @@ export async function deleteWebhook(token: string): Promise<void> {
 }
 
 /**
- * Edit an existing text message
- */
-export async function editMessageText(
-  client: TelegramClient,
-  chatId: string | number,
-  messageId: number,
-  text: string,
-): Promise<TelegramSentMessage> {
-  return callTelegramApi<TelegramSentMessage>(client.token, "editMessageText", {
-    chat_id: chatId,
-    message_id: messageId,
-    text,
-    parse_mode: "HTML",
-  });
-}
-
-/**
  * Delete a message
  */
 export async function deleteMessage(

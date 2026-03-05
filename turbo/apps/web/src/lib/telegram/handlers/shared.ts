@@ -15,6 +15,7 @@ import {
   type TelegramClient,
   type TelegramSentMessage,
 } from "../client";
+import { escapeHtml } from "../format";
 import { logger } from "../../logger";
 
 const log = logger("telegram:shared");
@@ -207,7 +208,7 @@ export async function sendThinkingMessage(
   agentName: string,
   options?: { replyToMessageId?: number },
 ): Promise<TelegramSentMessage | undefined> {
-  const text = `<i>${agentName} is thinking...</i>`;
+  const text = `<i>${escapeHtml(agentName)} is thinking...</i>`;
   try {
     return await sendMessage(client, chatId, text, options);
   } catch (err) {
