@@ -23,7 +23,10 @@ import { logger } from "../../logger";
 
 const log = logger("github:issue-event");
 
-const VM0_AGENT_LABEL = "vm0-agent";
+function getAgentLabel(): string {
+  const { NODE_ENV } = env();
+  return NODE_ENV === "development" ? "vm0-agent-test" : "vm0-agent";
+}
 
 // ─── GitHub Webhook Payload Schemas ────────────────────────────────
 
@@ -122,14 +125,14 @@ export async function handleIssuesEvent(
   }
 
   // For "labeled" action, only trigger when the vm0-agent label is added
-  if (action === "labeled" && label?.name !== VM0_AGENT_LABEL) {
+  if (action === "labeled" && label?.name !== getAgentLabel()) {
     log.debug("Ignoring label that is not vm0-agent", { label: label?.name });
     return;
   }
 
   // For "opened" action, check if issue has the vm0-agent label
   if (action === "opened") {
-    const hasLabel = issue.labels.some((l) => l.name === VM0_AGENT_LABEL);
+    const hasLabel = issue.labels.some((l) => l.name === getAgentLabel());
     if (!hasLabel) {
       log.debug("Ignoring opened issue without vm0-agent label");
       return;

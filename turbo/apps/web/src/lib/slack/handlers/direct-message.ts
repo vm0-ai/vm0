@@ -130,17 +130,15 @@ export async function handleDirectMessage(
     });
   }
 
-  // 6b. Validate session's agent matches current default — discard if changed
+  // 6b. Validate session's agent matches current default — discard only on positive mismatch
   if (existingSessionId) {
     const sessionCompose = await resolveSessionCompose(
       existingSessionId,
       userLink.vm0UserId,
     );
-    if (sessionCompose && sessionCompose.composeId === composeId) {
-      log.debug("Continuing session with same agent", { composeId });
-    } else {
+    if (sessionCompose && sessionCompose.composeId !== composeId) {
       log.debug("Agent changed, starting new session", {
-        sessionComposeId: sessionCompose?.composeId,
+        sessionComposeId: sessionCompose.composeId,
         currentComposeId: composeId,
       });
       existingSessionId = undefined;
