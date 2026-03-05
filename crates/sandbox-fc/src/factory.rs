@@ -50,11 +50,16 @@ pub struct BalloonConfig {
 ///
 /// Adding a field here automatically changes the config hash (via `Serialize`)
 /// and makes it available to all consumers.
+///
+/// **Important:** `serde_json` serializes struct fields in declaration order.
+/// Reordering fields changes the hash and invalidates all cached snapshots.
 #[derive(serde::Serialize)]
 pub struct InvariantConfig {
     pub boot_args: String,
     pub guest_mac: &'static str,
     pub tap_name: &'static str,
+    /// TAP MAC used in netns setup for ARP. Not in the Firecracker config JSON,
+    /// but affects snapshot behavior (guest ARP cache is baked into the snapshot).
     pub tap_mac: &'static str,
     pub iface_id: &'static str,
     pub guest_cid: u32,
