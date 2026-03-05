@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.8.0...sandbox-fc-v0.9.0) (2026-03-05)
+
+
+### Features
+
+* **sandbox-fc:** add per-sandbox balloon memory reclaim controller ([#3700](https://github.com/vm0-ai/vm0/issues/3700)) ([10f121b](https://github.com/vm0-ai/vm0/commit/10f121bc06e87f23a48af9b4b971faacef620442)), closes [#3697](https://github.com/vm0-ai/vm0/issues/3697)
+
+
+### Bug Fixes
+
+* **ci:** limit runner test concurrency to avoid netns init timeout ([#3712](https://github.com/vm0-ai/vm0/issues/3712)) ([df4d163](https://github.com/vm0-ai/vm0/commit/df4d163bf0c3a9ae89a05e66cc976735815cfd76))
+* **sandbox-fc:** fail fast when firecracker crashes during startup ([#3709](https://github.com/vm0-ai/vm0/issues/3709)) ([ad469b4](https://github.com/vm0-ai/vm0/commit/ad469b45110d59f8b5cfa210635012b9477de2a0))
+
 ## [0.8.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.7.0...sandbox-fc-v0.8.0) (2026-03-05)
 
 

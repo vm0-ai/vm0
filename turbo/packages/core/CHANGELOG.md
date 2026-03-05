@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.37.0](https://github.com/vm0-ai/vm0/compare/core-v8.36.0...core-v8.37.0) (2026-03-05)
+
+
+### Features
+
+* add oauth scope mismatch detection in connector settings ([#3704](https://github.com/vm0-ai/vm0/issues/3704)) ([77e2fcf](https://github.com/vm0-ai/vm0/commit/77e2fcfd80359e0310a1b0ccc6b2a9ad440a6dff)), closes [#3648](https://github.com/vm0-ai/vm0/issues/3648)
+
 ## [8.36.0](https://github.com/vm0-ai/vm0/compare/core-v8.35.0...core-v8.36.0) (2026-03-05)
 
 

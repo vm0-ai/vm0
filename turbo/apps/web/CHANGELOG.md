@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.76.0](https://github.com/vm0-ai/vm0/compare/web-v12.75.0...web-v12.76.0) (2026-03-05)
+
+
+### Features
+
+* add batch backfill script for clerk organization ids ([#3671](https://github.com/vm0-ai/vm0/issues/3671)) ([621ca7c](https://github.com/vm0-ai/vm0/commit/621ca7c4ed7ef8d76d2965e88dd432c9b9ebe541))
+* **telegram:** streamline re-link flow after /disconnect ([#3701](https://github.com/vm0-ai/vm0/issues/3701)) ([8dd4db4](https://github.com/vm0-ai/vm0/commit/8dd4db4a9fc255bc34ad6928861a9cb077cd83c2))
+
+
+### Bug Fixes
+
+* set api start time inside create-run for e2e telemetry ([#3707](https://github.com/vm0-ai/vm0/issues/3707)) ([e902696](https://github.com/vm0-ai/vm0/commit/e902696adb72414e5b248552379ee59c9cbbabd0)), closes [#3706](https://github.com/vm0-ai/vm0/issues/3706)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.37.0
+
 ## [12.75.0](https://github.com/vm0-ai/vm0/compare/web-v12.74.0...web-v12.75.0) (2026-03-05)
 
 
