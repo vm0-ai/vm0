@@ -53,7 +53,6 @@ describe("scope set command", () => {
             {
               id: "test-id",
               slug: "testslug",
-
               createdAt: "2024-01-01T00:00:00Z",
               updatedAt: "2024-01-01T00:00:00Z",
             },
@@ -80,7 +79,6 @@ describe("scope set command", () => {
           return HttpResponse.json({
             id: "test-id",
             slug: "oldslug",
-
             createdAt: "2024-01-01T00:00:00Z",
             updatedAt: "2024-01-01T00:00:00Z",
           });
@@ -106,7 +104,6 @@ describe("scope set command", () => {
           return HttpResponse.json({
             id: "test-id",
             slug: "oldslug",
-
             createdAt: "2024-01-01T00:00:00Z",
             updatedAt: "2024-01-01T00:00:00Z",
           });
@@ -115,7 +112,6 @@ describe("scope set command", () => {
           return HttpResponse.json({
             id: "test-id",
             slug: "newslug",
-
             createdAt: "2024-01-01T00:00:00Z",
             updatedAt: "2024-01-01T00:00:00Z",
           });
