@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.72.0](https://github.com/vm0-ai/vm0/compare/web-v12.71.0...web-v12.72.0) (2026-03-05)
+
+
+### Features
+
+* **telegram:** auto-link admin on bot install ([#3644](https://github.com/vm0-ai/vm0/issues/3644)) ([cc1089b](https://github.com/vm0-ai/vm0/commit/cc1089bc9a9891de7de57fcd00b542cace1da212))
+
 ## [12.71.0](https://github.com/vm0-ai/vm0/compare/web-v12.70.0...web-v12.71.0) (2026-03-05)
 
 

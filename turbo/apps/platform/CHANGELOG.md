@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.84.0](https://github.com/vm0-ai/vm0/compare/platform-v0.83.0...platform-v0.84.0) (2026-03-05)
+
+
+### Features
+
+* **telegram:** auto-link admin on bot install ([#3644](https://github.com/vm0-ai/vm0/issues/3644)) ([cc1089b](https://github.com/vm0-ai/vm0/commit/cc1089bc9a9891de7de57fcd00b542cace1da212))
+
 ## [0.83.0](https://github.com/vm0-ai/vm0/compare/platform-v0.82.0...platform-v0.83.0) (2026-03-05)
 
 
