@@ -127,6 +127,59 @@ async function createClerkOrg(
 }
 
 // ---------------------------------------------------------------------------
+// Per-scope processing
+// ---------------------------------------------------------------------------
+
+type ClerkClient = {
+  organizations: {
+    createOrganization: (params: {
+      name: string;
+      createdBy?: string;
+    }) => Promise<{ id: string }>;
+  };
+};
+
+async function processScope(
+  db: ReturnType<typeof drizzle>,
+  clerkClient: ClerkClient,
+  scope: ScopeRow,
+  idx: string,
+): Promise<"success" | "skipped" | "failed"> {
+  try {
+    const orgId = await createClerkOrg(clerkClient, scope.slug, scope.ownerId);
+    await sleep(THROTTLE_MS);
+
+    const result = await db
+      .update(scopes)
+      .set({ clerkOrgId: orgId, updatedAt: sql`NOW()` })
+      .where(eq(scopes.id, scope.id))
+      .returning({ id: scopes.id });
+
+    if (result.length > 0) {
+      console.log(`${idx} ✓ scope "${scope.slug}" → ${orgId}`);
+      return "success";
+    }
+    console.log(`${idx} ⊘ scope "${scope.slug}" — already processed`);
+    return "skipped";
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`${idx} ✗ scope "${scope.slug}" — ${message}`);
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "errors" in err &&
+      Array.isArray((err as Record<string, unknown>).errors)
+    ) {
+      console.error(
+        `     details:`,
+        JSON.stringify((err as { errors: unknown[] }).errors, null, 2),
+      );
+    }
+    return "failed";
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -145,14 +198,7 @@ async function main() {
   }
   console.log();
 
-  let clerkClient: {
-    organizations: {
-      createOrganization: (params: {
-        name: string;
-        createdBy?: string;
-      }) => Promise<{ id: string }>;
-    };
-  } | null = null;
+  let clerkClient: ClerkClient | null = null;
 
   if (!DRY_RUN) {
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
@@ -196,51 +242,16 @@ async function main() {
       const scope = nullScopes[i]!;
       const idx = `[${i + 1}/${total}]`;
 
-      try {
-        if (DRY_RUN) {
-          console.log(
-            `${idx} (dry-run) scope "${scope.slug}" — would create Clerk org`,
-          );
-          stats.success++;
-          continue;
-        }
-
-        const orgId = await createClerkOrg(
-          clerkClient!,
-          scope.slug,
-          scope.ownerId,
+      if (DRY_RUN) {
+        console.log(
+          `${idx} (dry-run) scope "${scope.slug}" — would create Clerk org`,
         );
-        await sleep(THROTTLE_MS);
-
-        const result = await db
-          .update(scopes)
-          .set({ clerkOrgId: orgId, updatedAt: sql`NOW()` })
-          .where(eq(scopes.id, scope.id))
-          .returning({ id: scopes.id });
-
-        if (result.length > 0) {
-          console.log(`${idx} ✓ scope "${scope.slug}" → ${orgId}`);
-          stats.success++;
-        } else {
-          console.log(`${idx} ⊘ scope "${scope.slug}" — already processed`);
-          stats.skipped++;
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error(`${idx} ✗ scope "${scope.slug}" — ${message}`);
-        if (
-          typeof err === "object" &&
-          err !== null &&
-          "errors" in err &&
-          Array.isArray((err as Record<string, unknown>).errors)
-        ) {
-          console.error(
-            `     details:`,
-            JSON.stringify((err as { errors: unknown[] }).errors, null, 2),
-          );
-        }
-        stats.failed++;
+        stats.success++;
+        continue;
       }
+
+      const result = await processScope(db, clerkClient!, scope, idx);
+      stats[result]++;
     }
 
     // Final verification
