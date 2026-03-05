@@ -60,6 +60,7 @@ describe("POST /api/runners/realtime/token", () => {
   let user: UserContext;
 
   beforeEach(async () => {
+    vi.clearAllMocks();
     context.setupMocks();
     user = await context.setupUser();
   });
