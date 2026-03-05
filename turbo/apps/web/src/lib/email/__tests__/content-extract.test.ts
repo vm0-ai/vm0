@@ -16,11 +16,10 @@ describe("extractEmailBody", () => {
   });
 
   it("preserves forwarded email content that previously triggered regex bug", () => {
-    // Regression test: email-reply-parser's Chinese quote header regex
-    // /^(在[\s\S]+写道：)$/m catastrophically over-matched, swallowing all
-    // content between any line starting with a common CJK character and the
-    // quote attribution suffix. This test uses the exact pattern that triggered
-    // the bug to ensure forwarded content is fully preserved.
+    // Regression test: email-reply-parser had a CJK quote header regex that
+    // catastrophically over-matched via [\s\S]+ (crossing newlines), swallowing
+    // all content between any line starting with a common CJK character and the
+    // quote attribution suffix. This test ensures forwarded content is preserved.
     const html = [
       "<div>Please review the email thread and summarize the conversation.</div>",
       "<div><br></div>",
