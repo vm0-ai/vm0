@@ -1,21 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { eq, and } from "drizzle-orm";
 import { HttpResponse } from "msw";
 import {
   testContext,
   uniqueId,
 } from "../../../../../src/__tests__/test-helpers";
-import { createTestCompose } from "../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestCompose,
+  createTestAgentSession,
+} from "../../../../../src/__tests__/api-test-helpers";
 import {
   createTelegramCallbackInstallation,
   telegramUserLinkExists,
+  createTelegramThreadSession,
+  telegramThreadSessionExists,
 } from "../../../../../src/lib/telegram/__tests__/helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[installationId]/route";
-import { telegramThreadSessions } from "../../../../../src/db/schema/telegram-thread-session";
-import { agentSessions } from "../../../../../src/db/schema/agent-session";
 
 // Mock Next.js after() to execute synchronously
 const afterPromises: Promise<unknown>[] = [];
@@ -288,19 +290,13 @@ describe("Telegram bot commands", () => {
   describe("/new_session command", () => {
     it("should clear DM session and send confirmation", async () => {
       // Create an agent session and thread session to be deleted
-      const [agentSession] = await globalThis.services.db
-        .insert(agentSessions)
-        .values({
-          userId,
-          agentComposeId: composeId,
-        })
-        .returning();
+      const agentSession = await createTestAgentSession(userId, composeId);
 
-      await globalThis.services.db.insert(telegramThreadSessions).values({
+      await createTelegramThreadSession({
         telegramUserLinkId: userLinkId,
         chatId: String(TELEGRAM_USER_ID),
         rootMessageId: "dm",
-        agentSessionId: agentSession!.id,
+        agentSessionId: agentSession.id,
       });
 
       const sendMsg = telegramSendMessage();
@@ -327,18 +323,12 @@ describe("Telegram bot commands", () => {
       expect(sendMsg.calls[0]?.text).toContain("New session started");
 
       // Verify thread session was deleted
-      const [remaining] = await globalThis.services.db
-        .select({ id: telegramThreadSessions.id })
-        .from(telegramThreadSessions)
-        .where(
-          and(
-            eq(telegramThreadSessions.telegramUserLinkId, userLinkId),
-            eq(telegramThreadSessions.chatId, String(TELEGRAM_USER_ID)),
-            eq(telegramThreadSessions.rootMessageId, "dm"),
-          ),
-        )
-        .limit(1);
-      expect(remaining).toBeUndefined();
+      const exists = await telegramThreadSessionExists({
+        telegramUserLinkId: userLinkId,
+        chatId: String(TELEGRAM_USER_ID),
+        rootMessageId: "dm",
+      });
+      expect(exists).toBe(false);
     });
 
     it("should prompt linking when user is not connected", async () => {

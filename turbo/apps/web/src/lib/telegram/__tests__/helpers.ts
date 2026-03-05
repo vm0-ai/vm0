@@ -3,6 +3,7 @@ import { initServices } from "../../init-services";
 import { telegramInstallations } from "../../../db/schema/telegram-installation";
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { telegramMessages } from "../../../db/schema/telegram-message";
+import { telegramThreadSessions } from "../../../db/schema/telegram-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { scopes } from "../../../db/schema/scope";
 import { encryptCredentialValue } from "../../crypto/secrets-encryption";
@@ -201,6 +202,52 @@ export async function telegramUserLinkExists(
       and(
         eq(telegramUserLinks.installationId, installationId),
         eq(telegramUserLinks.telegramUserId, telegramUserId),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * Create a telegram thread session for testing.
+ */
+export async function createTelegramThreadSession(params: {
+  telegramUserLinkId: string;
+  chatId: string;
+  rootMessageId: string;
+  agentSessionId: string;
+}): Promise<void> {
+  initServices();
+
+  await globalThis.services.db.insert(telegramThreadSessions).values({
+    telegramUserLinkId: params.telegramUserLinkId,
+    chatId: params.chatId,
+    rootMessageId: params.rootMessageId,
+    agentSessionId: params.agentSessionId,
+  });
+}
+
+/**
+ * Check whether a telegram thread session exists for the given parameters.
+ */
+export async function telegramThreadSessionExists(params: {
+  telegramUserLinkId: string;
+  chatId: string;
+  rootMessageId: string;
+}): Promise<boolean> {
+  initServices();
+
+  const [row] = await globalThis.services.db
+    .select({ id: telegramThreadSessions.id })
+    .from(telegramThreadSessions)
+    .where(
+      and(
+        eq(
+          telegramThreadSessions.telegramUserLinkId,
+          params.telegramUserLinkId,
+        ),
+        eq(telegramThreadSessions.chatId, params.chatId),
+        eq(telegramThreadSessions.rootMessageId, params.rootMessageId),
       ),
     )
     .limit(1);
