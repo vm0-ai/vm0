@@ -47,6 +47,11 @@ export async function handleConnectCommand(
 
   const userLink = await resolveUserLink(installationId, fromUserId);
 
+  const replyOptions =
+    message.chat.type !== "private"
+      ? { replyToMessageId: message.message_id }
+      : undefined;
+
   if (userLink) {
     const agent = await getWorkspaceAgent(installation.defaultComposeId);
     const agentName = agent?.name ?? "Agent";
@@ -54,6 +59,7 @@ export async function handleConnectCommand(
       client,
       chatId,
       `You are already connected. 🤖 ${escapeHtml(agentName)} is ready.`,
+      replyOptions,
     );
     return;
   }
@@ -64,6 +70,7 @@ export async function handleConnectCommand(
     client,
     chatId,
     `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
+    replyOptions,
   );
 }
 
@@ -99,8 +106,13 @@ export async function handleDisconnectCommand(
 
   const userLink = await resolveUserLink(installationId, fromUserId);
 
+  const replyOptions =
+    message.chat.type !== "private"
+      ? { replyToMessageId: message.message_id }
+      : undefined;
+
   if (!userLink) {
-    await sendMessage(client, chatId, "You are not connected.");
+    await sendMessage(client, chatId, "You are not connected.", replyOptions);
     return;
   }
 
@@ -119,6 +131,7 @@ export async function handleDisconnectCommand(
     client,
     chatId,
     "You have been disconnected and your agent access has been revoked.",
+    replyOptions,
   );
 
   log.info("User disconnected", {
@@ -159,8 +172,25 @@ export async function handleSettingsCommand(
   const client = createTelegramClient(botToken);
 
   const userLink = await resolveUserLink(installationId, fromUserId);
-  const isAdmin = userLink?.vm0UserId === installation.adminUserId;
 
+  const replyOptions =
+    message.chat.type !== "private"
+      ? { replyToMessageId: message.message_id }
+      : undefined;
+
+  if (!userLink) {
+    const platformUrl = getPlatformUrl();
+    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}&uid=${fromUserId}`;
+    await sendMessage(
+      client,
+      chatId,
+      `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
+      replyOptions,
+    );
+    return;
+  }
+
+  const isAdmin = userLink.vm0UserId === installation.adminUserId;
   const platformUrl = getPlatformUrl();
   const desc = isAdmin
     ? "Configure secrets, variables, and select the workspace agent on the VM0 platform."
@@ -170,6 +200,7 @@ export async function handleSettingsCommand(
     client,
     chatId,
     `⚙️ <b>Settings</b>\n\n${escapeHtml(desc)}\n\n<a href="${escapeHtml(platformUrl)}/settings/telegram">Open Platform</a>`,
+    replyOptions,
   );
 }
 
@@ -207,6 +238,11 @@ export async function handleHelpCommand(
   const isAdmin = userLink?.vm0UserId === installation.adminUserId;
   const botUsername = installation.botUsername ?? "bot";
 
+  const replyOptions =
+    message.chat.type !== "private"
+      ? { replyToMessageId: message.message_id }
+      : undefined;
+
   let helpText = `<b>Available commands:</b>\n\n`;
   helpText += `/new_session - Start a new conversation\n`;
   helpText += `/connect - Connect your VM0 account\n`;
@@ -219,5 +255,5 @@ export async function handleHelpCommand(
     helpText += `\n\nYou are the admin of this bot installation.`;
   }
 
-  await sendMessage(client, chatId, helpText);
+  await sendMessage(client, chatId, helpText, replyOptions);
 }
