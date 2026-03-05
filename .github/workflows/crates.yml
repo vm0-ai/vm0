@@ -382,12 +382,14 @@ jobs:
           echo "--- Test: balloon inflate ---"
           API_SOCK="/run/vm0/sock/$RUN_ID/api.sock"
 
-          # Wait for balloon controller to tick and driver to respond
-          sleep 10
-
-          # Host-side: verify balloon inflated via API
-          STATS=$(sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics)
-          ACTUAL=$(echo "$STATS" | python3 -c "import sys,json; print(json.load(sys.stdin)['actual_mib'])")
+          # Poll until balloon inflates (controller ticks every 5s, allow up to 20s)
+          ACTUAL=0
+          for i in $(seq 1 20); do
+            ACTUAL=$(sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics \
+              | python3 -c "import sys,json; print(json.load(sys.stdin).get('actual_mib', 0))" 2>/dev/null || echo 0)
+            [ "${ACTUAL:-0}" -gt 0 ] && break
+            sleep 1
+          done
           [ "$ACTUAL" -gt 0 ] || fail "balloon did not inflate: actual_mib=$ACTUAL"
           echo "PASS: balloon inflate (actual_mib=$ACTUAL)"
 

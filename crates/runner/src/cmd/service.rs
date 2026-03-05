@@ -627,6 +627,22 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_unit_file_local_and_balloon_reclaim() {
+        let content = generate_unit_file(
+            "vm0-runner-v0.1.0",
+            Path::new("/usr/bin/runner"),
+            Path::new("/etc/runner.yaml"),
+            "ubuntu",
+            &[],
+            true,
+            true,
+        );
+        assert!(content.contains(
+            "ExecStart=\"/usr/bin/runner\" start --config \"/etc/runner.yaml\" --local --balloon-reclaim\n"
+        ));
+    }
+
+    #[test]
     fn test_validate_env_vars_valid() {
         assert!(validate_env_vars(&[]).is_ok());
         assert!(validate_env_vars(&["KEY=VALUE".to_string()]).is_ok());
