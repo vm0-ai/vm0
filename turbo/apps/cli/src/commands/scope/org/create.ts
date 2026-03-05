@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { createOrg, useScope } from "../../../lib/api";
-import { setOrgToken } from "../../../lib/api/config";
+import { createOrg } from "../../../lib/api";
+import { saveConfig } from "../../../lib/api/config";
 
 export const createCommand = new Command()
   .name("create")
@@ -12,15 +12,7 @@ export const createCommand = new Command()
       await createOrg(slug);
 
       // Auto-switch to the new org scope
-      const scopeResult = await useScope(slug);
-
-      if (scopeResult.token) {
-        await setOrgToken(
-          scopeResult.token,
-          scopeResult.expiresAt,
-          scopeResult.scope.slug,
-        );
-      }
+      await saveConfig({ activeScope: slug });
 
       console.log(chalk.green(`✓ Scope '${slug}' created and activated.`));
     } catch (error) {

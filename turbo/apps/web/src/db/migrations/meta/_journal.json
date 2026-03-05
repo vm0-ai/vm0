@@ -736,6 +736,13 @@
       "when": 1772616051401,
       "tag": "0104_steep_devos",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1772703622916,
+      "tag": "0105_friendly_excalibur",
+      "breakpoints": true
     }
   ]
 }

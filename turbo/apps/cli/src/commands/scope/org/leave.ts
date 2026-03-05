@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { leaveOrg } from "../../../lib/api";
-import { clearOrgToken } from "../../../lib/api/config";
+import { saveConfig } from "../../../lib/api/config";
 
 export const leaveCommand = new Command()
   .name("leave")
@@ -9,7 +9,7 @@ export const leaveCommand = new Command()
   .action(async () => {
     try {
       await leaveOrg();
-      await clearOrgToken();
+      await saveConfig({ activeScope: undefined });
       console.log(chalk.green("✓ Left scope. Switched to default scope."));
     } catch (error) {
       if (error instanceof Error) {

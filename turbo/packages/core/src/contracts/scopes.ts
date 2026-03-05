@@ -26,9 +26,6 @@ export const scopeSlugSchema = z
 export const scopeResponseSchema = z.object({
   id: z.string().uuid(),
   slug: z.string(),
-  // Deprecated: kept for backward compat with old CLI versions.
-  // Will be removed in Phase 3 when the column is dropped.
-  type: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

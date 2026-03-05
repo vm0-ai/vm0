@@ -6,8 +6,6 @@ import { existsSync } from "fs";
 interface CliConfig {
   token?: string;
   apiUrl?: string;
-  orgToken?: string;
-  orgTokenExpiresAt?: string;
   activeScope?: string;
 }
 
@@ -55,51 +53,8 @@ export async function getToken(): Promise<string | undefined> {
 }
 
 /**
- * Attempt to refresh an expired org access token by re-calling /api/scope/use.
- * Uses raw fetch to avoid circular dependency with the API client layer.
- * Returns the new org token on success, or null on failure.
- */
-async function refreshOrgToken(
-  userToken: string,
-  activeScope: string,
-): Promise<string | null> {
-  try {
-    const apiUrl = await getApiUrl();
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${userToken}`,
-      "Content-Type": "application/json",
-    };
-    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-    if (bypassSecret) {
-      headers["x-vercel-protection-bypass"] = bypassSecret;
-    }
-
-    const response = await fetch(`${apiUrl}/api/scope/use`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ slug: activeScope }),
-    });
-
-    if (!response.ok) return null;
-
-    const data = (await response.json()) as {
-      token?: string;
-      expiresAt?: string;
-      scope?: { slug?: string };
-    };
-    if (data.token && data.expiresAt && data.scope?.slug) {
-      await setOrgToken(data.token, data.expiresAt, data.scope.slug);
-      return data.token;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Get the active token for API requests.
- * Priority: VM0_TOKEN env var > orgToken (if not expired) > auto-refresh org token > user token
+ * Priority: VM0_TOKEN env var > user token from config
  */
 export async function getActiveToken(): Promise<string | undefined> {
   if (process.env.VM0_TOKEN) {
@@ -107,53 +62,7 @@ export async function getActiveToken(): Promise<string | undefined> {
   }
 
   const config = await loadConfig();
-
-  if (config.orgToken && config.orgTokenExpiresAt) {
-    const expiresAt = new Date(config.orgTokenExpiresAt);
-    if (expiresAt > new Date()) {
-      return config.orgToken;
-    }
-
-    // Org token expired — try to refresh transparently
-    if (config.activeScope && config.token) {
-      const refreshed = await refreshOrgToken(config.token, config.activeScope);
-      if (refreshed) {
-        return refreshed;
-      }
-    }
-  }
-
   return config.token;
-}
-
-/**
- * Save org access token to config
- */
-export async function setOrgToken(
-  token: string,
-  expiresAt: string,
-  scope: string,
-): Promise<void> {
-  await saveConfig({
-    orgToken: token,
-    orgTokenExpiresAt: expiresAt,
-    activeScope: scope,
-  });
-}
-
-/**
- * Clear org access token from config
- */
-export async function clearOrgToken(): Promise<void> {
-  const config = await loadConfig();
-  delete config.orgToken;
-  delete config.orgTokenExpiresAt;
-  delete config.activeScope;
-
-  const configDir = getConfigDir();
-  const configFile = getConfigFile();
-  await mkdir(configDir, { recursive: true });
-  await writeFile(configFile, JSON.stringify(config, null, 2), "utf8");
 }
 
 export async function getApiUrl(): Promise<string> {

@@ -456,15 +456,9 @@ export {
 } from "./org";
 export {
   scopeListContract,
-  scopeUseContract,
   scopeListItemSchema,
   scopeListResponseSchema,
-  scopeUseRequestSchema,
-  scopeUseResponseSchema,
   type ScopeListContract,
-  type ScopeUseContract,
   type ScopeListItem,
   type ScopeListResponse,
-  type ScopeUseRequest,
-  type ScopeUseResponse,
 } from "./scope-list";
