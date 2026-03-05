@@ -515,14 +515,14 @@ export async function createRun(
   const apiStartTime = Date.now();
   const { userId, agentComposeVersionId, prompt } = params;
 
-  // Steps 1-3: Load compose version/metadata and verify access
+  // Steps 1-2: Load compose version/metadata and verify access
   const { composeContent } = await loadAndAuthorizeCompose(
     userId,
     agentComposeVersionId,
     params.composeId,
   );
 
-  // Step 4: Validate template vars and image access (for new runs only)
+  // Step 3: Validate template vars and image access (for new runs only)
   if (!params.checkpointId && !params.sessionId) {
     await validateComposeRequirements(
       userId,
@@ -533,7 +533,7 @@ export async function createRun(
     );
   }
 
-  // Step 5: Validate mutual exclusivity
+  // Step 4: Validate mutual exclusivity
   if (params.checkpointId && params.sessionId) {
     throw badRequest(
       "Cannot specify both checkpointId and sessionId. Use checkpointId to resume from a checkpoint, or sessionId to continue a session.",
@@ -543,7 +543,7 @@ export async function createRun(
   // Resolve scope ID for the run record
   const scopeId = params.scopeId ?? (await getDefaultScope(userId)).scope.id;
 
-  // Step 6: Concurrency check + INSERT in a transaction with advisory lock
+  // Step 5: Concurrency check + INSERT in a transaction with advisory lock
   // to prevent TOCTOU race where two concurrent requests both pass the
   // concurrency check before either inserts.
   const run = await globalThis.services.db.transaction(async (tx) => {
@@ -582,15 +582,15 @@ export async function createRun(
 
   // From this point on, errors must mark the run as "failed"
   try {
-    // Step 7: Register callbacks (if any)
+    // Step 6: Register callbacks (if any)
     if (params.callbacks && params.callbacks.length > 0) {
       await registerCallbacks(run.id, params.callbacks);
     }
 
-    // Step 8: Generate sandbox token
+    // Step 7: Generate sandbox token
     const sandboxToken = await generateSandboxToken(userId, run.id);
 
-    // Step 9: Build execution context (pass pre-loaded compose to avoid double fetch)
+    // Step 8: Build execution context (pass pre-loaded compose to avoid double fetch)
     const context = await buildContext({
       checkpointId: params.checkpointId,
       sessionId: params.sessionId,
@@ -616,7 +616,7 @@ export async function createRun(
       scopeId,
     });
 
-    // Step 10: Dispatch to executor
+    // Step 9: Dispatch to executor
     const result = await prepareAndDispatchRun(context);
 
     log.debug(`Run ${run.id} dispatched with status: ${result.status}`);

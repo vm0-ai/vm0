@@ -141,6 +141,27 @@ describe("createRun()", () => {
       const result = await createRun(baseParams());
       expect(result.status).toBe("running");
     });
+
+    it("should enforce concurrency limit under concurrent requests", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      reloadEnv();
+
+      // Fire two concurrent createRun calls — advisory lock should serialize them
+      const results = await Promise.allSettled([
+        createRun(baseParams({ prompt: "Concurrent A" })),
+        createRun(baseParams({ prompt: "Concurrent B" })),
+      ]);
+
+      const fulfilled = results.filter((r) => r.status === "fulfilled");
+      const rejected = results.filter((r) => r.status === "rejected");
+
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(
+        rejected[0]!.status === "rejected" &&
+          isConcurrentRunLimit(rejected[0]!.reason),
+      ).toBe(true);
+    });
   });
 
   describe("Permission Check", () => {
