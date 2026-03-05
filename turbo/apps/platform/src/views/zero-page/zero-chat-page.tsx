@@ -203,7 +203,7 @@ function ChatScenarioAssistantContent({
     return (
       <div className="text-foreground text-sm leading-relaxed space-y-3">
         <p className="font-medium">
-          Scheduled run for hn-ai-digest completed. Here's what was
+          Scheduled run for hn-ai-digest completed. {"Here's"} what was
           accomplished:
         </p>
         <h3 className="text-sm font-semibold text-foreground leading-6 mt-4 mb-1.5">
@@ -286,189 +286,14 @@ function ChatScenarioAssistantContent({
   }
   if (scene.id === "agent-operations") {
     return (
-      <div className="text-foreground text-sm leading-relaxed">
-        <p className="mb-5 leading-relaxed">
-          I'll run the Google Calendar connector demo: discover tools, fetch
-          live data, and verify the environment.
-        </p>
-        <div className="relative">
-          <div
-            className="absolute left-0 top-0 bottom-0 w-4 flex justify-center pointer-events-none"
-            aria-hidden
-          >
-            <div className="w-px h-full border-l border-dotted border-border/80" />
-          </div>
-          <div className="flex gap-3 items-start">
-            <div className="w-4 shrink-0 flex justify-center pt-1.5 relative z-[1]">
-              <span className="flex h-4 w-4 items-center justify-center rounded-full border border-border bg-muted/80 shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
-                <span
-                  className="h-1.5 w-1.5 rounded-full bg-primary"
-                  aria-hidden
-                />
-              </span>
-            </div>
-            <div className="flex-1 min-w-0 pb-6">
-              <h4 className="text-sm font-semibold text-foreground leading-6">
-                Discover available Google Calendar MCP tools
-              </h4>
-              <p className="text-muted-foreground text-sm mt-1.5 leading-relaxed">
-                Initiating discovery of MCP tools before fetching live data.
-              </p>
-              <div className="mt-2.5 rounded-lg border border-border/40 bg-muted/10">
-                <button
-                  type="button"
-                  onClick={() => setExpandStep1((v) => !v)}
-                  className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm text-foreground hover:bg-muted/20 transition-colors rounded-lg"
-                  aria-expanded={expandStep1}
-                >
-                  <span className="min-w-0 truncate">
-                    google-calendar MCP tools
-                  </span>
-                  <span className="shrink-0 flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground">
-                    {expandStep1 ? (
-                      <IconChevronUp size={14} />
-                    ) : (
-                      <IconChevronDown size={14} />
-                    )}
-                  </span>
-                </button>
-                {expandStep1 && (
-                  <div className="border-t border-border/30 px-4 py-3">
-                    <p className="text-xs text-muted-foreground mb-2">
-                      List available tools for the google-calendar MCP server.
-                    </p>
-                    <ul className="space-y-1 text-sm text-foreground font-mono">
-                      <li>calendar_list_calendars</li>
-                      <li>calendar_get_events</li>
-                      <li>calendar_create_event</li>
-                      <li>calendar_update_event</li>
-                      <li>calendar_delete_event</li>
-                      <li>calendar_list_acl</li>
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-3 items-start">
-            <div className="w-4 shrink-0 flex justify-center pt-1.5 relative z-[1]">
-              <span className="flex h-4 w-4 items-center justify-center rounded-full border border-border bg-muted/80 shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
-                <span
-                  className="h-1.5 w-1.5 rounded-full bg-primary"
-                  aria-hidden
-                />
-              </span>
-            </div>
-            <div className="flex-1 min-w-0 pb-6">
-              <h4 className="text-sm font-semibold text-foreground leading-6">
-                Fetch live data (calendars, events)
-              </h4>
-              <p className="text-muted-foreground text-sm mt-1.5 leading-relaxed">
-                Discovery done. Testing live data retrieval next.
-              </p>
-              <div className="mt-2.5 rounded-lg border border-border/40 bg-muted/10">
-                <button
-                  type="button"
-                  onClick={() => setExpandStep2((v) => !v)}
-                  className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm text-foreground hover:bg-muted/20 transition-colors rounded-lg"
-                  aria-expanded={expandStep2}
-                >
-                  <span className="min-w-0 truncate">
-                    Calendar. 10 results.
-                  </span>
-                  <span className="shrink-0 flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground">
-                    {expandStep2 ? (
-                      <IconChevronUp size={14} />
-                    ) : (
-                      <IconChevronDown size={14} />
-                    )}
-                  </span>
-                </button>
-                {expandStep2 && (
-                  <div className="border-t border-border/30 px-4 py-3">
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Searching Calendar. 10 results.
-                    </p>
-                    <ul className="space-y-1.5 text-sm text-foreground">
-                      <li>Team standup — Mon 10:00</li>
-                      <li>Product review — Tue 14:00</li>
-                      <li>1:1 with Alex — Wed 09:30</li>
-                      <li>Sprint planning — Wed 15:00</li>
-                      <li>Design sync — Thu 11:00</li>
-                      <li>Release prep — Thu 16:00</li>
-                      <li>Stakeholder demo — Fri 10:00</li>
-                      <li>Retro — Fri 14:00</li>
-                      <li>Office hours — Fri 15:30</li>
-                      <li>Week planning — Fri 17:00</li>
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-3 items-start">
-            <div className="w-4 shrink-0 flex justify-center pt-1.5 relative z-[1]">
-              <span
-                className={cn(
-                  "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]",
-                  commandAllowed
-                    ? "border-border bg-muted/80"
-                    : "border-border bg-muted/60 dark:bg-muted/50",
-                )}
-              >
-                {commandAllowed && (
-                  <span
-                    className="h-1.5 w-1.5 rounded-full bg-primary"
-                    aria-hidden
-                  />
-                )}
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-semibold text-foreground leading-6">
-                Verify environment and run command
-              </h4>
-              <p className="text-muted-foreground text-sm mt-1.5 leading-relaxed">
-                Allow Zero to run the following command to verify Node and npm.
-              </p>
-              {!commandAllowed ? (
-                <div className="mt-3 rounded-lg border border-border/40 bg-muted/10 px-4 py-3">
-                  <p className="text-sm text-foreground leading-relaxed">
-                    Allow Zero to run the following command to verify Node.js
-                    and npm:{" "}
-                    <code className="font-mono text-xs bg-muted/50 px-1.5 py-0.5 rounded">
-                      node --version && npm --version
-                    </code>
-                  </p>
-                  <div className="mt-3 pt-3 flex flex-wrap gap-2 border-t border-border/30">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="rounded-lg h-8 px-3.5 text-sm font-medium gap-1.5 border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
-                      onClick={() => setCommandAllowed(true)}
-                    >
-                      <IconCheck size={13} />
-                      Allow once
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="rounded-lg h-8 px-3.5 text-sm font-medium border-border/70 hover:bg-muted/40"
-                      onClick={() => setCommandAllowed(false)}
-                    >
-                      Deny
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <p className="mt-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Command allowed
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      <ChatScenarioAgentOperations
+        expandStep1={expandStep1}
+        setExpandStep1={setExpandStep1}
+        expandStep2={expandStep2}
+        setExpandStep2={setExpandStep2}
+        commandAllowed={commandAllowed}
+        setCommandAllowed={setCommandAllowed}
+      />
     );
   }
   return (
@@ -602,6 +427,206 @@ function ChatScenarioAssistantContent({
         </>
       )}
     </>
+  );
+}
+
+function ChatScenarioAgentOperations({
+  expandStep1,
+  setExpandStep1,
+  expandStep2,
+  setExpandStep2,
+  commandAllowed,
+  setCommandAllowed,
+}: {
+  expandStep1: boolean;
+  setExpandStep1: (fn: (v: boolean) => boolean) => void;
+  expandStep2: boolean;
+  setExpandStep2: (fn: (v: boolean) => boolean) => void;
+  commandAllowed: boolean;
+  setCommandAllowed: (v: boolean) => void;
+}) {
+  return (
+    <div className="text-foreground text-sm leading-relaxed">
+      <p className="mb-5 leading-relaxed">
+        {"I'll"} run the Google Calendar connector demo: discover tools, fetch
+        live data, and verify the environment.
+      </p>
+      <div className="relative">
+        <div
+          className="absolute left-0 top-0 bottom-0 w-4 flex justify-center pointer-events-none"
+          aria-hidden
+        >
+          <div className="w-px h-full border-l border-dotted border-border/80" />
+        </div>
+        <div className="flex gap-3 items-start">
+          <div className="w-4 shrink-0 flex justify-center pt-1.5 relative z-[1]">
+            <span className="flex h-4 w-4 items-center justify-center rounded-full border border-border bg-muted/80 shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
+              <span
+                className="h-1.5 w-1.5 rounded-full bg-primary"
+                aria-hidden
+              />
+            </span>
+          </div>
+          <div className="flex-1 min-w-0 pb-6">
+            <h4 className="text-sm font-semibold text-foreground leading-6">
+              Discover available Google Calendar MCP tools
+            </h4>
+            <p className="text-muted-foreground text-sm mt-1.5 leading-relaxed">
+              Initiating discovery of MCP tools before fetching live data.
+            </p>
+            <div className="mt-2.5 rounded-lg border border-border/40 bg-muted/10">
+              <button
+                type="button"
+                onClick={() => setExpandStep1((v) => !v)}
+                className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm text-foreground hover:bg-muted/20 transition-colors rounded-lg"
+                aria-expanded={expandStep1}
+              >
+                <span className="min-w-0 truncate">
+                  google-calendar MCP tools
+                </span>
+                <span className="shrink-0 flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground">
+                  {expandStep1 ? (
+                    <IconChevronUp size={14} />
+                  ) : (
+                    <IconChevronDown size={14} />
+                  )}
+                </span>
+              </button>
+              {expandStep1 && (
+                <div className="border-t border-border/30 px-4 py-3">
+                  <p className="text-xs text-muted-foreground mb-2">
+                    List available tools for the google-calendar MCP server.
+                  </p>
+                  <ul className="space-y-1 text-sm text-foreground font-mono">
+                    <li>calendar_list_calendars</li>
+                    <li>calendar_get_events</li>
+                    <li>calendar_create_event</li>
+                    <li>calendar_update_event</li>
+                    <li>calendar_delete_event</li>
+                    <li>calendar_list_acl</li>
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-3 items-start">
+          <div className="w-4 shrink-0 flex justify-center pt-1.5 relative z-[1]">
+            <span className="flex h-4 w-4 items-center justify-center rounded-full border border-border bg-muted/80 shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
+              <span
+                className="h-1.5 w-1.5 rounded-full bg-primary"
+                aria-hidden
+              />
+            </span>
+          </div>
+          <div className="flex-1 min-w-0 pb-6">
+            <h4 className="text-sm font-semibold text-foreground leading-6">
+              Fetch live data (calendars, events)
+            </h4>
+            <p className="text-muted-foreground text-sm mt-1.5 leading-relaxed">
+              Discovery done. Testing live data retrieval next.
+            </p>
+            <div className="mt-2.5 rounded-lg border border-border/40 bg-muted/10">
+              <button
+                type="button"
+                onClick={() => setExpandStep2((v) => !v)}
+                className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm text-foreground hover:bg-muted/20 transition-colors rounded-lg"
+                aria-expanded={expandStep2}
+              >
+                <span className="min-w-0 truncate">Calendar. 10 results.</span>
+                <span className="shrink-0 flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground">
+                  {expandStep2 ? (
+                    <IconChevronUp size={14} />
+                  ) : (
+                    <IconChevronDown size={14} />
+                  )}
+                </span>
+              </button>
+              {expandStep2 && (
+                <div className="border-t border-border/30 px-4 py-3">
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Searching Calendar. 10 results.
+                  </p>
+                  <ul className="space-y-1.5 text-sm text-foreground">
+                    <li>Team standup — Mon 10:00</li>
+                    <li>Product review — Tue 14:00</li>
+                    <li>1:1 with Alex — Wed 09:30</li>
+                    <li>Sprint planning — Wed 15:00</li>
+                    <li>Design sync — Thu 11:00</li>
+                    <li>Release prep — Thu 16:00</li>
+                    <li>Stakeholder demo — Fri 10:00</li>
+                    <li>Retro — Fri 14:00</li>
+                    <li>Office hours — Fri 15:30</li>
+                    <li>Week planning — Fri 17:00</li>
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-3 items-start">
+          <div className="w-4 shrink-0 flex justify-center pt-1.5 relative z-[1]">
+            <span
+              className={cn(
+                "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]",
+                commandAllowed
+                  ? "border-border bg-muted/80"
+                  : "border-border bg-muted/60 dark:bg-muted/50",
+              )}
+            >
+              {commandAllowed && (
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-primary"
+                  aria-hidden
+                />
+              )}
+            </span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h4 className="text-sm font-semibold text-foreground leading-6">
+              Verify environment and run command
+            </h4>
+            <p className="text-muted-foreground text-sm mt-1.5 leading-relaxed">
+              Allow Zero to run the following command to verify Node and npm.
+            </p>
+            {!commandAllowed ? (
+              <div className="mt-3 rounded-lg border border-border/40 bg-muted/10 px-4 py-3">
+                <p className="text-sm text-foreground leading-relaxed">
+                  Allow Zero to run the following command to verify Node.js and
+                  npm:{" "}
+                  <code className="font-mono text-xs bg-muted/50 px-1.5 py-0.5 rounded">
+                    node --version && npm --version
+                  </code>
+                </p>
+                <div className="mt-3 pt-3 flex flex-wrap gap-2 border-t border-border/30">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-lg h-8 px-3.5 text-sm font-medium gap-1.5 border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
+                    onClick={() => setCommandAllowed(true)}
+                  >
+                    <IconCheck size={13} />
+                    Allow once
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-lg h-8 px-3.5 text-sm font-medium border-border/70 hover:bg-muted/40"
+                    onClick={() => setCommandAllowed(false)}
+                  >
+                    Deny
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Command allowed
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
