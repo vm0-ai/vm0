@@ -79,7 +79,7 @@ impl InvariantConfig {
             balloon: BalloonConfig {
                 amount_mib: 0,
                 deflate_on_oom: true,
-                stats_polling_interval_s: 0,
+                stats_polling_interval_s: 5,
             },
             prewarm_script: PREWARM_SCRIPT,
         }
