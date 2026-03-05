@@ -77,7 +77,6 @@ export async function createOrganization(clerkUserId: string, slug: string) {
   const client = await clerkClient();
   const clerkOrg = await client.organizations.createOrganization({
     name: slug,
-    slug,
     createdBy: clerkUserId,
   });
 

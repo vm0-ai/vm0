@@ -14,8 +14,8 @@ vi.mock("@clerk/nextjs/server", () => ({
     organizations: {
       createOrganization: vi
         .fn()
-        .mockImplementation(({ slug }: { slug: string }) =>
-          Promise.resolve({ id: `org_mock_${slug}` }),
+        .mockImplementation(({ name }: { name: string }) =>
+          Promise.resolve({ id: `org_mock_${name}` }),
         ),
     },
   })),
