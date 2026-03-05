@@ -493,16 +493,15 @@ async function markRunFailed(
  * All callers (API Route, Schedule, Slack) should use this.
  *
  * Pipeline:
- * 1. Check concurrent run limit
- * 2. Load compose version content + compose metadata
- * 3. Permission check (canAccessCompose)
- * 4. Validate template vars and image access
- * 5. Validate mutual exclusivity (checkpointId vs sessionId)
- * 6. INSERT agentRuns
- * 7. Register callbacks (if any)
- * 8. Generate sandbox token
- * 9. Build execution context
- * 10. Dispatch to executor
+ * 1. Load compose version content + compose metadata
+ * 2. Permission check (canAccessCompose)
+ * 3. Validate template vars and image access
+ * 4. Validate mutual exclusivity (checkpointId vs sessionId)
+ * 5. Acquire per-user advisory lock, check concurrent run limit, INSERT agentRuns (atomic transaction)
+ * 6. Register callbacks (if any)
+ * 7. Generate sandbox token
+ * 8. Build execution context
+ * 9. Dispatch to executor
  *
  * @throws ConcurrentRunLimitError - concurrent run limit reached
  * @throws ForbiddenError - user cannot access compose
