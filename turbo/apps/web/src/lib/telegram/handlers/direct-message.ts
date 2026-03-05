@@ -59,7 +59,7 @@ export async function handleTelegramDirectMessage(
 
   if (!userLink) {
     const platformUrl = getPlatformUrl();
-    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}`;
+    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}&uid=${fromUserId}`;
     await sendMessage(
       client,
       chatId,

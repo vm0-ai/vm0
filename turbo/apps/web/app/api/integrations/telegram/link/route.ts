@@ -7,11 +7,23 @@ import { telegramUserLinks } from "../../../../../src/db/schema/telegram-user-li
 import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
 import {
   ensureScopeAndArtifact,
+  getWorkspaceAgent,
   PENDING_TELEGRAM_USER_ID,
 } from "../../../../../src/lib/telegram/handlers/shared";
+import { decryptCredentialValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import { env } from "../../../../../src/env";
+import {
+  createTelegramClient,
+  sendMessage,
+} from "../../../../../src/lib/telegram/client";
+import { escapeHtml } from "../../../../../src/lib/telegram/format";
+import { logger } from "../../../../../src/lib/logger";
+
+const log = logger("telegram:link");
 
 const linkBodySchema = z.object({
   installationId: z.string().min(1),
+  telegramUserId: z.string().min(1).optional(),
 });
 
 /**
@@ -115,12 +127,9 @@ export async function POST(request: Request) {
   }
   const body = parseResult.data;
 
-  // Look up installation to get botUsername
+  // Look up installation to get botUsername and bot token
   const [installation] = await globalThis.services.db
-    .select({
-      id: telegramInstallations.id,
-      botUsername: telegramInstallations.botUsername,
-    })
+    .select()
     .from(telegramInstallations)
     .where(eq(telegramInstallations.id, body.installationId))
     .limit(1);
@@ -132,16 +141,39 @@ export async function POST(request: Request) {
     );
   }
 
-  // Create pending user link (auto-completes on first Telegram message)
+  const telegramUserId = body.telegramUserId ?? PENDING_TELEGRAM_USER_ID;
+
+  // Create user link (real if telegramUserId provided, pending otherwise)
   await globalThis.services.db
     .insert(telegramUserLinks)
     .values({
-      telegramUserId: PENDING_TELEGRAM_USER_ID,
+      telegramUserId,
       installationId: installation.id,
       vm0UserId: userId,
     })
     .onConflictDoNothing();
   await ensureScopeAndArtifact(userId);
+
+  // Send confirmation message via bot if we have a real telegramUserId
+  if (body.telegramUserId) {
+    try {
+      const { SECRETS_ENCRYPTION_KEY } = env();
+      const botToken = decryptCredentialValue(
+        installation.encryptedBotToken,
+        SECRETS_ENCRYPTION_KEY,
+      );
+      const client = createTelegramClient(botToken);
+      const agent = await getWorkspaceAgent(installation.defaultComposeId);
+      const agentName = agent?.name ?? "Agent";
+      await sendMessage(
+        client,
+        body.telegramUserId,
+        `🎉 Account connected! 🤖 ${escapeHtml(agentName)} is ready.\n\nSend a message to start chatting.`,
+      );
+    } catch (error) {
+      log.warn("Failed to send connect confirmation", { error });
+    }
+  }
 
   const botLink = installation.botUsername
     ? `https://t.me/${installation.botUsername}`
