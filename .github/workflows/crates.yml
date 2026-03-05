@@ -394,7 +394,7 @@ jobs:
           echo "PASS: balloon inflate (actual_mib=$ACTUAL)"
 
           # Guest-side: verify MemAvailable decreased
-          AVAIL=$("$BIN_DIR/runner" exec "$RUN_ID" -- awk '/MemAvailable/ {print $2}' /proc/meminfo)
+          AVAIL=$("$BIN_DIR/runner" exec "$RUN_ID" -- grep MemAvailable /proc/meminfo | tr -s ' ' | cut -d' ' -f2)
           # With 2048 MiB VM and balloon inflated, MemAvailable should be well below 1536 MiB
           [ "$AVAIL" -lt 1536000 ] || fail "MemAvailable too high after balloon: ${AVAIL}kB (expected < 1536000kB)"
           echo "PASS: guest MemAvailable reduced (${AVAIL}kB)"
