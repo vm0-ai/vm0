@@ -42,7 +42,6 @@
     "croner": "^9.1.0",
     "dockerode": "^4.0.9",
     "drizzle-orm": "^0.44.5",
-    "email-reply-parser": "^2.3.5",
     "html-to-text": "^9.0.5",
     "import-in-the-middle": "^2.0.6",
     "next": "^15.5.7",
