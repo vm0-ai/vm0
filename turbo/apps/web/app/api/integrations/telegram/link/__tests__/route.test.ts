@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST } from "../route";
-import { verifyLinkToken } from "../../../../../../src/lib/telegram/handlers/start";
 import {
   testContext,
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { createTestTelegramInstallation } from "../../../../../../src/__tests__/api-test-helpers";
+import { PENDING_TELEGRAM_USER_ID } from "../../../../../../src/lib/telegram/handlers/shared";
+import { telegramUserLinkExists } from "../../../../../../src/lib/telegram/__tests__/helpers";
 
 const context = testContext();
 
@@ -144,30 +145,27 @@ describe("/api/integrations/telegram/link", () => {
       expect(data.error.code).toBe("NOT_FOUND");
     });
 
-    it("generates a valid deep link token", async () => {
+    it("creates a pending user link and returns bot info", async () => {
       const user = await context.setupUser();
+      const telegramBotId = uniqueId("bot");
       const installationId = await createTestTelegramInstallation({
         adminUserId: user.userId,
-        vm0UserId: user.userId,
+        telegramBotId,
       });
 
       const response = await POST(linkRequest("POST", { installationId }));
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.token).toBeDefined();
-      expect(data.deepLink).toContain("https://t.me/");
-      expect(data.deepLink).toContain(`?start=${data.token}`);
+      expect(data.botUsername).toBe(`bot_${telegramBotId}`);
+      expect(data.botLink).toContain("https://t.me/");
 
-      // Verify the token is valid using the exported verifier
-      const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
-      const payload = verifyLinkToken(data.token, SECRETS_ENCRYPTION_KEY);
-      expect(payload).toEqual(
-        expect.objectContaining({
-          vm0UserId: user.userId,
-          installationId,
-        }),
+      // Verify pending user link was created
+      const exists = await telegramUserLinkExists(
+        installationId,
+        PENDING_TELEGRAM_USER_ID,
       );
+      expect(exists).toBe(true);
     });
   });
 });

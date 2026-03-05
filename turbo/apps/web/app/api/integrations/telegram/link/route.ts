@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { eq, desc } from "drizzle-orm";
 import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
-import { env } from "../../../../../src/env";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { telegramUserLinks } from "../../../../../src/db/schema/telegram-user-link";
 import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
-import { createLinkToken } from "../../../../../src/lib/telegram/handlers/start";
+import {
+  ensureScopeAndArtifact,
+  PENDING_TELEGRAM_USER_ID,
+} from "../../../../../src/lib/telegram/handlers/shared";
 
 const linkBodySchema = z.object({
   installationId: z.string().min(1),
@@ -49,9 +51,9 @@ export async function GET(request: Request) {
   }
 
   // If not linked, check if a specific bot was requested via ?botId= param.
-  // This returns the installation ID and botUsername so the frontend can show
-  // a re-link UI. Actual linking is gated by an HMAC-signed deep link token
-  // that must be activated via Telegram interaction (see /start handler).
+  // Returns installation info so the frontend can show a re-link UI.
+  // Actual linking creates a pending user link that auto-completes on first
+  // Telegram message (see resolveUserLink in shared.ts).
   const url = new URL(request.url);
   const botId = url.searchParams.get("botId");
 
@@ -82,7 +84,8 @@ export async function GET(request: Request) {
 /**
  * POST /api/integrations/telegram/link
  *
- * Generate a deep link token for account linking via Telegram.
+ * Create a pending user link for account linking via Telegram.
+ * The link auto-completes when the user sends their first message to the bot.
  * Body: { installationId: string }
  */
 export async function POST(request: Request) {
@@ -129,17 +132,20 @@ export async function POST(request: Request) {
     );
   }
 
-  const { SECRETS_ENCRYPTION_KEY } = env();
+  // Create pending user link (auto-completes on first Telegram message)
+  await globalThis.services.db
+    .insert(telegramUserLinks)
+    .values({
+      telegramUserId: PENDING_TELEGRAM_USER_ID,
+      installationId: installation.id,
+      vm0UserId: userId,
+    })
+    .onConflictDoNothing();
+  await ensureScopeAndArtifact(userId);
 
-  const token = createLinkToken(
-    userId,
-    installation.id,
-    SECRETS_ENCRYPTION_KEY,
-  );
-
-  const deepLink = installation.botUsername
-    ? `https://t.me/${installation.botUsername}?start=${token}`
+  const botLink = installation.botUsername
+    ? `https://t.me/${installation.botUsername}`
     : null;
 
-  return NextResponse.json({ token, deepLink });
+  return NextResponse.json({ botUsername: installation.botUsername, botLink });
 }

@@ -28,7 +28,6 @@ type RegisterTelegramBotResult =
       success: true;
       installationId: string;
       botUsername: string;
-      deepLink?: string;
     }
   | { success: false };
 
@@ -142,10 +141,7 @@ export const linkTelegramBot$ = command(
         throw new Error(data.error?.message ?? "Failed to link account");
       }
 
-      const data = (await response.json()) as {
-        token: string;
-        deepLink: string | null;
-      };
+      await response.json();
 
       set(telegramConnectState$, (prev) => ({
         ...prev,
@@ -156,7 +152,6 @@ export const linkTelegramBot$ = command(
         success: true,
         installationId,
         botUsername,
-        deepLink: data.deepLink ?? undefined,
       };
     } catch (error) {
       throwIfAbort(error);

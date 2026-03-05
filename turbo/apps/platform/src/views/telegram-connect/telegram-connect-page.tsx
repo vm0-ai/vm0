@@ -56,9 +56,6 @@ export function TelegramConnectPage() {
         if (result.success) {
           const successParams = new URLSearchParams();
           successParams.set("bot", result.botUsername);
-          if (result.deepLink) {
-            successParams.set("deepLink", result.deepLink);
-          }
           navigate("/telegram/connect/success", {
             searchParams: successParams,
           });
