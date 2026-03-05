@@ -518,7 +518,6 @@ jobs:
           # Run allocator in guest foreground, host background
           "$BIN_DIR/runner" exec "$RUN_ID" -- python3 /tmp/alloc.py &
           ALLOC_PID=$!
-          sleep 5
 
           # Wait for balloon to deflate (actual_mib decreases)
           DEFLATED=0
@@ -542,18 +541,19 @@ jobs:
           kill $ALLOC_PID 2>/dev/null || true
           wait $ALLOC_PID 2>/dev/null || true
 
-          # Wait for balloon to re-inflate (actual_mib increases)
+          # Wait for balloon to re-inflate past midpoint between deflate and original inflate
+          MIDPOINT=$(( (INFLATE_MIB + DEFLATE_MIB) / 2 ))
           REINFLATED=0
           for i in $(seq 1 30); do
             ACTUAL=$(balloon_mib)
-            if [ "$ACTUAL" -gt "$DEFLATE_MIB" ]; then
+            if [ "$ACTUAL" -gt "$MIDPOINT" ]; then
               REINFLATED=1
               break
             fi
             sleep 2
           done
-          [ "$REINFLATED" -eq 1 ] || fail "balloon did not re-inflate: actual_mib=$ACTUAL (was $DEFLATE_MIB)"
-          echo "PASS: balloon re-inflated from ${DEFLATE_MIB} to ${ACTUAL} MiB"
+          [ "$REINFLATED" -eq 1 ] || fail "balloon did not re-inflate enough: actual_mib=$ACTUAL (midpoint=$MIDPOINT, was $DEFLATE_MIB)"
+          echo "PASS: balloon re-inflated from ${DEFLATE_MIB} to ${ACTUAL} MiB (midpoint=${MIDPOINT})"
 
           # Stop transient service
           "$BIN_DIR/runner" service stop --name "$SVC"

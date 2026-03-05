@@ -14,11 +14,11 @@ pub struct ServiceArgs {
 #[derive(Subcommand)]
 enum ServiceCommand {
     /// Start runner as a transient systemd service (CI, does not survive reboot)
-    Start(ServiceStartArgs),
+    Start(ServiceRunArgs),
     /// Stop the runner service
     Stop(ServiceNameArgs),
     /// Install runner as a persistent systemd service (production, survives reboot)
-    Install(ServiceInstallArgs),
+    Install(ServiceRunArgs),
     /// Uninstall the runner service (stop + disable + remove unit)
     Uninstall(ServiceNameArgs),
     /// Drain the runner (SIGUSR1, non-blocking — returns immediately)
@@ -29,27 +29,9 @@ enum ServiceCommand {
     Logs(ServiceLogsArgs),
 }
 
+/// Common arguments shared by `service start` and `service install`.
 #[derive(Args)]
-struct ServiceStartArgs {
-    /// Path to runner config YAML
-    #[arg(long, short)]
-    config: PathBuf,
-    /// Service name suffix (e.g. v0.2.0 → unit vm0-runner-v0.2.0)
-    #[arg(long)]
-    name: String,
-    /// Environment variables to pass to the service (KEY=VALUE)
-    #[arg(long, value_name = "KEY=VALUE")]
-    env: Vec<String>,
-    /// Use local file queue provider instead of API
-    #[arg(long)]
-    local: bool,
-    /// Enable active balloon memory reclaim per sandbox
-    #[arg(long)]
-    balloon_reclaim: bool,
-}
-
-#[derive(Args)]
-struct ServiceInstallArgs {
+struct ServiceRunArgs {
     /// Path to runner config YAML
     #[arg(long, short)]
     config: PathBuf,
@@ -288,7 +270,7 @@ async fn get_service_pid(unit: &str) -> RunnerResult<Option<u32>> {
 // ---------------------------------------------------------------------------
 
 /// `service start` — transient unit via systemd-run (CI).
-async fn start(args: ServiceStartArgs) -> RunnerResult<()> {
+async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     let unit = unit_name(&args.name)?;
     validate_env_vars(&args.env)?;
 
@@ -365,7 +347,7 @@ async fn stop(args: ServiceNameArgs) -> RunnerResult<()> {
 }
 
 /// `service install` — persistent unit file (production).
-async fn install(args: ServiceInstallArgs) -> RunnerResult<()> {
+async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
     let unit = unit_name(&args.name)?;
     validate_env_vars(&args.env)?;
     let config_path = resolve_config_path(&args.config)?;
