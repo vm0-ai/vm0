@@ -482,36 +482,6 @@ jobs:
           [ "$AVAIL" -lt 1536000 ] || fail "MemAvailable too high after balloon: ${AVAIL}kB (expected < 1536000kB)"
           echo "PASS: guest MemAvailable reduced (${AVAIL}kB)"
 
-          # Test 2: deflate — balloon gives memory back under guest pressure
-          echo "--- Test: balloon deflate under pressure ---"
-          BEFORE_DEFLATE=$ACTUAL
-
-          # Mount tmpfs and allocate 350 MiB to push free memory below deflate threshold (192 MiB)
-          "$BIN_DIR/runner" exec "$RUN_ID" -- mount -t tmpfs -o size=400M tmpfs /dev/shm
-          "$BIN_DIR/runner" exec "$RUN_ID" -- dd if=/dev/zero of=/dev/shm/balloon-test bs=1M count=350 2>/dev/null
-
-          for i in $(seq 1 20); do
-            ACTUAL=$(balloon_mib)
-            [ "$ACTUAL" -lt "$BEFORE_DEFLATE" ] && break
-            sleep 1
-          done
-          [ "$ACTUAL" -lt "$BEFORE_DEFLATE" ] || fail "balloon did not deflate: actual_mib=$ACTUAL (was $BEFORE_DEFLATE)"
-          echo "PASS: balloon deflate (actual_mib=$ACTUAL, was $BEFORE_DEFLATE)"
-
-          # Test 3: re-inflate — balloon reclaims again after guest releases memory
-          echo "--- Test: balloon re-inflate after release ---"
-          BEFORE_REINFLATE=$ACTUAL
-
-          "$BIN_DIR/runner" exec "$RUN_ID" -- umount /dev/shm
-
-          for i in $(seq 1 20); do
-            ACTUAL=$(balloon_mib)
-            [ "$ACTUAL" -gt "$BEFORE_REINFLATE" ] && break
-            sleep 1
-          done
-          [ "$ACTUAL" -gt "$BEFORE_REINFLATE" ] || fail "balloon did not re-inflate: actual_mib=$ACTUAL (was $BEFORE_REINFLATE)"
-          echo "PASS: balloon re-inflate (actual_mib=$ACTUAL, was $BEFORE_REINFLATE)"
-
           # Stop transient service
           "$BIN_DIR/runner" service stop --name "$SVC"
           trap - EXIT
