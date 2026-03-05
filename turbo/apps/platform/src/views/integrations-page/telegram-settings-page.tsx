@@ -339,15 +339,33 @@ export function TelegramSettingsPage() {
               <div className="rounded-xl border border-border bg-card p-4">
                 <div className="font-mono text-sm leading-6">
                   <p>
-                    <span className="font-medium">/start</span>
+                    <span className="font-medium">/new_session</span>
                     <span className="text-muted-foreground">
-                      {" // link your account"}
+                      {" // start a new conversation"}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-medium">/connect</span>
+                    <span className="text-muted-foreground">
+                      {" // connect your VM0 account"}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-medium">/disconnect</span>
+                    <span className="text-muted-foreground">
+                      {" // disconnect your account"}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-medium">/settings</span>
+                    <span className="text-muted-foreground">
+                      {" // open platform settings"}
                     </span>
                   </p>
                   <p>
                     <span className="font-medium">/help</span>
                     <span className="text-muted-foreground">
-                      {" // show help"}
+                      {" // show available commands"}
                     </span>
                   </p>
                 </div>

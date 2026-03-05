@@ -59,7 +59,7 @@ export async function handleTelegramDirectMessage(
     await sendMessage(
       client,
       chatId,
-      "Please link your account first. Send /start to begin.",
+      "Please link your account first. Use /connect to get started.",
     );
     return;
   }

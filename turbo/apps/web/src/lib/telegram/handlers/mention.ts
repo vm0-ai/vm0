@@ -67,7 +67,7 @@ export async function handleTelegramMention(
     await sendMessage(
       client,
       chatId,
-      "Please link your account first. Send /start to the bot in a direct message.",
+      "Please link your account first. Use /connect to get started.",
       { replyToMessageId: message.message_id },
     );
     return;
