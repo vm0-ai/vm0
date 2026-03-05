@@ -17,7 +17,6 @@
       "project": ["**/*.{ts,tsx}", "scripts/**/*.ts"],
       "ignoreDependencies": [
         "e2b",
-        "@clerk/backend",
         "@testing-library/react",
         "@types/tar",
         "import-in-the-middle",
