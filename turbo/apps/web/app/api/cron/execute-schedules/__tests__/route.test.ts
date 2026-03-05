@@ -82,8 +82,8 @@ describe("GET /api/cron/execute-schedules", () => {
       expect(data.success).toBe(true);
     });
 
-    it("should allow request when CRON_SECRET is not configured", async () => {
-      // Don't set CRON_SECRET - allows any request (dev mode)
+    it("should reject request when CRON_SECRET is not configured", async () => {
+      // Don't set CRON_SECRET - should reject for security
       const request = createTestRequest(
         "http://localhost:3000/api/cron/execute-schedules",
       );
@@ -91,15 +91,21 @@ describe("GET /api/cron/execute-schedules", () => {
       const response = await GET(request);
       const data = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
+      expect(response.status).toBe(401);
+      expect(data.error.code).toBe("UNAUTHORIZED");
     });
   });
 
   describe("Execution", () => {
     it("should return success with execution counts", async () => {
+      vi.stubEnv("CRON_SECRET", "test-secret");
+      reloadEnv();
+
       const request = createTestRequest(
         "http://localhost:3000/api/cron/execute-schedules",
+        {
+          headers: { Authorization: "Bearer test-secret" },
+        },
       );
 
       const response = await GET(request);
@@ -112,6 +118,9 @@ describe("GET /api/cron/execute-schedules", () => {
     });
 
     it("should return execution counts", async () => {
+      vi.stubEnv("CRON_SECRET", "test-secret");
+      reloadEnv();
+
       // Create an enabled schedule with cron (won't be due immediately)
       await createTestSchedule(testComposeId, "cron-schedule", {
         cronExpression: "0 0 1 1 *", // Jan 1st at midnight - unlikely to be due
@@ -121,6 +130,9 @@ describe("GET /api/cron/execute-schedules", () => {
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/execute-schedules",
+        {
+          headers: { Authorization: "Bearer test-secret" },
+        },
       );
 
       const response = await GET(request);
@@ -134,6 +146,20 @@ describe("GET /api/cron/execute-schedules", () => {
   });
 
   describe("Schedule Triggering", () => {
+    beforeEach(() => {
+      vi.stubEnv("CRON_SECRET", "test-secret");
+      reloadEnv();
+    });
+
+    function authenticatedCronRequest() {
+      return createTestRequest(
+        "http://localhost:3000/api/cron/execute-schedules",
+        {
+          headers: { Authorization: "Bearer test-secret" },
+        },
+      );
+    }
+
     it("should execute due cron schedule", async () => {
       // 1. Mock time to 8:00 AM UTC
       context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
@@ -150,10 +176,7 @@ describe("GET /api/cron/execute-schedules", () => {
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
 
       // 4. Execute cron endpoint
-      const request = createTestRequest(
-        "http://localhost:3000/api/cron/execute-schedules",
-      );
-      const response = await GET(request);
+      const response = await GET(authenticatedCronRequest());
       const data = await response.json();
 
       // 5. Assert schedule was executed
@@ -185,10 +208,7 @@ describe("GET /api/cron/execute-schedules", () => {
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
 
       // 4. Execute cron endpoint
-      const request = createTestRequest(
-        "http://localhost:3000/api/cron/execute-schedules",
-      );
-      const response = await GET(request);
+      const response = await GET(authenticatedCronRequest());
       const data = await response.json();
 
       // 5. Assert schedule was executed
@@ -220,10 +240,7 @@ describe("GET /api/cron/execute-schedules", () => {
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
 
       // 4. Execute cron
-      const request = createTestRequest(
-        "http://localhost:3000/api/cron/execute-schedules",
-      );
-      await GET(request);
+      await GET(authenticatedCronRequest());
 
       // 5. Verify schedule was disabled after execution
       const afterSchedule = await getTestSchedule(
@@ -237,6 +254,20 @@ describe("GET /api/cron/execute-schedules", () => {
   });
 
   describe("Loop Schedule Triggering", () => {
+    beforeEach(() => {
+      vi.stubEnv("CRON_SECRET", "test-secret");
+      reloadEnv();
+    });
+
+    function authenticatedCronRequest() {
+      return createTestRequest(
+        "http://localhost:3000/api/cron/execute-schedules",
+        {
+          headers: { Authorization: "Bearer test-secret" },
+        },
+      );
+    }
+
     it("should execute due loop schedule and set nextRunAt to null", async () => {
       // 1. Create and enable a loop schedule (nextRunAt = now on enable)
       await createTestSchedule(testComposeId, "loop-trigger-test", {
@@ -251,10 +282,7 @@ describe("GET /api/cron/execute-schedules", () => {
       expect(before.nextRunAt).not.toBeNull();
 
       // 2. Execute cron endpoint (loop schedule should be due immediately)
-      const request = createTestRequest(
-        "http://localhost:3000/api/cron/execute-schedules",
-      );
-      const response = await GET(request);
+      const response = await GET(authenticatedCronRequest());
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -282,10 +310,7 @@ describe("GET /api/cron/execute-schedules", () => {
       await createTestRun(testComposeId, "Blocking run");
 
       // 3. Execute cron - should fail due to concurrency limit
-      const request = createTestRequest(
-        "http://localhost:3000/api/cron/execute-schedules",
-      );
-      await GET(request);
+      await GET(authenticatedCronRequest());
 
       // 4. Verify schedule entered retry state
       const schedule = await getTestSchedule(testComposeId, "loop-retry-test");
@@ -295,6 +320,22 @@ describe("GET /api/cron/execute-schedules", () => {
   });
 
   describe("Concurrency Retry", () => {
+    const cronSecret = "test-secret";
+
+    beforeEach(() => {
+      vi.stubEnv("CRON_SECRET", cronSecret);
+      reloadEnv();
+    });
+
+    function authenticatedCronRequest() {
+      return createTestRequest(
+        "http://localhost:3000/api/cron/execute-schedules",
+        {
+          headers: { Authorization: `Bearer ${cronSecret}` },
+        },
+      );
+    }
+
     it("should retry schedule when blocked by concurrency limit", async () => {
       // 1. Set time to 8:00 AM
       context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
@@ -314,10 +355,7 @@ describe("GET /api/cron/execute-schedules", () => {
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
 
       // 5. Execute cron - should fail due to concurrency limit
-      const request = createTestRequest(
-        "http://localhost:3000/api/cron/execute-schedules",
-      );
-      const response = await GET(request);
+      const response = await GET(authenticatedCronRequest());
       expect(response.status).toBe(200);
 
       // 6. Verify schedule entered retry state
@@ -356,9 +394,7 @@ describe("GET /api/cron/execute-schedules", () => {
 
       // 4. Advance to 9:01 AM and trigger first retry
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
-      await GET(
-        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
-      );
+      await GET(authenticatedCronRequest());
 
       // 5. Record the initial retryStartedAt
       const firstSchedule = await getTestSchedule(
@@ -372,9 +408,7 @@ describe("GET /api/cron/execute-schedules", () => {
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:06:00Z"));
 
       // 7. Execute cron again (second retry attempt)
-      await GET(
-        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
-      );
+      await GET(authenticatedCronRequest());
 
       // 8. Verify retryStartedAt was preserved
       const secondSchedule = await getTestSchedule(
@@ -401,9 +435,7 @@ describe("GET /api/cron/execute-schedules", () => {
 
       // 4. Advance to 9:01 AM and trigger first retry
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
-      await GET(
-        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
-      );
+      await GET(authenticatedCronRequest());
 
       // Verify we're in retry state
       const midSchedule = await getTestSchedule(
@@ -416,9 +448,7 @@ describe("GET /api/cron/execute-schedules", () => {
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:36:00Z"));
 
       // 6. Execute cron - retry window should expire
-      await GET(
-        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
-      );
+      await GET(authenticatedCronRequest());
 
       // 7. Verify schedule advanced to next day (tomorrow 9 AM)
       const finalSchedule = await getTestSchedule(
@@ -450,9 +480,7 @@ describe("GET /api/cron/execute-schedules", () => {
 
       // 4. Advance to 9:01 AM and trigger first retry
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
-      await GET(
-        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
-      );
+      await GET(authenticatedCronRequest());
 
       // Verify we're in retry state
       const midSchedule = await getTestSchedule(
@@ -466,9 +494,7 @@ describe("GET /api/cron/execute-schedules", () => {
 
       // 6. Advance to 9:06 AM (retry time) and execute
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:06:00Z"));
-      await GET(
-        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
-      );
+      await GET(authenticatedCronRequest());
 
       // 7. Verify retryStartedAt was cleared and execution succeeded
       const finalSchedule = await getTestSchedule(
@@ -496,9 +522,7 @@ describe("GET /api/cron/execute-schedules", () => {
 
       // 4. Advance to 9:01 AM and trigger first retry
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
-      await GET(
-        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
-      );
+      await GET(authenticatedCronRequest());
 
       // Verify we're in retry state
       const midSchedule = await getTestSchedule(
@@ -512,9 +536,7 @@ describe("GET /api/cron/execute-schedules", () => {
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:36:00Z"));
 
       // 6. Execute cron - retry window should expire
-      await GET(
-        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
-      );
+      await GET(authenticatedCronRequest());
 
       // 7. Verify one-time schedule was disabled
       const finalSchedule = await getTestSchedule(

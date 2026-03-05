@@ -17,7 +17,7 @@ export async function GET(request: Request): Promise<Response> {
   const authHeader = request.headers.get("authorization");
   const cronSecret = env().CRON_SECRET;
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json(
       { error: { message: "Invalid cron secret", code: "UNAUTHORIZED" } },
       { status: 401 },

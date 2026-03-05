@@ -38,7 +38,7 @@ const router = tsr.router(cronCleanupSandboxesContract, {
     const authHeader = headers.authorization;
     const cronSecret = env().CRON_SECRET;
 
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
       return createErrorResponse("UNAUTHORIZED", "Invalid cron secret");
     }
 
