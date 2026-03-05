@@ -1,4 +1,4 @@
-import { eq, and, count, gt, or } from "drizzle-orm";
+import { eq, and, count, gt, or, sql } from "drizzle-orm";
 import { env } from "../../env";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
@@ -15,6 +15,7 @@ import {
   concurrentRunLimit,
 } from "../errors";
 import { logger } from "../logger";
+import type { Database } from "../../types/global";
 import type { ExecutionContext } from "./types";
 import type { AgentComposeSnapshot } from "../checkpoint/types";
 import type { AgentComposeYaml } from "../../types/agent-compose";
@@ -52,6 +53,7 @@ const PENDING_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 async function checkRunConcurrencyLimit(
   userId: string,
   limit?: number,
+  db?: Database,
 ): Promise<void> {
   // Use provided limit, or env var, or default to 1
   // Note: 0 means no limit, so we need explicit undefined check
@@ -69,10 +71,12 @@ async function checkRunConcurrencyLimit(
     return;
   }
 
+  const queryDb = db ?? globalThis.services.db;
+
   // Count active runs: all "running" runs + "pending" runs within TTL
   const staleThreshold = new Date(Date.now() - PENDING_RUN_TTL_MS);
 
-  const [result] = await globalThis.services.db
+  const [result] = await queryDb
     .select({ count: count() })
     .from(agentRuns)
     .where(
@@ -512,10 +516,7 @@ export async function createRun(
   const apiStartTime = Date.now();
   const { userId, agentComposeVersionId, prompt } = params;
 
-  // Step 1: Check concurrent run limit
-  await checkRunConcurrencyLimit(userId);
-
-  // Steps 2-3: Load compose version/metadata and verify access
+  // Steps 1-3: Load compose version/metadata and verify access
   const { composeContent } = await loadAndAuthorizeCompose(
     userId,
     agentComposeVersionId,
@@ -543,27 +544,40 @@ export async function createRun(
   // Resolve scope ID for the run record
   const scopeId = params.scopeId ?? (await getDefaultScope(userId)).scope.id;
 
-  // Step 6: INSERT agentRuns
-  const [run] = await globalThis.services.db
-    .insert(agentRuns)
-    .values({
-      userId,
-      scopeId,
-      agentComposeVersionId,
-      status: "pending",
-      prompt,
-      vars: params.vars ?? null,
-      secretNames: params.secrets ? Object.keys(params.secrets) : null,
-      resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
-      continuedFromSessionId: params.sessionId ?? null,
-      scheduleId: params.scheduleId ?? null,
-      lastHeartbeatAt: new Date(),
-    })
-    .returning();
+  // Step 6: Concurrency check + INSERT in a transaction with advisory lock
+  // to prevent TOCTOU race where two concurrent requests both pass the
+  // concurrency check before either inserts.
+  const run = await globalThis.services.db.transaction(async (tx) => {
+    // Acquire per-user advisory lock (released when transaction ends)
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId}))`);
 
-  if (!run) {
-    throw new Error("Failed to create run record");
-  }
+    // Check concurrent run limit within the serialized transaction
+    await checkRunConcurrencyLimit(userId, undefined, tx);
+
+    // INSERT within the same transaction
+    const [newRun] = await tx
+      .insert(agentRuns)
+      .values({
+        userId,
+        scopeId,
+        agentComposeVersionId,
+        status: "pending",
+        prompt,
+        vars: params.vars ?? null,
+        secretNames: params.secrets ? Object.keys(params.secrets) : null,
+        resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
+        continuedFromSessionId: params.sessionId ?? null,
+        scheduleId: params.scheduleId ?? null,
+        lastHeartbeatAt: new Date(),
+      })
+      .returning();
+
+    if (!newRun) {
+      throw new Error("Failed to create run record");
+    }
+
+    return newRun;
+  });
 
   log.debug(`Created run ${run.id} for user ${userId}`);
 
