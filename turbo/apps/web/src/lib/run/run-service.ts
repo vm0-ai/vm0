@@ -320,7 +320,6 @@ export interface CreateRunParams {
   modelProvider?: string;
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
-  apiStartTime?: number;
   // Caller-resolved scope ID for variable resolution (org-aware).
   // When provided, used instead of getUserScopeByClerkId fallback.
   scopeId?: string;
@@ -509,6 +508,7 @@ async function markRunFailed(
 export async function createRun(
   params: CreateRunParams,
 ): Promise<CreateRunResult> {
+  const apiStartTime = Date.now();
   const { userId, agentComposeVersionId, prompt } = params;
 
   // Step 1: Check concurrent run limit
@@ -594,7 +594,7 @@ export async function createRun(
       debugNoMockClaude: params.debugNoMockClaude,
       modelProvider: params.modelProvider,
       checkEnv: params.checkEnv,
-      apiStartTime: params.apiStartTime,
+      apiStartTime,
       scopeId: params.scopeId,
     });
 

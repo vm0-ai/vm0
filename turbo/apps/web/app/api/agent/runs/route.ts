@@ -400,7 +400,6 @@ const router = tsr.router(runsMainContract, {
     };
   },
   create: async ({ body, headers }) => {
-    const apiStartTime = Date.now();
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -481,7 +480,6 @@ const router = tsr.router(runsMainContract, {
         debugNoMockClaude: body.debugNoMockClaude,
         modelProvider: body.modelProvider,
         checkEnv: body.checkEnv,
-        apiStartTime,
         scopeId: scope.id,
       });
 
