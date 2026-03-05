@@ -375,6 +375,8 @@ describe("POST /api/internal/callbacks/telegram", () => {
         agentName: "test-agent",
         composeId: "compose-123",
         existingSessionId: null,
+        isDM: false,
+        thinkingMessageId: null,
       };
 
       const body = JSON.stringify({ runId, status: "completed", payload });
