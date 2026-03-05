@@ -61,7 +61,10 @@ async function syncClerkMembership(scope: Scope, userId: string) {
     if (!record) return null;
     return { ...record, role: record.role as OrgRole };
   } catch (error) {
-    // Clerk API call failed — cannot verify membership
+    // Intentional exception to fail-fast principle: when Clerk is unavailable,
+    // deny access (return null -> 403) rather than crashing the request.
+    // This is a security-first choice — external service failure should not
+    // grant access. The error is logged for observability.
     log.error("syncClerkMembership failed", {
       scopeId: scope.id,
       userId,
