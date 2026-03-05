@@ -119,6 +119,10 @@ jobs:
       needs.detect.outputs.guest-agent-changed == 'true' ||
       needs.detect.outputs.guest-mock-claude-changed == 'true'
     timeout-minutes: 20
+    env:
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+crt-static -C link-arg=-fuse-ld=mold"
+      CARGO_PROFILE: ci
+      TARGET_TRIPLE: aarch64-unknown-linux-musl
     outputs:
       host: ${{ steps.host.outputs.host }}
       job-ref: ${{ steps.host.outputs.job-ref }}
@@ -127,27 +131,31 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install mold linker
+        run: |
+          apt-get update && apt-get install -y mold
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates -> target
-          shared-key: aarch64-musl
+          shared-key: aarch64-musl-ci
           save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-targets: false
 
       - name: Cross-compile guest binaries for ARM64
         run: |
           cd crates
-          cargo build --release --target aarch64-unknown-linux-musl \
+          cargo build --profile $CARGO_PROFILE --target $TARGET_TRIPLE \
             -p guest-agent -p guest-download -p guest-init -p guest-mock-claude
 
       - name: Cross-compile runner with embedded guests for ARM64
         run: |
           cd crates
-          GUEST_AGENT_PATH=target/aarch64-unknown-linux-musl/release/guest-agent \
-          GUEST_DOWNLOAD_PATH=target/aarch64-unknown-linux-musl/release/guest-download \
-          GUEST_INIT_PATH=target/aarch64-unknown-linux-musl/release/guest-init \
-          GUEST_MOCK_CLAUDE_PATH=target/aarch64-unknown-linux-musl/release/guest-mock-claude \
-          cargo build --release --target aarch64-unknown-linux-musl -p runner
+          GUEST_AGENT_PATH=target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-agent \
+          GUEST_DOWNLOAD_PATH=target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-download \
+          GUEST_INIT_PATH=target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-init \
+          GUEST_MOCK_CLAUDE_PATH=target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-mock-claude \
+          cargo build --profile $CARGO_PROFILE --target $TARGET_TRIPLE -p runner
 
       - name: Setup SSH
         env:
@@ -186,7 +194,7 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
-          TARGET_DIR="crates/target/aarch64-unknown-linux-musl/release"
+          TARGET_DIR="crates/target/${TARGET_TRIPLE}/${CARGO_PROFILE}"
 
           # Provision system dependencies (idempotent)
           echo "=== Provisioning system dependencies ==="
