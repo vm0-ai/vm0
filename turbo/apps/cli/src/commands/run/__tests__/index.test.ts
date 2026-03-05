@@ -103,7 +103,6 @@ describe("run command", () => {
         return HttpResponse.json({
           id: "scope-123",
           slug: "test-user",
-          type: "personal",
           createdAt: "2025-01-01T00:00:00Z",
           updatedAt: "2025-01-01T00:00:00Z",
         });

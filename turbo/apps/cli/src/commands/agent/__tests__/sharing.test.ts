@@ -56,7 +56,6 @@ describe("Agent Sharing Commands", () => {
         return HttpResponse.json({
           id: "scope-123",
           slug: testScopeSlug,
-          type: "personal",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
