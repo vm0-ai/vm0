@@ -248,7 +248,21 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
       `Dispatching run ${context.runId} to runner group: ${context.runnerGroup}`,
     );
     return await executeRunnerJob(context);
-  } else if (env().E2B_API_KEY) {
+  }
+
+  // Domain-based rollout: route @vm0.ai users to runner
+  const defaultGroup = env().RUNNER_DEFAULT_GROUP;
+  if (defaultGroup) {
+    const email = await getUserEmail(context.userId);
+    if (email.endsWith("@vm0.ai")) {
+      log.debug(
+        `Dispatching run ${context.runId} to runner (domain rollout: ${email})`,
+      );
+      return await executeRunnerJob({ ...context, runnerGroup: defaultGroup });
+    }
+  }
+
+  if (env().E2B_API_KEY) {
     log.debug(`Dispatching run ${context.runId} to E2B executor`);
     return await executeE2bRun(context);
   } else if (env().DOCKER_SANDBOX_IMAGE) {
