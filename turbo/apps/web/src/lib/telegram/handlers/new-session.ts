@@ -55,7 +55,7 @@ export async function handleNewSessionCommand(
     await sendMessage(
       client,
       chatId,
-      `Please connect your account first:\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
+      `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
     );
     return;
   }

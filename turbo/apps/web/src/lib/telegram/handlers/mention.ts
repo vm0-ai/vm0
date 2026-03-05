@@ -71,7 +71,7 @@ export async function handleTelegramMention(
     await sendMessage(
       client,
       chatId,
-      `Please connect your account first:\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
+      `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
       { replyToMessageId: message.message_id },
     );
     return;

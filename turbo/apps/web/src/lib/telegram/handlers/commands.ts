@@ -63,7 +63,7 @@ export async function handleConnectCommand(
   await sendMessage(
     client,
     chatId,
-    `Visit the platform to connect your account:\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
+    `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
   );
 }
 
