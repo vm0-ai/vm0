@@ -146,6 +146,20 @@ pub fn init_filesystem() -> Result<(), InitError> {
         source: e,
     })?;
 
+    // Configure aggressive TCP keepalive for faster dead connection detection.
+    // Default values (7200s/75s/9 probes = ~2h11m) exceed JOB_TIMEOUT (2h),
+    // so dead connections are never detected. These values reduce detection to ~2min.
+    for (param, value) in [
+        ("tcp_keepalive_time", "60"),
+        ("tcp_keepalive_intvl", "10"),
+        ("tcp_keepalive_probes", "6"),
+    ] {
+        let path = format!("/proc/sys/net/ipv4/{param}");
+        if let Err(e) = fs::write(&path, value) {
+            eprintln!("[guest-init] Warning: failed to set {param}: {e}");
+        }
+    }
+
     mount(
         Some("sys"),
         "/sys",
