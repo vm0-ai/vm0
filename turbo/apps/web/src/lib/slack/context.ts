@@ -214,7 +214,8 @@ export function extractTextFromBlocks(
           const items = section.elements ?? [];
           const indent = "  ".repeat(section.indent ?? 0);
           items.forEach((item, i) => {
-            const listStyle = section.style as string | undefined;
+            const listStyle =
+              typeof section.style === "string" ? section.style : undefined;
             const bullet =
               listStyle === "ordered"
                 ? `${(section.offset ?? 0) + i + 1}.`
