@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Sync OAuth connector credentials between 1Password and GitHub
+# Sync OAuth connector credentials from /tmp/oauth-credentials to 1Password and GitHub
 #
-# Flow:
-#   1. Prompt for OAuth provider name (e.g., DOCUSIGN)
-#   2. Create empty fields in 1Password (dev + prod)
-#   3. Wait for user to fill in values in 1Password
-#   4. Read values from 1Password and sync to GitHub vars/secrets
+# Credentials file format at /tmp/oauth-credentials/<PROVIDER>:
+#   PROVIDER_OAUTH_SLUG=...              (optional, dev/test app slug)
+#   PROVIDER_OAUTH_CLIENT_ID=...         (dev/test app client ID)
+#   PROVIDER_OAUTH_CLIENT_SECRET=...     (dev/test app client secret)
+#   PROVIDER_OAUTH_SLUG_PROD=...         (optional, production app slug)
+#   PROVIDER_OAUTH_CLIENT_ID_PROD=...    (production app client ID)
+#   PROVIDER_OAUTH_CLIENT_SECRET_PROD=...  (production app client secret)
+#
+# Non-_PROD fields → Development vault + GitHub repo-level vars/secrets
+# _PROD fields     → Production vault + GitHub production environment vars/secrets
 #
 # Usage: ./scripts/sync-oauth.sh [PROVIDER_NAME]
 
-# 1Password vault/item mapping
 DEV_VAULT="Development"
 DEV_ITEM="vm0-env-local"
 PROD_VAULT="Production"
@@ -26,17 +30,6 @@ require_tool() {
   fi
 }
 
-# Check if a field exists AND has a real (non-empty, non-placeholder) value.
-op_field_ready() {
-  local vault="$1" item="$2" field="$3"
-  local val
-  val="$(op read "op://${vault}/${item}/${field}" 2>/dev/null)" || return 1
-  [[ -n "$val" && "$val" != "REPLACE_ME" ]]
-}
-
-# Edit an item, retrying with a placeholder password if the item is a
-# Password-type entry whose built-in password field is empty (triggers
-# "Password item requires ps value" validation error).
 op_safe_edit() {
   local vault="$1" item="$2"
   shift 2
@@ -52,15 +45,16 @@ op_safe_edit() {
   fi
 }
 
+mask() { local v="$1"; echo "${v:0:4}***"; }
+
 # --- Main ---
 
 require_tool op
 require_tool gh
 
-# Get provider name from argument or prompt
 PROVIDER="${1:-}"
 if [[ -z "$PROVIDER" ]]; then
-  read -rp "Enter OAuth provider name (e.g., DOCUSIGN): " PROVIDER
+  read -rp "Enter OAuth provider name (e.g., MONDAY): " PROVIDER
 fi
 
 PROVIDER="$(echo "$PROVIDER" | tr '[:lower:]' '[:upper:]')"
@@ -69,112 +63,96 @@ if [[ -z "$PROVIDER" ]]; then
   exit 1
 fi
 
-CLIENT_ID="${PROVIDER}_OAUTH_CLIENT_ID"
-CLIENT_SECRET="${PROVIDER}_OAUTH_CLIENT_SECRET"
+CREDS_FILE="/tmp/oauth-credentials/${PROVIDER}"
+VAR_SLUG="${PROVIDER}_OAUTH_SLUG"
+VAR_ID="${PROVIDER}_OAUTH_CLIENT_ID"
+VAR_SECRET="${PROVIDER}_OAUTH_CLIENT_SECRET"
+VAR_SLUG_PROD="${PROVIDER}_OAUTH_SLUG_PROD"
+VAR_ID_PROD="${PROVIDER}_OAUTH_CLIENT_ID_PROD"
+VAR_SECRET_PROD="${PROVIDER}_OAUTH_CLIENT_SECRET_PROD"
 
 echo ""
 echo "Provider:      ${PROVIDER}"
-echo "Client ID var: ${CLIENT_ID}"
-echo "Secret var:    ${CLIENT_SECRET}"
+echo "Creds file:    ${CREDS_FILE}"
 echo ""
 
-# Sign in to 1Password
-echo "Signing in to 1Password..."
-eval "$(op signin)"
+# --- Load or create credentials file ---
 
-# --- Step 1: Check if values already exist in 1Password ---
-
-all_ready=true
-for vault_item in "${DEV_VAULT}/${DEV_ITEM}" "${PROD_VAULT}/${PROD_ITEM}"; do
-  vault="${vault_item%%/*}"
-  item="${vault_item##*/}"
-  if ! op_field_ready "$vault" "$item" "$CLIENT_ID" || ! op_field_ready "$vault" "$item" "$CLIENT_SECRET"; then
-    all_ready=false
-    break
-  fi
-done
-
-if [[ "$all_ready" == true ]]; then
-  # All 4 values already exist — skip 1Password creation, go straight to sync
-  echo "All values already exist in 1Password."
-else
-  # --- Create placeholder fields in 1Password ---
-
+if [[ ! -f "$CREDS_FILE" ]]; then
+  echo "Credentials file not found. Creating template at ${CREDS_FILE}..."
+  mkdir -p /tmp/oauth-credentials
+  cat > "$CREDS_FILE" <<EOF
+${VAR_SLUG}=
+${VAR_ID}=
+${VAR_SECRET}=
+${VAR_SLUG_PROD}=
+${VAR_ID_PROD}=
+${VAR_SECRET_PROD}=
+EOF
   echo ""
-  echo "=== Creating fields in 1Password ==="
-
-  for vault_item in "${DEV_VAULT}/${DEV_ITEM}" "${PROD_VAULT}/${PROD_ITEM}"; do
-    vault="${vault_item%%/*}"
-    item="${vault_item##*/}"
-
-    echo ""
-    echo "--- ${vault} / ${item} ---"
-
-    assignments=()
-
-    if op_field_ready "$vault" "$item" "$CLIENT_ID"; then
-      echo "  ${CLIENT_ID} already has a value, skipping."
-    else
-      assignments+=("${CLIENT_ID}[text]=REPLACE_ME")
-    fi
-
-    if op_field_ready "$vault" "$item" "$CLIENT_SECRET"; then
-      echo "  ${CLIENT_SECRET} already has a value, skipping."
-    else
-      assignments+=("${CLIENT_SECRET}[password]=REPLACE_ME")
-    fi
-
-    if [[ ${#assignments[@]} -gt 0 ]]; then
-      op_safe_edit "$vault" "$item" "${assignments[@]}"
-      for a in "${assignments[@]}"; do
-        field_name="${a%%\[*}"
-        field_type="${a#*[}"
-        field_type="${field_type%%]*}"
-        echo "  Created ${field_name} (${field_type})"
-      done
-    fi
-  done
-
-  echo ""
-  echo "=== 1Password fields are ready ==="
-  echo "Please fill in the values in 1Password, then re-run:"
+  echo "Please fill in the values in ${CREDS_FILE}, then re-run:"
   echo ""
   echo "  bash scripts/sync-oauth.sh ${PROVIDER}"
   echo ""
   exit 0
 fi
 
-# --- Step 2: Read from 1Password and sync to GitHub ---
+# Source the credentials file
+# shellcheck disable=SC1090
+source "$CREDS_FILE"
+
+dev_slug="${!VAR_SLUG:-}"
+dev_id="${!VAR_ID:-}"
+dev_secret="${!VAR_SECRET:-}"
+prod_slug="${!VAR_SLUG_PROD:-}"
+prod_id="${!VAR_ID_PROD:-}"
+prod_secret="${!VAR_SECRET_PROD:-}"
+
+# Check required fields
+missing=()
+[[ -z "$dev_id" ]]     && missing+=("${VAR_ID}")
+[[ -z "$dev_secret" ]] && missing+=("${VAR_SECRET}")
+[[ -z "$prod_id" ]]    && missing+=("${VAR_ID_PROD}")
+[[ -z "$prod_secret" ]] && missing+=("${VAR_SECRET_PROD}")
+
+if [[ ${#missing[@]} -gt 0 ]]; then
+  echo "The following required values are missing in ${CREDS_FILE}:"
+  for m in "${missing[@]}"; do
+    echo "  - $m"
+  done
+  echo ""
+  echo "Please fill them in, then re-run: bash scripts/sync-oauth.sh ${PROVIDER}"
+  exit 1
+fi
+
+# --- Preview ---
+
+echo "=== Values loaded ==="
+echo "  ${VAR_ID} = ${dev_id}"
+echo "  ${VAR_SECRET} = $(mask "$dev_secret")"
+[[ -n "$dev_slug" ]] && echo "  ${VAR_SLUG} = ${dev_slug}"
+echo "  ${VAR_ID_PROD} = ${prod_id}"
+echo "  ${VAR_SECRET_PROD} = $(mask "$prod_secret")"
+[[ -n "$prod_slug" ]] && echo "  ${VAR_SLUG_PROD} = ${prod_slug}"
+echo ""
+
+# --- Sign in to 1Password ---
+
+echo "Signing in to 1Password..."
+eval "$(op signin)"
 
 echo ""
-echo "=== Reading values from 1Password ==="
-
-dev_id="$(op read "op://${DEV_VAULT}/${DEV_ITEM}/${CLIENT_ID}")"
-dev_secret="$(op read "op://${DEV_VAULT}/${DEV_ITEM}/${CLIENT_SECRET}")"
-prod_id="$(op read "op://${PROD_VAULT}/${PROD_ITEM}/${CLIENT_ID}")"
-prod_secret="$(op read "op://${PROD_VAULT}/${PROD_ITEM}/${CLIENT_SECRET}")"
-
-# Validate values are not empty or placeholder
-for var_name in dev_id dev_secret prod_id prod_secret; do
-  if [[ -z "${!var_name}" || "${!var_name}" == "REPLACE_ME" ]]; then
-    echo "Error: ${var_name} is empty or still has placeholder value. Please fill in the value in 1Password and retry."
-    exit 1
-  fi
-done
-
-# Mask secrets in preview: show first 4 chars then ***
-mask() { local v="$1"; echo "${v:0:4}***"; }
-
+echo "=== Actions to be taken ==="
 echo ""
-echo "=== The following commands will be executed ==="
+echo "  # Dev: 1Password '${DEV_VAULT}/${DEV_ITEM}' + GitHub repo-level"
+echo "  ${VAR_ID} = ${dev_id}"
+echo "  ${VAR_SECRET} = $(mask "$dev_secret")"
+[[ -n "$dev_slug" ]] && echo "  ${VAR_SLUG} = ${dev_slug}"
 echo ""
-echo "  # Dev (repo-level)"
-echo "  echo \"${dev_id}\" | gh variable --repo vm0-ai/vm0 set ${CLIENT_ID}"
-echo "  echo \"$(mask "$dev_secret")\" | gh secret --repo vm0-ai/vm0 set ${CLIENT_SECRET}"
-echo ""
-echo "  # Production"
-echo "  echo \"${prod_id}\" | gh variable --repo vm0-ai/vm0 set ${CLIENT_ID} -e production"
-echo "  echo \"$(mask "$prod_secret")\" | gh secret --repo vm0-ai/vm0 set ${CLIENT_SECRET} -e production"
+echo "  # Prod: 1Password '${PROD_VAULT}/${PROD_ITEM}' + GitHub production environment"
+echo "  ${VAR_ID} = ${prod_id}"
+echo "  ${VAR_SECRET} = $(mask "$prod_secret")"
+[[ -n "$prod_slug" ]] && echo "  ${VAR_SLUG_PROD} = ${prod_slug}"
 echo ""
 read -rp "Proceed? [y/N] " confirm
 if [[ ! "$confirm" =~ ^[Yy] ]]; then
@@ -183,22 +161,57 @@ if [[ ! "$confirm" =~ ^[Yy] ]]; then
 fi
 
 echo ""
+echo "=== Syncing to 1Password ==="
+
+# Dev vault
+op_safe_edit "$DEV_VAULT" "$DEV_ITEM" \
+  "${VAR_ID}[text]=${dev_id}" \
+  "${VAR_SECRET}[password]=${dev_secret}"
+echo "  Updated ${DEV_VAULT}/${DEV_ITEM}: ${VAR_ID}, ${VAR_SECRET}"
+
+if [[ -n "$dev_slug" ]]; then
+  op_safe_edit "$DEV_VAULT" "$DEV_ITEM" "${VAR_SLUG}[text]=${dev_slug}"
+  echo "  Updated ${DEV_VAULT}/${DEV_ITEM}: ${VAR_SLUG}"
+fi
+
+# Prod vault (field names without _PROD suffix — same key, different vault)
+op_safe_edit "$PROD_VAULT" "$PROD_ITEM" \
+  "${VAR_ID}[text]=${prod_id}" \
+  "${VAR_SECRET}[password]=${prod_secret}"
+echo "  Updated ${PROD_VAULT}/${PROD_ITEM}: ${VAR_ID}, ${VAR_SECRET}"
+
+if [[ -n "$prod_slug" ]]; then
+  op_safe_edit "$PROD_VAULT" "$PROD_ITEM" "${VAR_SLUG}[text]=${prod_slug}"
+  echo "  Updated ${PROD_VAULT}/${PROD_ITEM}: ${VAR_SLUG}"
+fi
+
+echo ""
 echo "=== Syncing to GitHub ==="
 
-# Dev (repo-level)
-echo "$dev_id" | gh variable --repo vm0-ai/vm0 set "$CLIENT_ID"
-echo "  Set repo variable: ${CLIENT_ID}"
+# Dev: repo-level variable + secret (uses base name, not _PROD)
+echo "$dev_id" | gh variable --repo vm0-ai/vm0 set "${VAR_ID}"
+echo "  Set repo variable: ${VAR_ID}"
 
-echo "$dev_secret" | gh secret --repo vm0-ai/vm0 set "$CLIENT_SECRET"
-echo "  Set repo secret:   ${CLIENT_SECRET}"
+echo "$dev_secret" | gh secret --repo vm0-ai/vm0 set "${VAR_SECRET}"
+echo "  Set repo secret:   ${VAR_SECRET}"
 
-# Prod (production environment)
-echo "$prod_id" | gh variable --repo vm0-ai/vm0 set "$CLIENT_ID" -e production
-echo "  Set production variable: ${CLIENT_ID}"
+if [[ -n "$dev_slug" ]]; then
+  echo "$dev_slug" | gh variable --repo vm0-ai/vm0 set "${VAR_SLUG}"
+  echo "  Set repo variable: ${VAR_SLUG}"
+fi
 
-echo "$prod_secret" | gh secret --repo vm0-ai/vm0 set "$CLIENT_SECRET" -e production
-echo "  Set production secret:   ${CLIENT_SECRET}"
+# Prod: production environment variable + secret
+echo "$prod_id" | gh variable --repo vm0-ai/vm0 set "${VAR_ID}" -e production
+echo "  Set production variable: ${VAR_ID}"
+
+echo "$prod_secret" | gh secret --repo vm0-ai/vm0 set "${VAR_SECRET}" -e production
+echo "  Set production secret:   ${VAR_SECRET}"
+
+if [[ -n "$prod_slug" ]]; then
+  echo "$prod_slug" | gh variable --repo vm0-ai/vm0 set "${VAR_SLUG}" -e production
+  echo "  Set production variable: ${VAR_SLUG}"
+fi
 
 echo ""
 echo "=== Done ==="
-echo "OAuth credentials for ${PROVIDER} are synced to GitHub."
+echo "OAuth credentials for ${PROVIDER} synced to 1Password and GitHub."

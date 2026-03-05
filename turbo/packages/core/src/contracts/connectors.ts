@@ -768,6 +768,51 @@ export const CONNECTOR_TYPES = {
       scopes: ["ACTIVITY", "WELLNESS", "CALENDAR", "SETTINGS", "LIBRARY"],
     } as ConnectorOAuthConfig,
   },
+  monday: {
+    label: "Monday.com",
+    helpText:
+      "Connect your Monday.com account to manage boards, items, and workflows",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Monday.com to grant access.",
+        secrets: {
+          MONDAY_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          MONDAY_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://auth.monday.com/oauth2/authorize",
+      tokenUrl: "https://auth.monday.com/oauth2/token",
+      scopes: [
+        "me:read",
+        "boards:read",
+        "boards:write",
+        "docs:read",
+        "docs:write",
+        "workspaces:read",
+        "users:read",
+        "account:read",
+        "updates:read",
+        "updates:write",
+        "notifications:write",
+        "assets:read",
+        "tags:read",
+        "teams:read",
+      ],
+    } as ConnectorOAuthConfig,
+  },
   xero: {
     label: "Xero",
     helpText:
@@ -850,6 +895,7 @@ export const connectorTypeSchema = z.enum([
   "sentry",
   "intervals-icu",
   "xero",
+  "monday",
 ]);
 
 /**

@@ -1,13 +1,78 @@
+## OAuth App Registration
+
+Before writing any code, register the OAuth application with the provider. The client ID and client secret generated during registration are required for implementation.
+
+### Register Two Apps
+
+Register two separate OAuth apps for each provider — one for development/testing and one for production:
+
+| App | Purpose | Redirect URI |
+|-----|---------|--------------|
+| **VM0** (or **VM0 AI** if "VM0" is too short or already taken) | Production | `https://www.vm0.ai/api/connectors/<provider>/callback` |
+| **VM0 TEST** (or **VM0 AI TEST**) | Development / testing | `https://www.vm7.ai:8443/api/connectors/<provider>/callback` |
+
+> The app **without** TEST is the **production** app; the app **with** TEST is for **development/testing**.
+
+### Naming Rules
+
+- Prefer **VM0** as the app name; use **VM0 AI** if "VM0" is too short or already taken
+- Append **TEST** for the production app (e.g., **VM0 TEST** or **VM0 AI TEST**)
+- Slug format: lowercase, spaces replaced with hyphens — `vm0`, `vm0-test`, `vm0-ai`, `vm0-ai-test`
+
+### Common Fields
+
+- **Description:** Summarize from https://www.vm0.ai
+- **Scopes:** Request the broadest set of scopes that make sense for an AI office-assistant use case (read, write, and organization/team-level access where applicable). Request delete scopes only when clearly necessary and appropriate. Do not blindly enable all scopes — match scopes to what the service actually does.
+- **Logo:** Stop and ask the user to upload the logo manually.
+- **Redirect URIs:** Use the values in the table above, replacing `<provider>` with the connector's app name (e.g., `gmail`, `notion`, `linear`).
+
+### Registration Workflow
+
+Use `agent-browser` to navigate the provider's developer portal, filling in each field above. Stop and ask the user to confirm before submitting any form that creates or modifies an app registration. For logo upload, always stop and let the user handle it manually.
+
+**As you register each app**, write the credentials you see (client ID, client secret, slug) into `/tmp/oauth-credentials/<PROVIDER>` immediately — don't wait until both apps are done:
+
+```
+PROVIDER_OAUTH_SLUG=<dev/test app slug>          # optional
+PROVIDER_OAUTH_CLIENT_ID=<dev/test client ID>
+PROVIDER_OAUTH_CLIENT_SECRET=<dev/test client secret>
+PROVIDER_OAUTH_SLUG_PROD=<prod app slug>          # optional
+PROVIDER_OAUTH_CLIENT_ID_PROD=<prod client ID>
+PROVIDER_OAUTH_CLIENT_SECRET_PROD=<prod client secret>
+```
+
+- Non-`_PROD` fields = **VM0 TEST** app (development/testing)
+- `_PROD` fields = **VM0** app (production)
+
+If a client secret is hidden in the UI and you can't reveal it programmatically, leave the field empty — the script will report which fields are missing.
+
+After both apps are registered and the credentials file is populated:
+
+1. Run `bash scripts/sync-oauth.sh PROVIDER_NAME`.
+   - The script reads `/tmp/oauth-credentials/<PROVIDER>`, shows a preview, and syncs all non-empty values to 1Password and GitHub in one pass.
+   - If any required fields are missing, it will list them and exit — fill them in and re-run.
+2. Wait for the user to confirm the sync completed successfully before proceeding to implementation.
+
+---
+
 ## Add OAuth Connector Checklist
 
 1. Use existing OAuth connectors (e.g., Gmail, Notion, Linear) as templates for implementation.
+1. After writing code, run lint and type checks. If you see pre-existing errors unrelated to your changes, they are almost certainly caused by a stale local environment — `main` passes CI so there are no pre-existing lint or type issues on a clean checkout. Fix the environment first:
+   ```bash
+   pnpm install          # sync dependencies
+   pnpm -F web db:migrate  # apply pending migrations
+   cd turbo && pnpm build  # generate .next types and other build artifacts
+   ```
+   Then re-run the checks. Only investigate errors that persist after the environment is fresh.
 1. Ensure you use the real product SVG logo from the Internet, not a placeholder image.
 1. Ensure the new connector is protected with a feature switch, and that the feature switch is disabled by default.
 1. Add the OAuth env vars to both `.github/workflows/turbo.yml` and `.github/workflows/release-please.yml` deploy steps (client ID from `vars`, client secret from `secrets`).
 1. Ensure that `.env.tpl` references the correct secrets/vars and that the secret/var names in 1Password match the environment variable names.
-1. Ask the user to fill in the OAuth credentials (client ID and client secret) in 1Password (both Development and Production vaults), then run `bash scripts/sync-oauth.sh PROVIDER_NAME` to sync credentials from 1Password to GitHub vars/secrets. Wait for the user to confirm completion.
+1. Run `bash scripts/sync-oauth.sh PROVIDER_NAME` to sync credentials from `/tmp/oauth-credentials/<PROVIDER>` to 1Password and GitHub. If any fields are missing, fill them in and re-run. Wait for the user to confirm completion.
 1. Verify that the secrets/vars are correctly set on GitHub by running `gh variable list | grep PROVIDER` and `gh secret list | grep PROVIDER`.
 1. Make sure the local `.env.local` contains the correct secret/var values.
+1. Commit all changes and create a PR using `/pull-request`. This lets CI validate the implementation in parallel while you do local testing.
 1. Start the project locally with `pnpm dev` and verify that it can successfully connect to the OAuth provider and obtain user information. Use `agent-browser` to complete the OAuth flow:
 
    **Prerequisites:** The user must have Chrome running on macOS with remote debugging enabled:

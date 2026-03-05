@@ -132,6 +132,9 @@ function initEnv() {
       // Xero OAuth (for connector)
       XERO_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       XERO_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Monday.com OAuth (for connector)
+      MONDAY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      MONDAY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // GitHub App (for issue integration)
       GITHUB_APP_ID: z.string().min(1).optional(),
       GITHUB_APP_SLUG: z.string().min(1).optional(),
@@ -257,6 +260,8 @@ function initEnv() {
         process.env.INTERVALS_ICU_OAUTH_CLIENT_SECRET,
       XERO_OAUTH_CLIENT_ID: process.env.XERO_OAUTH_CLIENT_ID,
       XERO_OAUTH_CLIENT_SECRET: process.env.XERO_OAUTH_CLIENT_SECRET,
+      MONDAY_OAUTH_CLIENT_ID: process.env.MONDAY_OAUTH_CLIENT_ID,
+      MONDAY_OAUTH_CLIENT_SECRET: process.env.MONDAY_OAUTH_CLIENT_SECRET,
       GITHUB_APP_ID: process.env.GITHUB_APP_ID,
       GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
       GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,
