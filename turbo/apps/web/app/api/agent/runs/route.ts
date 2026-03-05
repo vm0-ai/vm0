@@ -20,7 +20,6 @@ import {
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../src/lib/logger";
 import {
-  isConcurrentRunLimit,
   isForbidden,
   isBadRequest,
   isNotFound,
@@ -251,17 +250,6 @@ function handleCreateRunError(error: unknown) {
     };
   }
 
-  if (isConcurrentRunLimit(error)) {
-    return {
-      status: 429 as const,
-      body: {
-        error: {
-          message: error.message,
-          code: "concurrent_run_limit_exceeded",
-        },
-      },
-    };
-  }
   if (isForbidden(error)) {
     return {
       status: 403 as const,
@@ -301,7 +289,7 @@ const router = tsr.router(runsMainContract, {
     // Parse and validate status values
     const statusValues: string[] = query.status
       ? query.status.split(",").map((s: string) => s.trim())
-      : ["pending", "running"]; // default
+      : ["queued", "pending", "running"]; // default
 
     // Validate each status value
     for (const status of statusValues) {
@@ -493,6 +481,7 @@ const router = tsr.router(runsMainContract, {
         body: {
           runId: result.runId,
           status: result.status as
+            | "queued"
             | "pending"
             | "running"
             | "completed"

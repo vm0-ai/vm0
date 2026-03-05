@@ -7,7 +7,6 @@ import {
   getScope,
   createRun,
 } from "../../lib/api";
-import { EventRenderer } from "../../lib/events/event-renderer";
 import {
   collectKeyValue,
   collectVolumeVersions,
@@ -19,6 +18,7 @@ import {
   pollEvents,
   showNextSteps,
   handleRunError,
+  renderRunCreated,
 } from "./shared";
 import {
   startSilentUpgrade,
@@ -219,11 +219,8 @@ export const mainRunCommand = new Command()
           process.exit(1);
         }
 
-        // 5. Display run started info
-        EventRenderer.renderRunStarted({
-          runId: response.runId,
-          sandboxId: response.sandboxId,
-        });
+        // 5. Display run started/queued info
+        renderRunCreated(response);
 
         // 6. Poll for events and exit with appropriate code
         const result = await pollEvents(response.runId, {

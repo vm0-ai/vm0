@@ -8,7 +8,6 @@ import {
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
 import { createRun, validateAgentSession } from "../../run";
-import { isConcurrentRunLimit } from "../../errors";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getInstallationAccessToken } from "../github-app";
 import {
@@ -373,22 +372,6 @@ async function handleDispatchError(
         .join("\n") + "\n\n"
     : "";
 
-  if (isConcurrentRunLimit(error)) {
-    log.warn("Concurrent run limit reached for GitHub issue", {
-      repo,
-      issueNumber,
-    });
-    if (token) {
-      await postIssueCommentBestEffort(
-        token,
-        repo,
-        issueNumber,
-        `${quotePrefix}⚠️ The agent is currently busy with another task. Please try again shortly.`,
-      );
-    }
-    return;
-  }
-
   if (token) {
     const message =
       error instanceof Error ? error.message : "An unexpected error occurred.";
@@ -577,6 +560,8 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
       params.comment?.body,
     );
   }
+  // Note: New session mapping will be created by the callback handler
+  // once the run completes and we have the agentSessionId from the result
 }
 
 /**

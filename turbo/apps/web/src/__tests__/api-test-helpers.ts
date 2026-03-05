@@ -26,6 +26,7 @@ import { githubIssueSessions } from "../db/schema/github-issue-session";
 import { slackThreadSessions } from "../db/schema/slack-thread-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
+import { agentRunQueue } from "../db/schema/agent-run-queue";
 import { agentSchedules } from "../db/schema/agent-schedule";
 import { telegramInstallations } from "../db/schema/telegram-installation";
 import { telegramMessages } from "../db/schema/telegram-message";
@@ -1295,6 +1296,26 @@ export async function createTestVariable(
 // ============================================================================
 
 /**
+ * Resolve scopeId from a compose version ID.
+ * Shared by test helpers that insert agent_runs records directly.
+ */
+async function getScopeIdFromVersion(versionId: string): Promise<string> {
+  const [version] = await globalThis.services.db
+    .select({ scopeId: agentComposes.scopeId })
+    .from(agentComposeVersions)
+    .innerJoin(
+      agentComposes,
+      eq(agentComposes.id, agentComposeVersions.composeId),
+    )
+    .where(eq(agentComposeVersions.id, versionId))
+    .limit(1);
+  if (!version) {
+    throw new Error(`Compose version ${versionId} not found`);
+  }
+  return version.scopeId;
+}
+
+/**
  * Insert a stale pending run directly into the database.
  * This simulates a run stuck in "pending" state past the cleanup TTL,
  * which cannot be reproduced through normal API flows since the route
@@ -1310,26 +1331,14 @@ export async function insertStalePendingRun(
   agentComposeVersionId: string,
   ageMs: number = 20 * 60 * 1000,
 ): Promise<string> {
-  // Look up scopeId from the compose version
-  const [version] = await globalThis.services.db
-    .select({ scopeId: agentComposes.scopeId })
-    .from(agentComposeVersions)
-    .innerJoin(
-      agentComposes,
-      eq(agentComposes.id, agentComposeVersions.composeId),
-    )
-    .where(eq(agentComposeVersions.id, agentComposeVersionId))
-    .limit(1);
-  if (!version) {
-    throw new Error(`Compose version ${agentComposeVersionId} not found`);
-  }
+  const scopeId = await getScopeIdFromVersion(agentComposeVersionId);
 
   const staleCreatedAt = new Date(Date.now() - ageMs);
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
-      scopeId: version.scopeId,
+      scopeId,
       agentComposeVersionId,
       status: "pending",
       prompt: "Stale pending run",
@@ -1620,25 +1629,13 @@ export async function createCompletedTestRun(options: {
   startedAt: Date;
   completedAt: Date;
 }): Promise<string> {
-  // Look up scopeId from the compose version
-  const [version] = await globalThis.services.db
-    .select({ scopeId: agentComposes.scopeId })
-    .from(agentComposeVersions)
-    .innerJoin(
-      agentComposes,
-      eq(agentComposes.id, agentComposeVersions.composeId),
-    )
-    .where(eq(agentComposeVersions.id, options.composeVersionId))
-    .limit(1);
-  if (!version) {
-    throw new Error(`Compose version ${options.composeVersionId} not found`);
-  }
+  const scopeId = await getScopeIdFromVersion(options.composeVersionId);
 
   const [row] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId: options.userId,
-      scopeId: version.scopeId,
+      scopeId,
       agentComposeVersionId: options.composeVersionId,
       status: "completed",
       prompt: "test",
@@ -1949,6 +1946,15 @@ export async function findTestRunCallbacks(
     .where(eq(agentRunCallbacks.runId, runId));
 }
 
+export async function findTestQueueEntry(runId: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(agentRunQueue)
+    .where(eq(agentRunQueue.runId, runId))
+    .limit(1);
+  return row;
+}
+
 export async function findTestSlackInstallation(workspaceId: string) {
   const [row] = await globalThis.services.db
     .select()
@@ -2038,25 +2044,13 @@ export async function createTestRunnerJob(
   runnerGroup: string,
   contextOverrides?: Partial<StoredExecutionContext>,
 ): Promise<{ runId: string }> {
-  // Look up scopeId from the compose version
-  const [version] = await globalThis.services.db
-    .select({ scopeId: agentComposes.scopeId })
-    .from(agentComposeVersions)
-    .innerJoin(
-      agentComposes,
-      eq(agentComposes.id, agentComposeVersions.composeId),
-    )
-    .where(eq(agentComposeVersions.id, versionId))
-    .limit(1);
-  if (!version) {
-    throw new Error(`Compose version ${versionId} not found`);
-  }
+  const scopeId = await getScopeIdFromVersion(versionId);
 
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
-      scopeId: version.scopeId,
+      scopeId,
       agentComposeVersionId: versionId,
       status: "pending",
       prompt: "test prompt",
@@ -2423,4 +2417,19 @@ export async function countTestTelegramMessages(
     .from(telegramMessages)
     .where(eq(telegramMessages.installationId, installationId));
   return result[0]!.count;
+}
+
+export async function markRunningRunsAsCompleted(userId: string) {
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({ status: "completed", completedAt: new Date() })
+    .where(and(eq(agentRuns.userId, userId), eq(agentRuns.status, "running")));
+}
+
+export async function expireQueueEntry(runId: string) {
+  // Set expiresAt far enough in the past to avoid any timing issues in CI
+  await globalThis.services.db
+    .update(agentRunQueue)
+    .set({ expiresAt: new Date(Date.now() - 60_000) })
+    .where(eq(agentRunQueue.runId, runId));
 }

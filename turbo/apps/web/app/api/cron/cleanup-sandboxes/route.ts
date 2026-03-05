@@ -8,6 +8,11 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { eq, inArray } from "drizzle-orm";
 import { killSandbox } from "../../../../src/lib/sandbox/sandbox-service";
+import {
+  cleanupExpiredQueueEntries,
+  drainStaleQueues,
+} from "../../../../src/lib/run/run-queue-service";
+import { executeQueuedRun } from "../../../../src/lib/run/run-service";
 import { logger } from "../../../../src/lib/logger";
 import { env } from "../../../../src/env";
 
@@ -93,6 +98,20 @@ const router = tsr.router(cronCleanupSandboxesContract, {
 
       return referenceTime < cutoffTime;
     });
+
+    // Run queue maintenance: clean up expired entries and drain stale queues
+    // This must run regardless of whether there are expired sandboxes,
+    // as it serves as the fallback for missed webhook-triggered drains.
+    const [expiredQueueCount, drainedCount] = await Promise.all([
+      cleanupExpiredQueueEntries(),
+      drainStaleQueues(executeQueuedRun),
+    ]);
+
+    if (expiredQueueCount > 0 || drainedCount > 0) {
+      log.debug(
+        `Queue maintenance: expired=${expiredQueueCount}, drained=${drainedCount}`,
+      );
+    }
 
     if (expiredRuns.length === 0) {
       log.debug("No expired sandboxes found");

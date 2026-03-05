@@ -123,7 +123,14 @@ const scheduleResponseSchema = z.object({
  */
 const runSummarySchema = z.object({
   id: z.string().uuid(),
-  status: z.enum(["pending", "running", "completed", "failed", "timeout"]),
+  status: z.enum([
+    "queued",
+    "pending",
+    "running",
+    "completed",
+    "failed",
+    "timeout",
+  ]),
   createdAt: z.string(),
   completedAt: z.string().nullable(),
   error: z.string().nullable(),

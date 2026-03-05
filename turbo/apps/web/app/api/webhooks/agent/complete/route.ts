@@ -15,6 +15,8 @@ import type { ArtifactSnapshot } from "../../../../../src/lib/checkpoint";
 import type { RunResult } from "../../../../../src/lib/run/types";
 import { logger } from "../../../../../src/lib/logger";
 import { dispatchCallbacks } from "../../../../../src/lib/callback";
+import { drainUserQueue } from "../../../../../src/lib/run/run-queue-service";
+import { executeQueuedRun } from "../../../../../src/lib/run/run-service";
 import { after } from "next/server";
 
 const log = logger("webhook:complete");
@@ -171,19 +173,22 @@ const router = tsr.router(webhookCompleteContract, {
       log.warn(`Run ${body.runId} failed: ${errorMessage}`);
     }
 
-    // Dispatch all registered callbacks (non-blocking)
+    // Dispatch all registered callbacks and drain run queue (non-blocking)
     // This handles Slack mentions, schedule notifications, email replies, etc.
-    after(() => {
+    after(async () => {
       const errorMsg =
         finalStatus === "failed"
           ? (body.error ?? `Agent exited with code ${body.exitCode}`)
           : undefined;
-      return dispatchCallbacks(
-        body.runId,
-        finalStatus,
-        undefined,
-        errorMsg,
-      ).catch((err) => log.error("Failed to dispatch callbacks", { err }));
+
+      await Promise.all([
+        dispatchCallbacks(body.runId, finalStatus, undefined, errorMsg).catch(
+          (err) => log.error("Failed to dispatch callbacks", { err }),
+        ),
+        drainUserQueue(userId, executeQueuedRun).catch((err) =>
+          log.error("Failed to drain user queue", { err }),
+        ),
+      ]);
     });
 
     // Kill sandbox (wait for completion to ensure cleanup before response)

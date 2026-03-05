@@ -8,7 +8,6 @@ import {
   enableTestSchedule,
   getTestSchedule,
   getTestScheduleRuns,
-  completeTestRun,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
@@ -17,12 +16,10 @@ const context = testContext();
 
 describe("GET /api/cron/execute-schedules", () => {
   let testComposeId: string;
-  let testUserId: string;
 
   beforeEach(async () => {
     context.setupMocks();
-    const user = await context.setupUser();
-    testUserId = user.userId;
+    await context.setupUser();
 
     const { composeId } = await createTestCompose(
       `cron-test-agent-${Date.now()}`,
@@ -145,20 +142,20 @@ describe("GET /api/cron/execute-schedules", () => {
     });
   });
 
+  function authenticatedCronRequest() {
+    return createTestRequest(
+      "http://localhost:3000/api/cron/execute-schedules",
+      {
+        headers: { Authorization: "Bearer test-secret" },
+      },
+    );
+  }
+
   describe("Schedule Triggering", () => {
     beforeEach(() => {
       vi.stubEnv("CRON_SECRET", "test-secret");
       reloadEnv();
     });
-
-    function authenticatedCronRequest() {
-      return createTestRequest(
-        "http://localhost:3000/api/cron/execute-schedules",
-        {
-          headers: { Authorization: "Bearer test-secret" },
-        },
-      );
-    }
 
     it("should execute due cron schedule", async () => {
       // 1. Mock time to 8:00 AM UTC
@@ -259,15 +256,6 @@ describe("GET /api/cron/execute-schedules", () => {
       reloadEnv();
     });
 
-    function authenticatedCronRequest() {
-      return createTestRequest(
-        "http://localhost:3000/api/cron/execute-schedules",
-        {
-          headers: { Authorization: "Bearer test-secret" },
-        },
-      );
-    }
-
     it("should execute due loop schedule and set nextRunAt to null", async () => {
       // 1. Create and enable a loop schedule (nextRunAt = now on enable)
       await createTestSchedule(testComposeId, "loop-trigger-test", {
@@ -298,55 +286,45 @@ describe("GET /api/cron/execute-schedules", () => {
       expect(after.enabled).toBe(true);
     });
 
-    it("should retry loop schedule when blocked by concurrency limit", async () => {
+    it("should enqueue loop schedule when blocked by concurrency limit", async () => {
       // 1. Create and enable loop schedule
-      await createTestSchedule(testComposeId, "loop-retry-test", {
+      await createTestSchedule(testComposeId, "loop-queue-test", {
         intervalSeconds: 300,
-        prompt: "Loop retry task",
+        prompt: "Loop queue task",
       });
-      await enableTestSchedule(testComposeId, "loop-retry-test");
+      await enableTestSchedule(testComposeId, "loop-queue-test");
 
       // 2. Create a blocking run
       await createTestRun(testComposeId, "Blocking run");
 
-      // 3. Execute cron - should fail due to concurrency limit
+      // 3. Execute cron - run should be queued (not failed)
       await GET(authenticatedCronRequest());
 
-      // 4. Verify schedule entered retry state
-      const schedule = await getTestSchedule(testComposeId, "loop-retry-test");
-      expect(schedule.retryStartedAt).not.toBeNull();
-      expect(schedule.nextRunAt).not.toBeNull();
+      // 4. Verify run was queued and schedule state advanced
+      const schedule = await getTestSchedule(testComposeId, "loop-queue-test");
+      // Loop schedule: nextRunAt should be null (callback handles next iteration)
+      expect(schedule.nextRunAt).toBeNull();
+      expect(schedule.retryStartedAt).toBeNull();
     });
   });
 
-  describe("Concurrency Retry", () => {
-    const cronSecret = "test-secret";
-
+  describe("Concurrency Queue", () => {
     beforeEach(() => {
-      vi.stubEnv("CRON_SECRET", cronSecret);
+      vi.stubEnv("CRON_SECRET", "test-secret");
       reloadEnv();
     });
 
-    function authenticatedCronRequest() {
-      return createTestRequest(
-        "http://localhost:3000/api/cron/execute-schedules",
-        {
-          headers: { Authorization: `Bearer ${cronSecret}` },
-        },
-      );
-    }
-
-    it("should retry schedule when blocked by concurrency limit", async () => {
+    it("should enqueue scheduled run when blocked by concurrency limit", async () => {
       // 1. Set time to 8:00 AM
       context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
 
       // 2. Create and enable schedule for 9 AM
-      await createTestSchedule(testComposeId, "retry-test", {
+      await createTestSchedule(testComposeId, "queue-test", {
         cronExpression: "0 9 * * *",
         prompt: "Daily task",
         timezone: "UTC",
       });
-      await enableTestSchedule(testComposeId, "retry-test");
+      await enableTestSchedule(testComposeId, "queue-test");
 
       // 3. Create a pending run to block concurrency (default limit is 1)
       await createTestRun(testComposeId, "Blocking run");
@@ -354,198 +332,78 @@ describe("GET /api/cron/execute-schedules", () => {
       // 4. Advance time to 9:01 AM (schedule is due)
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
 
-      // 5. Execute cron - should fail due to concurrency limit
+      // 5. Execute cron - run should be queued (not failed)
       const response = await GET(authenticatedCronRequest());
       expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.executed).toBeGreaterThanOrEqual(1);
 
-      // 6. Verify schedule entered retry state
-      const schedule = await getTestSchedule(testComposeId, "retry-test");
-      expect(schedule.retryStartedAt).not.toBeNull();
-      // nextRunAt should be 5 minutes later, not tomorrow 9 AM
-      const nextRunAt = new Date(schedule.nextRunAt!);
-      const expectedRetryAt = new Date("2025-01-15T09:06:00Z");
-      expect(nextRunAt.getTime()).toBe(expectedRetryAt.getTime());
-
-      // 7. Verify a failed run was created
+      // 6. Verify the run was queued (not failed)
       const { runs } = await getTestScheduleRuns(
         testComposeId,
-        "retry-test",
+        "queue-test",
         1,
       );
       expect(runs.length).toBe(1);
-      expect(runs[0]?.status).toBe("failed");
-      expect(runs[0]?.error).toContain("concurrent");
+      expect(runs[0]?.status).toBe("queued");
     });
 
-    it("should preserve retryStartedAt on subsequent retries", async () => {
+    it("should advance cron schedule normally even when run is queued", async () => {
       // 1. Set time to 8:00 AM
       context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
 
       // 2. Create and enable schedule for 9 AM
-      await createTestSchedule(testComposeId, "retry-preserve-test", {
+      await createTestSchedule(testComposeId, "queue-advance-test", {
         cronExpression: "0 9 * * *",
         prompt: "Daily task",
         timezone: "UTC",
       });
-      await enableTestSchedule(testComposeId, "retry-preserve-test");
+      await enableTestSchedule(testComposeId, "queue-advance-test");
 
       // 3. Create a blocking run
       await createTestRun(testComposeId, "Blocking run");
 
-      // 4. Advance to 9:01 AM and trigger first retry
+      // 4. Advance to 9:01 AM and execute cron
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
       await GET(authenticatedCronRequest());
 
-      // 5. Record the initial retryStartedAt
-      const firstSchedule = await getTestSchedule(
+      // 5. Verify schedule advanced to next day (no retry state)
+      const schedule = await getTestSchedule(
         testComposeId,
-        "retry-preserve-test",
+        "queue-advance-test",
       );
-      const initialRetryStartedAt = firstSchedule.retryStartedAt;
-      expect(initialRetryStartedAt).not.toBeNull();
-
-      // 6. Advance to 9:06 AM (5 minutes later - retry time)
-      context.mocks.date.setSystemTime(new Date("2025-01-15T09:06:00Z"));
-
-      // 7. Execute cron again (second retry attempt)
-      await GET(authenticatedCronRequest());
-
-      // 8. Verify retryStartedAt was preserved
-      const secondSchedule = await getTestSchedule(
-        testComposeId,
-        "retry-preserve-test",
-      );
-      expect(secondSchedule.retryStartedAt).toBe(initialRetryStartedAt);
-    });
-
-    it("should advance to next occurrence when retry window expires", async () => {
-      // 1. Set time to 8:00 AM
-      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
-
-      // 2. Create and enable schedule for 9 AM
-      await createTestSchedule(testComposeId, "retry-expire-test", {
-        cronExpression: "0 9 * * *",
-        prompt: "Daily task",
-        timezone: "UTC",
-      });
-      await enableTestSchedule(testComposeId, "retry-expire-test");
-
-      // 3. Create a blocking run
-      await createTestRun(testComposeId, "Blocking run");
-
-      // 4. Advance to 9:01 AM and trigger first retry
-      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
-      await GET(authenticatedCronRequest());
-
-      // Verify we're in retry state
-      const midSchedule = await getTestSchedule(
-        testComposeId,
-        "retry-expire-test",
-      );
-      expect(midSchedule.retryStartedAt).not.toBeNull();
-
-      // 5. Advance to 9:36 AM (35 minutes later - past 30-min retry window)
-      context.mocks.date.setSystemTime(new Date("2025-01-15T09:36:00Z"));
-
-      // 6. Execute cron - retry window should expire
-      await GET(authenticatedCronRequest());
-
-      // 7. Verify schedule advanced to next day (tomorrow 9 AM)
-      const finalSchedule = await getTestSchedule(
-        testComposeId,
-        "retry-expire-test",
-      );
-      expect(finalSchedule.retryStartedAt).toBeNull();
-      const nextRunAt = new Date(finalSchedule.nextRunAt!);
+      expect(schedule.retryStartedAt).toBeNull();
+      const nextRunAt = new Date(schedule.nextRunAt!);
       expect(nextRunAt.toISOString()).toBe("2025-01-16T09:00:00.000Z");
     });
 
-    it("should clear retryStartedAt on successful execution", async () => {
-      // 1. Set time to 8:00 AM
-      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
-
-      // 2. Create and enable schedule for 9 AM
-      await createTestSchedule(testComposeId, "retry-clear-test", {
-        cronExpression: "0 9 * * *",
-        prompt: "Daily task",
-        timezone: "UTC",
-      });
-      await enableTestSchedule(testComposeId, "retry-clear-test");
-
-      // 3. Create a blocking run
-      const { runId: blockingRunId } = await createTestRun(
-        testComposeId,
-        "Blocking run",
-      );
-
-      // 4. Advance to 9:01 AM and trigger first retry
-      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
-      await GET(authenticatedCronRequest());
-
-      // Verify we're in retry state
-      const midSchedule = await getTestSchedule(
-        testComposeId,
-        "retry-clear-test",
-      );
-      expect(midSchedule.retryStartedAt).not.toBeNull();
-
-      // 5. Complete the blocking run to free up concurrency
-      await completeTestRun(testUserId, blockingRunId);
-
-      // 6. Advance to 9:06 AM (retry time) and execute
-      context.mocks.date.setSystemTime(new Date("2025-01-15T09:06:00Z"));
-      await GET(authenticatedCronRequest());
-
-      // 7. Verify retryStartedAt was cleared and execution succeeded
-      const finalSchedule = await getTestSchedule(
-        testComposeId,
-        "retry-clear-test",
-      );
-      expect(finalSchedule.retryStartedAt).toBeNull();
-      expect(finalSchedule.lastRunAt).not.toBeNull();
-    });
-
-    it("should disable one-time schedule after retry window expires", async () => {
+    it("should disable one-time schedule after queued run", async () => {
       // 1. Set time to 8:00 AM
       context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
 
       // 2. Create and enable one-time schedule for 9:00 AM
-      await createTestSchedule(testComposeId, "onetime-retry-expire", {
+      await createTestSchedule(testComposeId, "onetime-queue-test", {
         atTime: "2025-01-15T09:00:00Z",
         prompt: "One-time task",
         timezone: "UTC",
       });
-      await enableTestSchedule(testComposeId, "onetime-retry-expire");
+      await enableTestSchedule(testComposeId, "onetime-queue-test");
 
       // 3. Create a blocking run
       await createTestRun(testComposeId, "Blocking run");
 
-      // 4. Advance to 9:01 AM and trigger first retry
+      // 4. Advance to 9:01 AM and execute cron
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
       await GET(authenticatedCronRequest());
 
-      // Verify we're in retry state
-      const midSchedule = await getTestSchedule(
+      // 5. Verify one-time schedule was disabled (run is queued, schedule advances)
+      const schedule = await getTestSchedule(
         testComposeId,
-        "onetime-retry-expire",
+        "onetime-queue-test",
       );
-      expect(midSchedule.retryStartedAt).not.toBeNull();
-      expect(midSchedule.enabled).toBe(true);
-
-      // 5. Advance to 9:36 AM (35 minutes later - past 30-min retry window)
-      context.mocks.date.setSystemTime(new Date("2025-01-15T09:36:00Z"));
-
-      // 6. Execute cron - retry window should expire
-      await GET(authenticatedCronRequest());
-
-      // 7. Verify one-time schedule was disabled
-      const finalSchedule = await getTestSchedule(
-        testComposeId,
-        "onetime-retry-expire",
-      );
-      expect(finalSchedule.enabled).toBe(false);
-      expect(finalSchedule.nextRunAt).toBeNull();
-      expect(finalSchedule.retryStartedAt).toBeNull();
+      expect(schedule.enabled).toBe(false);
+      expect(schedule.nextRunAt).toBeNull();
+      expect(schedule.retryStartedAt).toBeNull();
     });
   });
 });

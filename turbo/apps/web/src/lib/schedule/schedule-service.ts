@@ -14,13 +14,7 @@ import { agentRuns } from "../../db/schema/agent-run";
 import { connectors } from "../../db/schema/connector";
 import { scopes } from "../../db/schema/scope";
 import { decryptSecretsMap } from "../crypto";
-import {
-  notFound,
-  badRequest,
-  schedulePast,
-  isConcurrentRunLimit,
-  type ConcurrentRunLimitError,
-} from "../errors";
+import { notFound, badRequest, schedulePast } from "../errors";
 import { logger } from "../logger";
 import { createRun } from "../run/run-service";
 import { getSecretValues } from "../secret/secret-service";
@@ -29,10 +23,6 @@ import { getUserPreferences } from "../user/user-preferences-service";
 import { generateCallbackSecret, getApiUrl } from "../callback";
 
 const log = logger("service:schedule");
-
-// Retry configuration for concurrency failures
-const RETRY_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const MAX_RETRY_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 
 /**
  * Schedule data for API responses
@@ -68,7 +58,7 @@ export interface ScheduleResponse {
  */
 interface RunSummary {
   id: string;
-  status: "pending" | "running" | "completed" | "failed" | "timeout";
+  status: "queued" | "pending" | "running" | "completed" | "failed" | "timeout";
   createdAt: string;
   completedAt: string | null;
   error: string | null;
@@ -849,77 +839,6 @@ async function advanceScheduleState(
 }
 
 /**
- * Handle concurrency limit failure with retry logic.
- * Returns true if retry was scheduled (don't re-throw), false if should advance to next occurrence.
- */
-async function handleConcurrencyFailure(
-  schedule: typeof agentSchedules.$inferSelect,
-  compose: { userId: string; headVersionId: string; scopeId: string },
-  error: ConcurrentRunLimitError,
-): Promise<boolean> {
-  const now = new Date();
-
-  // Create failed run record
-  const [failedRun] = await globalThis.services.db
-    .insert(agentRuns)
-    .values({
-      userId: compose.userId,
-      scopeId: compose.scopeId,
-      agentComposeVersionId: compose.headVersionId,
-      scheduleId: schedule.id,
-      status: "failed",
-      prompt: schedule.prompt,
-      vars: schedule.vars,
-      error: error.message,
-      completedAt: now,
-      createdAt: now,
-    })
-    .returning();
-
-  // Determine retry window start (use existing or start new window)
-  const retryStartedAt = schedule.retryStartedAt ?? now;
-  const windowElapsed = now.getTime() - retryStartedAt.getTime();
-
-  if (windowElapsed < MAX_RETRY_WINDOW_MS) {
-    // Within retry window: schedule retry in 5 minutes
-    const nextRetryAt = new Date(now.getTime() + RETRY_INTERVAL_MS);
-
-    await globalThis.services.db
-      .update(agentSchedules)
-      .set({
-        lastRunId: failedRun?.id ?? schedule.lastRunId,
-        retryStartedAt,
-        nextRunAt: nextRetryAt,
-      })
-      .where(eq(agentSchedules.id, schedule.id));
-
-    log.debug(
-      `Schedule ${schedule.name} retry scheduled at ${nextRetryAt.toISOString()} ` +
-        `(${Math.round(windowElapsed / 60000)} min into retry window)`,
-    );
-
-    return true; // Retry scheduled, don't re-throw
-  }
-
-  // Retry window expired: clear state and advance to next occurrence
-  log.debug(
-    `Schedule ${schedule.name} retry window expired after ${Math.round(windowElapsed / 60000)} min`,
-  );
-
-  await advanceScheduleState(
-    schedule,
-    failedRun?.id ?? schedule.lastRunId ?? undefined,
-  );
-  log.debug(
-    schedule.cronExpression
-      ? `Cron schedule ${schedule.name} retry window expired`
-      : `One-time schedule ${schedule.name} retry window expired and disabled`,
-  );
-
-  return true; // Already handled, don't re-throw
-}
-
-/**
  * Execute a single schedule
  */
 async function executeSchedule(
@@ -1010,26 +929,7 @@ async function executeSchedule(
     });
     runId = result.runId;
   } catch (error) {
-    if (isConcurrentRunLimit(error)) {
-      log.debug(`Schedule ${schedule.name} blocked by concurrent run limit`);
-
-      const retryScheduled = await handleConcurrencyFailure(
-        schedule,
-        {
-          userId: compose.userId,
-          headVersionId: compose.headVersionId,
-          scopeId: compose.scopeId,
-        },
-        error,
-      );
-
-      if (retryScheduled) {
-        return; // Retry scheduled, don't continue
-      }
-      // Retry window expired — fall through to advance schedule to next occurrence
-    }
-
-    // Any failure (concurrency-expired or other): update schedule state
+    // Update schedule state (disable one-time, advance cron) on any failure
     await advanceScheduleState(schedule);
     log.debug(`Schedule ${schedule.name} (${schedule.triggerType}) failed`);
 
