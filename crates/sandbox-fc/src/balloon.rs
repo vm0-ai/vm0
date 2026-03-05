@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::Notify;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::api::ApiClient;
 
@@ -24,6 +24,9 @@ const MAX_INFLATE_PER_TICK_MIB: u32 = 256;
 const MIN_GUEST_MIB: u32 = 512;
 /// Poll interval for balloon stats.
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
+/// How often to emit status + host memory logs (in ticks).
+/// 12 ticks × 5s = 60s.
+const STATUS_INTERVAL_TICKS: u64 = 12;
 
 /// Spawn the balloon controller loop. Returns a `JoinHandle` that can be aborted.
 pub fn spawn(
@@ -45,11 +48,18 @@ async fn run_loop(api_sock: PathBuf, memory_mb: u32, crash_notify: Arc<Notify>) 
         return;
     }
     let mut interval = tokio::time::interval(POLL_INTERVAL);
+    let mut tick_count: u64 = 0;
 
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                tick(&client, max_inflate).await;
+                if tick_count.is_multiple_of(STATUS_INTERVAL_TICKS)
+                    && let Some((available_mib, total_mib)) = read_host_meminfo()
+                {
+                    info!(host_available_mib = available_mib, host_total_mib = total_mib, "host memory status");
+                }
+                tick(&client, max_inflate, tick_count).await;
+                tick_count += 1;
             }
             _ = crash_notify.notified() => {
                 debug!("balloon controller exiting: VM crashed");
@@ -75,7 +85,7 @@ async fn run_loop(api_sock: PathBuf, memory_mb: u32, crash_notify: Arc<Notify>) 
 /// - Inflate when `free_memory > TARGET_FREE + INFLATE_HYSTERESIS`
 /// - Deflate when `available_memory < TARGET_FREE - DEFLATE_HYSTERESIS`
 /// - No action in between to prevent oscillation
-async fn tick(client: &ApiClient<'_>, max_inflate: u32) {
+async fn tick(client: &ApiClient<'_>, max_inflate: u32, tick_count: u64) {
     let stats = match client.get_balloon_statistics().await {
         Ok(s) => s,
         Err(e) => {
@@ -85,38 +95,67 @@ async fn tick(client: &ApiClient<'_>, max_inflate: u32) {
     };
 
     let current = stats.actual_mib;
+    let free_mib = stats.free_memory.map(|b| b / (1024 * 1024));
+    let available_mib = stats.available_memory.map(|b| b / (1024 * 1024));
+
+    // Periodic status snapshot
+    if tick_count.is_multiple_of(STATUS_INTERVAL_TICKS) {
+        info!(
+            actual_mib = current,
+            free_mib = free_mib.unwrap_or(-1),
+            available_mib = available_mib.unwrap_or(-1),
+            max_inflate,
+            "balloon status"
+        );
+    }
 
     // Inflate decision: use free_memory (excludes reclaimable cache)
-    if let Some(free_bytes) = stats.free_memory {
-        let free_mib = free_bytes / (1024 * 1024);
-        if free_mib > TARGET_FREE_MIB + INFLATE_HYSTERESIS_MIB {
-            let reclaim = (free_mib - TARGET_FREE_MIB) as u32;
-            let reclaim = reclaim.min(MAX_INFLATE_PER_TICK_MIB);
-            let new_target = current.saturating_add(reclaim).min(max_inflate);
-            if new_target > current {
-                debug!(current, new_target, free_mib, "balloon inflate");
-                if let Err(e) = client.patch_balloon(new_target).await {
-                    warn!(error = %e, "balloon inflate failed");
-                }
+    if let Some(free_mib) = free_mib
+        && free_mib > TARGET_FREE_MIB + INFLATE_HYSTERESIS_MIB
+    {
+        let reclaim = (free_mib - TARGET_FREE_MIB) as u32;
+        let reclaim = reclaim.min(MAX_INFLATE_PER_TICK_MIB);
+        let new_target = current.saturating_add(reclaim).min(max_inflate);
+        if new_target > current {
+            info!(current, new_target, free_mib, "balloon inflate");
+            if let Err(e) = client.patch_balloon(new_target).await {
+                warn!(error = %e, "balloon inflate failed");
             }
-            return;
         }
+        return;
     }
 
     // Deflate decision: use available_memory (includes reclaimable cache)
-    if let Some(available_bytes) = stats.available_memory {
-        let available_mib = available_bytes / (1024 * 1024);
-        if available_mib < TARGET_FREE_MIB - DEFLATE_HYSTERESIS_MIB {
-            let deficit = (TARGET_FREE_MIB - available_mib) as u32;
-            let new_target = current.saturating_sub(deficit);
-            if new_target < current {
-                debug!(current, new_target, available_mib, "balloon deflate");
-                if let Err(e) = client.patch_balloon(new_target).await {
-                    warn!(error = %e, "balloon deflate failed");
-                }
+    if let Some(available_mib) = available_mib
+        && available_mib < TARGET_FREE_MIB - DEFLATE_HYSTERESIS_MIB
+    {
+        let deficit = (TARGET_FREE_MIB - available_mib) as u32;
+        let new_target = current.saturating_sub(deficit);
+        if new_target < current {
+            info!(current, new_target, available_mib, "balloon deflate");
+            if let Err(e) = client.patch_balloon(new_target).await {
+                warn!(error = %e, "balloon deflate failed");
             }
         }
     }
+}
+
+/// Read host memory info from /proc/meminfo. Returns (available_mib, total_mib).
+fn read_host_meminfo() -> Option<(u64, u64)> {
+    let content = std::fs::read_to_string("/proc/meminfo").ok()?;
+    let mut total_kb = 0u64;
+    let mut available_kb = 0u64;
+    for line in content.lines() {
+        if let Some(rest) = line.strip_prefix("MemTotal:") {
+            total_kb = rest.split_whitespace().next()?.parse().ok()?;
+        } else if let Some(rest) = line.strip_prefix("MemAvailable:") {
+            available_kb = rest.split_whitespace().next()?.parse().ok()?;
+        }
+    }
+    if total_kb == 0 {
+        return None;
+    }
+    Some((available_kb / 1024, total_kb / 1024))
 }
 
 #[cfg(test)]
@@ -172,7 +211,7 @@ mod tests {
         });
 
         let client = ApiClient::new(&sock_path);
-        tick(&client, max_inflate).await;
+        tick(&client, max_inflate, 0).await;
 
         server.await.unwrap()
     }
@@ -314,6 +353,6 @@ mod tests {
 
         let client = ApiClient::new(&sock_path);
         // Should not panic — just logs warning and returns.
-        tick(&client, 1536).await;
+        tick(&client, 1536, 0).await;
     }
 }
