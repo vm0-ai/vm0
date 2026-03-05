@@ -157,6 +157,7 @@ export async function GET(request: Request) {
   const isAdmin = installation.adminUserId === userId;
 
   return NextResponse.json({
+    installationId: installation.id,
     bot: {
       id: installation.telegramBotId,
       username: installation.botUsername,

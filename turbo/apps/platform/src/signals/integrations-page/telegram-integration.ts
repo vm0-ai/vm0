@@ -7,6 +7,7 @@ import { logger } from "../log.ts";
 const L = logger("TelegramIntegration");
 
 interface TelegramIntegrationData {
+  installationId: string;
   bot: { id: string; username: string };
   agent: { id: string; name: string; scopeSlug: string } | null;
   isAdmin: boolean;
@@ -152,6 +153,31 @@ export const updateTelegramDefaultAgent$ = command(
     }
   },
 );
+
+export const linkTelegramAccount$ = command(async ({ get, set }) => {
+  const data = get(telegramIntegrationState$).data;
+  if (!data) {
+    return;
+  }
+
+  const fetchFn = get(fetch$);
+  const response = await fetchFn("/api/integrations/telegram/link", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ installationId: data.installationId }),
+  });
+
+  if (!response.ok) {
+    const err = (await response.json()) as { error?: { message?: string } };
+    toast.error(err.error?.message ?? "Failed to link account");
+    return;
+  }
+
+  toast.success("Account linked successfully");
+
+  // Refresh integration data to clear needsLink banner
+  await set(fetchTelegramIntegration$);
+});
 
 export const disconnectTelegram$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
