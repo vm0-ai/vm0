@@ -39,6 +39,8 @@ import {
   submitRunDialog$,
   runDialogTimezone$,
   setRunDialogTimezone$,
+  runDialogIntervalSeconds$,
+  setRunDialogIntervalSeconds$,
 } from "../../../signals/agent-detail/run-dialog.ts";
 import { agentSchedule$ } from "../../../signals/agent-detail/schedule.ts";
 import {
@@ -73,6 +75,8 @@ export function RunDialog() {
   const submit = useSet(submitRunDialog$);
   const timezone = useGet(runDialogTimezone$);
   const setTimezone = useSet(setRunDialogTimezone$);
+  const intervalSeconds = useGet(runDialogIntervalSeconds$);
+  const setIntervalSeconds = useSet(setRunDialogIntervalSeconds$);
   const schedule = useGet(agentSchedule$);
 
   const weekdays = [
@@ -103,7 +107,8 @@ export function RunDialog() {
   const hasSchedule = schedule !== null;
   const isSchedule = timeOption !== "now";
   const isOnce = timeOption === "once";
-  const isRecurring = isSchedule && !isOnce;
+  const isLoop = timeOption === "loop";
+  const isRecurring = isSchedule && !isOnce && !isLoop;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && close()}>
@@ -145,6 +150,7 @@ export function RunDialog() {
                     <SelectItem value="every-day">Every day</SelectItem>
                     <SelectItem value="every-week">Every week</SelectItem>
                     <SelectItem value="every-month">Every month</SelectItem>
+                    <SelectItem value="loop">Loop</SelectItem>
                   </>
                 )}
               </SelectContent>
@@ -205,7 +211,33 @@ export function RunDialog() {
             </div>
           )}
 
-          {isSchedule && (
+          {isLoop && (
+            <div className="flex flex-col gap-3">
+              <label className="text-sm font-medium text-foreground px-1">
+                Interval (seconds)
+              </label>
+              <div className="flex items-center gap-2">
+                <IconClock
+                  size={16}
+                  className="text-muted-foreground shrink-0"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  value={intervalSeconds}
+                  onChange={(e) => setIntervalSeconds(e.target.value)}
+                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="300"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground px-1">
+                Time between the end of one run and the start of the next. Use 0
+                for immediate restart.
+              </p>
+            </div>
+          )}
+
+          {isSchedule && !isLoop && (
             <div className="flex flex-col gap-3">
               <label className="text-sm font-medium text-foreground px-1">
                 {isOnce ? "Time" : "Frequency"}

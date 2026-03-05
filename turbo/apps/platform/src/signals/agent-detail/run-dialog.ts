@@ -42,7 +42,7 @@ export const setRunDialogPrompt$ = command(({ set }, value: string) => {
   set(internalPrompt$, value);
 });
 
-type TimeOption = "now" | "once" | CronTimeOption;
+type TimeOption = "now" | "once" | "loop" | CronTimeOption;
 
 const internalTimeOption$ = state<TimeOption>("now");
 export const runDialogTimeOption$ = computed((get) => get(internalTimeOption$));
@@ -51,6 +51,7 @@ function isTimeOption(v: string): v is TimeOption {
   return (
     v === "now" ||
     v === "once" ||
+    v === "loop" ||
     v === "every-weekday" ||
     v === "every-day" ||
     v === "every-week" ||
@@ -112,6 +113,18 @@ export const setRunDialogTimezone$ = command(({ set }, value: string) => {
   set(internalTimezone$, value);
 });
 
+// Interval seconds for "loop" schedule
+const internalIntervalSeconds$ = state("300");
+export const runDialogIntervalSeconds$ = computed((get) =>
+  get(internalIntervalSeconds$),
+);
+
+export const setRunDialogIntervalSeconds$ = command(
+  ({ set }, value: string) => {
+    set(internalIntervalSeconds$, value);
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Saving state
 // ---------------------------------------------------------------------------
@@ -138,6 +151,7 @@ export const openRunDialog$ = command(async ({ get, set }) => {
   set(internalDayOfWeek$, "1");
   set(internalDayOfMonth$, "1");
   set(internalDate$, getTomorrowDateLocal());
+  set(internalIntervalSeconds$, "300");
   set(internalSaveError$, null);
 
   // Default timezone from user preferences, fallback to browser
@@ -155,6 +169,63 @@ export const openRunDialog$ = command(async ({ get, set }) => {
 export const closeRunDialog$ = command(({ set }) => {
   set(internalOpen$, false);
 });
+
+// ---------------------------------------------------------------------------
+// Schedule body builder
+// ---------------------------------------------------------------------------
+
+interface ScheduleFields {
+  composeId: string;
+  prompt: string;
+  timeOption: Exclude<TimeOption, "now">;
+  timezone: string;
+  frequency: string;
+  minute: string;
+  dayOfWeek: string;
+  dayOfMonth: string;
+  date: string;
+  intervalSeconds: string;
+}
+
+function buildScheduleBody(
+  fields: ScheduleFields,
+): ScheduleBody | { error: string } {
+  const base = {
+    composeId: fields.composeId,
+    name: "default" as const,
+    timezone: fields.timezone,
+    prompt: fields.prompt,
+  };
+
+  if (fields.timeOption === "once") {
+    if (isAtTimePast(fields.date, fields.frequency, fields.minute)) {
+      return { error: "Scheduled time must be in the future" };
+    }
+    return {
+      ...base,
+      atTime: buildAtTime(fields.date, fields.frequency, fields.minute),
+    };
+  }
+
+  if (fields.timeOption === "loop") {
+    const seconds = Number.parseInt(fields.intervalSeconds, 10);
+    if (Number.isNaN(seconds) || seconds < 0) {
+      return { error: "Interval must be a non-negative number" };
+    }
+    return { ...base, intervalSeconds: seconds };
+  }
+
+  return {
+    ...base,
+    cronExpression: buildCronExpression({
+      timeOption: fields.timeOption,
+      hour: fields.frequency,
+      minute: fields.minute,
+      dayOfWeek: fields.dayOfWeek,
+      dayOfMonth: fields.dayOfMonth,
+    }),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Submit — immediate run or schedule creation
@@ -220,41 +291,27 @@ export const submitRunDialog$ = command(async ({ get, set }) => {
       return;
     }
 
-    // Schedule creation (recurring or one-time)
-    const timezone = get(internalTimezone$);
-    let scheduleBody: ScheduleBody;
+    // Schedule creation (recurring, loop, or one-time)
+    const result = buildScheduleBody({
+      composeId: detail.id,
+      prompt: prompt.trim(),
+      timeOption,
+      timezone: get(internalTimezone$),
+      frequency,
+      minute,
+      dayOfWeek,
+      dayOfMonth,
+      date: get(internalDate$),
+      intervalSeconds: get(internalIntervalSeconds$),
+    });
 
-    if (timeOption === "once") {
-      const date = get(internalDate$);
-      if (isAtTimePast(date, frequency, minute)) {
-        set(internalSaveError$, "Scheduled time must be in the future");
-        set(internalSaving$, false);
-        return;
-      }
-      const atTime = buildAtTime(date, frequency, minute);
-      scheduleBody = {
-        composeId: detail.id,
-        name: "default",
-        atTime,
-        timezone,
-        prompt: prompt.trim(),
-      };
-    } else {
-      const cronExpression = buildCronExpression({
-        timeOption,
-        hour: frequency,
-        minute,
-        dayOfWeek,
-        dayOfMonth,
-      });
-      scheduleBody = {
-        composeId: detail.id,
-        name: "default",
-        cronExpression,
-        timezone,
-        prompt: prompt.trim(),
-      };
+    if ("error" in result) {
+      set(internalSaveError$, result.error);
+      set(internalSaving$, false);
+      return;
     }
+
+    const scheduleBody = result;
 
     const response = await fetchFn("/api/agent/schedules", {
       method: "POST",
