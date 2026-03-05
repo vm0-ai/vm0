@@ -51,27 +51,25 @@ export async function GET(request: Request) {
   const vm0UserId = url.searchParams.get("vm0UserId");
   const composeId = url.searchParams.get("composeId");
 
-  // Fast path: if a local installation record already exists, just
-  // create the user link — no GitHub API call needed.
-  if (vm0UserId) {
-    const redirectUrl = await tryLinkFromLocalRecord(vm0UserId);
-    if (redirectUrl) {
-      return NextResponse.redirect(redirectUrl);
-    }
-  }
-
-  // Slow path: check GitHub API for existing installations that are
-  // missing from our DB (e.g. installed before we had this code).
   if (GITHUB_APP_ID && GITHUB_APP_PRIVATE_KEY && vm0UserId) {
-    const redirectUrl = await tryLinkFromGitHubApi(
+    // Fast path: if a local installation record already exists, just
+    // create the user link — no GitHub API call needed.
+    const localRedirect = await tryLinkFromLocalRecord(vm0UserId);
+    if (localRedirect) {
+      return NextResponse.redirect(localRedirect);
+    }
+
+    // Slow path: check GitHub API for existing installations that are
+    // missing from our DB (e.g. installed before we had this code).
+    const apiRedirect = await tryLinkFromGitHubApi(
       GITHUB_APP_ID,
       GITHUB_APP_PRIVATE_KEY,
       SECRETS_ENCRYPTION_KEY,
       vm0UserId,
       composeId,
     );
-    if (redirectUrl) {
-      return NextResponse.redirect(redirectUrl);
+    if (apiRedirect) {
+      return NextResponse.redirect(apiRedirect);
     }
   }
 
