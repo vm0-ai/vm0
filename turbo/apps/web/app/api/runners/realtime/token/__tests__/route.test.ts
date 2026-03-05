@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { NextRequest } from "next/server";
 import { POST } from "../route";
 import {
   createTestRequest,
@@ -42,7 +43,7 @@ const OFFICIAL_RUNNER_SECRET =
 function makeRequest(
   body: Record<string, unknown>,
   authorization?: string,
-): Request {
+): NextRequest {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
