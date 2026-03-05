@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.7.0...sandbox-fc-v0.8.0) (2026-03-05)
+
+
+### Features
+
+* **sandbox-fc:** enable balloon stats and add runtime balloon api ([#3694](https://github.com/vm0-ai/vm0/issues/3694)) ([b5918d6](https://github.com/vm0-ai/vm0/commit/b5918d6e7f7c82f79693b725bad2b5c547016655)), closes [#3688](https://github.com/vm0-ai/vm0/issues/3688)
+* **sandbox-fc:** enable virtio-balloon with deflate_on_oom as safety net ([#3679](https://github.com/vm0-ai/vm0/issues/3679)) ([2ce2b62](https://github.com/vm0-ai/vm0/commit/2ce2b62c991a9e4bc077438630eb21267b618dc2)), closes [#3666](https://github.com/vm0-ai/vm0/issues/3666)
+
 ## [0.7.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.6.7...sandbox-fc-v0.7.0) (2026-03-03)
 
 

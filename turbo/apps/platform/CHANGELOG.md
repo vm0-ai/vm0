@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.85.0](https://github.com/vm0-ai/vm0/compare/platform-v0.84.2...platform-v0.85.0) (2026-03-05)
+
+
+### Features
+
+* **platform:** add zero app with shell, pages and polish ([#3685](https://github.com/vm0-ai/vm0/issues/3685)) ([e9fb699](https://github.com/vm0-ai/vm0/commit/e9fb6993961727e3b7f0c1b01f24045c26589df4))
+* **telegram:** improve UX with bot commands and deep links ([#3695](https://github.com/vm0-ai/vm0/issues/3695)) ([9e15219](https://github.com/vm0-ai/vm0/commit/9e15219abbb0fe3f6e7a78a5b975a82e7fb94912))
+
+
+### Bug Fixes
+
+* **platform:** add user- prefix to default scope slug generation ([#3693](https://github.com/vm0-ai/vm0/issues/3693)) ([8d529bc](https://github.com/vm0-ai/vm0/commit/8d529bcb75218e4d6c8165d7157f597488ac8e6c)), closes [#3691](https://github.com/vm0-ai/vm0/issues/3691)
+
 ## [0.84.2](https://github.com/vm0-ai/vm0/compare/platform-v0.84.1...platform-v0.84.2) (2026-03-05)
 
 

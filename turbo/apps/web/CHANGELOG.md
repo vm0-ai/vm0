@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.75.0](https://github.com/vm0-ai/vm0/compare/web-v12.74.0...web-v12.75.0) (2026-03-05)
+
+
+### Features
+
+* **telegram:** add emoji branding, deep links, session reuse, and /new_session command ([#3678](https://github.com/vm0-ai/vm0/issues/3678)) ([a1cf9ca](https://github.com/vm0-ai/vm0/commit/a1cf9ca9ae8c19ede9d3fe3a2a606aa0ac25467d))
+* **telegram:** improve UX with bot commands and deep links ([#3695](https://github.com/vm0-ai/vm0/issues/3695)) ([9e15219](https://github.com/vm0-ai/vm0/commit/9e15219abbb0fe3f6e7a78a5b975a82e7fb94912))
+* **web:** route [@vm0](https://github.com/vm0).ai users to runner for domain-based rollout ([#3690](https://github.com/vm0-ai/vm0/issues/3690)) ([978f115](https://github.com/vm0-ai/vm0/commit/978f1153a41bb0672d730b4e7e27624663cac5bf))
+
+
+### Bug Fixes
+
+* **email:** preserve cc recipients when bot is sole to recipient ([#3677](https://github.com/vm0-ai/vm0/issues/3677)) ([94f6ec2](https://github.com/vm0-ai/vm0/commit/94f6ec28f46b33fc9467a8589746f19debbb1f48)), closes [#3675](https://github.com/vm0-ai/vm0/issues/3675)
+* **slack:** extract rich text content from blocks instead of lossy text fallback ([#3689](https://github.com/vm0-ai/vm0/issues/3689)) ([e2ad7b6](https://github.com/vm0-ai/vm0/commit/e2ad7b6aa33d35798b9c384e524ac07dd431fbf5))
+
 ## [12.74.0](https://github.com/vm0-ai/vm0/compare/web-v12.73.0...web-v12.74.0) (2026-03-05)
 
 
