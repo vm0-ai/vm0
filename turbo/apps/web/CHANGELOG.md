@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.71.0](https://github.com/vm0-ai/vm0/compare/web-v12.70.0...web-v12.71.0) (2026-03-05)
+
+
+### Features
+
+* unify scope types with scope_members table (Phase 1+2) ([#3592](https://github.com/vm0-ai/vm0/issues/3592)) ([60bb170](https://github.com/vm0-ai/vm0/commit/60bb1709832dfe7337ffa419702ce524c06441ed))
+
+
+### Bug Fixes
+
+* **email:** add sender verification to email reply handler ([#3663](https://github.com/vm0-ai/vm0/issues/3663)) ([fe96d10](https://github.com/vm0-ai/vm0/commit/fe96d1086e451d8e84e7f0e9580016f90112f529))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.35.0
+
 ## [12.70.0](https://github.com/vm0-ai/vm0/compare/web-v12.69.4...web-v12.70.0) (2026-03-04)
 
 

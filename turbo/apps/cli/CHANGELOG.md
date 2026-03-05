@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.45.0](https://github.com/vm0-ai/vm0/compare/cli-v9.44.0...cli-v9.45.0) (2026-03-05)
+
+
+### Features
+
+* unify scope types with scope_members table (Phase 1+2) ([#3592](https://github.com/vm0-ai/vm0/issues/3592)) ([60bb170](https://github.com/vm0-ai/vm0/commit/60bb1709832dfe7337ffa419702ce524c06441ed))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.35.0
+
 ## [9.44.0](https://github.com/vm0-ai/vm0/compare/cli-v9.43.2...cli-v9.44.0) (2026-03-04)
 
 

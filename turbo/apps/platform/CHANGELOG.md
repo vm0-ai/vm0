@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.83.0](https://github.com/vm0-ai/vm0/compare/platform-v0.82.0...platform-v0.83.0) (2026-03-05)
+
+
+### Features
+
+* unify scope types with scope_members table (Phase 1+2) ([#3592](https://github.com/vm0-ai/vm0/issues/3592)) ([60bb170](https://github.com/vm0-ai/vm0/commit/60bb1709832dfe7337ffa419702ce524c06441ed))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.35.0
+
 ## [0.82.0](https://github.com/vm0-ai/vm0/compare/platform-v0.81.0...platform-v0.82.0) (2026-03-04)
 
 

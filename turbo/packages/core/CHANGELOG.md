@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.35.0](https://github.com/vm0-ai/vm0/compare/core-v8.34.0...core-v8.35.0) (2026-03-05)
+
+
+### Features
+
+* unify scope types with scope_members table (Phase 1+2) ([#3592](https://github.com/vm0-ai/vm0/issues/3592)) ([60bb170](https://github.com/vm0-ai/vm0/commit/60bb1709832dfe7337ffa419702ce524c06441ed))
+
 ## [8.34.0](https://github.com/vm0-ai/vm0/compare/core-v8.33.0...core-v8.34.0) (2026-03-04)
 
 
