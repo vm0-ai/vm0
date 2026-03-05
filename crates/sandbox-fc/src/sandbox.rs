@@ -258,6 +258,27 @@ impl FirecrackerSandbox {
                 })?;
         }
 
+        // Verify sock dir exists before spawning — if this fails, we know
+        // the directory was never created or was removed before spawn.
+        let api_sock = self.sock_paths.api_sock();
+        let sock_dir = self.sock_paths.dir();
+        let sock_dir_exists = tokio::fs::try_exists(sock_dir).await.unwrap_or(false);
+        if !sock_dir_exists {
+            return Err(SandboxError::StartFailed(format!(
+                "sock dir missing before spawn: {}",
+                sock_dir.display()
+            )));
+        }
+        info!(
+            id = %self.id,
+            api_sock = %api_sock.display(),
+            sock_dir = %sock_dir.display(),
+            overlay = %self.overlay.display(),
+            netns = %self.network.name,
+            binary = %self.factory_config.binary_path.display(),
+            "spawning firecracker (snapshot restore)"
+        );
+
         // Use positional args ($1..$8) to avoid shell injection from paths.
         let inner_cmd = r#"mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" sudo -u "$6" "$7" --api-sock "$8""#;
 
@@ -270,7 +291,7 @@ impl FirecrackerSandbox {
             .arg(&self.network.name) // $5
             .arg(&username) // $6
             .arg(&self.factory_config.binary_path) // $7
-            .arg(self.sock_paths.api_sock()) // $8
+            .arg(&api_sock) // $8
             .current_dir(self.sandbox_paths.workspace())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -288,15 +309,28 @@ impl FirecrackerSandbox {
             Arc::clone(&self.crash_notify),
         );
         self.process = Some(child);
-        info!(id = %self.id, "firecracker started (snapshot restore)");
 
-        // Wait for Firecracker API to be ready.
-        let api_sock = self.sock_paths.api_sock();
+        // Wait for Firecracker API to be ready, but bail early if the
+        // process crashes before the socket appears.
         let client = crate::api::ApiClient::new(&api_sock);
-        client
-            .wait_for_ready(API_READY_TIMEOUT)
-            .await
-            .map_err(|e| SandboxError::StartFailed(format!("API not ready: {e}")))?;
+        let crash = Arc::clone(&self.crash_notify);
+        tokio::select! {
+            result = client.wait_for_ready(API_READY_TIMEOUT) => {
+                result.map_err(|e| {
+                    let sock_dir_after = sock_dir.exists();
+                    SandboxError::StartFailed(format!(
+                        "API not ready: {e} (api_sock={}, sock_dir_exists_after={sock_dir_after})",
+                        api_sock.display()
+                    ))
+                })?;
+            }
+            () = crash.notified() => {
+                return Err(SandboxError::StartFailed(format!(
+                    "firecracker process exited before API became ready (api_sock={})",
+                    api_sock.display()
+                )));
+            }
+        }
 
         // Load snapshot and resume VM.
         let snapshot_str = snapshot.snapshot_path.display().to_string();
