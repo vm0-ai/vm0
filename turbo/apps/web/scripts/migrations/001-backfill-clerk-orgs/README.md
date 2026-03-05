@@ -42,17 +42,13 @@ DATABASE_URL="..." CLERK_SECRET_KEY="..." tsx scripts/migrations/001-backfill-cl
 
 # Actual run
 DATABASE_URL="..." CLERK_SECRET_KEY="..." tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts
-
-# Custom batch size
-DATABASE_URL="..." CLERK_SECRET_KEY="..." tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts --batch-size=50
 ```
 
 ## Options
 
-| Flag           | Default | Description                                  |
-| -------------- | ------- | -------------------------------------------- |
-| `--dry-run`    | `false` | Preview without DB writes or Clerk API calls |
-| `--batch-size` | `100`   | Number of scopes to fetch per query          |
+| Flag        | Default | Description                                  |
+| ----------- | ------- | -------------------------------------------- |
+| `--dry-run` | `false` | Preview without DB writes or Clerk API calls |
 
 ## How It Works
 

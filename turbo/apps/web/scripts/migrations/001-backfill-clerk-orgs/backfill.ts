@@ -8,7 +8,7 @@
  * back to the row. After this completes, Phase 3 can add a NOT NULL constraint.
  *
  * Usage:
- *   tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts [--dry-run] [--batch-size=100]
+ *   tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts [--dry-run]
  *
  * Environment:
  *   DATABASE_URL        — Required
@@ -46,18 +46,11 @@ interface Stats {
 const { values: args } = parseArgs({
   options: {
     "dry-run": { type: "boolean", default: false },
-    "batch-size": { type: "string", default: "100" },
   },
   strict: true,
 });
 
 const DRY_RUN = args["dry-run"] ?? false;
-const BATCH_SIZE = Number(args["batch-size"]);
-
-if (!Number.isFinite(BATCH_SIZE) || BATCH_SIZE < 1) {
-  console.error("--batch-size must be a positive integer");
-  process.exit(1);
-}
 
 // ---------------------------------------------------------------------------
 // Clerk helpers
@@ -182,8 +175,7 @@ async function main() {
   }
 
   console.log("=== Backfill Clerk Organization IDs ===");
-  console.log(`Dry run:    ${DRY_RUN}`);
-  console.log(`Batch size: ${BATCH_SIZE}`);
+  console.log(`Dry run: ${DRY_RUN}`);
   console.log();
 
   const { createClerkClient } = await import("@clerk/backend");
@@ -219,6 +211,14 @@ async function main() {
       const idx = `[${i + 1}/${total}]`;
 
       try {
+        if (DRY_RUN) {
+          console.log(
+            `${idx} (dry-run) scope "${scope.slug}" — would create Clerk org`,
+          );
+          stats.success++;
+          continue;
+        }
+
         const orgId = await createClerkOrg(
           clerkClient,
           scope.slug,
@@ -226,23 +226,18 @@ async function main() {
         );
         await sleep(THROTTLE_MS);
 
-        if (DRY_RUN) {
-          console.log(`${idx} (dry-run) scope "${scope.slug}" → ${orgId}`);
+        const result = await db
+          .update(scopes)
+          .set({ clerkOrgId: orgId, updatedAt: sql`NOW()` })
+          .where(eq(scopes.id, scope.id))
+          .returning({ id: scopes.id });
+
+        if (result.length > 0) {
+          console.log(`${idx} ✓ scope "${scope.slug}" → ${orgId}`);
           stats.success++;
         } else {
-          const result = await db
-            .update(scopes)
-            .set({ clerkOrgId: orgId, updatedAt: new Date() })
-            .where(eq(scopes.id, scope.id))
-            .returning({ id: scopes.id });
-
-          if (result.length > 0) {
-            console.log(`${idx} ✓ scope "${scope.slug}" → ${orgId}`);
-            stats.success++;
-          } else {
-            console.log(`${idx} ⊘ scope "${scope.slug}" — already processed`);
-            stats.skipped++;
-          }
+          console.log(`${idx} ⊘ scope "${scope.slug}" — already processed`);
+          stats.skipped++;
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
