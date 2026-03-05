@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.77.0](https://github.com/vm0-ai/vm0/compare/web-v12.76.0...web-v12.77.0) (2026-03-05)
+
+
+### Features
+
+* **docs:** add 12 new skill pages and fix naming inconsistencies ([#3740](https://github.com/vm0-ai/vm0/issues/3740)) ([0e1e0ef](https://github.com/vm0-ai/vm0/commit/0e1e0ef5d01359fc1963d75cdf54929b1e23d64b))
+* **docusign:** add pkce support and expand oauth scopes ([#3725](https://github.com/vm0-ai/vm0/issues/3725)) ([8aa15f3](https://github.com/vm0-ai/vm0/commit/8aa15f3e39c34c7c2486386ab00a25bbc7fdb1f1))
+* **github:** add issue context, reactions, and session validation to handler ([#3713](https://github.com/vm0-ai/vm0/issues/3713)) ([9b27b2a](https://github.com/vm0-ai/vm0/commit/9b27b2a2760fa7a35f5e4c34ef0fe1a3b291af19))
+* **monday:** add monday.com oauth connector ([#3753](https://github.com/vm0-ai/vm0/issues/3753)) ([8bdf5fb](https://github.com/vm0-ai/vm0/commit/8bdf5fb29edb1f309d692ee6f5d5fe0c74634ca5))
+* scope unification phase 3 — constraints, cleanup, and token simplification ([#3719](https://github.com/vm0-ai/vm0/issues/3719)) ([9ecbb1b](https://github.com/vm0-ai/vm0/commit/9ecbb1b1addfb855b0ac17fe45508bddd483485f))
+
+
+### Bug Fixes
+
+* remove email-reply-parser to preserve forwarded email content ([#3754](https://github.com/vm0-ai/vm0/issues/3754)) ([0d9233c](https://github.com/vm0-ai/vm0/commit/0d9233ce74b7dc22bab359bd362ccf6b6983f621))
+* replace non-english characters with english in source code ([#3757](https://github.com/vm0-ai/vm0/issues/3757)) ([b5d6b38](https://github.com/vm0-ai/vm0/commit/b5d6b38fe2cdba0cbd34df85f612cf2267a27734))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.38.0
+
 ## [12.76.0](https://github.com/vm0-ai/vm0/compare/web-v12.75.0...web-v12.76.0) (2026-03-05)
 
 

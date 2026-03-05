@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.87.0](https://github.com/vm0-ai/vm0/compare/platform-v0.86.0...platform-v0.87.0) (2026-03-05)
+
+
+### Features
+
+* **monday:** add monday.com oauth connector ([#3753](https://github.com/vm0-ai/vm0/issues/3753)) ([8bdf5fb](https://github.com/vm0-ai/vm0/commit/8bdf5fb29edb1f309d692ee6f5d5fe0c74634ca5))
+
+
+### Bug Fixes
+
+* replace non-english characters with english in source code ([#3757](https://github.com/vm0-ai/vm0/issues/3757)) ([b5d6b38](https://github.com/vm0-ai/vm0/commit/b5d6b38fe2cdba0cbd34df85f612cf2267a27734))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.38.0
+
 ## [0.86.0](https://github.com/vm0-ai/vm0/compare/platform-v0.85.0...platform-v0.86.0) (2026-03-05)
 
 

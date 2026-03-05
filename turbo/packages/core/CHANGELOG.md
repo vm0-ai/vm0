@@ -1,5 +1,15 @@
 # Changelog
 
+## [8.38.0](https://github.com/vm0-ai/vm0/compare/core-v8.37.0...core-v8.38.0) (2026-03-05)
+
+
+### Features
+
+* **docusign:** add pkce support and expand oauth scopes ([#3725](https://github.com/vm0-ai/vm0/issues/3725)) ([8aa15f3](https://github.com/vm0-ai/vm0/commit/8aa15f3e39c34c7c2486386ab00a25bbc7fdb1f1))
+* **monday:** add monday.com oauth connector ([#3753](https://github.com/vm0-ai/vm0/issues/3753)) ([8bdf5fb](https://github.com/vm0-ai/vm0/commit/8bdf5fb29edb1f309d692ee6f5d5fe0c74634ca5))
+* scope unification phase 3 — constraints, cleanup, and token simplification ([#3719](https://github.com/vm0-ai/vm0/issues/3719)) ([9ecbb1b](https://github.com/vm0-ai/vm0/commit/9ecbb1b1addfb855b0ac17fe45508bddd483485f))
+* **xero:** add xero oauth connector and remove feature switch ([#3717](https://github.com/vm0-ai/vm0/issues/3717)) ([8fb5fec](https://github.com/vm0-ai/vm0/commit/8fb5fecb58c9776a3900a3678939c8ca2ab40442))
+
 ## [8.37.0](https://github.com/vm0-ai/vm0/compare/core-v8.36.0...core-v8.37.0) (2026-03-05)
 
 

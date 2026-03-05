@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.46.0](https://github.com/vm0-ai/vm0/compare/cli-v9.45.2...cli-v9.46.0) (2026-03-05)
+
+
+### Features
+
+* scope unification phase 3 — constraints, cleanup, and token simplification ([#3719](https://github.com/vm0-ai/vm0/issues/3719)) ([9ecbb1b](https://github.com/vm0-ai/vm0/commit/9ecbb1b1addfb855b0ac17fe45508bddd483485f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.38.0
+
 ## [9.45.2](https://github.com/vm0-ai/vm0/compare/cli-v9.45.1...cli-v9.45.2) (2026-03-05)
 
 

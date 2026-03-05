@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.9.0...sandbox-fc-v0.10.0) (2026-03-05)
+
+
+### Features
+
+* **runner:** balloon reclaim with per-tick inflate cap and full ci test ([#3711](https://github.com/vm0-ai/vm0/issues/3711)) ([7f7efc2](https://github.com/vm0-ai/vm0/commit/7f7efc2f845686899c62ce20cbf992cc9cc5c7df))
+
 ## [0.9.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.8.0...sandbox-fc-v0.9.0) (2026-03-05)
 
 
