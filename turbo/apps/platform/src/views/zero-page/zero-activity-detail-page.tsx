@@ -1,82 +1,160 @@
-import { useCCState } from "ccstate-react/experimental";
-import { useGet, useSet, useLoadable } from "ccstate-react";
-import {
-  IconArrowLeft,
-  IconSearch,
-  IconLoader2,
-  IconDownload,
-} from "@tabler/icons-react";
+import { useState } from "react";
+import { IconArrowLeft, IconSearch, IconDownload } from "@tabler/icons-react";
 import { Button, Input } from "@vm0/ui";
-import type { LogStatus, AgentEvent } from "../../signals/logs-page/types.ts";
+import type { LogStatus } from "../../signals/logs-page/types.ts";
 import { StatusBadge } from "../logs-page/status-badge.tsx";
-import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
-import {
-  zeroActivityDetail$,
-  zeroActivityEvents$,
-  formatLogTime,
-  formatDuration,
-} from "../../signals/zero-page/zero-activity.ts";
-import {
-  groupEventsIntoMessages,
-  groupedMessageMatchesSearch,
-} from "../logs-page/log-detail/utils.ts";
-import { GroupedMessageCard } from "../logs-page/components/grouped-message-card.tsx";
 import { StatusDot } from "../logs-page/components/status-dot.tsx";
-import { Markdown } from "../components/markdown.tsx";
+import type { ActivityItem } from "./zero-activity-types.ts";
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+type StepVariant = "neutral" | "todo" | "success";
+
+interface StepItem {
+  id: string;
+  type:
+    | "prompt"
+    | "initialize"
+    | "todo"
+    | "skill"
+    | "bash"
+    | "read"
+    | "message";
+  content: string;
+  variant: StepVariant;
+  time?: string;
+}
+
+const MOCK_STEPS: StepItem[] = [
+  {
+    id: "1",
+    type: "prompt",
+    content:
+      "Scan Hacker News for trending AI stories, summarize the top 5, and post the d...",
+    variant: "neutral",
+    time: "08:30:04",
+  },
+  {
+    id: "2",
+    type: "initialize",
+    content: "18 tools 5 agents > 10 commands",
+    variant: "neutral",
+    time: "08:30:05",
+  },
+  {
+    id: "3",
+    type: "message",
+    content:
+      "I'll help you create a daily digest of trending AI stories from Hacker News and post it to Slack. Let me break this down into steps....",
+    variant: "neutral",
+    time: "08:30:06",
+  },
+  {
+    id: "4",
+    type: "todo",
+    content: "Fetch top stories from Hacker News API [0/5]",
+    variant: "todo",
+    time: "08:30:07",
+  },
+  {
+    id: "5",
+    type: "message",
+    content: "Now let me fetch the top stories from Hacker News.",
+    variant: "neutral",
+    time: "08:30:08",
+  },
+  {
+    id: "6",
+    type: "skill",
+    content: "hackernews",
+    variant: "success",
+    time: "08:30:09",
+  },
+  {
+    id: "7",
+    type: "bash",
+    content: `bash -c 'curl -s "https://hacker-news.firebaseio.com/v0/t...`,
+    variant: "success",
+    time: "08:30:10",
+  },
+  {
+    id: "8",
+    type: "read",
+    content: "/tmp/all_stories.json",
+    variant: "success",
+    time: "08:30:11",
+  },
+  {
+    id: "9",
+    type: "bash",
+    content: `cat /tmp/all_stories.json | jq '.[0:10] | [] | {id, titl...`,
+    variant: "success",
+    time: "08:30:12",
+  },
+  {
+    id: "10",
+    type: "message",
+    content:
+      "Let me try a different approach to fetch the stories more reliably.",
+    variant: "neutral",
+    time: "08:30:15",
+  },
+  {
+    id: "11",
+    type: "message",
+    content: "Let me read more to see the actual story data.",
+    variant: "neutral",
+    time: "08:30:18",
+  },
+  {
+    id: "12",
+    type: "message",
+    content:
+      "Now let me filter for AI-related stories by checking titles, URLs, and fetching more details.",
+    variant: "neutral",
+    time: "08:30:22",
+  },
+  {
+    id: "13",
+    type: "bash",
+    content: "5 calls",
+    variant: "success",
+    time: "08:31:32",
+  },
+];
+
+function toLogStatus(status: ActivityItem["status"]): LogStatus {
+  const map: Record<ActivityItem["status"], LogStatus> = {
+    success: "completed",
+    error: "failed",
+    warning: "timeout",
+  };
+  return map[status];
+}
 
 interface ZeroActivityDetailPageProps {
+  item: ActivityItem;
   onBack: () => void;
 }
 
+function stepMatchesSearch(step: StepItem, term: string): boolean {
+  const t = term.toLowerCase();
+  return (
+    step.content.toLowerCase().includes(t) ||
+    (step.type !== "message" && step.type.toLowerCase().includes(t))
+  );
+}
+
 export function ZeroActivityDetailPage({
+  item,
   onBack,
 }: ZeroActivityDetailPageProps) {
-  const agentNameLoadable = useLoadable(agentDisplayName$);
-  const agentName =
-    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-
-  const detailLoadable = useLoadable(zeroActivityDetail$);
-  const eventsLoadable = useLoadable(zeroActivityEvents$);
-
-  const stepSearch$ = useCCState("");
-  const stepSearch = useGet(stepSearch$);
-  const setStepSearch = useSet(stepSearch$);
-
-  const detail =
-    detailLoadable.state === "hasData" ? detailLoadable.data : null;
-  const events: AgentEvent[] =
-    eventsLoadable.state === "hasData" ? eventsLoadable.data : [];
-
-  const allMessages = groupEventsIntoMessages(events);
-
-  // Filter out text-only assistant messages right before result (redundant)
-  const visibleMessages = allMessages.filter((message, index) => {
-    if (message.type !== "assistant") {
-      return true;
-    }
-    const nextMessage = allMessages[index + 1];
-    if (!nextMessage || nextMessage.type !== "result") {
-      return true;
-    }
-    const hasTools =
-      message.toolOperations && message.toolOperations.length > 0;
-    return hasTools;
-  });
-
-  const messages = visibleMessages.filter((m) =>
-    groupedMessageMatchesSearch(m, stepSearch.trim()),
+  const [stepSearch, setStepSearch] = useState("");
+  const steps = MOCK_STEPS.filter(
+    (s) => !stepSearch.trim() || stepMatchesSearch(s, stepSearch.trim()),
   );
 
-  const prompt = detail?.prompt ?? "";
-  const status: LogStatus = detail?.status ?? "running";
-  const time = detail ? formatLogTime(detail.createdAt) : "";
-  const duration = detail
-    ? formatDuration(detail.startedAt, detail.completedAt)
-    : undefined;
+  const typeLabel = item.type === "zero" ? "Zero" : "Workflow";
+  const totalCountDisplay = `${MOCK_STEPS.length}`;
+
   return (
     <div className="h-full flex flex-col min-h-0">
       <div className="flex-1 flex flex-col min-h-0 overflow-auto">
@@ -94,11 +172,11 @@ export function ZeroActivityDetailPage({
           </div>
         </header>
         <div className="max-w-[900px] w-full mx-auto px-4 sm:px-6 pb-8">
-          {/* Compact header card */}
-          <div className="zero-card shrink-0 px-4 py-3">
+          {/* Compact header card: title + meta with labels and short dividers */}
+          <div className="shrink-0 rounded-xl border border-border bg-card px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
             <div className="flex flex-wrap items-center gap-y-2">
               <h2 className="text-base font-semibold tracking-tight text-foreground truncate min-w-0 pr-3">
-                {agentName}
+                {item.title}
               </h2>
               <span
                 className="w-px h-3.5 shrink-0 bg-border self-center"
@@ -107,7 +185,15 @@ export function ZeroActivityDetailPage({
               <div className="flex flex-wrap items-center gap-x-0 text-sm">
                 <div className="flex items-center gap-1.5 pl-3 pr-3">
                   <span className="text-muted-foreground shrink-0">Status</span>
-                  <StatusBadge status={status} zeroStyle />
+                  <StatusBadge status={toLogStatus(item.status)} />
+                </div>
+                <span
+                  className="w-px h-3.5 shrink-0 bg-border self-center"
+                  aria-hidden
+                />
+                <div className="flex items-center gap-1.5 pl-3 pr-3">
+                  <span className="text-muted-foreground shrink-0">Type</span>
+                  <span className="text-foreground truncate">{typeLabel}</span>
                 </div>
                 <span
                   className="w-px h-3.5 shrink-0 bg-border self-center"
@@ -118,7 +204,7 @@ export function ZeroActivityDetailPage({
                     Duration
                   </span>
                   <span className="text-foreground whitespace-nowrap">
-                    {duration ?? "—"}
+                    {item.duration ?? "—"}
                   </span>
                 </div>
                 <span
@@ -128,7 +214,7 @@ export function ZeroActivityDetailPage({
                 <div className="flex items-center gap-1.5 pl-3 pr-3">
                   <span className="text-muted-foreground shrink-0">Time</span>
                   <span className="text-foreground whitespace-nowrap">
-                    {time}
+                    {item.time}
                   </span>
                 </div>
               </div>
@@ -137,17 +223,11 @@ export function ZeroActivityDetailPage({
                 variant="ghost"
                 size="sm"
                 className="h-8 shrink-0 gap-1 rounded-md text-sm text-muted-foreground hover:text-foreground ml-auto"
-                onClick={() => downloadCsv(events, detail?.id ?? "activity")}
               >
                 <IconDownload size={14} stroke={1.5} />
                 Download
               </Button>
             </div>
-            {detail?.error && status === "failed" && (
-              <div className="mt-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {detail.error}
-              </div>
-            )}
           </div>
 
           {/* Steps section */}
@@ -160,12 +240,12 @@ export function ZeroActivityDetailPage({
                   </span>
                   <span className="text-sm text-muted-foreground whitespace-nowrap">
                     {stepSearch.trim()
-                      ? `(${messages.length}/${visibleMessages.length} matched)`
-                      : `${visibleMessages.length} total`}
+                      ? `(${steps.length}/${MOCK_STEPS.length} matched)`
+                      : `${totalCountDisplay} total`}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="zero-search-input relative flex h-9 flex-1 sm:flex-none items-center rounded-lg border transition-colors focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10">
+                  <div className="relative flex h-9 flex-1 sm:flex-none items-center rounded-lg border border-border bg-card transition-colors focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10">
                     <div className="pl-2">
                       <IconSearch className="h-4 w-4 text-muted-foreground" />
                     </div>
@@ -180,122 +260,55 @@ export function ZeroActivityDetailPage({
               </div>
 
               <div>
-                {prompt.trim().length > 0 && (
-                  <PromptCard
-                    prompt={prompt}
-                    showConnector={messages.length > 0}
-                  />
-                )}
-                {eventsLoadable.state === "loading" && events.length === 0 ? (
-                  <div className="flex justify-center py-8">
-                    <IconLoader2
-                      size={20}
-                      stroke={1.5}
-                      className="animate-spin text-muted-foreground"
-                    />
-                  </div>
-                ) : messages.length === 0 && prompt.trim().length === 0 ? (
+                {steps.length === 0 ? (
                   <div className="py-8 text-center text-muted-foreground">
                     No events available
                   </div>
                 ) : (
-                  messages.map((message, index) => (
-                    <GroupedMessageCard
-                      key={`${message.type}-${message.sequenceNumber}-${message.createdAt}`}
-                      message={message}
-                      searchTerm={stepSearch}
-                      showConnector={index < messages.length - 1}
-                    />
-                  ))
+                  steps.map((step, index) => {
+                    const showConnector = index < steps.length - 1;
+                    const hasLabel = step.type !== "message";
+                    const typeLabel =
+                      step.type.charAt(0).toUpperCase() + step.type.slice(1);
+                    return (
+                      <div key={step.id} className="py-2 relative">
+                        {showConnector && (
+                          <div
+                            className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
+                            aria-hidden="true"
+                          />
+                        )}
+                        <div className="flex gap-2 items-center relative min-w-0">
+                          <StatusDot variant={step.variant} />
+                          {hasLabel && (
+                            <span className="font-semibold text-sm text-foreground shrink-0">
+                              {typeLabel}
+                            </span>
+                          )}
+                          <span className="text-sm text-foreground min-w-0 truncate">
+                            {step.content}
+                          </span>
+                          <span className="flex-1 shrink min-w-0" />
+                          {step.time !== undefined && (
+                            <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+                              {step.time}
+                            </span>
+                          )}
+                        </div>
+                        {step.time !== undefined && (
+                          <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+                            {step.time}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function escapeCsvField(value: string): string {
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
-}
-
-function downloadCsv(events: AgentEvent[], logId: string) {
-  const header = "sequenceNumber,eventType,eventData,createdAt";
-  const rows = events.map((e) =>
-    [
-      String(e.sequenceNumber),
-      escapeCsvField(e.eventType),
-      escapeCsvField(JSON.stringify(e.eventData)),
-      escapeCsvField(e.createdAt),
-    ].join(","),
-  );
-  const csv = [header, ...rows].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${logId}-logs.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function summarizePrompt(prompt: string): string {
-  const lines = prompt.split("\n");
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i].trim();
-    if (
-      line.length > 0 &&
-      !line.startsWith("#") &&
-      !line.startsWith("---") &&
-      !line.startsWith("- ") &&
-      !line.startsWith("[file]")
-    ) {
-      return line.length > 80 ? `${line.slice(0, 77)}...` : line;
-    }
-  }
-  const first = lines.find((l) => l.trim().length > 0)?.trim() ?? "";
-  return first.length > 80 ? `${first.slice(0, 77)}...` : first;
-}
-
-function PromptCard({
-  prompt,
-  showConnector,
-}: {
-  prompt: string;
-  showConnector: boolean;
-}) {
-  const summary = summarizePrompt(prompt);
-
-  return (
-    <div className="relative">
-      {showConnector && (
-        <div
-          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
-          aria-hidden="true"
-        />
-      )}
-      <details className="group relative py-2">
-        <summary className="cursor-pointer list-none">
-          <div className="flex gap-2 items-center">
-            <StatusDot variant="neutral" />
-            <span className="font-semibold text-sm text-foreground shrink-0">
-              Prompt
-            </span>
-            <span className="text-sm text-muted-foreground truncate">
-              {summary}
-            </span>
-          </div>
-        </summary>
-        <div className="absolute left-[2px] top-[2.25rem] bottom-0 w-[1px] bg-border/70 group-open:block hidden" />
-        <div className="ml-[18px] mt-2">
-          <Markdown source={prompt} />
-        </div>
-      </details>
     </div>
   );
 }

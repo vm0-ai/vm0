@@ -1,60 +1,64 @@
-import { useCCState } from "ccstate-react/experimental";
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useState } from "react";
 import {
   IconSearch,
   IconSettings,
+  IconMail,
   IconCircleCheck,
   IconDotsVertical,
 } from "@tabler/icons-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  Button,
-  Input,
-} from "@vm0/ui";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@vm0/ui/components/ui/popover";
-import { ZeroSlackConfigContent } from "./zero-slack-config-content";
-import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import { Button, Input } from "@vm0/ui";
+import githubIcon from "../settings-page/icons/github.svg";
+import telegramIcon from "../settings-page/icons/telegram.svg";
 
-const CONNECTED_TOOLS: readonly Readonly<{
+const CONNECTED_TOOLS: {
   id: string;
   name: string;
   description: string;
-}>[] = [
+  icon: "slack" | "email" | "github" | "telegram";
+}[] = [
   {
     id: "slack",
     name: "Slack",
     description: "Team communication and collaboration",
+    icon: "slack",
+  },
+  {
+    id: "email",
+    name: "Email",
+    description: "Connect your email for notifications",
+    icon: "email",
+  },
+  {
+    id: "github",
+    name: "GitHub",
+    description: "Repositories, issues, and pull requests",
+    icon: "github",
+  },
+  {
+    id: "telegram",
+    name: "Telegram",
+    description: "Chat with Zero in Telegram",
+    icon: "telegram",
   },
 ];
 
 export function ZeroWorksPage() {
-  const agentNameLoadable = useLoadable(agentDisplayName$);
-  const agentName =
-    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-  const search$ = useCCState("");
-  const search = useGet(search$);
-  const setSearch = useSet(search$);
-  const slackConfigOpen$ = useCCState(false);
-  const slackConfigOpen = useGet(slackConfigOpen$);
-  const setSlackConfigOpen = useSet(slackConfigOpen$);
+  const [search, setSearch] = useState("");
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
         <div className="mx-auto max-w-[900px]">
-          <h1 className="text-lg font-semibold tracking-tight text-foreground">
-            Where {agentName} works
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+            Where Zero works
           </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Connect with {agentName} through these channels
+          <p className="mt-1 text-sm text-muted-foreground">
+            Connect with Zero through these channels
           </p>
           <div className="mt-4 relative">
             <IconSearch
@@ -66,7 +70,7 @@ export function ZeroWorksPage() {
               placeholder="Search tools..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="zero-search-input pl-9 h-9 rounded-lg border"
+              className="pl-9 h-9 rounded-lg bg-muted/40 border-border/70"
             />
           </div>
         </div>
@@ -77,10 +81,25 @@ export function ZeroWorksPage() {
           {CONNECTED_TOOLS.map((tool) => (
             <div
               key={tool.id}
-              className="zero-card flex items-center gap-4 p-4"
+              className="flex items-center gap-4 rounded-xl border border-border bg-card p-4"
             >
               <div className="shrink-0">
-                <img src="/slack-icon.svg" alt="" className="h-7 w-7" />
+                {tool.icon === "slack" && (
+                  <img src="/slack-icon.svg" alt="" className="h-7 w-7" />
+                )}
+                {tool.icon === "email" && (
+                  <IconMail
+                    size={28}
+                    stroke={1.5}
+                    className="text-muted-foreground"
+                  />
+                )}
+                {tool.icon === "github" && (
+                  <img src={githubIcon} alt="" className="h-7 w-7" />
+                )}
+                {tool.icon === "telegram" && (
+                  <img src={telegramIcon} alt="" className="h-7 w-7" />
+                )}
               </div>
               <div className="flex flex-1 flex-col gap-1 min-w-0">
                 <div className="text-sm font-medium text-foreground">
@@ -90,15 +109,16 @@ export function ZeroWorksPage() {
                   {tool.description}
                 </div>
               </div>
-              <span className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-                <IconCircleCheck className="h-3 w-3 text-green-600" />
-                Connected
-              </span>
+              {tool.icon !== "email" && (
+                <span className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+                  <IconCircleCheck className="h-3 w-3 text-green-600" />
+                  Connected
+                </span>
+              )}
               <Button
                 variant="outline"
                 size="sm"
                 className="h-8 shrink-0 gap-1.5 rounded-lg"
-                onClick={() => tool.id === "slack" && setSlackConfigOpen(true)}
               >
                 <IconSettings size={14} stroke={1.5} />
                 Configure
@@ -129,22 +149,6 @@ export function ZeroWorksPage() {
           ))}
         </div>
       </main>
-
-      <Dialog open={slackConfigOpen} onOpenChange={setSlackConfigOpen}>
-        <DialogContent className="max-w-[600px] max-h-[90vh] flex flex-col p-0 gap-0">
-          <DialogHeader className="shrink-0 px-6 pt-6 pb-4">
-            <DialogTitle>VM0 in Slack</DialogTitle>
-            <DialogDescription>
-              Configure your settings how to run VM0 in Slack Workspace.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
-            <ZeroSlackConfigContent
-              onAfterDisconnect={() => setSlackConfigOpen(false)}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -1,11 +1,12 @@
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useState } from "react";
 import {
+  IconSearch,
   IconFilter,
   IconClock,
   IconChevronRight,
-  IconLoader2,
 } from "@tabler/icons-react";
 import {
+  Input,
   Select,
   SelectContent,
   SelectItem,
@@ -13,87 +14,128 @@ import {
   SelectValue,
   cn,
 } from "@vm0/ui";
-import type { LogEntry } from "../../signals/logs-page/types.ts";
+import type { LogStatus } from "../../signals/logs-page/types.ts";
 import { StatusBadge } from "../logs-page/status-badge.tsx";
-import { Pagination } from "../components/pagination.tsx";
 import { ZeroActivityDetailPage } from "./zero-activity-detail-page.tsx";
-import {
-  zeroActivityAgentFilter$,
-  zeroActivityStatusFilter$,
-  zeroActivityOrgAgents$,
-  setZeroActivityFilter$,
-  zeroActivityData$,
-  zeroActivityLimit$,
-  zeroActivityHasPrev$,
-  zeroActivityCurrentPage$,
-  syncZeroActivitySub$,
-  goToNextZeroActivityPage$,
-  goToPrevZeroActivityPage$,
-  goForwardTwoZeroActivityPages$,
-  goBackTwoZeroActivityPages$,
-  setZeroActivityRowsPerPage$,
-  formatLogTime,
-  formatDuration,
-} from "../../signals/zero-page/zero-activity.ts";
-import { zeroTabSub$ } from "../../signals/zero-page/zero-nav.ts";
-import { updatePathname$ } from "../../signals/route.ts";
-import { Reason, detach } from "../../signals/utils.ts";
+import type {
+  ActivityItem,
+  ActivityStatus,
+  ActivityType,
+} from "./zero-activity-types.ts";
 
-const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
-  { value: "all", label: "All Status" },
-  { value: "completed", label: "Completed" },
-  { value: "failed", label: "Failed" },
-  { value: "running", label: "Running" },
-  { value: "timeout", label: "Timeout" },
-  { value: "cancelled", label: "Cancelled" },
+const ACTIVITIES: ActivityItem[] = [
+  {
+    id: "1",
+    title: "Zero Agent",
+    type: "zero",
+    status: "success",
+    duration: "2.3s",
+    time: "02:56 PM",
+  },
+  {
+    id: "2",
+    title: "Code Review Reminder",
+    type: "workflow",
+    status: "error",
+    time: "02:46 PM",
+  },
+  {
+    id: "3",
+    title: "Zero Agent",
+    type: "zero",
+    status: "warning",
+    duration: "5.6s",
+    time: "02:36 PM",
+  },
+  {
+    id: "4",
+    title: "Slack Message Sync",
+    type: "workflow",
+    status: "success",
+    duration: "3.2s",
+    time: "02:06 PM",
+  },
 ];
 
+const TYPE_OPTIONS: { value: "all" | ActivityType; label: string }[] = [
+  { value: "all", label: "All Types" },
+  { value: "zero", label: "Zero" },
+  { value: "workflow", label: "Workflow" },
+];
+
+const STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: "all", label: "All Status" },
+  { value: "success", label: "Success" },
+  { value: "error", label: "Error" },
+  { value: "warning", label: "Warning" },
+];
+
+function rowAccentClass(status: ActivityStatus): string {
+  const map = {
+    success: "border-l-emerald-400 dark:border-l-emerald-500",
+    error: "border-l-rose-400 dark:border-l-rose-500",
+    warning: "border-l-amber-400 dark:border-l-amber-500",
+  };
+  return map[status];
+}
+
+function toLogStatus(status: ActivityStatus): LogStatus {
+  const map: Record<ActivityStatus, LogStatus> = {
+    success: "completed",
+    error: "failed",
+    warning: "timeout",
+  };
+  return map[status];
+}
+
 const ROW_GRID =
-  "grid grid-cols-[1fr_1fr_8rem_5rem_2.5rem] gap-x-6 items-center";
+  "grid grid-cols-[5rem_1fr_1fr_1fr_1fr_2.5rem] gap-x-6 items-center";
 
 function ActivityRow({
-  entry,
+  item,
   onSelect,
-  agentName = "Zero",
 }: {
-  entry: LogEntry;
-  onSelect: (id: string) => void;
-  agentName?: string;
+  item: ActivityItem;
+  onSelect: (item: ActivityItem) => void;
 }) {
-  const time = formatLogTime(entry.createdAt);
+  const typeLabel = item.type === "zero" ? "Zero" : "Workflow";
+
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => onSelect(entry.id)}
+      onClick={() => onSelect(item)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
-          onSelect(entry.id);
+          onSelect(item);
         }
       }}
-      className="py-3 rounded-r-sm transition-colors hover:bg-muted/20 cursor-pointer"
+      className={cn(
+        "border-l-2 pl-5 py-3 rounded-r-sm transition-colors hover:bg-muted/20 cursor-pointer",
+        rowAccentClass(item.status),
+      )}
     >
       <div className={cn(ROW_GRID)}>
+        <div className="text-left text-sm text-muted-foreground tabular-nums">
+          {item.time}
+        </div>
         <div className="min-w-0 truncate text-left text-sm text-foreground">
-          {agentName}
+          {item.title}
+        </div>
+        <div className="text-left text-sm text-muted-foreground">
+          {typeLabel}
         </div>
         <div className="text-left">
-          <StatusBadge status={entry.status} zeroStyle />
+          <StatusBadge status={toLogStatus(item.status)} />
         </div>
         <div className="text-left text-sm text-muted-foreground tabular-nums">
-          {time}
-        </div>
-        <div className="text-left text-sm text-muted-foreground tabular-nums">
-          {entry.status === "running" ? (
-            <span className="inline-flex items-center gap-1">
-              <IconLoader2 size={12} stroke={1.5} className="animate-spin" />
-              Running
-            </span>
-          ) : (
+          {item.duration ? (
             <span className="inline-flex items-center gap-0.5">
               <IconClock size={12} stroke={1.5} />
-              {formatDuration(entry.startedAt, entry.completedAt) ?? "—"}
+              {item.duration}
             </span>
+          ) : (
+            "—"
           )}
         </div>
         <div>
@@ -101,7 +143,7 @@ function ActivityRow({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onSelect(entry.id);
+              onSelect(item);
             }}
             className="rounded p-1 text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors"
             aria-label="View details"
@@ -115,53 +157,31 @@ function ActivityRow({
 }
 
 export function ZeroActivityPage() {
-  const dataLoadable = useLoadable(zeroActivityData$);
-  const hasPrev = useGet(zeroActivityHasPrev$);
-  const currentPage = useGet(zeroActivityCurrentPage$);
-  const rowsPerPage = useGet(zeroActivityLimit$);
-  const navigate = useSet(updatePathname$);
-  const goToNext = useSet(goToNextZeroActivityPage$);
-  const goToPrev = useSet(goToPrevZeroActivityPage$);
-  const goForwardTwo = useSet(goForwardTwoZeroActivityPages$);
-  const goBackTwo = useSet(goBackTwoZeroActivityPages$);
-  const setRowsPerPage = useSet(setZeroActivityRowsPerPage$);
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedItem, setSelectedItem] = useState<ActivityItem | null>(null);
 
-  // URL-driven detail: /zero/activity/:logId
-  const sub = useGet(zeroTabSub$);
-  const syncSub = useSet(syncZeroActivitySub$);
-  syncSub();
+  const filtered = ACTIVITIES.filter((item) => {
+    const matchSearch =
+      !search.trim() ||
+      item.title.toLowerCase().includes(search.trim().toLowerCase());
+    const matchType = typeFilter === "all" || item.type === typeFilter;
+    const matchStatus = statusFilter === "all" || item.status === statusFilter;
+    return matchSearch && matchType && matchStatus;
+  });
 
-  const agentFilter = useGet(zeroActivityAgentFilter$);
-  const statusFilter = useGet(zeroActivityStatusFilter$);
-  const setFilter = useSet(setZeroActivityFilter$);
-  const orgAgents = useGet(zeroActivityOrgAgents$);
-
-  const logs = dataLoadable.state === "hasData" ? dataLoadable.data.data : [];
-  const hasNext =
-    dataLoadable.state === "hasData" && dataLoadable.data.pagination.hasMore;
-  const totalPages =
-    dataLoadable.state === "hasData"
-      ? dataLoadable.data.pagination.totalPages
-      : undefined;
-  const isLoading = dataLoadable.state === "loading";
-
-  // Build name → displayName lookup from org agents
-  const nameToDisplay = new Map(orgAgents.map((a) => [a.name, a.displayName]));
-
-  // Agent filter options: show display names, map back to compose name
-  const agentOptions = [
-    { value: "all", label: "All Agents" },
-    ...orgAgents.map((a) => ({ value: a.name, label: a.displayName })),
-  ];
-
-  // Detail view when sub-route is present
-  if (sub) {
-    return <ZeroActivityDetailPage onBack={() => navigate("/zero/activity")} />;
+  if (selectedItem) {
+    return (
+      <ZeroActivityDetailPage
+        item={selectedItem}
+        onBack={() => setSelectedItem(null)}
+      />
+    );
   }
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
-      {/* Fixed header: title + filters */}
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
         <div className="mx-auto max-w-[900px]">
           <div>
@@ -169,123 +189,93 @@ export function ZeroActivityPage() {
               Activity
             </h1>
             <p className="text-sm text-muted-foreground">
-              Logs and runs from your agents.
+              Logs and runs from Zero and your workflows.
             </p>
           </div>
 
-          <div className="mt-4 flex items-center gap-3">
-            <Select
-              value={agentFilter}
-              onValueChange={(v) => setFilter("agent", v)}
-            >
-              <SelectTrigger className="h-9 w-[140px] gap-2 rounded-lg bg-muted/40 border-border/70">
-                <IconFilter
-                  size={14}
-                  stroke={1.5}
-                  className="shrink-0 text-muted-foreground"
-                />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {agentOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={statusFilter}
-              onValueChange={(v) => setFilter("status", v)}
-            >
-              <SelectTrigger className="h-9 w-[140px] gap-2 rounded-lg bg-muted/40 border-border/70">
-                <IconFilter
-                  size={14}
-                  stroke={1.5}
-                  className="shrink-0 text-muted-foreground"
-                />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            <div className="relative flex-1">
+              <IconSearch
+                className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                size={16}
+                stroke={1.5}
+              />
+              <Input
+                placeholder="Search logs..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 h-9 rounded-lg bg-muted/40 border-border/70"
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="h-9 w-[140px] gap-2 rounded-lg bg-muted/40 border-border/70">
+                  <IconFilter
+                    size={14}
+                    stroke={1.5}
+                    className="shrink-0 text-muted-foreground"
+                  />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TYPE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="h-9 w-[140px] gap-2 rounded-lg bg-muted/40 border-border/70">
+                  <IconFilter
+                    size={14}
+                    stroke={1.5}
+                    className="shrink-0 text-muted-foreground"
+                  />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Scrollable table area */}
-      <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6">
+      <main className="flex-1 overflow-auto px-4 sm:px-6 pt-2 pb-8">
         <div className="mx-auto max-w-[900px]">
-          {(logs.length > 0 || isLoading) && (
-            <div
-              className={cn(
-                ROW_GRID,
-                "sticky top-0 z-10 py-2 pb-1.5 border-b text-sm font-medium text-muted-foreground backdrop-blur-md bg-background/60",
-              )}
-            >
-              <div className="text-left">Agent</div>
-              <div className="text-left">Status</div>
-              <div className="text-left">Start Time</div>
-              <div className="text-left">Duration</div>
-              <div />
+          {filtered.length > 0 && (
+            <div className="border-l-2 border-l-transparent pl-5">
+              <div
+                className={cn(
+                  ROW_GRID,
+                  "py-2 pb-1.5 border-b border-divider text-sm font-medium text-muted-foreground",
+                )}
+              >
+                <div className="text-left">Time</div>
+                <div className="text-left">Title</div>
+                <div className="text-left">Type</div>
+                <div className="text-left">Status</div>
+                <div className="text-left">Duration</div>
+                <div />
+              </div>
             </div>
           )}
-          {isLoading ? (
-            <div className="flex items-center justify-center min-h-[20rem]">
-              <IconLoader2
-                size={20}
-                stroke={1.5}
-                className="animate-spin text-muted-foreground"
-              />
-            </div>
-          ) : logs.length === 0 ? (
-            <div className="flex items-center justify-center min-h-[20rem]">
-              <p className="text-sm text-muted-foreground">
-                {agentFilter === "all" && statusFilter === "all"
-                  ? "No activity found."
-                  : "No activity matches your filters."}
-              </p>
-            </div>
-          ) : (
-            logs.map((entry) => (
-              <ActivityRow
-                key={entry.id}
-                entry={entry}
-                onSelect={(id) => navigate(`/zero/activity/${id}`)}
-                agentName={
-                  nameToDisplay.get(entry.agentName) ?? entry.agentName
-                }
-              />
-            ))
+          {filtered.map((item) => (
+            <ActivityRow key={item.id} item={item} onSelect={setSelectedItem} />
+          ))}
+          {filtered.length === 0 && (
+            <p className="text-sm text-muted-foreground py-8 text-center">
+              No activity matches your filters.
+            </p>
           )}
         </div>
-      </div>
-
-      {/* Fixed pagination footer */}
-      <div className="shrink-0 px-4 sm:px-6 py-4">
-        <div className="mx-auto max-w-[900px]">
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            rowsPerPage={rowsPerPage}
-            hasNext={hasNext}
-            hasPrev={hasPrev}
-            isLoading={isLoading}
-            labelClassName="font-normal text-muted-foreground"
-            buttonClassName="bg-transparent border-border/70"
-            onNextPage={() => detach(goToNext(), Reason.DomCallback)}
-            onPrevPage={() => goToPrev()}
-            onForwardTwoPages={() => detach(goForwardTwo(), Reason.DomCallback)}
-            onBackTwoPages={() => goBackTwo()}
-            onRowsPerPageChange={(limit) => setRowsPerPage(limit)}
-          />
-        </div>
-      </div>
+      </main>
     </div>
   );
 }

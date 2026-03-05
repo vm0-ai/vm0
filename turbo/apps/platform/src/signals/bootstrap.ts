@@ -17,7 +17,7 @@ import { setupAgentDetailPage$ } from "./agent-detail/agent-detail-page.ts";
 import { setupAgentLogsPage$ } from "./agent-detail/agent-logs-page.ts";
 import { setupAgentLogDetailPage$ } from "./agent-detail/agent-log-detail-page.ts";
 import { setupAgentConnectionsPage$ } from "./agent-detail/agent-connections-page.ts";
-import { hasOrg$ } from "./org.ts";
+import { hasScope$ } from "./scope.ts";
 import { logger } from "./log.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
@@ -29,7 +29,6 @@ import { setupProviderSetupPage$ } from "./provider-setup/provider-setup-page.ts
 import { setupSlackConnectPage$ } from "./slack-connect/slack-connect-page.ts";
 import { setupSlackConnectSuccessPage$ } from "./slack-connect/slack-connect-success-page.ts";
 import { setupZeroPage$ } from "./zero-page/zero-page.ts";
-import { setupSelectOrgPage$ } from "./select-org/select-org-page.ts";
 import { setupTelegramSettingsPage$ } from "./integrations-page/telegram-settings-page.ts";
 import { setupTelegramConnectPage$ } from "./telegram-connect/telegram-connect-page.ts";
 import { setupTelegramConnectSuccessPage$ } from "./telegram-connect/telegram-connect-success-page.ts";
@@ -42,36 +41,20 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupHomePage$),
   },
   {
-    path: "/select-org",
-    setup: setupAuthPageWrapper(setupSelectOrgPage$),
-  },
-  {
-    path: "/zero/chat/:sessionId",
-    setup: setupAuthPageWrapper(setupZeroPage$),
-  },
-  {
-    path: "/zero/:tab/:sub",
-    setup: setupAuthPageWrapper(setupZeroPage$),
-  },
-  {
-    path: "/zero/:tab",
-    setup: setupAuthPageWrapper(setupZeroPage$),
-  },
-  {
     path: "/zero",
     setup: setupAuthPageWrapper(setupZeroPage$),
   },
   {
     path: "/logs",
-    setup: setupOrgRequiredPageWrapper(setupLogsPage$),
+    setup: setupScopeRequiredPageWrapper(setupLogsPage$),
   },
   {
     path: "/logs/:id",
-    setup: setupOrgRequiredPageWrapper(setupLogDetailPage$),
+    setup: setupScopeRequiredPageWrapper(setupLogDetailPage$),
   },
   {
     path: "/settings",
-    setup: setupOrgRequiredPageWrapper(setupSettingsPage$),
+    setup: setupScopeRequiredPageWrapper(setupSettingsPage$),
   },
   {
     path: "/preferences",
@@ -79,19 +62,19 @@ const ROUTE_CONFIG = [
   },
   {
     path: "/agents/:name/logs/:id",
-    setup: setupOrgRequiredPageWrapper(setupAgentLogDetailPage$),
+    setup: setupScopeRequiredPageWrapper(setupAgentLogDetailPage$),
   },
   {
     path: "/agents/:name/logs",
-    setup: setupOrgRequiredPageWrapper(setupAgentLogsPage$),
+    setup: setupScopeRequiredPageWrapper(setupAgentLogsPage$),
   },
   {
     path: "/agents/:name/connections",
-    setup: setupOrgRequiredPageWrapper(setupAgentConnectionsPage$),
+    setup: setupScopeRequiredPageWrapper(setupAgentConnectionsPage$),
   },
   {
     path: "/agents/:name",
-    setup: setupOrgRequiredPageWrapper(setupAgentDetailPage$),
+    setup: setupScopeRequiredPageWrapper(setupAgentDetailPage$),
   },
   {
     path: "/agents",
@@ -99,15 +82,15 @@ const ROUTE_CONFIG = [
   },
   {
     path: "/settings/slack",
-    setup: setupOrgRequiredPageWrapper(setupSlackSettingsPage$),
+    setup: setupScopeRequiredPageWrapper(setupSlackSettingsPage$),
   },
   {
     path: "/settings/github",
-    setup: setupOrgRequiredPageWrapper(setupGitHubSettingsPage$),
+    setup: setupScopeRequiredPageWrapper(setupGitHubSettingsPage$),
   },
   {
     path: "/environment-variables-setup",
-    setup: setupOrgRequiredPageWrapper(setupEnvironmentVariablesSetupPage$),
+    setup: setupScopeRequiredPageWrapper(setupEnvironmentVariablesSetupPage$),
   },
   {
     path: "/provider-setup",
@@ -123,7 +106,7 @@ const ROUTE_CONFIG = [
   },
   {
     path: "/settings/telegram",
-    setup: setupOrgRequiredPageWrapper(setupTelegramSettingsPage$),
+    setup: setupScopeRequiredPageWrapper(setupTelegramSettingsPage$),
   },
   {
     path: "/telegram/connect",
@@ -160,25 +143,25 @@ export const bootstrap$ = command(
   },
 );
 
-function setupOrgRequiredPageWrapper(
+function setupScopeRequiredPageWrapper(
   fn: Command<Promise<void> | void, [AbortSignal]>,
 ) {
   return setupAuthPageWrapper(
     command(async ({ get, set }, signal: AbortSignal) => {
-      L.debug("enter setupOrgRequiredPageWrapper");
+      L.debug("enter setupScopeRequiredPageWrapper");
 
       // First, immediately render the page to provide instant visual feedback
       // The page components will show loading skeletons while data fetches
       await set(fn, signal);
       signal.throwIfAborted();
 
-      // Then check org in background (after page is already displayed)
-      const orgExists = await get(hasOrg$);
+      // Then check scope in background (after page is already displayed)
+      const scopeExists = await get(hasScope$);
       signal.throwIfAborted();
-      L.debug("orgExists", orgExists);
+      L.debug("scopeExists", scopeExists);
 
-      if (!orgExists) {
-        L.debug("redirect to homepage because org does not exist");
+      if (!scopeExists) {
+        L.debug("redirect to homepage because scope does not exist");
         set(navigateInReact$, "/");
         return;
       }

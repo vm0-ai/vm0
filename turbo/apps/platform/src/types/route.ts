@@ -1,9 +1,6 @@
 export type RoutePath =
   | "/"
-  | "/select-org"
   | "/zero"
-  | "/zero/:tab"
-  | "/zero/chat/:sessionId"
   | "/logs"
   | "/logs/:id"
   | "/settings"

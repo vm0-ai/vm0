@@ -2,13 +2,7 @@ import { command } from "ccstate";
 import { createElement } from "react";
 import { ZeroPage } from "../../views/zero-page/zero-page.tsx";
 import { updatePage$ } from "../react-router.ts";
-import { initZeroOnboarding$ } from "./zero-onboarding.ts";
-import { initZeroActivity$ } from "./zero-activity.ts";
-import { Reason, detach } from "../utils.ts";
 
-export const setupZeroPage$ = command(async ({ set }, signal: AbortSignal) => {
+export const setupZeroPage$ = command(({ set }) => {
   set(updatePage$, createElement(ZeroPage));
-
-  await set(initZeroOnboarding$, signal);
-  detach(set(initZeroActivity$), Reason.Daemon);
 });
