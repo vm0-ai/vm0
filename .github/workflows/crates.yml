@@ -507,9 +507,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install Ansible
-        run: |
-          apt-get update && apt-get install -y python3 python3-pip
-          pip3 install ansible
+        run: pip3 install ansible
 
       - name: Setup SSH key
         env:
