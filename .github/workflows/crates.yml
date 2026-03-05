@@ -317,6 +317,7 @@ jobs:
             --name ${JOB_REF}-exec \
             --group vm0/exec-${JOB_REF} \
             --runner-dirname ${JOB_REF}-exec \
+            --max-concurrent 2 \
             --api-url https://not-a-real-server.test \
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
@@ -348,14 +349,14 @@ jobs:
           # Read the run ID from our runner's status.json (not from /run/vm0/sock/)
           # to avoid matching sandboxes from parallel CI jobs (benchmark, upgrade).
           echo "--- Waiting for sandbox control socket ---"
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             RUN_ID=$(grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
               "$RUNNER_DIR/status.json" 2>/dev/null | head -1)
             [ -n "$RUN_ID" ] && [ -S "/run/vm0/sock/$RUN_ID/control.sock" ] && break
             RUN_ID=""
             sleep 1
           done
-          [ -z "$RUN_ID" ] && fail "control socket not found after 30s"
+          [ -z "$RUN_ID" ] && fail "control socket not found after 60s"
           echo "Found sandbox: $RUN_ID"
 
           # Test 1: basic exec
@@ -418,6 +419,7 @@ jobs:
               --name ${JOB_REF}-${SUFFIX} \
               --group ${GROUP} \
               --runner-dirname ${JOB_REF}-${SUFFIX} \
+              --max-concurrent 2 \
               --api-url https://not-a-real-server.test \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
           done

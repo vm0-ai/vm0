@@ -116,6 +116,7 @@ impl FirecrackerFactory {
     /// Create a new factory without allocating system resources.
     /// Call `startup()` to initialize pools before use.
     pub async fn new(config: FirecrackerConfig) -> Result<Self, SandboxError> {
+        let t = std::time::Instant::now();
         crate::prerequisites::check_prerequisites(&crate::prerequisites::PrerequisiteConfig {
             binary_path: &config.binary_path,
             kernel_path: &config.kernel_path,
@@ -123,6 +124,10 @@ impl FirecrackerFactory {
             snapshot: config.snapshot.as_ref(),
         })
         .await?;
+        info!(
+            elapsed_ms = t.elapsed().as_millis() as u64,
+            "prerequisites checked"
+        );
 
         let factory_paths = FactoryPaths::new(config.base_dir.clone());
         let runtime_paths = RuntimePaths::new();
@@ -171,18 +176,24 @@ impl SandboxFactory for FirecrackerFactory {
 
         let concurrency = self.config.concurrency.max(1);
 
+        let t = std::time::Instant::now();
         let mut netns_pool = NetnsPool::create(NetnsPoolConfig {
             size: concurrency,
             proxy_port: self.config.proxy_port,
         })
         .await
         .map_err(|e| SandboxError::CreationFailed(format!("netns pool: {e}")))?;
+        info!(
+            elapsed_ms = t.elapsed().as_millis() as u64,
+            concurrency, "netns pool created"
+        );
 
         let overlay_creator: Box<dyn OverlayCreator> = match &self.config.snapshot {
             Some(snapshot) => Box::new(SnapshotCopyCreator::new(snapshot.overlay_path.clone())),
             None => Box::new(Ext4Creator),
         };
 
+        let t = std::time::Instant::now();
         let overlay_pool = match OverlayPool::create(OverlayPoolConfig {
             size: concurrency,
             replenish_threshold: (concurrency / 2).max(1),
@@ -199,6 +210,10 @@ impl SandboxFactory for FirecrackerFactory {
                 return Err(SandboxError::CreationFailed(format!("overlay pool: {e}")));
             }
         };
+        info!(
+            elapsed_ms = t.elapsed().as_millis() as u64,
+            concurrency, "overlay pool created"
+        );
 
         self.netns_pool = Some(tokio::sync::Mutex::new(netns_pool));
         self.overlay_pool = Some(tokio::sync::Mutex::new(overlay_pool));
