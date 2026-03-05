@@ -99,9 +99,9 @@ function emailDomain(address: string): string {
  * Compute reply recipients based on the bot's position in the original email.
  *
  * Strategy:
- * - Bot in To (sole recipient): reply to sender only
- * - Bot in To (with others):    reply-all (sender + other To → to, CC preserved)
- * - Bot only in CC:             reply to sender only
+ * - Bot in To (sole recipient): reply to sender, preserve CC
+ * - Bot in To (with others):    reply-all (sender + other To → to), preserve CC
+ * - Bot only in CC:             reply to sender, preserve CC
  *
  * Also handles Reply-To honoring, self-loop prevention, and deduplication.
  */
@@ -132,12 +132,13 @@ export function computeReplyRecipients(opts: {
   if (botInTo && otherToRecipients.length > 0) {
     // Reply-All: bot was in To with others
     replyToList = [primaryTarget, ...otherToRecipients];
-    replyCcList = [...cc];
   } else {
     // Simple reply: bot was sole To recipient or only CC'd
     replyToList = [primaryTarget];
-    replyCcList = [];
   }
+
+  // Always preserve CC (bot-filtering and dedup happens below)
+  replyCcList = [...cc];
 
   // Remove bot's own addresses
   replyToList = replyToList.filter((addr) => !isBotAddress(addr));
