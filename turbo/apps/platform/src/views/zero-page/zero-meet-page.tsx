@@ -7,6 +7,7 @@ import {
   IconX,
   IconPlus,
   IconTool,
+  IconCalendar,
 } from "@tabler/icons-react";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "../settings-page/connector-icons";
@@ -25,6 +26,7 @@ import {
   SelectValue,
   cn,
 } from "@vm0/ui";
+import { ZeroScheduleCard, DEFAULT_SCHEDULE } from "./zero-schedule-card";
 
 const TONE_OPTIONS = [
   "Professional",
@@ -85,7 +87,7 @@ const CONNECTOR_LIST: ConnectorType[] = [
 ];
 
 export function ZeroMeetPage() {
-  const [activeTab, setActiveTab] = useState("settings");
+  const [activeTab, setActiveTab] = useState("schedule");
   const [agentName, setAgentName] = useState("Zero");
   const [roleExpertise, setRoleExpertise] = useState("AI Assistant");
   const [tone, setTone] = useState<string>("Professional");
@@ -135,6 +137,13 @@ export function ZeroMeetPage() {
             >
               <TabsList className="h-9 w-full sm:w-auto gap-1 bg-muted/60 px-1 py-1">
                 <TabsTrigger
+                  value="schedule"
+                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                >
+                  <IconCalendar size={14} stroke={1.5} />
+                  Schedule
+                </TabsTrigger>
+                <TabsTrigger
                   value="settings"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
@@ -170,6 +179,16 @@ export function ZeroMeetPage() {
       </header>
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
+        {activeTab === "schedule" && (
+          <div className="mx-auto max-w-[900px] px-7">
+            <ZeroScheduleCard
+              title="Zero's schedule"
+              subtitle="Set a time and prompt for Zero to run automatically."
+              initialSchedule={DEFAULT_SCHEDULE}
+            />
+          </div>
+        )}
+
         {activeTab === "settings" && (
           <div className="mx-auto max-w-[900px] px-7">
             <Card className="rounded-2xl border border-border/70 bg-card shadow-[0_2px_8px_rgba(0,0,0,0.06)]">

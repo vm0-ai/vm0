@@ -1,15 +1,12 @@
 "use client";
 
-import { useCCState } from "ccstate-react/experimental";
-import { useGet, useSet } from "ccstate-react";
+import { useState } from "react";
 import {
   IconPlus,
   IconList,
   IconLayoutGrid,
   IconPencil,
-  IconTrash,
 } from "@tabler/icons-react";
-import { LoadingSwitch } from "../components/loading-switch.tsx";
 import {
   Card,
   CardContent,
@@ -37,32 +34,26 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
-import { throwIfAbort, detach, Reason } from "../../signals/utils.ts";
-import {
-  COMMON_TIMEZONES,
-  getTodayDateLocal,
-  getBrowserTimezone,
-} from "../../signals/agent-detail/cron.ts";
 
-export const SCHEDULE_FREQUENCY_OPTIONS = [
+const SCHEDULE_FREQUENCY_OPTIONS = [
   { value: "now", label: "Now" },
   { value: "once", label: "Once" },
   { value: "every_weekday", label: "Every weekday" },
   { value: "every_day", label: "Every day" },
   { value: "every_week", label: "Every week" },
   { value: "every_month", label: "Every month" },
-  { value: "every_n_minutes", label: "Loop" },
+  { value: "every_n_minutes", label: "Every N minutes" },
 ] as const;
 
-export const SCHEDULE_LOOP_MINUTES = [5, 15, 30, 60] as const;
-export const HOUR_OPTIONS: readonly number[] = Array.from(
-  { length: 24 },
-  (_, i) => i,
-);
-export const MINUTE_OPTIONS: readonly number[] = Array.from(
-  { length: 60 },
-  (_, i) => i,
-);
+const SCHEDULE_LOOP_MINUTES = [5, 15, 30, 60] as const;
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i);
+const MINUTE_OPTIONS = [0, 15, 30, 45];
+const TIMEZONE_OPTIONS = [
+  "UTC",
+  "Asia/Shanghai",
+  "America/New_York",
+  "Europe/London",
+] as const;
 
 export const WEEKDAY_LABELS = [
   "Mon",
@@ -73,7 +64,7 @@ export const WEEKDAY_LABELS = [
   "Sat",
   "Sun",
 ] as const;
-const CALENDAR_TIME_SLOTS = [
+export const CALENDAR_TIME_SLOTS = [
   "6:00 AM",
   "9:00 AM",
   "12:00 PM",
@@ -84,32 +75,6 @@ export interface ScheduleEntry {
   id: string;
   time: string;
   prompt: string;
-  /** Schedule name used for API operations (edit/delete). */
-  name?: string;
-  enabled?: boolean;
-  /** Raw interval in seconds for loop schedules */
-  intervalSeconds?: number | null;
-}
-
-function DeleteButton({
-  name,
-  label,
-  onDelete,
-}: {
-  name: string;
-  label: string;
-  onDelete: (name: string) => Promise<void>;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => void onDelete(name)}
-      className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
-      aria-label={`Delete ${label}`}
-    >
-      <IconTrash size={14} stroke={1.5} />
-    </button>
-  );
 }
 
 function formatTimeOfDay(hour: number, minute: number): string {
@@ -159,124 +124,127 @@ function buildScheduleTimeString(params: {
   return `Every day at ${timeStr}`;
 }
 
-interface ParsedScheduleTime {
+function parseScheduleTimeString(timeStr: string): {
   freq: string;
   date: string;
   hour: number;
   minute: number;
   timezone: string;
   loopMinutes: number;
-  dayOfWeek?: string;
-  dayOfMonth?: string;
-}
-
-function parse12hTo24h(h: string, ampm: string): number {
-  let hour = Number.parseInt(h, 10);
-  if (ampm === "PM" && hour !== 12) {
-    hour += 12;
-  }
-  if (ampm === "AM" && hour === 12) {
-    hour = 0;
-  }
-  return hour;
-}
-
-function defaultParsed(
-  overrides: Partial<ParsedScheduleTime>,
-): ParsedScheduleTime {
-  return {
-    freq: "every_day",
-    date: new Date().toISOString().slice(0, 10),
-    hour: 9,
-    minute: 0,
-    timezone: "UTC",
-    loopMinutes: 15,
-    ...overrides,
-  };
-}
-
-const DAY_NAME_TO_CRON: Readonly<Record<string, string>> = Object.freeze({
-  Sunday: "0",
-  Monday: "1",
-  Tuesday: "2",
-  Wednesday: "3",
-  Thursday: "4",
-  Friday: "5",
-  Saturday: "6",
-});
-
-function parseWeeklyDays(timeStr: string): string {
-  const weekDayMatch = timeStr.match(
-    /on ((?:(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)(?:,\s*)?)+) at/,
-  );
-  if (!weekDayMatch) {
-    return "1";
-  }
-  const names = weekDayMatch[1].split(/,\s*/);
-  return names.map((n) => DAY_NAME_TO_CRON[n] ?? "1").join(",");
-}
-
-export function parseScheduleTimeString(timeStr: string): ParsedScheduleTime {
+} {
+  const today = new Date();
+  const defaultDate = today.toISOString().slice(0, 10);
   if (timeStr === "Now") {
-    return defaultParsed({ freq: "now" });
+    return {
+      freq: "now",
+      date: defaultDate,
+      hour: 9,
+      minute: 0,
+      timezone: "UTC",
+      loopMinutes: 15,
+    };
   }
-  const loopMinMatch = timeStr.match(/Every (\d+) minutes?/);
-  if (loopMinMatch) {
-    return defaultParsed({
+  const loopMatch = timeStr.match(/Every (\d+) minutes?/);
+  if (loopMatch) {
+    return {
       freq: "every_n_minutes",
-      loopMinutes: Number(loopMinMatch[1]) || 5,
-    });
-  }
-  const loopSecMatch = timeStr.match(/Every (\d+) seconds?/);
-  if (loopSecMatch) {
-    return defaultParsed({
-      freq: "every_n_minutes",
-      loopMinutes: Math.round((Number(loopSecMatch[1]) || 300) / 60),
-    });
+      date: defaultDate,
+      hour: 9,
+      minute: 0,
+      timezone: "UTC",
+      loopMinutes: Number(loopMatch[1]) || 15,
+    };
   }
   const onceMatch = timeStr.match(
     /Once on (\d{4}-\d{2}-\d{2}) at (\d{1,2}):(\d{2}) (AM|PM)/,
   );
   if (onceMatch) {
     const [, date, h, m, ap] = onceMatch;
-    return defaultParsed({
+    let hour = Number.parseInt(h, 10);
+    if (ap === "PM" && hour !== 12) {
+      hour += 12;
+    }
+    if (ap === "AM" && hour === 12) {
+      hour = 0;
+    }
+    return {
       freq: "once",
       date,
-      hour: parse12hTo24h(h, ap),
+      hour,
       minute: Number.parseInt(m, 10),
-    });
+      timezone: "UTC",
+      loopMinutes: 15,
+    };
   }
   const atMatch = timeStr.match(/at (\d{1,2}):(\d{2}) (AM|PM)/);
-  const hour = atMatch ? parse12hTo24h(atMatch[1], atMatch[3]) : 9;
-  const minute = atMatch ? Number.parseInt(atMatch[2], 10) : 0;
+  let hour = 9;
+  let minute = 0;
+  if (atMatch) {
+    const [, h, m, ap] = atMatch;
+    hour = Number.parseInt(h, 10);
+    minute = Number.parseInt(m, 10);
+    if (ap === "PM" && hour !== 12) {
+      hour += 12;
+    }
+    if (ap === "AM" && hour === 12) {
+      hour = 0;
+    }
+  }
   if (timeStr.startsWith("Every weekday")) {
-    return defaultParsed({ freq: "every_weekday", hour, minute });
+    return {
+      freq: "every_weekday",
+      date: defaultDate,
+      hour,
+      minute,
+      timezone: "UTC",
+      loopMinutes: 15,
+    };
+  }
+  if (timeStr.startsWith("Every day")) {
+    return {
+      freq: "every_day",
+      date: defaultDate,
+      hour,
+      minute,
+      timezone: "UTC",
+      loopMinutes: 15,
+    };
   }
   if (timeStr.startsWith("Every week")) {
-    return defaultParsed({
+    return {
       freq: "every_week",
+      date: defaultDate,
       hour,
       minute,
-      dayOfWeek: parseWeeklyDays(timeStr),
-    });
+      timezone: "UTC",
+      loopMinutes: 15,
+    };
   }
   if (timeStr.startsWith("Every month")) {
-    const monthDayMatch = timeStr.match(/on day (\d+)/);
-    return defaultParsed({
+    return {
       freq: "every_month",
+      date: defaultDate,
       hour,
       minute,
-      dayOfMonth: monthDayMatch ? monthDayMatch[1] : "1",
-    });
+      timezone: "UTC",
+      loopMinutes: 15,
+    };
   }
-  return defaultParsed({ hour, minute });
+  return {
+    freq: "every_day",
+    date: defaultDate,
+    hour,
+    minute,
+    timezone: "UTC",
+    loopMinutes: 15,
+  };
 }
 
 function parseScheduleTime(timeStr: string): {
   dayIndices: number[];
   timeLabel: string;
 } {
-  if (timeStr.match(/Every \d+ (minutes?|seconds?)/) || timeStr === "Now") {
+  if (timeStr.match(/Every \d+ minutes?/) || timeStr === "Now") {
     return { dayIndices: [], timeLabel: "" };
   }
   const match = timeStr.match(/at (\d{1,2}:\d{2} (?:AM|PM))$/);
@@ -287,6 +255,9 @@ function parseScheduleTime(timeStr: string): {
   if (timeStr.startsWith("Every weekday")) {
     return { dayIndices: [0, 1, 2, 3, 4], timeLabel };
   }
+  const dayMatch = timeStr.match(
+    /on (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/,
+  );
   const dayMap: Record<string, number> = {
     Monday: 0,
     Tuesday: 1,
@@ -296,65 +267,16 @@ function parseScheduleTime(timeStr: string): {
     Saturday: 5,
     Sunday: 6,
   };
-  const onMatch = timeStr.match(
-    /on ((?:(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)(?:,\s*)?)+) at/,
-  );
-  if (onMatch) {
-    const names = onMatch[1].split(/,\s*/);
-    const indices = names.map((n) => dayMap[n] ?? -1).filter((i) => i >= 0);
-    if (indices.length > 0) {
-      return { dayIndices: indices, timeLabel };
-    }
+  if (dayMatch) {
+    return { dayIndices: [dayMap[dayMatch[1]] ?? 0], timeLabel };
   }
   if (timeStr.startsWith("Every week")) {
     return { dayIndices: [0, 1, 2, 3, 4, 5, 6], timeLabel };
   }
   if (timeStr.startsWith("Every month")) {
-    return { dayIndices: [], timeLabel: "" };
+    return { dayIndices: [0, 1, 2, 3, 4, 5, 6], timeLabel };
   }
   return { dayIndices: [], timeLabel };
-}
-
-/**
- * Convert a time label like "9:00 AM" to minutes since midnight.
- */
-function timeLabelToMinutes(label: string): number {
-  const match = label.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/);
-  if (!match) {
-    return 0;
-  }
-  let hour = Number(match[1]);
-  const minute = Number(match[2]);
-  const ampm = match[3];
-  if (ampm === "PM" && hour !== 12) {
-    hour += 12;
-  }
-  if (ampm === "AM" && hour === 12) {
-    hour = 0;
-  }
-  return hour * 60 + minute;
-}
-
-/**
- * Build the calendar time slots by merging default slots with entry-specific times,
- * sorted chronologically.
- */
-export function buildCalendarTimeSlots(
-  scheduleList: readonly Readonly<ScheduleEntry>[],
-): string[] {
-  const slotSet = new Set<string>(CALENDAR_TIME_SLOTS);
-  for (const entry of scheduleList) {
-    if (entry.enabled === false) {
-      continue;
-    }
-    const { timeLabel } = parseScheduleTime(entry.time);
-    if (timeLabel) {
-      slotSet.add(timeLabel);
-    }
-  }
-  return [...slotSet].sort(
-    (a, b) => timeLabelToMinutes(a) - timeLabelToMinutes(b),
-  );
 }
 
 export function getEntriesInCell(
@@ -363,167 +285,67 @@ export function getEntriesInCell(
   timeLabel: string,
 ): ScheduleEntry[] {
   return scheduleList.filter((entry) => {
-    if (entry.enabled === false) {
-      return false;
-    }
     const { dayIndices, timeLabel: t } = parseScheduleTime(entry.time);
     return t === timeLabel && dayIndices.includes(dayIndex);
   });
 }
 
+export const DEFAULT_SCHEDULE: ScheduleEntry[] = [
+  {
+    id: "1",
+    time: "Every weekday at 9:00 AM",
+    prompt: "Summarize yesterday's Slack threads and flag action items.",
+  },
+  {
+    id: "2",
+    time: "Every 15 minutes",
+    prompt: "Poll for new inbox items and notify if urgent.",
+  },
+  {
+    id: "3",
+    time: "Once on 2026-03-15 at 2:00 PM",
+    prompt: "Run quarterly review report and email to stakeholders.",
+  },
+];
+
 /** Dummy schedule for sub-agent (job) detail page — one entry per sub-agent. */
-const DUMMY_AGENT_SCHEDULE: readonly Readonly<ScheduleEntry>[] = [
+export const DUMMY_AGENT_SCHEDULE: ScheduleEntry[] = [
   {
     id: "j1",
     time: "Every weekday at 9:00 AM",
-    prompt: "Run the usual morning briefing and post a short summary.",
+    prompt: "Summarize yesterday's Slack threads and flag action items.",
   },
 ];
-export { DUMMY_AGENT_SCHEDULE };
-
-function CalendarEntryPopover({
-  entry,
-  onEdit,
-}: {
-  entry: ScheduleEntry;
-  onEdit: (entry: ScheduleEntry) => void;
-}) {
-  const open$ = useCCState(false);
-  const open = useGet(open$);
-  const setOpen = useSet(open$);
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          onMouseEnter={() => setOpen(true)}
-          onMouseLeave={() => setOpen(false)}
-          onDoubleClick={() => onEdit(entry)}
-          className="w-full min-h-0 rounded px-1.5 py-0.5 text-[11px] leading-tight line-clamp-2 break-words border border-blue-700/40 bg-blue-700/15 text-blue-800 hover:bg-blue-700/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/50 dark:text-blue-200 dark:border-blue-600/40 dark:bg-blue-900/25 dark:hover:bg-blue-900/35 text-left"
-          aria-label={`${entry.time}: ${entry.prompt}`}
-        >
-          {entry.prompt}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        sideOffset={0}
-        className="w-80 p-3 flex flex-col gap-3"
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-      >
-        <div className="relative flex flex-col gap-1.5 pr-8">
-          <div className="absolute top-0 right-0">
-            <button
-              type="button"
-              onClick={() => onEdit(entry)}
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              aria-label={`Edit ${entry.time}`}
-            >
-              <IconPencil size={14} stroke={1.5} />
-            </button>
-          </div>
-          <p className="text-xs text-muted-foreground">{entry.time}</p>
-          <p className="text-sm text-foreground leading-snug">{entry.prompt}</p>
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 interface ZeroScheduleCardProps {
   title: string;
   subtitle: string;
-  initialSchedule: readonly Readonly<ScheduleEntry>[];
-  /** When provided, called on save instead of local state mutation. */
-  onSave?: (params: {
-    prompt: string;
-    freq: string;
-    date: string;
-    hour: number;
-    minute: number;
-    timezone: string;
-    intervalSeconds: number;
-    dayOfWeek?: string;
-    dayOfMonth?: string;
-    editName?: string;
-  }) => Promise<void>;
-  /** When provided, called to delete a schedule by name. */
-  onDelete?: (name: string) => Promise<void>;
-  /** When provided, called to toggle a schedule's enabled state. */
-  onToggleEnabled?: (params: {
-    name: string;
-    enabled: boolean;
-  }) => Promise<void>;
-  /** When true, the save button shows a loading state. */
-  saving?: boolean;
-  /** Default timezone for new schedules. Falls back to browser timezone. */
-  defaultTimezone?: string;
+  initialSchedule: ScheduleEntry[];
 }
 
 export function ZeroScheduleCard({
   title,
   subtitle,
   initialSchedule,
-  onSave,
-  onDelete,
-  onToggleEnabled,
-  saving,
-  defaultTimezone,
 }: ZeroScheduleCardProps) {
-  const scheduleViewMode$ = useCCState<"list" | "calendar">("list");
-  const scheduleViewMode = useGet(scheduleViewMode$);
-  const setScheduleViewMode = useSet(scheduleViewMode$);
-  const internalScheduleList$ = useCCState<ScheduleEntry[]>([
-    ...initialSchedule,
-  ]);
-  const internalScheduleList = useGet(internalScheduleList$);
-  const setScheduleList = useSet(internalScheduleList$);
-  // In API mode (onSave provided), use prop directly; otherwise use internal state
-  const scheduleList = onSave ? [...initialSchedule] : internalScheduleList;
-  const addScheduleOpen$ = useCCState(false);
-  const addScheduleOpen = useGet(addScheduleOpen$);
-  const setAddScheduleOpen = useSet(addScheduleOpen$);
-  const editingScheduleId$ = useCCState<string | null>(null);
-  const editingScheduleId = useGet(editingScheduleId$);
-  const setEditingScheduleId = useSet(editingScheduleId$);
-  const newSchedulePrompt$ = useCCState("");
-  const newSchedulePrompt = useGet(newSchedulePrompt$);
-  const setNewSchedulePrompt = useSet(newSchedulePrompt$);
-  const scheduleFreq$ = useCCState<string>("every_day");
-  const scheduleFreq = useGet(scheduleFreq$);
-  const setScheduleFreq = useSet(scheduleFreq$);
-  const scheduleDate$ = useCCState<string>(
+  const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">(
+    "list",
+  );
+  const [scheduleList, setScheduleList] =
+    useState<ScheduleEntry[]>(initialSchedule);
+  const [addScheduleOpen, setAddScheduleOpen] = useState(false);
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(
+    null,
+  );
+  const [newSchedulePrompt, setNewSchedulePrompt] = useState("");
+  const [scheduleFreq, setScheduleFreq] = useState<string>("every_day");
+  const [scheduleDate, setScheduleDate] = useState<string>(() =>
     new Date().toISOString().slice(0, 10),
   );
-  const scheduleDate = useGet(scheduleDate$);
-  const setScheduleDate = useSet(scheduleDate$);
-  const scheduleHour$ = useCCState(9);
-  const scheduleHour = useGet(scheduleHour$);
-  const setScheduleHour = useSet(scheduleHour$);
-  const scheduleMinute$ = useCCState(0);
-  const scheduleMinute = useGet(scheduleMinute$);
-  const setScheduleMinute = useSet(scheduleMinute$);
-  const resolvedTimezone = defaultTimezone || getBrowserTimezone();
-  const scheduleTimezone$ = useCCState(resolvedTimezone);
-  const scheduleTimezone = useGet(scheduleTimezone$);
-  const setScheduleTimezone = useSet(scheduleTimezone$);
-  const scheduleIntervalStr$ = useCCState("300");
-  const scheduleIntervalStr = useGet(scheduleIntervalStr$);
-  const setScheduleIntervalStr = useSet(scheduleIntervalStr$);
-  const scheduleDayOfWeek$ = useCCState("1");
-  const scheduleDayOfWeek = useGet(scheduleDayOfWeek$);
-  const setScheduleDayOfWeek = useSet(scheduleDayOfWeek$);
-  const scheduleDayOfMonth$ = useCCState("1");
-  const scheduleDayOfMonth = useGet(scheduleDayOfMonth$);
-  const setScheduleDayOfMonth = useSet(scheduleDayOfMonth$);
-  const saveError$ = useCCState<string | null>(null);
-  const saveError = useGet(saveError$);
-  const setSaveError = useSet(saveError$);
-  const togglingIds$ = useCCState<Set<string>>(new Set());
-  const togglingIds = useGet(togglingIds$);
-  const setTogglingIds = useSet(togglingIds$);
+  const [scheduleHour, setScheduleHour] = useState(9);
+  const [scheduleMinute, setScheduleMinute] = useState(0);
+  const [scheduleTimezone, setScheduleTimezone] = useState("UTC");
+  const [scheduleLoopMinutes, setScheduleLoopMinutes] = useState(15);
 
   const openAddSchedule = () => {
     setEditingScheduleId(null);
@@ -532,11 +354,8 @@ export function ZeroScheduleCard({
     setScheduleDate(new Date().toISOString().slice(0, 10));
     setScheduleHour(9);
     setScheduleMinute(0);
-    setScheduleTimezone(resolvedTimezone);
-    setScheduleIntervalStr("300");
-    setScheduleDayOfWeek("1");
-    setScheduleDayOfMonth("1");
-    setSaveError(null);
+    setScheduleTimezone("UTC");
+    setScheduleLoopMinutes(15);
     setAddScheduleOpen(true);
   };
 
@@ -549,54 +368,14 @@ export function ZeroScheduleCard({
     setScheduleHour(parsed.hour);
     setScheduleMinute(parsed.minute);
     setScheduleTimezone(parsed.timezone);
-    setScheduleIntervalStr(
-      String(entry.intervalSeconds ?? (parsed.loopMinutes ?? 5) * 60),
-    );
-    setScheduleDayOfWeek(parsed.dayOfWeek ?? "1");
-    setScheduleDayOfMonth(parsed.dayOfMonth ?? "1");
-    setSaveError(null);
+    setScheduleLoopMinutes(parsed.loopMinutes);
     setAddScheduleOpen(true);
   };
 
-  const addScheduleEntry = async () => {
+  const addScheduleEntry = () => {
     if (!newSchedulePrompt.trim()) {
       return;
     }
-
-    if (onSave) {
-      // Find the editing entry's name for API update
-      const editingEntry = editingScheduleId
-        ? scheduleList.find((e) => e.id === editingScheduleId)
-        : null;
-      try {
-        setSaveError(null);
-        await onSave({
-          prompt: newSchedulePrompt.trim(),
-          freq: scheduleFreq,
-          date: scheduleDate,
-          hour: scheduleHour,
-          minute: scheduleMinute,
-          timezone: scheduleTimezone,
-          intervalSeconds: Number(scheduleIntervalStr) || 0,
-          dayOfWeek:
-            scheduleFreq === "every_week" ? scheduleDayOfWeek : undefined,
-          dayOfMonth:
-            scheduleFreq === "every_month" ? scheduleDayOfMonth : undefined,
-          editName: editingEntry?.name,
-        });
-      } catch (error) {
-        throwIfAbort(error);
-        setSaveError(
-          error instanceof Error ? error.message : "Failed to save schedule",
-        );
-        return;
-      }
-      setNewSchedulePrompt("");
-      setEditingScheduleId(null);
-      setAddScheduleOpen(false);
-      return;
-    }
-
     const timeStr = buildScheduleTimeString({
       freq: scheduleFreq,
       date: scheduleFreq === "once" ? scheduleDate : undefined,
@@ -604,9 +383,7 @@ export function ZeroScheduleCard({
       minute: scheduleMinute,
       timezone: scheduleTimezone,
       loopMinutes:
-        scheduleFreq === "every_n_minutes"
-          ? Math.round((Number(scheduleIntervalStr) || 0) / 60)
-          : undefined,
+        scheduleFreq === "every_n_minutes" ? scheduleLoopMinutes : undefined,
     });
     if (editingScheduleId) {
       setScheduleList((prev) =>
@@ -632,7 +409,7 @@ export function ZeroScheduleCard({
   };
 
   return (
-    <Card className="zero-card">
+    <Card className="rounded-2xl border border-border/70 bg-card shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
       <CardContent className="py-5 flex flex-col gap-6">
         <header className="flex w-full flex-wrap items-center gap-4">
           <div className="min-w-0 flex-1">
@@ -645,7 +422,7 @@ export function ZeroScheduleCard({
             type="button"
             variant="outline"
             size="sm"
-            className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+            className="h-9 gap-2 shrink-0"
             onClick={openAddSchedule}
           >
             <IconPlus size={14} stroke={2} />
@@ -656,7 +433,7 @@ export function ZeroScheduleCard({
             onValueChange={(v) => setScheduleViewMode(v as "list" | "calendar")}
             className="shrink-0"
           >
-            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+            <TabsList className="h-9 gap-1 bg-muted/60 px-1 py-1">
               <TabsTrigger
                 value="list"
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
@@ -683,222 +460,197 @@ export function ZeroScheduleCard({
               </p>
             ) : (
               <ul className="flex flex-col" role="list">
-                {scheduleList.map((entry) => {
-                  const toggling = togglingIds.has(entry.id);
-                  return (
-                    <li
-                      key={entry.id}
-                      className="flex items-center gap-3 py-2.5 border-b border-border/50 last:border-b-0 text-sm text-foreground hover:bg-muted/30 -mx-1 px-1 rounded transition-colors"
+                {scheduleList.map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="flex items-center gap-3 py-2.5 border-b border-border/50 last:border-b-0 text-sm text-foreground hover:bg-muted/30 -mx-1 px-1 rounded transition-colors"
+                  >
+                    <span className="min-w-0 shrink-0">{entry.time}</span>
+                    <span className="min-w-0 flex-1 text-muted-foreground text-xs truncate">
+                      {entry.prompt}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => openEditSchedule(entry)}
+                      className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
+                      aria-label={`Edit ${entry.time}`}
                     >
-                      {onToggleEnabled && entry.name !== undefined && (
-                        <LoadingSwitch
-                          checked={entry.enabled !== false}
-                          loading={toggling}
-                          onCheckedChange={(checked) => {
-                            const id = entry.id;
-                            const name = entry.name;
-                            if (name === undefined) {
-                              return;
-                            }
-                            setTogglingIds((prev) => new Set([...prev, id]));
-                            detach(
-                              onToggleEnabled({
-                                name,
-                                enabled: checked,
-                              }).finally(() => {
-                                setTogglingIds((prev) => {
-                                  const next = new Set(prev);
-                                  next.delete(id);
-                                  return next;
-                                });
-                              }),
-                              Reason.DomCallback,
-                            );
-                          }}
-                          ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
-                        />
-                      )}
-                      <span
-                        className={cn(
-                          "min-w-0 shrink-0",
-                          entry.enabled === false && "text-muted-foreground",
-                        )}
-                      >
-                        {entry.time}
-                      </span>
-                      <span className="min-w-0 flex-1 text-muted-foreground text-xs truncate">
-                        {entry.prompt}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => openEditSchedule(entry)}
-                        className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
-                        aria-label={`Edit ${entry.time}`}
-                      >
-                        <IconPencil size={14} stroke={1.5} />
-                      </button>
-                      {onDelete && entry.name !== undefined && (
-                        <DeleteButton
-                          name={entry.name}
-                          label={entry.time}
-                          onDelete={onDelete}
-                        />
-                      )}
-                    </li>
-                  );
-                })}
+                      <IconPencil size={14} stroke={1.5} />
+                    </button>
+                  </li>
+                ))}
               </ul>
             )}
           </section>
         )}
 
-        {scheduleViewMode === "calendar" &&
-          (() => {
-            const calendarSlots = buildCalendarTimeSlots(scheduleList);
-            return (
-              <section className="flex flex-col gap-8">
-                <div className="flex flex-col gap-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Week view
-                  </h3>
-                  <div className="rounded-xl border border-border/70 bg-muted/20 overflow-hidden">
-                    <div className="grid grid-cols-8 text-sm">
-                      <div className="bg-muted/50 p-2 border-b border-r border-border/60 font-medium text-muted-foreground text-xs uppercase tracking-wider" />
-                      {WEEKDAY_LABELS.map((d, dayIndex) => (
-                        <div
-                          key={d}
-                          className={cn(
-                            "bg-muted/50 p-2 border-b border-border/60 font-medium text-muted-foreground text-center",
-                            dayIndex < WEEKDAY_LABELS.length - 1 &&
-                              "border-r border-border/60",
-                          )}
-                        >
-                          {d}
-                        </div>
-                      ))}
-                      {calendarSlots.map((timeLabel, timeIndex) => (
-                        <div key={timeLabel} className="contents">
+        {scheduleViewMode === "calendar" && (
+          <section className="flex flex-col gap-8">
+            <div className="flex flex-col gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Week view
+              </h3>
+              <div className="rounded-xl border border-border/70 bg-muted/20 overflow-hidden">
+                <div className="grid grid-cols-8 text-sm">
+                  <div className="bg-muted/50 p-2 border-b border-r border-border/60 font-medium text-muted-foreground text-xs uppercase tracking-wider" />
+                  {WEEKDAY_LABELS.map((d) => (
+                    <div
+                      key={d}
+                      className="bg-muted/50 p-2 border-b border-r border-border/60 last:border-r-0 font-medium text-muted-foreground text-center"
+                    >
+                      {d}
+                    </div>
+                  ))}
+                  {CALENDAR_TIME_SLOTS.map((timeLabel) => (
+                    <div key={timeLabel} className="contents">
+                      <div className="bg-muted/30 p-2 border-b border-r border-border/60 text-muted-foreground text-xs flex items-center">
+                        {timeLabel}
+                      </div>
+                      {WEEKDAY_LABELS.map((_, dayIndex) => {
+                        const entries = getEntriesInCell(
+                          scheduleList,
+                          dayIndex,
+                          timeLabel,
+                        );
+                        const isEmpty = entries.length === 0;
+                        return (
                           <div
+                            key={`${timeLabel}-${dayIndex}`}
                             className={cn(
-                              "bg-muted/30 p-2 border-r border-border/60 text-muted-foreground text-xs flex items-center",
-                              timeIndex < calendarSlots.length - 1 &&
-                                "border-b border-border/60",
+                              "min-h-[52px] p-1.5 border-b border-r border-border/60 last:border-r-0 flex items-center justify-center",
+                              isEmpty && "bg-background/50",
                             )}
                           >
-                            {timeLabel}
-                          </div>
-                          {WEEKDAY_LABELS.map((_, dayIndex) => {
-                            const entries = getEntriesInCell(
-                              scheduleList,
-                              dayIndex,
-                              timeLabel,
-                            );
-                            const isEmpty = entries.length === 0;
-                            const isLastRow =
-                              timeIndex === calendarSlots.length - 1;
-                            const isLastCol =
-                              dayIndex === WEEKDAY_LABELS.length - 1;
-                            return (
-                              <div
-                                key={`${timeLabel}-${dayIndex}`}
-                                className={cn(
-                                  "min-h-[52px] p-1.5 border-border/60 flex items-center justify-center",
-                                  !isLastCol && "border-r border-border/60",
-                                  !isLastRow && "border-b border-border/60",
-                                  isEmpty && "bg-background/50",
-                                )}
-                              >
-                                {isEmpty ? (
-                                  <span className="text-muted-foreground/40 text-xs">
-                                    —
-                                  </span>
-                                ) : (
-                                  <div className="w-full h-full min-h-[44px] rounded-lg p-1.5 flex flex-col gap-0.5 text-left">
-                                    {entries.map((entry) => (
-                                      <CalendarEntryPopover
-                                        key={entry.id}
-                                        entry={entry}
-                                        onEdit={openEditSchedule}
-                                      />
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                {(() => {
-                  const loopEntries = scheduleList.filter(
-                    (e) =>
-                      e.enabled !== false &&
-                      e.time.match(/Every \d+ (minutes?|seconds?)/),
-                  );
-                  const onceEntries = scheduleList.filter(
-                    (e) => e.enabled !== false && e.time.startsWith("Once on"),
-                  );
-                  const monthlyEntries = scheduleList.filter(
-                    (e) =>
-                      e.enabled !== false && e.time.startsWith("Every month"),
-                  );
-                  if (
-                    loopEntries.length === 0 &&
-                    onceEntries.length === 0 &&
-                    monthlyEntries.length === 0
-                  ) {
-                    return null;
-                  }
-                  const sections: {
-                    title: string;
-                    entries: ScheduleEntry[];
-                  }[] = [
-                    { title: "Loop", entries: loopEntries },
-                    { title: "Monthly", entries: monthlyEntries },
-                    { title: "Once", entries: onceEntries },
-                  ];
-                  return (
-                    <div className="flex flex-col gap-8">
-                      {sections.map((section) =>
-                        section.entries.length > 0 ? (
-                          <div
-                            key={section.title}
-                            className="flex flex-col gap-1.5"
-                          >
-                            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              {section.title}
-                            </h3>
-                            <div className="flex flex-wrap gap-2">
-                              {section.entries.map((entry) => (
-                                <div
-                                  key={entry.id}
-                                  className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm w-fit"
-                                >
-                                  <span className="text-foreground">
-                                    {entry.time}
-                                  </span>
+                            {isEmpty ? (
+                              <span className="text-muted-foreground/40 text-xs">
+                                —
+                              </span>
+                            ) : (
+                              <Popover>
+                                <PopoverTrigger asChild>
                                   <button
                                     type="button"
-                                    onClick={() => openEditSchedule(entry)}
-                                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                                    aria-label={`Edit ${entry.time}`}
+                                    className="w-full h-full min-h-[44px] rounded-lg bg-blue-700/15 text-blue-800 border border-blue-700/40 hover:bg-blue-700/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/50 dark:text-blue-200 dark:border-blue-600/40 dark:bg-blue-900/25 dark:hover:bg-blue-900/35 p-2 text-left flex flex-col justify-center"
+                                    aria-label={`${entries.length} scheduled in this slot`}
                                   >
-                                    <IconPencil size={12} stroke={1.5} />
+                                    <span className="text-[11px] leading-tight line-clamp-2 break-words">
+                                      {entries.length === 1
+                                        ? entries[0].prompt
+                                        : `${entries[0].prompt} +${entries.length - 1}`}
+                                    </span>
                                   </button>
-                                </div>
-                              ))}
-                            </div>
+                                </PopoverTrigger>
+                                <PopoverContent
+                                  align="start"
+                                  className="w-80 p-3 flex flex-col gap-3"
+                                >
+                                  {entries.map((entry) => (
+                                    <div
+                                      key={entry.id}
+                                      className="relative flex flex-col gap-1.5 pr-8"
+                                    >
+                                      <div className="absolute top-0 right-0">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            openEditSchedule(entry)
+                                          }
+                                          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                          aria-label={`Edit ${entry.time}`}
+                                        >
+                                          <IconPencil size={14} stroke={1.5} />
+                                        </button>
+                                      </div>
+                                      <p className="text-xs text-muted-foreground">
+                                        {entry.time}
+                                      </p>
+                                      <p className="text-sm text-foreground leading-snug">
+                                        {entry.prompt}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </PopoverContent>
+                              </Popover>
+                            )}
                           </div>
-                        ) : null,
-                      )}
+                        );
+                      })}
                     </div>
-                  );
-                })()}
-              </section>
-            );
-          })()}
+                  ))}
+                </div>
+              </div>
+            </div>
+            {(() => {
+              const loopEntries = scheduleList.filter((e) =>
+                e.time.match(/Every \d+ minutes?/),
+              );
+              const onceEntries = scheduleList.filter((e) =>
+                e.time.startsWith("Once on"),
+              );
+              if (loopEntries.length === 0 && onceEntries.length === 0) {
+                return null;
+              }
+              return (
+                <div className="flex flex-col gap-8">
+                  {loopEntries.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Loop
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {loopEntries.map((entry) => (
+                          <div
+                            key={entry.id}
+                            className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm"
+                          >
+                            <span className="text-foreground">
+                              {entry.time}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => openEditSchedule(entry)}
+                              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              aria-label={`Edit ${entry.time}`}
+                            >
+                              <IconPencil size={12} stroke={1.5} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {onceEntries.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Once
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {onceEntries.map((entry) => (
+                          <div
+                            key={entry.id}
+                            className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm"
+                          >
+                            <span className="text-foreground">
+                              {entry.time}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => openEditSchedule(entry)}
+                              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              aria-label={`Edit ${entry.time}`}
+                            >
+                              <IconPencil size={12} stroke={1.5} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </section>
+        )}
       </CardContent>
 
       <Dialog
@@ -959,21 +711,23 @@ export function ZeroScheduleCard({
                   htmlFor="schedule-dialog-loop"
                   className="text-sm font-medium text-foreground"
                 >
-                  Interval (seconds)
+                  Every
                 </label>
-                <Input
-                  id="schedule-dialog-loop"
-                  type="number"
-                  min={0}
-                  value={scheduleIntervalStr}
-                  onChange={(e) => setScheduleIntervalStr(e.target.value)}
-                  placeholder="300"
-                  className="h-9"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Time between the end of one run and the start of the next. Use
-                  0 for immediate restart.
-                </p>
+                <Select
+                  value={String(scheduleLoopMinutes)}
+                  onValueChange={(v) => setScheduleLoopMinutes(Number(v))}
+                >
+                  <SelectTrigger id="schedule-dialog-loop" className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SCHEDULE_LOOP_MINUTES.map((m) => (
+                      <SelectItem key={m} value={String(m)}>
+                        {m} minutes
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
             {scheduleFreq === "once" && (
@@ -988,83 +742,9 @@ export function ZeroScheduleCard({
                   id="schedule-dialog-date"
                   type="date"
                   value={scheduleDate}
-                  min={getTodayDateLocal()}
                   onChange={(e) => setScheduleDate(e.target.value)}
                   className="h-9"
                 />
-              </div>
-            )}
-            {scheduleFreq === "every_week" && (
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-foreground">
-                  Day of week
-                </label>
-                <div className="flex gap-1">
-                  {(
-                    [
-                      ["1", "Mon"],
-                      ["2", "Tue"],
-                      ["3", "Wed"],
-                      ["4", "Thu"],
-                      ["5", "Fri"],
-                      ["6", "Sat"],
-                      ["0", "Sun"],
-                    ] as const
-                  ).map(([value, label]) => {
-                    const selected = scheduleDayOfWeek
-                      .split(",")
-                      .includes(value);
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        className={`h-8 min-w-[40px] rounded-md border text-xs font-medium transition-colors ${
-                          selected
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-input bg-background text-muted-foreground hover:bg-muted"
-                        }`}
-                        onClick={() => {
-                          const current = scheduleDayOfWeek
-                            .split(",")
-                            .filter(Boolean);
-                          if (selected) {
-                            if (current.length > 1) {
-                              setScheduleDayOfWeek(
-                                current.filter((d) => d !== value).join(","),
-                              );
-                            }
-                          } else {
-                            setScheduleDayOfWeek([...current, value].join(","));
-                          }
-                        }}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            {scheduleFreq === "every_month" && (
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-foreground">
-                  Day of month
-                </label>
-                <Select
-                  value={scheduleDayOfMonth}
-                  onValueChange={setScheduleDayOfMonth}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 31 }, (_, i) => (
-                      <SelectItem key={i + 1} value={String(i + 1)}>
-                        {i + 1}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
             )}
             {scheduleFreq !== "now" && scheduleFreq !== "every_n_minutes" && (
@@ -1107,7 +787,11 @@ export function ZeroScheduleCard({
                 </div>
               </div>
             )}
-            {scheduleFreq !== "now" && scheduleFreq !== "every_n_minutes" && (
+            {(scheduleFreq === "once" ||
+              scheduleFreq === "every_weekday" ||
+              scheduleFreq === "every_day" ||
+              scheduleFreq === "every_week" ||
+              scheduleFreq === "every_month") && (
               <div className="flex flex-col gap-2">
                 <label
                   htmlFor="schedule-dialog-tz"
@@ -1123,9 +807,9 @@ export function ZeroScheduleCard({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {COMMON_TIMEZONES.map((tz) => (
+                    {TIMEZONE_OPTIONS.map((tz) => (
                       <SelectItem key={tz} value={tz}>
-                        {tz.replace(/_/g, " ")}
+                        {tz}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1133,7 +817,6 @@ export function ZeroScheduleCard({
               </div>
             )}
           </div>
-          {saveError && <p className="text-sm text-destructive">{saveError}</p>}
           <DialogFooter>
             <Button
               type="button"
@@ -1144,10 +827,10 @@ export function ZeroScheduleCard({
             </Button>
             <Button
               type="button"
-              onClick={() => void addScheduleEntry()}
-              disabled={!newSchedulePrompt.trim() || saving}
+              onClick={addScheduleEntry}
+              disabled={!newSchedulePrompt.trim()}
             >
-              {saving ? "Saving…" : editingScheduleId ? "Save" : "Add"}
+              {editingScheduleId ? "Save" : "Add"}
             </Button>
           </DialogFooter>
         </DialogContent>
