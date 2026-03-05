@@ -8,7 +8,7 @@
  * back to the row. After this completes, Phase 3 can add a NOT NULL constraint.
  *
  * Usage:
- *   tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts [--dry-run]
+ *   tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts [--dry-run] [--user-id=<clerkUserId>]
  *
  * Environment:
  *   DATABASE_URL        — Required
@@ -17,7 +17,7 @@
 
 import { parseArgs } from "node:util";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq, isNull, asc, sql } from "drizzle-orm";
+import { and, eq, isNull, asc, sql } from "drizzle-orm";
 import postgres from "postgres";
 
 import { scopes } from "../../../src/db/schema/scope";
@@ -46,11 +46,13 @@ interface Stats {
 const { values: args } = parseArgs({
   options: {
     "dry-run": { type: "boolean", default: false },
+    "user-id": { type: "string" },
   },
   strict: true,
 });
 
 const DRY_RUN = args["dry-run"] ?? false;
+const USER_ID = args["user-id"];
 
 // ---------------------------------------------------------------------------
 // Clerk helpers
@@ -176,6 +178,9 @@ async function main() {
 
   console.log("=== Backfill Clerk Organization IDs ===");
   console.log(`Dry run: ${DRY_RUN}`);
+  if (USER_ID) {
+    console.log(`User:    ${USER_ID} (single-scope mode)`);
+  }
   console.log();
 
   const { createClerkClient } = await import("@clerk/backend");
@@ -185,7 +190,11 @@ async function main() {
   const db = drizzle(pg);
 
   try {
-    // Fetch all scopes with NULL clerkOrgId
+    // Fetch scopes with NULL clerkOrgId, optionally filtered by ownerId
+    const whereClause = USER_ID
+      ? and(isNull(scopes.clerkOrgId), eq(scopes.ownerId, USER_ID))
+      : isNull(scopes.clerkOrgId);
+
     const nullScopes: ScopeRow[] = await db
       .select({
         id: scopes.id,
@@ -193,7 +202,7 @@ async function main() {
         ownerId: scopes.ownerId,
       })
       .from(scopes)
-      .where(isNull(scopes.clerkOrgId))
+      .where(whereClause)
       .orderBy(asc(scopes.createdAt));
 
     const total = nullScopes.length;
