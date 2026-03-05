@@ -387,7 +387,7 @@ jobs:
   runner-balloon:
     runs-on: ubuntu-latest
     needs: [runner-build]
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - name: Setup SSH
         env:
@@ -466,10 +466,17 @@ jobs:
               | jq '.actual_mib // 0' 2>/dev/null || echo 0
           }
 
-          # Test 1: idle inflate — balloon reclaims idle guest memory
-          echo "--- Test: balloon idle inflate ---"
+          # Helper: read guest MemAvailable in kB
+          guest_avail_kb() {
+            "$BIN_DIR/runner" exec "$RUN_ID" -- grep MemAvailable /proc/meminfo \
+              | tr -s ' ' | cut -d' ' -f2
+          }
+
+          # Test 1: idle inflate — balloon controller gradually reclaims idle guest memory
+          # With per-tick cap (256 MiB), balloon inflates over multiple ticks.
+          echo "--- Test 1: balloon idle inflate ---"
           ACTUAL=0
-          for i in $(seq 1 20); do
+          for i in $(seq 1 30); do
             ACTUAL=$(balloon_mib)
             [ "${ACTUAL:-0}" -gt 0 ] && break
             sleep 1
@@ -477,10 +484,76 @@ jobs:
           [ "$ACTUAL" -gt 0 ] || fail "balloon did not inflate: actual_mib=$ACTUAL"
           echo "PASS: balloon idle inflate (actual_mib=$ACTUAL)"
 
+          # Wait for balloon to stabilize (enters hysteresis band)
+          echo "--- Waiting for balloon to stabilize ---"
+          PREV=0
+          STABLE_COUNT=0
+          for i in $(seq 1 30); do
+            ACTUAL=$(balloon_mib)
+            if [ "$ACTUAL" -eq "$PREV" ] && [ "$ACTUAL" -gt 0 ]; then
+              STABLE_COUNT=$((STABLE_COUNT + 1))
+              [ "$STABLE_COUNT" -ge 2 ] && break
+            else
+              STABLE_COUNT=0
+            fi
+            PREV=$ACTUAL
+            sleep 3
+          done
+          INFLATE_MIB=$ACTUAL
+          echo "Balloon stabilized at ${INFLATE_MIB} MiB"
+
           # Verify guest-side: MemAvailable decreased
-          AVAIL=$("$BIN_DIR/runner" exec "$RUN_ID" -- grep MemAvailable /proc/meminfo | tr -s ' ' | cut -d' ' -f2)
+          AVAIL=$(guest_avail_kb)
           [ "$AVAIL" -lt 1536000 ] || fail "MemAvailable too high after balloon: ${AVAIL}kB (expected < 1536000kB)"
           echo "PASS: guest MemAvailable reduced (${AVAIL}kB)"
+
+          # Test 2: deflate under memory pressure — allocate 300 MiB anonymous memory
+          # in the guest to push available below deflate threshold (192 MiB).
+          # After inflate stabilizes (~1438 MiB), guest has ~476 MiB available.
+          # 300 MiB alloc drops available to ~176 MiB < 192 MiB threshold.
+          # Write script via base64 to avoid quoting issues with runner exec.
+          echo "--- Test 2: balloon deflate under memory pressure ---"
+          ALLOC_B64=$(printf 'import ctypes,time\nb=bytearray(300*1024*1024)\nctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b))\ntime.sleep(120)\n' | base64 -w0)
+          "$BIN_DIR/runner" exec "$RUN_ID" -- "echo $ALLOC_B64 | base64 -d > /tmp/alloc.py"
+          # Run allocator in guest foreground, host background
+          "$BIN_DIR/runner" exec "$RUN_ID" -- python3 /tmp/alloc.py &
+          ALLOC_PID=$!
+          sleep 5
+
+          # Wait for balloon to deflate (actual_mib decreases)
+          DEFLATED=0
+          for i in $(seq 1 30); do
+            ACTUAL=$(balloon_mib)
+            if [ "$ACTUAL" -lt "$INFLATE_MIB" ]; then
+              DEFLATED=1
+              break
+            fi
+            sleep 2
+          done
+          [ "$DEFLATED" -eq 1 ] || fail "balloon did not deflate: actual_mib=$ACTUAL (was $INFLATE_MIB)"
+          DEFLATE_MIB=$ACTUAL
+          echo "PASS: balloon deflated from ${INFLATE_MIB} to ${DEFLATE_MIB} MiB"
+
+          # Test 3: re-inflate after pressure released — kill python3 in guest,
+          # then kill host-side exec. The pkill may fail with "Operation not permitted"
+          # but the host-side kill terminates the vsock session which kills the process.
+          echo "--- Test 3: balloon re-inflate after pressure release ---"
+          "$BIN_DIR/runner" exec "$RUN_ID" -- "pkill -f alloc.py" 2>/dev/null || true
+          kill $ALLOC_PID 2>/dev/null || true
+          wait $ALLOC_PID 2>/dev/null || true
+
+          # Wait for balloon to re-inflate (actual_mib increases)
+          REINFLATED=0
+          for i in $(seq 1 30); do
+            ACTUAL=$(balloon_mib)
+            if [ "$ACTUAL" -gt "$DEFLATE_MIB" ]; then
+              REINFLATED=1
+              break
+            fi
+            sleep 2
+          done
+          [ "$REINFLATED" -eq 1 ] || fail "balloon did not re-inflate: actual_mib=$ACTUAL (was $DEFLATE_MIB)"
+          echo "PASS: balloon re-inflated from ${DEFLATE_MIB} to ${ACTUAL} MiB"
 
           # Stop transient service
           "$BIN_DIR/runner" service stop --name "$SVC"
