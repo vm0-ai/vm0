@@ -658,20 +658,24 @@ export async function executeQueuedRun(
   runId: string,
   params: CreateRunParams,
 ): Promise<void> {
+  const apiStartTime = Date.now();
   const { userId, agentComposeVersionId, prompt } = params;
 
-  // Step 1: Re-check concurrency — another request may have claimed the slot
-  await checkRunConcurrencyLimit(userId);
+  // Step 1: Re-check concurrency + update status atomically with advisory lock
+  // to prevent TOCTOU race where a concurrent createRun claims the slot.
+  const [run] = await globalThis.services.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId}))`);
+    await checkRunConcurrencyLimit(userId, undefined, tx);
 
-  // Update status from "queued" to "pending"
-  const [run] = await globalThis.services.db
-    .update(agentRuns)
-    .set({
-      status: "pending",
-      lastHeartbeatAt: new Date(),
-    })
-    .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "queued")))
-    .returning();
+    return tx
+      .update(agentRuns)
+      .set({
+        status: "pending",
+        lastHeartbeatAt: new Date(),
+      })
+      .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "queued")))
+      .returning();
+  });
 
   if (!run) {
     throw new Error(`Queued run ${runId} not found or already processed`);
@@ -731,7 +735,7 @@ export async function executeQueuedRun(
       debugNoMockClaude: params.debugNoMockClaude,
       modelProvider: params.modelProvider,
       checkEnv: params.checkEnv,
-      apiStartTime: params.apiStartTime,
+      apiStartTime,
       scopeId: params.scopeId,
     });
 

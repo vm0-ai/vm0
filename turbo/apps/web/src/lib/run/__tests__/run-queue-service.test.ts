@@ -134,6 +134,9 @@ describe("run-queue-service", () => {
 
   describe("cleanupExpiredQueueEntries", () => {
     it("should mark expired queue entries as timeout", async () => {
+      // Drain any pre-existing expired entries from other test suites
+      await cleanupExpiredQueueEntries();
+
       const result = await enqueueRun(baseParams({ prompt: "Will expire" }));
 
       // Manually set expiresAt to the past
@@ -153,6 +156,9 @@ describe("run-queue-service", () => {
     });
 
     it("should not affect non-expired entries", async () => {
+      // Clean any pre-existing expired entries from other test suites
+      await cleanupExpiredQueueEntries();
+
       await enqueueRun(baseParams({ prompt: "Not expired" }));
 
       const cleaned = await cleanupExpiredQueueEntries();

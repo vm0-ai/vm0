@@ -149,7 +149,7 @@ describe("createRun()", () => {
       expect(result.status).toBe("running");
     });
 
-    it("should enforce concurrency limit under concurrent requests", async () => {
+    it("should enqueue second run when concurrency limit reached", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
       reloadEnv();
 
@@ -159,15 +159,14 @@ describe("createRun()", () => {
         createRun(baseParams({ prompt: "Concurrent B" })),
       ]);
 
+      // Both should succeed: one runs, one gets queued
       const fulfilled = results.filter((r) => r.status === "fulfilled");
-      const rejected = results.filter((r) => r.status === "rejected");
+      expect(fulfilled).toHaveLength(2);
 
-      expect(fulfilled).toHaveLength(1);
-      expect(rejected).toHaveLength(1);
-      expect(
-        rejected[0]!.status === "rejected" &&
-          isConcurrentRunLimit(rejected[0]!.reason),
-      ).toBe(true);
+      const statuses = fulfilled.map(
+        (r) => r.status === "fulfilled" && r.value.status,
+      );
+      expect(statuses).toContain("queued");
     });
   });
 

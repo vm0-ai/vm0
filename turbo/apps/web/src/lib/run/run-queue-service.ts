@@ -9,6 +9,7 @@ import {
   decryptSecretsMap,
 } from "../crypto/secrets-encryption";
 import { PENDING_RUN_TTL_MS } from "./run-service";
+import { getDefaultScope } from "../scope/scope-member-service";
 import type { CreateRunParams, CreateRunResult } from "./run-service";
 
 const log = logger("service:run-queue");
@@ -37,6 +38,9 @@ export async function enqueueRun(
 ): Promise<CreateRunResult> {
   const { userId, agentComposeVersionId, prompt } = params;
 
+  // Resolve scope ID (caller should have already resolved it, but fall back)
+  const scopeId = params.scopeId ?? (await getDefaultScope(userId)).scope.id;
+
   // Encrypt the full CreateRunParams for later replay
   const paramsJson = JSON.stringify(params);
   const encryptedParams = encryptSecretsMap(
@@ -52,6 +56,7 @@ export async function enqueueRun(
       .insert(agentRuns)
       .values({
         userId,
+        scopeId,
         agentComposeVersionId,
         status: "queued",
         prompt,
