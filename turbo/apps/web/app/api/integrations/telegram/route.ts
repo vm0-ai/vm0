@@ -62,34 +62,23 @@ export async function GET(request: Request) {
     .orderBy(desc(telegramUserLinks.createdAt))
     .limit(1);
 
-  let installation;
-  let needsLink = false;
-
-  if (userLink) {
-    // Get bot installation via user link
-    const [linked] = await db
-      .select()
-      .from(telegramInstallations)
-      .where(eq(telegramInstallations.id, userLink.installationId))
-      .limit(1);
-    installation = linked;
-  } else {
-    // Fallback: check if user is admin of any installation
-    const [adminInstallation] = await db
-      .select()
-      .from(telegramInstallations)
-      .where(eq(telegramInstallations.adminUserId, userId))
-      .orderBy(desc(telegramInstallations.createdAt))
-      .limit(1);
-    installation = adminInstallation;
-    needsLink = !!adminInstallation;
+  if (!userLink) {
+    return NextResponse.json(
+      { error: { message: "No linked Telegram bot", code: "NOT_FOUND" } },
+      { status: 404 },
+    );
   }
+
+  // Get bot installation via user link
+  const [installation] = await db
+    .select()
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.id, userLink.installationId))
+    .limit(1);
 
   if (!installation) {
     return NextResponse.json(
-      {
-        error: { message: "No linked Telegram bot", code: "NOT_FOUND" },
-      },
+      { error: { message: "No linked Telegram bot", code: "NOT_FOUND" } },
       { status: 404 },
     );
   }
@@ -157,7 +146,6 @@ export async function GET(request: Request) {
   const isAdmin = installation.adminUserId === userId;
 
   return NextResponse.json({
-    installationId: installation.id,
     bot: {
       id: installation.telegramBotId,
       username: installation.botUsername,
@@ -166,7 +154,6 @@ export async function GET(request: Request) {
       ? { id: compose.id, name: compose.name, scopeSlug: compose.scopeSlug }
       : null,
     isAdmin,
-    needsLink,
     environment: {
       requiredSecrets,
       requiredVars,

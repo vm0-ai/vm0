@@ -1,9 +1,5 @@
 import { useGet, useSet } from "ccstate-react";
-import {
-  IconAlertTriangle,
-  IconChevronDown,
-  IconLink,
-} from "@tabler/icons-react";
+import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
 import {
   CONNECTOR_TYPES,
   getConnectorProvidedSecretNames,
@@ -31,7 +27,6 @@ import {
   telegramIntegrationData$,
   telegramIntegrationLoading$,
   disconnectTelegram$,
-  linkTelegramAccount$,
   updateTelegramDefaultAgent$,
   telegramDisconnectDialogOpen$,
   openTelegramDisconnectDialog$,
@@ -49,32 +44,6 @@ import { Link } from "../router/link.tsx";
 function getAllConnectorEnvVars(): Set<string> {
   return getConnectorProvidedSecretNames(
     Object.keys(CONNECTOR_TYPES) as ConnectorType[],
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Link account banner
-// ---------------------------------------------------------------------------
-
-function LinkAccountBanner() {
-  const linkAccount = useSet(linkTelegramAccount$);
-
-  return (
-    <div className="flex items-center gap-3 rounded-lg border border-blue-500 bg-blue-50 px-4 py-3 dark:border-blue-700 dark:bg-blue-950/30">
-      <IconLink size={20} className="shrink-0 text-blue-500" stroke={1.5} />
-      <div className="flex flex-1 flex-col gap-1">
-        <p className="text-sm font-medium">Link your Telegram account</p>
-        <p className="text-sm text-muted-foreground">
-          Link your account to chat with the agent in Telegram.
-        </p>
-      </div>
-      <Button
-        size="sm"
-        onClick={() => detach(linkAccount(), Reason.DomCallback)}
-      >
-        Link Account
-      </Button>
-    </div>
   );
 }
 
@@ -283,8 +252,6 @@ export function TelegramSettingsPage() {
         ) : (
           <>
             {/* Link account banner */}
-            {data?.needsLink && data.bot && <LinkAccountBanner />}
-
             {/* Bot info */}
             {data?.bot && (
               <div className="flex flex-col gap-4">
