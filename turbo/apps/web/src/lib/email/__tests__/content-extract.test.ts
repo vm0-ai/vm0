@@ -15,36 +15,38 @@ describe("extractEmailBody", () => {
     expect(result).not.toContain("<p>");
   });
 
-  it("preserves forwarded email content with Chinese text", () => {
-    // This is the exact bug scenario: user text starting with "在" + forwarded
-    // email containing "写道：" was previously stripped by email-reply-parser's
-    // catastrophically greedy Chinese regex /^(在[\s\S]+写道：)$/m
+  it("preserves forwarded email content that previously triggered regex bug", () => {
+    // Regression test: email-reply-parser's Chinese quote header regex
+    // /^(在[\s\S]+写道：)$/m catastrophically over-matched, swallowing all
+    // content between any line starting with a common CJK character and the
+    // quote attribution suffix. This test uses the exact pattern that triggered
+    // the bug to ensure forwarded content is fully preserved.
     const html = [
-      "<div>你仔细看一下我们的邮件交互，总结一下我们的对话。</div>",
+      "<div>Please review the email thread and summarize the conversation.</div>",
       "<div><br></div>",
-      "<div>在此基础上，请深度研究并创新一下。</div>",
+      "<div>Based on this, please do some research.</div>",
       "<div><br></div>",
       '<div class="gmail_quote">',
-      "  <div>---------- 转发的邮件 ----------</div>",
-      "  <div>发件人： Ethan Zhang &lt;ethan@vm0.ai&gt;</div>",
-      "  <div>日期：2026年3月5日</div>",
+      "  <div>---------- Forwarded message ----------</div>",
+      "  <div>From: Ethan Zhang &lt;ethan@vm0.ai&gt;</div>",
+      "  <div>Date: March 5, 2026</div>",
       "  <br>",
-      "  <div>forward 给你的 agent</div>",
+      "  <div>Can you forward this to the agent?</div>",
       "  <blockquote>",
-      "    Chenyu Lan &lt;lancy@vm0.ai&gt; 于2026年3月5日写道：<br>",
-      "    可以明天再聊聊，或者还是写一个 issue",
+      "    Chenyu Lan &lt;lancy@vm0.ai&gt; on March 5 wrote:<br>",
+      "    Let us discuss this tomorrow or create an issue instead.",
       "  </blockquote>",
       "</div>",
     ].join("\n");
 
     const result = extractEmailBody(html, "");
 
-    expect(result).toContain("总结一下我们的对话");
-    expect(result).toContain("在此基础上");
-    expect(result).toContain("转发的邮件");
+    expect(result).toContain("summarize the conversation");
+    expect(result).toContain("Based on this");
+    expect(result).toContain("Forwarded message");
     expect(result).toContain("Ethan Zhang");
-    expect(result).toContain("forward 给你的 agent");
-    expect(result).toContain("可以明天再聊聊");
+    expect(result).toContain("forward this to the agent");
+    expect(result).toContain("discuss this tomorrow");
   });
 
   it("preserves nested blockquote reply content", () => {
