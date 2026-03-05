@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { eq, and } from "drizzle-orm";
 import { HttpResponse } from "msw";
 import {
   testContext,
@@ -13,6 +14,8 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[installationId]/route";
+import { telegramThreadSessions } from "../../../../../src/db/schema/telegram-thread-session";
+import { agentSessions } from "../../../../../src/db/schema/agent-session";
 
 // Mock Next.js after() to execute synchronously
 const afterPromises: Promise<unknown>[] = [];
@@ -69,12 +72,17 @@ function telegramSendMessage() {
 
 describe("Telegram bot commands", () => {
   let installationId: string;
+  let composeId: string;
+  let userLinkId: string;
+  let userId: string;
 
   beforeEach(async () => {
     afterPromises.length = 0;
     context.setupMocks();
     const user = await context.setupUser();
-    const { composeId } = await createTestCompose(uniqueId("agent"));
+    userId = user.userId;
+    const compose = await createTestCompose(uniqueId("agent"));
+    composeId = compose.composeId;
 
     const result = await createTelegramCallbackInstallation(
       composeId,
@@ -83,6 +91,7 @@ describe("Telegram bot commands", () => {
       { telegramUserId: String(TELEGRAM_USER_ID) },
     );
     installationId = result.installationId;
+    userLinkId = result.userLinkId;
 
     mockClerk({ userId: user.userId });
   });
@@ -273,6 +282,111 @@ describe("Telegram bot commands", () => {
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       expect(sendMsg.calls[0]?.text).toContain("admin");
+    });
+  });
+
+  describe("/new_session command", () => {
+    it("should clear DM session and send confirmation", async () => {
+      // Create an agent session and thread session to be deleted
+      const [agentSession] = await globalThis.services.db
+        .insert(agentSessions)
+        .values({
+          userId,
+          agentComposeId: composeId,
+        })
+        .returning();
+
+      await globalThis.services.db.insert(telegramThreadSessions).values({
+        telegramUserLinkId: userLinkId,
+        chatId: String(TELEGRAM_USER_ID),
+        rootMessageId: "dm",
+        agentSessionId: agentSession!.id,
+      });
+
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: TELEGRAM_USER_ID, type: "private" },
+          from: { id: TELEGRAM_USER_ID, username: "testuser" },
+          text: "/new_session",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ installationId }),
+      });
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Verify confirmation message
+      expect(sendMsg.mocked).toHaveBeenCalled();
+      expect(sendMsg.calls[0]?.text).toContain("New session started");
+
+      // Verify thread session was deleted
+      const [remaining] = await globalThis.services.db
+        .select({ id: telegramThreadSessions.id })
+        .from(telegramThreadSessions)
+        .where(
+          and(
+            eq(telegramThreadSessions.telegramUserLinkId, userLinkId),
+            eq(telegramThreadSessions.chatId, String(TELEGRAM_USER_ID)),
+            eq(telegramThreadSessions.rootMessageId, "dm"),
+          ),
+        )
+        .limit(1);
+      expect(remaining).toBeUndefined();
+    });
+
+    it("should prompt linking when user is not connected", async () => {
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: 99999, type: "private" },
+          from: { id: 99999, username: "unknown_user" },
+          text: "/new_session",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ installationId }),
+      });
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      expect(sendMsg.mocked).toHaveBeenCalled();
+      expect(sendMsg.calls[0]?.text).toContain("link your account");
+    });
+
+    it("should be ignored in group chats", async () => {
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: TELEGRAM_USER_ID, type: "group" },
+          from: { id: TELEGRAM_USER_ID, username: "testuser" },
+          text: "/new_session",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ installationId }),
+      });
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // No message sent in group chat
+      expect(sendMsg.mocked).not.toHaveBeenCalled();
     });
   });
 });
