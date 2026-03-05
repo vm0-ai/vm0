@@ -73,6 +73,25 @@ async function syncClerkMembership(scope: Scope, userId: string) {
 }
 
 /**
+ * Verify scope membership with Clerk org sync fallback.
+ *
+ * Checks scope_members first. If the user is not found and the scope has a
+ * Clerk org, attempts to lazily sync membership from Clerk.
+ */
+async function requireMemberWithClerkSync(scope: Scope, userId: string) {
+  try {
+    return await requireScopeMember(scope.id, userId);
+  } catch (error) {
+    if (!isForbidden(error) || !scope.clerkOrgId) throw error;
+
+    // User not in scope_members — check Clerk org membership
+    const member = await syncClerkMembership(scope, userId);
+    if (!member) throw error; // Not a Clerk member either
+    return member;
+  }
+}
+
+/**
  * Resolve scope from request context using scope_members.
  *
  * Resolution order:
@@ -88,17 +107,8 @@ export async function resolveScope(userId: string, scopeSlug?: string | null) {
     const scope = await getScopeBySlug(scopeSlug);
     if (!scope) throw notFound("Scope not found");
 
-    try {
-      const member = await requireScopeMember(scope.id, userId);
-      return { scope, member };
-    } catch (error) {
-      if (!isForbidden(error) || !scope.clerkOrgId) throw error;
-
-      // User not in scope_members — check Clerk org membership
-      const member = await syncClerkMembership(scope, userId);
-      if (!member) throw error; // Not a Clerk member either
-      return { scope, member };
-    }
+    const member = await requireMemberWithClerkSync(scope, userId);
+    return { scope, member };
   }
 
   // 2. Default scope fallback
@@ -126,15 +136,6 @@ export async function requireScopeFromRequest(
     throw notFound("Scope not found");
   }
 
-  try {
-    const member = await requireScopeMember(scope.id, userId);
-    return { scope, member };
-  } catch (error) {
-    if (!isForbidden(error) || !scope.clerkOrgId) throw error;
-
-    // User not in scope_members — check Clerk org membership
-    const member = await syncClerkMembership(scope, userId);
-    if (!member) throw error; // Not a Clerk member either
-    return { scope, member };
-  }
+  const member = await requireMemberWithClerkSync(scope, userId);
+  return { scope, member };
 }
