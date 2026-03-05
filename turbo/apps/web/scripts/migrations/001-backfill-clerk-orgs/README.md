@@ -27,28 +27,35 @@ unblocking Phase 3's `NOT NULL` constraint.
 
 ## Environment Variables
 
-| Variable           | Required | Description                  |
-| ------------------ | -------- | ---------------------------- |
-| `DATABASE_URL`     | Yes      | PostgreSQL connection string |
-| `CLERK_SECRET_KEY` | Yes      | Clerk API secret key         |
+| Variable           | Required              | Description                  |
+| ------------------ | --------------------- | ---------------------------- |
+| `DATABASE_URL`     | Yes                   | PostgreSQL connection string |
+| `CLERK_SECRET_KEY` | Only with `--migrate` | Clerk API secret key         |
 
 ## Usage
 
 Run from the `turbo/apps/web` directory:
 
 ```bash
-# Dry run — preview changes without writing to DB or calling Clerk API
-DATABASE_URL="..." CLERK_SECRET_KEY="..." tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts --dry-run
+# Dry run (default) — preview which scopes need backfilling
+tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts
 
-# Actual run
-DATABASE_URL="..." CLERK_SECRET_KEY="..." tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts
+# Dry run for a single user
+tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts --user-id=user_xxx
+
+# Actual migration for a single user first
+tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts --migrate --user-id=user_xxx
+
+# Full migration
+tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts --migrate
 ```
 
 ## Options
 
-| Flag        | Default | Description                                  |
-| ----------- | ------- | -------------------------------------------- |
-| `--dry-run` | `false` | Preview without DB writes or Clerk API calls |
+| Flag                      | Description                               |
+| ------------------------- | ----------------------------------------- |
+| `--migrate`               | Actually execute (default is dry-run)     |
+| `--user-id=<clerkUserId>` | Only process the scope owned by this user |
 
 ## How It Works
 

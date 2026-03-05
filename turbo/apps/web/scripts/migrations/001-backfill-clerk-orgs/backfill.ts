@@ -8,7 +8,7 @@
  * back to the row. After this completes, Phase 3 can add a NOT NULL constraint.
  *
  * Usage:
- *   tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts [--dry-run] [--user-id=<clerkUserId>]
+ *   tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts [--migrate] [--user-id=<clerkUserId>]
  *
  * Environment:
  *   DATABASE_URL        — Required
@@ -45,13 +45,13 @@ interface Stats {
 
 const { values: args } = parseArgs({
   options: {
-    "dry-run": { type: "boolean", default: false },
+    migrate: { type: "boolean", default: false },
     "user-id": { type: "string" },
   },
   strict: true,
 });
 
-const DRY_RUN = args["dry-run"] ?? false;
+const DRY_RUN = !args.migrate;
 const USER_ID = args["user-id"];
 
 // ---------------------------------------------------------------------------
@@ -171,20 +171,33 @@ async function main() {
     throw new Error("DATABASE_URL is required");
   }
 
-  const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-  if (!clerkSecretKey) {
-    throw new Error("CLERK_SECRET_KEY is required");
-  }
-
   console.log("=== Backfill Clerk Organization IDs ===");
-  console.log(`Dry run: ${DRY_RUN}`);
+  console.log(
+    `Mode: ${DRY_RUN ? "dry-run (pass --migrate to execute)" : "MIGRATE"}`,
+  );
   if (USER_ID) {
-    console.log(`User:    ${USER_ID} (single-scope mode)`);
+    console.log(`User: ${USER_ID} (single-scope mode)`);
   }
   console.log();
 
-  const { createClerkClient } = await import("@clerk/backend");
-  const clerkClient = createClerkClient({ secretKey: clerkSecretKey });
+  let clerkClient: {
+    organizations: {
+      createOrganization: (params: {
+        name: string;
+        slug: string;
+        createdBy?: string;
+      }) => Promise<{ id: string }>;
+    };
+  } | null = null;
+
+  if (!DRY_RUN) {
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (!clerkSecretKey) {
+      throw new Error("CLERK_SECRET_KEY is required for --migrate");
+    }
+    const { createClerkClient } = await import("@clerk/backend");
+    clerkClient = createClerkClient({ secretKey: clerkSecretKey });
+  }
 
   const pg = postgres(databaseUrl, { max: 1 });
   const db = drizzle(pg);
@@ -229,7 +242,7 @@ async function main() {
         }
 
         const orgId = await createClerkOrg(
-          clerkClient,
+          clerkClient!,
           scope.slug,
           scope.ownerId,
         );
