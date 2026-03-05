@@ -93,8 +93,8 @@ export async function handleDirectMessage(
     return;
   }
 
-  // 4. Resolve workspace agent (may be overridden by session below)
-  let composeId = installation.defaultComposeId;
+  // 4. Resolve workspace agent
+  const composeId = installation.defaultComposeId;
   const defaultAgent = await getWorkspaceAgent(composeId);
   if (!defaultAgent) {
     await postMessage(
@@ -105,7 +105,7 @@ export async function handleDirectMessage(
     );
     return;
   }
-  let agentName = defaultAgent.name;
+  const agentName = defaultAgent.name;
 
   // 5. Show assistant thinking status
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");

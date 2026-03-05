@@ -65,7 +65,7 @@ export async function handleTelegramDirectMessage(
   }
 
   // 3. Resolve workspace agent
-  let composeId = installation.defaultComposeId;
+  const composeId = installation.defaultComposeId;
   const defaultAgent = await getWorkspaceAgent(composeId);
   if (!defaultAgent) {
     await sendMessage(
@@ -75,7 +75,7 @@ export async function handleTelegramDirectMessage(
     );
     return;
   }
-  let agentName = defaultAgent.name;
+  const agentName = defaultAgent.name;
 
   // 4. Send thinking placeholder message
   const thinkingMessage = await sendThinkingMessage(client, chatId, agentName);

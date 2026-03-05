@@ -11,6 +11,13 @@ import { createRun, validateAgentSession } from "../../run";
 import { isConcurrentRunLimit } from "../../errors";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getInstallationAccessToken } from "../github-app";
+import {
+  type IssueComment,
+  addCommentReaction,
+  fetchIssueComments,
+  postIssueCommentBestEffort,
+  removeCommentReaction,
+} from "../api";
 import { env } from "../../../env";
 import { logger } from "../../logger";
 
@@ -183,7 +190,7 @@ export async function handleIssueCommentEvent(
   }
 
   // Build prompt with comment as the user message and issue as context
-  const prompt = buildCommentPrompt(issue, comment);
+  const prompt = buildCommentPrompt(comment);
 
   await dispatchAgentRun({
     ghInstallationId: String(installation.id),
@@ -212,14 +219,183 @@ interface DispatchParams {
 }
 
 /**
+ * Resolve the compose version ID, falling back to the latest version.
+ */
+async function resolveVersionId(compose: {
+  id: string;
+  headVersionId: string | null;
+}): Promise<string> {
+  if (compose.headVersionId) return compose.headVersionId;
+
+  const [latestVersion] = await globalThis.services.db
+    .select({ id: agentComposeVersions.id })
+    .from(agentComposeVersions)
+    .where(eq(agentComposeVersions.composeId, compose.id))
+    .orderBy(desc(agentComposeVersions.createdAt))
+    .limit(1);
+
+  if (!latestVersion) {
+    throw new Error(`Agent compose has no versions: composeId=${compose.id}`);
+  }
+  return latestVersion.id;
+}
+
+/**
+ * Look up and validate an existing issue session for multi-turn.
+ * Returns the validated session ID, or undefined to start a new session.
+ * Returns "duplicate" if the comment was already processed.
+ */
+async function resolveExistingSession(
+  installationDbId: string,
+  repo: string,
+  issueNumber: number,
+  composeId: string,
+  vm0UserId: string,
+  commentId: string | undefined,
+): Promise<
+  | { kind: "duplicate" }
+  | {
+      kind: "resolved";
+      sessionId: string | undefined;
+      lastCommentId: string | null | undefined;
+    }
+> {
+  const [found] = await globalThis.services.db
+    .select({
+      agentSessionId: githubIssueSessions.agentSessionId,
+      lastCommentId: githubIssueSessions.lastCommentId,
+    })
+    .from(githubIssueSessions)
+    .where(
+      and(
+        eq(githubIssueSessions.installationId, installationDbId),
+        eq(githubIssueSessions.repo, repo),
+        eq(githubIssueSessions.issueNumber, issueNumber),
+      ),
+    )
+    .limit(1);
+
+  if (!found) {
+    return { kind: "resolved", sessionId: undefined, lastCommentId: undefined };
+  }
+
+  // Deduplicate: skip if we already processed this comment
+  if (commentId && found.lastCommentId === commentId) {
+    log.debug("Skipping duplicate comment", { commentId });
+    return { kind: "duplicate" };
+  }
+
+  // Validate session's agent matches current default
+  const sessionId = await validateSessionAgent(
+    found.agentSessionId,
+    vm0UserId,
+    composeId,
+  );
+  return {
+    kind: "resolved",
+    sessionId,
+    lastCommentId: sessionId ? found.lastCommentId : undefined,
+  };
+}
+
+/**
+ * Validate that a session's agent matches the expected compose.
+ * Returns the session ID if valid, undefined otherwise.
+ */
+async function validateSessionAgent(
+  sessionId: string,
+  vm0UserId: string,
+  expectedComposeId: string,
+): Promise<string | undefined> {
+  try {
+    const sessionData = await validateAgentSession(sessionId, vm0UserId);
+    if (sessionData.agentComposeId === expectedComposeId) {
+      return sessionId;
+    }
+    log.debug("Agent changed, starting new session", {
+      sessionComposeId: sessionData.agentComposeId,
+      currentComposeId: expectedComposeId,
+    });
+    return undefined;
+  } catch (error) {
+    log.warn("Session validation failed, starting new session", {
+      sessionId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
+
+/**
+ * Build a full prompt with issue context.
+ */
+function buildFullPrompt(
+  prompt: string,
+  issueContext: string,
+  isCommentTrigger: boolean,
+): string {
+  if (!issueContext) return prompt;
+
+  if (isCommentTrigger) {
+    return `${issueContext}\n\n# User Prompt\n\n${prompt}`;
+  }
+  return `${issueContext}\n\nBased on the GitHub issue above and its discussion, analyze the request and decide on the appropriate action.`;
+}
+
+/**
+ * Handle error from createRun: remove reaction and post error feedback.
+ */
+async function handleDispatchError(
+  error: unknown,
+  token: string | undefined,
+  repo: string,
+  issueNumber: number,
+  commentId: string | undefined,
+  reactionId: string | undefined,
+  commentBody: string | undefined,
+): Promise<void> {
+  if (token && commentId && reactionId) {
+    await removeCommentReaction(token, repo, commentId, reactionId);
+  }
+
+  const quotePrefix = commentBody
+    ? commentBody
+        .split("\n")
+        .map((line) => `> ${line}`)
+        .join("\n") + "\n\n"
+    : "";
+
+  if (isConcurrentRunLimit(error)) {
+    log.warn("Concurrent run limit reached for GitHub issue", {
+      repo,
+      issueNumber,
+    });
+    if (token) {
+      await postIssueCommentBestEffort(
+        token,
+        repo,
+        issueNumber,
+        `${quotePrefix}⚠️ The agent is currently busy with another task. Please try again shortly.`,
+      );
+    }
+    return;
+  }
+
+  if (token) {
+    const message =
+      error instanceof Error ? error.message : "An unexpected error occurred.";
+    await postIssueCommentBestEffort(
+      token,
+      repo,
+      issueNumber,
+      `${quotePrefix}❌ Failed to start the agent: ${message}`,
+    );
+  }
+  throw error;
+}
+
+/**
  * Core dispatch logic shared by issue and comment handlers.
- *
- * 1. Resolve installation from GitHub installation ID
- * 2. Resolve VM0 user via github_user_links
- * 3. Get agent compose and latest version
- * 4. Look up existing session for multi-turn
- * 5. Create agent run with callback
- * 6. Update/create issue session mapping
  */
 async function dispatchAgentRun(params: DispatchParams): Promise<void> {
   const {
@@ -232,7 +408,7 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
   } = params;
   const issueNumber = issue.number;
 
-  // 1. Resolve installation (only active installations can trigger runs)
+  // 1. Resolve installation
   const [installation] = await globalThis.services.db
     .select()
     .from(githubInstallations)
@@ -255,13 +431,13 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
     ? await getGitHubToken(installation.installationId)
     : undefined;
 
-  // Add 👀 reaction to the triggering comment
-  let reactionId: string | undefined;
-  if (token && commentId) {
-    reactionId = await addCommentReaction(token, repo, commentId, "eyes");
-  }
+  // Add eyes reaction to the triggering comment
+  const reactionId =
+    token && commentId
+      ? await addCommentReaction(token, repo, commentId, "eyes")
+      : undefined;
 
-  // 2. Resolve VM0 user via github_user_links
+  // 2. Resolve VM0 user
   const [userLink] = await globalThis.services.db
     .select({ vm0UserId: githubUserLinks.vm0UserId })
     .from(githubUserLinks)
@@ -278,7 +454,6 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
       githubUserId: senderGithubUserId,
       installationId: installation.id,
     });
-    // TODO: Post comment asking user to link their VM0 account
     return;
   }
 
@@ -297,100 +472,38 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
     );
   }
 
-  let versionId = compose.headVersionId;
-  if (!versionId) {
-    const [latestVersion] = await globalThis.services.db
-      .select({ id: agentComposeVersions.id })
-      .from(agentComposeVersions)
-      .where(eq(agentComposeVersions.composeId, compose.id))
-      .orderBy(desc(agentComposeVersions.createdAt))
-      .limit(1);
+  const versionId = await resolveVersionId(compose);
 
-    if (!latestVersion) {
-      throw new Error(`Agent compose has no versions: composeId=${compose.id}`);
-    }
-    versionId = latestVersion.id;
-  }
-
-  // 4. Look up existing session for multi-turn (skip for label triggers — always new session)
+  // 4. Look up existing session
   let existingSessionId: string | undefined;
-  let existingSession:
-    | { agentSessionId: string; lastCommentId: string | null }
-    | undefined;
+  let lastCommentId: string | null | undefined;
 
   if (!params.forceNewSession) {
-    const [found] = await globalThis.services.db
-      .select({
-        agentSessionId: githubIssueSessions.agentSessionId,
-        lastCommentId: githubIssueSessions.lastCommentId,
-      })
-      .from(githubIssueSessions)
-      .where(
-        and(
-          eq(githubIssueSessions.installationId, installation.id),
-          eq(githubIssueSessions.repo, repo),
-          eq(githubIssueSessions.issueNumber, issueNumber),
-        ),
-      )
-      .limit(1);
-    existingSession = found;
-
-    if (existingSession) {
-      // Deduplicate: skip if we already processed this comment
-      if (commentId && existingSession.lastCommentId === commentId) {
-        log.debug("Skipping duplicate comment", { commentId });
-        return;
-      }
-
-      // Validate session's agent matches current default — discard if changed
-      try {
-        const sessionData = await validateAgentSession(
-          existingSession.agentSessionId,
-          vm0UserId,
-        );
-        if (sessionData.agentComposeId === compose.id) {
-          existingSessionId = existingSession.agentSessionId;
-        } else {
-          log.debug("Agent changed, starting new session", {
-            sessionComposeId: sessionData.agentComposeId,
-            currentComposeId: compose.id,
-          });
-        }
-      } catch {
-        log.debug("Session validation failed, starting new session");
-      }
-    }
+    const sessionResult = await resolveExistingSession(
+      installation.id,
+      repo,
+      issueNumber,
+      compose.id,
+      vm0UserId,
+      commentId,
+    );
+    if (sessionResult.kind === "duplicate") return;
+    existingSessionId = sessionResult.sessionId;
+    lastCommentId = sessionResult.lastCommentId;
   }
 
-  // 5. Fetch issue context (comments history)
-  const lastCommentId = existingSessionId
-    ? (existingSession?.lastCommentId ?? undefined)
-    : undefined;
+  // 5. Fetch issue context and build prompt
   let issueContext = "";
   if (token) {
     const comments = await fetchIssueComments(token, repo, issueNumber);
     issueContext = formatIssueContext(
       issue,
       comments,
-      lastCommentId,
+      existingSessionId ? (lastCommentId ?? undefined) : undefined,
       commentId,
     );
   }
-
-  // Build full prompt with context
-  let fullPrompt: string;
-  if (issueContext) {
-    if (commentId) {
-      // Comment trigger — context + comment body as user prompt
-      fullPrompt = `${issueContext}\n\n# User Prompt\n\n${prompt}`;
-    } else {
-      // Label trigger — context already includes issue body and comments.
-      // Instruct the agent to analyze the context and decide what to do.
-      fullPrompt = `${issueContext}\n\nBased on the GitHub issue above and its discussion, analyze the request and decide on the appropriate action.`;
-    }
-  } else {
-    fullPrompt = prompt;
-  }
+  const fullPrompt = buildFullPrompt(prompt, issueContext, !!commentId);
 
   // 6. Create agent run with callback
   const callbackUrl = `${getApiUrl()}/api/internal/callbacks/github/issues`;
@@ -432,70 +545,29 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
       issueNumber,
     });
 
-    // 6. Update or create issue session mapping
-    if (existingSession) {
-      // Update lastCommentId for deduplication
-      if (commentId) {
-        await globalThis.services.db
-          .update(githubIssueSessions)
-          .set({
-            lastCommentId: commentId,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(githubIssueSessions.installationId, installation.id),
-              eq(githubIssueSessions.repo, repo),
-              eq(githubIssueSessions.issueNumber, issueNumber),
-            ),
-          );
-      }
-    }
-    // Note: New session mapping will be created by the callback handler
-    // once the run completes and we have the agentSessionId from the result
-  } catch (error) {
-    // Remove 👀 reaction on failure
-    if (token && commentId && reactionId) {
-      await removeCommentReaction(token, repo, commentId, reactionId);
-    }
-
-    const commentBody = params.comment?.body;
-    const quotePrefix = commentBody
-      ? commentBody
-          .split("\n")
-          .map((line) => `> ${line}`)
-          .join("\n") + "\n\n"
-      : "";
-
-    if (isConcurrentRunLimit(error)) {
-      log.warn("Concurrent run limit reached for GitHub issue", {
-        repo,
-        issueNumber,
-      });
-      if (token) {
-        await postIssueComment(
-          token,
-          repo,
-          issueNumber,
-          `${quotePrefix}⚠️ The agent is currently busy with another task. Please try again shortly.`,
+    // Update lastCommentId for deduplication on existing sessions
+    if (existingSessionId && commentId) {
+      await globalThis.services.db
+        .update(githubIssueSessions)
+        .set({ lastCommentId: commentId, updatedAt: new Date() })
+        .where(
+          and(
+            eq(githubIssueSessions.installationId, installation.id),
+            eq(githubIssueSessions.repo, repo),
+            eq(githubIssueSessions.issueNumber, issueNumber),
+          ),
         );
-      }
-      return;
     }
-
-    if (token) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "An unexpected error occurred.";
-      await postIssueComment(
-        token,
-        repo,
-        issueNumber,
-        `${quotePrefix}❌ Failed to start the agent: ${message}`,
-      );
-    }
-    throw error;
+  } catch (error) {
+    await handleDispatchError(
+      error,
+      token,
+      repo,
+      issueNumber,
+      commentId,
+      reactionId,
+      params.comment?.body,
+    );
   }
 }
 
@@ -511,53 +583,11 @@ function buildIssuePrompt(issue: GitHubIssue): string {
  * Build a prompt from a comment.
  * Sends only the comment body as the user prompt.
  */
-function buildCommentPrompt(
-  _issue: GitHubIssue,
-  comment: GitHubComment,
-): string {
+function buildCommentPrompt(comment: GitHubComment): string {
   return comment.body;
 }
 
 // ─── Issue Context ──────────────────────────────────────────────────
-
-interface IssueComment {
-  id: number;
-  user: { login: string; type: string };
-  body: string;
-  created_at: string;
-}
-
-/**
- * Fetch issue comments from GitHub API.
- * Returns up to 100 most recent comments.
- */
-async function fetchIssueComments(
-  token: string,
-  repo: string,
-  issueNumber: number,
-): Promise<IssueComment[]> {
-  const res = await fetch(
-    `https://api.github.com/repos/${repo}/issues/${issueNumber}/comments?per_page=100&direction=asc`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    },
-  );
-
-  if (!res.ok) {
-    log.warn("Failed to fetch issue comments", {
-      status: res.status,
-      repo,
-      issueNumber,
-    });
-    return [];
-  }
-
-  return (await res.json()) as IssueComment[];
-}
 
 /**
  * Format issue and comments as context for the agent prompt.
@@ -625,80 +655,4 @@ async function getGitHubToken(
     ghInstallationId,
   );
   return token;
-}
-
-// ─── GitHub API Helpers ─────────────────────────────────────────────
-
-async function addCommentReaction(
-  token: string,
-  repo: string,
-  commentId: string,
-  content: string,
-): Promise<string | undefined> {
-  try {
-    const res = await fetch(
-      `https://api.github.com/repos/${repo}/issues/comments/${commentId}/reactions`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-        body: JSON.stringify({ content }),
-      },
-    );
-    if (!res.ok) return undefined;
-    const data = (await res.json()) as { id: number };
-    return String(data.id);
-  } catch {
-    return undefined;
-  }
-}
-
-async function removeCommentReaction(
-  token: string,
-  repo: string,
-  commentId: string,
-  reactionId: string,
-): Promise<void> {
-  try {
-    await fetch(
-      `https://api.github.com/repos/${repo}/issues/comments/${commentId}/reactions/${reactionId}`,
-      {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-      },
-    );
-  } catch {
-    // Best-effort
-  }
-}
-
-async function postIssueComment(
-  token: string,
-  repo: string,
-  issueNumber: number,
-  body: string,
-): Promise<void> {
-  try {
-    await fetch(
-      `https://api.github.com/repos/${repo}/issues/${issueNumber}/comments`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-        body: JSON.stringify({ body }),
-      },
-    );
-  } catch {
-    // Best-effort
-  }
 }

@@ -7,6 +7,10 @@ import { githubIssueSessions } from "../../../../../../src/db/schema/github-issu
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { getInstallationAccessToken } from "../../../../../../src/lib/github/github-app";
+import {
+  postIssueComment,
+  removeCommentReaction,
+} from "../../../../../../src/lib/github/api";
 import { getRunResultData } from "../../../../../../src/lib/slack/handlers/run-agent";
 import { getPlatformUrl } from "../../../../../../src/lib/url";
 import { detectDeepLinks } from "../../../../../../src/lib/deep-links";
@@ -74,24 +78,11 @@ function formatGitHubComment(opts: {
   status: "completed" | "failed";
   agentName: string;
   runId: string;
-  repo: string;
-  issueNumber: number;
   output?: string;
   error?: string;
-  triggerCommentId?: string;
   triggerCommentBody?: string;
 }): string {
-  const {
-    status,
-    agentName,
-    runId,
-    repo,
-    issueNumber,
-    output,
-    error,
-    triggerCommentId,
-    triggerCommentBody,
-  } = opts;
+  const { status, agentName, runId, output, error, triggerCommentBody } = opts;
   const platformUrl = getPlatformUrl();
   const logsUrl = `${platformUrl}/agents/${encodeURIComponent(agentName)}/logs/${encodeURIComponent(runId)}`;
   const content =
@@ -124,66 +115,6 @@ function formatGitHubComment(opts: {
   parts.push(`<sub>📋 [View logs](${logsUrl})</sub>`);
 
   return parts.join("\n");
-}
-
-/**
- * Remove a reaction from a GitHub issue comment.
- */
-async function removeCommentReaction(
-  token: string,
-  repo: string,
-  commentId: string,
-  reactionId: string,
-): Promise<void> {
-  const res = await fetch(
-    `https://api.github.com/repos/${repo}/issues/comments/${commentId}/reactions/${reactionId}`,
-    {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    },
-  );
-  if (!res.ok) {
-    log.warn("Failed to remove reaction", {
-      commentId,
-      reactionId,
-      status: res.status,
-    });
-  }
-}
-
-/**
- * Post a comment to a GitHub issue using the installation access token.
- */
-async function postIssueComment(
-  token: string,
-  repo: string,
-  issueNumber: number,
-  body: string,
-): Promise<string | undefined> {
-  const res = await fetch(
-    `https://api.github.com/repos/${repo}/issues/${issueNumber}/comments`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      body: JSON.stringify({ body }),
-    },
-  );
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to post GitHub comment: ${res.status} ${text}`);
-  }
-
-  const data = (await res.json()) as { id: number };
-  return String(data.id);
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -251,11 +182,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     status,
     agentName: payload.agentName,
     runId,
-    repo,
-    issueNumber,
     output: resultData?.result,
     error,
-    triggerCommentId: payload.triggerCommentId,
     triggerCommentBody: payload.triggerCommentBody,
   });
   const commentId = await postIssueComment(
