@@ -23,11 +23,6 @@ import { logger } from "../../logger";
 
 const log = logger("github:issue-event");
 
-function getAgentLabel(): string {
-  const { NODE_ENV } = env();
-  return NODE_ENV === "development" ? "vm0-agent-test" : "vm0-agent";
-}
-
 // ─── GitHub Webhook Payload Schemas ────────────────────────────────
 
 const gitHubUserSchema = z.object({
@@ -124,17 +119,27 @@ export async function handleIssuesEvent(
     return;
   }
 
-  // For "labeled" action, only trigger when the vm0-agent label is added
-  if (action === "labeled" && label?.name !== getAgentLabel()) {
-    log.debug("Ignoring label that is not vm0-agent", { label: label?.name });
+  if (!appSlug) {
+    log.debug("Ignoring issues event: app slug not configured");
     return;
   }
 
-  // For "opened" action, check if issue has the vm0-agent label
+  // For "labeled" action, only trigger when the app slug label is added
+  if (action === "labeled" && label?.name !== appSlug) {
+    log.debug("Ignoring label that is not app slug", {
+      label: label?.name,
+      expected: appSlug,
+    });
+    return;
+  }
+
+  // For "opened" action, check if issue has the app slug label
   if (action === "opened") {
-    const hasLabel = issue.labels.some((l) => l.name === getAgentLabel());
+    const hasLabel = issue.labels.some((l) => l.name === appSlug);
     if (!hasLabel) {
-      log.debug("Ignoring opened issue without vm0-agent label");
+      log.debug("Ignoring opened issue without app slug label", {
+        expected: appSlug,
+      });
       return;
     }
   }
