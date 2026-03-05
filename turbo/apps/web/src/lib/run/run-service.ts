@@ -250,7 +250,9 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
     return await executeRunnerJob(context);
   }
 
-  // Domain-based rollout: route @vm0.ai users to runner
+  // Domain-based rollout: route @vm0.ai users to runner.
+  // Note: CI test accounts (e2e+clerk_test@vm0.ai) also match, but preview
+  // deploys don't set RUNNER_DEFAULT_GROUP so they still use E2B.
   const defaultGroup = env().RUNNER_DEFAULT_GROUP;
   if (defaultGroup) {
     const email = await getUserEmail(context.userId);

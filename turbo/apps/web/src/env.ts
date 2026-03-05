@@ -63,7 +63,7 @@ function initEnv() {
       S3_PUBLIC_ENDPOINT: z.string().url().optional(),
       SECRETS_ENCRYPTION_KEY: z.string().length(64), // 32-byte hex key for AES-256
       OFFICIAL_RUNNER_SECRET: z.string().length(64).optional(), // 32-byte hex key for official runner auth
-      RUNNER_DEFAULT_GROUP: z.string().min(1).optional(), // Default runner group for domain-based rollout (e.g. "vm0/official")
+      RUNNER_DEFAULT_GROUP: z.string().min(1).optional(), // Default runner group for domain-based rollout (e.g. "vm0/production")
       GITHUB_SKILL_DOWNLOAD_TOKEN: z.string().min(1).optional(), // GitHub PAT for skill download via Contents API (avoids 60 req/hr rate limit)
       AXIOM_TOKEN_SESSIONS: z.string().min(1).optional(), // Scoped token for agent-run-events
       AXIOM_TOKEN_TELEMETRY: z.string().min(1).optional(), // Scoped token for all other datasets
