@@ -81,7 +81,6 @@ describe("run command", () => {
   };
 
   beforeEach(() => {
-    vi.clearAllMocks();
     // Disable chalk colors for deterministic console output assertions
     chalk.level = 0;
     // Use environment variables for config instead of mocking the module
@@ -2170,28 +2169,26 @@ describe("run command", () => {
       expect(allErrors.some((log) => log.includes("Unknown error"))).toBe(true);
     });
 
-    it("should display various error patterns correctly", async () => {
-      const errorPatterns = [
-        {
-          error: "Error: Authentication failed: Invalid API key",
-          expected: "Authentication failed",
-        },
-        {
-          error: "Error: Network request failed: ECONNREFUSED",
-          expected: "Network request failed",
-        },
-        {
-          error: "Error: Permission denied: Cannot write to /etc/passwd",
-          expected: "Permission denied",
-        },
-        {
-          error: "Error: Operation timed out after 300000ms",
-          expected: "timed out",
-        },
-      ];
-
-      for (const { error, expected } of errorPatterns) {
-        vi.clearAllMocks();
+    it.each([
+      {
+        error: "Error: Authentication failed: Invalid API key",
+        expected: "Authentication failed",
+      },
+      {
+        error: "Error: Network request failed: ECONNREFUSED",
+        expected: "Network request failed",
+      },
+      {
+        error: "Error: Permission denied: Cannot write to /etc/passwd",
+        expected: "Permission denied",
+      },
+      {
+        error: "Error: Operation timed out after 300000ms",
+        expected: "timed out",
+      },
+    ])(
+      "should display error pattern: $expected",
+      async ({ error, expected }) => {
         server.use(
           http.post("http://localhost:3000/api/agent/runs", () => {
             return HttpResponse.json(errorTestRunResponse, { status: 201 });
@@ -2217,7 +2214,7 @@ describe("run command", () => {
           .filter((log): log is string => typeof log === "string");
 
         expect(allErrors.some((log) => log.includes(expected))).toBe(true);
-      }
-    });
+      },
+    );
   });
 });

@@ -31,7 +31,6 @@ describe("info command", () => {
   let tempDir: string;
 
   beforeEach(() => {
-    vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
 

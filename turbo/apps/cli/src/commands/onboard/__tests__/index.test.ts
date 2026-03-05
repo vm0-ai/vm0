@@ -45,8 +45,6 @@ describe("onboard command", () => {
   let mockExit: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
-
     // Mock process.exit to throw (simulates process termination)
     mockExit = vi.fn().mockImplementation(() => {
       throw new Error("process.exit called");

@@ -18,7 +18,6 @@ describe("schedule command validation", () => {
   let originalCwd: string;
 
   beforeEach(() => {
-    vi.clearAllMocks();
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-schedule-cmd-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);

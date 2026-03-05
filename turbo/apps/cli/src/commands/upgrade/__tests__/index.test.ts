@@ -32,7 +32,6 @@ describe("upgrade command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
-    vi.clearAllMocks();
     // Default: npm package manager
     process.argv = ["/usr/bin/node", "/usr/local/bin/vm0"];
   });

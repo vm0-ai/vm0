@@ -51,7 +51,6 @@ describe("schedule delete command", () => {
   let originalIsTTY: boolean | undefined;
 
   beforeEach(() => {
-    vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");

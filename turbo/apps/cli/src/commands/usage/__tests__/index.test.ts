@@ -13,7 +13,6 @@ describe("usage command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
-    vi.clearAllMocks();
     vi.useFakeTimers({ now: new Date("2026-01-19T12:00:00Z") });
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");

@@ -20,7 +20,6 @@ describe("setup-claude command", () => {
   let mockExit: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-setup-claude-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);

@@ -95,7 +95,6 @@ describe("compose command", () => {
   };
 
   beforeEach(() => {
-    vi.clearAllMocks();
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-compose-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);
@@ -1809,7 +1808,6 @@ describe("GitHub URL compose", () => {
   }
 
   beforeEach(() => {
-    vi.clearAllMocks();
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-github-compose-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);

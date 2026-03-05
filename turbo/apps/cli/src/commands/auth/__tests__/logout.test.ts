@@ -28,7 +28,6 @@ describe("auth logout", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(async () => {
-    vi.clearAllMocks();
     chalk.level = 0;
 
     // Ensure clean config state

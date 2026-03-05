@@ -28,7 +28,6 @@ describe("volume init", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
-    vi.clearAllMocks();
     chalk.level = 0;
 
     // Setup temp directory

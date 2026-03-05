@@ -19,7 +19,6 @@ describe("schedule setup utilities", () => {
   let originalCwd: string;
 
   beforeEach(() => {
-    vi.clearAllMocks();
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-schedule-init-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);

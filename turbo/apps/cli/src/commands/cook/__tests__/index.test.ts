@@ -52,7 +52,6 @@ describe("cook command", () => {
     .mockImplementation(() => {});
 
   beforeEach(async () => {
-    vi.clearAllMocks();
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-cook-"));
     testHome = mkdtempSync(path.join(os.tmpdir(), "test-cook-home-"));
     originalCwd = process.cwd();
