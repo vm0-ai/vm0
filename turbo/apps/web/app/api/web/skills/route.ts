@@ -198,7 +198,7 @@ const SKILL_CATEGORIES: Record<
     description:
       "Advanced AI coding assistant with code generation and technical problem-solving",
   },
-  "devto-publish": {
+  "dev.to": {
     category: "Development",
     logo: "/skills/devdotto.svg",
     description:
@@ -237,12 +237,6 @@ const SKILL_CATEGORIES: Record<
     logo: "/skills/elevenlabs.svg",
     description:
       "Generate natural-sounding speech with advanced AI voice synthesis and cloning",
-  },
-  "fal-image": {
-    category: "AI & Media",
-    logo: "/skills/fal-image.svg",
-    description:
-      "Fast and scalable AI image generation with Stable Diffusion and other models",
   },
   "fal.ai": {
     category: "AI & Media",
@@ -603,6 +597,7 @@ function getDisplayName(skillName: string): string {
 
 // Skills with available documentation
 const SKILLS_WITH_DOCS = new Set([
+  "agentmail",
   "apify",
   "axiom",
   "bitrix",
@@ -611,6 +606,7 @@ const SKILLS_WITH_DOCS = new Set([
   "browserbase",
   "browserless",
   "chatwoot",
+  "cloudflare-tunnel",
   "cloudinary",
   "cronlytic",
   "deepseek",
@@ -625,7 +621,10 @@ const SKILLS_WITH_DOCS = new Set([
   "github",
   "gitlab",
   "gmail",
+  "google-calendar",
   "google-cloud-console",
+  "google-docs",
+  "google-drive",
   "google-sheets",
   "hackernews",
   "htmlcsstoimage",
@@ -633,10 +632,12 @@ const SKILLS_WITH_DOCS = new Set([
   "instagram",
   "instantly",
   "intercom",
+  "intervals-icu",
   "jira",
   "kommo",
   "lark",
   "linear",
+  "mailsac",
   "mercury",
   "minimax",
   "minio",
@@ -649,6 +650,7 @@ const SKILLS_WITH_DOCS = new Set([
   "perplexity",
   "plausible",
   "podchaser",
+  "productlane",
   "pushinator",
   "qdrant",
   "qiita",
@@ -663,21 +665,32 @@ const SKILLS_WITH_DOCS = new Set([
   "slack-webhook",
   "slack",
   "streak",
+  "strava",
   "supabase",
   "supadata",
   "tavily",
   "twenty",
+  "vercel",
+  "x",
+  "xero",
   "youtube",
   "zapsign",
   "zendesk",
   "zeptomail",
 ]);
 
+// Map repo directory names to doc page slugs where they differ
+const SKILL_DOC_SLUG_MAP: Record<string, string> = {
+  "dev.to": "devto",
+  "fal.ai": "fal-ai",
+};
+
 // Get documentation URL for a skill
 function getDocsUrl(skillName: string): string {
   const cleanName = skillName.replace(/^\./, ""); // Remove leading dot
-  if (SKILLS_WITH_DOCS.has(cleanName)) {
-    return `https://docs.vm0.ai/docs/agent-skills/${cleanName}`;
+  const slug = SKILL_DOC_SLUG_MAP[cleanName] ?? cleanName;
+  if (SKILLS_WITH_DOCS.has(slug)) {
+    return `https://docs.vm0.ai/docs/agent-skills/${slug}`;
   }
   return `https://github.com/vm0-ai/vm0-skills/tree/main/${skillName}`;
 }
