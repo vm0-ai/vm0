@@ -13,7 +13,7 @@ use tracing::{info, warn};
 use vsock_host::VsockHost;
 
 use crate::config::FirecrackerConfig;
-use crate::network::{GUEST_NETWORK, PooledNetns, generate_boot_args};
+use crate::network::PooledNetns;
 use crate::paths::{SandboxPaths, SockPaths};
 
 /// Timeout for waiting for the guest to connect via vsock after start.
@@ -125,17 +125,16 @@ impl FirecrackerSandbox {
 
     /// Build the Firecracker JSON configuration for fresh boot.
     fn build_config(&self) -> serde_json::Value {
+        let inv = crate::factory::InvariantConfig::new();
         let kernel_path = self.factory_config.kernel_path.display().to_string();
         let rootfs_path = self.factory_config.rootfs_path.display().to_string();
         let overlay_path = self.overlay.display().to_string();
         let vsock_path = self.sock_paths.vsock().display().to_string();
 
-        let boot_args = generate_boot_args();
-
         serde_json::json!({
             "boot-source": {
                 "kernel_image_path": kernel_path,
-                "boot_args": boot_args,
+                "boot_args": inv.boot_args,
             },
             "drives": [
                 {
@@ -157,19 +156,19 @@ impl FirecrackerSandbox {
             },
             "network-interfaces": [
                 {
-                    "iface_id": "eth0",
-                    "guest_mac": GUEST_NETWORK.guest_mac,
-                    "host_dev_name": GUEST_NETWORK.tap_name,
+                    "iface_id": inv.iface_id,
+                    "guest_mac": inv.guest_mac,
+                    "host_dev_name": inv.tap_name,
                 },
             ],
             "vsock": {
-                "guest_cid": 3,
+                "guest_cid": inv.guest_cid,
                 "uds_path": vsock_path,
             },
             "balloon": {
-                "amount_mib": 0,
-                "deflate_on_oom": true,
-                "stats_polling_interval_s": 0,
+                "amount_mib": inv.balloon.amount_mib,
+                "deflate_on_oom": inv.balloon.deflate_on_oom,
+                "stats_polling_interval_s": inv.balloon.stats_polling_interval_s,
             },
         })
     }
