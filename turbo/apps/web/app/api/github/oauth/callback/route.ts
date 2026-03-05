@@ -38,23 +38,20 @@ interface OAuthState {
 }
 
 function parseOAuthState(state: string | null): OAuthState {
-  const result: OAuthState = { vm0UserId: null, composeId: null, sig: null };
   if (!state) {
-    return result;
+    return { vm0UserId: null, composeId: null, sig: null };
   }
-  try {
-    const parsed = JSON.parse(state) as {
-      vm0UserId?: string;
-      composeId?: string;
-      sig?: string;
-    };
-    result.vm0UserId = parsed.vm0UserId ?? null;
-    result.composeId = parsed.composeId ?? null;
-    result.sig = parsed.sig ?? null;
-  } catch {
-    // Ignore parse errors - return default empty state
-  }
-  return result;
+
+  const parsed = JSON.parse(state) as {
+    vm0UserId?: string;
+    composeId?: string;
+    sig?: string;
+  };
+  return {
+    vm0UserId: parsed.vm0UserId ?? null,
+    composeId: parsed.composeId ?? null,
+    sig: parsed.sig ?? null,
+  };
 }
 
 export async function GET(request: Request) {
@@ -80,7 +77,14 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${platformUrl}/settings?tab=integrations`);
   }
 
-  const state = parseOAuthState(url.searchParams.get("state"));
+  let state: OAuthState;
+  try {
+    state = parseOAuthState(url.searchParams.get("state"));
+  } catch {
+    return NextResponse.redirect(
+      `${platformUrl}/settings?tab=integrations&error=${encodeURIComponent("Invalid OAuth state. Please try installing again from the Platform.")}`,
+    );
+  }
 
   // Verify HMAC signature when vm0UserId is present
   if (state.vm0UserId) {
