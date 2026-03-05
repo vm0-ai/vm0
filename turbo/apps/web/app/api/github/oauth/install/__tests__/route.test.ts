@@ -1,21 +1,20 @@
 import { createHmac } from "node:crypto";
-import { sql } from "drizzle-orm";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
-import { initServices } from "../../../../../../src/lib/init-services";
 import { env } from "../../../../../../src/env";
 
 const context = testContext();
 
 describe("/api/github/oauth/install", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     context.setupMocks();
-    initServices();
-    // Clear any leftover installation data so tests start clean
-    await globalThis.services.db.execute(sql`DELETE FROM github_user_links`);
-    await globalThis.services.db.execute(sql`DELETE FROM github_installations`);
+    // Disable App credentials so the GitHub API detection path is skipped.
+    // The fast path (local DB check) returns null when no installations exist,
+    // which is the expected state in CI with a clean database.
+    vi.stubEnv("GITHUB_APP_ID", "");
+    vi.stubEnv("GITHUB_APP_PRIVATE_KEY", "");
   });
 
   it("should redirect to GitHub App installation page with signed state", async () => {
