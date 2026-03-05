@@ -11,7 +11,6 @@ import type { TelegramHandlerUpdate } from "./types";
 
 const log = logger("telegram:new-session");
 
-
 /**
  * Handle /new_session command
  *

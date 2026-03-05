@@ -14,7 +14,6 @@ import type { TelegramHandlerUpdate } from "./types";
 
 const log = logger("telegram:commands");
 
-
 /**
  * Handle /connect command
  *
