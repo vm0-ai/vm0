@@ -283,7 +283,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Post text response (if any content)
   if (responseText) {
     const logsUrl = buildLogsUrl(runId);
-    const deepLinks = detectDeepLinks(responseText, getPlatformUrl());
+    const deepLinks = detectDeepLinks(
+      responseText,
+      getPlatformUrl(),
+      payload.agentName,
+    );
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
       blocks: buildAgentResponseMessage(

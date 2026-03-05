@@ -115,12 +115,16 @@ export async function handleTelegramDirectMessage(
     }
   }
 
-  // 8. Fetch context
-  const { executionContext } = await fetchTelegramContext(
-    installationId,
-    chatId,
-    lastProcessedMessageId,
-  );
+  // 8. Fetch context (skip when continuing an existing session — it already has history)
+  let executionContext = "";
+  if (!existingSessionId) {
+    const ctx = await fetchTelegramContext(
+      installationId,
+      chatId,
+      lastProcessedMessageId,
+    );
+    executionContext = ctx.executionContext;
+  }
 
   // 9. Dispatch agent run
   const { status, response } = await runAgentForTelegram({

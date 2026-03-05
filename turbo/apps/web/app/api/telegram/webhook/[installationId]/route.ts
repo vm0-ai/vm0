@@ -6,6 +6,7 @@ import { verifyTelegramWebhook } from "../../../../../src/lib/telegram/verify";
 import { handleTelegramMention } from "../../../../../src/lib/telegram/handlers/mention";
 import { handleTelegramDirectMessage } from "../../../../../src/lib/telegram/handlers/direct-message";
 import { handleStartCommand } from "../../../../../src/lib/telegram/handlers/start";
+import { handleNewSessionCommand } from "../../../../../src/lib/telegram/handlers/new-session";
 import { storeTelegramMessage } from "../../../../../src/lib/telegram/handlers/shared";
 import { logger } from "../../../../../src/lib/logger";
 
@@ -33,6 +34,7 @@ interface TelegramUpdate {
  *
  * Routing:
  * - /start command → handleStartCommand
+ * - /new_session command → handleNewSessionCommand
  * - Private chat (DM) → handleTelegramDirectMessage
  * - Bot @mention in group → handleTelegramMention
  * - Reply to bot message → handleTelegramMention (continuation)
@@ -88,6 +90,12 @@ export async function POST(
       // /start command
       if (message.text?.startsWith("/start")) {
         await handleStartCommand({ message }, installationId);
+        return;
+      }
+
+      // /new_session command
+      if (message.text?.startsWith("/new_session")) {
+        await handleNewSessionCommand({ message }, installationId);
         return;
       }
 

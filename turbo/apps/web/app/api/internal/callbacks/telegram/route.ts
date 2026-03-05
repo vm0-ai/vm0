@@ -9,12 +9,15 @@ import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import {
   createTelegramClient,
   sendMessage,
+  sendChatAction,
   deleteMessage,
 } from "../../../../../src/lib/telegram/client";
 import {
   splitMessage,
   buildTelegramResponse,
 } from "../../../../../src/lib/telegram/format";
+import { detectDeepLinks } from "../../../../../src/lib/deep-links";
+import { getPlatformUrl } from "../../../../../src/lib/url";
 import { getRunOutput } from "../../../../../src/lib/slack/handlers/run-agent";
 import {
   saveTelegramThreadSession,
@@ -152,6 +155,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
 
+  // Send typing indicator while building response
+  await sendChatAction(client, chatId, "typing");
+
   // Query Axiom for the agent's output
   const output = status === "completed" ? await getRunOutput(runId) : undefined;
 
@@ -162,8 +168,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? (output ?? "Task completed successfully.")
       : `Error: ${error ?? "Agent execution failed."}`;
 
+  // Detect deep links for configuration hints
+  const deepLinks = detectDeepLinks(responseText, getPlatformUrl(), agentName);
+
   // Build structured response with bot header and footer
-  const htmlOutput = buildTelegramResponse(responseText, agentName, logsUrl);
+  const htmlOutput = buildTelegramResponse(
+    responseText,
+    agentName,
+    logsUrl,
+    deepLinks,
+  );
   const chunks = splitMessage(htmlOutput);
 
   // In DMs, don't reply-to (no quote noise); in groups, reply for threading
@@ -203,10 +217,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? await findNewSessionId(run.userId, composeId, run.createdAt)
       : undefined;
 
-    // For new threads, use bot's reply as rootMessageId (thread anchor)
-    const rootMessageId = existingSessionId
-      ? messageId // Existing thread — use original anchor
-      : String(botReplyMessageId); // New thread — bot's reply is the anchor
+    // For DMs, always use "dm" sentinel; for groups, use message-based anchors
+    const rootMessageId = isDM
+      ? "dm"
+      : existingSessionId
+        ? messageId // Existing thread — use original anchor
+        : String(botReplyMessageId); // New thread — bot's reply is the anchor
 
     await saveTelegramThreadSession({
       userLinkId,

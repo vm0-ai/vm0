@@ -269,7 +269,7 @@ export async function sendThinkingMessage(
   agentName: string,
   options?: { replyToMessageId?: number },
 ): Promise<TelegramSentMessage | undefined> {
-  const text = `<i>${escapeHtml(agentName)} is thinking...</i>`;
+  const text = `<i>🤖 ${escapeHtml(agentName)} is thinking...</i>`;
   try {
     return await sendMessage(client, chatId, text, options);
   } catch (err) {

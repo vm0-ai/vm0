@@ -1,0 +1,89 @@
+import { eq, and } from "drizzle-orm";
+import { telegramInstallations } from "../../../db/schema/telegram-installation";
+import { telegramThreadSessions } from "../../../db/schema/telegram-thread-session";
+import { decryptCredentialValue } from "../../crypto/secrets-encryption";
+import { env } from "../../../env";
+import { createTelegramClient, sendMessage } from "../client";
+import { resolveUserLink, getWorkspaceAgent } from "./shared";
+import { escapeHtml } from "../format";
+import { logger } from "../../logger";
+
+const log = logger("telegram:new-session");
+
+interface TelegramUpdate {
+  message: {
+    message_id: number;
+    chat: { id: number; type: string };
+    from?: { id: number; username?: string; is_bot?: boolean };
+    text?: string;
+  };
+}
+
+/**
+ * Handle /new_session command
+ *
+ * Clears the DM session mapping so the next message creates a fresh agent session.
+ * Only works in private chats (DMs).
+ */
+export async function handleNewSessionCommand(
+  update: TelegramUpdate,
+  installationId: string,
+): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const message = update.message;
+  const chatId = String(message.chat.id);
+  const fromUserId = String(message.from?.id ?? 0);
+
+  // Only works in DMs
+  if (message.chat.type !== "private") {
+    return;
+  }
+
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.id, installationId))
+    .limit(1);
+
+  if (!installation) {
+    return;
+  }
+
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createTelegramClient(botToken);
+
+  const userLink = await resolveUserLink(installationId, fromUserId);
+  if (!userLink) {
+    await sendMessage(
+      client,
+      chatId,
+      "Please link your account first. Send /start to begin.",
+    );
+    return;
+  }
+
+  // Delete the DM session mapping
+  await globalThis.services.db
+    .delete(telegramThreadSessions)
+    .where(
+      and(
+        eq(telegramThreadSessions.telegramUserLinkId, userLink.id),
+        eq(telegramThreadSessions.chatId, chatId),
+        eq(telegramThreadSessions.rootMessageId, "dm"),
+      ),
+    );
+
+  const agent = await getWorkspaceAgent(installation.defaultComposeId);
+  const agentName = agent?.name ?? "Agent";
+
+  await sendMessage(
+    client,
+    chatId,
+    `New session started. 🤖 ${escapeHtml(agentName)} is ready.`,
+  );
+
+  log.info("DM session reset", { chatId, installationId });
+}

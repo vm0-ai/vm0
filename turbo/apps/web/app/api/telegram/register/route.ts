@@ -194,6 +194,7 @@ export async function POST(request: Request) {
   // 7. Register bot commands (non-blocking)
   await setMyCommands(body.botToken, [
     { command: "start", description: "Link your account" },
+    { command: "new_session", description: "Start a new conversation" },
     { command: "help", description: "Show help" },
   ]).catch((error) => {
     log.warn("Failed to register bot commands", { error });
