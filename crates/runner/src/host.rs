@@ -43,6 +43,10 @@ pub fn compute_max_concurrent(
     memory_mb: u32,
     cpu_factor: f64,
 ) -> usize {
+    assert!(
+        cpu_factor.is_finite() && cpu_factor > 0.0,
+        "cpu_factor must be a positive finite number, got {cpu_factor}"
+    );
     let effective = (host_cpus as f64 * cpu_factor).floor();
     let effective_cpus = (effective.clamp(0.0, usize::MAX as f64)) as usize;
     std::cmp::min(

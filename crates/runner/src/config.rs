@@ -413,7 +413,7 @@ sandbox:
             tokio::fs::write(f, b"").await.unwrap();
         }
 
-        for bad_value in ["0.0", "-1.0", ".nan", ".inf"] {
+        for bad_value in ["0.0", "-1.0", ".nan", ".inf", "-.inf"] {
             let yaml = format!(
                 r#"
 name: test

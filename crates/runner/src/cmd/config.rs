@@ -38,7 +38,7 @@ pub struct ConfigArgs {
     /// Maximum concurrent VMs (0 = auto-detect from host CPU/memory)
     #[arg(long, default_value_t = DEFAULT_MAX_CONCURRENT)]
     max_concurrent: usize,
-    /// CPU overcommit factor for auto-detected concurrency (default: 1.0)
+    /// CPU overcommit factor for auto-detected concurrency (must be > 0)
     #[arg(long, default_value_t = DEFAULT_CONCURRENCY_FACTOR)]
     concurrency_factor: f64,
 
