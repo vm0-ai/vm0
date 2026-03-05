@@ -133,7 +133,6 @@ const router = tsr.router(cliAuthTokenContract, {
           status: 200 as const,
           body: {
             access_token: cliToken,
-            refresh_token: `refresh_${crypto.randomBytes(16).toString("hex")}`,
             token_type: "Bearer" as const,
             expires_in: 90 * 24 * 60 * 60, // 90 days in seconds
           },

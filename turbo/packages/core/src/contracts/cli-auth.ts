@@ -56,7 +56,6 @@ export const cliAuthTokenContract = c.router({
       // Success - token issued
       200: z.object({
         access_token: z.string(),
-        refresh_token: z.string(),
         token_type: z.literal("Bearer"),
         expires_in: z.number(),
       }),
