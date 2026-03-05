@@ -210,7 +210,7 @@ jobs:
             AXIOM_DATASET_SUFFIX=prod
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
-            RUNNER_DEFAULT_GROUP=${{ vars.RUNNER_DEFAULT_GROUP }}
+            RUNNER_DEFAULT_GROUP=vm0/production
             ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
             CONCURRENT_RUN_LIMIT=1
             CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}
