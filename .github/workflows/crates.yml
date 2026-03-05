@@ -378,26 +378,62 @@ jobs:
           [ -n "$OUTPUT" ] || fail "prefix match returned empty output"
           echo "PASS: prefix matching"
 
-          # Test 4: balloon memory reclaim
-          echo "--- Test: balloon inflate ---"
+          # Test 4a: balloon idle inflate
+          echo "--- Test: balloon idle inflate ---"
           API_SOCK="/run/vm0/sock/$RUN_ID/api.sock"
+
+          # Helper: read current balloon actual_mib
+          balloon_mib() {
+            sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics \
+              | jq '.actual_mib // 0' 2>/dev/null || echo 0
+          }
 
           # Poll until balloon inflates (controller ticks every 5s, allow up to 20s)
           ACTUAL=0
           for i in $(seq 1 20); do
-            ACTUAL=$(sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics \
-              | jq '.actual_mib // 0' 2>/dev/null || echo 0)
+            ACTUAL=$(balloon_mib)
             [ "${ACTUAL:-0}" -gt 0 ] && break
             sleep 1
           done
           [ "$ACTUAL" -gt 0 ] || fail "balloon did not inflate: actual_mib=$ACTUAL"
-          echo "PASS: balloon inflate (actual_mib=$ACTUAL)"
+          echo "PASS: balloon idle inflate (actual_mib=$ACTUAL)"
 
           # Guest-side: verify MemAvailable decreased
           AVAIL=$("$BIN_DIR/runner" exec "$RUN_ID" -- grep MemAvailable /proc/meminfo | tr -s ' ' | cut -d' ' -f2)
-          # With 2048 MiB VM and balloon inflated, MemAvailable should be well below 1536 MiB
           [ "$AVAIL" -lt 1536000 ] || fail "MemAvailable too high after balloon: ${AVAIL}kB (expected < 1536000kB)"
           echo "PASS: guest MemAvailable reduced (${AVAIL}kB)"
+
+          # Test 4b: balloon deflate under memory pressure
+          echo "--- Test: balloon deflate under pressure ---"
+          BEFORE_DEFLATE=$ACTUAL
+
+          # Allocate 350 MiB in guest via tmpfs to push free memory below deflate threshold (192 MiB)
+          "$BIN_DIR/runner" exec "$RUN_ID" -- dd if=/dev/zero of=/dev/shm/balloon-test bs=1M count=350 2>/dev/null
+
+          # Poll until balloon deflates
+          for i in $(seq 1 20); do
+            ACTUAL=$(balloon_mib)
+            [ "$ACTUAL" -lt "$BEFORE_DEFLATE" ] && break
+            sleep 1
+          done
+          [ "$ACTUAL" -lt "$BEFORE_DEFLATE" ] || fail "balloon did not deflate: actual_mib=$ACTUAL (was $BEFORE_DEFLATE)"
+          echo "PASS: balloon deflate (actual_mib=$ACTUAL, was $BEFORE_DEFLATE)"
+
+          # Test 4c: balloon re-inflate after memory release
+          echo "--- Test: balloon re-inflate after release ---"
+          BEFORE_REINFLATE=$ACTUAL
+
+          # Release the 350 MiB allocation
+          "$BIN_DIR/runner" exec "$RUN_ID" -- rm /dev/shm/balloon-test
+
+          # Poll until balloon re-inflates
+          for i in $(seq 1 20); do
+            ACTUAL=$(balloon_mib)
+            [ "$ACTUAL" -gt "$BEFORE_REINFLATE" ] && break
+            sleep 1
+          done
+          [ "$ACTUAL" -gt "$BEFORE_REINFLATE" ] || fail "balloon did not re-inflate: actual_mib=$ACTUAL (was $BEFORE_REINFLATE)"
+          echo "PASS: balloon re-inflate (actual_mib=$ACTUAL, was $BEFORE_REINFLATE)"
 
           # Stop transient service (kills sandbox, submit terminates naturally)
           "$BIN_DIR/runner" service stop --name "$SVC"
