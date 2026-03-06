@@ -1,6 +1,7 @@
 import { type ConnectorType } from "@vm0/core";
 import { type Env } from "../../env";
 import { type OAuthTokenResult, type ProviderHandler } from "./provider-types";
+import { canvaHandler } from "./providers/canva-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
@@ -32,6 +33,7 @@ export const PROVIDER_HANDLERS: Record<
   Exclude<ConnectorType, "computer">,
   ProviderHandler
 > = {
+  canva: canvaHandler,
   deel: deelHandler,
   docusign: docusignHandler,
   dropbox: dropboxHandler,

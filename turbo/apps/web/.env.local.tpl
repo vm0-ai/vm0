@@ -112,6 +112,10 @@ MONDAY_OAUTH_CLIENT_ID=op://Development/vm0-env-local/MONDAY_OAUTH_CLIENT_ID
 MONDAY_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/MONDAY_OAUTH_CLIENT_SECRET
 MONDAY_OAUTH_APP_ID=op://Development/vm0-env-local/MONDAY_OAUTH_APP_ID
 
+# Optional: Canva OAuth Connector
+CANVA_OAUTH_CLIENT_ID=op://Development/vm0-env-local/CANVA_OAUTH_CLIENT_ID
+CANVA_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/CANVA_OAUTH_CLIENT_SECRET
+
 # Optional: ngrok (Computer Connector)
 NGROK_API_KEY=op://Development/vm0-env-local/NGROK_API_KEY
 NGROK_COMPUTER_CONNECTOR_DOMAIN=computer.vm7.io
