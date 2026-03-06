@@ -144,6 +144,56 @@ describe("GET /api/logs/search", () => {
     expect(data.results[0].contextAfter[0].sequenceNumber).toBe(6);
   });
 
+  it("should filter by runId when provided", async () => {
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+      createAxiomAgentEvent(testRunId, 1, "Found it"),
+    ]);
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/logs/search?keyword=Found&runId=${testRunId}`,
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.results).toHaveLength(1);
+    expect(data.results[0].runId).toBe(testRunId);
+
+    // Verify APL query includes runId filter
+    const aplQuery = context.mocks.axiom.queryAxiom.mock.calls[0][0] as string;
+    expect(aplQuery).toContain(`runId == "${testRunId}"`);
+  });
+
+  it("should include keyword in Axiom search query", async () => {
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/logs/search?keyword=deploy+failed",
+    );
+
+    await GET(request);
+
+    const aplQuery = context.mocks.axiom.queryAxiom.mock.calls[0][0] as string;
+    expect(aplQuery).toContain("search");
+    expect(aplQuery).toContain("deploy failed");
+  });
+
+  it("should filter by agent name via database lookup", async () => {
+    // When agent filter is provided but no runs match, should return empty
+    const request = createTestRequest(
+      "http://localhost:3000/api/logs/search?keyword=test&agent=nonexistent-agent",
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.results).toEqual([]);
+    // Axiom should NOT have been called since no runs matched the agent filter
+    expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
+  });
+
   it("should set hasMore when results exceed limit", async () => {
     // Return limit+1 events to trigger hasMore
     const events = Array.from({ length: 3 }, (_, i) =>
