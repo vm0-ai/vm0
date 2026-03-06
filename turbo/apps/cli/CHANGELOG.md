@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.48.0](https://github.com/vm0-ai/vm0/compare/cli-v9.47.2...cli-v9.48.0) (2026-03-06)
+
+
+### Features
+
+* **run-queue:** implement per-user run queue mechanism ([#3764](https://github.com/vm0-ai/vm0/issues/3764)) ([85a4fbd](https://github.com/vm0-ai/vm0/commit/85a4fbd7707e72f31631c21ae6a3f5698cd138bf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.39.0
+
 ## [9.47.2](https://github.com/vm0-ai/vm0/compare/cli-v9.47.1...cli-v9.47.2) (2026-03-06)
 
 

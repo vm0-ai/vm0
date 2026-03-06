@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.79.0](https://github.com/vm0-ai/vm0/compare/web-v12.78.0...web-v12.79.0) (2026-03-06)
+
+
+### Features
+
+* **run-queue:** implement per-user run queue mechanism ([#3764](https://github.com/vm0-ai/vm0/issues/3764)) ([85a4fbd](https://github.com/vm0-ai/vm0/commit/85a4fbd7707e72f31631c21ae6a3f5698cd138bf))
+
+
+### Bug Fixes
+
+* **connectors:** store requested oauth scopes instead of provider-granted scopes ([#3791](https://github.com/vm0-ai/vm0/issues/3791)) ([29acfa1](https://github.com/vm0-ai/vm0/commit/29acfa1573fb2cab40367ef3664a4530fcf87be2)), closes [#3756](https://github.com/vm0-ai/vm0/issues/3756)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.39.0
+
 ## [12.78.0](https://github.com/vm0-ai/vm0/compare/web-v12.77.1...web-v12.78.0) (2026-03-06)
 
 

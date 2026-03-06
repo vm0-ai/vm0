@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.39.0](https://github.com/vm0-ai/vm0/compare/core-v8.38.1...core-v8.39.0) (2026-03-06)
+
+
+### Features
+
+* **run-queue:** implement per-user run queue mechanism ([#3764](https://github.com/vm0-ai/vm0/issues/3764)) ([85a4fbd](https://github.com/vm0-ai/vm0/commit/85a4fbd7707e72f31631c21ae6a3f5698cd138bf))
+
 ## [8.38.1](https://github.com/vm0-ai/vm0/compare/core-v8.38.0...core-v8.38.1) (2026-03-06)
 
 
