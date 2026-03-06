@@ -95,13 +95,14 @@ teardown() {
     }
 
     # Step 4: Search for keyword scoped to this run with retry (Axiom ingestion is async)
-    # Use "Claude Code" as keyword since mock-claude always produces init/completed events
-    echo "# Step 4: Searching for 'Claude Code' in run events..."
+    # Search for "hello from agent" which appears in the user prompt event data
+    # Note: "Claude Code Started/Completed" are rendered display text, NOT in eventData
+    echo "# Step 4: Searching for 'hello from agent' in run events..."
     SHORT_ID="${RUN_ID:0:8}"
     local max_retries=5
     local retry_delay=3
     for i in $(seq 1 $max_retries); do
-        run $CLI_COMMAND logs search "Claude Code" --run "$RUN_ID" --since 1h
+        run $CLI_COMMAND logs search "hello from agent" --run "$RUN_ID" --since 1h
         if [[ "$output" == *"$SHORT_ID"* ]]; then
             echo "Search results found (attempt $i)"
             assert_success
