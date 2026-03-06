@@ -610,8 +610,11 @@ export async function createRun(
     // Record per-step timing metrics for latency diagnosis
     const steps = [
       { op: "api_step_authorize", ms: authorizeTime - apiStartTime },
-      { op: "api_step_transaction", ms: transactionTime - authorizeTime },
-      { op: "api_step_token", ms: tokenTime - transactionTime },
+      {
+        op: "api_step_validate_and_insert",
+        ms: transactionTime - authorizeTime,
+      },
+      { op: "api_step_callbacks_and_token", ms: tokenTime - transactionTime },
       { op: "api_step_build_context", ms: buildContextTime - tokenTime },
       { op: "api_step_prepare", ms: prepareTime - buildContextTime },
       { op: "api_step_dispatch", ms: dispatchTime - prepareTime },
