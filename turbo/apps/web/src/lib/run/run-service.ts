@@ -644,16 +644,10 @@ export async function createRun(
   try {
     run = await globalThis.services.db.transaction(async (tx) => {
       // Acquire per-scope advisory lock (released when transaction ends)
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${scopeId}))`,
-      );
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${scopeId}))`);
 
       // Check concurrent run limit within the serialized transaction
-      await checkRunConcurrencyLimit(
-        scopeId,
-        params.scopeTier ?? "free",
-        tx,
-      );
+      await checkRunConcurrencyLimit(scopeId, params.scopeTier ?? "free", tx);
 
       // INSERT within the same transaction
       const [newRun] = await tx
@@ -730,9 +724,7 @@ export async function executeQueuedRun(
   // to prevent TOCTOU race where a concurrent createRun claims the slot.
   const scopeId = params.scopeId ?? "";
   const [run] = await globalThis.services.db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${scopeId}))`,
-    );
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${scopeId}))`);
     await checkRunConcurrencyLimit(scopeId, params.scopeTier ?? "free", tx);
 
     return tx
