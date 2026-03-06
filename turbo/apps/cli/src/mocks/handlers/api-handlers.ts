@@ -55,7 +55,7 @@ export const apiHandlers = [
   // GET /api/connectors - listConnectors
   http.get("http://localhost:3000/api/connectors", () => {
     return HttpResponse.json(
-      { connectors: [], configuredTypes: [] },
+      { connectors: [], configuredTypes: [], connectorProvidedSecretNames: [] },
       { status: 200 },
     );
   }),

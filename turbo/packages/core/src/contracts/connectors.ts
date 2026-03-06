@@ -1068,6 +1068,7 @@ export type ConnectorResponse = z.infer<typeof connectorResponseSchema>;
 export const connectorListResponseSchema = z.object({
   connectors: z.array(connectorResponseSchema),
   configuredTypes: z.array(connectorTypeSchema),
+  connectorProvidedSecretNames: z.array(z.string()),
 });
 
 export type ConnectorListResponse = z.infer<typeof connectorListResponseSchema>;
