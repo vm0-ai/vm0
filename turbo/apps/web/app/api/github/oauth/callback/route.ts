@@ -234,7 +234,7 @@ export async function GET(request: Request) {
 
   // Create user link if vm0UserId is present
   if (state.vm0UserId) {
-    await linkVm0User(db, installRecordId, state.vm0UserId);
+    await linkVm0User(db, installRecordId, state.vm0UserId, adminGithubUserId);
   }
 
   return NextResponse.redirect(`${platformUrl}/settings?tab=integrations`);
@@ -243,23 +243,32 @@ export async function GET(request: Request) {
 /**
  * Link a VM0 user to a GitHub installation via github_user_links.
  *
- * Looks up the user's GitHub connector to find their GitHub user ID.
- * If no connector exists, the link is skipped (user can link later).
+ * For User-type installations, the GitHub user ID is known from the
+ * installation target. For Org-type installations, falls back to looking
+ * up the user's GitHub OAuth connector.
  */
 export async function linkVm0User(
   db: typeof globalThis.services.db,
   installRecordId: string,
   vm0UserId: string,
+  knownGithubUserId?: string | null,
 ): Promise<string | null> {
-  // Find user's GitHub OAuth connector to get their GitHub user ID
-  const [connector] = await db
-    .select({ externalId: connectors.externalId })
-    .from(connectors)
-    .where(and(eq(connectors.userId, vm0UserId), eq(connectors.type, "github")))
-    .limit(1);
+  let githubUserId = knownGithubUserId ?? null;
 
-  if (!connector?.externalId) {
-    // No GitHub connector — user needs to link via /github/connect later
+  // If not provided (org install), look up via GitHub OAuth connector
+  if (!githubUserId) {
+    const [connector] = await db
+      .select({ externalId: connectors.externalId })
+      .from(connectors)
+      .where(
+        and(eq(connectors.userId, vm0UserId), eq(connectors.type, "github")),
+      )
+      .limit(1);
+
+    githubUserId = connector?.externalId ?? null;
+  }
+
+  if (!githubUserId) {
     return null;
   }
 
@@ -267,11 +276,11 @@ export async function linkVm0User(
   await db
     .insert(githubUserLinks)
     .values({
-      githubUserId: connector.externalId,
+      githubUserId,
       installationId: installRecordId,
       vm0UserId,
     })
     .onConflictDoNothing();
 
-  return connector.externalId;
+  return githubUserId;
 }

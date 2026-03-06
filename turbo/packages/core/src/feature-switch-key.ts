@@ -4,6 +4,7 @@
  * Defines all available feature switch identifiers.
  */
 export enum FeatureSwitchKey {
+  AirtableConnector = "airtableConnector",
   Dummy = "dummy",
   Pricing = "pricing",
   PlatformAgents = "platformAgents",
@@ -27,6 +28,7 @@ export enum FeatureSwitchKey {
   RedditConnector = "redditConnector",
   IntervalsIcuConnector = "intervalsIcuConnector",
   WebflowConnector = "webflowConnector",
+  TodoistConnector = "todoistConnector",
   GitHubIntegration = "githubIntegration",
   TelegramIntegration = "telegramIntegration",
 }

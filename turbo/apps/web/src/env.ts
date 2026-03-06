@@ -77,6 +77,9 @@ function initEnv() {
       VM0_TUNNEL_URL: z.string().url().optional(), // Tunnel URL for local development webhooks
       // LLM API
       OPENROUTER_API_KEY: z.string().min(1).optional(), // OpenRouter API key for logged-in users
+      // Airtable OAuth (for connector)
+      AIRTABLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      AIRTABLE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // GitHub OAuth (for connector)
       GH_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       GH_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -135,6 +138,9 @@ function initEnv() {
       // Webflow OAuth (for connector)
       WEBFLOW_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       WEBFLOW_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Todoist OAuth (for connector)
+      TODOIST_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      TODOIST_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Monday.com OAuth (for connector)
       MONDAY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       MONDAY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -224,6 +230,8 @@ function initEnv() {
       VM0_DEFAULT_AGENT: process.env.VM0_DEFAULT_AGENT,
       VM0_TUNNEL_URL: process.env.VM0_TUNNEL_URL,
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+      AIRTABLE_OAUTH_CLIENT_ID: process.env.AIRTABLE_OAUTH_CLIENT_ID,
+      AIRTABLE_OAUTH_CLIENT_SECRET: process.env.AIRTABLE_OAUTH_CLIENT_SECRET,
       GH_OAUTH_CLIENT_ID: process.env.GH_OAUTH_CLIENT_ID,
       GH_OAUTH_CLIENT_SECRET: process.env.GH_OAUTH_CLIENT_SECRET,
       NOTION_OAUTH_CLIENT_ID: process.env.NOTION_OAUTH_CLIENT_ID,
@@ -269,6 +277,8 @@ function initEnv() {
       MONDAY_OAUTH_CLIENT_ID: process.env.MONDAY_OAUTH_CLIENT_ID,
       MONDAY_OAUTH_CLIENT_SECRET: process.env.MONDAY_OAUTH_CLIENT_SECRET,
       MONDAY_OAUTH_APP_ID: process.env.MONDAY_OAUTH_APP_ID,
+      TODOIST_OAUTH_CLIENT_ID: process.env.TODOIST_OAUTH_CLIENT_ID,
+      TODOIST_OAUTH_CLIENT_SECRET: process.env.TODOIST_OAUTH_CLIENT_SECRET,
       GITHUB_APP_ID: process.env.GITHUB_APP_ID,
       GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
       GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,

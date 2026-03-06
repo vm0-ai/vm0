@@ -138,8 +138,15 @@ async function tryLinkFromLocalRecord(
 
   const githubUserId = await linkVm0User(db, existing.id, vm0UserId);
 
+  // If link failed (no GitHub OAuth connector), don't short-circuit —
+  // let the user go through GitHub's install flow so the callback can
+  // resolve their GitHub identity.
+  if (!githubUserId) {
+    return null;
+  }
+
   // If no admin is set yet, make this user the admin
-  if (!existing.adminGithubUserId && githubUserId) {
+  if (!existing.adminGithubUserId) {
     await db
       .update(githubInstallations)
       .set({ adminGithubUserId: githubUserId })
@@ -151,12 +158,16 @@ async function tryLinkFromLocalRecord(
 
 /**
  * Slow path: query GitHub API for existing installations that are
- * not yet in our DB, create the record + user link.
+ * missing from our DB (e.g. installed before we had this code, or
+ * after uninstall+reinstall on GitHub's side).
+ *
+ * If a local DB record exists, just link the user.
+ * If no DB record exists, create one from the GitHub API data.
  */
 async function tryLinkFromGitHubApi(
   appId: string,
   privateKey: string,
-  encryptionKey: string,
+  secretsEncryptionKey: string,
   vm0UserId: string,
   composeId: string | null,
 ): Promise<string | null> {
@@ -164,7 +175,9 @@ async function tryLinkFromGitHubApi(
   try {
     installations = await listAppInstallations(appId, privateKey);
   } catch (err) {
-    log.error("Failed to list app installations", { error: err });
+    // Log and fall through to GitHub redirect — detection is best-effort;
+    // the user can still complete the flow via GitHub's install page.
+    log.warn("Failed to list app installations", { error: err });
     return null;
   }
 
@@ -186,12 +199,18 @@ async function tryLinkFromGitHubApi(
       .limit(1);
 
     if (existing) {
-      await linkVm0User(db, existing.id, vm0UserId);
-      return `${platformUrl}/settings?tab=integrations`;
+      const linked = await linkVm0User(db, existing.id, vm0UserId);
+      if (linked) {
+        return `${platformUrl}/settings?tab=integrations`;
+      }
+      // Link failed — fall through to GitHub redirect
+      return null;
     }
   }
 
-  // No DB record — create one for the first installation
+  // No DB record — auto-create from the first GitHub installation.
+  // This handles the case where the user uninstalled locally but the
+  // app is still installed on GitHub (e.g. reinstall on same org).
   const ghInstall = installations[0]!;
   const ghInstallationId = String(ghInstall.id);
 
@@ -200,7 +219,7 @@ async function tryLinkFromGitHubApi(
     resolvedComposeId = await resolveDefaultAgentComposeId();
   }
   if (!resolvedComposeId) {
-    return `${platformUrl}/settings?tab=integrations&error=${encodeURIComponent("Missing default agent. Please set VM0_DEFAULT_AGENT or select an agent before connecting GitHub.")}`;
+    return null;
   }
 
   const { token } = await getInstallationAccessToken(
@@ -208,7 +227,13 @@ async function tryLinkFromGitHubApi(
     privateKey,
     ghInstallationId,
   );
-  const encryptedAccessToken = encryptCredentialValue(token, encryptionKey);
+  const encryptedAccessToken = encryptCredentialValue(
+    token,
+    secretsEncryptionKey,
+  );
+
+  const adminGithubUserId =
+    ghInstall.account.type === "User" ? String(ghInstall.account.id) : null;
 
   const [newInstall] = await db
     .insert(githubInstallations)
@@ -219,18 +244,19 @@ async function tryLinkFromGitHubApi(
       targetType: ghInstall.account.type,
       targetId: String(ghInstall.account.id),
       targetName: ghInstall.account.login,
+      adminGithubUserId,
       defaultComposeId: resolvedComposeId,
     })
     .returning({ id: githubInstallations.id });
 
-  // Link user and set them as admin (the person who triggered the install)
-  const githubUserId = await linkVm0User(db, newInstall!.id, vm0UserId);
-  if (githubUserId) {
-    await db
-      .update(githubInstallations)
-      .set({ adminGithubUserId: githubUserId })
-      .where(eq(githubInstallations.id, newInstall!.id));
+  if (!newInstall) {
+    log.error("Failed to create GitHub installation record", {
+      ghInstallationId,
+    });
+    return null;
   }
+
+  await linkVm0User(db, newInstall.id, vm0UserId, adminGithubUserId);
 
   return `${platformUrl}/settings?tab=integrations`;
 }

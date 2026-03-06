@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.42.0](https://github.com/vm0-ai/vm0/compare/core-v8.41.0...core-v8.42.0) (2026-03-06)
+
+
+### Features
+
+* add airtable oauth connector with pkce support ([#3833](https://github.com/vm0-ai/vm0/issues/3833)) ([2e64f13](https://github.com/vm0-ai/vm0/commit/2e64f1363058e9d258073c140f9a669047321438))
+
 ## [8.41.0](https://github.com/vm0-ai/vm0/compare/core-v8.40.0...core-v8.41.0) (2026-03-06)
 
 
