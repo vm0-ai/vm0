@@ -102,8 +102,8 @@ async fn tick(client: &ApiClient<'_>, max_inflate: u32, tick_count: u64) {
     if tick_count.is_multiple_of(STATUS_INTERVAL_TICKS) {
         info!(
             actual_mib = current,
-            free_mib = free_mib.unwrap_or(-1),
-            available_mib = available_mib.unwrap_or(-1),
+            free_mib = ?free_mib,
+            available_mib = ?available_mib,
             max_inflate,
             "balloon status"
         );
@@ -142,20 +142,23 @@ async fn tick(client: &ApiClient<'_>, max_inflate: u32, tick_count: u64) {
 
 /// Read host memory info from /proc/meminfo. Returns (available_mib, total_mib).
 fn read_host_meminfo() -> Option<(u64, u64)> {
-    let content = std::fs::read_to_string("/proc/meminfo").ok()?;
-    let mut total_kb = 0u64;
-    let mut available_kb = 0u64;
+    let content = match std::fs::read_to_string("/proc/meminfo") {
+        Ok(c) => c,
+        Err(e) => {
+            debug!(error = %e, "failed to read /proc/meminfo");
+            return None;
+        }
+    };
+    let mut total_kb: Option<u64> = None;
+    let mut available_kb: Option<u64> = None;
     for line in content.lines() {
         if let Some(rest) = line.strip_prefix("MemTotal:") {
-            total_kb = rest.split_whitespace().next()?.parse().ok()?;
+            total_kb = rest.split_whitespace().next().and_then(|v| v.parse().ok());
         } else if let Some(rest) = line.strip_prefix("MemAvailable:") {
-            available_kb = rest.split_whitespace().next()?.parse().ok()?;
+            available_kb = rest.split_whitespace().next().and_then(|v| v.parse().ok());
         }
     }
-    if total_kb == 0 {
-        return None;
-    }
-    Some((available_kb / 1024, total_kb / 1024))
+    Some((available_kb? / 1024, total_kb? / 1024))
 }
 
 #[cfg(test)]
