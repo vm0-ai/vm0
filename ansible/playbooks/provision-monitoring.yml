@@ -63,11 +63,10 @@
         content: |
           // Collect system metrics (equivalent to node_exporter)
           prometheus.exporter.unix "default" {
-            enable_collectors = ["systemd"]
-            disable_collectors = [
-              "arp", "cooling", "dmi", "edac", "entropy", "hwmon",
-              "netstat", "nvme", "schedstat", "selinux", "sockstat",
-              "softnet", "textfile", "timex",
+            set_collectors = [
+              "cpu", "disk", "filesystem", "loadavg", "meminfo",
+              "netdev", "os", "pressure", "processes", "systemd",
+              "uname", "vmstat",
             ]
             netdev {
               device_include = "^(en|eth|bond).*"
