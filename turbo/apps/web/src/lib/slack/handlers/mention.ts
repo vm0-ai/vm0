@@ -184,8 +184,14 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     },
   });
 
-  // Only handle immediate failures (agent run was not dispatched)
-  if (status === "failed") {
+  if (status === "queued") {
+    await client.chat.postEphemeral({
+      channel: context.channelId,
+      user: context.userId,
+      thread_ts: threadTs,
+      text: "⚠ Run queued — concurrency limit reached. Will start automatically when a slot is available.",
+    });
+  } else if (status === "failed") {
     log.error("Failed to dispatch agent run", { response });
     await postMessage(
       client,
@@ -198,5 +204,5 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       (err) => log.warn("Failed to clear thread status", { error: err }),
     );
   }
-  // For "dispatched" status, callback will handle response posting and status clearing
+  // For "dispatched"/"queued" status, callback will handle response posting and status clearing
 }

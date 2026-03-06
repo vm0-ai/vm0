@@ -35,7 +35,7 @@ interface RunAgentParams {
 }
 
 interface RunAgentResult {
-  status: "dispatched" | "failed";
+  status: "dispatched" | "queued" | "failed";
   response?: string;
   runId: string | undefined;
 }
@@ -122,10 +122,11 @@ export async function runAgentForSlack(
       ],
     });
 
-    log.debug(`Run ${result.runId} dispatched for Slack agent ${agentName}`);
+    const status = result.status === "queued" ? "queued" : "dispatched";
+    log.debug(`Run ${result.runId} ${status} for Slack agent ${agentName}`);
 
     return {
-      status: "dispatched",
+      status,
       runId: result.runId,
     };
   } catch (error) {
