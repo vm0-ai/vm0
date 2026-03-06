@@ -64,7 +64,7 @@
           // Collect system metrics (equivalent to node_exporter)
           prometheus.exporter.unix "default" {
             set_collectors = [
-              "cpu", "disk", "filesystem", "loadavg", "meminfo",
+              "cpu", "diskstats", "filesystem", "loadavg", "meminfo",
               "netdev", "os", "pressure", "processes", "systemd",
               "uname", "vmstat",
             ]
