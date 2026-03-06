@@ -148,6 +148,9 @@ function initEnv() {
       // Wix OAuth (for connector)
       WIX_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       WIX_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Canva OAuth (for connector)
+      CANVA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      CANVA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Supabase OAuth (for connector)
       SUPABASE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       SUPABASE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -285,6 +288,8 @@ function initEnv() {
       MONDAY_OAUTH_APP_ID: process.env.MONDAY_OAUTH_APP_ID,
       WIX_OAUTH_CLIENT_ID: process.env.WIX_OAUTH_CLIENT_ID,
       WIX_OAUTH_CLIENT_SECRET: process.env.WIX_OAUTH_CLIENT_SECRET,
+      CANVA_OAUTH_CLIENT_ID: process.env.CANVA_OAUTH_CLIENT_ID,
+      CANVA_OAUTH_CLIENT_SECRET: process.env.CANVA_OAUTH_CLIENT_SECRET,
       SUPABASE_OAUTH_CLIENT_ID: process.env.SUPABASE_OAUTH_CLIENT_ID,
       SUPABASE_OAUTH_CLIENT_SECRET: process.env.SUPABASE_OAUTH_CLIENT_SECRET,
       TODOIST_OAUTH_CLIENT_ID: process.env.TODOIST_OAUTH_CLIENT_ID,
