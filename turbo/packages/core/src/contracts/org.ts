@@ -2,33 +2,17 @@ import { z } from "zod";
 import { initContract, authHeadersSchema } from "./base";
 import { apiErrorSchema } from "./errors";
 import { scopeSlugSchema } from "./scopes";
+import { scopeRoleSchema, scopeMemberSchema } from "./scope-members";
 
 const c = initContract();
 
 /**
- * Organization role enum
- */
-export const orgRoleSchema = z.enum(["admin", "member"]);
-export type OrgRole = z.infer<typeof orgRoleSchema>;
-
-/**
- * Organization member schema
- */
-export const orgMemberSchema = z.object({
-  userId: z.string(),
-  email: z.string(),
-  role: orgRoleSchema,
-  joinedAt: z.string(),
-});
-export type OrgMember = z.infer<typeof orgMemberSchema>;
-
-/**
- * Organization status response schema
+ * Organization status response schema (used by POST /api/org create response)
  */
 export const orgStatusResponseSchema = z.object({
   slug: z.string(),
-  role: orgRoleSchema,
-  members: z.array(orgMemberSchema),
+  role: scopeRoleSchema,
+  members: z.array(scopeMemberSchema),
   createdAt: z.string(),
 });
 export type OrgStatusResponse = z.infer<typeof orgStatusResponseSchema>;
@@ -42,36 +26,15 @@ export const createOrgRequestSchema = z.object({
 export type CreateOrgRequest = z.infer<typeof createOrgRequestSchema>;
 
 /**
- * Invite member request schema
- */
-export const inviteRequestSchema = z.object({
-  email: z.string().email(),
-});
-export type InviteRequest = z.infer<typeof inviteRequestSchema>;
-
-/**
- * Remove member request schema
- */
-export const removeMemberRequestSchema = z.object({
-  email: z.string().email(),
-});
-export type RemoveMemberRequest = z.infer<typeof removeMemberRequestSchema>;
-
-/**
- * Simple message response schema
- */
-export const messageResponseSchema = z.object({
-  message: z.string(),
-});
-export type MessageResponse = z.infer<typeof messageResponseSchema>;
-
-/**
  * Organization contract for /api/org
+ *
+ * Only the create endpoint remains here for vm0-admin org creation.
+ * Member management has been unified under /api/scope/* (scopeMembersContract).
  */
 export const orgContract = c.router({
   /**
    * POST /api/org
-   * Create a new organization
+   * Create a new organization (with vm0-admin slug bypass)
    */
   create: {
     method: "POST",
@@ -86,78 +49,6 @@ export const orgContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Create a new organization",
-  },
-
-  /**
-   * GET /api/org/status
-   * Get current organization status and members
-   */
-  status: {
-    method: "GET",
-    path: "/api/org/status",
-    headers: authHeadersSchema,
-    responses: {
-      200: orgStatusResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Get organization status and members",
-  },
-
-  /**
-   * POST /api/org/leave
-   * Leave the current organization
-   */
-  leave: {
-    method: "POST",
-    path: "/api/org/leave",
-    headers: authHeadersSchema,
-    body: z.object({}),
-    responses: {
-      200: messageResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Leave the current organization",
-  },
-
-  /**
-   * POST /api/org/invite
-   * Invite a member to the organization
-   */
-  invite: {
-    method: "POST",
-    path: "/api/org/invite",
-    headers: authHeadersSchema,
-    body: inviteRequestSchema,
-    responses: {
-      200: messageResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Invite a member to the organization",
-  },
-
-  /**
-   * DELETE /api/org/members
-   * Remove a member from the organization
-   */
-  removeMember: {
-    method: "DELETE",
-    path: "/api/org/members",
-    headers: authHeadersSchema,
-    body: removeMemberRequestSchema,
-    responses: {
-      200: messageResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Remove a member from the organization",
   },
 });
 

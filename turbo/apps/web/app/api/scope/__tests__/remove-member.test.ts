@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { POST as createOrgRoute } from "../route";
+import { POST as createScopeRoute } from "../route";
 import { POST as inviteRoute } from "../invite/route";
 import { DELETE } from "../members/route";
-import { GET as getOrgStatusRoute } from "../status/route";
+import { GET as getMembersRoute } from "../members/route";
 import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
@@ -12,10 +12,10 @@ import { clerkClient } from "@clerk/nextjs/server";
 const context = testContext();
 
 /**
- * Helper to create an org with a fresh user.
+ * Helper to create a scope with a fresh user.
  */
-async function createOrg(userId: string) {
-  const slug = uniqueId("org");
+async function createTestScope(userId: string) {
+  const slug = uniqueId("scope");
   const orgId = `org_${userId}`;
   setupClerkOrgMock({
     userId,
@@ -23,15 +23,15 @@ async function createOrg(userId: string) {
     memberships: [{ userId, role: "org:admin" }],
   });
 
-  const createReq = createTestRequest("http://localhost:3000/api/org", {
+  const createReq = createTestRequest("http://localhost:3000/api/scope", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ slug }),
   });
-  const createRes = await createOrgRoute(createReq);
+  const createRes = await createScopeRoute(createReq);
   if (createRes.status !== 201) {
     const body = await createRes.json();
-    throw new Error(`Failed to create org: ${body.error?.message}`);
+    throw new Error(`Failed to create scope: ${body.error?.message}`);
   }
 
   return { slug, orgId };
@@ -47,7 +47,6 @@ async function addMember(
   slug: string,
   orgId: string,
 ) {
-  // Set up Clerk mock with both users as members
   setupClerkOrgMock({
     userId: adminUserId,
     orgId,
@@ -57,9 +56,8 @@ async function addMember(
     ],
   });
 
-  // Invite the member via API (this creates scope_members record)
   const inviteReq = createTestRequest(
-    `http://localhost:3000/api/org/invite?scope=${slug}`,
+    `http://localhost:3000/api/scope/invite?scope=${slug}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -73,7 +71,7 @@ async function addMember(
   }
 }
 
-describe("DELETE /api/org/members - Remove Member", () => {
+describe("DELETE /api/scope/members - Remove Member", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -82,7 +80,7 @@ describe("DELETE /api/org/members - Remove Member", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/org/members?scope=test",
+      "http://localhost:3000/api/scope/members?scope=test",
       {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -100,11 +98,14 @@ describe("DELETE /api/org/members - Remove Member", () => {
     const userId = uniqueId("members-user");
     mockClerk({ userId });
 
-    const request = createTestRequest("http://localhost:3000/api/org/members", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: "member@example.com" }),
-    });
+    const request = createTestRequest(
+      "http://localhost:3000/api/scope/members",
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "member@example.com" }),
+      },
+    );
     const response = await DELETE(request);
     const data = await response.json();
 
@@ -117,7 +118,7 @@ describe("DELETE /api/org/members - Remove Member", () => {
     const memberEmail = "member@example.com";
     // Clerk mock maps "member@example.com" -> "user_member"
     const memberUserId = "user_member";
-    const { slug, orgId } = await createOrg(adminUserId);
+    const { slug, orgId } = await createTestScope(adminUserId);
 
     // Add member via invite API
     await addMember(adminUserId, memberUserId, memberEmail, slug, orgId);
@@ -135,7 +136,7 @@ describe("DELETE /api/org/members - Remove Member", () => {
     } as unknown as Awaited<ReturnType<typeof client.users.getUserList>>);
 
     const removeReq = createTestRequest(
-      `http://localhost:3000/api/org/members?scope=${slug}`,
+      `http://localhost:3000/api/scope/members?scope=${slug}`,
       {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -154,12 +155,12 @@ describe("DELETE /api/org/members - Remove Member", () => {
     const memberEmail = "member-revoke@example.com";
     // Clerk mock maps "member-revoke@example.com" -> "user_member-revoke"
     const memberUserId = "user_member-revoke";
-    const { slug, orgId } = await createOrg(adminUserId);
+    const { slug, orgId } = await createTestScope(adminUserId);
 
     // Add member via invite API
     await addMember(adminUserId, memberUserId, memberEmail, slug, orgId);
 
-    // Verify member can access org status
+    // Verify member can access scope members
     setupClerkOrgMock({
       userId: memberUserId,
       orgId,
@@ -169,9 +170,9 @@ describe("DELETE /api/org/members - Remove Member", () => {
       ],
     });
     const statusReq1 = createTestRequest(
-      `http://localhost:3000/api/org/status?scope=${slug}`,
+      `http://localhost:3000/api/scope/members?scope=${slug}`,
     );
-    const statusRes1 = await getOrgStatusRoute(statusReq1);
+    const statusRes1 = await getMembersRoute(statusReq1);
     expect(statusRes1.status).toBe(200);
 
     // Switch back to admin and remove the member
@@ -197,7 +198,7 @@ describe("DELETE /api/org/members - Remove Member", () => {
     } as unknown as Awaited<ReturnType<typeof adminClient.users.getUserList>>);
 
     const removeReq = createTestRequest(
-      `http://localhost:3000/api/org/members?scope=${slug}`,
+      `http://localhost:3000/api/scope/members?scope=${slug}`,
       {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -207,12 +208,12 @@ describe("DELETE /api/org/members - Remove Member", () => {
     const removeRes = await DELETE(removeReq);
     expect(removeRes.status).toBe(200);
 
-    // Verify member can no longer access org status
+    // Verify member can no longer access scope members
     mockClerk({ userId: memberUserId });
     const statusReq2 = createTestRequest(
-      `http://localhost:3000/api/org/status?scope=${slug}`,
+      `http://localhost:3000/api/scope/members?scope=${slug}`,
     );
-    const statusRes2 = await getOrgStatusRoute(statusReq2);
+    const statusRes2 = await getMembersRoute(statusReq2);
     // After removal, the member should get 403 (not a member)
     expect(statusRes2.status).toBe(403);
   });

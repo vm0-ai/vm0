@@ -438,21 +438,11 @@ export {
 } from "./user-preferences";
 export {
   orgContract,
-  orgRoleSchema,
-  orgMemberSchema,
   orgStatusResponseSchema,
   createOrgRequestSchema,
-  inviteRequestSchema,
-  removeMemberRequestSchema,
-  messageResponseSchema,
   type OrgContract,
-  type OrgRole,
-  type OrgMember,
   type OrgStatusResponse,
   type CreateOrgRequest,
-  type InviteRequest,
-  type RemoveMemberRequest,
-  type MessageResponse,
 } from "./org";
 export {
   scopeListContract,
@@ -462,6 +452,22 @@ export {
   type ScopeListItem,
   type ScopeListResponse,
 } from "./scope-list";
+export {
+  scopeMembersContract,
+  scopeRoleSchema,
+  scopeMemberSchema,
+  scopeMembersResponseSchema,
+  inviteScopeMemberRequestSchema,
+  removeScopeMemberRequestSchema,
+  scopeMessageResponseSchema,
+  type ScopeMembersContract,
+  type ScopeRole,
+  type ScopeMember,
+  type ScopeMembersResponse,
+  type InviteScopeMemberRequest,
+  type RemoveScopeMemberRequest,
+  type ScopeMessageResponse,
+} from "./scope-members";
 export {
   adminScopeTierContract,
   scopeTierSchema,

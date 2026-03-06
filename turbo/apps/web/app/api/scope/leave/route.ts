@@ -9,6 +9,9 @@ import {
   isForbidden,
 } from "../../../../src/lib/errors";
 
+/**
+ * POST /api/scope/leave - Leave the current scope
+ */
 export async function POST(request: Request) {
   initServices();
 
@@ -24,7 +27,7 @@ export async function POST(request: Request) {
   try {
     const { scope, member } = await requireScopeFromRequest(request, userId);
     await leaveOrganization(userId, scope.id, member.role);
-    return NextResponse.json({ message: "Left organization" });
+    return NextResponse.json({ message: "Left scope" });
   } catch (error) {
     if (isBadRequest(error)) {
       return NextResponse.json(

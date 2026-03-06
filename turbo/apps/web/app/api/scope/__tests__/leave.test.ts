@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { POST as createOrgRoute } from "../route";
+import { POST as createScopeRoute } from "../route";
 import { POST } from "../leave/route";
 import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
@@ -8,7 +8,7 @@ import { setupClerkOrgMock } from "../../../../src/__tests__/org-test-helpers";
 
 const context = testContext();
 
-describe("POST /api/org/leave - Leave Organization", () => {
+describe("POST /api/scope/leave - Leave Scope", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -17,7 +17,7 @@ describe("POST /api/org/leave - Leave Organization", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/org/leave?scope=test",
+      "http://localhost:3000/api/scope/leave?scope=test",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -35,7 +35,7 @@ describe("POST /api/org/leave - Leave Organization", () => {
     const userId = uniqueId("leave-user");
     mockClerk({ userId });
 
-    const request = createTestRequest("http://localhost:3000/api/org/leave", {
+    const request = createTestRequest("http://localhost:3000/api/scope/leave", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -49,7 +49,7 @@ describe("POST /api/org/leave - Leave Organization", () => {
 
   it("should prevent admin from leaving", async () => {
     const userId = uniqueId("leave-admin");
-    const slug = uniqueId("org");
+    const slug = uniqueId("scope");
     const orgId = `org_${userId}`;
     setupClerkOrgMock({
       userId,
@@ -57,18 +57,18 @@ describe("POST /api/org/leave - Leave Organization", () => {
       memberships: [{ userId, role: "org:admin" }],
     });
 
-    // Create org (fresh user, no existing scope)
-    const createReq = createTestRequest("http://localhost:3000/api/org", {
+    // Create scope
+    const createReq = createTestRequest("http://localhost:3000/api/scope", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ slug }),
     });
-    const createRes = await createOrgRoute(createReq);
+    const createRes = await createScopeRoute(createReq);
     expect(createRes.status).toBe(201);
 
     // Try to leave as admin
     const leaveReq = createTestRequest(
-      `http://localhost:3000/api/org/leave?scope=${slug}`,
+      `http://localhost:3000/api/scope/leave?scope=${slug}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

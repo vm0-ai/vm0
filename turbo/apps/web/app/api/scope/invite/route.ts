@@ -9,6 +9,9 @@ import {
   isForbidden,
 } from "../../../../src/lib/errors";
 
+/**
+ * POST /api/scope/invite - Invite a member to the scope
+ */
 export async function POST(request: Request) {
   initServices();
 
