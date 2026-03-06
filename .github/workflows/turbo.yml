@@ -1348,6 +1348,9 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           BIN_DIR: ${{ steps.host.outputs.bin-dir }}
           RUNNER_DIR: ${{ steps.host.outputs.runner-dir }}
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           TARGET_DIR="crates/target/${TARGET_TRIPLE}/${CARGO_PROFILE}"
@@ -1363,6 +1366,18 @@ jobs:
             --private-key $HOME/.ssh/runner.pem \
             -e "ansible_user=${METAL_USER}" \
             -v
+          if [ -n "${GRAFANA_CLOUD_API_KEY}" ]; then
+            ansible-playbook \
+              -i "${METAL_HOSTS}," \
+              playbooks/provision-monitoring.yml \
+              --private-key $HOME/.ssh/runner.pem \
+              -e "ansible_user=${METAL_USER}" \
+              -e "grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL}" \
+              -e "grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER}" \
+              -e "grafana_cloud_api_key=${GRAFANA_CLOUD_API_KEY}" \
+              -e "env_label=dev" \
+              -v
+          fi
           cd ..
 
           deploy_to_host() {
