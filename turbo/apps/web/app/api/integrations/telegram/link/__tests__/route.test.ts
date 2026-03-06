@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GET, POST } from "../route";
+import { DELETE, GET, POST } from "../route";
 import {
   testContext,
   uniqueId,
@@ -103,6 +103,44 @@ describe("/api/integrations/telegram/link", () => {
       expect(response.status).toBe(200);
       expect(data.linked).toBe(false);
       expect(data.installation).toBeUndefined();
+    });
+  });
+
+  describe("DELETE", () => {
+    it("returns 401 when not authenticated", async () => {
+      mockClerk({ userId: null });
+
+      const response = await DELETE(linkRequest("DELETE"));
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data.error.code).toBe("UNAUTHORIZED");
+    });
+
+    it("returns 404 when user has no link", async () => {
+      await context.setupUser();
+
+      const response = await DELETE(linkRequest("DELETE"));
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("deletes user link and returns 204", async () => {
+      const user = await context.setupUser();
+      await createTestTelegramInstallation({
+        adminUserId: user.userId,
+        vm0UserId: user.userId,
+      });
+
+      const response = await DELETE(linkRequest("DELETE"));
+      expect(response.status).toBe(204);
+
+      // Verify link is gone
+      const getResponse = await GET(linkRequest("GET"));
+      const getData = await getResponse.json();
+      expect(getData.linked).toBe(false);
     });
   });
 

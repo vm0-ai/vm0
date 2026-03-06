@@ -163,11 +163,7 @@ function ConnectAccountStep({
             onClick={onCopyDomain}
             title="Click to copy"
           >
-            {copyStatus === "copied"
-              ? "Copied!"
-              : typeof window !== "undefined"
-                ? window.location.hostname
-                : ""}
+            {copyStatus === "copied" ? "Copied!" : window.location.hostname}
           </code>
           {" to enable web login."}
         </p>

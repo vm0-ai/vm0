@@ -7,6 +7,7 @@ import {
   parseTelegramPostMessage,
   type TelegramAuthResult,
 } from "./telegram-auth-parser.ts";
+import { openTelegramLoginPopup } from "./telegram-login-popup.ts";
 
 const L = logger("TelegramIntegration");
 
@@ -219,22 +220,7 @@ export const startTelegramLoginListener$ = command(
 );
 
 export const openTelegramLoginPopup$ = command((_ctx, botId: string) => {
-  const origin = encodeURIComponent(window.location.origin);
-  const returnTo = encodeURIComponent(
-    `${window.location.origin}/api/integrations/telegram/auth-callback`,
-  );
-  const authUrl = `https://oauth.telegram.org/auth?bot_id=${botId}&origin=${origin}&request_access=write&return_to=${returnTo}`;
-
-  const width = 550;
-  const height = 450;
-  const left = window.screenX + (window.outerWidth - width) / 2;
-  const top = window.screenY + (window.outerHeight - height) / 2;
-
-  window.open(
-    authUrl,
-    "telegram_login",
-    `width=${width},height=${height},left=${left},top=${top}`,
-  );
+  openTelegramLoginPopup(botId);
 });
 
 export const disconnectTelegramAccount$ = command(async ({ get, set }) => {
