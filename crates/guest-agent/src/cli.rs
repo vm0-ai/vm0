@@ -211,15 +211,11 @@ pub async fn execute_cli(
 
     // Stream stdout JSONL, racing against heartbeat and process exit.
     //
-    // We must race `child.wait()` alongside the stdout reader because the
-    // CLI may spawn child processes that inherit the stdout pipe fd.  If
-    // the CLI main process is killed (e.g. OOM) while children survive,
-    // the pipe stays open and `reader.next_line()` blocks forever.
-    //
-    // When `child.wait()` fires we do NOT break — we keep processing events
+    // When `child.wait()` fires we do NOT break — we keep reading events
     // so buffered lines (including the final `result` event) are not lost.
-    // Instead we arm a 5-second drain deadline; if the pipe is still open
-    // after that we kill the process group and exit.
+    // Events read after the CLI exits are buffered in memory (not sent via
+    // HTTP inline) so that slow HTTP POSTs don't prevent the pipe from
+    // draining.  Buffered events are sent after the pipe reaches EOF.
     let mut reader = tokio::io::BufReader::new(stdout).lines();
     let mut seq = 0u32;
 
@@ -228,10 +224,10 @@ pub async fn execute_cli(
     let pgid = child.id().map(|pid| pid as i32);
 
     let mut cli_status: Option<std::process::ExitStatus> = None;
-    // Drain deadline: armed when the CLI process exits, fires after 5s.
-    let drain_deadline = tokio::time::sleep(std::time::Duration::from_secs(0));
-    tokio::pin!(drain_deadline);
-    let mut drain_active = false;
+    // Events buffered during drain phase (after CLI exits).  Sent after
+    // the pipe reaches EOF so that slow HTTP POSTs don't block the loop
+    // while it drains remaining pipe data.
+    let mut deferred_events: Vec<(serde_json::Value, u32)> = Vec::new();
 
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
@@ -258,7 +254,10 @@ pub async fn execute_cli(
                             {
                                 println!("{result}");
                             }
-                            if let Err(e) = events::send_event(&mut event, seq, masker).await {
+                            if cli_status.is_some() {
+                                // CLI already exited — buffer for post-loop send.
+                                deferred_events.push((event, seq));
+                            } else if let Err(e) = events::send_event(&mut event, seq, masker).await {
                                 log_warn!(LOG_TAG, "Event send failed: {e}");
                             }
                             seq += 1;
@@ -269,32 +268,13 @@ pub async fn execute_cli(
                 }
             }
             status = child.wait(), if cli_status.is_none() => {
-                // CLI main process exited.  Arm a drain deadline but keep
-                // the loop running so remaining buffered events are processed.
                 match status {
                     Ok(s) => {
                         log_info!(LOG_TAG, "CLI process exited (status: {s}), draining stdout");
                         cli_status = Some(s);
-                        drain_active = true;
-                        drain_deadline.as_mut().reset(
-                            tokio::time::Instant::now() + std::time::Duration::from_secs(5),
-                        );
                     }
                     Err(e) => break Err(AgentError::Io(e)),
                 }
-            }
-            () = &mut drain_deadline, if drain_active => {
-                // Stdout is still open 5s after the CLI process exited —
-                // orphaned child processes are holding the pipe.  Kill
-                // the entire process group so we don't hang forever.
-                log_warn!(
-                    LOG_TAG,
-                    "CLI process exited but stdout still open after 5s, killing process group"
-                );
-                if let Some(pid) = pgid {
-                    unsafe { libc::kill(-pid, libc::SIGKILL); }
-                }
-                break Ok(());
             }
             hb_result = &mut heartbeat_handle => {
                 match hb_result {
@@ -316,6 +296,18 @@ pub async fn execute_cli(
             }
         }
     };
+
+    // Send events that were buffered during the drain phase.
+    // Skip if the event loop exited with an error (e.g. heartbeat failure)
+    // because the server is likely unreachable and each retry would stall.
+    if event_result.is_ok() && !deferred_events.is_empty() {
+        log_info!(LOG_TAG, "Sending {} deferred events", deferred_events.len());
+        for (mut event, event_seq) in deferred_events {
+            if let Err(e) = events::send_event(&mut event, event_seq, masker).await {
+                log_warn!(LOG_TAG, "Deferred event send failed: {e}");
+            }
+        }
+    }
 
     let status = match cli_status {
         Some(s) => s,
