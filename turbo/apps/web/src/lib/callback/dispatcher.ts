@@ -1,5 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
+import { agentRuns } from "../../db/schema/agent-run";
 import { decryptCredentialValue } from "../crypto/secrets-encryption";
 import { env } from "../../env";
 import { computeHmacSignature } from "./hmac";
@@ -197,6 +198,20 @@ async function dispatchSingleCallback(
  * Failures are silently ignored — a missed progress notification is non-critical.
  */
 export async function dispatchProgressCallbacks(runId: string): Promise<void> {
+  // Skip if run is already completed/failed to avoid race with completion
+  // callbacks that clear status indicators (e.g. Slack spinner).
+  // The complete webhook updates agentRuns.status synchronously before its
+  // after() callback dispatches completion, so this check is effective.
+  const [run] = await globalThis.services.db
+    .select({ status: agentRuns.status })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+
+  if (!run || run.status === "completed" || run.status === "failed") {
+    return;
+  }
+
   const { SECRETS_ENCRYPTION_KEY } = env();
 
   const callbacks = await globalThis.services.db

@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { dispatchProgressCallbacks } from "../dispatcher";
+import { agentRuns } from "../../../db/schema/agent-run";
 import { testContext, type UserContext } from "../../../__tests__/test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
 import {
@@ -118,5 +120,59 @@ describe("dispatchProgressCallbacks", () => {
 
     // Should not throw
     await dispatchProgressCallbacks(testRunId);
+  });
+
+  it("should skip when run is already completed", async () => {
+    let callCount = 0;
+
+    server.use(
+      http.post("http://localhost/api/internal/callbacks/slack", () => {
+        callCount++;
+        return HttpResponse.json({ success: true });
+      }),
+    );
+
+    await createTestCallback({
+      runId: testRunId,
+      url: "http://localhost/api/internal/callbacks/slack",
+      payload: { workspaceId: "T123" },
+    });
+
+    // Mark run as completed
+    await globalThis.services.db
+      .update(agentRuns)
+      .set({ status: "completed", completedAt: new Date() })
+      .where(eq(agentRuns.id, testRunId));
+
+    await dispatchProgressCallbacks(testRunId);
+
+    expect(callCount).toBe(0);
+  });
+
+  it("should skip when run is already failed", async () => {
+    let callCount = 0;
+
+    server.use(
+      http.post("http://localhost/api/internal/callbacks/slack", () => {
+        callCount++;
+        return HttpResponse.json({ success: true });
+      }),
+    );
+
+    await createTestCallback({
+      runId: testRunId,
+      url: "http://localhost/api/internal/callbacks/slack",
+      payload: { workspaceId: "T123" },
+    });
+
+    // Mark run as failed
+    await globalThis.services.db
+      .update(agentRuns)
+      .set({ status: "failed", completedAt: new Date(), error: "test error" })
+      .where(eq(agentRuns.id, testRunId));
+
+    await dispatchProgressCallbacks(testRunId);
+
+    expect(callCount).toBe(0);
   });
 });
