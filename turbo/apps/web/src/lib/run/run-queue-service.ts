@@ -119,11 +119,11 @@ export async function drainUserQueue(
   let entry = await dequeueNext(userId);
 
   while (entry) {
-    const runId = entry.run_id;
+    const runId = entry.runId;
 
     // Decrypt CreateRunParams
     const decryptedMap = decryptSecretsMap(
-      entry.encrypted_params,
+      entry.encryptedParams,
       encryptionKey,
     );
     if (!decryptedMap?.__params) {
@@ -146,8 +146,8 @@ export async function drainUserQueue(
         await reEnqueueRun(
           runId,
           userId,
-          entry.encrypted_params,
-          entry.created_at,
+          entry.encryptedParams,
+          entry.createdAt,
         );
         return;
       }
@@ -162,9 +162,9 @@ export async function drainUserQueue(
 }
 
 interface QueueEntry {
-  run_id: string;
-  encrypted_params: string | null;
-  created_at: Date;
+  runId: string;
+  encryptedParams: string | null;
+  createdAt: Date;
 }
 
 /**
@@ -199,9 +199,9 @@ async function dequeueNext(userId: string): Promise<QueueEntry | undefined> {
 
     log.debug(`Dequeued run ${row.run_id} for user ${userId}`);
     return {
-      run_id: row.run_id,
-      encrypted_params: row.encrypted_params,
-      created_at: new Date(row.created_at),
+      runId: row.run_id,
+      encryptedParams: row.encrypted_params,
+      createdAt: new Date(row.created_at),
     };
   });
 }
