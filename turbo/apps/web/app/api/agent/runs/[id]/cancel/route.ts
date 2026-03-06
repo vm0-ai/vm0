@@ -7,6 +7,9 @@ import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../../../src/lib/logger";
 import { killSandbox } from "../../../../../../src/lib/sandbox/sandbox-service";
+import { drainUserQueue } from "../../../../../../src/lib/run/run-queue-service";
+import { executeQueuedRun } from "../../../../../../src/lib/run/run-service";
+import { after } from "next/server";
 
 const log = logger("api:runs:cancel");
 
@@ -78,6 +81,15 @@ const router = tsr.router(runsCancelContract, {
     // Kill E2B sandbox if it exists (queued runs don't have sandboxes)
     if (run.sandboxId) {
       await killSandbox(run.sandboxId);
+    }
+
+    // Drain queue if cancelling a running/pending run freed a concurrency slot
+    if (run.status === "running" || run.status === "pending") {
+      after(async () => {
+        await drainUserQueue(userId, executeQueuedRun).catch((err) =>
+          log.error("Failed to drain user queue after cancel", { err }),
+        );
+      });
     }
 
     log.debug(
