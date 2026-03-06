@@ -947,6 +947,49 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  supabase: {
+    label: "Supabase",
+    helpText:
+      "Connect your Supabase account to manage projects, databases, and APIs",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Supabase to grant access.",
+        secrets: {
+          SUPABASE_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          SUPABASE_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://api.supabase.com/v1/oauth/authorize",
+      tokenUrl: "https://api.supabase.com/v1/oauth/token",
+      scopes: [
+        "organizations:read",
+        "projects:read",
+        "projects:write",
+        "database:read",
+        "database:write",
+        "secrets:read",
+        "rest:read",
+        "rest:write",
+        "auth:read",
+        "analytics:read",
+        "environment:read",
+        "domains:read",
+      ],
+    } as ConnectorOAuthConfig,
+  },
   todoist: {
     label: "Todoist",
     helpText:
@@ -1005,6 +1048,7 @@ export const connectorTypeSchema = z.enum([
   "intervals-icu",
   "xero",
   "monday",
+  "supabase",
   "todoist",
 ]);
 

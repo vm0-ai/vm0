@@ -145,6 +145,9 @@ function initEnv() {
       MONDAY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       MONDAY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       MONDAY_OAUTH_APP_ID: z.string().min(1).optional(),
+      // Supabase OAuth (for connector)
+      SUPABASE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      SUPABASE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // GitHub App (for issue integration)
       GITHUB_APP_ID: z.string().min(1).optional(),
       GITHUB_APP_SLUG: z.string().min(1).optional(),
@@ -277,6 +280,8 @@ function initEnv() {
       MONDAY_OAUTH_CLIENT_ID: process.env.MONDAY_OAUTH_CLIENT_ID,
       MONDAY_OAUTH_CLIENT_SECRET: process.env.MONDAY_OAUTH_CLIENT_SECRET,
       MONDAY_OAUTH_APP_ID: process.env.MONDAY_OAUTH_APP_ID,
+      SUPABASE_OAUTH_CLIENT_ID: process.env.SUPABASE_OAUTH_CLIENT_ID,
+      SUPABASE_OAUTH_CLIENT_SECRET: process.env.SUPABASE_OAUTH_CLIENT_SECRET,
       TODOIST_OAUTH_CLIENT_ID: process.env.TODOIST_OAUTH_CLIENT_ID,
       TODOIST_OAUTH_CLIENT_SECRET: process.env.TODOIST_OAUTH_CLIENT_SECRET,
       GITHUB_APP_ID: process.env.GITHUB_APP_ID,
