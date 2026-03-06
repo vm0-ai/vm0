@@ -75,7 +75,7 @@ async function sendReplyEmail(
   userEmail: string | string[],
   output: string,
   logsUrl: string,
-): Promise<{ messageId: string }> {
+): ReturnType<typeof sendEmail> {
   const replyToAddress = buildReplyToAddress(session.replyToToken);
   const headers: Record<string, string> = {};
 
