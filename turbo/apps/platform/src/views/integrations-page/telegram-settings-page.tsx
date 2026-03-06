@@ -377,37 +377,39 @@ export function TelegramSettingsPage() {
                       <p className="text-sm text-muted-foreground">
                         Link your Telegram account to VM0.
                       </p>
-                      <p className="text-sm text-amber-600 dark:text-amber-500">
-                        {"Make sure to run "}
-                        <code className="rounded border border-amber-300 bg-amber-50 px-1 py-0.5 font-mono text-xs dark:border-amber-700 dark:bg-amber-950/30">
-                          /setdomain
-                        </code>
-                        {" in "}
-                        <a
-                          href="https://t.me/BotFather"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-medium hover:underline"
-                        >
-                          @BotFather
-                        </a>
-                        {" and set domain to "}
-                        <code
-                          className="cursor-pointer rounded border border-amber-300 bg-amber-50 px-1 py-0.5 font-mono text-xs hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
-                          onClick={() => {
-                            detach(
-                              copyToClipboard(window.location.hostname),
-                              Reason.DomCallback,
-                            );
-                          }}
-                          title="Click to copy"
-                        >
-                          {copyStatus === "copied"
-                            ? "Copied!"
-                            : window.location.hostname}
-                        </code>
-                        {" first."}
-                      </p>
+                      {!data?.domainConfigured && (
+                        <p className="text-sm text-amber-600 dark:text-amber-500">
+                          {"Run "}
+                          <code className="rounded border border-amber-300 bg-amber-50 px-1 py-0.5 font-mono text-xs dark:border-amber-700 dark:bg-amber-950/30">
+                            /setdomain
+                          </code>
+                          {" in "}
+                          <a
+                            href="https://t.me/BotFather"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium hover:underline"
+                          >
+                            @BotFather
+                          </a>
+                          {" and set domain to "}
+                          <code
+                            className="cursor-pointer rounded border border-amber-300 bg-amber-50 px-1 py-0.5 font-mono text-xs hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
+                            onClick={() => {
+                              detach(
+                                copyToClipboard(window.location.hostname),
+                                Reason.DomCallback,
+                              );
+                            }}
+                            title="Click to copy"
+                          >
+                            {copyStatus === "copied"
+                              ? "Copied!"
+                              : window.location.hostname}
+                          </code>
+                          {" first."}
+                        </p>
+                      )}
                     </div>
                     {data?.bot && <TelegramLoginButton botId={data.bot.id} />}
                   </>

@@ -12,6 +12,7 @@ interface TelegramIntegrationData {
   agent: { id: string; name: string; scopeSlug: string } | null;
   isAdmin: boolean;
   isConnected: boolean;
+  domainConfigured: boolean;
   environment: {
     requiredSecrets: string[];
     requiredVars: string[];
