@@ -556,10 +556,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
   describe("Concurrent Run Limit", () => {
     it("should enqueue run when concurrent run limit is reached", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
-      reloadEnv();
-
-      // First run should succeed
+      // Free tier (default) allows only 1 concurrent run
       const run1 = await createTestRun(testComposeId, "First run");
       expect(run1.status).toBe("running");
 
@@ -597,10 +594,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     });
 
     it("should only count pending and running statuses", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
-      reloadEnv();
-
-      // Create and complete first run
+      // Free tier limit is 1; completed runs should not count
       const run1 = await createTestRun(testComposeId, "First run");
       expect(run1.status).toBe("running");
       await completeTestRun(user.userId, run1.runId);
@@ -610,9 +604,14 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(run2.status).toBe("running");
     });
 
-    it("should enqueue run when higher limit values are exceeded", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "3");
-      reloadEnv();
+    it("should allow more concurrent runs for pro tier scopes", async () => {
+      // Set scope to pro tier (allows 10 concurrent runs)
+      const { scopes } = await import("../../../../../src/db/schema/scope");
+      const { eq } = await import("drizzle-orm");
+      await globalThis.services.db
+        .update(scopes)
+        .set({ tier: "pro" })
+        .where(eq(scopes.id, user.scopeId));
 
       const run1 = await createTestRun(testComposeId, "Run 1");
       const run2 = await createTestRun(testComposeId, "Run 2");
@@ -621,32 +620,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(run1.status).toBe("running");
       expect(run2.status).toBe("running");
       expect(run3.status).toBe("running");
-
-      // Fourth run should be queued
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/runs",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentComposeId: testComposeId,
-            prompt: "Fourth run",
-          }),
-        },
-      );
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(201);
-      expect(data.status).toBe("queued");
     });
 
     it("should not count stale pending runs toward concurrency limit", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
-      reloadEnv();
-
-      // Get a valid agentComposeVersionId from an existing compose
+      // Free tier limit is 1; stale pending runs should not count
       const { versionId } = await createTestCompose(uniqueId("stale"));
 
       // Insert a stale "pending" run (20 minutes old, past the 15-min TTL)
@@ -658,11 +635,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(run.status).toBe("running");
     });
 
-    it("should enqueue run when running runs older than TTL still count toward concurrency limit", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
-      reloadEnv();
-
-      // Record time when run is created
+    it("should still count running runs older than TTL toward concurrency limit", async () => {
+      // Free tier limit is 1; running runs always count regardless of age
       const runCreationTime = Date.now();
 
       // First run should succeed and stay running

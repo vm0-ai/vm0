@@ -26,6 +26,7 @@ export const scopeSlugSchema = z
 export const scopeResponseSchema = z.object({
   id: z.string().uuid(),
   slug: z.string(),
+  tier: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

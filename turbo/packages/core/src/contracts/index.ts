@@ -462,3 +462,11 @@ export {
   type ScopeListItem,
   type ScopeListResponse,
 } from "./scope-list";
+export {
+  adminScopeTierContract,
+  scopeTierSchema,
+  setScopeTierRequestSchema,
+  setScopeTierResponseSchema,
+  type AdminScopeTierContract,
+  type ScopeTier,
+} from "./admin";
