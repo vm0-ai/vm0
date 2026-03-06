@@ -13,13 +13,6 @@ import {
 import { scopes } from "./scope";
 
 /**
- * Storage type:
- * - "volume": Static storage that doesn't auto-version after runs
- * - "artifact": Work products that auto-version after runs
- */
-export type StorageTypeEnum = "volume" | "artifact";
-
-/**
  * Storages table
  * Main table for scope-level storage with HEAD pointer to current version
  */
