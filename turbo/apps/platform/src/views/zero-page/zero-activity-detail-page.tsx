@@ -173,7 +173,7 @@ export function ZeroActivityDetailPage({
         </header>
         <div className="max-w-[900px] w-full mx-auto px-4 sm:px-6 pb-8">
           {/* Compact header card: title + meta with labels and short dividers */}
-          <div className="shrink-0 rounded-xl border border-border bg-card px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+          <div className="zero-card shrink-0 px-4 py-3">
             <div className="flex flex-wrap items-center gap-y-2">
               <h2 className="text-base font-semibold tracking-tight text-foreground truncate min-w-0 pr-3">
                 {item.title}
@@ -185,7 +185,7 @@ export function ZeroActivityDetailPage({
               <div className="flex flex-wrap items-center gap-x-0 text-sm">
                 <div className="flex items-center gap-1.5 pl-3 pr-3">
                   <span className="text-muted-foreground shrink-0">Status</span>
-                  <StatusBadge status={toLogStatus(item.status)} />
+                  <StatusBadge status={toLogStatus(item.status)} zeroStyle />
                 </div>
                 <span
                   className="w-px h-3.5 shrink-0 bg-border self-center"
@@ -245,7 +245,7 @@ export function ZeroActivityDetailPage({
                   </span>
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="relative flex h-9 flex-1 sm:flex-none items-center rounded-lg border border-border bg-card transition-colors focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10">
+                  <div className="zero-search-input relative flex h-9 flex-1 sm:flex-none items-center rounded-lg border transition-colors focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10">
                     <div className="pl-2">
                       <IconSearch className="h-4 w-4 text-muted-foreground" />
                     </div>

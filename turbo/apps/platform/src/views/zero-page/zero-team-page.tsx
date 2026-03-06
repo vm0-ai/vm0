@@ -3,13 +3,13 @@ import {
   IconSettings,
   IconUsers,
   IconCreditCard,
-  IconBell,
   IconPlus,
   IconMail,
+  IconTrash,
 } from "@tabler/icons-react";
-import { Tabs, TabsList, TabsTrigger, Button, cn } from "@vm0/ui";
+import { Tabs, TabsList, TabsTrigger, Button, Input, cn } from "@vm0/ui";
 
-type SettingsTab = "general" | "credits" | "team" | "notifications";
+type SettingsTab = "general" | "credits" | "team";
 
 const MOCK_MEMBERS: {
   id: string;
@@ -65,16 +65,17 @@ const MOCK_USAGE_HISTORY: {
 ];
 
 export function ZeroTeamPage() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("credits");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const [workspaceName, setWorkspaceName] = useState("My Workspace");
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
         <div className="mx-auto max-w-[900px]">
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+          <h1 className="text-lg font-semibold tracking-tight text-foreground">
             Workspace Settings
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-0.5 text-sm text-muted-foreground">
             Manage settings for your current workspace
           </p>
           <Tabs
@@ -82,7 +83,7 @@ export function ZeroTeamPage() {
             onValueChange={(v) => setActiveTab(v as SettingsTab)}
             className="mt-4 w-full"
           >
-            <TabsList className="h-9 w-full sm:w-auto gap-1 bg-muted/60 px-1 py-1">
+            <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1">
               <TabsTrigger
                 value="general"
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
@@ -104,13 +105,6 @@ export function ZeroTeamPage() {
                 <IconUsers size={14} stroke={1.5} />
                 Team
               </TabsTrigger>
-              <TabsTrigger
-                value="notifications"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                <IconBell size={14} stroke={1.5} />
-                Notifications
-              </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -121,10 +115,10 @@ export function ZeroTeamPage() {
           {activeTab === "credits" && (
             <>
               {/* Credits Balance — from image */}
-              <div className="rounded-xl border border-border bg-card p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <div className="zero-card p-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
                   <div>
-                    <h2 className="text-base font-semibold tracking-tight text-foreground">
+                    <h2 className="text-sm font-semibold tracking-tight text-foreground">
                       Credits Balance
                     </h2>
                     <p className="mt-2 text-2xl font-semibold text-foreground">
@@ -166,7 +160,7 @@ export function ZeroTeamPage() {
               </div>
 
               {/* Usage History — from image */}
-              <div className="rounded-xl border border-border bg-card p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <div className="zero-card p-6">
                 <h2 className="text-base font-semibold tracking-tight text-foreground">
                   Usage History
                 </h2>
@@ -218,7 +212,7 @@ export function ZeroTeamPage() {
                   Invite Member
                 </Button>
               </div>
-              <div className="mt-4 overflow-hidden rounded-lg border border-border bg-card">
+              <div className="zero-card mt-4 overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-muted/40">
@@ -292,12 +286,41 @@ export function ZeroTeamPage() {
             </div>
           )}
 
-          {(activeTab === "general" || activeTab === "notifications") && (
-            <div className="rounded-xl border border-border bg-card p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-              <p className="text-sm text-muted-foreground">
-                Content for {activeTab} will appear here.
-              </p>
-            </div>
+          {activeTab === "general" && (
+            <>
+              <div className="zero-card p-6">
+                <h2 className="text-base font-semibold tracking-tight text-foreground">
+                  Workspace name
+                </h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Display name for this workspace
+                </p>
+                <Input
+                  value={workspaceName}
+                  onChange={(e) => setWorkspaceName(e.target.value)}
+                  placeholder="Workspace name"
+                  className="mt-4 max-w-sm"
+                />
+              </div>
+              <div className="zero-card p-6">
+                <h2 className="text-base font-semibold tracking-tight text-foreground">
+                  Delete workspace
+                </h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Permanently delete this workspace and all data. Cannot be
+                  undone.
+                </p>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="mt-4 h-9 gap-1.5"
+                  onClick={() => {}}
+                >
+                  <IconTrash size={16} stroke={1.5} />
+                  Delete workspace
+                </Button>
+              </div>
+            </>
           )}
         </div>
       </main>

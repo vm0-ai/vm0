@@ -86,10 +86,17 @@ const CONNECTOR_LIST: ConnectorType[] = [
   "slack",
 ];
 
-export function ZeroMeetPage() {
-  const [activeTab, setActiveTab] = useState("schedule");
+interface ZeroMeetPageProps {
+  zeroAvatarSrc?: string;
+  onAvatarClick?: () => void;
+}
+
+export function ZeroMeetPage({
+  zeroAvatarSrc = "/zero-avatar.png",
+  onAvatarClick,
+}: ZeroMeetPageProps) {
+  const [activeTab, setActiveTab] = useState("settings");
   const [agentName, setAgentName] = useState("Zero");
-  const [roleExpertise, setRoleExpertise] = useState("AI Assistant");
   const [tone, setTone] = useState<string>("Professional");
   const [skills, setSkills] = useState<string[]>([...AVAILABLE_SKILLS]);
   const ADD_SKILL_PLACEHOLDER = "__add_skill__";
@@ -113,16 +120,28 @@ export function ZeroMeetPage() {
       <header className="shrink-0 bg-transparent px-4 pt-10 pb-4 sm:px-6">
         <div className="mx-auto max-w-[900px] px-7">
           <div className="flex items-center gap-4">
-            <img
-              src="/zero-avatar.png"
-              alt=""
-              role="presentation"
-              className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
-            />
+            <button
+              type="button"
+              onClick={onAvatarClick}
+              className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label="Switch Zero avatar"
+            >
+              <img
+                src={zeroAvatarSrc}
+                alt=""
+                role="presentation"
+                className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+              />
+            </button>
             <div className="min-w-0 pt-2 sm:pt-2.5">
-              <h1 className="text-xl font-semibold tracking-tight text-foreground leading-tight">
-                Zero
-              </h1>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl font-semibold tracking-tight text-foreground leading-tight">
+                  Zero
+                </h1>
+                <span className="zero-pill inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium">
+                  Super Manager
+                </span>
+              </div>
               <p className="text-sm text-muted-foreground mt-0.5 leading-tight">
                 Your AI teammate, tuned to you
               </p>
@@ -135,14 +154,7 @@ export function ZeroMeetPage() {
               onValueChange={setActiveTab}
               className="flex-1 min-w-0"
             >
-              <TabsList className="h-9 w-full sm:w-auto gap-1 bg-muted/60 px-1 py-1">
-                <TabsTrigger
-                  value="schedule"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                >
-                  <IconCalendar size={14} stroke={1.5} />
-                  Schedule
-                </TabsTrigger>
+              <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1">
                 <TabsTrigger
                   value="settings"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
@@ -158,6 +170,13 @@ export function ZeroMeetPage() {
                   Instructions
                 </TabsTrigger>
                 <TabsTrigger
+                  value="schedule"
+                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                >
+                  <IconCalendar size={14} stroke={1.5} />
+                  Schedule
+                </TabsTrigger>
+                <TabsTrigger
                   value="connections"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
@@ -169,7 +188,7 @@ export function ZeroMeetPage() {
             <Button
               variant="outline"
               size="sm"
-              className="h-9 shrink-0 gap-2 rounded-lg px-4"
+              className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
             >
               <IconMessageCircle size={14} stroke={1.5} />
               Just ask
@@ -191,7 +210,7 @@ export function ZeroMeetPage() {
 
         {activeTab === "settings" && (
           <div className="mx-auto max-w-[900px] px-7">
-            <Card className="rounded-2xl border border-border/70 bg-card shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+            <Card className="zero-card">
               <CardContent className="py-5 flex flex-col gap-4">
                 <div className="flex flex-col gap-8">
                   <div className="flex flex-col gap-2">
@@ -206,21 +225,6 @@ export function ZeroMeetPage() {
                       value={agentName}
                       onChange={(e) => setAgentName(e.target.value)}
                       placeholder="What should we call them?"
-                      className="h-9"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label
-                      htmlFor="zero-role"
-                      className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-                    >
-                      Role
-                    </label>
-                    <Input
-                      id="zero-role"
-                      value={roleExpertise}
-                      onChange={(e) => setRoleExpertise(e.target.value)}
-                      placeholder="e.g. AI assistant, project buddy"
                       className="h-9"
                     />
                   </div>
@@ -243,10 +247,10 @@ export function ZeroMeetPage() {
                           type="button"
                           onClick={() => setTone(opt)}
                           className={cn(
-                            "rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                            "rounded-lg border px-4 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                             tone === opt
-                              ? "border border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
-                              : "border border-border/50 bg-muted/30 text-muted-foreground hover:border-border hover:bg-muted/50 hover:text-foreground dark:bg-muted/20 dark:hover:bg-muted/30",
+                              ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
+                              : "zero-chip text-muted-foreground hover:text-foreground",
                           )}
                         >
                           {opt}
@@ -254,7 +258,7 @@ export function ZeroMeetPage() {
                       ))}
                     </div>
                     <div
-                      className="rounded-lg border border-border/40 bg-muted/30 px-3 py-2 transition-colors duration-200 dark:bg-muted/20"
+                      className="zero-chip rounded-lg border px-3 py-2 transition-colors duration-200"
                       key={tone}
                     >
                       <p className="text-xs text-muted-foreground italic min-h-[1.25rem] leading-relaxed">
@@ -263,7 +267,7 @@ export function ZeroMeetPage() {
                       <div className="my-2 border-t border-border/30" />
                       <div className="flex flex-col gap-1.5 pb-1.5">
                         <div className="flex justify-end">
-                          <div className="max-w-[85%] rounded-2xl px-3 py-2 bg-stone-200/90 text-stone-800 text-sm leading-relaxed transition-colors duration-200 dark:bg-stone-600/90 dark:text-stone-100">
+                          <div className="zero-bubble-cool max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200">
                             {
                               TONE_SAMPLES[
                                 tone as (typeof TONE_OPTIONS)[number]
@@ -272,7 +276,7 @@ export function ZeroMeetPage() {
                           </div>
                         </div>
                         <div className="flex justify-start">
-                          <div className="max-w-[85%] rounded-2xl border border-border/40 bg-card/98 px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200">
+                          <div className="zero-chat-bubble-assistant max-w-[85%] rounded-2xl border px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200">
                             {
                               TONE_SAMPLES[
                                 tone as (typeof TONE_OPTIONS)[number]
@@ -295,7 +299,7 @@ export function ZeroMeetPage() {
                           key={skill}
                           className="flex min-w-[120px] max-w-[220px] flex-1 basis-[120px]"
                         >
-                          <span className="flex w-full min-w-0 items-center gap-2 rounded-2xl border border-border/80 bg-muted/50 px-3 py-2.5 text-sm text-foreground transition-colors duration-200 hover:bg-muted hover:border-border">
+                          <span className="zero-chip flex w-full min-w-0 items-center gap-2 rounded-2xl border px-3 py-2.5 text-sm text-foreground transition-colors duration-200">
                             {CONNECTOR_LIST.includes(skill as ConnectorType) ? (
                               <ConnectorIcon
                                 type={skill as ConnectorType}
@@ -333,7 +337,7 @@ export function ZeroMeetPage() {
                             }
                           }}
                         >
-                          <SelectTrigger className="h-10 min-w-[120px] gap-2 rounded-2xl border border-border/80 bg-muted/50 px-3 py-2.5 text-sm text-foreground hover:bg-muted hover:border-border transition-colors duration-200">
+                          <SelectTrigger className="zero-chip h-10 min-w-[120px] gap-2 rounded-2xl border px-3 py-2.5 text-sm text-foreground transition-colors duration-200">
                             <IconPlus size={14} stroke={2} />
                             <SelectValue placeholder="Add skill" />
                           </SelectTrigger>
@@ -359,16 +363,16 @@ export function ZeroMeetPage() {
 
         {activeTab === "instructions" && (
           <div className="mx-auto max-w-[900px] px-7">
-            <Card className="rounded-2xl border border-border bg-gradient-to-br from-stone-100/95 via-stone-50 to-stone-100/90 shadow-[0_1px_3px_rgba(0,0,0,0.06)] dark:from-stone-800/95 dark:via-stone-800/90 dark:to-stone-900/95 dark:border-border/80">
+            <Card className="zero-card-white">
               <CardContent className="py-7">
                 <div className="flex flex-col sm:flex-row gap-6 sm:gap-8 sm:items-end">
                   <div className="space-y-5 text-sm text-foreground leading-relaxed flex-1 min-w-0">
                     <div>
                       <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                        Role & Expertise
+                        Expertise
                       </h2>
                       <p>
-                        Zero is an intelligent AI assistant designed to help
+                        Zero is an intelligent Super Manager designed to help
                         teams with automation, data analysis, and workflow
                         orchestration.
                       </p>
@@ -422,7 +426,7 @@ export function ZeroMeetPage() {
                       src="/instructions-illustration.png"
                       alt=""
                       role="presentation"
-                      className="h-48 w-auto max-w-[220px] rounded-xl object-cover"
+                      className="h-48 w-auto max-w-[220px] rounded-xl object-contain"
                     />
                   </div>
                 </div>
@@ -457,7 +461,7 @@ export function ZeroMeetPage() {
                 const config = CONNECTOR_TYPES[type];
                 return (
                   <li key={type}>
-                    <Card className="rounded-xl border border-border/70 bg-card">
+                    <Card className="zero-card">
                       <CardContent className="flex items-center gap-4 px-4 py-3">
                         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted overflow-hidden">
                           <ConnectorIcon type={type} size={24} />
@@ -473,7 +477,7 @@ export function ZeroMeetPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-8 shrink-0 rounded-lg px-3"
+                          className="zero-btn-morandi h-8 shrink-0 rounded-lg border px-3"
                         >
                           Connect
                         </Button>

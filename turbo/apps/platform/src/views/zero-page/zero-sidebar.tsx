@@ -1,15 +1,17 @@
-import type { ComponentType } from "react";
+import { useState, type ComponentType } from "react";
 import {
   IconMessageCircle,
   IconRobot,
-  IconFileText,
   IconFile,
   IconChartLine,
   IconSelector,
   IconLayoutGrid,
   IconSettings,
-  IconDotsVertical,
   IconCalendar,
+  IconAdjustmentsHorizontal,
+  IconUser,
+  IconUsers,
+  IconLogout,
 } from "@tabler/icons-react";
 
 export type ZeroNavId =
@@ -30,7 +32,7 @@ const MAIN_NAV: {
 }[] = [
   { id: "chat", label: "Chat with Zero", icon: IconMessageCircle },
   { id: "meet", label: "Meet Zero", icon: IconRobot },
-  { id: "job", label: "Zero's team", icon: IconFileText },
+  { id: "job", label: "Zero's team", icon: IconUsers },
   { id: "schedule", label: "Schedule", icon: IconCalendar },
   { id: "production", label: "Documents", icon: IconFile },
   { id: "activity", label: "Activities", icon: IconChartLine },
@@ -52,11 +54,18 @@ const FOOTER_NAV: {
   { id: "team", label: "Workspace settings", icon: IconSettings },
 ];
 
+export type ZeroAccountAction = "preferences" | "manage" | "signout";
+
+export type ZeroAccountSubId = "preferences" | "manage" | null;
+
 interface ZeroSidebarProps {
   activeId: ZeroNavId;
   onSelect: (id: ZeroNavId) => void;
   onRecentSelect?: (id: string) => void;
   selectedRecentId?: string | null;
+  zeroAvatarSrc?: string;
+  onAvatarClick?: () => void;
+  onAccountAction?: (action: ZeroAccountAction) => void;
 }
 
 export function ZeroSidebar({
@@ -64,10 +73,21 @@ export function ZeroSidebar({
   onSelect,
   onRecentSelect,
   selectedRecentId = null,
+  zeroAvatarSrc = "/zero-avatar.png",
+  onAvatarClick,
+  onAccountAction,
 }: ZeroSidebarProps) {
-  const accountName = "Alex Chen";
-  const accountEmail = "alex@example.com";
-  const accountInitial = "A";
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountName = "Ming Li";
+  const accountEmail = "ming@vm0.ai";
+  const accountInitial = "M";
+
+  const closeAccountMenu = () => setAccountMenuOpen(false);
+
+  const handleAccountAction = (action: ZeroAccountAction) => {
+    closeAccountMenu();
+    onAccountAction?.(action);
+  };
 
   return (
     <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden">
@@ -75,15 +95,20 @@ export function ZeroSidebar({
       <div className="shrink-0 p-2 pb-1">
         <div className="rounded-lg p-2 transition-colors duration-200 hover:bg-sidebar-accent/50">
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 shrink-0 flex items-center justify-center overflow-hidden rounded-full">
+            <button
+              type="button"
+              onClick={onAvatarClick}
+              className="h-8 w-8 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label="Switch Zero avatar"
+            >
               <img
-                src="/zero-avatar.png"
+                src={zeroAvatarSrc}
                 alt="Zero"
                 className="h-8 w-8 rounded-full object-cover object-top"
                 width={32}
                 height={32}
               />
-            </div>
+            </button>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium leading-tight text-sidebar-foreground truncate">
                 Personal Workspace
@@ -167,34 +192,122 @@ export function ZeroSidebar({
               <span className="truncate">{label}</span>
             </button>
           ))}
-          {/* Account — mock name, avatar, email */}
-          <div className="mt-2 pt-1">
-            <button
-              type="button"
-              onClick={() => onSelect("account")}
-              className={`flex w-full items-center gap-2 rounded-lg p-2 h-12 text-left transition-colors duration-200 ${
-                activeId === "account"
-                  ? "bg-sidebar-active text-sidebar-primary"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent"
+          {/* Account — dropdown (aligned with workspace block above) */}
+          <div className="mt-2 pt-1 relative">
+            {accountMenuOpen && (
+              <div
+                className="fixed inset-0 z-10"
+                onClick={closeAccountMenu}
+                aria-hidden="true"
+              />
+            )}
+            <div
+              className={`rounded-lg p-2 transition-colors duration-200 ${
+                activeId === "account" || accountMenuOpen
+                  ? "bg-sidebar-active"
+                  : "hover:bg-sidebar-accent/50"
               }`}
             >
-              <div className="h-8 w-8 rounded-lg bg-sidebar-accent overflow-hidden shrink-0 flex items-center justify-center text-sidebar-foreground/70 text-sm font-medium">
-                {accountInitial}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm leading-5 text-sidebar-foreground truncate">
-                  {accountName}
+              <button
+                type="button"
+                onClick={() => setAccountMenuOpen((open) => !open)}
+                className="flex w-full items-center gap-2 text-left"
+                aria-expanded={accountMenuOpen}
+                aria-haspopup="true"
+              >
+                <div className="h-8 w-8 shrink-0 rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 text-sm font-medium">
+                  {accountInitial}
                 </div>
-                <div className="text-xs leading-4 text-sidebar-foreground/70 truncate">
-                  {accountEmail}
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={`text-sm font-medium leading-tight truncate ${
+                      activeId === "account" || accountMenuOpen
+                        ? "text-sidebar-primary"
+                        : "text-sidebar-foreground"
+                    }`}
+                  >
+                    {accountName}
+                  </p>
+                  <p
+                    className={`text-xs leading-tight truncate mt-px ${
+                      activeId === "account" || accountMenuOpen
+                        ? "text-sidebar-primary/80"
+                        : "text-sidebar-foreground opacity-70"
+                    }`}
+                  >
+                    {accountEmail}
+                  </p>
                 </div>
+              </button>
+            </div>
+
+            {accountMenuOpen && (
+              <div className="zero-card-rectangle absolute bottom-full left-0 right-0 mb-2 overflow-hidden z-20">
+                <div className="px-5 py-4 border-b border-border">
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 text-sm font-medium shrink-0">
+                      {accountInitial}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm leading-5 font-medium text-foreground truncate">
+                        {accountName}
+                      </div>
+                      <div className="text-xs leading-4 text-muted-foreground truncate">
+                        {accountEmail}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleAccountAction("preferences")}
+                  className="w-full flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-muted transition-colors text-left"
+                >
+                  <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
+                    <IconAdjustmentsHorizontal
+                      size={20}
+                      stroke={1.5}
+                      className="text-foreground"
+                    />
+                  </div>
+                  <span className="text-sm leading-5 text-foreground">
+                    Preferences
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAccountAction("manage")}
+                  className="w-full flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-muted transition-colors text-left"
+                >
+                  <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
+                    <IconUser
+                      size={20}
+                      stroke={1.5}
+                      className="text-foreground"
+                    />
+                  </div>
+                  <span className="text-sm leading-5 text-foreground">
+                    Manage account
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAccountAction("signout")}
+                  className="w-full flex items-center gap-3 px-5 py-4 hover:bg-muted transition-colors text-left"
+                >
+                  <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
+                    <IconLogout
+                      size={20}
+                      stroke={1.5}
+                      className="text-foreground"
+                    />
+                  </div>
+                  <span className="text-sm leading-5 text-foreground">
+                    Sign out
+                  </span>
+                </button>
               </div>
-              <IconDotsVertical
-                size={16}
-                stroke={1.5}
-                className="text-sidebar-foreground shrink-0"
-              />
-            </button>
+            )}
           </div>
         </div>
       </div>

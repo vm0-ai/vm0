@@ -1,5 +1,6 @@
-import type { ZeroNavId } from "./zero-sidebar.tsx";
+import type { ZeroNavId, ZeroAccountSubId } from "./zero-sidebar.tsx";
 import { ZeroChatPage, type DemoScenarioId } from "./zero-chat-page.tsx";
+import { ZeroAccountPage } from "./zero-account-page.tsx";
 import { ZeroJobsPage } from "./zero-jobs-page.tsx";
 import { ZeroMeetPage } from "./zero-meet-page.tsx";
 import { ZeroProductionPage } from "./zero-production-page.tsx";
@@ -17,10 +18,15 @@ const RECENT_ID_TO_SCENARIO: Record<string, DemoScenarioId> = {
 
 interface ZeroContentProps {
   sectionId: ZeroNavId;
+  accountSubId?: ZeroAccountSubId | null;
   recentLabel?: string | null;
   recentId?: string | null;
   onClearRecent?: () => void;
   onNavigateToActivity?: () => void;
+  onNavigateToSchedule?: () => void;
+  onNavigateToJob?: () => void;
+  zeroAvatarSrc?: string;
+  onAvatarClick?: () => void;
 }
 
 const SECTION_TITLES: Record<ZeroNavId, string> = {
@@ -37,10 +43,15 @@ const SECTION_TITLES: Record<ZeroNavId, string> = {
 
 export function ZeroContent({
   sectionId,
+  accountSubId = null,
   recentLabel,
   recentId,
   onClearRecent,
   onNavigateToActivity,
+  onNavigateToSchedule,
+  onNavigateToJob,
+  zeroAvatarSrc = "/zero-avatar.png",
+  onAvatarClick,
 }: ZeroContentProps) {
   if (sectionId === "chat") {
     const initialScenarioId = recentId
@@ -51,11 +62,20 @@ export function ZeroContent({
         initialScenarioId={initialScenarioId}
         onClearScenario={onClearRecent}
         onNavigateToActivity={onNavigateToActivity}
+        onNavigateToSchedule={onNavigateToSchedule}
+        onNavigateToJob={onNavigateToJob}
+        zeroAvatarSrc={zeroAvatarSrc}
+        onAvatarClick={onAvatarClick}
       />
     );
   }
   if (sectionId === "meet") {
-    return <ZeroMeetPage />;
+    return (
+      <ZeroMeetPage
+        zeroAvatarSrc={zeroAvatarSrc}
+        onAvatarClick={onAvatarClick}
+      />
+    );
   }
   if (sectionId === "schedule") {
     return <ZeroSchedulePage />;
@@ -75,6 +95,9 @@ export function ZeroContent({
   if (sectionId === "team") {
     return <ZeroTeamPage />;
   }
+  if (sectionId === "account") {
+    return <ZeroAccountPage accountSubId={accountSubId ?? null} />;
+  }
 
   const title = recentLabel ?? SECTION_TITLES[sectionId];
 
@@ -92,7 +115,7 @@ export function ZeroContent({
       </header>
       <main className="flex-1 overflow-auto px-4 sm:px-6 pb-8">
         <div className="mx-auto max-w-[900px]">
-          <div className="rounded-xl border border-border bg-card p-6">
+          <div className="zero-card p-6">
             <p className="text-sm text-muted-foreground">
               Content for “{title}” will appear here.
             </p>

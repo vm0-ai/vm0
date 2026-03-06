@@ -35,7 +35,7 @@ import {
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
 
-const SCHEDULE_FREQUENCY_OPTIONS = [
+export const SCHEDULE_FREQUENCY_OPTIONS = [
   { value: "now", label: "Now" },
   { value: "once", label: "Once" },
   { value: "every_weekday", label: "Every weekday" },
@@ -45,10 +45,10 @@ const SCHEDULE_FREQUENCY_OPTIONS = [
   { value: "every_n_minutes", label: "Every N minutes" },
 ] as const;
 
-const SCHEDULE_LOOP_MINUTES = [5, 15, 30, 60] as const;
-const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i);
-const MINUTE_OPTIONS = [0, 15, 30, 45];
-const TIMEZONE_OPTIONS = [
+export const SCHEDULE_LOOP_MINUTES = [5, 15, 30, 60] as const;
+export const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i);
+export const MINUTE_OPTIONS = [0, 15, 30, 45];
+export const TIMEZONE_OPTIONS = [
   "UTC",
   "Asia/Shanghai",
   "America/New_York",
@@ -90,7 +90,7 @@ function formatTimeOfDay(hour: number, minute: number): string {
   return `${hour - 12}:${minute.toString().padStart(2, "0")} PM`;
 }
 
-function buildScheduleTimeString(params: {
+export function buildScheduleTimeString(params: {
   freq: string;
   date?: string;
   hour: number;
@@ -124,7 +124,7 @@ function buildScheduleTimeString(params: {
   return `Every day at ${timeStr}`;
 }
 
-function parseScheduleTimeString(timeStr: string): {
+export function parseScheduleTimeString(timeStr: string): {
   freq: string;
   date: string;
   hour: number;
@@ -294,28 +294,31 @@ export const DEFAULT_SCHEDULE: ScheduleEntry[] = [
   {
     id: "1",
     time: "Every weekday at 9:00 AM",
-    prompt: "Summarize yesterday's Slack threads and flag action items.",
+    prompt:
+      "Summarize yesterday's Slack threads and flag anything that needs a response.",
   },
   {
     id: "2",
     time: "Every 15 minutes",
-    prompt: "Poll for new inbox items and notify if urgent.",
+    prompt:
+      "Check inbox and calendar; notify me if something is time-sensitive.",
   },
   {
     id: "3",
     time: "Once on 2026-03-15 at 2:00 PM",
-    prompt: "Run quarterly review report and email to stakeholders.",
+    prompt: "Generate the Q1 review report and email the link to stakeholders.",
   },
 ];
 
 /** Dummy schedule for sub-agent (job) detail page — one entry per sub-agent. */
-export const DUMMY_AGENT_SCHEDULE: ScheduleEntry[] = [
+const DUMMY_AGENT_SCHEDULE: ScheduleEntry[] = [
   {
     id: "j1",
     time: "Every weekday at 9:00 AM",
-    prompt: "Summarize yesterday's Slack threads and flag action items.",
+    prompt: "Run the usual morning briefing and post a short summary.",
   },
 ];
+export { DUMMY_AGENT_SCHEDULE };
 
 interface ZeroScheduleCardProps {
   title: string;
@@ -409,7 +412,7 @@ export function ZeroScheduleCard({
   };
 
   return (
-    <Card className="rounded-2xl border border-border/70 bg-card shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+    <Card className="zero-card">
       <CardContent className="py-5 flex flex-col gap-6">
         <header className="flex w-full flex-wrap items-center gap-4">
           <div className="min-w-0 flex-1">
@@ -422,7 +425,7 @@ export function ZeroScheduleCard({
             type="button"
             variant="outline"
             size="sm"
-            className="h-9 gap-2 shrink-0"
+            className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
             onClick={openAddSchedule}
           >
             <IconPlus size={14} stroke={2} />
@@ -433,7 +436,7 @@ export function ZeroScheduleCard({
             onValueChange={(v) => setScheduleViewMode(v as "list" | "calendar")}
             className="shrink-0"
           >
-            <TabsList className="h-9 gap-1 bg-muted/60 px-1 py-1">
+            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
               <TabsTrigger
                 value="list"
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
@@ -493,17 +496,27 @@ export function ZeroScheduleCard({
               <div className="rounded-xl border border-border/70 bg-muted/20 overflow-hidden">
                 <div className="grid grid-cols-8 text-sm">
                   <div className="bg-muted/50 p-2 border-b border-r border-border/60 font-medium text-muted-foreground text-xs uppercase tracking-wider" />
-                  {WEEKDAY_LABELS.map((d) => (
+                  {WEEKDAY_LABELS.map((d, dayIndex) => (
                     <div
                       key={d}
-                      className="bg-muted/50 p-2 border-b border-r border-border/60 last:border-r-0 font-medium text-muted-foreground text-center"
+                      className={cn(
+                        "bg-muted/50 p-2 border-b border-border/60 font-medium text-muted-foreground text-center",
+                        dayIndex < WEEKDAY_LABELS.length - 1 &&
+                          "border-r border-border/60",
+                      )}
                     >
                       {d}
                     </div>
                   ))}
-                  {CALENDAR_TIME_SLOTS.map((timeLabel) => (
+                  {CALENDAR_TIME_SLOTS.map((timeLabel, timeIndex) => (
                     <div key={timeLabel} className="contents">
-                      <div className="bg-muted/30 p-2 border-b border-r border-border/60 text-muted-foreground text-xs flex items-center">
+                      <div
+                        className={cn(
+                          "bg-muted/30 p-2 border-r border-border/60 text-muted-foreground text-xs flex items-center",
+                          timeIndex < CALENDAR_TIME_SLOTS.length - 1 &&
+                            "border-b border-border/60",
+                        )}
+                      >
                         {timeLabel}
                       </div>
                       {WEEKDAY_LABELS.map((_, dayIndex) => {
@@ -513,11 +526,17 @@ export function ZeroScheduleCard({
                           timeLabel,
                         );
                         const isEmpty = entries.length === 0;
+                        const isLastRow =
+                          timeIndex === CALENDAR_TIME_SLOTS.length - 1;
+                        const isLastCol =
+                          dayIndex === WEEKDAY_LABELS.length - 1;
                         return (
                           <div
                             key={`${timeLabel}-${dayIndex}`}
                             className={cn(
-                              "min-h-[52px] p-1.5 border-b border-r border-border/60 last:border-r-0 flex items-center justify-center",
+                              "min-h-[52px] p-1.5 border-border/60 flex items-center justify-center",
+                              !isLastCol && "border-r border-border/60",
+                              !isLastRow && "border-b border-border/60",
                               isEmpty && "bg-background/50",
                             )}
                           >
@@ -526,51 +545,49 @@ export function ZeroScheduleCard({
                                 —
                               </span>
                             ) : (
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="w-full h-full min-h-[44px] rounded-lg bg-blue-700/15 text-blue-800 border border-blue-700/40 hover:bg-blue-700/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/50 dark:text-blue-200 dark:border-blue-600/40 dark:bg-blue-900/25 dark:hover:bg-blue-900/35 p-2 text-left flex flex-col justify-center"
-                                    aria-label={`${entries.length} scheduled in this slot`}
-                                  >
-                                    <span className="text-[11px] leading-tight line-clamp-2 break-words">
-                                      {entries.length === 1
-                                        ? entries[0].prompt
-                                        : `${entries[0].prompt} +${entries.length - 1}`}
-                                    </span>
-                                  </button>
-                                </PopoverTrigger>
-                                <PopoverContent
-                                  align="start"
-                                  className="w-80 p-3 flex flex-col gap-3"
-                                >
-                                  {entries.map((entry) => (
-                                    <div
-                                      key={entry.id}
-                                      className="relative flex flex-col gap-1.5 pr-8"
-                                    >
-                                      <div className="absolute top-0 right-0">
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            openEditSchedule(entry)
-                                          }
-                                          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                                          aria-label={`Edit ${entry.time}`}
-                                        >
-                                          <IconPencil size={14} stroke={1.5} />
-                                        </button>
-                                      </div>
-                                      <p className="text-xs text-muted-foreground">
-                                        {entry.time}
-                                      </p>
-                                      <p className="text-sm text-foreground leading-snug">
+                              <div className="w-full h-full min-h-[44px] rounded-lg p-1.5 flex flex-col gap-0.5 text-left">
+                                {entries.map((entry) => (
+                                  <Popover key={entry.id}>
+                                    <PopoverTrigger asChild>
+                                      <button
+                                        type="button"
+                                        className="w-full min-h-0 rounded px-1.5 py-0.5 text-[11px] leading-tight line-clamp-2 break-words border border-blue-700/40 bg-blue-700/15 text-blue-800 hover:bg-blue-700/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/50 dark:text-blue-200 dark:border-blue-600/40 dark:bg-blue-900/25 dark:hover:bg-blue-900/35 text-left"
+                                        aria-label={`${entry.time}: ${entry.prompt}`}
+                                      >
                                         {entry.prompt}
-                                      </p>
-                                    </div>
-                                  ))}
-                                </PopoverContent>
-                              </Popover>
+                                      </button>
+                                    </PopoverTrigger>
+                                    <PopoverContent
+                                      align="start"
+                                      className="w-80 p-3 flex flex-col gap-3"
+                                    >
+                                      <div className="relative flex flex-col gap-1.5 pr-8">
+                                        <div className="absolute top-0 right-0">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              openEditSchedule(entry)
+                                            }
+                                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                            aria-label={`Edit ${entry.time}`}
+                                          >
+                                            <IconPencil
+                                              size={14}
+                                              stroke={1.5}
+                                            />
+                                          </button>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                          {entry.time}
+                                        </p>
+                                        <p className="text-sm text-foreground leading-snug">
+                                          {entry.prompt}
+                                        </p>
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
+                                ))}
+                              </div>
                             )}
                           </div>
                         );
@@ -601,7 +618,7 @@ export function ZeroScheduleCard({
                         {loopEntries.map((entry) => (
                           <div
                             key={entry.id}
-                            className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm"
+                            className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm w-fit"
                           >
                             <span className="text-foreground">
                               {entry.time}
@@ -628,7 +645,7 @@ export function ZeroScheduleCard({
                         {onceEntries.map((entry) => (
                           <div
                             key={entry.id}
-                            className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm"
+                            className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm w-fit"
                           >
                             <span className="text-foreground">
                               {entry.time}

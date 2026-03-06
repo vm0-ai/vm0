@@ -1,50 +1,142 @@
-import { useCCState } from "ccstate-react/experimental";
-import { useGet, useSet } from "ccstate-react";
+import { useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
-import { NotificationSettings } from "../settings-page/notification-settings.tsx";
-import { TimezoneSettings } from "../settings-page/timezone-settings.tsx";
+import { Card, CardContent } from "@vm0/ui/components/ui/card";
+import type { ZeroAccountSubId } from "./zero-sidebar.tsx";
 
-export function ZeroPreferencesPage() {
-  const tab$ = useCCState("notifications");
-  const tab = useGet(tab$);
-  const setTab = useSet(tab$);
+interface ZeroAccountPageProps {
+  accountSubId: ZeroAccountSubId;
+}
+
+export function ZeroAccountPage({ accountSubId }: ZeroAccountPageProps) {
+  if (accountSubId === "preferences") {
+    return <ZeroPreferencesSubPage />;
+  }
+  if (accountSubId === "manage") {
+    return <ZeroManageAccountSubPage />;
+  }
+  return <ZeroAccountOverview />;
+}
+
+function ZeroAccountOverview() {
+  return (
+    <div className="flex flex-1 flex-col min-h-0">
+      <header className="shrink-0 border-b border-divider bg-transparent px-4 sm:px-6 pt-6 sm:pt-6 pb-4 sm:pb-5">
+        <h1 className="text-lg font-semibold tracking-tight text-foreground">
+          Account
+        </h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Use the account menu in the sidebar to open Preferences or Manage
+          account.
+        </p>
+      </header>
+      <main className="flex-1 overflow-auto px-4 sm:px-6 pb-8">
+        <div className="mx-auto max-w-[900px]">
+          <div className="zero-card p-6">
+            <p className="text-sm text-muted-foreground">
+              Your profile and settings are available from the account dropdown
+              at the bottom of the sidebar.
+            </p>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function ZeroPreferencesSubPage() {
+  const [tab, setTab] = useState("notifications");
 
   return (
-    <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
-      <header className="shrink-0 bg-transparent px-4 pt-10 pb-4 sm:px-6">
-        <div className="mx-auto max-w-[900px] px-7">
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">
-            Preferences
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage your notification and agent runtime preferences
-          </p>
-        </div>
+    <div className="flex flex-1 flex-col min-h-0">
+      <header className="shrink-0 border-b border-divider bg-transparent px-4 sm:px-6 pt-6 sm:pt-6 pb-4 sm:pb-5">
+        <h1 className="text-lg font-semibold tracking-tight text-foreground">
+          Preferences
+        </h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Manage your notification and agent runtime preferences
+        </p>
       </header>
-
-      <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
-        <div className="mx-auto max-w-[900px] px-7 flex flex-col gap-8">
-          <Tabs value={tab} onValueChange={(v) => setTab(v)}>
+      <main className="flex-1 overflow-auto px-4 sm:px-6 pb-8">
+        <div className="mx-auto max-w-[900px] flex flex-col gap-6">
+          <Tabs value={tab} onValueChange={setTab}>
             <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-              <TabsTrigger
-                value="notifications"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                Notifications
-              </TabsTrigger>
-              <TabsTrigger
-                value="timezone"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                Time Zone
-              </TabsTrigger>
+              <TabsTrigger value="notifications">Notifications</TabsTrigger>
+              <TabsTrigger value="timezone">Time Zone</TabsTrigger>
             </TabsList>
 
-            <div className="mt-4">
-              {tab === "notifications" && <NotificationSettings />}
-              {tab === "timezone" && <TimezoneSettings />}
-            </div>
+            {tab === "notifications" && (
+              <Card className="zero-card">
+                <CardContent className="p-6">
+                  <h2 className="text-sm font-medium text-foreground mb-1">
+                    Notifications
+                  </h2>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Choose how you get notified when scheduled agent runs
+                    complete or fail.
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Notification preferences will appear here.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {tab === "timezone" && (
+              <Card className="zero-card">
+                <CardContent className="p-6">
+                  <h2 className="text-sm font-medium text-foreground mb-1">
+                    Time Zone
+                  </h2>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Set your time zone for schedules and activity logs.
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Time zone settings will appear here.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </Tabs>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function ZeroManageAccountSubPage() {
+  return (
+    <div className="flex flex-1 flex-col min-h-0">
+      <header className="shrink-0 border-b border-divider bg-transparent px-4 sm:px-6 pt-6 sm:pt-6 pb-4 sm:pb-5">
+        <h1 className="text-lg font-semibold tracking-tight text-foreground">
+          Manage account
+        </h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Update your profile and account settings
+        </p>
+      </header>
+      <main className="flex-1 overflow-auto px-4 sm:px-6 pb-8">
+        <div className="mx-auto max-w-[900px]">
+          <Card className="zero-card-rectangle">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="h-12 w-12 rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 text-lg font-medium shrink-0">
+                  M
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-foreground">
+                    Ming Li
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    ming@vm0.ai
+                  </div>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Account management is handled by your platform identity. Sign in
+                through the main app to update your profile or password.
+              </p>
+            </CardContent>
+          </Card>
         </div>
       </main>
     </div>

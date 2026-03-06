@@ -139,7 +139,7 @@ const DOC_TYPE_ICON: Record<DocType, string> = {
 
 function DocCard({ doc }: { doc: DocItem }) {
   return (
-    <Card className="group rounded-2xl border border-border/70 bg-card shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden flex flex-col h-full min-h-0">
+    <Card className="zero-doc-card zero-card group overflow-hidden flex flex-col h-full min-h-0">
       <CardContent className="p-5 pt-5 pb-0 flex flex-col flex-1 min-h-0">
         <div className="relative flex items-center gap-2 shrink-0 pr-0">
           <div className="shrink-0 flex items-center justify-center">
@@ -172,17 +172,13 @@ function DocCard({ doc }: { doc: DocItem }) {
             </button>
           </div>
         </div>
-        <div className="zero-doc-card-content relative mt-4 -mx-5 flex-1 min-h-0 overflow-hidden rounded-b-2xl border-t border-border/50 bg-muted/30 px-4 py-3">
-          <div className="h-full overflow-auto">
+        <div className="zero-doc-card-content relative mt-4 -mx-5 flex-1 min-h-0 overflow-hidden rounded-b-2xl border-t px-4 py-3">
+          <div className="zero-doc-card-fade h-full overflow-auto">
             <Markdown
               source={doc.contentPreview}
               className="min-h-full !text-xs text-muted-foreground [&_*]:!text-inherit [&_*]:!font-inherit [&_ul]:!my-1 [&_ol]:!my-1 [&_p]:!my-1 [&_table]:!text-[11px]"
             />
           </div>
-          <div
-            className="pointer-events-none absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-muted/90 to-transparent"
-            aria-hidden
-          />
         </div>
       </CardContent>
     </Card>
@@ -295,7 +291,7 @@ export function ZeroProductionPage() {
                 placeholder="Search documents..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 h-9 rounded-lg bg-muted/40 border-border/70"
+                className="zero-search-input pl-9 h-9 rounded-lg border"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -304,7 +300,7 @@ export function ZeroProductionPage() {
                 onValueChange={(v) => setFilter(v as DocScope)}
                 className="w-full sm:w-auto"
               >
-                <TabsList className="h-9 w-full sm:w-auto gap-1 bg-muted/60 px-1 py-1">
+                <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1">
                   <TabsTrigger
                     value="all"
                     className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
@@ -328,14 +324,14 @@ export function ZeroProductionPage() {
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
-              <div className="flex h-9 rounded-lg border border-border/70 bg-muted/60 p-0.5 gap-0.5">
+              <div className="zero-view-toggle flex h-9 rounded-lg border p-0.5 gap-0.5">
                 <button
                   type="button"
                   onClick={() => setViewMode("list")}
                   className={cn(
                     "inline-flex h-8 items-center justify-center rounded-md px-2.5 transition-colors",
                     viewMode === "list"
-                      ? "bg-background shadow-sm text-foreground"
+                      ? "zero-view-toggle-selected text-foreground"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                   aria-label="List view"
@@ -348,7 +344,7 @@ export function ZeroProductionPage() {
                   className={cn(
                     "inline-flex h-8 items-center justify-center rounded-md px-2.5 transition-colors",
                     viewMode === "gallery"
-                      ? "bg-background shadow-sm text-foreground"
+                      ? "zero-view-toggle-selected text-foreground"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                   aria-label="Gallery view"

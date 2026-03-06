@@ -70,7 +70,7 @@ export function ZeroWorksPage() {
               placeholder="Search tools..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9 rounded-lg bg-muted/40 border-border/70"
+              className="zero-search-input pl-9 h-9 rounded-lg border"
             />
           </div>
         </div>
@@ -81,7 +81,7 @@ export function ZeroWorksPage() {
           {CONNECTED_TOOLS.map((tool) => (
             <div
               key={tool.id}
-              className="flex items-center gap-4 rounded-xl border border-border bg-card p-4"
+              className="zero-card flex items-center gap-4 p-4"
             >
               <div className="shrink-0">
                 {tool.icon === "slack" && (

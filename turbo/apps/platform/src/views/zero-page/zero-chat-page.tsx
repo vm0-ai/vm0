@@ -16,10 +16,10 @@ import {
   IconCheck,
   IconArrowLeft,
   IconChartLine,
-  IconChevronDown,
-  IconChevronUp,
+  IconCalendar,
 } from "@tabler/icons-react";
 import { Button, Card, CardContent, cn } from "@vm0/ui";
+import { ZERO_TEAM_JOBS } from "./zero-jobs-page";
 
 export type DemoScenarioId =
   | "approve"
@@ -100,13 +100,18 @@ const STREAMED_SCENARIOS: {
 
 const STREAM_DELAY_MS = 1400;
 
+const LANDING_TAGLINES = [
+  "I'm Zero. Customize me and assign tasks anytime.",
+  "Your intelligent teammate, tuned to you.",
+  "Create workflows, run automations, get things done.",
+  "Ask me anything, I'll route it to the right minions.",
+  "200+ connectors, ready when you are.",
+];
+const CAROUSEL_INTERVAL_MS = 4000;
+
 interface ChatScenarioBlockProps {
   scene: (typeof STREAMED_SCENARIOS)[number];
   onNavigateToActivity?: () => void;
-  expandStep1: boolean;
-  setExpandStep1: (fn: (v: boolean) => boolean) => void;
-  expandStep2: boolean;
-  setExpandStep2: (fn: (v: boolean) => boolean) => void;
   commandAllowed: boolean;
   setCommandAllowed: (v: boolean) => void;
   approveDone: boolean;
@@ -117,15 +122,13 @@ interface ChatScenarioBlockProps {
   setTeamPersonalChoice: (v: "team" | "personal" | null) => void;
   connectorConnected: boolean;
   setConnectorConnected: (v: boolean) => void;
+  zeroAvatarSrc?: string;
+  onAvatarClick?: () => void;
 }
 
 function ChatScenarioBlock({
   scene,
   onNavigateToActivity,
-  expandStep1,
-  setExpandStep1,
-  expandStep2,
-  setExpandStep2,
   commandAllowed,
   setCommandAllowed,
   approveDone,
@@ -136,32 +139,37 @@ function ChatScenarioBlock({
   setTeamPersonalChoice,
   connectorConnected,
   setConnectorConnected,
+  zeroAvatarSrc = "/zero-avatar.png",
+  onAvatarClick,
 }: ChatScenarioBlockProps) {
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
         <div className="w-9 h-9 shrink-0" />
         <div className="flex min-w-0 justify-end">
-          <div className="rounded-2xl px-4 py-3 max-w-[85%] bg-muted text-foreground text-sm leading-relaxed">
+          <div className="zero-chat-bubble-user rounded-2xl px-4 py-3 max-w-[85%] text-sm leading-relaxed">
             {scene.userMessage}
           </div>
         </div>
       </div>
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
-        <img
-          src="/zero-avatar.png"
-          alt=""
-          role="presentation"
-          className="h-9 w-9 shrink-0 rounded-full object-cover object-top mt-0.5"
-        />
-        <div className="rounded-2xl border border-border/40 bg-card/98 backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-0">
+        <button
+          type="button"
+          onClick={onAvatarClick}
+          className="h-9 w-9 shrink-0 mt-0.5 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          aria-label="Switch Zero avatar"
+        >
+          <img
+            src={zeroAvatarSrc}
+            alt=""
+            role="presentation"
+            className="h-9 w-9 rounded-full object-cover object-top"
+          />
+        </button>
+        <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-0">
           <ChatScenarioAssistantContent
             scene={scene}
             onNavigateToActivity={onNavigateToActivity}
-            expandStep1={expandStep1}
-            setExpandStep1={setExpandStep1}
-            expandStep2={expandStep2}
-            setExpandStep2={setExpandStep2}
             commandAllowed={commandAllowed}
             setCommandAllowed={setCommandAllowed}
             approveDone={approveDone}
@@ -184,10 +192,6 @@ type ChatScenarioAssistantContentProps = ChatScenarioBlockProps;
 function ChatScenarioAssistantContent({
   scene,
   onNavigateToActivity,
-  expandStep1,
-  setExpandStep1,
-  expandStep2,
-  setExpandStep2,
   commandAllowed,
   setCommandAllowed,
   approveDone,
@@ -274,7 +278,7 @@ function ChatScenarioAssistantContent({
           <Button
             size="sm"
             variant="outline"
-            className="rounded-lg h-8 px-3.5 text-sm font-medium gap-1.5 border-border/70 hover:bg-muted/40"
+            className="zero-chat-btn rounded-lg h-8 px-3.5 text-sm font-medium gap-1.5 border"
             onClick={onNavigateToActivity}
           >
             <IconChartLine size={13} />
@@ -287,10 +291,6 @@ function ChatScenarioAssistantContent({
   if (scene.id === "agent-operations") {
     return (
       <ChatScenarioAgentOperations
-        expandStep1={expandStep1}
-        setExpandStep1={setExpandStep1}
-        expandStep2={expandStep2}
-        setExpandStep2={setExpandStep2}
         commandAllowed={commandAllowed}
         setCommandAllowed={setCommandAllowed}
       />
@@ -317,7 +317,7 @@ function ChatScenarioAssistantContent({
               <Button
                 size="sm"
                 variant="outline"
-                className="rounded-lg h-8 px-3.5 text-sm font-medium border-border/70 hover:bg-muted/40"
+                className="zero-chat-btn rounded-lg h-8 px-3.5 text-sm font-medium border"
                 onClick={() => setApproveDone(false)}
               >
                 Deny
@@ -338,10 +338,9 @@ function ChatScenarioAssistantContent({
                 key={opt}
                 type="button"
                 className={cn(
-                  "rounded-lg h-8 px-3.5 text-sm font-medium border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  "border-border/50 text-foreground hover:border-border hover:bg-muted/20 hover:text-foreground",
+                  "zero-chat-btn rounded-lg h-8 px-3.5 text-sm font-medium border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   selectedOption === opt &&
-                    "border-primary/40 bg-primary/8 text-primary ring-1 ring-primary/20 ring-inset",
+                    "border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/20 ring-inset",
                 )}
                 onClick={() =>
                   setSelectedOption(selectedOption === opt ? null : opt)
@@ -364,10 +363,9 @@ function ChatScenarioAssistantContent({
             <button
               type="button"
               className={cn(
-                "rounded-lg h-8 px-3.5 text-sm font-medium border transition-all duration-200 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                "border-border/50 text-foreground hover:border-border hover:bg-muted/20 hover:text-foreground",
+                "zero-chat-btn rounded-lg h-8 px-3.5 text-sm font-medium border transition-all duration-200 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 teamPersonalChoice === "team" &&
-                  "border-primary/40 bg-primary/8 text-primary ring-1 ring-primary/20 ring-inset",
+                  "border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/20 ring-inset",
               )}
               onClick={() =>
                 setTeamPersonalChoice(
@@ -381,10 +379,9 @@ function ChatScenarioAssistantContent({
             <button
               type="button"
               className={cn(
-                "rounded-lg h-8 px-3.5 text-sm font-medium border transition-all duration-200 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                "border-border/50 text-foreground hover:border-border hover:bg-muted/20 hover:text-foreground",
+                "zero-chat-btn rounded-lg h-8 px-3.5 text-sm font-medium border transition-all duration-200 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 teamPersonalChoice === "personal" &&
-                  "border-primary/40 bg-primary/8 text-primary ring-1 ring-primary/20 ring-inset",
+                  "border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/20 ring-inset",
               )}
               onClick={() =>
                 setTeamPersonalChoice(
@@ -431,17 +428,9 @@ function ChatScenarioAssistantContent({
 }
 
 function ChatScenarioAgentOperations({
-  expandStep1,
-  setExpandStep1,
-  expandStep2,
-  setExpandStep2,
   commandAllowed,
   setCommandAllowed,
 }: {
-  expandStep1: boolean;
-  setExpandStep1: (fn: (v: boolean) => boolean) => void;
-  expandStep2: boolean;
-  setExpandStep2: (fn: (v: boolean) => boolean) => void;
   commandAllowed: boolean;
   setCommandAllowed: (v: boolean) => void;
 }) {
@@ -474,40 +463,6 @@ function ChatScenarioAgentOperations({
             <p className="text-muted-foreground text-sm mt-1.5 leading-relaxed">
               Initiating discovery of MCP tools before fetching live data.
             </p>
-            <div className="mt-2.5 rounded-lg border border-border/40 bg-muted/10">
-              <button
-                type="button"
-                onClick={() => setExpandStep1((v) => !v)}
-                className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm text-foreground hover:bg-muted/20 transition-colors rounded-lg"
-                aria-expanded={expandStep1}
-              >
-                <span className="min-w-0 truncate">
-                  google-calendar MCP tools
-                </span>
-                <span className="shrink-0 flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground">
-                  {expandStep1 ? (
-                    <IconChevronUp size={14} />
-                  ) : (
-                    <IconChevronDown size={14} />
-                  )}
-                </span>
-              </button>
-              {expandStep1 && (
-                <div className="border-t border-border/30 px-4 py-3">
-                  <p className="text-xs text-muted-foreground mb-2">
-                    List available tools for the google-calendar MCP server.
-                  </p>
-                  <ul className="space-y-1 text-sm text-foreground font-mono">
-                    <li>calendar_list_calendars</li>
-                    <li>calendar_get_events</li>
-                    <li>calendar_create_event</li>
-                    <li>calendar_update_event</li>
-                    <li>calendar_delete_event</li>
-                    <li>calendar_list_acl</li>
-                  </ul>
-                </div>
-              )}
-            </div>
           </div>
         </div>
         <div className="flex gap-3 items-start">
@@ -526,42 +481,6 @@ function ChatScenarioAgentOperations({
             <p className="text-muted-foreground text-sm mt-1.5 leading-relaxed">
               Discovery done. Testing live data retrieval next.
             </p>
-            <div className="mt-2.5 rounded-lg border border-border/40 bg-muted/10">
-              <button
-                type="button"
-                onClick={() => setExpandStep2((v) => !v)}
-                className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm text-foreground hover:bg-muted/20 transition-colors rounded-lg"
-                aria-expanded={expandStep2}
-              >
-                <span className="min-w-0 truncate">Calendar. 10 results.</span>
-                <span className="shrink-0 flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground">
-                  {expandStep2 ? (
-                    <IconChevronUp size={14} />
-                  ) : (
-                    <IconChevronDown size={14} />
-                  )}
-                </span>
-              </button>
-              {expandStep2 && (
-                <div className="border-t border-border/30 px-4 py-3">
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Searching Calendar. 10 results.
-                  </p>
-                  <ul className="space-y-1.5 text-sm text-foreground">
-                    <li>Team standup — Mon 10:00</li>
-                    <li>Product review — Tue 14:00</li>
-                    <li>1:1 with Alex — Wed 09:30</li>
-                    <li>Sprint planning — Wed 15:00</li>
-                    <li>Design sync — Thu 11:00</li>
-                    <li>Release prep — Thu 16:00</li>
-                    <li>Stakeholder demo — Fri 10:00</li>
-                    <li>Retro — Fri 14:00</li>
-                    <li>Office hours — Fri 15:30</li>
-                    <li>Week planning — Fri 17:00</li>
-                  </ul>
-                </div>
-              )}
-            </div>
           </div>
         </div>
         <div className="flex gap-3 items-start">
@@ -611,7 +530,7 @@ function ChatScenarioAgentOperations({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="rounded-lg h-8 px-3.5 text-sm font-medium border-border/70 hover:bg-muted/40"
+                    className="zero-chat-btn rounded-lg h-8 px-3.5 text-sm font-medium border"
                     onClick={() => setCommandAllowed(false)}
                   >
                     Deny
@@ -634,17 +553,26 @@ interface ZeroChatPageProps {
   initialScenarioId?: DemoScenarioId;
   onClearScenario?: () => void;
   onNavigateToActivity?: () => void;
+  onNavigateToSchedule?: () => void;
+  onNavigateToJob?: () => void;
+  zeroAvatarSrc?: string;
+  onAvatarClick?: () => void;
 }
 
 export function ZeroChatPage({
   initialScenarioId,
   onClearScenario,
   onNavigateToActivity,
+  onNavigateToSchedule,
+  onNavigateToJob,
+  zeroAvatarSrc = "/zero-avatar.png",
+  onAvatarClick,
 }: ZeroChatPageProps) {
   const [input, setInput] = useState("");
   const [conversationActive, setConversationActive] = useState(false);
   const [streamedCount, setStreamedCount] = useState(0);
   const conversationEndRef = useRef<HTMLDivElement>(null);
+  const subAgentListRef = useRef<HTMLDivElement>(null);
   const [approveDone, setApproveDone] = useState(false);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [teamPersonalChoice, setTeamPersonalChoice] = useState<
@@ -652,8 +580,15 @@ export function ZeroChatPage({
   >(null);
   const [connectorConnected, setConnectorConnected] = useState(false);
   const [commandAllowed, setCommandAllowed] = useState(false);
-  const [expandStep1, setExpandStep1] = useState(false);
-  const [expandStep2, setExpandStep2] = useState(false);
+  const [showSubAgentList, setShowSubAgentList] = useState(false);
+  const [carouselIndex, setCarouselIndex] = useState(0);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setCarouselIndex((i) => (i + 1) % LANDING_TAGLINES.length);
+    }, CAROUSEL_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!conversationActive || streamedCount >= 6) {
@@ -672,6 +607,12 @@ export function ZeroChatPage({
       conversationEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [streamedCount]);
+
+  useEffect(() => {
+    if (showSubAgentList && subAgentListRef.current) {
+      subAgentListRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [showSubAgentList]);
 
   const handleComposerFocus = () => {
     if (!conversationActive) {
@@ -740,13 +681,43 @@ export function ZeroChatPage({
             >
               <IconArrowLeft size={20} stroke={1.5} />
             </Button>
-            <img
-              src="/zero-avatar.png"
-              alt=""
-              role="presentation"
-              className="h-8 w-8 rounded-full object-cover object-top"
-            />
+            <button
+              type="button"
+              onClick={onAvatarClick}
+              className="h-8 w-8 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label="Switch Zero avatar"
+            >
+              <img
+                src={zeroAvatarSrc}
+                alt=""
+                role="presentation"
+                className="h-8 w-8 rounded-full object-cover object-top"
+              />
+            </button>
             <span className="font-semibold text-foreground">Zero</span>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-8 w-8 text-muted-foreground hover:text-foreground",
+                showSubAgentList && "bg-muted/60 text-foreground",
+              )}
+              onClick={() => setShowSubAgentList((v) => !v)}
+              aria-label={`${ZERO_TEAM_JOBS.length} sub-agents`}
+            >
+              <IconUsers size={18} stroke={1.5} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={onNavigateToSchedule}
+              aria-label="Zero schedule"
+            >
+              <IconCalendar size={18} stroke={1.5} />
+            </Button>
           </div>
         </header>
         <main className="flex-1 overflow-auto px-4 sm:px-6 py-4">
@@ -756,10 +727,6 @@ export function ZeroChatPage({
                 key={scene.id}
                 scene={scene}
                 onNavigateToActivity={onNavigateToActivity}
-                expandStep1={expandStep1}
-                setExpandStep1={setExpandStep1}
-                expandStep2={expandStep2}
-                setExpandStep2={setExpandStep2}
                 commandAllowed={commandAllowed}
                 setCommandAllowed={setCommandAllowed}
                 approveDone={approveDone}
@@ -770,15 +737,100 @@ export function ZeroChatPage({
                 setTeamPersonalChoice={setTeamPersonalChoice}
                 connectorConnected={connectorConnected}
                 setConnectorConnected={setConnectorConnected}
+                zeroAvatarSrc={zeroAvatarSrc}
+                onAvatarClick={onAvatarClick}
               />
             ))}
+            {showSubAgentList && (
+              <div
+                ref={subAgentListRef}
+                className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300"
+              >
+                <button
+                  type="button"
+                  onClick={onAvatarClick}
+                  className="h-9 w-9 shrink-0 mt-0.5 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  aria-label="Switch Zero avatar"
+                >
+                  <img
+                    src={zeroAvatarSrc}
+                    alt=""
+                    role="presentation"
+                    className="h-9 w-9 rounded-full object-cover object-top"
+                  />
+                </button>
+                <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm overflow-hidden min-w-0 flex flex-col">
+                  <div className="px-4 pt-4 pb-2">
+                    <p className="text-sm text-foreground leading-relaxed">
+                      You have {ZERO_TEAM_JOBS.length} sub-agents with different
+                      expertise. Assign tasks as needed—I’ll route them and
+                      return the results.
+                    </p>
+                  </div>
+                  <div className="px-4 py-2.5 border-t border-border/50">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Sub-agents ({ZERO_TEAM_JOBS.length})
+                    </span>
+                  </div>
+                  <ul role="list">
+                    {ZERO_TEAM_JOBS.map((job) => (
+                      <li
+                        key={job.id}
+                        className="hover:bg-muted/20 transition-colors"
+                      >
+                        <div className="min-w-0 py-3 mx-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm text-muted-foreground">
+                              {job.agentName}
+                            </span>
+                            <span className="text-muted-foreground/60">·</span>
+                            <span className="text-sm font-medium text-foreground">
+                              {job.title}
+                            </span>
+                            <span className="zero-pill inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-xs font-medium">
+                              {job.scope === "team" ? (
+                                <IconUsers
+                                  size={12}
+                                  stroke={1.5}
+                                  className="h-3 w-3 shrink-0 text-sky-600 dark:text-sky-400"
+                                />
+                              ) : (
+                                <IconUser
+                                  size={12}
+                                  stroke={1.5}
+                                  className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400"
+                                />
+                              )}
+                              {job.scope === "team" ? "Team" : "Personal"}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 text-xs text-muted-foreground truncate">
+                            {job.description}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="border-t border-border/50 px-4 py-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-fit rounded-lg"
+                      onClick={onNavigateToJob}
+                    >
+                      Manage in Zero&apos;s team
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
             <div ref={conversationEndRef} />
           </div>
         </main>
         <footer className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-8">
           <div className="mx-auto max-w-[900px] grid grid-cols-[48px_1fr] gap-3">
             <div className="w-9 shrink-0" />
-            <Card className="w-full min-w-0 rounded-2xl border border-border/60 bg-card shadow-[0_2px_8px_rgba(0,0,0,0.06)] overflow-hidden transition-colors duration-200">
+            <Card className="zero-composer w-full min-w-0 overflow-hidden transition-colors duration-200">
               <CardContent className="p-0">
                 <div className="flex flex-col">
                   <textarea
@@ -850,21 +902,33 @@ export function ZeroChatPage({
       />
 
       <main className="flex flex-1 flex-col justify-center overflow-auto px-4 sm:px-6 py-12">
-        <div className="mx-auto max-w-[900px] flex flex-col items-center gap-8 -mt-24">
+        <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-8 -mt-24">
           <div className="flex items-center gap-4 w-full">
-            <img
-              src="/zero-avatar.png"
-              alt=""
-              role="presentation"
-              className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
-            />
-            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
-              What are we pushing live next?
-            </h2>
+            <button
+              type="button"
+              onClick={onAvatarClick}
+              className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label="Switch Zero avatar"
+            >
+              <img
+                src={zeroAvatarSrc}
+                alt=""
+                role="presentation"
+                className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+              />
+            </button>
+            <div className="h-[4.5rem] sm:h-20 overflow-hidden flex-1 min-w-0 flex flex-col justify-center">
+              <h2
+                key={carouselIndex}
+                className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground zero-tagline-animate-in"
+              >
+                {LANDING_TAGLINES[carouselIndex]}
+              </h2>
+            </div>
           </div>
 
           {/* Composer */}
-          <Card className="w-full rounded-2xl border border-border/60 bg-card shadow-[0_2px_8px_rgba(0,0,0,0.06)] overflow-hidden transition-colors duration-200">
+          <Card className="zero-composer w-full overflow-hidden transition-colors duration-200">
             <CardContent className="p-0">
               <div className="flex flex-col">
                 <textarea
@@ -931,7 +995,7 @@ export function ZeroChatPage({
                   key={label}
                   variant="outline"
                   size="sm"
-                  className="rounded-lg h-8 px-3.5 text-sm font-medium gap-2 border-border/70 hover:bg-muted/40"
+                  className="zero-btn-morandi rounded-lg h-8 px-3.5 text-sm font-medium gap-2 border"
                 >
                   <Icon size={16} />
                   {label}
@@ -958,14 +1022,13 @@ export function ZeroChatPage({
                   key={title}
                   type="button"
                   className={cn(
-                    "rounded-xl border border-border/70 bg-card shadow-[0_1px_3px_rgba(0,0,0,0.06)]",
-                    "p-4 text-left hover:bg-muted/40 hover:border-border transition-colors",
+                    "zero-card-morandi p-4 text-left transition-colors",
                     "flex gap-3 items-start",
                   )}
                 >
                   <span
                     className={cn(
-                      "shrink-0 mt-0.5 rounded-lg p-1.5 bg-muted/50",
+                      "shrink-0 mt-0.5 rounded-lg p-1.5 bg-[hsl(220,6%,95%)]",
                       iconClassName ?? "text-muted-foreground",
                     )}
                   >
