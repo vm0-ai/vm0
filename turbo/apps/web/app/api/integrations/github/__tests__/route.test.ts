@@ -4,6 +4,7 @@ import {
   createTestRequest,
   createTestScope,
   createTestCompose,
+  insertTestGitHubInstallation,
   insertTestGitHubInstallationWithAdmin,
   insertTestGitHubUserLink,
   findTestGitHubInstallationById,
@@ -156,6 +157,39 @@ describe("/api/integrations/github", () => {
       expect(row).toBeUndefined();
     });
 
+    it("should return 403 when adminGithubUserId is null", async () => {
+      // Create installation WITHOUT setting an admin (simulates org install where admin is unset)
+      const userId = uniqueId("gh-user");
+      mockClerk({ userId });
+      await createTestScope(uniqueId("gh-scope"));
+      const { composeId } = await createTestCompose("gh-agent");
+
+      const installation = await insertTestGitHubInstallation(composeId);
+      // Link user but leave adminGithubUserId as null (default)
+      await insertTestGitHubUserLink(
+        uniqueId("gh-uid"),
+        installation.id,
+        userId,
+      );
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/integrations/github",
+        {
+          method: "DELETE",
+          headers: { Authorization: "Bearer test-token" },
+        },
+      );
+      const response = await DELETE(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error.code).toBe("FORBIDDEN");
+
+      // Verify installation was NOT deleted
+      const row = await findTestGitHubInstallationById(installation.id);
+      expect(row).toBeDefined();
+    });
+
     it("should return 403 when non-admin attempts to delete", async () => {
       // Create installation with admin user
       const adminUserId = uniqueId("admin-user");
@@ -257,6 +291,39 @@ describe("/api/integrations/github", () => {
       const response = await PATCH(request);
 
       expect(response.status).toBe(404);
+    });
+
+    it("should return 403 when adminGithubUserId is null", async () => {
+      // Create installation WITHOUT setting an admin (simulates org install where admin is unset)
+      const userId = uniqueId("gh-user");
+      mockClerk({ userId });
+      await createTestScope(uniqueId("gh-scope"));
+      const { composeId } = await createTestCompose("gh-agent");
+
+      const installation = await insertTestGitHubInstallation(composeId);
+      // Link user but leave adminGithubUserId as null (default)
+      await insertTestGitHubUserLink(
+        uniqueId("gh-uid"),
+        installation.id,
+        userId,
+      );
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/integrations/github",
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: "Bearer test-token",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ agentName: "some-agent" }),
+        },
+      );
+      const response = await PATCH(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error.code).toBe("FORBIDDEN");
     });
 
     it("should return 403 when non-admin attempts to update", async () => {
