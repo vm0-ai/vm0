@@ -107,6 +107,10 @@ INTERVALS_ICU_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/INTERVALS_ICU_O
 XERO_OAUTH_CLIENT_ID=op://Development/vm0-env-local/XERO_OAUTH_CLIENT_ID
 XERO_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/XERO_OAUTH_CLIENT_SECRET
 
+# Optional: Webflow OAuth Connector
+WEBFLOW_OAUTH_CLIENT_ID=op://Development/vm0-env-local/WEBFLOW_OAUTH_CLIENT_ID
+WEBFLOW_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/WEBFLOW_OAUTH_CLIENT_SECRET
+
 # Optional: Monday.com OAuth Connector
 MONDAY_OAUTH_CLIENT_ID=op://Development/vm0-env-local/MONDAY_OAUTH_CLIENT_ID
 MONDAY_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/MONDAY_OAUTH_CLIENT_SECRET
