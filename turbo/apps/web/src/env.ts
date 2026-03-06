@@ -86,6 +86,9 @@ function initEnv() {
       // Google OAuth (shared across all Google connectors: Gmail, Calendar, Drive, etc.)
       GOOGLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // HubSpot OAuth (for connector)
+      HUBSPOT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      HUBSPOT_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Deel OAuth (for connector)
       DEEL_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       DEEL_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -227,6 +230,8 @@ function initEnv() {
       NOTION_OAUTH_CLIENT_SECRET: process.env.NOTION_OAUTH_CLIENT_SECRET,
       GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
       GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+      HUBSPOT_OAUTH_CLIENT_ID: process.env.HUBSPOT_OAUTH_CLIENT_ID,
+      HUBSPOT_OAUTH_CLIENT_SECRET: process.env.HUBSPOT_OAUTH_CLIENT_SECRET,
       DEEL_OAUTH_CLIENT_ID: process.env.DEEL_OAUTH_CLIENT_ID,
       DEEL_OAUTH_CLIENT_SECRET: process.env.DEEL_OAUTH_CLIENT_SECRET,
       DOCUSIGN_OAUTH_CLIENT_ID: process.env.DOCUSIGN_OAUTH_CLIENT_ID,
