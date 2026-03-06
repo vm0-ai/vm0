@@ -18,7 +18,6 @@ import {
 import { enqueueRun } from "./run-queue-service";
 import { logger } from "../logger";
 import type { Database } from "../../types/global";
-import type { ExecutionContext } from "./types";
 import type { AgentComposeSnapshot } from "../checkpoint/types";
 import type { AgentComposeYaml } from "../../types/agent-compose";
 import { getAgentSessionWithConversation } from "../agent-session";
@@ -29,6 +28,7 @@ import { executeDockerRun } from "./executors/docker-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
 import { buildExecutionContext as buildContext } from "./build-context";
 import { generateSandboxToken } from "../auth/sandbox-token";
+import { recordSandboxOperation } from "../metrics";
 import { canAccessCompose } from "../agent/permission-service";
 import { getUserEmail } from "../auth/get-user-email";
 import { extractTemplateVars } from "../config-validator";
@@ -216,28 +216,6 @@ export async function validateAgentSession(
   return {
     agentComposeId: session.agentComposeId,
   };
-}
-
-/**
- * Prepare execution context and dispatch to appropriate executor
- *
- * This is the unified entry point that handles both E2B and runner paths:
- * 1. Prepares the execution context (storage manifest, working dir, etc.)
- * 2. Routes to the appropriate executor based on runner group config
- *
- * @param context ExecutionContext built by buildExecutionContext()
- * @returns ExecutorResult with status and optional sandboxId
- */
-async function prepareAndDispatchRun(
-  context: ExecutionContext,
-): Promise<ExecutorResult> {
-  log.debug(`Preparing and dispatching run ${context.runId}...`);
-
-  // Layer 1: Prepare context (storage manifest, working dir, etc.)
-  const preparedContext = await prepareForExecution(context);
-
-  // Layer 2: Dispatch to appropriate executor
-  return await dispatchRun(preparedContext);
 }
 
 /**
@@ -499,9 +477,19 @@ async function buildAndDispatchRun(opts: {
   composeContent: AgentComposeYaml;
   apiStartTime: number;
   scopeId: string | undefined;
+  authorizeTime: number;
+  transactionTime: number;
 }): Promise<{ status: string; sandboxId?: string }> {
-  const { runId, createdAt, params, composeContent, apiStartTime, scopeId } =
-    opts;
+  const {
+    runId,
+    createdAt,
+    params,
+    composeContent,
+    apiStartTime,
+    scopeId,
+    authorizeTime,
+    transactionTime,
+  } = opts;
   const { userId, agentComposeVersionId, prompt } = params;
 
   try {
@@ -512,6 +500,7 @@ async function buildAndDispatchRun(opts: {
 
     // Generate sandbox token
     const sandboxToken = await generateSandboxToken(userId, runId);
+    const tokenTime = Date.now();
 
     // Build execution context
     const context = await buildContext({
@@ -538,9 +527,36 @@ async function buildAndDispatchRun(opts: {
       apiStartTime,
       scopeId,
     });
+    const buildContextTime = Date.now();
+
+    // Prepare execution context (storage manifest, working dir, etc.)
+    const preparedContext = await prepareForExecution(context);
+    const prepareTime = Date.now();
 
     // Dispatch to executor
-    const result = await prepareAndDispatchRun(context);
+    const result = await dispatchRun(preparedContext);
+    const dispatchTime = Date.now();
+
+    // Record per-step timing metrics for latency diagnosis
+    const steps = [
+      { op: "api_step_authorize", ms: authorizeTime - apiStartTime },
+      {
+        op: "api_step_validate_and_insert",
+        ms: transactionTime - authorizeTime,
+      },
+      { op: "api_step_callbacks_and_token", ms: tokenTime - transactionTime },
+      { op: "api_step_build_context", ms: buildContextTime - tokenTime },
+      { op: "api_step_prepare", ms: prepareTime - buildContextTime },
+      { op: "api_step_dispatch", ms: dispatchTime - prepareTime },
+    ];
+    for (const step of steps) {
+      recordSandboxOperation({
+        sandboxType: result.sandboxType,
+        actionType: step.op,
+        durationMs: step.ms,
+        success: true,
+      });
+    }
 
     log.debug(`Run ${runId} dispatched with status: ${result.status}`);
     return result;
@@ -584,6 +600,7 @@ export async function createRun(
     agentComposeVersionId,
     params.composeId,
   );
+  const authorizeTime = Date.now();
 
   // Step 3: Validate template vars and image access (for new runs only)
   if (!params.checkpointId && !params.sessionId) {
@@ -650,6 +667,7 @@ export async function createRun(
     throw error;
   }
 
+  const transactionTime = Date.now();
   log.debug(`Created run ${run.id} for user ${userId}`);
 
   const result = await buildAndDispatchRun({
@@ -659,6 +677,8 @@ export async function createRun(
     composeContent,
     apiStartTime,
     scopeId,
+    authorizeTime,
+    transactionTime,
   });
 
   return {
@@ -702,6 +722,7 @@ export async function executeQueuedRun(
       .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "queued")))
       .returning();
   });
+  const transactionTime = Date.now();
 
   if (!run) {
     throw new Error(`Queued run ${runId} not found or already processed`);
@@ -715,6 +736,7 @@ export async function executeQueuedRun(
     agentComposeVersionId,
     params.composeId,
   );
+  const authorizeTime = Date.now();
 
   // Step 4: Validate template vars and image access (for new runs only)
   if (!params.checkpointId && !params.sessionId) {
@@ -736,5 +758,7 @@ export async function executeQueuedRun(
     composeContent,
     apiStartTime,
     scopeId: params.scopeId,
+    authorizeTime,
+    transactionTime,
   });
 }

@@ -183,6 +183,7 @@ export async function executeE2bRun(
       status: "running",
       sandboxId: sandbox.sandboxId,
       createdAt: new Date(startTime).toISOString(),
+      sandboxType: "e2b",
     };
   } catch (error) {
     // Extract error message
