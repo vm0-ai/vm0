@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.80.1](https://github.com/vm0-ai/vm0/compare/web-v12.80.0...web-v12.80.1) (2026-03-06)
+
+
+### Bug Fixes
+
+* skip progress callbacks for completed or failed runs ([#3818](https://github.com/vm0-ai/vm0/issues/3818)) ([074d1fa](https://github.com/vm0-ai/vm0/commit/074d1fa3bc97f156336be8e207a9d15241bd8cb3))
+* **web:** add missing otp input styles to sign-in page ([#3817](https://github.com/vm0-ai/vm0/issues/3817)) ([6dd8d08](https://github.com/vm0-ai/vm0/commit/6dd8d08dee99ce5e4a7ab9c7013c1aac6c5b59ff)), closes [#3814](https://github.com/vm0-ai/vm0/issues/3814)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.41.0
+
 ## [12.80.0](https://github.com/vm0-ai/vm0/compare/web-v12.79.0...web-v12.80.0) (2026-03-06)
 
 

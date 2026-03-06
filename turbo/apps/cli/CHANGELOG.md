@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.49.1](https://github.com/vm0-ai/vm0/compare/cli-v9.49.0...cli-v9.49.1) (2026-03-06)
+
+
+### Refactoring
+
+* **cli:** remove dev-tool compose subcommand ([#3824](https://github.com/vm0-ai/vm0/issues/3824)) ([43865f9](https://github.com/vm0-ai/vm0/commit/43865f9f91b4f243cb47f655adc0e97a59d01776))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.41.0
+
 ## [9.49.0](https://github.com/vm0-ai/vm0/compare/cli-v9.48.0...cli-v9.49.0) (2026-03-06)
 
 
