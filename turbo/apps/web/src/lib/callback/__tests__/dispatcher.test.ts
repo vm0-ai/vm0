@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server";
 import { dispatchProgressCallbacks } from "../dispatcher";
 import { testContext, type UserContext } from "../../../__tests__/test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
@@ -15,7 +17,6 @@ describe("dispatchProgressCallbacks", () => {
   let testRunId: string;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
     context.setupMocks();
     user = await context.setupUser();
     mockClerk({ userId: user.userId });
@@ -28,11 +29,19 @@ describe("dispatchProgressCallbacks", () => {
   });
 
   it("should send progress notification to pending callbacks", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(
-        new Response(JSON.stringify({ success: true }), { status: 200 }),
-      );
+    const capturedRequests: { url: string; body: Record<string, unknown> }[] =
+      [];
+
+    server.use(
+      http.post(
+        "http://localhost/api/internal/callbacks/slack",
+        async ({ request }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          capturedRequests.push({ url: request.url, body });
+          return HttpResponse.json({ success: true });
+        },
+      ),
+    );
 
     await createTestCallback({
       runId: testRunId,
@@ -42,27 +51,27 @@ describe("dispatchProgressCallbacks", () => {
 
     await dispatchProgressCallbacks(testRunId);
 
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [url, options] = fetchSpy.mock.calls[0]!;
-    expect(url).toBe("http://localhost/api/internal/callbacks/slack");
-    const body = JSON.parse(options!.body as string);
-    expect(body.status).toBe("progress");
-    expect(body.runId).toBe(testRunId);
-    expect(body.payload).toEqual({
+    expect(capturedRequests).toHaveLength(1);
+    const captured = capturedRequests[0]!;
+    expect(captured.url).toBe("http://localhost/api/internal/callbacks/slack");
+    expect(captured.body.status).toBe("progress");
+    expect(captured.body.runId).toBe(testRunId);
+    expect(captured.body.payload).toEqual({
       workspaceId: "T123",
       channelId: "C123",
       threadTs: "123.456",
     });
-
-    fetchSpy.mockRestore();
   });
 
   it("should not update callback status (subsequent calls still work)", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(
-        new Response(JSON.stringify({ success: true }), { status: 200 }),
-      );
+    let callCount = 0;
+
+    server.use(
+      http.post("http://localhost/api/internal/callbacks/slack", () => {
+        callCount++;
+        return HttpResponse.json({ success: true });
+      }),
+    );
 
     await createTestCallback({
       runId: testRunId,
@@ -72,31 +81,34 @@ describe("dispatchProgressCallbacks", () => {
 
     // First progress call
     await dispatchProgressCallbacks(testRunId);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(callCount).toBe(1);
 
     // Second progress call should also work (callback still pending)
     await dispatchProgressCallbacks(testRunId);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-
-    fetchSpy.mockRestore();
+    expect(callCount).toBe(2);
   });
 
   it("should do nothing when no callbacks exist", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(
-        new Response(JSON.stringify({ success: true }), { status: 200 }),
-      );
+    let callCount = 0;
+
+    server.use(
+      http.post("http://localhost/api/internal/callbacks/slack", () => {
+        callCount++;
+        return HttpResponse.json({ success: true });
+      }),
+    );
 
     await dispatchProgressCallbacks(testRunId);
 
-    expect(fetchSpy).not.toHaveBeenCalled();
-
-    fetchSpy.mockRestore();
+    expect(callCount).toBe(0);
   });
 
   it("should silently ignore fetch failures", async () => {
-    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network error"));
+    server.use(
+      http.post("http://localhost/api/internal/callbacks/slack", () => {
+        return HttpResponse.error();
+      }),
+    );
 
     await createTestCallback({
       runId: testRunId,
@@ -106,7 +118,5 @@ describe("dispatchProgressCallbacks", () => {
 
     // Should not throw
     await dispatchProgressCallbacks(testRunId);
-
-    vi.restoreAllMocks();
   });
 });
