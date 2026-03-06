@@ -64,8 +64,18 @@
           // Collect system metrics (equivalent to node_exporter)
           prometheus.exporter.unix "default" {}
 
+          // Override instance label with inventory hostname
+          discovery.relabel "default" {
+            targets = prometheus.exporter.unix.default.targets
+
+            rule {
+              target_label = "instance"
+              replacement  = "{{ inventory_hostname }}"
+            }
+          }
+
           prometheus.scrape "default" {
-            targets         = prometheus.exporter.unix.default.targets
+            targets         = discovery.relabel.default.output
             forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
             scrape_interval = "15s"
           }
@@ -79,8 +89,7 @@
               }
             }
             external_labels = {
-              instance = "{{ inventory_hostname }}",
-              env      = "{{ env_label }}",
+              env = "{{ env_label }}",
             }
           }
         dest: /etc/alloy/config.alloy
