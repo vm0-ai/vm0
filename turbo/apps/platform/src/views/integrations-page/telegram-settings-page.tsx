@@ -22,6 +22,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui/components/ui/tooltip";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   telegramIntegrationData$,
@@ -33,13 +39,13 @@ import {
   telegramDisconnectDialogOpen$,
   openTelegramDisconnectDialog$,
   closeTelegramDisconnectDialog$,
+  openTelegramLoginPopup$,
 } from "../../signals/integrations-page/telegram-integration.ts";
 import { copyStatus$, copyToClipboard$ } from "../../signals/onboarding.ts";
 import { agentsList$ } from "../../signals/agents-page/agents-list.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
 import { AppShell } from "../layout/app-shell.tsx";
 import { Link } from "../router/link.tsx";
-import { TelegramLoginButton } from "./telegram-login-button.tsx";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -175,6 +181,115 @@ function DefaultAgentSection({
 }
 
 // ---------------------------------------------------------------------------
+// Connect / Disconnect account section
+// ---------------------------------------------------------------------------
+
+function ConnectAccountSection({
+  isConnected,
+  domainConfigured,
+  botId,
+  copyStatus,
+  onDisconnect,
+  onConnect,
+  onCopyDomain,
+}: {
+  isConnected: boolean;
+  domainConfigured: boolean;
+  botId: string | undefined;
+  copyStatus: string;
+  onDisconnect: () => void;
+  onConnect: (botId: string) => void;
+  onCopyDomain: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <h3 className="text-base font-medium">
+        {isConnected ? "Disconnect account" : "Connect account"}
+      </h3>
+      <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
+        {isConnected ? (
+          <>
+            <div className="flex flex-1 flex-col gap-1">
+              <p className="text-sm font-medium">
+                Disconnect your Telegram account
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Unlink your Telegram account from VM0. The bot installation will
+                remain active for other users.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={onDisconnect}>
+              Disconnect
+            </Button>
+          </>
+        ) : (
+          <>
+            <div className="flex flex-1 flex-col gap-1">
+              <p className="text-sm font-medium">
+                Connect your Telegram account
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {domainConfigured
+                  ? "Link your Telegram account to VM0."
+                  : "Link your Telegram account to VM0. You can also use /connect in Telegram."}
+              </p>
+              {!domainConfigured && (
+                <p className="text-sm text-amber-600 dark:text-amber-500">
+                  {"Run /setdomain in "}
+                  <a
+                    href="https://t.me/BotFather"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium hover:underline"
+                  >
+                    @BotFather
+                  </a>
+                  {" and set domain to "}
+                  <code
+                    className="cursor-pointer rounded border border-amber-300 bg-amber-50 px-1 py-0.5 font-mono text-xs hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
+                    onClick={onCopyDomain}
+                    title="Click to copy"
+                  >
+                    {copyStatus === "copied"
+                      ? "Copied!"
+                      : window.location.hostname}
+                  </code>
+                  {" to enable web login."}
+                </p>
+              )}
+            </div>
+            {botId && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="sm:shrink-0">
+                      <Button
+                        size="sm"
+                        disabled={!domainConfigured}
+                        onClick={() => onConnect(botId)}
+                      >
+                        Connect
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {!domainConfigured && (
+                    <TooltipContent>
+                      Telegram requires a verified domain for web login. Run
+                      /setdomain in @BotFather first, or use /connect in
+                      Telegram.
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -192,6 +307,7 @@ export function TelegramSettingsPage() {
   const closeConfirm = useSet(closeTelegramDisconnectDialog$);
   const copyStatus = useGet(copyStatus$);
   const copyToClipboard = useSet(copyToClipboard$);
+  const openPopup = useSet(openTelegramLoginPopup$);
 
   // Construct scoped agent name that matches the format used in agentsList$
   const scopedAgentName = (() => {
@@ -343,79 +459,20 @@ export function TelegramSettingsPage() {
               </div>
             </div>
 
-            {/* Connect / Disconnect account */}
-            <div className="flex flex-col gap-4">
-              <h3 className="text-base font-medium">
-                {isConnected ? "Disconnect account" : "Connect account"}
-              </h3>
-              <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
-                {isConnected ? (
-                  <>
-                    <div className="flex flex-1 flex-col gap-1">
-                      <p className="text-sm font-medium">
-                        Disconnect your Telegram account
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Unlink your Telegram account from VM0. The bot
-                        installation will remain active for other users.
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleDisconnectAccount}
-                    >
-                      Disconnect
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex flex-1 flex-col gap-1">
-                      <p className="text-sm font-medium">
-                        Connect your Telegram account
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Link your Telegram account to VM0.
-                      </p>
-                      {!data?.domainConfigured && (
-                        <p className="text-sm text-amber-600 dark:text-amber-500">
-                          {"Run "}
-                          <code className="rounded border border-amber-300 bg-amber-50 px-1 py-0.5 font-mono text-xs dark:border-amber-700 dark:bg-amber-950/30">
-                            /setdomain
-                          </code>
-                          {" in "}
-                          <a
-                            href="https://t.me/BotFather"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium hover:underline"
-                          >
-                            @BotFather
-                          </a>
-                          {" and set domain to "}
-                          <code
-                            className="cursor-pointer rounded border border-amber-300 bg-amber-50 px-1 py-0.5 font-mono text-xs hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
-                            onClick={() => {
-                              detach(
-                                copyToClipboard(window.location.hostname),
-                                Reason.DomCallback,
-                              );
-                            }}
-                            title="Click to copy"
-                          >
-                            {copyStatus === "copied"
-                              ? "Copied!"
-                              : window.location.hostname}
-                          </code>
-                          {" first."}
-                        </p>
-                      )}
-                    </div>
-                    {data?.bot && <TelegramLoginButton botId={data.bot.id} />}
-                  </>
-                )}
-              </div>
-            </div>
+            <ConnectAccountSection
+              isConnected={isConnected}
+              domainConfigured={data?.domainConfigured ?? false}
+              botId={data?.bot?.id}
+              copyStatus={copyStatus}
+              onDisconnect={handleDisconnectAccount}
+              onConnect={(botId) => openPopup(botId)}
+              onCopyDomain={() => {
+                detach(
+                  copyToClipboard(window.location.hostname),
+                  Reason.DomCallback,
+                );
+              }}
+            />
 
             {/* Uninstall bot (admin only) */}
             {data?.isAdmin && (

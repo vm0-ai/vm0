@@ -3,6 +3,10 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
+import {
+  parseTelegramPostMessage,
+  type TelegramAuthResult,
+} from "./telegram-auth-parser.ts";
 
 const L = logger("TelegramIntegration");
 
@@ -158,20 +162,10 @@ export const updateTelegramDefaultAgent$ = command(
   },
 );
 
-interface TelegramAuthData {
-  id: number;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  photo_url?: string;
-  auth_date: number;
-  hash: string;
-}
-
 const connectTelegramViaLogin$ = command(
   async (
     { get, set },
-    params: { installationId: string; auth: TelegramAuthData },
+    params: { installationId: string; auth: TelegramAuthResult },
   ) => {
     const fetchFn = get(fetch$);
     const response = await fetchFn("/api/integrations/telegram/link", {
@@ -197,68 +191,6 @@ const connectTelegramViaLogin$ = command(
 // ---------------------------------------------------------------------------
 // Telegram Login popup helpers
 // ---------------------------------------------------------------------------
-
-interface TelegramAuthResult {
-  id: number;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  photo_url?: string;
-  auth_date: number;
-  hash: string;
-}
-
-function extractAuth(d: Record<string, unknown>): TelegramAuthResult | null {
-  if (!d.id || !d.auth_date || !d.hash) {
-    return null;
-  }
-  return {
-    id: Number(d.id),
-    first_name: (d.first_name as string) ?? undefined,
-    last_name: (d.last_name as string) ?? undefined,
-    username: (d.username as string) ?? undefined,
-    photo_url: (d.photo_url as string) ?? undefined,
-    auth_date: Number(d.auth_date),
-    hash: d.hash as string,
-  };
-}
-
-function tryParseJson(str: string): unknown {
-  try {
-    return JSON.parse(str);
-  } catch (error) {
-    throwIfAbort(error);
-    return undefined;
-  }
-}
-
-function parseTelegramPostMessage(data: unknown): TelegramAuthResult | null {
-  // Telegram may double-encode the JSON string
-  let raw: unknown = data;
-  while (typeof raw === "string") {
-    const parsed = tryParseJson(raw);
-    if (parsed === undefined) {
-      return null;
-    }
-    raw = parsed;
-  }
-  if (typeof raw !== "object" || raw === null) {
-    return null;
-  }
-  const obj = raw as Record<string, unknown>;
-
-  // Our callback route sends { type: "telegram-auth", data: {...} }
-  if (obj.type === "telegram-auth" && obj.data) {
-    return extractAuth(obj.data as Record<string, unknown>);
-  }
-
-  // Telegram sends { event: "auth_result", result: {...} }
-  if (obj.event === "auth_result" && obj.result) {
-    return extractAuth(obj.result as Record<string, unknown>);
-  }
-
-  return null;
-}
 
 export const startTelegramLoginListener$ = command(
   ({ get, set }, signal: AbortSignal) => {

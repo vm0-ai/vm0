@@ -26,6 +26,7 @@ import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import { isNotFound } from "../../../../src/lib/errors";
 import { logger } from "../../../../src/lib/logger";
+import { checkTelegramDomain } from "../../../../src/lib/telegram/check-domain";
 
 const patchBodySchema = z.object({
   agentName: z.string().min(1),
@@ -148,23 +149,11 @@ export async function GET(request: Request) {
   const isAdmin = installation.adminUserId === userId;
   const isConnected = !!userLink;
 
-  // Check if the bot's domain is configured in BotFather by probing the
-  // Telegram OAuth endpoint. A configured domain returns a full HTML page
-  // (>1KB); an unconfigured one returns a short error string.
   const { NEXT_PUBLIC_PLATFORM_URL } = env();
-  let domainConfigured = false;
-  try {
-    const probeOrigin = encodeURIComponent(NEXT_PUBLIC_PLATFORM_URL);
-    const probeUrl = `https://oauth.telegram.org/auth?bot_id=${installation.telegramBotId}&origin=${probeOrigin}`;
-    const probeResp = await fetch(probeUrl, {
-      method: "HEAD",
-      signal: AbortSignal.timeout(3000),
-    });
-    const contentLength = probeResp.headers.get("content-length");
-    domainConfigured = contentLength !== null && Number(contentLength) > 1000;
-  } catch {
-    // Probe failed — assume not configured so we show the hint
-  }
+  const domainConfigured = await checkTelegramDomain(
+    installation.telegramBotId,
+    NEXT_PUBLIC_PLATFORM_URL,
+  );
 
   return NextResponse.json({
     installationId: installation.id,

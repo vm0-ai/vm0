@@ -15,6 +15,7 @@ import { encryptCredentialValue } from "../../../../src/lib/crypto/secrets-encry
 import { generateCallbackSecret } from "../../../../src/lib/callback/hmac";
 import { resolveDefaultAgentComposeId } from "../../../../src/lib/agent-compose/resolve-default";
 import { logger } from "../../../../src/lib/logger";
+import { checkTelegramDomain } from "../../../../src/lib/telegram/check-domain";
 
 const registerBodySchema = z.object({
   botToken: z.string().min(1),
@@ -201,12 +202,20 @@ export async function POST(request: Request) {
     log.warn("Failed to register bot commands", { error });
   });
 
+  // Check if domain is configured for Telegram OAuth
+  const { NEXT_PUBLIC_PLATFORM_URL } = env();
+  const domainConfigured = await checkTelegramDomain(
+    telegramBotId,
+    NEXT_PUBLIC_PLATFORM_URL,
+  );
+
   return NextResponse.json(
     {
       id: installation.id,
       botId: telegramBotId,
       botUsername: botInfoResult.username,
       webhookUrl,
+      domainConfigured,
     },
     { status: 201 },
   );

@@ -4,7 +4,10 @@ import { updatePage$ } from "../react-router.ts";
 import { navigate$, searchParams$ } from "../route.ts";
 import { hasAnyModelProvider$ } from "../external/model-providers.ts";
 import { throwIfAbort } from "../utils.ts";
-import { initTelegramConnect$ } from "./telegram-connect.ts";
+import {
+  initTelegramConnect$,
+  startTelegramConnectLoginListener$,
+} from "./telegram-connect.ts";
 import { TelegramConnectPage } from "../../views/telegram-connect/telegram-connect-page.tsx";
 
 export const setupTelegramConnectPage$ = command(
@@ -47,5 +50,9 @@ export const setupTelegramConnectPage$ = command(
         : undefined;
 
     await set(initTelegramConnect$, { botId, connectParams });
+    signal.throwIfAborted();
+
+    // Start listening for Telegram OAuth postMessage (for connect-account step)
+    set(startTelegramConnectLoginListener$, signal);
   },
 );
