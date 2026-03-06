@@ -5,7 +5,9 @@ import {
   varchar,
   timestamp,
   index,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 /**
  * Scopes table
@@ -18,10 +20,15 @@ export const scopes = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     slug: varchar("slug", { length: 64 }).notNull().unique(),
     clerkOrgId: text("clerk_org_id").notNull(),
+    tier: varchar("tier", { length: 16 }).default("free").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
     clerkOrgIdx: index("idx_scopes_clerk_org").on(table.clerkOrgId),
+    tierCheck: check(
+      "scopes_tier_check",
+      sql`${table.tier} IN ('free', 'pro')`,
+    ),
   }),
 );
