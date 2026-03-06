@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.40.0](https://github.com/vm0-ai/vm0/compare/core-v8.39.0...core-v8.40.0) (2026-03-06)
+
+
+### Features
+
+* add scope tier with per-scope concurrency limits ([#3802](https://github.com/vm0-ai/vm0/issues/3802)) ([210a307](https://github.com/vm0-ai/vm0/commit/210a307d12be7dcc33c17af1c8c641feb3a1044a))
+
 ## [8.39.0](https://github.com/vm0-ai/vm0/compare/core-v8.38.1...core-v8.39.0) (2026-03-06)
 
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.80.0](https://github.com/vm0-ai/vm0/compare/web-v12.79.0...web-v12.80.0) (2026-03-06)
+
+
+### Features
+
+* add scope tier with per-scope concurrency limits ([#3802](https://github.com/vm0-ai/vm0/issues/3802)) ([210a307](https://github.com/vm0-ai/vm0/commit/210a307d12be7dcc33c17af1c8c641feb3a1044a))
+
+
+### Performance Improvements
+
+* deduplicate clerk user email fetch in run creation ([#3810](https://github.com/vm0-ai/vm0/issues/3810)) ([6fd4cd1](https://github.com/vm0-ai/vm0/commit/6fd4cd19f5eb4e3ef92bb9e4690278073abb3203)), closes [#3806](https://github.com/vm0-ai/vm0/issues/3806)
+* **run:** parallelize independent db queries in prepare step ([#3812](https://github.com/vm0-ai/vm0/issues/3812)) ([c71fc97](https://github.com/vm0-ai/vm0/commit/c71fc973197465246c5de5a343e764111c7bb7ae)), closes [#3807](https://github.com/vm0-ai/vm0/issues/3807)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.40.0
+
 ## [12.79.0](https://github.com/vm0-ai/vm0/compare/web-v12.78.0...web-v12.79.0) (2026-03-06)
 
 

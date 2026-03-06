@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.49.0](https://github.com/vm0-ai/vm0/compare/cli-v9.48.0...cli-v9.49.0) (2026-03-06)
+
+
+### Features
+
+* add scope tier with per-scope concurrency limits ([#3802](https://github.com/vm0-ai/vm0/issues/3802)) ([210a307](https://github.com/vm0-ai/vm0/commit/210a307d12be7dcc33c17af1c8c641feb3a1044a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.40.0
+
 ## [9.48.0](https://github.com/vm0-ai/vm0/compare/cli-v9.47.2...cli-v9.48.0) (2026-03-06)
 
 
