@@ -396,7 +396,7 @@ export function TelegramSettingsPage() {
                           className="cursor-pointer rounded border border-amber-300 bg-amber-50 px-1 py-0.5 font-mono text-xs hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
                           onClick={() => {
                             detach(
-                              copyToClipboard(window.location.host),
+                              copyToClipboard(window.location.hostname),
                               Reason.DomCallback,
                             );
                           }}
@@ -404,7 +404,7 @@ export function TelegramSettingsPage() {
                         >
                           {copyStatus === "copied"
                             ? "Copied!"
-                            : window.location.host}
+                            : window.location.hostname}
                         </code>
                         {" first."}
                       </p>
