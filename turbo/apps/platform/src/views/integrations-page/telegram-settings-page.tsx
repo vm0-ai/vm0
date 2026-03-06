@@ -1,5 +1,9 @@
 import { useGet, useSet } from "ccstate-react";
-import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
+import {
+  IconAlertTriangle,
+  IconChevronDown,
+  IconCopy,
+} from "@tabler/icons-react";
 import {
   CONNECTOR_TYPES,
   getConnectorProvidedSecretNames,
@@ -34,6 +38,7 @@ import {
   openTelegramDisconnectDialog$,
   closeTelegramDisconnectDialog$,
 } from "../../signals/integrations-page/telegram-integration.ts";
+import { copyStatus$, copyToClipboard$ } from "../../signals/onboarding.ts";
 import { agentsList$ } from "../../signals/agents-page/agents-list.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
 import { AppShell } from "../layout/app-shell.tsx";
@@ -189,6 +194,8 @@ export function TelegramSettingsPage() {
   const confirmOpen = useGet(telegramDisconnectDialogOpen$);
   const openConfirm = useSet(openTelegramDisconnectDialog$);
   const closeConfirm = useSet(closeTelegramDisconnectDialog$);
+  const copyStatus = useGet(copyStatus$);
+  const copyToClipboard = useSet(copyToClipboard$);
 
   // Construct scoped agent name that matches the format used in agentsList$
   const scopedAgentName = (() => {
@@ -260,48 +267,6 @@ export function TelegramSettingsPage() {
           </div>
         ) : (
           <>
-            {/* Connect account banner */}
-            {!isConnected && data?.bot && (
-              <div className="flex flex-col gap-3 rounded-lg border border-blue-500 bg-blue-50 px-4 py-4 dark:border-blue-700 dark:bg-blue-950/30">
-                <div className="flex items-center gap-3">
-                  <IconAlertTriangle
-                    size={20}
-                    className="shrink-0 text-blue-500"
-                    stroke={1.5}
-                  />
-                  <p className="text-sm">
-                    Your account is not connected to this bot yet. Log in with
-                    Telegram to link your account.
-                  </p>
-                </div>
-                <div className="pl-8">
-                  <TelegramLoginButton botId={data.bot.id} />
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {
-                      "Having trouble? Make sure the bot domain is configured in "
-                    }
-                    <a
-                      href="https://t.me/BotFather"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-medium text-blue-600 hover:underline dark:text-blue-400"
-                    >
-                      @BotFather
-                    </a>
-                    {" via "}
-                    <code className="rounded bg-blue-100 px-1 py-0.5 font-mono text-xs dark:bg-blue-900">
-                      /setdomain
-                    </code>
-                    {". Or send "}
-                    <code className="rounded bg-blue-100 px-1 py-0.5 font-mono text-xs dark:bg-blue-900">
-                      /connect
-                    </code>
-                    {" to the bot in Telegram."}
-                  </p>
-                </div>
-              </div>
-            )}
-
             {/* Bot info */}
             {data?.bot && (
               <div className="flex flex-col gap-4">
@@ -318,6 +283,36 @@ export function TelegramSettingsPage() {
                       Bot ID:
                     </span>
                     <span>{data.bot.id}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-medium text-muted-foreground">
+                      Domain for{" "}
+                      <code className="font-mono text-xs">/setdomain</code>:
+                    </span>
+                    <code
+                      className="cursor-pointer rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs hover:bg-accent"
+                      onClick={() => {
+                        detach(
+                          copyToClipboard(window.location.host),
+                          Reason.DomCallback,
+                        );
+                      }}
+                      title="Click to copy"
+                    >
+                      {copyStatus === "copied"
+                        ? "Copied!"
+                        : window.location.host}
+                    </code>
+                    <IconCopy
+                      size={14}
+                      className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        detach(
+                          copyToClipboard(window.location.host),
+                          Reason.DomCallback,
+                        );
+                      }}
+                    />
                   </div>
                 </div>
               </div>
@@ -382,30 +377,50 @@ export function TelegramSettingsPage() {
               </div>
             </div>
 
-            {/* Disconnect account */}
-            {isConnected && (
-              <div className="flex flex-col gap-4">
-                <h3 className="text-base font-medium">Disconnect account</h3>
-                <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
-                  <div className="flex flex-1 flex-col gap-1">
-                    <p className="text-sm font-medium">
-                      Disconnect your Telegram account
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Unlink your Telegram account from VM0. The bot
-                      installation will remain active for other users.
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleDisconnectAccount}
-                  >
-                    Disconnect
-                  </Button>
-                </div>
+            {/* Connect / Disconnect account */}
+            <div className="flex flex-col gap-4">
+              <h3 className="text-base font-medium">
+                {isConnected ? "Disconnect account" : "Connect account"}
+              </h3>
+              <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
+                {isConnected ? (
+                  <>
+                    <div className="flex flex-1 flex-col gap-1">
+                      <p className="text-sm font-medium">
+                        Disconnect your Telegram account
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Unlink your Telegram account from VM0. The bot
+                        installation will remain active for other users.
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDisconnectAccount}
+                    >
+                      Disconnect
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex flex-1 flex-col gap-1">
+                      <p className="text-sm font-medium">
+                        Connect your Telegram account
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Log in with Telegram to link your account, or send{" "}
+                        <code className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-xs">
+                          /connect
+                        </code>{" "}
+                        to the bot in Telegram.
+                      </p>
+                    </div>
+                    {data?.bot && <TelegramLoginButton botId={data.bot.id} />}
+                  </>
+                )}
               </div>
-            )}
+            </div>
 
             {/* Uninstall bot (admin only) */}
             {data?.isAdmin && (
