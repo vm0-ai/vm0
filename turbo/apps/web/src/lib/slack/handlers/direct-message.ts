@@ -179,12 +179,12 @@ export async function handleDirectMessage(
   });
 
   if (status === "queued") {
-    await postMessage(
-      client,
-      context.channelId,
-      "⚠ Run queued — concurrency limit reached. Will start automatically when a slot is available.",
-      { threadTs },
-    );
+    await client.chat.postEphemeral({
+      channel: context.channelId,
+      user: context.userId,
+      thread_ts: threadTs,
+      text: "⚠ Run queued — concurrency limit reached. Will start automatically when a slot is available.",
+    });
   } else if (status === "failed") {
     log.error("Failed to dispatch agent run", { response });
     await postMessage(
