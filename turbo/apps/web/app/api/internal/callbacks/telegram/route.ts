@@ -123,6 +123,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   log.debug("Processing Telegram callback", { runId, status, chatId });
 
+  // Handle progress notifications: refresh the typing indicator
+  if (status === "progress") {
+    const { SECRETS_ENCRYPTION_KEY } = env();
+    const [inst] = await globalThis.services.db
+      .select({
+        encryptedBotToken: telegramInstallations.encryptedBotToken,
+      })
+      .from(telegramInstallations)
+      .where(eq(telegramInstallations.id, installationId))
+      .limit(1);
+
+    if (inst) {
+      const token = decryptCredentialValue(
+        inst.encryptedBotToken,
+        SECRETS_ENCRYPTION_KEY,
+      );
+      const progressClient = createTelegramClient(token);
+      try {
+        await sendChatAction(progressClient, chatId, "typing");
+      } catch (err) {
+        log.debug("Failed to refresh typing indicator", { runId, error: err });
+      }
+    }
+
+    return NextResponse.json({ success: true });
+  }
+
   const { SECRETS_ENCRYPTION_KEY } = env();
 
   // Get Telegram installation for bot token
