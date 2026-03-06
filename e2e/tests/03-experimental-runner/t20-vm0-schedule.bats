@@ -48,7 +48,7 @@ teardown_file() {
 
     # Clean up schedule and temp directory
     if [ -n "$AGENT_NAME" ]; then
-        $CLI_COMMAND schedule delete "$AGENT_NAME" --force 2>/dev/null || true
+        $CLI_COMMAND schedule delete "$AGENT_NAME" --yes 2>/dev/null || true
     fi
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
@@ -142,8 +142,8 @@ setup() {
         --prompt "To be deleted"
     assert_success
 
-    # Delete with force flag
-    run $CLI_COMMAND schedule delete "$AGENT_NAME" --force
+    # Delete with yes flag
+    run $CLI_COMMAND schedule delete "$AGENT_NAME" --yes
     assert_success
     assert_output --partial "Deleted"
 }
@@ -223,7 +223,7 @@ EOF
     local LOOP_AGENT_NAME=$(cat "$BATS_FILE_TMPDIR/loop_agent_name")
     local LOOP_TEST_DIR=$(cat "$BATS_FILE_TMPDIR/loop_test_dir")
 
-    run $CLI_COMMAND schedule delete "$LOOP_AGENT_NAME" --force
+    run $CLI_COMMAND schedule delete "$LOOP_AGENT_NAME" --yes
     assert_success
     assert_output --partial "Deleted"
 
@@ -289,7 +289,7 @@ EOF
     assert_success
 
     # Clean up
-    $CLI_COMMAND schedule delete "$CONFIG_AGENT_NAME" --force 2>/dev/null || true
+    $CLI_COMMAND schedule delete "$CONFIG_AGENT_NAME" --yes 2>/dev/null || true
     $CLI_COMMAND secret delete "$SECRET_NAME" -y 2>/dev/null || true
     $CLI_COMMAND variable delete "$VAR_URL_NAME" -y 2>/dev/null || true
     $CLI_COMMAND variable delete "$VAR_DEBUG_NAME" -y 2>/dev/null || true
