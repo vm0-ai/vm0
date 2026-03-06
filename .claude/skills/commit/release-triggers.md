@@ -23,6 +23,7 @@ Releases follow semantic versioning: `MAJOR.MINOR.PATCH`
 | `feat:` | MINOR | 1.2.0 → 1.3.0 | 1.3.0 |
 | `fix:` | PATCH | 1.2.0 → 1.2.1 | 1.2.1 |
 | `deps:` | PATCH | 1.2.0 → 1.2.1 | 1.2.1 |
+| `ci:` | PATCH | 1.2.0 → 1.2.1 | 1.2.1 |
 | `<any>!` | MAJOR | 1.2.0 → 2.0.0 | 2.0.0 |
 | `BREAKING CHANGE:` | MAJOR | 1.2.0 → 2.0.0 | 2.0.0 |
 
@@ -35,7 +36,6 @@ These types appear in the changelog but will NOT create a new release:
 - `refactor:` - Code refactoring
 - `test:` - Test changes
 - `chore:` - Build/tool changes
-- `ci:` - CI configuration
 - `perf:` - Performance improvements
 - `build:` - Build system changes
 - `revert:` - Revert changes
@@ -58,7 +58,7 @@ Is it a new feature? (feat:)
   ├─ YES → MINOR release (1.3.0)
   └─ NO → Continue...
 
-Is it a bug fix or dependency update? (fix: or deps:)
+Is it a bug fix, dependency update, or CI change? (fix: or deps: or ci:)
   ├─ YES → PATCH release (1.2.1)
   └─ NO → No release (appears in changelog only)
 ```
