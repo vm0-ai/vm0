@@ -138,8 +138,15 @@ async function tryLinkFromLocalRecord(
 
   const githubUserId = await linkVm0User(db, existing.id, vm0UserId);
 
+  // If link failed (no GitHub OAuth connector), don't short-circuit —
+  // let the user go through GitHub's install flow so the callback can
+  // resolve their GitHub identity.
+  if (!githubUserId) {
+    return null;
+  }
+
   // If no admin is set yet, make this user the admin
-  if (!existing.adminGithubUserId && githubUserId) {
+  if (!existing.adminGithubUserId) {
     await db
       .update(githubInstallations)
       .set({ adminGithubUserId: githubUserId })
@@ -190,8 +197,12 @@ async function tryLinkFromGitHubApi(
       .limit(1);
 
     if (existing) {
-      await linkVm0User(db, existing.id, vm0UserId);
-      return `${platformUrl}/settings?tab=integrations`;
+      const linked = await linkVm0User(db, existing.id, vm0UserId);
+      if (linked) {
+        return `${platformUrl}/settings?tab=integrations`;
+      }
+      // Link failed — fall through to GitHub redirect
+      return null;
     }
   }
 
