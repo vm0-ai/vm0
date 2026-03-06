@@ -5,13 +5,8 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { getApiUrl } from "../../../../../src/lib/callback";
 import { getPlatformUrl } from "../../../../../src/lib/url";
-import { encryptCredentialValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import { githubInstallations } from "../../../../../src/db/schema/github-installation";
-import {
-  listAppInstallations,
-  getInstallationAccessToken,
-} from "../../../../../src/lib/github/github-app";
-import { resolveDefaultAgentComposeId } from "../../../../../src/lib/agent-compose/resolve-default";
+import { listAppInstallations } from "../../../../../src/lib/github/github-app";
 import { linkVm0User } from "../callback/route";
 import { logger } from "../../../../../src/lib/logger";
 
@@ -60,13 +55,11 @@ export async function GET(request: Request) {
     }
 
     // Slow path: check GitHub API for existing installations that are
-    // missing from our DB (e.g. installed before we had this code).
+    // already tracked in our DB but the user isn't linked yet.
     const apiRedirect = await tryLinkFromGitHubApi(
       GITHUB_APP_ID,
       GITHUB_APP_PRIVATE_KEY,
-      SECRETS_ENCRYPTION_KEY,
       vm0UserId,
-      composeId,
     );
     if (apiRedirect) {
       return NextResponse.redirect(apiRedirect);
@@ -151,14 +144,12 @@ async function tryLinkFromLocalRecord(
 
 /**
  * Slow path: query GitHub API for existing installations that are
- * not yet in our DB, create the record + user link.
+ * already tracked in our DB but the user isn't linked yet.
  */
 async function tryLinkFromGitHubApi(
   appId: string,
   privateKey: string,
-  encryptionKey: string,
   vm0UserId: string,
-  composeId: string | null,
 ): Promise<string | null> {
   let installations;
   try {
@@ -191,46 +182,7 @@ async function tryLinkFromGitHubApi(
     }
   }
 
-  // No DB record — create one for the first installation
-  const ghInstall = installations[0]!;
-  const ghInstallationId = String(ghInstall.id);
-
-  let resolvedComposeId = composeId;
-  if (!resolvedComposeId) {
-    resolvedComposeId = await resolveDefaultAgentComposeId();
-  }
-  if (!resolvedComposeId) {
-    return `${platformUrl}/settings?tab=integrations&error=${encodeURIComponent("Missing default agent. Please set VM0_DEFAULT_AGENT or select an agent before connecting GitHub.")}`;
-  }
-
-  const { token } = await getInstallationAccessToken(
-    appId,
-    privateKey,
-    ghInstallationId,
-  );
-  const encryptedAccessToken = encryptCredentialValue(token, encryptionKey);
-
-  const [newInstall] = await db
-    .insert(githubInstallations)
-    .values({
-      installationId: ghInstallationId,
-      encryptedAccessToken,
-      status: "active",
-      targetType: ghInstall.account.type,
-      targetId: String(ghInstall.account.id),
-      targetName: ghInstall.account.login,
-      defaultComposeId: resolvedComposeId,
-    })
-    .returning({ id: githubInstallations.id });
-
-  // Link user and set them as admin (the person who triggered the install)
-  const githubUserId = await linkVm0User(db, newInstall!.id, vm0UserId);
-  if (githubUserId) {
-    await db
-      .update(githubInstallations)
-      .set({ adminGithubUserId: githubUserId })
-      .where(eq(githubInstallations.id, newInstall!.id));
-  }
-
-  return `${platformUrl}/settings?tab=integrations`;
+  // No DB record — let the user proceed to GitHub's install page
+  // so they can choose which organization to install on.
+  return null;
 }
