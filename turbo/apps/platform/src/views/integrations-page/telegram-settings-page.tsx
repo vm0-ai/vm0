@@ -284,36 +284,6 @@ export function TelegramSettingsPage() {
                     </span>
                     <span>{data.bot.id}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="font-medium text-muted-foreground">
-                      Domain for{" "}
-                      <code className="font-mono text-xs">/setdomain</code>:
-                    </span>
-                    <code
-                      className="cursor-pointer rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs hover:bg-accent"
-                      onClick={() => {
-                        detach(
-                          copyToClipboard(window.location.host),
-                          Reason.DomCallback,
-                        );
-                      }}
-                      title="Click to copy"
-                    >
-                      {copyStatus === "copied"
-                        ? "Copied!"
-                        : window.location.host}
-                    </code>
-                    <IconCopy
-                      size={14}
-                      className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
-                      onClick={() => {
-                        detach(
-                          copyToClipboard(window.location.host),
-                          Reason.DomCallback,
-                        );
-                      }}
-                    />
-                  </div>
                 </div>
               </div>
             )}
@@ -403,8 +373,8 @@ export function TelegramSettingsPage() {
                     </Button>
                   </>
                 ) : (
-                  <>
-                    <div className="flex flex-1 flex-col gap-1">
+                  <div className="flex flex-1 flex-col gap-3">
+                    <div className="flex flex-col gap-1">
                       <p className="text-sm font-medium">
                         Connect your Telegram account
                       </p>
@@ -416,8 +386,50 @@ export function TelegramSettingsPage() {
                         to the bot in Telegram.
                       </p>
                     </div>
-                    {data?.bot && <TelegramLoginButton botId={data.bot.id} />}
-                  </>
+                    <div className="flex items-center gap-2">
+                      {data?.bot && <TelegramLoginButton botId={data.bot.id} />}
+                    </div>
+                    <div className="flex flex-col gap-1 border-t border-border pt-3">
+                      <p className="text-xs text-muted-foreground">
+                        {
+                          "Having trouble logging in? You need to configure the bot's domain in "
+                        }
+                        <a
+                          href="https://t.me/BotFather"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-foreground hover:underline"
+                        >
+                          @BotFather
+                        </a>
+                        {" first. Send "}
+                        <code className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-xs">
+                          /setdomain
+                        </code>
+                        {
+                          " to @BotFather, select your bot, then set the domain to:"
+                        }
+                      </p>
+                      <code
+                        className="inline-flex w-fit cursor-pointer items-center gap-1.5 rounded border border-border bg-muted px-2 py-1 font-mono text-xs hover:bg-accent"
+                        onClick={() => {
+                          detach(
+                            copyToClipboard(window.location.host),
+                            Reason.DomCallback,
+                          );
+                        }}
+                        title="Click to copy"
+                      >
+                        {copyStatus === "copied"
+                          ? "Copied!"
+                          : window.location.host}
+                        <IconCopy
+                          size={12}
+                          className="shrink-0 text-muted-foreground"
+                        />
+                      </code>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
