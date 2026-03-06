@@ -79,8 +79,10 @@ export async function GET(request: Request) {
 
   const { installation } = result;
 
-  // Determine if current user is the admin
-  const isAdmin = result.link.githubUserId === installation.adminGithubUserId;
+  // Determine if current user is the admin (both must be non-null)
+  const isAdmin =
+    !!installation.adminGithubUserId &&
+    result.link.githubUserId === installation.adminGithubUserId;
 
   // Get default agent info with headVersionId for environment extraction
   const [compose] = await db
@@ -211,8 +213,11 @@ export async function DELETE(request: Request) {
     );
   }
 
-  // Only admin can delete
-  if (result.githubUserId !== result.adminGithubUserId) {
+  // Only admin can delete — also reject when adminGithubUserId is unset
+  if (
+    !result.adminGithubUserId ||
+    result.githubUserId !== result.adminGithubUserId
+  ) {
     return NextResponse.json(
       {
         error: {
@@ -299,8 +304,11 @@ export async function PATCH(request: Request) {
     );
   }
 
-  // Only admin can change default agent
-  if (result.githubUserId !== result.adminGithubUserId) {
+  // Only admin can change default agent — also reject when adminGithubUserId is unset
+  if (
+    !result.adminGithubUserId ||
+    result.githubUserId !== result.adminGithubUserId
+  ) {
     return NextResponse.json(
       {
         error: {
