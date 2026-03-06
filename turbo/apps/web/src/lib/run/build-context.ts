@@ -65,38 +65,42 @@ const MODEL_PROVIDER_ENV_VARS = [
 ];
 
 /**
- * Resolve model provider type from explicit value or default
+ * Resolve model provider type from explicit value or pre-fetched default.
+ * Single DB query: caller passes the already-fetched defaultProvider.
  */
-async function resolveProviderType(
-  scopeId: string,
-  userId: string,
-  framework: ModelProviderFramework,
+function resolveProviderType(
+  framework: string,
+  defaultProvider: Awaited<ReturnType<typeof getDefaultModelProvider>>,
   explicitModelProvider?: string,
-): Promise<ModelProviderType> {
+): ModelProviderType {
+  let providerType: ModelProviderType;
+
   if (explicitModelProvider) {
-    // Validate that the specified model provider type is valid
     if (!(explicitModelProvider in MODEL_PROVIDER_TYPES)) {
       throw badRequest(
         `Unknown model provider type "${explicitModelProvider}". Valid types: ${Object.keys(MODEL_PROVIDER_TYPES).join(", ")}`,
       );
     }
-    return explicitModelProvider as ModelProviderType;
-  }
-
-  // Get default provider for framework
-  const defaultProvider = await getDefaultModelProvider(
-    scopeId,
-    userId,
-    framework,
-  );
-  if (!defaultProvider?.type) {
+    providerType = explicitModelProvider as ModelProviderType;
+  } else if (defaultProvider?.type) {
+    providerType = defaultProvider.type;
+  } else {
     throw badRequest(
       "No model provider configured. " +
         "Run 'vm0 model-provider setup' to configure one, " +
         "or add environment variables to your vm0.yaml.",
     );
   }
-  return defaultProvider.type;
+
+  const providerFramework = getFrameworkForType(providerType);
+  if (providerFramework !== framework) {
+    throw badRequest(
+      `Model provider "${providerType}" is not compatible with framework "${framework}". ` +
+        `This provider is for "${providerFramework}" agents.`,
+    );
+  }
+
+  return providerType;
 }
 
 /**
@@ -191,28 +195,17 @@ async function resolveModelProviderCredential(
     return { credentials, injectedEnvVars: undefined };
   }
 
-  // Resolve model provider type (explicit or default)
-  const providerType = await resolveProviderType(
-    scopeId,
-    userId,
-    framework as ModelProviderFramework,
-    explicitModelProvider,
-  );
-
-  // Validate framework compatibility
-  const providerFramework = getFrameworkForType(providerType);
-  if (providerFramework !== framework) {
-    throw badRequest(
-      `Model provider "${providerType}" is not compatible with framework "${framework}". ` +
-        `This provider is for "${providerFramework}" agents.`,
-    );
-  }
-
-  // Get selected model from default provider if available
+  // Fetch default provider once (used for type resolution, model selection, and auth method)
   const defaultProvider = await getDefaultModelProvider(
     scopeId,
     userId,
     framework as ModelProviderFramework,
+  );
+
+  const providerType = resolveProviderType(
+    framework,
+    defaultProvider,
+    explicitModelProvider,
   );
   const selectedModel = defaultProvider?.selectedModel ?? undefined;
 
@@ -431,25 +424,30 @@ async function resolveConnectorCredentials(
 
   const allInjectedEnvVars: Record<string, string> = {};
 
-  for (const connector of userConnectors) {
-    const connectorType = connectorTypeSchema.safeParse(connector.type);
-    if (!connectorType.success) {
-      continue;
-    }
+  // Parse connector types upfront
+  const validConnectors = userConnectors
+    .map((c) => connectorTypeSchema.safeParse(c.type))
+    .filter((r) => r.success)
+    .map((r) => r.data);
 
-    // Refresh access token before resolving environment mapping
-    const handler =
-      PROVIDER_HANDLERS[connectorType.data as keyof typeof PROVIDER_HANDLERS];
-    if (handler?.refreshToken) {
-      await refreshConnectorAccessToken(
-        connectorType.data,
-        scopeId,
-        userId,
-        connectorSecrets,
-      );
-    }
+  // Refresh all OAuth tokens in parallel.
+  // Safe: each connector writes to distinct keys in connectorSecrets (e.g. github_access_token
+  // vs slack_access_token), so concurrent mutations don't conflict.
+  await Promise.all(
+    validConnectors
+      .filter((type) => {
+        const handler =
+          PROVIDER_HANDLERS[type as keyof typeof PROVIDER_HANDLERS];
+        return handler?.refreshToken;
+      })
+      .map((type) =>
+        refreshConnectorAccessToken(type, scopeId, userId, connectorSecrets),
+      ),
+  );
 
-    const mapping = getConnectorEnvironmentMapping(connectorType.data);
+  // Resolve environment mappings (uses refreshed secrets)
+  for (const connectorType of validConnectors) {
+    const mapping = getConnectorEnvironmentMapping(connectorType);
 
     for (const [envVar, valueRef] of Object.entries(mapping)) {
       if (valueRef.startsWith("$secrets.")) {
