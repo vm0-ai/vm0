@@ -65,7 +65,7 @@ export const CONNECTOR_TYPES = {
     oauth: {
       authorizationUrl: "https://github.com/login/oauth/authorize",
       tokenUrl: "https://github.com/login/oauth/access_token",
-      scopes: ["repo"],
+      scopes: ["repo", "project"],
     } as ConnectorOAuthConfig,
   },
   notion: {
