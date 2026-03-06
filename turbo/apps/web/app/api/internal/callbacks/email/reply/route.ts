@@ -85,6 +85,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   log.debug("Processing email reply callback", { runId, status });
 
+  // Progress notifications are not applicable for email — no-op.
+  if (status === "progress") {
+    return NextResponse.json({ success: true });
+  }
+
   // Look up the email thread session
   const [session] = await globalThis.services.db
     .select()

@@ -140,6 +140,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     issueNumber,
   });
 
+  // Progress notifications are not applicable for GitHub issues — no-op.
+  if (status === "progress") {
+    return NextResponse.json({ success: true });
+  }
+
   const { GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY } = env();
 
   // Get GitHub installation for access token
