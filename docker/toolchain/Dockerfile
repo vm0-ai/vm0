@@ -128,12 +128,6 @@ RUN curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --
 RUN npm install -g agent-browser \
     && agent-browser install --with-deps
 
-# Install noVNC stack for remote browser viewing
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    x11vnc \
-    novnc \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install AWS CLI v2
 RUN apt-get update && apt-get install -y unzip \
     && ARCH=$(dpkg --print-architecture) \
@@ -174,6 +168,12 @@ RUN mkdir -p /usr/share/keyrings \
     && echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/cloudflared.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends cloudflared \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install noVNC stack for remote browser viewing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    x11vnc \
+    novnc \
     && rm -rf /var/lib/apt/lists/*
 
 # Default command
