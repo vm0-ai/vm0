@@ -148,7 +148,7 @@ RUN groupadd -f --gid 1000 vscode \
     && useradd --uid 1000 --gid vscode --shell /usr/bin/zsh --create-home vscode \
     && echo "vscode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vscode \
     && chmod 0440 /etc/sudoers.d/vscode \
-    && mkdir -p /home/vscode/.local/share /home/vscode/.cache /home/vscode/.config \
+    && mkdir -p /home/vscode/.local/share /home/vscode/.local/share/agent-browser /home/vscode/.cache /home/vscode/.config \
     && chown -R vscode:vscode /home/vscode
 
 # Install rust-src for rust-analyzer (IDE support for standard library)
@@ -168,6 +168,12 @@ RUN mkdir -p /usr/share/keyrings \
     && echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/cloudflared.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends cloudflared \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install noVNC stack for remote browser viewing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    x11vnc \
+    novnc \
     && rm -rf /var/lib/apt/lists/*
 
 # Default command

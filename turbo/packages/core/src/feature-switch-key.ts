@@ -25,9 +25,7 @@ export enum FeatureSwitchKey {
   NeonConnector = "neonConnector",
   GarminConnectConnector = "garminConnectConnector",
   RedditConnector = "redditConnector",
-  VercelConnector = "vercelConnector",
   IntervalsIcuConnector = "intervalsIcuConnector",
-  XeroConnector = "xeroConnector",
   GitHubIntegration = "githubIntegration",
   TelegramIntegration = "telegramIntegration",
 }

@@ -4,6 +4,7 @@ import {
   formatContextForAgent,
   formatContextForAgentWithImages,
   extractMessageContent,
+  extractTextFromBlocks,
 } from "../context";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
@@ -914,6 +915,517 @@ describe("Feature: Format Context With Image Upload", () => {
       expect(result).toContain("- RELATIVE_INDEX: -1");
       expect(result).toContain("- MSG_ID: 1234567890.002");
       expect(result).toContain("- SENDER_ID: U456");
+    });
+  });
+});
+
+describe("Feature: Extract Text From Rich Text Blocks", () => {
+  describe("Scenario: Return undefined for missing or empty blocks", () => {
+    it("should return undefined when blocks is undefined", () => {
+      expect(extractTextFromBlocks(undefined)).toBeUndefined();
+    });
+
+    it("should return undefined when blocks array is empty", () => {
+      expect(extractTextFromBlocks([])).toBeUndefined();
+    });
+
+    it("should return undefined when no rich_text blocks present", () => {
+      expect(extractTextFromBlocks([{ type: "section" }])).toBeUndefined();
+    });
+  });
+
+  describe("Scenario: Extract plain text from rich_text_section", () => {
+    it("should extract simple text", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_section",
+              elements: [{ type: "text", text: "Hello world" }],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("Hello world");
+    });
+
+    it("should preserve bold formatting", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_section",
+              elements: [
+                { type: "text", text: "Hello " },
+                { type: "text", text: "world", style: { bold: true } },
+              ],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("Hello **world**");
+    });
+
+    it("should preserve italic formatting", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_section",
+              elements: [
+                { type: "text", text: "emphasis", style: { italic: true } },
+              ],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("_emphasis_");
+    });
+
+    it("should preserve inline code formatting", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_section",
+              elements: [
+                { type: "text", text: "use " },
+                { type: "text", text: "npm install", style: { code: true } },
+              ],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("use `npm install`");
+    });
+
+    it("should preserve strikethrough formatting", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_section",
+              elements: [
+                { type: "text", text: "removed", style: { strike: true } },
+              ],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("~removed~");
+    });
+  });
+
+  describe("Scenario: Handle links", () => {
+    it("should format link with display text", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_section",
+              elements: [
+                { type: "link", url: "https://example.com", text: "Example" },
+              ],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe(
+        "[Example](https://example.com)",
+      );
+    });
+
+    it("should format link without display text", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_section",
+              elements: [{ type: "link", url: "https://example.com" }],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe(
+        "[https://example.com](https://example.com)",
+      );
+    });
+  });
+
+  describe("Scenario: Handle emoji", () => {
+    it("should convert unicode emoji", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_section",
+              elements: [{ type: "emoji", name: "wave", unicode: "1f44b" }],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("\u{1f44b}");
+    });
+
+    it("should use colon notation for custom emoji", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_section",
+              elements: [{ type: "emoji", name: "partyparrot" }],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe(":partyparrot:");
+    });
+  });
+
+  describe("Scenario: Handle mentions", () => {
+    it("should format user mention", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_section",
+              elements: [{ type: "user", user_id: "U12345" }],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("<@U12345>");
+    });
+
+    it("should format channel mention", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_section",
+              elements: [{ type: "channel", channel_id: "C12345" }],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("<#C12345>");
+    });
+
+    it("should format broadcast", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_section",
+              elements: [{ type: "broadcast", range: "channel" }],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("@channel");
+    });
+  });
+
+  describe("Scenario: Handle rich_text_list", () => {
+    it("should format bullet list", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_list",
+              style: "bullet",
+              elements: [
+                {
+                  type: "rich_text_section",
+                  elements: [{ type: "text", text: "Item 1" }],
+                },
+                {
+                  type: "rich_text_section",
+                  elements: [{ type: "text", text: "Item 2" }],
+                },
+              ],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("- Item 1\n- Item 2");
+    });
+
+    it("should format ordered list", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_list",
+              style: "ordered",
+              elements: [
+                {
+                  type: "rich_text_section",
+                  elements: [{ type: "text", text: "First" }],
+                },
+                {
+                  type: "rich_text_section",
+                  elements: [{ type: "text", text: "Second" }],
+                },
+              ],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("1. First\n2. Second");
+    });
+
+    it("should handle indented lists", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_list",
+              style: "bullet",
+              indent: 1,
+              elements: [
+                {
+                  type: "rich_text_section",
+                  elements: [{ type: "text", text: "Sub-item" }],
+                },
+              ],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("  - Sub-item");
+    });
+
+    it("should handle ordered list with offset", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_list",
+              style: "ordered",
+              offset: 3,
+              elements: [
+                {
+                  type: "rich_text_section",
+                  elements: [{ type: "text", text: "Continued" }],
+                },
+              ],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("4. Continued");
+    });
+  });
+
+  describe("Scenario: Handle rich_text_preformatted", () => {
+    it("should format code block", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_preformatted",
+              elements: [{ type: "text", text: "const x = 1;" }],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("```\nconst x = 1;\n```");
+    });
+
+    it("should include language annotation", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_preformatted",
+              language: "typescript",
+              elements: [{ type: "text", text: "const x: number = 1;" }],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe(
+        "```typescript\nconst x: number = 1;\n```",
+      );
+    });
+  });
+
+  describe("Scenario: Handle rich_text_quote", () => {
+    it("should format blockquote", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_quote",
+              elements: [{ type: "text", text: "Quoted text" }],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("> Quoted text");
+    });
+
+    it("should handle multi-line quotes", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_quote",
+              elements: [{ type: "text", text: "Line 1\nLine 2" }],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe("> Line 1\n> Line 2");
+    });
+  });
+
+  describe("Scenario: Complex multi-section messages", () => {
+    it("should combine multiple sections", () => {
+      const blocks = [
+        {
+          type: "rich_text",
+          elements: [
+            {
+              type: "rich_text_section",
+              elements: [
+                {
+                  type: "text",
+                  text: "Project Summary",
+                  style: { bold: true },
+                },
+              ],
+            },
+            {
+              type: "rich_text_section",
+              elements: [{ type: "text", text: "Here are the key points:" }],
+            },
+            {
+              type: "rich_text_list",
+              style: "bullet",
+              elements: [
+                {
+                  type: "rich_text_section",
+                  elements: [{ type: "text", text: "Point A" }],
+                },
+                {
+                  type: "rich_text_section",
+                  elements: [{ type: "text", text: "Point B" }],
+                },
+              ],
+            },
+          ],
+        },
+      ];
+
+      expect(extractTextFromBlocks(blocks)).toBe(
+        "**Project Summary**\nHere are the key points:\n- Point A\n- Point B",
+      );
+    });
+  });
+
+  describe("Scenario: Integration with formatContextForAgent", () => {
+    it("should prefer blocks content over text fallback", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Short fallback",
+          ts: "1234567890.001",
+          blocks: [
+            {
+              type: "rich_text",
+              elements: [
+                {
+                  type: "rich_text_section",
+                  elements: [
+                    {
+                      type: "text",
+                      text: "Full rich text content with all details preserved",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain(
+        "Full rich text content with all details preserved",
+      );
+      expect(result).not.toContain("Short fallback");
+    });
+
+    it("should fall back to text when no rich_text blocks", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Plain text message",
+          ts: "1234567890.001",
+          blocks: [{ type: "section" }],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("Plain text message");
+    });
+
+    it("should fall back to text when blocks is undefined", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Plain text message",
+          ts: "1234567890.001",
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("Plain text message");
     });
   });
 });

@@ -83,7 +83,7 @@ async function mergeWithBaseVersion(
 }
 
 const router = tsr.router(storagesPrepareContract, {
-  prepare: async ({ body, headers }) => {
+  prepare: async ({ body, headers }, { request }) => {
     initServices();
 
     // Authenticate user
@@ -98,10 +98,8 @@ const router = tsr.router(storagesPrepareContract, {
     }
 
     // Resolve user's scope
-    const { scope: userScope } = await resolveScope(
-      userId,
-      headers.authorization,
-    );
+    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const { scope: userScope } = await resolveScope(userId, scopeSlug);
 
     const {
       storageName,

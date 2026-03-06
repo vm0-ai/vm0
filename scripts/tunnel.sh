@@ -34,28 +34,36 @@ fi
 TUNNEL_LOG="/tmp/cloudflared-${PORT}.log"
 TUNNEL_PIDFILE="/tmp/cloudflared-${PORT}.pid"
 
-# --- Determine mode based on git email ---
-EMAIL=$(git config user.email 2>/dev/null || true)
-DOMAIN="${EMAIL##*@}"
-
-if [[ "$DOMAIN" == "vm0.ai" ]]; then
+# --- Determine mode based on git email or TUNNEL_HOSTNAME override ---
+if [[ -n "${TUNNEL_HOSTNAME:-}" ]]; then
   MODE="named"
-  USERNAME="${EMAIL%%@*}"
-  MACHINE_HOSTNAME=$(hostname)
-
-  # Map well-known ports to service names
-  case "$PORT" in
-    3000) SERVICE="www" ;;
-    3001) SERVICE="docs" ;;
-    3002) SERVICE="platform" ;;
-    *)    SERVICE="$PORT" ;;
-  esac
-
-  FQDN="tunnel-${USERNAME}-${MACHINE_HOSTNAME}-${SERVICE}.${TUNNEL_BASE_DOMAIN}"
-  TUNNEL_NAME="tunnel-${USERNAME}-${MACHINE_HOSTNAME}-${SERVICE}"
+  FQDN="$TUNNEL_HOSTNAME"
+  TUNNEL_NAME="${FQDN%%.*}"
   TUNNEL_URL="https://${FQDN}"
+  log "Using TUNNEL_HOSTNAME override: ${FQDN}"
 else
-  MODE="anonymous"
+  EMAIL=$(git config user.email 2>/dev/null || true)
+  DOMAIN="${EMAIL##*@}"
+
+  if [[ "$DOMAIN" == "vm0.ai" ]]; then
+    MODE="named"
+    USERNAME="${EMAIL%%@*}"
+    MACHINE_HOSTNAME=$(hostname)
+
+    # Map well-known ports to service names
+    case "$PORT" in
+      3000) SERVICE="www" ;;
+      3001) SERVICE="docs" ;;
+      3002) SERVICE="platform" ;;
+      *)    SERVICE="$PORT" ;;
+    esac
+
+    FQDN="tunnel-${USERNAME}-${MACHINE_HOSTNAME}-${SERVICE}.${TUNNEL_BASE_DOMAIN}"
+    TUNNEL_NAME="tunnel-${USERNAME}-${MACHINE_HOSTNAME}-${SERVICE}"
+    TUNNEL_URL="https://${FQDN}"
+  else
+    MODE="anonymous"
+  fi
 fi
 
 # --- Named tunnel setup ---

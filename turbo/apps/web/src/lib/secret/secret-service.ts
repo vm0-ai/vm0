@@ -43,7 +43,10 @@ interface SecretInfo {
 /**
  * List all secrets for a scope (metadata only, no values)
  */
-export async function listSecrets(scopeId: string): Promise<SecretInfo[]> {
+export async function listSecrets(
+  scopeId: string,
+  userId: string,
+): Promise<SecretInfo[]> {
   const result = await globalThis.services.db
     .select({
       id: secrets.id,
@@ -54,7 +57,7 @@ export async function listSecrets(scopeId: string): Promise<SecretInfo[]> {
       updatedAt: secrets.updatedAt,
     })
     .from(secrets)
-    .where(eq(secrets.scopeId, scopeId))
+    .where(and(eq(secrets.scopeId, scopeId), eq(secrets.userId, userId)))
     .orderBy(secrets.name);
 
   return result.map((row) => ({
@@ -69,6 +72,7 @@ export async function listSecrets(scopeId: string): Promise<SecretInfo[]> {
  */
 export async function getSecret(
   scopeId: string,
+  userId: string,
   name: string,
 ): Promise<SecretInfo | null> {
   const result = await globalThis.services.db
@@ -84,6 +88,7 @@ export async function getSecret(
     .where(
       and(
         eq(secrets.scopeId, scopeId),
+        eq(secrets.userId, userId),
         eq(secrets.name, name),
         eq(secrets.type, "user"),
       ),
@@ -107,10 +112,15 @@ export async function getSecret(
  */
 export async function getSecretValue(
   scopeId: string,
+  userId: string,
   name: string,
   type?: SecretType,
 ): Promise<string | null> {
-  const conditions = [eq(secrets.scopeId, scopeId), eq(secrets.name, name)];
+  const conditions = [
+    eq(secrets.scopeId, scopeId),
+    eq(secrets.userId, userId),
+    eq(secrets.name, name),
+  ];
   if (type) {
     conditions.push(eq(secrets.type, type));
   }
@@ -138,9 +148,10 @@ export async function getSecretValue(
  */
 export async function getSecretValues(
   scopeId: string,
+  userId: string,
   type?: SecretType,
 ): Promise<Record<string, string>> {
-  const conditions = [eq(secrets.scopeId, scopeId)];
+  const conditions = [eq(secrets.scopeId, scopeId), eq(secrets.userId, userId)];
   if (type) {
     conditions.push(eq(secrets.type, type));
   }
@@ -172,6 +183,7 @@ export async function getSecretValues(
  */
 export async function upsertSecretByScope(
   scopeId: string,
+  userId: string,
   name: string,
   value: string,
   type: SecretType,
@@ -186,6 +198,7 @@ export async function upsertSecretByScope(
     .where(
       and(
         eq(secrets.scopeId, scopeId),
+        eq(secrets.userId, userId),
         eq(secrets.name, name),
         eq(secrets.type, type),
       ),
@@ -200,6 +213,7 @@ export async function upsertSecretByScope(
   } else {
     await globalThis.services.db.insert(secrets).values({
       scopeId,
+      userId,
       name,
       encryptedValue,
       type,
@@ -233,6 +247,7 @@ export async function setSecret(
     .where(
       and(
         eq(secrets.scopeId, scopeId),
+        eq(secrets.userId, userId),
         eq(secrets.name, name),
         eq(secrets.type, "user"),
       ),
@@ -297,6 +312,7 @@ export async function setSecret(
  */
 export async function deleteSecret(
   scopeId: string,
+  userId: string,
   name: string,
 ): Promise<void> {
   // Check if this user secret exists
@@ -306,6 +322,7 @@ export async function deleteSecret(
     .where(
       and(
         eq(secrets.scopeId, scopeId),
+        eq(secrets.userId, userId),
         eq(secrets.name, name),
         eq(secrets.type, "user"),
       ),

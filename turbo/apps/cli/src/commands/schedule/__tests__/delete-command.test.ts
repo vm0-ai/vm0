@@ -51,7 +51,6 @@ describe("schedule delete command", () => {
   let originalIsTTY: boolean | undefined;
 
   beforeEach(() => {
-    vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
@@ -89,7 +88,7 @@ describe("schedule delete command", () => {
 
       expect(output).toContain("Delete a schedule");
       expect(output).toContain("<agent-name>");
-      expect(output).toContain("--force");
+      expect(output).toContain("--yes");
       expect(output).toContain("rm");
 
       mockStdoutWrite.mockRestore();
@@ -97,7 +96,7 @@ describe("schedule delete command", () => {
   });
 
   describe("successful delete", () => {
-    it("should delete schedule with --force", async () => {
+    it("should delete schedule with --yes", async () => {
       const schedule = createMockSchedule();
       let deletedName: string | undefined;
 
@@ -116,7 +115,7 @@ describe("schedule delete command", () => {
         ),
       );
 
-      await deleteCommand.parseAsync(["node", "cli", "test-agent", "--force"]);
+      await deleteCommand.parseAsync(["node", "cli", "test-agent", "--yes"]);
 
       expect(deletedName).toBe("test-agent-schedule");
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -150,7 +149,7 @@ describe("schedule delete command", () => {
         "node",
         "cli",
         "my-special-agent",
-        "--force",
+        "--yes",
       ]);
 
       expect(deletedName).toBe("my-special-agent-schedule");
@@ -159,8 +158,68 @@ describe("schedule delete command", () => {
     });
   });
 
+  describe("--name option (multi-schedule disambiguation)", () => {
+    it("should require --name when agent has multiple schedules", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({
+            schedules: [
+              createMockSchedule({ name: "daily-report" }),
+              createMockSchedule({ name: "weekly-cleanup" }),
+            ],
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await deleteCommand.parseAsync(["node", "cli", "test-agent", "--yes"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("multiple schedules"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--name"),
+      );
+    });
+
+    it("should delete specific schedule with --name", async () => {
+      const schedule1 = createMockSchedule({ name: "daily-report" });
+      const schedule2 = createMockSchedule({ name: "weekly-cleanup" });
+      let deletedName: string | undefined;
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({
+            schedules: [schedule1, schedule2],
+          });
+        }),
+        http.delete(
+          "http://localhost:3000/api/agent/schedules/:name",
+          ({ params }) => {
+            deletedName = params.name as string;
+            return new HttpResponse(null, { status: 204 });
+          },
+        ),
+      );
+
+      await deleteCommand.parseAsync([
+        "node",
+        "cli",
+        "test-agent",
+        "--name",
+        "weekly-cleanup",
+        "--yes",
+      ]);
+
+      expect(deletedName).toBe("weekly-cleanup");
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Deleted schedule");
+    });
+  });
+
   describe("confirmation", () => {
-    it("should require --force in non-interactive mode", async () => {
+    it("should require --yes in non-interactive mode", async () => {
       const schedule = createMockSchedule();
 
       server.use(
@@ -177,7 +236,7 @@ describe("schedule delete command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("--force required"),
+        expect.stringContaining("--yes"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -262,13 +321,10 @@ describe("schedule delete command", () => {
           "node",
           "cli",
           "nonexistent-agent",
-          "--force",
+          "--yes",
         ]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to delete schedule"),
-      );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("No schedule found"),
       );
@@ -291,12 +347,7 @@ describe("schedule delete command", () => {
       );
 
       await expect(async () => {
-        await deleteCommand.parseAsync([
-          "node",
-          "cli",
-          "test-agent",
-          "--force",
-        ]);
+        await deleteCommand.parseAsync(["node", "cli", "test-agent", "--yes"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(

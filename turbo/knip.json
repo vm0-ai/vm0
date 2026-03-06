@@ -10,7 +10,7 @@
         "middleware.cors.ts",
         "i18n.ts",
         "navigation.ts",
-        "scripts/*.ts",
+        "scripts/**/*.ts",
         "**/__tests__/**/*.{test,spec}.{ts,tsx}",
         "**/*.{test,spec}.{ts,tsx}"
       ],

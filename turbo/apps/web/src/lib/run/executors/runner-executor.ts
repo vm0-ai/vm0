@@ -91,5 +91,6 @@ export async function executeRunnerJob(
     runId: context.runId,
     status: "pending",
     createdAt: new Date().toISOString(),
+    sandboxType: "runner",
   };
 }

@@ -1,5 +1,43 @@
 # Changelog
 
+## [8.40.0](https://github.com/vm0-ai/vm0/compare/core-v8.39.0...core-v8.40.0) (2026-03-06)
+
+
+### Features
+
+* add scope tier with per-scope concurrency limits ([#3802](https://github.com/vm0-ai/vm0/issues/3802)) ([210a307](https://github.com/vm0-ai/vm0/commit/210a307d12be7dcc33c17af1c8c641feb3a1044a))
+
+## [8.39.0](https://github.com/vm0-ai/vm0/compare/core-v8.38.1...core-v8.39.0) (2026-03-06)
+
+
+### Features
+
+* **run-queue:** implement per-user run queue mechanism ([#3764](https://github.com/vm0-ai/vm0/issues/3764)) ([85a4fbd](https://github.com/vm0-ai/vm0/commit/85a4fbd7707e72f31631c21ae6a3f5698cd138bf))
+
+## [8.38.1](https://github.com/vm0-ai/vm0/compare/core-v8.38.0...core-v8.38.1) (2026-03-06)
+
+
+### Bug Fixes
+
+* remove unused refresh_token from cli auth token response ([#3747](https://github.com/vm0-ai/vm0/issues/3747)) ([0f5a09a](https://github.com/vm0-ai/vm0/commit/0f5a09a784b8d11ab242942c0ab145c3c1148193))
+
+## [8.38.0](https://github.com/vm0-ai/vm0/compare/core-v8.37.0...core-v8.38.0) (2026-03-05)
+
+
+### Features
+
+* **docusign:** add pkce support and expand oauth scopes ([#3725](https://github.com/vm0-ai/vm0/issues/3725)) ([8aa15f3](https://github.com/vm0-ai/vm0/commit/8aa15f3e39c34c7c2486386ab00a25bbc7fdb1f1))
+* **monday:** add monday.com oauth connector ([#3753](https://github.com/vm0-ai/vm0/issues/3753)) ([8bdf5fb](https://github.com/vm0-ai/vm0/commit/8bdf5fb29edb1f309d692ee6f5d5fe0c74634ca5))
+* scope unification phase 3 — constraints, cleanup, and token simplification ([#3719](https://github.com/vm0-ai/vm0/issues/3719)) ([9ecbb1b](https://github.com/vm0-ai/vm0/commit/9ecbb1b1addfb855b0ac17fe45508bddd483485f))
+* **xero:** add xero oauth connector and remove feature switch ([#3717](https://github.com/vm0-ai/vm0/issues/3717)) ([8fb5fec](https://github.com/vm0-ai/vm0/commit/8fb5fecb58c9776a3900a3678939c8ca2ab40442))
+
+## [8.37.0](https://github.com/vm0-ai/vm0/compare/core-v8.36.0...core-v8.37.0) (2026-03-05)
+
+
+### Features
+
+* add oauth scope mismatch detection in connector settings ([#3704](https://github.com/vm0-ai/vm0/issues/3704)) ([77e2fcf](https://github.com/vm0-ai/vm0/commit/77e2fcfd80359e0310a1b0ccc6b2a9ad440a6dff)), closes [#3648](https://github.com/vm0-ai/vm0/issues/3648)
+
 ## [8.36.0](https://github.com/vm0-ai/vm0/compare/core-v8.35.0...core-v8.36.0) (2026-03-05)
 
 

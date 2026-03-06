@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { telegramInstallations } from "../../../db/schema/telegram-installation";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
-import { createTelegramClient, sendMessage } from "../client";
+import { createTelegramClient, sendMessage, deleteMessage } from "../client";
 import { sendThinkingMessage } from "./shared";
 import { fetchTelegramContext } from "../context";
 import { runAgentForTelegram } from "./run-agent";
@@ -13,18 +13,12 @@ import {
   resolveSessionCompose,
   resolveUserLink,
 } from "./shared";
+import { escapeHtml } from "../format";
+import { getPlatformUrl } from "../../url";
 import { logger } from "../../logger";
+import type { TelegramHandlerUpdate } from "./types";
 
 const log = logger("telegram:dm");
-
-interface TelegramUpdate {
-  message: {
-    message_id: number;
-    chat: { id: number; type: string };
-    from?: { id: number; username?: string; is_bot?: boolean };
-    text?: string;
-  };
-}
 
 /**
  * Handle a direct message to the bot
@@ -34,7 +28,7 @@ interface TelegramUpdate {
  * - Use rootMessageId = "dm" sentinel for single ongoing DM session
  */
 export async function handleTelegramDirectMessage(
-  update: TelegramUpdate,
+  update: TelegramHandlerUpdate,
   installationId: string,
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
@@ -64,16 +58,18 @@ export async function handleTelegramDirectMessage(
   const userLink = await resolveUserLink(installationId, fromUserId);
 
   if (!userLink) {
+    const platformUrl = getPlatformUrl();
+    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}`;
     await sendMessage(
       client,
       chatId,
-      "Please link your account first. Send /start to begin.",
+      `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
     );
     return;
   }
 
   // 3. Resolve workspace agent
-  let composeId = installation.defaultComposeId;
+  const composeId = installation.defaultComposeId;
   const defaultAgent = await getWorkspaceAgent(composeId);
   if (!defaultAgent) {
     await sendMessage(
@@ -83,7 +79,7 @@ export async function handleTelegramDirectMessage(
     );
     return;
   }
-  let agentName = defaultAgent.name;
+  const agentName = defaultAgent.name;
 
   // 4. Send thinking placeholder message
   const thinkingMessage = await sendThinkingMessage(client, chatId, agentName);
@@ -100,27 +96,34 @@ export async function handleTelegramDirectMessage(
     rootMessageId,
     userLink.id,
   );
-  const existingSessionId = session.existingSessionId;
+  let existingSessionId = session.existingSessionId;
   const lastProcessedMessageId = session.lastProcessedMessageId;
 
-  // 7b. If continuing session, use session's compose
+  // 7b. Validate session's agent matches current default — discard only on positive mismatch
   if (existingSessionId) {
     const sessionCompose = await resolveSessionCompose(
       existingSessionId,
       userLink.vm0UserId,
     );
-    if (sessionCompose) {
-      composeId = sessionCompose.composeId;
-      agentName = sessionCompose.agentName;
+    if (sessionCompose && sessionCompose.composeId !== composeId) {
+      log.debug("Agent changed, starting new session", {
+        sessionComposeId: sessionCompose.composeId,
+        currentComposeId: composeId,
+      });
+      existingSessionId = undefined;
     }
   }
 
-  // 8. Fetch context
-  const { executionContext } = await fetchTelegramContext(
-    installationId,
-    chatId,
-    lastProcessedMessageId,
-  );
+  // 8. Fetch context (skip when continuing an existing session — it already has history)
+  let executionContext = "";
+  if (!existingSessionId) {
+    const ctx = await fetchTelegramContext(
+      installationId,
+      chatId,
+      lastProcessedMessageId,
+    );
+    executionContext = ctx.executionContext;
+  }
 
   // 9. Dispatch agent run
   const { status, response } = await runAgentForTelegram({
@@ -134,6 +137,7 @@ export async function handleTelegramDirectMessage(
       installationId,
       chatId,
       messageId: String(message.message_id),
+      rootMessageId: "dm",
       userLinkId: userLink.id,
       agentName,
       composeId,
@@ -147,6 +151,9 @@ export async function handleTelegramDirectMessage(
 
   if (status === "failed") {
     log.error("Failed to dispatch agent run", { response });
+    if (thinkingMessage) {
+      await deleteMessage(client, chatId, thinkingMessage.message_id);
+    }
     await sendMessage(
       client,
       chatId,

@@ -85,7 +85,6 @@ export {
   removeMember,
   leaveOrg,
   listScopes,
-  useScope,
 } from "./domains/org";
 
 // Domain modules - Usage

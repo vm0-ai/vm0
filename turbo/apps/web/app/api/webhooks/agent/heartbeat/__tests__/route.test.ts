@@ -209,5 +209,28 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
       expect(data1.ok).toBe(true);
       expect(data2.ok).toBe(true);
     });
+
+    it("should register an after() callback for progress dispatch", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/heartbeat",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({ runId: testRunId }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // The heartbeat handler should have registered an after() callback
+      expect(globalThis.nextAfterCallbacks).toHaveLength(1);
+
+      // Flush and verify it doesn't throw (no callbacks registered for this run)
+      await context.mocks.flushAfter();
+    });
   });
 });

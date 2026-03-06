@@ -17,8 +17,7 @@ import { agentRuns } from "./agent-run";
 /**
  * Agent Schedules table
  * Stores schedule configurations for automated agent runs
- * Database supports 1:N (one agent can have multiple schedules)
- * API enforces 1:1 in initial version (single schedule per agent)
+ * Supports 1:N (one agent can have multiple named schedules)
  *
  * Note: The migration includes a CHECK constraint (trigger_check) ensuring
  * exactly one trigger type is set, matching the trigger_type column:

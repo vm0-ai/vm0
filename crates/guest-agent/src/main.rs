@@ -146,8 +146,6 @@ async fn execute(
         init_elapsed.as_secs()
     );
 
-    guest_agent::timing::record_e2e_from_api("api_to_init_complete");
-
     // Execution phase
     log_info!(LOG_TAG, "▷ Execution");
     let cli_start = Instant::now();

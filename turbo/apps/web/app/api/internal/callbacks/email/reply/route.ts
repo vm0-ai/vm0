@@ -68,6 +68,60 @@ function formatOutput(
   return error ?? "The agent run failed.";
 }
 
+async function sendReplyEmail(
+  session: { replyToToken: string; lastEmailMessageId: string | null },
+  payload: CallbackPayload,
+  composeName: string,
+  userEmail: string | string[],
+  output: string,
+  logsUrl: string,
+): ReturnType<typeof sendEmail> {
+  const replyToAddress = buildReplyToAddress(session.replyToToken);
+  const headers: Record<string, string> = {};
+
+  const replyToMessageId =
+    payload.inboundMessageId ?? session.lastEmailMessageId;
+  if (replyToMessageId) {
+    headers["In-Reply-To"] = replyToMessageId;
+  }
+
+  const referencesParts: string[] = [];
+  if (payload.inboundReferences) {
+    referencesParts.push(payload.inboundReferences);
+  } else if (session.lastEmailMessageId) {
+    referencesParts.push(session.lastEmailMessageId);
+  }
+  if (payload.inboundMessageId) {
+    referencesParts.push(payload.inboundMessageId);
+  }
+  if (referencesParts.length > 0) {
+    headers["References"] = referencesParts.join(" ");
+  }
+
+  const emailTo =
+    payload.replyRecipientTo && payload.replyRecipientTo.length > 0
+      ? payload.replyRecipientTo
+      : userEmail;
+  const emailCc =
+    payload.replyRecipientCc && payload.replyRecipientCc.length > 0
+      ? payload.replyRecipientCc
+      : undefined;
+
+  return sendEmail({
+    from: buildFromAddress(composeName),
+    to: emailTo,
+    subject: `Re: VM0 - Scheduled run for "${composeName}" completed`,
+    react: AgentReplyEmail({
+      agentName: composeName,
+      output,
+      logsUrl,
+    }),
+    cc: emailCc,
+    replyTo: replyToAddress,
+    headers,
+  });
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
 
@@ -84,6 +138,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { emailThreadSessionId } = payload;
 
   log.debug("Processing email reply callback", { runId, status });
+
+  // Progress notifications are not applicable for email — no-op.
+  if (status === "progress") {
+    return NextResponse.json({ success: true });
+  }
 
   // Look up the email thread session
   const [session] = await globalThis.services.db
@@ -117,7 +176,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // Get run output
-  const logsUrl = buildLogsUrl(runId);
+  const logsUrl = buildLogsUrl(runId, compose.name);
   const rawOutput =
     status === "completed" ? ((await getRunOutput(runId)) ?? null) : null;
   const output = formatOutput(status, rawOutput, error);
@@ -132,55 +191,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const newAgentSessionId = extractAgentSessionId(run?.result);
 
   // Send response email with threading headers
-  const replyToAddress = buildReplyToAddress(session.replyToToken);
-  const headers: Record<string, string> = {};
-
-  // In-Reply-To: the inbound message we are replying to (RFC 2822)
-  // Falls back to session.lastEmailMessageId for backwards compatibility
-  const replyToMessageId =
-    payload.inboundMessageId ?? session.lastEmailMessageId;
-  if (replyToMessageId) {
-    headers["In-Reply-To"] = replyToMessageId;
-  }
-
-  // References: inbound References chain + inbound Message-ID (RFC 2822)
-  // Falls back to session.lastEmailMessageId if no inbound data
-  const referencesParts: string[] = [];
-  if (payload.inboundReferences) {
-    referencesParts.push(payload.inboundReferences);
-  } else if (session.lastEmailMessageId) {
-    referencesParts.push(session.lastEmailMessageId);
-  }
-  if (payload.inboundMessageId) {
-    referencesParts.push(payload.inboundMessageId);
-  }
-  if (referencesParts.length > 0) {
-    headers["References"] = referencesParts.join(" ");
-  }
-
-  // Use computed recipients if available, fall back to session owner
-  const emailTo =
-    payload.replyRecipientTo && payload.replyRecipientTo.length > 0
-      ? payload.replyRecipientTo
-      : userEmail;
-  const emailCc =
-    payload.replyRecipientCc && payload.replyRecipientCc.length > 0
-      ? payload.replyRecipientCc
-      : undefined;
-
-  const { messageId } = await sendEmail({
-    from: buildFromAddress(compose.name),
-    to: emailTo,
-    subject: `Re: VM0 - Scheduled run for "${compose.name}" completed`,
-    react: AgentReplyEmail({
-      agentName: compose.name,
-      output,
-      logsUrl,
-    }),
-    cc: emailCc,
-    replyTo: replyToAddress,
-    headers,
-  });
+  const { messageId } = await sendReplyEmail(
+    session,
+    payload,
+    compose.name,
+    userEmail,
+    output,
+    logsUrl,
+  );
 
   // Update email thread session with new message ID and session
   await updateEmailThreadSession(session.id, {

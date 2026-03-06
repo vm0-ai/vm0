@@ -91,23 +91,34 @@ export async function POST(request: Request) {
 
   const telegramBotId = String(botInfoResult.id);
 
-  // 2. Check for duplicate
+  // 2. Check for duplicate — if bot already registered, link the user instead
   const [existing] = await globalThis.services.db
-    .select({ id: telegramInstallations.id })
+    .select({
+      id: telegramInstallations.id,
+      telegramBotId: telegramInstallations.telegramBotId,
+      botUsername: telegramInstallations.botUsername,
+    })
     .from(telegramInstallations)
     .where(eq(telegramInstallations.telegramBotId, telegramBotId))
     .limit(1);
 
   if (existing) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "This bot is already registered",
-          code: "CONFLICT",
-        },
-      },
-      { status: 409 },
-    );
+    // Create a pending user link so the user is auto-linked on first message
+    await globalThis.services.db
+      .insert(telegramUserLinks)
+      .values({
+        telegramUserId: PENDING_TELEGRAM_USER_ID,
+        installationId: existing.id,
+        vm0UserId: userId,
+      })
+      .onConflictDoNothing();
+    await ensureScopeAndArtifact(userId);
+
+    return NextResponse.json({
+      id: existing.id,
+      botId: existing.telegramBotId,
+      botUsername: existing.botUsername,
+    });
   }
 
   // 3. Resolve default agent
@@ -193,8 +204,11 @@ export async function POST(request: Request) {
 
   // 7. Register bot commands (non-blocking)
   await setMyCommands(body.botToken, [
-    { command: "start", description: "Link your account" },
-    { command: "help", description: "Show help" },
+    { command: "new_session", description: "Start a new conversation" },
+    { command: "connect", description: "Connect your VM0 account" },
+    { command: "disconnect", description: "Disconnect your account" },
+    { command: "settings", description: "Open platform settings" },
+    { command: "help", description: "Show available commands" },
   ]).catch((error) => {
     log.warn("Failed to register bot commands", { error });
   });

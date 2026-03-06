@@ -23,7 +23,6 @@ describe("run list command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
-    vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
@@ -154,7 +153,7 @@ describe("run list command", () => {
       await listCommand.parseAsync(["node", "cli", "--all"]);
 
       expect(capturedUrl?.searchParams.get("status")).toBe(
-        "pending,running,completed,failed,timeout",
+        "queued,pending,running,completed,failed,timeout",
       );
     });
 
@@ -215,7 +214,7 @@ describe("run list command", () => {
       await listCommand.parseAsync(["node", "cli", "--since", "7d"]);
 
       expect(capturedUrl?.searchParams.get("status")).toBe(
-        "pending,running,completed,failed,timeout",
+        "queued,pending,running,completed,failed,timeout",
       );
     });
 

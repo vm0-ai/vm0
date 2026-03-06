@@ -2,10 +2,8 @@ import { initClient } from "@ts-rest/core";
 import {
   orgContract,
   scopeListContract,
-  scopeUseContract,
   type OrgStatusResponse,
   type ScopeListResponse,
-  type ScopeUseResponse,
 } from "@vm0/core";
 import {
   getClientConfig,
@@ -140,22 +138,4 @@ export async function listScopes(): Promise<ScopeListResponse> {
   }
 
   handleError(result, "Failed to list scopes");
-}
-
-/**
- * Switch to a different scope (always uses user token)
- */
-export async function useScope(slug: string): Promise<ScopeUseResponse> {
-  const config = await getUserTokenClientConfig();
-  const client = initClient(scopeUseContract, config);
-
-  const result = await client.use({
-    body: { slug },
-  });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to switch scope");
 }

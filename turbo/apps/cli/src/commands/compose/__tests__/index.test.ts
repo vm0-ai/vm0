@@ -88,14 +88,12 @@ describe("compose command", () => {
   const scopeResponse = {
     id: "scope-123",
     slug: "user-abc12345",
-    type: "personal",
     displayName: null,
     createdAt: "2025-01-01T00:00:00Z",
     updatedAt: "2025-01-01T00:00:00Z",
   };
 
   beforeEach(() => {
-    vi.clearAllMocks();
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-compose-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);
@@ -1788,7 +1786,6 @@ describe("GitHub URL compose", () => {
   const scopeResponse = {
     id: "scope-123",
     slug: "user-abc12345",
-    type: "personal",
     displayName: null,
     createdAt: "2025-01-01T00:00:00Z",
     updatedAt: "2025-01-01T00:00:00Z",
@@ -1809,7 +1806,6 @@ describe("GitHub URL compose", () => {
   }
 
   beforeEach(() => {
-    vi.clearAllMocks();
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-github-compose-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);

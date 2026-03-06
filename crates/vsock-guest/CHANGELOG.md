@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.6.1...vsock-guest-v0.6.2) (2026-03-06)
+
+
+### Bug Fixes
+
+* **vsock-guest:** prevent secret leakage in exec/spawn_watch logs ([#3787](https://github.com/vm0-ai/vm0/issues/3787)) ([b3f4237](https://github.com/vm0-ai/vm0/commit/b3f42373fd30d092c0f1604d2df7ddc557150681))
+
 ## [0.6.1](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.6.0...vsock-guest-v0.6.1) (2026-03-04)
 
 

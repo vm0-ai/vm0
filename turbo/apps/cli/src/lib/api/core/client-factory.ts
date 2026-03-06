@@ -1,4 +1,5 @@
-import { getApiUrl, getActiveToken } from "../config";
+import { tsRestFetchApi } from "@ts-rest/core";
+import { getApiUrl, getActiveToken, loadConfig } from "../config";
 import type { ApiErrorResponse } from "@vm0/core";
 
 /**
@@ -53,14 +54,29 @@ export async function getBaseUrl(): Promise<string> {
 /**
  * Configuration for ts-rest client initialization
  */
-export async function getClientConfig(): Promise<{
-  baseUrl: string;
-  baseHeaders: Record<string, string>;
-  jsonQuery: false;
-}> {
+export async function getClientConfig() {
   const baseUrl = await getBaseUrl();
   const baseHeaders = await getHeaders();
-  return { baseUrl, baseHeaders, jsonQuery: false };
+
+  const config = await loadConfig();
+  const activeScope = config.activeScope;
+
+  if (activeScope) {
+    return {
+      baseUrl,
+      baseHeaders,
+      jsonQuery: false as const,
+      api: async (args: Parameters<typeof tsRestFetchApi>[0]) => {
+        const separator = args.path.includes("?") ? "&" : "?";
+        if (!args.path.includes("scope=")) {
+          args.path = `${args.path}${separator}scope=${encodeURIComponent(activeScope)}`;
+        }
+        return tsRestFetchApi(args);
+      },
+    };
+  }
+
+  return { baseUrl, baseHeaders, jsonQuery: false as const };
 }
 
 /**

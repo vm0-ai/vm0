@@ -36,7 +36,10 @@ describe("telegram settings page", () => {
 
     // Available commands section
     expect(screen.getByText("Your available commands")).toBeInTheDocument();
-    expect(screen.getByText("/start")).toBeInTheDocument();
+    expect(screen.getByText("/new_session")).toBeInTheDocument();
+    expect(screen.getByText("/connect")).toBeInTheDocument();
+    expect(screen.getByText("/disconnect")).toBeInTheDocument();
+    expect(screen.getByText("/settings")).toBeInTheDocument();
     expect(screen.getByText("/help")).toBeInTheDocument();
 
     // Disconnect section (heading + button)

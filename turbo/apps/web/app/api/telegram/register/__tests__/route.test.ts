@@ -147,7 +147,7 @@ describe("POST /api/telegram/register", () => {
     expect(setCommandsHandler.mocked).toHaveBeenCalledTimes(1);
   });
 
-  it("returns 409 when bot is already registered", async () => {
+  it("creates user link when bot is already registered", async () => {
     await context.setupUser();
 
     const botId = testBotId();
@@ -168,14 +168,14 @@ describe("POST /api/telegram/register", () => {
     );
     expect(first.status).toBe(201);
 
-    // Second registration with same bot fails
+    // Second registration with same bot creates a user link instead of 409
     const second = await POST(
       registerRequest({ botToken: TEST_BOT_TOKEN, defaultAgentId: composeId }),
     );
     const body = await second.json();
 
-    expect(second.status).toBe(409);
-    expect(body.error.code).toBe("CONFLICT");
+    expect(second.status).toBe(200);
+    expect(body.botUsername).toBeDefined();
   });
 
   it("returns 400 when no default agent is available", async () => {

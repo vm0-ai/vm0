@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { POST as createOrgRoute } from "../../org/route";
+import { POST as inviteRoute } from "../../org/invite/route";
 import { GET } from "../../scope/list/route";
 import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
@@ -42,41 +43,62 @@ describe("GET /api/scope/list - Scope List", () => {
   });
 
   it("should return org scopes with memberships", async () => {
-    const user = await context.setupUser();
+    // Create an org (admin gets one scope from org creation)
+    const adminUserId = uniqueId("list-admin");
     const slug = uniqueId("org");
-    const orgId = `org_${user.userId}`;
+    const orgId = `org_${adminUserId}`;
     setupClerkOrgMock({
-      userId: user.userId,
+      userId: adminUserId,
       orgId,
-      memberships: [{ userId: user.userId, role: "org:admin" }],
+      memberships: [{ userId: adminUserId, role: "org:admin" }],
     });
 
-    // Create org first
     const createReq = createTestRequest("http://localhost:3000/api/org", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ slug }),
     });
-    await createOrgRoute(createReq);
+    const createRes = await createOrgRoute(createReq);
+    expect(createRes.status).toBe(201);
 
-    // List scopes
+    // Invite a member — the Clerk mock maps "list-member@example.com" -> "user_list-member"
+    const memberUserId = "user_list-member";
+    const memberEmail = "list-member@example.com";
+    setupClerkOrgMock({
+      userId: adminUserId,
+      orgId,
+      memberships: [
+        { userId: adminUserId, role: "org:admin" },
+        { userId: memberUserId, role: "org:member" },
+      ],
+    });
+
+    const inviteReq = createTestRequest(
+      `http://localhost:3000/api/org/invite?scope=${slug}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: memberEmail }),
+      },
+    );
+    const inviteRes = await inviteRoute(inviteReq);
+    expect(inviteRes.status).toBe(200);
+
+    // List scopes as the member — should see the org scope
+    mockClerk({ userId: memberUserId });
     const listReq = createTestRequest("http://localhost:3000/api/scope/list");
     const listRes = await GET(listReq);
     expect(listRes.status).toBe(200);
 
     const data = await listRes.json();
-    expect(data.scopes.length).toBeGreaterThanOrEqual(2);
+    expect(data.scopes.length).toBeGreaterThanOrEqual(1);
 
-    const personal = data.scopes.find(
-      (s: { slug: string; role: string }) => s.role === "admin",
-    );
-    expect(personal).toBeDefined();
-
-    const org = data.scopes.find(
+    const orgScope = data.scopes.find(
       (s: { slug: string; role: string }) => s.slug === slug,
     );
-    expect(org).toBeDefined();
-    expect(org.slug).toBe(slug);
+    expect(orgScope).toBeDefined();
+    expect(orgScope.slug).toBe(slug);
+    expect(orgScope.role).toBe("member");
   });
 
   it("should only return scopes where user has scope_members record", async () => {

@@ -14,6 +14,7 @@ import { googleDriveHandler } from "./providers/google-drive-handler";
 import { googleSheetsHandler } from "./providers/google-sheets-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
+import { mondayHandler } from "./providers/monday-handler";
 import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
 import { redditHandler } from "./providers/reddit-handler";
@@ -44,6 +45,7 @@ export const PROVIDER_HANDLERS: Record<
   "google-sheets": googleSheetsHandler,
   linear: linearHandler,
   mercury: mercuryHandler,
+  monday: mondayHandler,
   neon: neonHandler,
   notion: notionHandler,
   reddit: redditHandler,

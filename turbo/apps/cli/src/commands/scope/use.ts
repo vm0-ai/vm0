@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { useScope } from "../../lib/api";
-import { setOrgToken, clearOrgToken } from "../../lib/api/config";
+import { listScopes } from "../../lib/api";
+import { saveConfig } from "../../lib/api/config";
 
 export const useCommand = new Command()
   .name("use")
@@ -11,7 +11,7 @@ export const useCommand = new Command()
   .action(async (slug: string | undefined, options: { personal?: boolean }) => {
     try {
       if (options.personal) {
-        await clearOrgToken();
+        await saveConfig({ activeScope: undefined });
         console.log(chalk.green("✓ Switched to default scope."));
         return;
       }
@@ -25,14 +25,18 @@ export const useCommand = new Command()
         process.exit(1);
       }
 
-      const result = await useScope(slug);
-
-      if (result.token) {
-        await setOrgToken(result.token, result.expiresAt, result.scope.slug);
-      } else {
-        await clearOrgToken();
+      // Verify the scope exists and user has access
+      const scopeList = await listScopes();
+      const target = scopeList.scopes.find((s) => s.slug === slug);
+      if (!target) {
+        console.error(
+          chalk.red(`✗ Scope '${slug}' not found or not accessible.`),
+        );
+        process.exit(1);
       }
-      console.log(chalk.green(`✓ Switched to scope: ${result.scope.slug}`));
+
+      await saveConfig({ activeScope: slug });
+      console.log(chalk.green(`✓ Switched to scope: ${slug}`));
     } catch (error) {
       if (error instanceof Error) {
         console.error(chalk.red(`✗ ${error.message}`));

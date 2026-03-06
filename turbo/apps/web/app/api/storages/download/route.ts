@@ -17,7 +17,7 @@ import { logger } from "../../../../src/lib/logger";
 const log = logger("api:storages:download");
 
 const router = tsr.router(storagesDownloadContract, {
-  download: async ({ query, headers }) => {
+  download: async ({ query, headers }, { request }) => {
     initServices();
 
     // Authenticate user
@@ -32,10 +32,8 @@ const router = tsr.router(storagesDownloadContract, {
     }
 
     // Resolve user's scope
-    const { scope: userScope } = await resolveScope(
-      userId,
-      headers.authorization,
-    );
+    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const { scope: userScope } = await resolveScope(userId, scopeSlug);
 
     const { name: storageName, type: storageType, version: versionId } = query;
 

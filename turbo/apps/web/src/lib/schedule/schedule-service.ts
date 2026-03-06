@@ -4,6 +4,7 @@ import {
   extractVariableReferences,
   groupVariablesBySource,
   getConnectorProvidedSecretNames,
+  scopeTierSchema,
 } from "@vm0/core";
 import { agentSchedules } from "../../db/schema/agent-schedule";
 import {
@@ -14,13 +15,7 @@ import { agentRuns } from "../../db/schema/agent-run";
 import { connectors } from "../../db/schema/connector";
 import { scopes } from "../../db/schema/scope";
 import { decryptSecretsMap } from "../crypto";
-import {
-  notFound,
-  badRequest,
-  schedulePast,
-  isConcurrentRunLimit,
-  type ConcurrentRunLimitError,
-} from "../errors";
+import { notFound, badRequest, schedulePast } from "../errors";
 import { logger } from "../logger";
 import { createRun } from "../run/run-service";
 import { getSecretValues } from "../secret/secret-service";
@@ -29,10 +24,6 @@ import { getUserPreferences } from "../user/user-preferences-service";
 import { generateCallbackSecret, getApiUrl } from "../callback";
 
 const log = logger("service:schedule");
-
-// Retry configuration for concurrency failures
-const RETRY_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const MAX_RETRY_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 
 /**
  * Schedule data for API responses
@@ -68,7 +59,7 @@ export interface ScheduleResponse {
  */
 interface RunSummary {
   id: string;
-  status: "pending" | "running" | "completed" | "failed" | "timeout";
+  status: "queued" | "pending" | "running" | "completed" | "failed" | "timeout";
   createdAt: string;
   completedAt: string | null;
   error: string | null;
@@ -265,13 +256,17 @@ async function validateRequiredConfig(
   const required = extractRequiredConfiguration(version.content);
 
   // Fetch platform-managed secrets and vars from compose's scope
-  const platformSecrets = await getSecretValues(compose.scopeId, "user");
+  const platformSecrets = await getSecretValues(
+    compose.scopeId,
+    compose.userId,
+    "user",
+  );
   const platformSecretNames = Object.keys(platformSecrets);
   log.debug(
     `Fetched ${platformSecretNames.length} platform secret(s) for validation`,
   );
 
-  const platformVars = await getVariableValues(compose.scopeId);
+  const platformVars = await getVariableValues(compose.scopeId, compose.userId);
   const platformVarNames = Object.keys(platformVars);
   log.debug(
     `Fetched ${platformVarNames.length} platform variable(s) for validation`,
@@ -281,7 +276,12 @@ async function validateRequiredConfig(
   const userConnectors = await globalThis.services.db
     .select({ type: connectors.type })
     .from(connectors)
-    .where(eq(connectors.scopeId, compose.scopeId));
+    .where(
+      and(
+        eq(connectors.scopeId, compose.scopeId),
+        eq(connectors.userId, compose.userId),
+      ),
+    );
   const connectorProvidedNames = getConnectorProvidedSecretNames(
     userConnectors.map((c) => c.type),
   );
@@ -359,21 +359,6 @@ export async function deploySchedule(
       ),
     )
     .limit(1);
-
-  // Initial version: enforce 1:1 constraint (one schedule per agent)
-  if (!existing) {
-    const existingSchedules = await globalThis.services.db
-      .select()
-      .from(agentSchedules)
-      .where(eq(agentSchedules.composeId, request.composeId))
-      .limit(1);
-
-    if (existingSchedules.length > 0) {
-      throw badRequest(
-        "This agent already has a schedule. Please edit the existing schedule or delete it first.",
-      );
-    }
-  }
 
   // Validate required secrets/vars against platform tables
   await validateRequiredConfig(compose);
@@ -840,76 +825,6 @@ async function advanceScheduleState(
 }
 
 /**
- * Handle concurrency limit failure with retry logic.
- * Returns true if retry was scheduled (don't re-throw), false if should advance to next occurrence.
- */
-async function handleConcurrencyFailure(
-  schedule: typeof agentSchedules.$inferSelect,
-  compose: { userId: string; headVersionId: string },
-  error: ConcurrentRunLimitError,
-): Promise<boolean> {
-  const now = new Date();
-
-  // Create failed run record
-  const [failedRun] = await globalThis.services.db
-    .insert(agentRuns)
-    .values({
-      userId: compose.userId,
-      agentComposeVersionId: compose.headVersionId,
-      scheduleId: schedule.id,
-      status: "failed",
-      prompt: schedule.prompt,
-      vars: schedule.vars,
-      error: error.message,
-      completedAt: now,
-      createdAt: now,
-    })
-    .returning();
-
-  // Determine retry window start (use existing or start new window)
-  const retryStartedAt = schedule.retryStartedAt ?? now;
-  const windowElapsed = now.getTime() - retryStartedAt.getTime();
-
-  if (windowElapsed < MAX_RETRY_WINDOW_MS) {
-    // Within retry window: schedule retry in 5 minutes
-    const nextRetryAt = new Date(now.getTime() + RETRY_INTERVAL_MS);
-
-    await globalThis.services.db
-      .update(agentSchedules)
-      .set({
-        lastRunId: failedRun?.id ?? schedule.lastRunId,
-        retryStartedAt,
-        nextRunAt: nextRetryAt,
-      })
-      .where(eq(agentSchedules.id, schedule.id));
-
-    log.debug(
-      `Schedule ${schedule.name} retry scheduled at ${nextRetryAt.toISOString()} ` +
-        `(${Math.round(windowElapsed / 60000)} min into retry window)`,
-    );
-
-    return true; // Retry scheduled, don't re-throw
-  }
-
-  // Retry window expired: clear state and advance to next occurrence
-  log.debug(
-    `Schedule ${schedule.name} retry window expired after ${Math.round(windowElapsed / 60000)} min`,
-  );
-
-  await advanceScheduleState(
-    schedule,
-    failedRun?.id ?? schedule.lastRunId ?? undefined,
-  );
-  log.debug(
-    schedule.cronExpression
-      ? `Cron schedule ${schedule.name} retry window expired`
-      : `One-time schedule ${schedule.name} retry window expired and disabled`,
-  );
-
-  return true; // Already handled, don't re-throw
-}
-
-/**
  * Execute a single schedule
  */
 async function executeSchedule(
@@ -940,6 +855,13 @@ async function executeSchedule(
     log.error(`Compose ${compose.name} has no versions`);
     return;
   }
+
+  // Load scope tier for concurrency limit
+  const [scopeRecord] = await globalThis.services.db
+    .select({ tier: scopes.tier })
+    .from(scopes)
+    .where(eq(scopes.id, compose.scopeId))
+    .limit(1);
 
   // Build callbacks for run completion notifications
   const callbacks: Array<{ url: string; secret: string; payload: unknown }> =
@@ -997,25 +919,14 @@ async function executeSchedule(
       volumeVersions: schedule.volumeVersions ?? undefined,
       agentName: compose.name,
       callbacks,
+      scopeId: compose.scopeId,
+      scopeTier: scopeRecord
+        ? scopeTierSchema.parse(scopeRecord.tier)
+        : undefined,
     });
     runId = result.runId;
   } catch (error) {
-    if (isConcurrentRunLimit(error)) {
-      log.debug(`Schedule ${schedule.name} blocked by concurrent run limit`);
-
-      const retryScheduled = await handleConcurrencyFailure(
-        schedule,
-        { userId: compose.userId, headVersionId: compose.headVersionId },
-        error,
-      );
-
-      if (retryScheduled) {
-        return; // Retry scheduled, don't continue
-      }
-      // Retry window expired — fall through to advance schedule to next occurrence
-    }
-
-    // Any failure (concurrency-expired or other): update schedule state
+    // Update schedule state (disable one-time, advance cron) on any failure
     await advanceScheduleState(schedule);
     log.debug(`Schedule ${schedule.name} (${schedule.triggerType}) failed`);
 

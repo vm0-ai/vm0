@@ -162,34 +162,66 @@ The `caddy` reverse proxy exposes the web app on port `8080` (configurable via `
 | `DB_PASSWORD`    | PostgreSQL password          | -       |
 | `MINIO_PASSWORD` | MinIO (object storage) password | -    |
 
-### Optional Variables
+### Optional — General
 
 | Variable                 | Description                                     | Default      |
 | ------------------------ | ----------------------------------------------- | ------------ |
 | `DOMAIN`                 | Domain for Caddy reverse proxy                  | `localhost`  |
-| `DB_USER`                | PostgreSQL username                              | `vm0`        |
-| `DB_NAME`                | PostgreSQL database name                         | `vm0`        |
 | `HTTP_PORT`              | HTTP port for Caddy                              | `8080`       |
+| `HTTPS_PORT`             | HTTPS port for Caddy                             | `8443`       |
 | `PLATFORM_PORT`          | Platform console port                            | `3001`       |
 | `SECRETS_ENCRYPTION_KEY` | 64-char hex key (auto-generated if empty)        | auto         |
 | `CONCURRENT_RUN_LIMIT`   | Max concurrent agent runs (0 = unlimited)        | `0`          |
 | `DOCKER_SANDBOX_MEMORY`  | Memory limit per sandbox container               | `2g`         |
 | `DOCKER_SANDBOX_CPUS`    | CPU limit per sandbox container                  | `2`          |
 
-### External Services (Optional)
+### Optional — Built-in PostgreSQL
 
-You can replace the built-in PostgreSQL and MinIO with external services:
+| Variable       | Description              | Default |
+| -------------- | ------------------------ | ------- |
+| `DB_USER`      | PostgreSQL username      | `vm0`   |
+| `DB_NAME`      | PostgreSQL database name | `vm0`   |
+| `DB_POOL_MAX`  | Connection pool size     | `10`    |
 
-```bash
-# External database
-DATABASE_URL=postgresql://user:pass@host:5432/dbname
+### Optional — Built-in MinIO
 
-# External S3-compatible storage
-S3_ENDPOINT=https://s3.amazonaws.com
-R2_ACCESS_KEY_ID=your_key
-R2_SECRET_ACCESS_KEY=your_secret
-R2_USER_STORAGES_BUCKET_NAME=your_bucket
-```
+| Variable             | Description             | Default          |
+| -------------------- | ----------------------- | ---------------- |
+| `MINIO_USER`         | MinIO admin username    | `minioadmin`     |
+| `MINIO_BUCKET`       | Default bucket name     | `vm0-storages`   |
+| `MINIO_API_PORT`     | MinIO API port          | `9000`           |
+| `MINIO_CONSOLE_PORT` | MinIO console port      | `9001`           |
+
+### Optional — External Database
+
+Use an external PostgreSQL database instead of the built-in one:
+
+| Variable       | Description                                      | Default |
+| -------------- | ------------------------------------------------ | ------- |
+| `DATABASE_URL` | PostgreSQL connection string (overrides built-in) | -       |
+
+### Optional — External S3-Compatible Storage
+
+Use an external S3-compatible storage instead of the built-in MinIO:
+
+| Variable                       | Description                          | Default |
+| ------------------------------ | ------------------------------------ | ------- |
+| `S3_ENDPOINT`                  | S3 endpoint URL                      | -       |
+| `S3_REGION`                    | S3 region                            | -       |
+| `S3_FORCE_PATH_STYLE`          | Use path-style S3 URLs               | `false` |
+| `R2_ACCESS_KEY_ID`             | S3 access key ID                     | -       |
+| `R2_SECRET_ACCESS_KEY`         | S3 secret access key                 | -       |
+| `R2_USER_STORAGES_BUCKET_NAME` | S3 bucket name for user storages     | -       |
+
+### Optional — Slack Integration
+
+| Variable                   | Description                      | Default    |
+| -------------------------- | -------------------------------- | ---------- |
+| `SLACK_INTEGRATION_ENABLED`| Enable Slack integration         | `false`    |
+| `SLACK_CLIENT_ID`          | Slack OAuth client ID            | -          |
+| `SLACK_CLIENT_SECRET`      | Slack OAuth client secret        | -          |
+| `SLACK_SIGNING_SECRET`     | Slack signing secret             | -          |
+| `SLACK_REDIRECT_BASE_URL`  | Base URL for Slack OAuth redirect| -          |
 
 ## Troubleshooting
 

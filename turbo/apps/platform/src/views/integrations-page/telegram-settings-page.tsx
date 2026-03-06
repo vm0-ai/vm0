@@ -1,9 +1,5 @@
 import { useGet, useSet } from "ccstate-react";
-import {
-  IconAlertTriangle,
-  IconChevronDown,
-  IconLink,
-} from "@tabler/icons-react";
+import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
 import {
   CONNECTOR_TYPES,
   getConnectorProvidedSecretNames,
@@ -48,38 +44,6 @@ import { Link } from "../router/link.tsx";
 function getAllConnectorEnvVars(): Set<string> {
   return getConnectorProvidedSecretNames(
     Object.keys(CONNECTOR_TYPES) as ConnectorType[],
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Link account banner
-// ---------------------------------------------------------------------------
-
-function LinkAccountBanner({ botUsername }: { botUsername: string }) {
-  return (
-    <div className="flex items-center gap-3 rounded-lg border border-blue-500 bg-blue-50 px-4 py-3 dark:border-blue-700 dark:bg-blue-950/30">
-      <IconLink size={20} className="shrink-0 text-blue-500" stroke={1.5} />
-      <div className="flex flex-1 flex-col gap-1">
-        <p className="text-sm font-medium">Link your Telegram account</p>
-        <p className="text-sm text-muted-foreground">
-          Open the bot in Telegram and press Start to link your account. This
-          lets you chat with the agent directly.
-        </p>
-      </div>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() =>
-          window.open(
-            `https://t.me/${botUsername}`,
-            "_blank",
-            "noopener,noreferrer",
-          )
-        }
-      >
-        Open in Telegram
-      </Button>
-    </div>
   );
 }
 
@@ -288,10 +252,6 @@ export function TelegramSettingsPage() {
         ) : (
           <>
             {/* Link account banner */}
-            {data?.needsLink && data.bot && (
-              <LinkAccountBanner botUsername={data.bot.username} />
-            )}
-
             {/* Bot info */}
             {data?.bot && (
               <div className="flex flex-col gap-4">
@@ -339,15 +299,33 @@ export function TelegramSettingsPage() {
               <div className="rounded-xl border border-border bg-card p-4">
                 <div className="font-mono text-sm leading-6">
                   <p>
-                    <span className="font-medium">/start</span>
+                    <span className="font-medium">/new_session</span>
                     <span className="text-muted-foreground">
-                      {" // link your account"}
+                      {" // start a new conversation"}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-medium">/connect</span>
+                    <span className="text-muted-foreground">
+                      {" // connect your VM0 account"}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-medium">/disconnect</span>
+                    <span className="text-muted-foreground">
+                      {" // disconnect your account"}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-medium">/settings</span>
+                    <span className="text-muted-foreground">
+                      {" // open platform settings"}
                     </span>
                   </p>
                   <p>
                     <span className="font-medium">/help</span>
                     <span className="text-muted-foreground">
-                      {" // show help"}
+                      {" // show available commands"}
                     </span>
                   </p>
                 </div>

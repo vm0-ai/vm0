@@ -24,7 +24,7 @@ const router = tsr.router(secretsByNameContract, {
   /**
    * GET /api/secrets/:name - Get a secret by name
    */
-  get: async ({ params, headers }) => {
+  get: async ({ params, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -32,8 +32,9 @@ const router = tsr.router(secretsByNameContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { scope } = await resolveScope(userId, headers.authorization);
-    const secret = await getSecret(scope.id, params.name);
+    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const { scope } = await resolveScope(userId, scopeSlug);
+    const secret = await getSecret(scope.id, userId, params.name);
     if (!secret) {
       return createErrorResponse(
         "NOT_FOUND",
@@ -57,7 +58,7 @@ const router = tsr.router(secretsByNameContract, {
   /**
    * DELETE /api/secrets/:name - Delete a secret
    */
-  delete: async ({ params, headers }) => {
+  delete: async ({ params, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -68,8 +69,9 @@ const router = tsr.router(secretsByNameContract, {
     log.debug("deleting secret", { userId, name: params.name });
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
-      await deleteSecret(scope.id, params.name);
+      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const { scope } = await resolveScope(userId, scopeSlug);
+      await deleteSecret(scope.id, userId, params.name);
 
       return {
         status: 204 as const,

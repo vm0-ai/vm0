@@ -33,7 +33,6 @@ describe("init command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
-    vi.clearAllMocks();
     chalk.level = 0;
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-init-"));
     originalCwd = process.cwd();

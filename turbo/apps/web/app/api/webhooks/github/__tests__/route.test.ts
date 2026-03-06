@@ -105,7 +105,7 @@ function buildIssuesPayload(overrides?: IssuesPayloadOverrides) {
         overrides?.issueBody !== undefined
           ? overrides.issueBody
           : "This is a test issue body",
-      labels: overrides?.labels ?? [{ id: 1, name: "vm0-agent" }],
+      labels: overrides?.labels ?? [{ id: 1, name: TEST_APP_SLUG }],
       user: { id: senderId, login: "testuser", type: "User" },
     },
     ...(overrides?.label && { label: overrides.label }),
@@ -139,7 +139,7 @@ function buildIssueCommentPayload(overrides?: CommentPayloadOverrides) {
       number: 42,
       title: "Test Issue",
       body: "This is a test issue body",
-      labels: overrides?.labels ?? [{ id: 1, name: "vm0-agent" }],
+      labels: overrides?.labels ?? [{ id: 1, name: TEST_APP_SLUG }],
       user: { id: senderId, login: "testuser", type: "User" },
     },
     comment: {
@@ -166,6 +166,22 @@ describe("POST /api/webhooks/github", () => {
 
     // Reload env after stubbing
     reloadEnv();
+
+    // Mock GitHub API: installation token + issue comments (used by context fetching)
+    server.use(
+      http.post(
+        "https://api.github.com/app/installations/:id/access_tokens",
+        () =>
+          HttpResponse.json({
+            token: "ghs_test",
+            expires_at: "2099-01-01T00:00:00Z",
+          }),
+      ),
+      http.get(
+        "https://api.github.com/repos/:owner/:repo/issues/:num/comments",
+        () => HttpResponse.json([]),
+      ),
+    );
 
     // Mock createRun to prevent actual sandbox dispatch
     createRunSpy = vi.spyOn(runModule, "createRun").mockResolvedValue({
@@ -224,17 +240,17 @@ describe("POST /api/webhooks/github", () => {
   });
 
   describe("Issues Event", () => {
-    it("should trigger agent for opened issue with vm0-agent label", async () => {
+    it("should trigger agent for opened issue with app slug label", async () => {
       // Given a GitHub installation exists
       const { ghInstallationId, githubUserId } =
         await givenGitHubInstallation();
 
-      // When a webhook arrives for an opened issue with the vm0-agent label
+      // When a webhook arrives for an opened issue with the app slug label
       const request = createGitHubWebhookRequest(
         "issues",
         buildIssuesPayload({
           action: "opened",
-          labels: [{ id: 1, name: "vm0-agent" }],
+          labels: [{ id: 1, name: TEST_APP_SLUG }],
           installationId: ghInstallationId,
           senderId: Number(githubUserId),
         }),
@@ -250,12 +266,11 @@ describe("POST /api/webhooks/github", () => {
         prompt: string;
         callbacks: Array<{ payload: { issueNumber: number } }>;
       };
-      expect(callArgs.prompt).toContain("Test Issue");
-      expect(callArgs.prompt).toContain("test issue body");
+      expect(callArgs.prompt).toContain("This is a test issue body");
       expect(callArgs.callbacks[0]!.payload.issueNumber).toBe(42);
     });
 
-    it("should trigger agent when vm0-agent label is added", async () => {
+    it("should trigger agent when app slug label is added", async () => {
       const { ghInstallationId, githubUserId } =
         await givenGitHubInstallation();
 
@@ -263,8 +278,8 @@ describe("POST /api/webhooks/github", () => {
         "issues",
         buildIssuesPayload({
           action: "labeled",
-          labels: [{ id: 1, name: "vm0-agent" }],
-          label: { id: 1, name: "vm0-agent" },
+          labels: [{ id: 1, name: TEST_APP_SLUG }],
+          label: { id: 1, name: TEST_APP_SLUG },
           installationId: ghInstallationId,
           senderId: Number(githubUserId),
         }),
@@ -277,7 +292,7 @@ describe("POST /api/webhooks/github", () => {
       expect(createRunSpy).toHaveBeenCalledTimes(1);
     });
 
-    it("should NOT trigger agent for opened issue without vm0-agent label", async () => {
+    it("should NOT trigger agent for opened issue without app slug label", async () => {
       const { ghInstallationId, githubUserId } =
         await givenGitHubInstallation();
 
@@ -298,7 +313,7 @@ describe("POST /api/webhooks/github", () => {
       expect(createRunSpy).not.toHaveBeenCalled();
     });
 
-    it("should NOT trigger agent when a non-vm0-agent label is added", async () => {
+    it("should NOT trigger agent when a non-app slug label is added", async () => {
       const { ghInstallationId, githubUserId } =
         await givenGitHubInstallation();
 
@@ -307,7 +322,7 @@ describe("POST /api/webhooks/github", () => {
         buildIssuesPayload({
           action: "labeled",
           labels: [
-            { id: 1, name: "vm0-agent" },
+            { id: 1, name: TEST_APP_SLUG },
             { id: 2, name: "enhancement" },
           ],
           label: { id: 2, name: "enhancement" },
@@ -334,7 +349,7 @@ describe("POST /api/webhooks/github", () => {
           "issues",
           buildIssuesPayload({
             action,
-            labels: [{ id: 1, name: "vm0-agent" }],
+            labels: [{ id: 1, name: TEST_APP_SLUG }],
             installationId: ghInstallationId,
             senderId: Number(githubUserId),
           }),
@@ -356,7 +371,7 @@ describe("POST /api/webhooks/github", () => {
         "issues",
         buildIssuesPayload({
           action: "opened",
-          labels: [{ id: 1, name: "vm0-agent" }],
+          labels: [{ id: 1, name: TEST_APP_SLUG }],
           installationId: ghInstallationId,
           issueBody: null,
           senderId: Number(githubUserId),
@@ -369,19 +384,20 @@ describe("POST /api/webhooks/github", () => {
 
       expect(createRunSpy).toHaveBeenCalledTimes(1);
       const callArgs = createRunSpy.mock.calls[0]![0] as { prompt: string };
-      expect(callArgs.prompt).toContain("No description provided");
+      // When body is null, falls back to issue title
+      expect(callArgs.prompt).toContain("Test Issue");
     });
   });
 
   describe("Issue Comment Event", () => {
-    it("should trigger agent for comment on issue with vm0-agent label", async () => {
+    it("should NOT trigger for comment on issue with app slug label but no mention", async () => {
       const { ghInstallationId, githubUserId } =
         await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
         "issue_comment",
         buildIssueCommentPayload({
-          labels: [{ id: 1, name: "vm0-agent" }],
+          labels: [{ id: 1, name: TEST_APP_SLUG }],
           commentBody: "Can you help me fix this?",
           installationId: ghInstallationId,
           senderId: Number(githubUserId),
@@ -392,10 +408,8 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createRunSpy).toHaveBeenCalledTimes(1);
-      const callArgs = createRunSpy.mock.calls[0]![0] as { prompt: string };
-      expect(callArgs.prompt).toContain("Can you help me fix this?");
-      expect(callArgs.prompt).toContain("Test Issue");
+      // Label alone should NOT trigger — bot mention is required
+      expect(createRunSpy).not.toHaveBeenCalled();
     });
 
     it("should trigger agent for comment mentioning @bot", async () => {
@@ -405,7 +419,7 @@ describe("POST /api/webhooks/github", () => {
       const request = createGitHubWebhookRequest(
         "issue_comment",
         buildIssueCommentPayload({
-          labels: [], // No vm0-agent label
+          labels: [], // No app slug label
           commentBody: `@${TEST_APP_SLUG}[bot] please review this`,
           installationId: ghInstallationId,
           senderId: Number(githubUserId),
@@ -447,7 +461,7 @@ describe("POST /api/webhooks/github", () => {
       const request = createGitHubWebhookRequest(
         "issue_comment",
         buildIssueCommentPayload({
-          labels: [{ id: 1, name: "vm0-agent" }],
+          labels: [{ id: 1, name: TEST_APP_SLUG }],
           commentBody: "Here is the analysis...",
           senderType: "Bot",
           senderLogin: `${TEST_APP_SLUG}[bot]`,
@@ -474,7 +488,7 @@ describe("POST /api/webhooks/github", () => {
           "issue_comment",
           buildIssueCommentPayload({
             action,
-            labels: [{ id: 1, name: "vm0-agent" }],
+            labels: [{ id: 1, name: TEST_APP_SLUG }],
             installationId: ghInstallationId,
             senderId: Number(githubUserId),
           }),
@@ -496,7 +510,7 @@ describe("POST /api/webhooks/github", () => {
         "issues",
         buildIssuesPayload({
           installationId: 99999,
-          labels: [{ id: 1, name: "vm0-agent" }],
+          labels: [{ id: 1, name: TEST_APP_SLUG }],
         }),
       );
       const response = await POST(request);
@@ -655,8 +669,8 @@ describe("POST /api/webhooks/github", () => {
       const request = createGitHubWebhookRequest(
         "issue_comment",
         buildIssueCommentPayload({
-          labels: [{ id: 1, name: "vm0-agent" }],
-          commentBody: "Follow-up question",
+          labels: [],
+          commentBody: `@${TEST_APP_SLUG}[bot] Follow-up question`,
           installationId: ghInstallationId,
           senderId: Number(githubUserId),
         }),

@@ -2,17 +2,20 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
+import { scopes } from "../../../../../src/db/schema/scope";
+import { scopeMembers } from "../../../../../src/db/schema/scope-member";
 import {
   getUserScopeByClerkId,
-  createUserScope,
   generateDefaultScopeSlug,
 } from "../../../../../src/lib/scope/scope-service";
-import { isBadRequest } from "../../../../../src/lib/errors";
 import {
   resolveTestUserId,
   isTestVariant,
 } from "../../../../../src/lib/auth/test-user";
 import { env } from "../../../../../src/env";
+
+/** Sentinel Clerk org ID for test-created scopes (never hits Clerk API) */
+const TEST_CLERK_ORG_ID = "org_test_e2e";
 
 /**
  * Check if test-token endpoint is allowed based on environment.
@@ -38,6 +41,52 @@ function isTestTokenAllowed(request: Request): boolean {
   }
 
   return false;
+}
+
+/**
+ * Ensure the test user has a scope, creating one directly in the database
+ * if necessary. Unlike the normal createUserScope flow, this bypasses
+ * Clerk Organization creation entirely — test scopes don't need a real
+ * Clerk org, and the Clerk Backend API rejects org creation for
+ * e2e test users (403 Forbidden).
+ */
+async function ensureTestScope(userId: string): Promise<void> {
+  const existing = await getUserScopeByClerkId(userId);
+  if (existing) return;
+
+  const slug = generateDefaultScopeSlug(userId);
+
+  await globalThis.services.db.transaction(async (tx) => {
+    const [newScope] = await tx
+      .insert(scopes)
+      .values({ slug, clerkOrgId: TEST_CLERK_ORG_ID })
+      .onConflictDoNothing({ target: scopes.slug })
+      .returning();
+
+    if (!newScope) {
+      // Slug conflict — use a random fallback
+      const fallbackSlug = `user-${crypto.randomBytes(4).toString("hex")}`;
+      const [fallback] = await tx
+        .insert(scopes)
+        .values({ slug: fallbackSlug, clerkOrgId: TEST_CLERK_ORG_ID })
+        .returning();
+      if (!fallback) {
+        throw new Error("Failed to create test scope with fallback slug");
+      }
+      await tx.insert(scopeMembers).values({
+        scopeId: fallback.id,
+        userId,
+        role: "admin",
+      });
+      return;
+    }
+
+    await tx.insert(scopeMembers).values({
+      scopeId: newScope.id,
+      userId,
+      role: "admin",
+    });
+  });
 }
 
 /**
@@ -67,21 +116,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Test user not found" }, { status: 500 });
   }
 
-  // Auto-create scope if user doesn't have one
-  const existingScope = await getUserScopeByClerkId(userId);
-  if (!existingScope) {
-    const defaultSlug = generateDefaultScopeSlug(userId);
-    try {
-      await createUserScope(userId, defaultSlug);
-    } catch (error) {
-      if (isBadRequest(error) && error.message.includes("already exists")) {
-        const fallbackSlug = `user-${crypto.randomBytes(4).toString("hex")}`;
-        await createUserScope(userId, fallbackSlug);
-      } else {
-        throw error;
-      }
-    }
-  }
+  // Auto-create scope if user doesn't have one (bypasses Clerk org creation)
+  await ensureTestScope(userId);
 
   // Generate CLI token
   const randomBytes = crypto.randomBytes(32);

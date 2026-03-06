@@ -22,9 +22,10 @@ import {
   type CreateRunParams,
   type CreateRunResult,
 } from "../run-service";
-import { isConcurrentRunLimit, isForbidden, isBadRequest } from "../../errors";
+import { isForbidden, isBadRequest } from "../../errors";
 import { Sandbox } from "@e2b/code-interpreter";
 import { POST as createComposeRoute } from "../../../../app/api/agent/composes/route";
+import { mockClerk } from "../../../__tests__/clerk-mock";
 
 const context = testContext();
 
@@ -105,20 +106,37 @@ describe("createRun()", () => {
   });
 
   describe("Concurrent Run Limit", () => {
-    it("should throw ConcurrentRunLimitError when limit reached", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
-      reloadEnv();
-
-      // Create first run
+    it("should enqueue run when free tier limit reached", async () => {
+      // Free tier (default) allows only 1 concurrent run
       await createRun(baseParams({ prompt: "First run" }));
 
-      // Second run should fail
-      await expect(
-        createRun(baseParams({ prompt: "Second run" })),
-      ).rejects.toSatisfy(isConcurrentRunLimit);
+      // Second run should be queued (not rejected)
+      const result = await createRun(baseParams({ prompt: "Second run" }));
+
+      expect(result.status).toBe("queued");
+      expect(result.runId).toBeDefined();
+
+      // Verify queued run record in DB
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.status).toBe("queued");
+      expect(run!.prompt).toBe("Second run");
     });
 
-    it("should allow unlimited runs when limit is 0", async () => {
+    it("should allow multiple concurrent runs for pro tier", async () => {
+      // Pro tier allows up to 10 concurrent runs
+      const run1 = await createRun(
+        baseParams({ prompt: "Pro run 1", scopeTier: "pro" }),
+      );
+      const run2 = await createRun(
+        baseParams({ prompt: "Pro run 2", scopeTier: "pro" }),
+      );
+
+      expect(run1.status).toBe("running");
+      expect(run2.status).toBe("running");
+    });
+
+    it("should allow unlimited runs when CONCURRENT_RUN_LIMIT is 0", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
       reloadEnv();
 
@@ -130,14 +148,44 @@ describe("createRun()", () => {
     });
 
     it("should not count stale pending runs", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
-      reloadEnv();
-
-      // Insert a stale pending run (20 minutes old, beyond 15-min TTL)
+      // Free tier limit is 1; stale pending run should not count
       await insertStalePendingRun(user.userId, versionId);
 
-      // New run should succeed
       const result = await createRun(baseParams());
+      expect(result.status).toBe("running");
+    });
+
+    it("should enqueue second run when concurrency limit reached", async () => {
+      // Free tier limit is 1 — advisory lock should serialize them
+      const results = await Promise.allSettled([
+        createRun(baseParams({ prompt: "Concurrent A" })),
+        createRun(baseParams({ prompt: "Concurrent B" })),
+      ]);
+
+      // Both should succeed: one runs, one gets queued
+      const fulfilled = results.filter((r) => r.status === "fulfilled");
+      expect(fulfilled).toHaveLength(2);
+
+      const statuses = fulfilled.map(
+        (r) => r.status === "fulfilled" && r.value.status,
+      );
+      expect(statuses).toContain("queued");
+    });
+
+    it("should enforce limit per-scope, not per-user", async () => {
+      // Create a run in the default scope (fills its free-tier slot)
+      await createRun(baseParams({ prompt: "Scope 1 run" }));
+
+      // Create a second user with a different scope
+      const otherUser = await context.setupUser({ prefix: "scope-user" });
+      const otherCompose = await createTestCompose(uniqueId("other-agent"));
+
+      // Run in the other scope should succeed (separate scope, separate limit)
+      const result = await createRun({
+        userId: otherUser.userId,
+        agentComposeVersionId: otherCompose.versionId,
+        prompt: "Scope 2 run",
+      });
       expect(result.status).toBe("running");
     });
   });
@@ -481,6 +529,39 @@ describe("createRun()", () => {
       const result = await createRun(
         baseParams({ agentComposeVersionId: compose.versionId }),
       );
+
+      expect(result.status).toBe("running");
+    });
+  });
+
+  describe("Domain-based Runner Rollout", () => {
+    it("should route @vm0.ai users to runner when RUNNER_DEFAULT_GROUP is set", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      mockClerk({ userId: user.userId, email: "team@vm0.ai" });
+
+      const result = await createRun(baseParams());
+
+      expect(result.status).toBe("pending");
+    });
+
+    it("should route non-vm0.ai users to E2B when RUNNER_DEFAULT_GROUP is set", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      mockClerk({ userId: user.userId, email: "user@example.com" });
+
+      const result = await createRun(baseParams());
+
+      expect(result.status).toBe("running");
+    });
+
+    it("should skip domain check when RUNNER_DEFAULT_GROUP is not set", async () => {
+      // RUNNER_DEFAULT_GROUP is not set by default in test env
+      mockClerk({ userId: user.userId, email: "team@vm0.ai" });
+
+      const result = await createRun(baseParams());
 
       expect(result.status).toBe("running");
     });

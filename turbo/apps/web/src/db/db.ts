@@ -14,6 +14,7 @@ import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as agentRunEventsLocalSchema from "./schema/agent-run-events-local";
 import * as scopeSchema from "./schema/scope";
 import * as runnerSchema from "./schema/runner-job-queue";
+import * as agentRunQueueSchema from "./schema/agent-run-queue";
 import * as agentScheduleSchema from "./schema/agent-schedule";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
@@ -28,7 +29,6 @@ import * as connectorSchema from "./schema/connector";
 import * as usageDailySchema from "./schema/usage-daily";
 import * as emailThreadSessionSchema from "./schema/email-thread-session";
 import * as emailReplyRequestSchema from "./schema/email-reply-request";
-import * as orgAccessTokenSchema from "./schema/org-access-token";
 import * as githubInstallationSchema from "./schema/github-installation";
 import * as githubUserLinkSchema from "./schema/github-user-link";
 import * as githubIssueSessionSchema from "./schema/github-issue-session";
@@ -55,6 +55,7 @@ export const schema = {
   ...agentRunEventsLocalSchema,
   ...scopeSchema,
   ...runnerSchema,
+  ...agentRunQueueSchema,
   ...agentScheduleSchema,
   ...secretSchema,
   ...modelProviderSchema,
@@ -69,7 +70,6 @@ export const schema = {
   ...usageDailySchema,
   ...emailThreadSessionSchema,
   ...emailReplyRequestSchema,
-  ...orgAccessTokenSchema,
   ...githubInstallationSchema,
   ...githubUserLinkSchema,
   ...githubIssueSessionSchema,

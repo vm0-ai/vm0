@@ -33,7 +33,6 @@ export function setupClerkOrgMock(options: {
     createOrganization: vi.fn().mockResolvedValue({
       id: orgId,
       name: "test-org",
-      slug: "test-org",
     }),
     getOrganizationMembershipList: vi.fn().mockResolvedValue({
       data: memberships.map((m) => ({

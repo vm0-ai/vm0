@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.19.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.19.1...runner-rs-v0.19.2) (2026-03-06)
+
+## [0.19.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.19.0...runner-rs-v0.19.1) (2026-03-06)
+
+## [0.19.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.18.0...runner-rs-v0.19.0) (2026-03-05)
+
+
+### Features
+
+* **runner:** balloon reclaim with per-tick inflate cap and full ci test ([#3711](https://github.com/vm0-ai/vm0/issues/3711)) ([7f7efc2](https://github.com/vm0-ai/vm0/commit/7f7efc2f845686899c62ce20cbf992cc9cc5c7df))
+
+## [0.18.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.17.0...runner-rs-v0.18.0) (2026-03-05)
+
+
+### Features
+
+* **sandbox-fc:** add per-sandbox balloon memory reclaim controller ([#3700](https://github.com/vm0-ai/vm0/issues/3700)) ([10f121b](https://github.com/vm0-ai/vm0/commit/10f121bc06e87f23a48af9b4b971faacef620442)), closes [#3697](https://github.com/vm0-ai/vm0/issues/3697)
+
+
+### Bug Fixes
+
+* set api start time inside create-run for e2e telemetry ([#3707](https://github.com/vm0-ai/vm0/issues/3707)) ([e902696](https://github.com/vm0-ai/vm0/commit/e902696adb72414e5b248552379ee59c9cbbabd0)), closes [#3706](https://github.com/vm0-ai/vm0/issues/3706)
+
+## [0.17.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.16.0...runner-rs-v0.17.0) (2026-03-05)
+
+
+### Features
+
+* **sandbox-fc:** enable balloon stats and add runtime balloon api ([#3694](https://github.com/vm0-ai/vm0/issues/3694)) ([b5918d6](https://github.com/vm0-ai/vm0/commit/b5918d6e7f7c82f79693b725bad2b5c547016655)), closes [#3688](https://github.com/vm0-ai/vm0/issues/3688)
+* **sandbox-fc:** enable virtio-balloon with deflate_on_oom as safety net ([#3679](https://github.com/vm0-ai/vm0/issues/3679)) ([2ce2b62](https://github.com/vm0-ai/vm0/commit/2ce2b62c991a9e4bc077438630eb21267b618dc2)), closes [#3666](https://github.com/vm0-ai/vm0/issues/3666)
+
 ## [0.16.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.15.1...runner-rs-v0.16.0) (2026-03-05)
 
 

@@ -79,6 +79,34 @@ describe("needsOnboarding$", () => {
 });
 
 describe("saveOnboardingConfig$", () => {
+  it("should send slug with user- prefix when creating scope", async () => {
+    let scopeSlug: string | undefined;
+
+    server.use(
+      http.get("/api/scope", () => {
+        return new HttpResponse(null, { status: 404 });
+      }),
+      http.post("/api/scope", async ({ request }) => {
+        const body = (await request.json()) as { slug: string };
+        scopeSlug = body.slug;
+        return HttpResponse.json({}, { status: 201 });
+      }),
+    );
+
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    act(() => {
+      context.store.set(setOnboardingSecret$, "test-oauth-token");
+    });
+
+    await act(async () => {
+      await context.store.set(saveOnboardingConfig$, context.signal);
+    });
+
+    expect(scopeSlug).toBeDefined();
+    expect(scopeSlug).toMatch(/^user-[0-9a-f]{8}$/);
+  });
+
   it("should create scope and model provider when saving with oauth token", async () => {
     let scopeCreated = false;
     let providerCreated = false;

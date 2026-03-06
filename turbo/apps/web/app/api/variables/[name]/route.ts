@@ -24,7 +24,7 @@ const router = tsr.router(variablesByNameContract, {
   /**
    * GET /api/variables/:name - Get a variable by name (includes value)
    */
-  get: async ({ params, headers }) => {
+  get: async ({ params, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -32,8 +32,9 @@ const router = tsr.router(variablesByNameContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { scope } = await resolveScope(userId, headers.authorization);
-    const variable = await getVariable(scope.id, params.name);
+    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const { scope } = await resolveScope(userId, scopeSlug);
+    const variable = await getVariable(scope.id, userId, params.name);
     if (!variable) {
       return createErrorResponse(
         "NOT_FOUND",
@@ -57,7 +58,7 @@ const router = tsr.router(variablesByNameContract, {
   /**
    * DELETE /api/variables/:name - Delete a variable
    */
-  delete: async ({ params, headers }) => {
+  delete: async ({ params, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -68,8 +69,9 @@ const router = tsr.router(variablesByNameContract, {
     log.debug("deleting variable", { userId, name: params.name });
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
-      await deleteVariable(scope.id, params.name);
+      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const { scope } = await resolveScope(userId, scopeSlug);
+      await deleteVariable(scope.id, userId, params.name);
 
       return {
         status: 204 as const,

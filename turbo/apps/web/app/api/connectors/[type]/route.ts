@@ -13,7 +13,7 @@ const router = tsr.router(connectorsByTypeContract, {
   /**
    * GET /api/connectors/:type - Get connector status
    */
-  get: async ({ params, headers }) => {
+  get: async ({ params, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -21,8 +21,9 @@ const router = tsr.router(connectorsByTypeContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { scope } = await resolveScope(userId, headers.authorization);
-    const connector = await getConnector(scope.id, params.type);
+    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const { scope } = await resolveScope(userId, scopeSlug);
+    const connector = await getConnector(scope.id, userId, params.type);
 
     if (!connector) {
       return createErrorResponse("NOT_FOUND", "Connector not found");
@@ -37,7 +38,7 @@ const router = tsr.router(connectorsByTypeContract, {
   /**
    * DELETE /api/connectors/:type - Disconnect connector
    */
-  delete: async ({ params, headers }) => {
+  delete: async ({ params, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -46,8 +47,9 @@ const router = tsr.router(connectorsByTypeContract, {
     }
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
-      await deleteConnector(scope.id, params.type);
+      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const { scope } = await resolveScope(userId, scopeSlug);
+      await deleteConnector(scope.id, userId, params.type);
 
       return {
         status: 204 as const,

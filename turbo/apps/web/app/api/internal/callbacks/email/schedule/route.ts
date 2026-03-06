@@ -74,7 +74,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true, skipped: true });
   }
 
-  const logsUrl = buildLogsUrl(runId);
+  const logsUrl = buildLogsUrl(runId, composeName);
 
   if (status === "completed") {
     // Get agent output

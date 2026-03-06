@@ -4,7 +4,6 @@ import {
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
 import { createRun } from "../../run";
-import { isConcurrentRunLimit } from "../../errors";
 import { queryAxiom, getDatasetName, DATASETS } from "../../axiom";
 import { logger } from "../../logger";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
@@ -36,7 +35,7 @@ interface RunAgentParams {
 }
 
 interface RunAgentResult {
-  status: "dispatched" | "failed";
+  status: "dispatched" | "queued" | "failed";
   response?: string;
   runId: string | undefined;
 }
@@ -123,21 +122,14 @@ export async function runAgentForSlack(
       ],
     });
 
-    log.debug(`Run ${result.runId} dispatched for Slack agent ${agentName}`);
+    const status = result.status === "queued" ? "queued" : "dispatched";
+    log.debug(`Run ${result.runId} ${status} for Slack agent ${agentName}`);
 
     return {
-      status: "dispatched",
+      status,
       runId: result.runId,
     };
   } catch (error) {
-    if (isConcurrentRunLimit(error)) {
-      return {
-        status: "failed",
-        response:
-          "You have too many concurrent runs. Please wait for existing runs to complete.",
-        runId: undefined,
-      };
-    }
     log.error("Error running agent for Slack:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return {

@@ -6,7 +6,7 @@ use tracing::info;
 
 use crate::api::ApiClient;
 use crate::config::SnapshotConfig;
-use crate::network::{GUEST_NETWORK, NetnsPool, NetnsPoolConfig, generate_boot_args};
+use crate::network::{NetnsPool, NetnsPoolConfig};
 use crate::overlay::{Ext4Creator, OverlayCreator as _};
 use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::process;
@@ -239,22 +239,25 @@ async fn run_with_firecracker(
     info!("firecracker API ready");
 
     // 6. Configure VM via API (7 parallel PUT calls).
+    let inv = crate::factory::InvariantConfig::new();
     let kernel_path = config.kernel_path.display().to_string();
     let rootfs_path = config.rootfs_path.display().to_string();
     let overlay_path = paths.overlay().display().to_string();
     tokio::fs::create_dir_all(&sock_paths.vsock_dir()).await?;
     let vsock_uds_str = sock_paths.vsock().display().to_string();
 
-    let boot_args = generate_boot_args();
-
     tokio::try_join!(
         client.configure_machine(config.vcpu_count, config.memory_mb),
-        client.configure_boot_source(&kernel_path, &boot_args),
+        client.configure_boot_source(&kernel_path, &inv.boot_args),
         client.configure_drive("rootfs", &rootfs_path, true, true),
         client.configure_drive("overlay", &overlay_path, false, false),
-        client.configure_network_interface("eth0", GUEST_NETWORK.guest_mac, GUEST_NETWORK.tap_name),
-        client.configure_vsock(3, &vsock_uds_str),
-        client.configure_balloon(0, true, 0),
+        client.configure_network_interface(inv.iface_id, inv.guest_mac, inv.tap_name),
+        client.configure_vsock(inv.guest_cid, &vsock_uds_str),
+        client.configure_balloon(
+            inv.balloon.amount_mib,
+            inv.balloon.deflate_on_oom,
+            inv.balloon.stats_polling_interval_s
+        ),
     )?;
 
     info!("VM configured");
@@ -288,7 +291,7 @@ async fn run_with_firecracker(
     //      are fast. The snapshot captures memory + overlay state, so caches
     //      populated here persist across restores.
     let prewarm_result = guest
-        .exec(crate::factory::PREWARM_SCRIPT, 30_000, &[], false)
+        .exec(inv.prewarm_script, 30_000, &[], false)
         .await
         .map_err(|e| SnapshotError::Setup(format!("pre-warm exec: {e}")))?;
     if prewarm_result.exit_code != 0 {

@@ -1,5 +1,84 @@
 # Changelog
 
+## [0.88.2](https://github.com/vm0-ai/vm0/compare/platform-v0.88.1...platform-v0.88.2) (2026-03-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.40.0
+
+## [0.88.1](https://github.com/vm0-ai/vm0/compare/platform-v0.88.0...platform-v0.88.1) (2026-03-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.39.0
+
+## [0.88.0](https://github.com/vm0-ai/vm0/compare/platform-v0.87.0...platform-v0.88.0) (2026-03-06)
+
+
+### Features
+
+* **platform:** add loop schedule support to run dialog ([#3724](https://github.com/vm0-ai/vm0/issues/3724)) ([f1aeb4c](https://github.com/vm0-ai/vm0/commit/f1aeb4c27897dbb2b1c461172a8a739deb8e6a25))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.38.1
+
+## [0.87.0](https://github.com/vm0-ai/vm0/compare/platform-v0.86.0...platform-v0.87.0) (2026-03-05)
+
+
+### Features
+
+* **monday:** add monday.com oauth connector ([#3753](https://github.com/vm0-ai/vm0/issues/3753)) ([8bdf5fb](https://github.com/vm0-ai/vm0/commit/8bdf5fb29edb1f309d692ee6f5d5fe0c74634ca5))
+
+
+### Bug Fixes
+
+* replace non-english characters with english in source code ([#3757](https://github.com/vm0-ai/vm0/issues/3757)) ([b5d6b38](https://github.com/vm0-ai/vm0/commit/b5d6b38fe2cdba0cbd34df85f612cf2267a27734))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.38.0
+
+## [0.86.0](https://github.com/vm0-ai/vm0/compare/platform-v0.85.0...platform-v0.86.0) (2026-03-05)
+
+
+### Features
+
+* add oauth scope mismatch detection in connector settings ([#3704](https://github.com/vm0-ai/vm0/issues/3704)) ([77e2fcf](https://github.com/vm0-ai/vm0/commit/77e2fcfd80359e0310a1b0ccc6b2a9ad440a6dff)), closes [#3648](https://github.com/vm0-ai/vm0/issues/3648)
+* **telegram:** streamline re-link flow after /disconnect ([#3701](https://github.com/vm0-ai/vm0/issues/3701)) ([8dd4db4](https://github.com/vm0-ai/vm0/commit/8dd4db4a9fc255bc34ad6928861a9cb077cd83c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.37.0
+
+## [0.85.0](https://github.com/vm0-ai/vm0/compare/platform-v0.84.2...platform-v0.85.0) (2026-03-05)
+
+
+### Features
+
+* **platform:** add zero app with shell, pages and polish ([#3685](https://github.com/vm0-ai/vm0/issues/3685)) ([e9fb699](https://github.com/vm0-ai/vm0/commit/e9fb6993961727e3b7f0c1b01f24045c26589df4))
+* **telegram:** improve UX with bot commands and deep links ([#3695](https://github.com/vm0-ai/vm0/issues/3695)) ([9e15219](https://github.com/vm0-ai/vm0/commit/9e15219abbb0fe3f6e7a78a5b975a82e7fb94912))
+
+
+### Bug Fixes
+
+* **platform:** add user- prefix to default scope slug generation ([#3693](https://github.com/vm0-ai/vm0/issues/3693)) ([8d529bc](https://github.com/vm0-ai/vm0/commit/8d529bcb75218e4d6c8165d7157f597488ac8e6c)), closes [#3691](https://github.com/vm0-ai/vm0/issues/3691)
+
 ## [0.84.2](https://github.com/vm0-ai/vm0/compare/platform-v0.84.1...platform-v0.84.2) (2026-03-05)
 
 

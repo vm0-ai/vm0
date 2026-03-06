@@ -36,6 +36,7 @@ export function uniqueId(prefix: string): string {
   return `${prefix}-${uniqueSuffix()}`;
 }
 
+import { eq } from "drizzle-orm";
 import { Sandbox } from "@e2b/code-interpreter";
 import { Axiom } from "@axiomhq/js";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
@@ -517,8 +518,7 @@ export function testContext(): TestContext {
         .insert(scopes)
         .values({
           slug: scopeSlug,
-          type: "personal",
-          ownerId: adminUserId,
+          clerkOrgId: uniqueId("org"),
         })
         .returning();
 
@@ -622,8 +622,7 @@ export function testContext(): TestContext {
       .insert(scopes)
       .values({
         slug: scopeSlug,
-        type: "personal",
-        ownerId: vm0UserId,
+        clerkOrgId: uniqueId("org"),
       })
       .returning();
 
@@ -670,10 +669,21 @@ export function testContext(): TestContext {
 
     initServices();
 
+    // Look up userId from scope_members
+    const [member] = await globalThis.services.db
+      .select({ userId: scopeMembers.userId })
+      .from(scopeMembers)
+      .where(eq(scopeMembers.scopeId, scopeId))
+      .limit(1);
+    if (!member) {
+      throw new Error(`No scope member found for scope ${scopeId}`);
+    }
+
     const [connector] = await globalThis.services.db
       .insert(connectors)
       .values({
         scopeId,
+        userId: member.userId,
         type,
         authMethod,
       })

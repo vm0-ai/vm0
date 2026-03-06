@@ -7,16 +7,10 @@
  * - Real (internal): All CLI code
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { connectorCommand } from "../index";
 
 describe("connector command", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {});
-
   describe("help text", () => {
     it("should show command description and subcommands", async () => {
       const mockStdoutWrite = vi

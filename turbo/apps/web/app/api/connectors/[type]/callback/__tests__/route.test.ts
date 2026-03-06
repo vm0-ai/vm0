@@ -861,8 +861,10 @@ function createIntervalsIcuOAuthMock(options: {
       }
       return HttpResponse.json({
         access_token: options.accessToken ?? "intervals-icu-test-access-token",
-        athlete_id: options.athleteId ?? "i12345",
-        name: options.name !== undefined ? options.name : "Test Athlete",
+        athlete: {
+          id: options.athleteId ?? "i12345",
+          name: options.name !== undefined ? options.name : "Test Athlete",
+        },
       });
     }),
   });
@@ -4092,8 +4094,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
         tokenExchange: http.post(INTERVALS_ICU_TOKEN_URL, () => {
           return HttpResponse.json({
             access_token: "intervals-icu-access-token",
-            // No athlete_id
-            name: "Test Athlete",
+            // No athlete object
           });
         }),
       });

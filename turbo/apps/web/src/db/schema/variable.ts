@@ -11,10 +11,8 @@ import { scopes } from "./scope";
 
 /**
  * Variables table
- * Stores non-sensitive configuration variables at scope level
+ * Stores non-sensitive configuration variables per user within a scope
  * Values are stored in plaintext (unlike secrets which are encrypted)
- *
- * Scoped to user's personal scope initially, supports organization scopes in future
  */
 export const variables = pgTable(
   "variables",
@@ -26,12 +24,16 @@ export const variables = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     value: text("value").notNull(),
     description: text("description"),
-    userId: text("user_id"), // Scope member who owns this variable (nullable for backfill)
+    userId: text("user_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex("idx_variables_scope_name").on(table.scopeId, table.name),
+    uniqueIndex("idx_variables_scope_user_name").on(
+      table.scopeId,
+      table.userId,
+      table.name,
+    ),
     index("idx_variables_scope").on(table.scopeId),
   ],
 );

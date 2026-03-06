@@ -9,12 +9,15 @@ import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import {
   createTelegramClient,
   sendMessage,
+  sendChatAction,
   deleteMessage,
 } from "../../../../../src/lib/telegram/client";
 import {
   splitMessage,
   buildTelegramResponse,
 } from "../../../../../src/lib/telegram/format";
+import { detectDeepLinks } from "../../../../../src/lib/deep-links";
+import { getPlatformUrl } from "../../../../../src/lib/url";
 import { getRunOutput } from "../../../../../src/lib/slack/handlers/run-agent";
 import {
   saveTelegramThreadSession,
@@ -30,6 +33,7 @@ interface CallbackPayload {
   installationId: string;
   chatId: string;
   messageId: string;
+  rootMessageId: string | null;
   userLinkId: string;
   agentName: string;
   composeId: string;
@@ -55,6 +59,7 @@ function parsePayload(payload: unknown): CallbackPayload | null {
     installationId: p.installationId,
     chatId: p.chatId,
     messageId: p.messageId,
+    rootMessageId: typeof p.rootMessageId === "string" ? p.rootMessageId : null,
     userLinkId: p.userLinkId,
     agentName: p.agentName,
     composeId: p.composeId,
@@ -107,6 +112,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     installationId,
     chatId,
     messageId,
+    rootMessageId: payloadRootMessageId,
     userLinkId,
     agentName,
     composeId,
@@ -152,18 +158,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
 
+  // Send typing indicator while building response
+  await sendChatAction(client, chatId, "typing");
+
   // Query Axiom for the agent's output
   const output = status === "completed" ? await getRunOutput(runId) : undefined;
 
   // Build response text
-  const logsUrl = buildLogsUrl(runId);
+  const logsUrl = buildLogsUrl(runId, agentName);
   const responseText =
     status === "completed"
       ? (output ?? "Task completed successfully.")
       : `Error: ${error ?? "Agent execution failed."}`;
 
+  // Detect deep links for configuration hints
+  const deepLinks = detectDeepLinks(responseText, getPlatformUrl(), agentName);
+
   // Build structured response with bot header and footer
-  const htmlOutput = buildTelegramResponse(responseText, agentName, logsUrl);
+  const htmlOutput = buildTelegramResponse(
+    responseText,
+    agentName,
+    logsUrl,
+    deepLinks,
+  );
   const chunks = splitMessage(htmlOutput);
 
   // In DMs, don't reply-to (no quote noise); in groups, reply for threading
@@ -203,15 +220,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? await findNewSessionId(run.userId, composeId, run.createdAt)
       : undefined;
 
-    // For new threads, use bot's reply as rootMessageId (thread anchor)
-    const rootMessageId = existingSessionId
-      ? messageId // Existing thread — use original anchor
-      : String(botReplyMessageId); // New thread — bot's reply is the anchor
+    // Use bot's latest reply as rootMessageId so the user can continue
+    // the session by replying to any bot response.
+    const newRootMessageId = isDM ? "dm" : String(botReplyMessageId);
 
     await saveTelegramThreadSession({
       userLinkId,
       chatId,
-      rootMessageId,
+      rootMessageId: newRootMessageId,
+      previousRootMessageId: payloadRootMessageId ?? undefined,
       existingSessionId: existingSessionId ?? undefined,
       newSessionId,
       messageId,

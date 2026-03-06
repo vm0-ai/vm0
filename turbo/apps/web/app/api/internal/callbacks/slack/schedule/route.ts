@@ -113,7 +113,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const client = createSlackClient(botToken);
 
   // Build and send notification
-  const logsUrl = buildLogsUrl(runId);
+  const logsUrl = buildLogsUrl(runId, composeName);
 
   if (status === "completed") {
     const rawOutput = await getRunOutput(runId);

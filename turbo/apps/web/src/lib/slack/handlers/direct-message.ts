@@ -93,8 +93,8 @@ export async function handleDirectMessage(
     return;
   }
 
-  // 4. Resolve workspace agent (may be overridden by session below)
-  let composeId = installation.defaultComposeId;
+  // 4. Resolve workspace agent
+  const composeId = installation.defaultComposeId;
   const defaultAgent = await getWorkspaceAgent(composeId);
   if (!defaultAgent) {
     await postMessage(
@@ -105,7 +105,7 @@ export async function handleDirectMessage(
     );
     return;
   }
-  let agentName = defaultAgent.name;
+  const agentName = defaultAgent.name;
 
   // 5. Show assistant thinking status
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
@@ -130,16 +130,19 @@ export async function handleDirectMessage(
     });
   }
 
-  // 6b. If continuing session, use session's compose instead of workspace default
+  // 6b. Validate session's agent matches current default — discard only on positive mismatch
   if (existingSessionId) {
     const sessionCompose = await resolveSessionCompose(
       existingSessionId,
       userLink.vm0UserId,
     );
-    if (sessionCompose) {
-      composeId = sessionCompose.composeId;
-      agentName = sessionCompose.agentName;
-      log.debug("Using session compose", { composeId, agentName });
+    if (sessionCompose && sessionCompose.composeId !== composeId) {
+      log.debug("Agent changed, starting new session", {
+        sessionComposeId: sessionCompose.composeId,
+        currentComposeId: composeId,
+      });
+      existingSessionId = undefined;
+      lastProcessedMessageTs = undefined;
     }
   }
 
@@ -175,8 +178,14 @@ export async function handleDirectMessage(
     },
   });
 
-  // Only handle immediate failures (agent run was not dispatched)
-  if (status === "failed") {
+  if (status === "queued") {
+    await client.chat.postEphemeral({
+      channel: context.channelId,
+      user: context.userId,
+      thread_ts: threadTs,
+      text: "⚠ Run queued — concurrency limit reached. Will start automatically when a slot is available.",
+    });
+  } else if (status === "failed") {
     log.error("Failed to dispatch agent run", { response });
     await postMessage(
       client,
@@ -189,5 +198,5 @@ export async function handleDirectMessage(
       (err) => log.warn("Failed to clear thread status", { error: err }),
     );
   }
-  // For "dispatched" status, callback will handle response posting and status clearing
+  // For "dispatched"/"queued" status, callback will handle response posting and status clearing
 }

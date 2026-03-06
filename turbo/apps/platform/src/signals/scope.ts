@@ -67,7 +67,7 @@ async function generateDefaultSlug(userId: string): Promise<string> {
   const hashHex = hashArray
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  return hashHex.slice(0, 8);
+  return `user-${hashHex.slice(0, 8)}`;
 }
 
 /**

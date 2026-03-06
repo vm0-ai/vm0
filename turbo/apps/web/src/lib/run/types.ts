@@ -5,6 +5,7 @@ import type { ExperimentalFirewall } from "@vm0/core";
  * Run status values
  */
 export type RunStatus =
+  | "queued"
   | "pending"
   | "running"
   | "completed"

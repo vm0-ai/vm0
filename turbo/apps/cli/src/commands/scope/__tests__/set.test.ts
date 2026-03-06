@@ -13,7 +13,6 @@ describe("scope set command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
-    vi.clearAllMocks();
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
@@ -54,7 +53,6 @@ describe("scope set command", () => {
             {
               id: "test-id",
               slug: "testslug",
-              type: "personal",
               createdAt: "2024-01-01T00:00:00Z",
               updatedAt: "2024-01-01T00:00:00Z",
             },
@@ -81,7 +79,6 @@ describe("scope set command", () => {
           return HttpResponse.json({
             id: "test-id",
             slug: "oldslug",
-            type: "personal",
             createdAt: "2024-01-01T00:00:00Z",
             updatedAt: "2024-01-01T00:00:00Z",
           });
@@ -107,7 +104,6 @@ describe("scope set command", () => {
           return HttpResponse.json({
             id: "test-id",
             slug: "oldslug",
-            type: "personal",
             createdAt: "2024-01-01T00:00:00Z",
             updatedAt: "2024-01-01T00:00:00Z",
           });
@@ -116,7 +112,6 @@ describe("scope set command", () => {
           return HttpResponse.json({
             id: "test-id",
             slug: "newslug",
-            type: "personal",
             createdAt: "2024-01-01T00:00:00Z",
             updatedAt: "2024-01-01T00:00:00Z",
           });

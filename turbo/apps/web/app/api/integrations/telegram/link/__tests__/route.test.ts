@@ -1,14 +1,28 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST } from "../route";
-import { verifyLinkToken } from "../../../../../../src/lib/telegram/handlers/start";
-import { testContext } from "../../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { createTestTelegramInstallation } from "../../../../../../src/__tests__/api-test-helpers";
+import { PENDING_TELEGRAM_USER_ID } from "../../../../../../src/lib/telegram/handlers/shared";
+import { telegramUserLinkExists } from "../../../../../../src/lib/telegram/__tests__/helpers";
 
 const context = testContext();
 
-function linkRequest(method: string, body?: Record<string, unknown>) {
-  return new Request("http://localhost:3000/api/integrations/telegram/link", {
+function linkRequest(
+  method: string,
+  body?: Record<string, unknown>,
+  queryParams?: Record<string, string>,
+) {
+  const url = new URL("http://localhost:3000/api/integrations/telegram/link");
+  if (queryParams) {
+    for (const [key, value] of Object.entries(queryParams)) {
+      url.searchParams.set(key, value);
+    }
+  }
+  return new Request(url.toString(), {
     method,
     ...(body
       ? {
@@ -59,6 +73,39 @@ describe("/api/integrations/telegram/link", () => {
       expect(data.linked).toBe(true);
       expect(data.telegramUserId).toBeDefined();
     });
+
+    it("returns installation info when botId matches an existing bot", async () => {
+      await context.setupUser();
+      const telegramBotId = uniqueId("bot");
+      const installationId = await createTestTelegramInstallation({
+        telegramBotId,
+      });
+
+      const response = await GET(
+        linkRequest("GET", undefined, { botId: telegramBotId }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.linked).toBe(false);
+      expect(data.installation).toEqual({
+        id: installationId,
+        botUsername: `bot_${telegramBotId}`,
+      });
+    });
+
+    it("returns linked: false without installation for unknown botId", async () => {
+      await context.setupUser();
+
+      const response = await GET(
+        linkRequest("GET", undefined, { botId: "nonexistent-bot-id" }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.linked).toBe(false);
+      expect(data.installation).toBeUndefined();
+    });
   });
 
   describe("POST", () => {
@@ -98,30 +145,27 @@ describe("/api/integrations/telegram/link", () => {
       expect(data.error.code).toBe("NOT_FOUND");
     });
 
-    it("generates a valid deep link token", async () => {
+    it("creates a pending user link and returns bot info", async () => {
       const user = await context.setupUser();
+      const telegramBotId = uniqueId("bot");
       const installationId = await createTestTelegramInstallation({
         adminUserId: user.userId,
-        vm0UserId: user.userId,
+        telegramBotId,
       });
 
       const response = await POST(linkRequest("POST", { installationId }));
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.token).toBeDefined();
-      expect(data.deepLink).toContain("https://t.me/");
-      expect(data.deepLink).toContain(`?start=${data.token}`);
+      expect(data.botUsername).toBe(`bot_${telegramBotId}`);
+      expect(data.botLink).toContain("https://t.me/");
 
-      // Verify the token is valid using the exported verifier
-      const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
-      const payload = verifyLinkToken(data.token, SECRETS_ENCRYPTION_KEY);
-      expect(payload).toEqual(
-        expect.objectContaining({
-          vm0UserId: user.userId,
-          installationId,
-        }),
+      // Verify pending user link was created
+      const exists = await telegramUserLinkExists(
+        installationId,
+        PENDING_TELEGRAM_USER_ID,
       );
+      expect(exists).toBe(true);
     });
   });
 });

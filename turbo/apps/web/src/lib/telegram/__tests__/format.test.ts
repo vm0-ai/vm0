@@ -67,12 +67,11 @@ describe("buildTelegramResponse", () => {
       "https://example.com/logs/123",
     );
 
-    expect(result).toContain("<b>TestBot</b>");
+    expect(result).toContain("🤖 <b>TestBot</b>");
     expect(result).toContain("Hello world");
     expect(result).toContain(
-      '<a href="https://example.com/logs/123">View logs</a>',
+      '<a href="https://example.com/logs/123">📋 View logs</a>',
     );
-    expect(result).toContain("· TestBot");
   });
 
   it("should separate header, content, and footer with line breaks", () => {
@@ -82,8 +81,8 @@ describe("buildTelegramResponse", () => {
       "https://example.com/logs",
     );
 
-    // Header + blank line + content + blank line + separator + footer
-    expect(result).toMatch(/^<b>Bot<\/b>\n\ncontent\n\n─\n/);
+    // Header + blank line + content + blank line + footer
+    expect(result).toMatch(/^🤖 <b>Bot<\/b>\n\ncontent\n\n/);
   });
 
   it("should escape HTML in agent name", () => {
@@ -93,7 +92,7 @@ describe("buildTelegramResponse", () => {
       "https://example.com/logs",
     );
 
-    expect(result).toContain("<b>Bot &lt;script&gt;</b>");
+    expect(result).toContain("🤖 <b>Bot &lt;script&gt;</b>");
   });
 
   it("should convert markdown content to Telegram HTML", () => {
@@ -104,6 +103,38 @@ describe("buildTelegramResponse", () => {
     );
 
     expect(result).toContain("<b>bold</b> and <code>code</code>");
+  });
+
+  it("should include deep links when provided", () => {
+    const result = buildTelegramResponse(
+      "content",
+      "Bot",
+      "https://example.com/logs",
+      [
+        {
+          emoji: "🔑",
+          label: "Configure model providers",
+          url: "https://example.com/settings",
+        },
+      ],
+    );
+
+    expect(result).toContain(
+      '🔑 <a href="https://example.com/settings">Configure model providers</a>',
+    );
+    expect(result).toContain("📋 View logs</a>");
+  });
+
+  it("should not include deep links section when empty", () => {
+    const result = buildTelegramResponse(
+      "content",
+      "Bot",
+      "https://example.com/logs",
+      [],
+    );
+
+    expect(result).not.toContain("🔑");
+    expect(result).toContain("📋 View logs</a>");
   });
 });
 

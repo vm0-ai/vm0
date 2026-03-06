@@ -29,6 +29,7 @@ interface CallbackPayload {
   repo: string;
   issueNumber: number;
   composeId: string;
+  agentName: string;
   existingSessionId?: string;
 }
 
@@ -131,6 +132,7 @@ async function givenGitHubCallbackSetup(overrides?: {
     repo: "test-org/test-repo",
     issueNumber: 42,
     composeId,
+    agentName: "gh-callback-agent",
     existingSessionId: overrides?.existingSessionId,
   };
 
@@ -292,8 +294,8 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       expect(capturedComments[0]!.owner).toBe("test-org");
       expect(capturedComments[0]!.repo).toBe("test-repo");
       expect(capturedComments[0]!.issueNumber).toBe("42");
-      // Verify the comment body includes the VM0 attribution footer
-      expect(capturedComments[0]!.body).toContain("Powered by");
+      // Verify the comment body includes the logs footer
+      expect(capturedComments[0]!.body).toContain("View logs");
     });
 
     it("should post error comment on failed run", async () => {
@@ -338,6 +340,7 @@ describe("POST /api/internal/callbacks/github/issues", () => {
         repo: "org/repo",
         issueNumber: 1,
         composeId,
+        agentName: "gh-missing-agent",
       };
 
       const { secret } = await createTestCallback({

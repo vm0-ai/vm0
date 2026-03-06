@@ -7,7 +7,9 @@ import {
   timestamp,
   boolean,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 /**
  * Result object stored when compose job completes successfully
@@ -59,5 +61,10 @@ export const composeJobs = pgTable(
     index("idx_compose_jobs_user_status").on(table.userId, table.status),
     // Index for cleanup job (finding old jobs)
     index("idx_compose_jobs_created").on(table.createdAt),
+    // Partial unique index: only one active (pending/running) job per user.
+    // Enforces idempotency at the DB level, preventing TOCTOU races.
+    uniqueIndex("idx_compose_jobs_user_active")
+      .on(table.userId)
+      .where(sql`status IN ('pending', 'running')`),
   ],
 );

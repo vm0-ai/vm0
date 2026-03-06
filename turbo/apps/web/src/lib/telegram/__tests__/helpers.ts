@@ -1,9 +1,12 @@
+import { eq, and } from "drizzle-orm";
 import { initServices } from "../../init-services";
 import { telegramInstallations } from "../../../db/schema/telegram-installation";
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { telegramMessages } from "../../../db/schema/telegram-message";
+import { telegramThreadSessions } from "../../../db/schema/telegram-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { scopes } from "../../../db/schema/scope";
+import { scopeMembers } from "../../../db/schema/scope-member";
 import { encryptCredentialValue } from "../../crypto/secrets-encryption";
 import { PENDING_TELEGRAM_USER_ID } from "../handlers/shared";
 import { uniqueId } from "../../../__tests__/test-helpers";
@@ -17,14 +20,20 @@ export async function createTelegramInstallation(): Promise<string> {
 
   const suffix = uniqueId("tg");
 
+  const adminUserId = uniqueId("test-admin");
   const [scope] = await globalThis.services.db
     .insert(scopes)
     .values({
       slug: suffix,
-      type: "personal",
-      ownerId: uniqueId("test-admin"),
+      clerkOrgId: uniqueId("org"),
     })
     .returning();
+
+  await globalThis.services.db.insert(scopeMembers).values({
+    scopeId: scope!.id,
+    userId: adminUserId,
+    role: "admin",
+  });
 
   const [compose] = await globalThis.services.db
     .insert(agentComposes)
@@ -146,6 +155,7 @@ export async function createTelegramCallbackInstallation(
   composeId: string,
   userId: string,
   botToken: string,
+  options?: { telegramUserId?: string },
 ): Promise<CallbackInstallationResult> {
   initServices();
 
@@ -170,7 +180,7 @@ export async function createTelegramCallbackInstallation(
   const [userLink] = await globalThis.services.db
     .insert(telegramUserLinks)
     .values({
-      telegramUserId: uniqueId("tg"),
+      telegramUserId: options?.telegramUserId ?? uniqueId("tg"),
       installationId: installation!.id,
       vm0UserId: userId,
     })
@@ -180,4 +190,73 @@ export async function createTelegramCallbackInstallation(
     installationId: installation!.id,
     userLinkId: userLink!.id,
   };
+}
+
+/**
+ * Check whether a user link exists for a given installation and telegram user ID.
+ * Returns true if the link exists, false otherwise.
+ */
+export async function telegramUserLinkExists(
+  installationId: string,
+  telegramUserId: string,
+): Promise<boolean> {
+  initServices();
+
+  const [row] = await globalThis.services.db
+    .select({ id: telegramUserLinks.id })
+    .from(telegramUserLinks)
+    .where(
+      and(
+        eq(telegramUserLinks.installationId, installationId),
+        eq(telegramUserLinks.telegramUserId, telegramUserId),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * Create a telegram thread session for testing.
+ */
+export async function createTelegramThreadSession(params: {
+  telegramUserLinkId: string;
+  chatId: string;
+  rootMessageId: string;
+  agentSessionId: string;
+}): Promise<void> {
+  initServices();
+
+  await globalThis.services.db.insert(telegramThreadSessions).values({
+    telegramUserLinkId: params.telegramUserLinkId,
+    chatId: params.chatId,
+    rootMessageId: params.rootMessageId,
+    agentSessionId: params.agentSessionId,
+  });
+}
+
+/**
+ * Check whether a telegram thread session exists for the given parameters.
+ */
+export async function telegramThreadSessionExists(params: {
+  telegramUserLinkId: string;
+  chatId: string;
+  rootMessageId: string;
+}): Promise<boolean> {
+  initServices();
+
+  const [row] = await globalThis.services.db
+    .select({ id: telegramThreadSessions.id })
+    .from(telegramThreadSessions)
+    .where(
+      and(
+        eq(
+          telegramThreadSessions.telegramUserLinkId,
+          params.telegramUserLinkId,
+        ),
+        eq(telegramThreadSessions.chatId, params.chatId),
+        eq(telegramThreadSessions.rootMessageId, params.rootMessageId),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
 }

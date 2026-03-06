@@ -11,10 +11,8 @@ import { scopes } from "./scope";
 
 /**
  * Secrets table (formerly "credentials")
- * Stores encrypted third-party service secrets at scope level
+ * Stores encrypted third-party service secrets per user within a scope
  * Values encrypted with AES-256-GCM using SECRETS_ENCRYPTION_KEY
- *
- * Scoped to user's personal scope initially, supports organization scopes in future
  */
 export const secrets = pgTable(
   "secrets",
@@ -27,15 +25,15 @@ export const secrets = pgTable(
     encryptedValue: text("encrypted_value").notNull(),
     description: text("description"),
     type: varchar("type", { length: 50 }).notNull().default("user"),
-    userId: text("user_id"), // Scope member who owns this secret (nullable for backfill)
+    userId: text("user_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    // Unique constraint includes type to allow same name with different types
-    // e.g., (scope_123, "API_KEY", "user") and (scope_123, "API_KEY", "model-provider") can coexist
-    uniqueIndex("idx_secrets_scope_name_type").on(
+    // Unique per user within scope — different users can have the same secret name
+    uniqueIndex("idx_secrets_scope_user_name_type").on(
       table.scopeId,
+      table.userId,
       table.name,
       table.type,
     ),

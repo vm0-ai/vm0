@@ -7,7 +7,6 @@ import { encryptCredentialValue } from "../../../../../src/lib/crypto/secrets-en
 import { githubInstallations } from "../../../../../src/db/schema/github-installation";
 import { githubUserLinks } from "../../../../../src/db/schema/github-user-link";
 import { connectors } from "../../../../../src/db/schema/connector";
-import { scopes } from "../../../../../src/db/schema/scope";
 import {
   getInstallationAccessToken,
   getInstallationInfo,
@@ -77,7 +76,14 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${platformUrl}/settings?tab=integrations`);
   }
 
-  const state = parseOAuthState(url.searchParams.get("state"));
+  let state: OAuthState;
+  try {
+    state = parseOAuthState(url.searchParams.get("state"));
+  } catch {
+    return NextResponse.redirect(
+      `${platformUrl}/settings?tab=integrations&error=${encodeURIComponent("Invalid OAuth state. Please try installing again from the Platform.")}`,
+    );
+  }
 
   // Verify HMAC signature when vm0UserId is present
   if (state.vm0UserId) {
@@ -249,8 +255,7 @@ export async function linkVm0User(
   const [connector] = await db
     .select({ externalId: connectors.externalId })
     .from(connectors)
-    .innerJoin(scopes, eq(scopes.id, connectors.scopeId))
-    .where(and(eq(scopes.ownerId, vm0UserId), eq(connectors.type, "github")))
+    .where(and(eq(connectors.userId, vm0UserId), eq(connectors.type, "github")))
     .limit(1);
 
   if (!connector?.externalId) {

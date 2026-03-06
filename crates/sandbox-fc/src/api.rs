@@ -31,6 +31,46 @@ impl ApiError {
     }
 }
 
+/// Statistics returned by Firecracker's balloon device.
+///
+/// Requires `stats_polling_interval_s > 0` configured pre-boot.
+/// Fields beyond `target_mib`/`actual_mib` depend on the guest kernel version.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct BalloonStatistics {
+    /// Target balloon size in MiB (set by host).
+    pub target_mib: u32,
+    /// Actual balloon size in MiB (reported by guest driver).
+    pub actual_mib: u32,
+    /// Target balloon size in 4 KiB pages.
+    pub target_pages: u64,
+    /// Actual balloon size in 4 KiB pages.
+    pub actual_pages: u64,
+    /// Memory not used for any purpose (bytes).
+    #[serde(default)]
+    pub free_memory: Option<i64>,
+    /// Estimate of memory available for new applications (bytes).
+    #[serde(default)]
+    pub available_memory: Option<i64>,
+    /// Total memory visible to guest (bytes).
+    #[serde(default)]
+    pub total_memory: Option<i64>,
+    /// Memory swapped in from disk (bytes).
+    #[serde(default)]
+    pub swap_in: Option<i64>,
+    /// Memory swapped out to disk (bytes).
+    #[serde(default)]
+    pub swap_out: Option<i64>,
+    /// Major page fault count.
+    #[serde(default)]
+    pub major_faults: Option<i64>,
+    /// Minor page fault count.
+    #[serde(default)]
+    pub minor_faults: Option<i64>,
+    /// Memory used for disk caching (bytes).
+    #[serde(default)]
+    pub disk_caches: Option<i64>,
+}
+
 /// Per-request timeout matching the TS client (30s).
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -210,6 +250,30 @@ impl<'a> ApiClient<'a> {
         .await
     }
 
+    /// Update balloon target size at runtime via PATCH /balloon.
+    ///
+    /// Unlike [`Self::configure_balloon`] (PUT, pre-boot only), this can be called
+    /// while the VM is running to dynamically inflate or deflate the balloon.
+    pub async fn patch_balloon(&self, amount_mib: u32) -> Result<(), ApiError> {
+        let body = serde_json::json!({ "amount_mib": amount_mib });
+        let bytes =
+            serde_json::to_string(&body).map_err(|e| ApiError::Other(format!("json: {e}")))?;
+        self.request_with_timeout("PATCH", "/balloon", Some(bytes.as_bytes()))
+            .await
+    }
+
+    /// Retrieve balloon device statistics via GET /balloon/statistics.
+    ///
+    /// Requires `stats_polling_interval_s > 0` configured pre-boot via
+    /// [`Self::configure_balloon`]. Returns an error if statistics were not enabled.
+    pub async fn get_balloon_statistics(&self) -> Result<BalloonStatistics, ApiError> {
+        let body = self
+            .request_with_timeout_body("GET", "/balloon/statistics", None)
+            .await?;
+        serde_json::from_str(&body)
+            .map_err(|e| ApiError::Other(format!("parse balloon statistics: {e}")))
+    }
+
     /// Configure the balloon device via PUT /balloon.
     ///
     /// Must be called before starting the instance. With `deflate_on_oom` enabled,
@@ -242,6 +306,18 @@ impl<'a> ApiClient<'a> {
         .await
     }
 
+    /// Send a request with the standard timeout and return the response body.
+    async fn request_with_timeout_body(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&[u8]>,
+    ) -> Result<String, ApiError> {
+        tokio::time::timeout(REQUEST_TIMEOUT, self.request(method, path, body))
+            .await
+            .map_err(|_| ApiError::Other(format!("request timed out after {REQUEST_TIMEOUT:?}")))?
+    }
+
     /// Send a request with the standard timeout, discarding the response body.
     async fn request_with_timeout(
         &self,
@@ -249,11 +325,7 @@ impl<'a> ApiClient<'a> {
         path: &str,
         body: Option<&[u8]>,
     ) -> Result<(), ApiError> {
-        tokio::time::timeout(REQUEST_TIMEOUT, self.request(method, path, body))
-            .await
-            .map_err(|_| {
-                ApiError::Other(format!("request timed out after {REQUEST_TIMEOUT:?}"))
-            })??;
+        self.request_with_timeout_body(method, path, body).await?;
         Ok(())
     }
 
@@ -949,6 +1021,109 @@ mod tests {
         let client = ApiClient::new(&sock_path);
         let result = client.start_instance().await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn patch_balloon_succeeds_on_204() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-patch-balloon.sock");
+
+        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
+            panic!("bind {}: {e}", sock_path.display());
+        });
+
+        tokio::spawn(async move {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await;
+
+            let req = String::from_utf8_lossy(&buf);
+            assert!(req.starts_with("PATCH /balloon"), "got: {req}");
+            assert!(req.contains("amount_mib"), "missing amount_mib in: {req}");
+
+            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
+            let _ = stream.write_all(response.as_bytes()).await;
+        });
+
+        let client = ApiClient::new(&sock_path);
+        let result = client.patch_balloon(512).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn get_balloon_statistics_parses_response() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-balloon-stats.sock");
+
+        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
+            panic!("bind {}: {e}", sock_path.display());
+        });
+
+        tokio::spawn(async move {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await;
+
+            let req = String::from_utf8_lossy(&buf);
+            assert!(req.starts_with("GET /balloon/statistics"), "got: {req}");
+
+            let body = r#"{"target_mib":512,"actual_mib":256,"target_pages":131072,"actual_pages":65536,"free_memory":1073741824,"available_memory":1610612736,"total_memory":2147483648}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(response.as_bytes()).await;
+        });
+
+        let client = ApiClient::new(&sock_path);
+        let stats = client.get_balloon_statistics().await.unwrap();
+        assert_eq!(stats.target_mib, 512);
+        assert_eq!(stats.actual_mib, 256);
+        assert_eq!(stats.target_pages, 131072);
+        assert_eq!(stats.actual_pages, 65536);
+        assert_eq!(stats.free_memory, Some(1_073_741_824));
+        assert_eq!(stats.available_memory, Some(1_610_612_736));
+        assert_eq!(stats.total_memory, Some(2_147_483_648));
+        // Optional fields not in response should be None.
+        assert_eq!(stats.swap_in, None);
+        assert_eq!(stats.major_faults, None);
+    }
+
+    #[tokio::test]
+    async fn get_balloon_statistics_handles_minimal_response() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-balloon-stats-min.sock");
+
+        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
+            panic!("bind {}: {e}", sock_path.display());
+        });
+
+        tokio::spawn(async move {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await;
+
+            // Minimal response with only required fields.
+            let body = r#"{"target_mib":0,"actual_mib":0,"target_pages":0,"actual_pages":0}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(response.as_bytes()).await;
+        });
+
+        let client = ApiClient::new(&sock_path);
+        let stats = client.get_balloon_statistics().await.unwrap();
+        assert_eq!(stats.target_mib, 0);
+        assert_eq!(stats.actual_mib, 0);
+        assert_eq!(stats.free_memory, None);
+        assert_eq!(stats.available_memory, None);
     }
 
     #[tokio::test]

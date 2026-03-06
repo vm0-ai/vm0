@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST as createOrgRoute } from "../route";
+import { POST as inviteRoute } from "../invite/route";
 import { DELETE } from "../members/route";
 import { GET as getOrgStatusRoute } from "../status/route";
-import { POST as switchScopeRoute } from "../../scope/use/route";
 import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
@@ -10,6 +10,68 @@ import { setupClerkOrgMock } from "../../../../src/__tests__/org-test-helpers";
 import { clerkClient } from "@clerk/nextjs/server";
 
 const context = testContext();
+
+/**
+ * Helper to create an org with a fresh user.
+ */
+async function createOrg(userId: string) {
+  const slug = uniqueId("org");
+  const orgId = `org_${userId}`;
+  setupClerkOrgMock({
+    userId,
+    orgId,
+    memberships: [{ userId, role: "org:admin" }],
+  });
+
+  const createReq = createTestRequest("http://localhost:3000/api/org", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ slug }),
+  });
+  const createRes = await createOrgRoute(createReq);
+  if (createRes.status !== 201) {
+    const body = await createRes.json();
+    throw new Error(`Failed to create org: ${body.error?.message}`);
+  }
+
+  return { slug, orgId };
+}
+
+/**
+ * Helper to invite a member via API and set up Clerk mock for both users.
+ */
+async function addMember(
+  adminUserId: string,
+  memberUserId: string,
+  memberEmail: string,
+  slug: string,
+  orgId: string,
+) {
+  // Set up Clerk mock with both users as members
+  setupClerkOrgMock({
+    userId: adminUserId,
+    orgId,
+    memberships: [
+      { userId: adminUserId, role: "org:admin" },
+      { userId: memberUserId, role: "org:member" },
+    ],
+  });
+
+  // Invite the member via API (this creates scope_members record)
+  const inviteReq = createTestRequest(
+    `http://localhost:3000/api/org/invite?scope=${slug}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: memberEmail }),
+    },
+  );
+  const inviteRes = await inviteRoute(inviteReq);
+  if (inviteRes.status !== 200) {
+    const body = await inviteRes.json();
+    throw new Error(`Failed to invite member: ${body.error?.message}`);
+  }
+}
 
 describe("DELETE /api/org/members - Remove Member", () => {
   beforeEach(() => {
@@ -19,11 +81,14 @@ describe("DELETE /api/org/members - Remove Member", () => {
   it("should require authentication", async () => {
     mockClerk({ userId: null });
 
-    const request = createTestRequest("http://localhost:3000/api/org/members", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: "member@example.com" }),
-    });
+    const request = createTestRequest(
+      "http://localhost:3000/api/org/members?scope=test",
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "member@example.com" }),
+      },
+    );
     const response = await DELETE(request);
     const data = await response.json();
 
@@ -31,8 +96,9 @@ describe("DELETE /api/org/members - Remove Member", () => {
     expect(data.error.message).toContain("Not authenticated");
   });
 
-  it("should require org access token", async () => {
-    await context.setupUser();
+  it("should require scope query parameter", async () => {
+    const userId = uniqueId("members-user");
+    mockClerk({ userId });
 
     const request = createTestRequest("http://localhost:3000/api/org/members", {
       method: "DELETE",
@@ -42,151 +108,81 @@ describe("DELETE /api/org/members - Remove Member", () => {
     const response = await DELETE(request);
     const data = await response.json();
 
-    expect(response.status).toBe(403);
-    expect(data.error.message).toContain("Organization access token required");
+    expect(response.status).toBe(400);
+    expect(data.error.message).toContain("scope query parameter is required");
   });
 
   it("should remove member and return success message", async () => {
-    const user = await context.setupUser();
-    const slug = uniqueId("org");
-    const memberUserId = uniqueId("member");
-    const orgId = `org_${user.userId}`;
+    const adminUserId = uniqueId("admin");
+    const memberEmail = "member@example.com";
+    // Clerk mock maps "member@example.com" -> "user_member"
+    const memberUserId = "user_member";
+    const { slug, orgId } = await createOrg(adminUserId);
 
-    setupClerkOrgMock({
-      userId: user.userId,
-      orgId,
-      memberships: [
-        { userId: user.userId, role: "org:admin" },
-        { userId: memberUserId, role: "org:member" },
-      ],
-    });
+    // Add member via invite API
+    await addMember(adminUserId, memberUserId, memberEmail, slug, orgId);
 
-    // Create org
-    const createReq = createTestRequest("http://localhost:3000/api/org", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slug }),
-    });
-    const createRes = await createOrgRoute(createReq);
-    expect(createRes.status).toBe(201);
-
-    // Switch to org scope
-    const useReq = createTestRequest("http://localhost:3000/api/scope/use", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slug }),
-    });
-    const useRes = await switchScopeRoute(useReq);
-    const useData = await useRes.json();
-
-    // Override getUserList to return the exact memberUserId for the email
+    // Override getUserList for the removal to return the correct member ID
     const client = await clerkClient();
     vi.mocked(client.users.getUserList).mockResolvedValue({
       data: [
         {
           id: memberUserId,
-          emailAddresses: [
-            { id: "email_1", emailAddress: "member@example.com" },
-          ],
+          emailAddresses: [{ id: "email_1", emailAddress: memberEmail }],
           primaryEmailAddressId: "email_1",
         },
       ],
     } as unknown as Awaited<ReturnType<typeof client.users.getUserList>>);
 
     const removeReq = createTestRequest(
-      "http://localhost:3000/api/org/members",
+      `http://localhost:3000/api/org/members?scope=${slug}`,
       {
         method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${useData.token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email: "member@example.com" }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: memberEmail }),
       },
     );
     const removeRes = await DELETE(removeReq);
     expect(removeRes.status).toBe(200);
 
     const removeData = await removeRes.json();
-    expect(removeData.message).toContain("member@example.com");
+    expect(removeData.message).toContain(memberEmail);
   });
 
-  it("should revoke member tokens after removal", async () => {
-    const user = await context.setupUser();
-    const slug = uniqueId("org");
-    const memberUserId = uniqueId("member");
-    const orgId = `org_${user.userId}`;
+  it("should revoke member access after removal", async () => {
+    const adminUserId = uniqueId("admin");
+    const memberEmail = "member-revoke@example.com";
+    // Clerk mock maps "member-revoke@example.com" -> "user_member-revoke"
+    const memberUserId = "user_member-revoke";
+    const { slug, orgId } = await createOrg(adminUserId);
 
-    setupClerkOrgMock({
-      userId: user.userId,
-      orgId,
-      memberships: [
-        { userId: user.userId, role: "org:admin" },
-        { userId: memberUserId, role: "org:member" },
-      ],
-    });
+    // Add member via invite API
+    await addMember(adminUserId, memberUserId, memberEmail, slug, orgId);
 
-    // Create org
-    const createReq = createTestRequest("http://localhost:3000/api/org", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slug }),
-    });
-    const createRes = await createOrgRoute(createReq);
-    expect(createRes.status).toBe(201);
-
-    // Generate token for member by simulating scope use
-    mockClerk({ userId: memberUserId });
+    // Verify member can access org status
     setupClerkOrgMock({
       userId: memberUserId,
       orgId,
       memberships: [
-        { userId: user.userId, role: "org:admin" },
+        { userId: adminUserId, role: "org:admin" },
         { userId: memberUserId, role: "org:member" },
       ],
     });
-
-    const memberUseReq = createTestRequest(
-      "http://localhost:3000/api/scope/use",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug }),
-      },
-    );
-    const memberUseRes = await switchScopeRoute(memberUseReq);
-    expect(memberUseRes.status).toBe(200);
-    const memberUseData = await memberUseRes.json();
-    const memberOrgToken = memberUseData.token;
-
-    // Verify member token is valid via API
     const statusReq1 = createTestRequest(
-      "http://localhost:3000/api/org/status",
-      { headers: { Authorization: `Bearer ${memberOrgToken}` } },
+      `http://localhost:3000/api/org/status?scope=${slug}`,
     );
     const statusRes1 = await getOrgStatusRoute(statusReq1);
     expect(statusRes1.status).toBe(200);
 
     // Switch back to admin and remove the member
     setupClerkOrgMock({
-      userId: user.userId,
+      userId: adminUserId,
       orgId,
       memberships: [
-        { userId: user.userId, role: "org:admin" },
+        { userId: adminUserId, role: "org:admin" },
         { userId: memberUserId, role: "org:member" },
       ],
     });
-
-    const adminUseReq = createTestRequest(
-      "http://localhost:3000/api/scope/use",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug }),
-      },
-    );
-    const adminUseRes = await switchScopeRoute(adminUseReq);
-    const adminUseData = await adminUseRes.json();
 
     // Override getUserList to return memberUserId for the email
     const adminClient = await clerkClient();
@@ -194,40 +190,30 @@ describe("DELETE /api/org/members - Remove Member", () => {
       data: [
         {
           id: memberUserId,
-          emailAddresses: [
-            { id: "email_1", emailAddress: "member-revoke@example.com" },
-          ],
+          emailAddresses: [{ id: "email_1", emailAddress: memberEmail }],
           primaryEmailAddressId: "email_1",
         },
       ],
     } as unknown as Awaited<ReturnType<typeof adminClient.users.getUserList>>);
 
     const removeReq = createTestRequest(
-      "http://localhost:3000/api/org/members",
+      `http://localhost:3000/api/org/members?scope=${slug}`,
       {
         method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${adminUseData.token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email: "member-revoke@example.com" }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: memberEmail }),
       },
     );
     const removeRes = await DELETE(removeReq);
     expect(removeRes.status).toBe(200);
 
-    // Verify member's token is now revoked via API
-    // Need to re-mock clerk for the member context since resolveOrgAccessToken
-    // will look up the user
+    // Verify member can no longer access org status
     mockClerk({ userId: memberUserId });
     const statusReq2 = createTestRequest(
-      "http://localhost:3000/api/org/status",
-      { headers: { Authorization: `Bearer ${memberOrgToken}` } },
+      `http://localhost:3000/api/org/status?scope=${slug}`,
     );
     const statusRes2 = await getOrgStatusRoute(statusReq2);
-    expect(statusRes2.status).toBe(401);
-
-    const statusData2 = await statusRes2.json();
-    expect(statusData2.error.message).toContain("Invalid or expired org token");
+    // After removal, the member should get 403 (not a member)
+    expect(statusRes2.status).toBe(403);
   });
 });

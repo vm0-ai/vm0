@@ -2,7 +2,6 @@ import chalk from "chalk";
 import * as fs from "node:fs";
 import { config as dotenvConfig } from "dotenv";
 import { getEvents } from "../../lib/api";
-import { ApiRequestError } from "../../lib/api/core/client-factory";
 import { parseEvent } from "../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { CodexEventRenderer } from "../../lib/events/codex-event-renderer";
@@ -173,6 +172,29 @@ export function parseIdentifier(identifier: string): {
   return { scope, name: rest };
 }
 
+/**
+ * Display run created info (queued or started)
+ */
+export function renderRunCreated(response: {
+  status: string;
+  runId: string;
+  sandboxId?: string;
+}): void {
+  if (response.status === "queued") {
+    console.log(chalk.yellow("⚠ Run queued — concurrency limit reached"));
+    console.log(`  Run ID:  ${chalk.dim(response.runId)}`);
+    console.log(
+      chalk.dim("  Will start automatically when a slot is available"),
+    );
+    console.log();
+  } else {
+    EventRenderer.renderRunStarted({
+      runId: response.runId,
+      sandboxId: response.sandboxId,
+    });
+  }
+}
+
 interface PollResult {
   succeeded: boolean;
   runId: string;
@@ -290,24 +312,11 @@ export function showNextSteps(result: PollResult): void {
 }
 
 /**
- * Handle generic run errors with special case for concurrent run limit
- * This replaces the final `else` clause to avoid adding complexity
+ * Handle generic run errors
  */
 function handleGenericRunError(error: Error, commandLabel: string): void {
-  if (
-    error instanceof ApiRequestError &&
-    error.code === "concurrent_run_limit_exceeded"
-  ) {
-    console.error(chalk.red(`✗ ${commandLabel} failed`));
-    console.error(
-      chalk.dim(
-        `  ${error.message} Use 'vm0 run list' to view runs, 'vm0 run kill <id>' to cancel.`,
-      ),
-    );
-  } else {
-    console.error(chalk.red(`✗ ${commandLabel} failed`));
-    console.error(chalk.dim(`  ${error.message}`));
-  }
+  console.error(chalk.red(`✗ ${commandLabel} failed`));
+  console.error(chalk.dim(`  ${error.message}`));
 }
 
 /**

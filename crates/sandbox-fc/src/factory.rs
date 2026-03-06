@@ -33,30 +33,75 @@ pub const PREWARM_SCRIPT: &str = "\
     (claude --print --verbose --output-format stream-json hi 2>/dev/null || true) && \
     (codex --help >/dev/null 2>&1 || true)";
 
+/// Balloon device configuration (invariant across all sandboxes).
+#[derive(serde::Serialize)]
+pub struct BalloonConfig {
+    pub amount_mib: u32,
+    pub deflate_on_oom: bool,
+    pub stats_polling_interval_s: u32,
+}
+
+/// Invariant configuration shared by all sandboxes.
+///
+/// These parameters affect snapshot output and are used by:
+/// - [`config_hash`] — deterministic fingerprint for snapshot cache invalidation
+/// - [`super::sandbox::FirecrackerSandbox::build_config`] — fresh boot JSON configuration
+/// - Snapshot creation API calls in `snapshot.rs`
+///
+/// Adding a field here automatically changes the config hash (via `Serialize`)
+/// and makes it available to all consumers.
+///
+/// **Important:** `serde_json` serializes struct fields in declaration order.
+/// Reordering fields changes the hash and invalidates all cached snapshots.
+#[derive(serde::Serialize)]
+pub struct InvariantConfig {
+    pub boot_args: String,
+    pub guest_mac: &'static str,
+    pub tap_name: &'static str,
+    /// TAP MAC used in netns setup for ARP. Not in the Firecracker config JSON,
+    /// but affects snapshot behavior (guest ARP cache is baked into the snapshot).
+    pub tap_mac: &'static str,
+    pub iface_id: &'static str,
+    pub guest_cid: u32,
+    pub balloon: BalloonConfig,
+    pub prewarm_script: &'static str,
+}
+
+impl InvariantConfig {
+    pub fn new() -> Self {
+        Self {
+            boot_args: generate_boot_args(),
+            guest_mac: GUEST_NETWORK.guest_mac,
+            tap_name: GUEST_NETWORK.tap_name,
+            tap_mac: GUEST_NETWORK.tap_mac,
+            iface_id: "eth0",
+            guest_cid: 3,
+            balloon: BalloonConfig {
+                amount_mib: 0,
+                deflate_on_oom: true,
+                stats_polling_interval_s: 5,
+            },
+            prewarm_script: PREWARM_SCRIPT,
+        }
+    }
+}
+
 /// SHA-256 fingerprint of all sandbox-fc internal configuration that affects
-/// snapshot output (boot args, guest network, pre-warm script, etc.).
+/// snapshot output.
+///
+/// Derived from [`InvariantConfig`] serialization — adding a field to that
+/// struct automatically changes this hash.
 ///
 /// This is the backing implementation for [`SandboxFactory::config_hash`].
 /// It is also available as a free function so callers that don't have a
 /// factory instance (e.g. the snapshot subcommand) can compute the hash.
+/// # Panics
+/// Cannot panic — `InvariantConfig` contains only primitives and `String`.
+#[allow(clippy::expect_used)]
 pub fn config_hash() -> String {
-    let boot_args = generate_boot_args();
-    let mut hasher = Sha256::new();
-    // boot_args already contains guest_ip, gateway_ip, netmask via
-    // generate_guest_network_boot_args(). Only guest_mac and tap_name
-    // need to be hashed separately (used by configure_network_interface).
-    hasher.update(b"boot_args:");
-    hasher.update(boot_args.as_bytes());
-    hasher.update(b"guest_mac:");
-    hasher.update(GUEST_NETWORK.guest_mac.as_bytes());
-    hasher.update(b"tap_name:");
-    hasher.update(GUEST_NETWORK.tap_name.as_bytes());
-    hasher.update(b"tap_mac:");
-    hasher.update(GUEST_NETWORK.tap_mac.as_bytes());
-    hasher.update(b"prewarm:");
-    hasher.update(PREWARM_SCRIPT.as_bytes());
-    hasher.update(b"balloon:deflate_on_oom:true");
-    format!("{:x}", hasher.finalize())
+    let config = InvariantConfig::new();
+    let json = serde_json::to_string(&config).expect("serialize invariant config");
+    format!("{:x}", Sha256::digest(json.as_bytes()))
 }
 
 pub struct FirecrackerFactory {
@@ -71,6 +116,7 @@ impl FirecrackerFactory {
     /// Create a new factory without allocating system resources.
     /// Call `startup()` to initialize pools before use.
     pub async fn new(config: FirecrackerConfig) -> Result<Self, SandboxError> {
+        let t = std::time::Instant::now();
         crate::prerequisites::check_prerequisites(&crate::prerequisites::PrerequisiteConfig {
             binary_path: &config.binary_path,
             kernel_path: &config.kernel_path,
@@ -78,6 +124,10 @@ impl FirecrackerFactory {
             snapshot: config.snapshot.as_ref(),
         })
         .await?;
+        info!(
+            elapsed_ms = t.elapsed().as_millis() as u64,
+            "prerequisites checked"
+        );
 
         let factory_paths = FactoryPaths::new(config.base_dir.clone());
         let runtime_paths = RuntimePaths::new();
@@ -126,18 +176,24 @@ impl SandboxFactory for FirecrackerFactory {
 
         let concurrency = self.config.concurrency.max(1);
 
+        let t = std::time::Instant::now();
         let mut netns_pool = NetnsPool::create(NetnsPoolConfig {
             size: concurrency,
             proxy_port: self.config.proxy_port,
         })
         .await
         .map_err(|e| SandboxError::CreationFailed(format!("netns pool: {e}")))?;
+        info!(
+            elapsed_ms = t.elapsed().as_millis() as u64,
+            concurrency, "netns pool created"
+        );
 
         let overlay_creator: Box<dyn OverlayCreator> = match &self.config.snapshot {
             Some(snapshot) => Box::new(SnapshotCopyCreator::new(snapshot.overlay_path.clone())),
             None => Box::new(Ext4Creator),
         };
 
+        let t = std::time::Instant::now();
         let overlay_pool = match OverlayPool::create(OverlayPoolConfig {
             size: concurrency,
             replenish_threshold: (concurrency / 2).max(1),
@@ -154,6 +210,10 @@ impl SandboxFactory for FirecrackerFactory {
                 return Err(SandboxError::CreationFailed(format!("overlay pool: {e}")));
             }
         };
+        info!(
+            elapsed_ms = t.elapsed().as_millis() as u64,
+            concurrency, "overlay pool created"
+        );
 
         self.netns_pool = Some(tokio::sync::Mutex::new(netns_pool));
         self.overlay_pool = Some(tokio::sync::Mutex::new(overlay_pool));

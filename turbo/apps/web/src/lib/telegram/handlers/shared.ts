@@ -69,6 +69,7 @@ export async function saveTelegramThreadSession(opts: {
   userLinkId: string;
   chatId: string;
   rootMessageId: string;
+  previousRootMessageId: string | undefined;
   existingSessionId: string | undefined;
   newSessionId: string | undefined;
   messageId: string;
@@ -78,6 +79,7 @@ export async function saveTelegramThreadSession(opts: {
     userLinkId,
     chatId,
     rootMessageId,
+    previousRootMessageId,
     existingSessionId,
     newSessionId,
     messageId,
@@ -100,10 +102,13 @@ export async function saveTelegramThreadSession(opts: {
     existingSessionId &&
     (runStatus === "completed" || runStatus === "timeout")
   ) {
-    // Existing thread, successful run — update lastProcessedMessageId
+    // Existing thread, successful run — update rootMessageId to bot's latest
+    // reply so the user can continue by replying to any bot response.
+    const matchRootMessageId = previousRootMessageId ?? rootMessageId;
     await globalThis.services.db
       .update(telegramThreadSessions)
       .set({
+        rootMessageId,
         lastProcessedMessageId: messageId,
         updatedAt: new Date(),
       })
@@ -111,7 +116,7 @@ export async function saveTelegramThreadSession(opts: {
         and(
           eq(telegramThreadSessions.telegramUserLinkId, userLinkId),
           eq(telegramThreadSessions.chatId, chatId),
-          eq(telegramThreadSessions.rootMessageId, rootMessageId),
+          eq(telegramThreadSessions.rootMessageId, matchRootMessageId),
         ),
       );
   }
@@ -145,10 +150,10 @@ export async function storeTelegramMessage(
 }
 
 /**
- * Build the logs URL for a run
+ * Build the logs URL for a run, linking to the agent detail logs page.
  */
-export function buildLogsUrl(runId: string): string {
-  return `${getPlatformUrl()}/logs/${runId}`;
+export function buildLogsUrl(runId: string, agentName: string): string {
+  return `${getPlatformUrl()}/agents/${encodeURIComponent(agentName)}/logs/${encodeURIComponent(runId)}`;
 }
 
 /**
@@ -269,7 +274,7 @@ export async function sendThinkingMessage(
   agentName: string,
   options?: { replyToMessageId?: number },
 ): Promise<TelegramSentMessage | undefined> {
-  const text = `<i>${escapeHtml(agentName)} is thinking...</i>`;
+  const text = `<i>🤖 ${escapeHtml(agentName)} is thinking...</i>`;
   try {
     return await sendMessage(client, chatId, text, options);
   } catch (err) {

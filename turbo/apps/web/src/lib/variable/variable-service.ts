@@ -41,7 +41,10 @@ interface VariableInfo {
 /**
  * List all variables for a scope (includes values)
  */
-export async function listVariables(scopeId: string): Promise<VariableInfo[]> {
+export async function listVariables(
+  scopeId: string,
+  userId: string,
+): Promise<VariableInfo[]> {
   const result = await globalThis.services.db
     .select({
       id: variables.id,
@@ -52,7 +55,7 @@ export async function listVariables(scopeId: string): Promise<VariableInfo[]> {
       updatedAt: variables.updatedAt,
     })
     .from(variables)
-    .where(eq(variables.scopeId, scopeId))
+    .where(and(eq(variables.scopeId, scopeId), eq(variables.userId, userId)))
     .orderBy(variables.name);
 
   return result;
@@ -63,6 +66,7 @@ export async function listVariables(scopeId: string): Promise<VariableInfo[]> {
  */
 export async function getVariable(
   scopeId: string,
+  userId: string,
   name: string,
 ): Promise<VariableInfo | null> {
   const result = await globalThis.services.db
@@ -75,7 +79,13 @@ export async function getVariable(
       updatedAt: variables.updatedAt,
     })
     .from(variables)
-    .where(and(eq(variables.scopeId, scopeId), eq(variables.name, name)))
+    .where(
+      and(
+        eq(variables.scopeId, scopeId),
+        eq(variables.userId, userId),
+        eq(variables.name, name),
+      ),
+    )
     .limit(1);
 
   if (!result[0]) {
@@ -91,6 +101,7 @@ export async function getVariable(
  */
 export async function getVariableValues(
   scopeId: string,
+  userId: string,
 ): Promise<Record<string, string>> {
   const result = await globalThis.services.db
     .select({
@@ -98,7 +109,7 @@ export async function getVariableValues(
       value: variables.value,
     })
     .from(variables)
-    .where(eq(variables.scopeId, scopeId));
+    .where(and(eq(variables.scopeId, scopeId), eq(variables.userId, userId)));
 
   const values: Record<string, string> = {};
   for (const row of result) {
@@ -126,7 +137,13 @@ export async function setVariable(
   const existing = await globalThis.services.db
     .select({ id: variables.id })
     .from(variables)
-    .where(and(eq(variables.scopeId, scopeId), eq(variables.name, name)))
+    .where(
+      and(
+        eq(variables.scopeId, scopeId),
+        eq(variables.userId, userId),
+        eq(variables.name, name),
+      ),
+    )
     .limit(1);
 
   if (existing[0]) {
@@ -180,13 +197,20 @@ export async function setVariable(
  */
 export async function deleteVariable(
   scopeId: string,
+  userId: string,
   name: string,
 ): Promise<void> {
   // Check if this variable exists
   const [variable] = await globalThis.services.db
     .select({ id: variables.id })
     .from(variables)
-    .where(and(eq(variables.scopeId, scopeId), eq(variables.name, name)))
+    .where(
+      and(
+        eq(variables.scopeId, scopeId),
+        eq(variables.userId, userId),
+        eq(variables.name, name),
+      ),
+    )
     .limit(1);
 
   if (!variable) {

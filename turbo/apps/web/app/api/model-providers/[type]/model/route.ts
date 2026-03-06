@@ -16,7 +16,7 @@ const router = tsr.router(modelProvidersUpdateModelContract, {
   /**
    * PATCH /api/model-providers/:type/model - Update model selection
    */
-  updateModel: async ({ params, body, headers }) => {
+  updateModel: async ({ params, body, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -31,9 +31,11 @@ const router = tsr.router(modelProvidersUpdateModelContract, {
     });
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
+      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const { scope } = await resolveScope(userId, scopeSlug);
       const provider = await updateModelProviderModel(
         scope.id,
+        userId,
         params.type,
         body.selectedModel,
       );

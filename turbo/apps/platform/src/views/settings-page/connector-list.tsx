@@ -4,6 +4,7 @@ import {
   IconCircleCheck,
   IconLoader,
   IconPlus,
+  IconAlertTriangle,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui/components/ui/button";
 import {
@@ -70,6 +71,12 @@ function ConnectorRow({
             Connected
           </span>
         )}
+        {item.connected && item.scopeMismatch && (
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-yellow-300 bg-yellow-50 px-1.5 py-1 text-xs font-medium text-yellow-800 dark:border-yellow-700 dark:bg-yellow-950 dark:text-yellow-300">
+            <IconAlertTriangle className="h-3 w-3" />
+            Permissions outdated
+          </span>
+        )}
         {!item.connected && isPolling && (
           <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
             <IconLoader className="h-3 w-3 text-yellow-600 animate-spin" />
@@ -80,6 +87,18 @@ function ConnectorRow({
 
       {/* Actions */}
       <div className="shrink-0 flex items-center gap-2">
+        {item.connected && item.scopeMismatch && !isPolling && (
+          <button
+            onClick={() =>
+              detach(connect(item.type, pageSignal), Reason.DomCallback)
+            }
+            className="flex items-center shrink-0 rounded-lg border border-yellow-300 bg-yellow-50 overflow-hidden hover:bg-yellow-100 transition-colors dark:border-yellow-700 dark:bg-yellow-950 dark:hover:bg-yellow-900"
+          >
+            <span className="px-4 py-2 text-sm font-medium text-yellow-800 dark:text-yellow-300">
+              Reconnect
+            </span>
+          </button>
+        )}
         {!item.connected && !isPolling && (
           <button
             onClick={() =>

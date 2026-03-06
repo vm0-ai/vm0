@@ -1,0 +1,214 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { NextRequest } from "next/server";
+import { POST } from "../route";
+import {
+  createTestRequest,
+  createTestCliToken,
+} from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../../../src/__tests__/test-helpers";
+import { reloadEnv } from "../../../../../../src/env";
+
+// Shared mock for Ably createTokenRequest - kept outside vi.mock so tests can
+// override it (the ablyClient singleton means the constructor runs only once)
+const mockCreateTokenRequest = vi.fn().mockResolvedValue({
+  keyName: "test-key",
+  timestamp: 1700000000000,
+  capability: '{"runner-group:vm0/production":["subscribe"]}',
+  nonce: "test-nonce",
+  mac: "test-mac",
+});
+
+// Mock Ably (third-party external dependency)
+vi.mock("ably", () => {
+  return {
+    default: {
+      Rest: vi.fn().mockImplementation(function () {
+        return {
+          auth: { createTokenRequest: mockCreateTokenRequest },
+          channels: { get: vi.fn() },
+        };
+      }),
+    },
+  };
+});
+
+const context = testContext();
+
+const OFFICIAL_RUNNER_SECRET =
+  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+function makeRequest(
+  body: Record<string, unknown>,
+  authorization?: string,
+): NextRequest {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (authorization) {
+    headers["Authorization"] = authorization;
+  }
+  return createTestRequest("http://localhost:3000/api/runners/realtime/token", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+}
+
+describe("POST /api/runners/realtime/token", () => {
+  let user: UserContext;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    context.setupMocks();
+    user = await context.setupUser();
+  });
+
+  describe("Authentication (401)", () => {
+    it("should return 401 with no Authorization header", async () => {
+      const response = await POST(makeRequest({ group: "vm0/production" }));
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data.error.message).toContain("Authentication required");
+    });
+
+    it("should return 401 with non-Bearer token", async () => {
+      const response = await POST(
+        makeRequest({ group: "vm0/production" }, "Basic sometoken"),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data.error.message).toContain("Authentication required");
+    });
+
+    it("should return 401 with invalid CLI token", async () => {
+      const response = await POST(
+        makeRequest(
+          { group: "vm0/production" },
+          "Bearer vm0_live_nonexistent_token",
+        ),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data.error.message).toContain("Authentication required");
+    });
+
+    it("should return 401 with expired CLI token", async () => {
+      const expiredToken = await createTestCliToken(
+        user.userId,
+        new Date(Date.now() - 1000),
+      );
+
+      const response = await POST(
+        makeRequest({ group: "vm0/production" }, `Bearer ${expiredToken}`),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data.error.message).toContain("Authentication required");
+    });
+  });
+
+  describe("Authorization (403)", () => {
+    it("should return 403 when official runner requests non-vm0 group", async () => {
+      const token = `vm0_official_${OFFICIAL_RUNNER_SECRET}`;
+
+      const response = await POST(
+        makeRequest({ group: "other-scope/default" }, `Bearer ${token}`),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error.message).toContain(
+        "Official runners can only subscribe to vm0/* groups",
+      );
+    });
+
+    it("should return 403 when user runner requests group from wrong scope", async () => {
+      const token = await createTestCliToken(user.userId);
+
+      const response = await POST(
+        makeRequest({ group: "wrong-scope/default" }, `Bearer ${token}`),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error.message).toContain("does not match your scope");
+    });
+  });
+
+  describe("Success (200)", () => {
+    it("should return Ably TokenRequest for official runner with vm0 group", async () => {
+      vi.stubEnv("ABLY_API_KEY", "test-api-key");
+      reloadEnv();
+      const token = `vm0_official_${OFFICIAL_RUNNER_SECRET}`;
+
+      const response = await POST(
+        makeRequest({ group: "vm0/production" }, `Bearer ${token}`),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.keyName).toBe("test-key");
+      expect(data.nonce).toBe("test-nonce");
+      expect(data.mac).toBe("test-mac");
+    });
+
+    it("should return Ably TokenRequest for user runner with matching scope group", async () => {
+      vi.stubEnv("ABLY_API_KEY", "test-api-key");
+      reloadEnv();
+      const token = await createTestCliToken(user.userId);
+
+      // Derive scope slug from user context - setupUser creates scope-{suffix}
+      const suffix = user.userId.replace("test-user-", "");
+      const scopeSlug = `scope-${suffix}`;
+
+      const response = await POST(
+        makeRequest({ group: `${scopeSlug}/default` }, `Bearer ${token}`),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.keyName).toBe("test-key");
+      expect(data.nonce).toBe("test-nonce");
+    });
+  });
+
+  describe("Ably not configured (500)", () => {
+    it("should return 500 when ABLY_API_KEY is not set", async () => {
+      const token = `vm0_official_${OFFICIAL_RUNNER_SECRET}`;
+
+      const response = await POST(
+        makeRequest({ group: "vm0/production" }, `Bearer ${token}`),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(data.error.message).toContain("Realtime service unavailable");
+    });
+
+    it("should return 500 when Ably token generation fails", async () => {
+      vi.stubEnv("ABLY_API_KEY", "test-api-key");
+      reloadEnv();
+      const token = `vm0_official_${OFFICIAL_RUNNER_SECRET}`;
+
+      // Make the shared mock reject for the next call
+      mockCreateTokenRequest.mockRejectedValueOnce(
+        new Error("Token gen failed"),
+      );
+
+      const response = await POST(
+        makeRequest({ group: "vm0/production" }, `Bearer ${token}`),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(data.error.message).toContain("Realtime service unavailable");
+    });
+  });
+});

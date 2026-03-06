@@ -70,8 +70,12 @@ export async function exchangeIntervalsIcuCode(
   const data = z
     .object({
       access_token: z.string().optional(),
-      athlete_id: z.string().optional(),
-      name: z.string().nullable().optional(),
+      athlete: z
+        .object({
+          id: z.string(),
+          name: z.string().nullable().optional(),
+        })
+        .optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -85,16 +89,16 @@ export async function exchangeIntervalsIcuCode(
     throw new Error("No access token in Intervals.icu response");
   }
 
-  if (!data.athlete_id) {
-    throw new Error("No athlete_id in Intervals.icu response");
+  if (!data.athlete) {
+    throw new Error("No athlete in Intervals.icu response");
   }
 
   return {
     accessToken: data.access_token,
     scopes: oauthConfig.scopes,
     userInfo: {
-      id: data.athlete_id,
-      username: data.name ?? null,
+      id: data.athlete.id,
+      username: data.athlete.name ?? null,
       email: null,
     },
   };

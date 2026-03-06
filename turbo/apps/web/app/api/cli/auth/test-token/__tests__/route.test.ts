@@ -11,13 +11,6 @@ vi.mock("@clerk/nextjs/server", () => ({
     users: {
       getUserList: mockGetUserList,
     },
-    organizations: {
-      createOrganization: vi
-        .fn()
-        .mockImplementation(({ slug }: { slug: string }) =>
-          Promise.resolve({ id: `org_mock_${slug}` }),
-        ),
-    },
   })),
   auth: vi.fn(),
 }));

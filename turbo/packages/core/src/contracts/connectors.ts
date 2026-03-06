@@ -345,7 +345,7 @@ export const CONNECTOR_TYPES = {
     oauth: {
       authorizationUrl: "https://account.docusign.com/oauth/auth",
       tokenUrl: "https://account.docusign.com/oauth/token",
-      scopes: ["signature"],
+      scopes: ["signature", "extended", "openid"],
     } as ConnectorOAuthConfig,
   },
   dropbox: {
@@ -765,13 +765,51 @@ export const CONNECTOR_TYPES = {
     oauth: {
       authorizationUrl: "https://intervals.icu/oauth/authorize",
       tokenUrl: "https://intervals.icu/api/oauth/token",
+      scopes: ["ACTIVITY", "WELLNESS", "CALENDAR", "SETTINGS", "LIBRARY"],
+    } as ConnectorOAuthConfig,
+  },
+  monday: {
+    label: "Monday.com",
+    helpText:
+      "Connect your Monday.com account to manage boards, items, and workflows",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Monday.com to grant access.",
+        secrets: {
+          MONDAY_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          MONDAY_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://auth.monday.com/oauth2/authorize",
+      tokenUrl: "https://auth.monday.com/oauth2/token",
       scopes: [
-        "ACTIVITY:READ",
-        "ACTIVITY:WRITE",
-        "WELLNESS:READ",
-        "WELLNESS:WRITE",
-        "CALENDAR:READ",
-        "CALENDAR:WRITE",
+        "me:read",
+        "boards:read",
+        "boards:write",
+        "docs:read",
+        "docs:write",
+        "workspaces:read",
+        "users:read",
+        "account:read",
+        "updates:read",
+        "updates:write",
+        "notifications:write",
+        "assets:read",
+        "tags:read",
+        "teams:read",
       ],
     } as ConnectorOAuthConfig,
   },
@@ -807,9 +845,24 @@ export const CONNECTOR_TYPES = {
         "profile",
         "email",
         "offline_access",
-        "accounting.transactions",
         "accounting.contacts",
         "accounting.settings",
+        "accounting.invoices",
+        "accounting.payments",
+        "accounting.banktransactions",
+        "accounting.manualjournals",
+        "accounting.attachments",
+        "accounting.budgets.read",
+        "accounting.reports.profitandloss.read",
+        "accounting.reports.balancesheet.read",
+        "accounting.reports.trialbalance.read",
+        "accounting.reports.aged.read",
+        "accounting.reports.executivesummary.read",
+        "accounting.reports.banksummary.read",
+        "accounting.reports.budgetsummary.read",
+        "files",
+        "assets",
+        "projects",
       ],
     } as ConnectorOAuthConfig,
   },
@@ -842,6 +895,7 @@ export const connectorTypeSchema = z.enum([
   "sentry",
   "intervals-icu",
   "xero",
+  "monday",
 ]);
 
 /**
@@ -972,6 +1026,23 @@ export function getConnectorOAuthConfig(
 ): ConnectorOAuthConfig | undefined {
   const config = CONNECTOR_TYPES[type];
   return "oauth" in config ? config.oauth : undefined;
+}
+
+/**
+ * Check if stored OAuth scopes cover all required scopes for a connector type.
+ * Returns true if no OAuth config exists (non-OAuth connector) or all required scopes are present.
+ * Returns false if storedScopes is null (legacy connector) or missing any required scope.
+ */
+export function hasRequiredScopes(
+  connectorType: ConnectorType,
+  storedScopes: string[] | null,
+): boolean {
+  const oauthConfig = getConnectorOAuthConfig(connectorType);
+  if (!oauthConfig) return true;
+  if (oauthConfig.scopes.length === 0) return true;
+  if (!storedScopes) return false;
+  const storedSet = new Set(storedScopes);
+  return oauthConfig.scopes.every((s) => storedSet.has(s));
 }
 
 /**

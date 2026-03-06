@@ -62,34 +62,23 @@ export async function GET(request: Request) {
     .orderBy(desc(telegramUserLinks.createdAt))
     .limit(1);
 
-  let installation;
-  let needsLink = false;
-
-  if (userLink) {
-    // Get bot installation via user link
-    const [linked] = await db
-      .select()
-      .from(telegramInstallations)
-      .where(eq(telegramInstallations.id, userLink.installationId))
-      .limit(1);
-    installation = linked;
-  } else {
-    // Fallback: check if user is admin of any installation
-    const [adminInstallation] = await db
-      .select()
-      .from(telegramInstallations)
-      .where(eq(telegramInstallations.adminUserId, userId))
-      .orderBy(desc(telegramInstallations.createdAt))
-      .limit(1);
-    installation = adminInstallation;
-    needsLink = !!adminInstallation;
+  if (!userLink) {
+    return NextResponse.json(
+      { error: { message: "No linked Telegram bot", code: "NOT_FOUND" } },
+      { status: 404 },
+    );
   }
+
+  // Get bot installation via user link
+  const [installation] = await db
+    .select()
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.id, userLink.installationId))
+    .limit(1);
 
   if (!installation) {
     return NextResponse.json(
-      {
-        error: { message: "No linked Telegram bot", code: "NOT_FOUND" },
-      },
+      { error: { message: "No linked Telegram bot", code: "NOT_FOUND" } },
       { status: 404 },
     );
   }
@@ -131,11 +120,11 @@ export async function GET(request: Request) {
   }
 
   // Resolve user scope and get existing secrets, vars, connectors
-  const { scope } = await resolveScope(userId, authHeader ?? undefined);
+  const { scope } = await resolveScope(userId);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(scope.id),
-    listVariables(scope.id),
-    listConnectors(scope.id),
+    listSecrets(scope.id, userId),
+    listVariables(scope.id, userId),
+    listConnectors(scope.id, userId),
   ]);
 
   const connectorProvided = getConnectorProvidedSecretNames(
@@ -165,7 +154,6 @@ export async function GET(request: Request) {
       ? { id: compose.id, name: compose.name, scopeSlug: compose.scopeSlug }
       : null,
     isAdmin,
-    needsLink,
     environment: {
       requiredSecrets,
       requiredVars,
@@ -267,10 +255,7 @@ export async function PATCH(request: Request) {
     }
   } else {
     try {
-      ({ scope: targetScope } = await resolveScope(
-        userId,
-        authHeader ?? undefined,
-      ));
+      ({ scope: targetScope } = await resolveScope(userId));
     } catch (error) {
       if (isNotFound(error)) {
         return NextResponse.json(

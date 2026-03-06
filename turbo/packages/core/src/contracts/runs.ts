@@ -8,6 +8,7 @@ const c = initContract();
  * All valid run status values
  */
 export const ALL_RUN_STATUSES = [
+  "queued",
   "pending",
   "running",
   "completed",
@@ -187,7 +188,6 @@ export const runsMainContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
-      429: apiErrorSchema,
     },
     summary: "Create and execute agent run",
   },

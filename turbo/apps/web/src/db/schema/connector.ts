@@ -31,14 +31,18 @@ export const connectors = pgTable(
     externalEmail: varchar("external_email", { length: 255 }),
     oauthScopes: text("oauth_scopes"), // JSON array of scopes
     tokenExpiresAt: timestamp("token_expires_at"), // null = non-expiring token
-    userId: text("user_id"), // Scope member who owns this connector (nullable for backfill)
+    userId: text("user_id").notNull(),
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    // One connector per type per user
-    uniqueIndex("idx_connectors_scope_type").on(table.scopeId, table.type),
+    // One connector per type per user within a scope
+    uniqueIndex("idx_connectors_scope_user_type").on(
+      table.scopeId,
+      table.userId,
+      table.type,
+    ),
     index("idx_connectors_scope").on(table.scopeId),
   ],
 );

@@ -18,7 +18,7 @@ const router = tsr.router(computerConnectorContract, {
   /**
    * POST /api/connectors/computer - Create computer connector
    */
-  create: async ({ headers }) => {
+  create: async ({ headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -27,7 +27,8 @@ const router = tsr.router(computerConnectorContract, {
     }
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
+      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const { scope } = await resolveScope(userId, scopeSlug);
       const result = await createComputerConnector(scope.id, userId);
       return { status: 200 as const, body: result };
     } catch (error) {
@@ -44,7 +45,7 @@ const router = tsr.router(computerConnectorContract, {
   /**
    * GET /api/connectors/computer - Get computer connector status
    */
-  get: async ({ headers }) => {
+  get: async ({ headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -52,8 +53,9 @@ const router = tsr.router(computerConnectorContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { scope } = await resolveScope(userId, headers.authorization);
-    const connector = await getConnector(scope.id, "computer");
+    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const { scope } = await resolveScope(userId, scopeSlug);
+    const connector = await getConnector(scope.id, userId, "computer");
     if (!connector) {
       return createErrorResponse("NOT_FOUND", "Computer connector not found");
     }
@@ -64,7 +66,7 @@ const router = tsr.router(computerConnectorContract, {
   /**
    * DELETE /api/connectors/computer - Delete computer connector
    */
-  delete: async ({ headers }) => {
+  delete: async ({ headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -73,8 +75,9 @@ const router = tsr.router(computerConnectorContract, {
     }
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
-      await deleteComputerConnector(scope.id);
+      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const { scope } = await resolveScope(userId, scopeSlug);
+      await deleteComputerConnector(scope.id, userId);
       return { status: 204 as const, body: undefined };
     } catch (error) {
       if (isNotFound(error)) {

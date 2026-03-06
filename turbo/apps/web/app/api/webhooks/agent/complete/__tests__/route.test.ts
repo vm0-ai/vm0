@@ -13,7 +13,10 @@ import {
   createTestEmailThreadSession,
   createTestCallback,
   findTestCallbacksByRunId,
+  findTestRunRecord,
+  findTestQueueEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { reloadEnv } from "../../../../../../src/env";
 import {
   testContext,
   uniqueId,
@@ -548,6 +551,61 @@ describe("POST /api/webhooks/agent/complete", () => {
       const callbacks = await findTestCallbacksByRunId(runId);
       expect(callbacks).toHaveLength(1);
       expect(callbacks[0]!.attempts).toBe(1);
+    });
+
+    it("should drain queued run after completion", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      reloadEnv();
+
+      // Use a separate user to avoid concurrency interference
+      const qUser = await context.setupUser({ prefix: "queue-drain" });
+      mockClerk({ userId: qUser.userId });
+      const { composeId } = await createTestCompose(uniqueId("drain-agent"));
+
+      // First run claims the slot
+      const run1 = await createTestRun(composeId, "First run");
+      expect(run1.status).toBe("running");
+
+      // Second run gets queued
+      const run2 = await createTestRun(composeId, "Queued run");
+      expect(run2.status).toBe("queued");
+
+      // Verify queue entry exists
+      const queueBefore = await findTestQueueEntry(run2.runId);
+      expect(queueBefore).toBeDefined();
+
+      // Complete the first run via webhook
+      const token = await createTestSandboxToken(qUser.userId, run1.runId);
+      mockClerk({ userId: null });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId: run1.runId,
+            exitCode: 1,
+            error: "Done",
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Flush the after() callback which triggers drainUserQueue
+      await context.mocks.flushAfter();
+
+      // Queued run should now be dispatched (running)
+      const run2After = await findTestRunRecord(run2.runId);
+      expect(run2After!.status).toBe("running");
+
+      // Queue entry should be deleted
+      const queueAfter = await findTestQueueEntry(run2.runId);
+      expect(queueAfter).toBeUndefined();
     });
 
     it("should dispatch schedule callbacks when registered", async () => {

@@ -2,10 +2,14 @@ import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { runsCancelContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { agentRunQueue } from "../../../../../../src/db/schema/agent-run-queue";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../../../src/lib/logger";
 import { killSandbox } from "../../../../../../src/lib/sandbox/sandbox-service";
+import { drainUserQueue } from "../../../../../../src/lib/run/run-queue-service";
+import { executeQueuedRun } from "../../../../../../src/lib/run/run-service";
+import { after } from "next/server";
 
 const log = logger("api:runs:cancel");
 
@@ -42,7 +46,11 @@ const router = tsr.router(runsCancelContract, {
     }
 
     // Check if run can be cancelled
-    if (run.status !== "pending" && run.status !== "running") {
+    if (
+      run.status !== "queued" &&
+      run.status !== "pending" &&
+      run.status !== "running"
+    ) {
       return {
         status: 400 as const,
         body: {
@@ -54,6 +62,13 @@ const router = tsr.router(runsCancelContract, {
       };
     }
 
+    // If queued, remove from queue table (encrypted secrets deleted)
+    if (run.status === "queued") {
+      await globalThis.services.db
+        .delete(agentRunQueue)
+        .where(eq(agentRunQueue.runId, runId));
+    }
+
     // Update run status to cancelled
     await globalThis.services.db
       .update(agentRuns)
@@ -63,9 +78,18 @@ const router = tsr.router(runsCancelContract, {
       })
       .where(eq(agentRuns.id, runId));
 
-    // Kill E2B sandbox if it exists
+    // Kill E2B sandbox if it exists (queued runs don't have sandboxes)
     if (run.sandboxId) {
       await killSandbox(run.sandboxId);
+    }
+
+    // Drain queue if cancelling a running/pending run freed a concurrency slot
+    if (run.status === "running" || run.status === "pending") {
+      after(async () => {
+        await drainUserQueue(userId, executeQueuedRun).catch((err) =>
+          log.error("Failed to drain user queue after cancel", { err }),
+        );
+      });
     }
 
     log.debug(

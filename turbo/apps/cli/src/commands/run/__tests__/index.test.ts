@@ -81,7 +81,6 @@ describe("run command", () => {
   };
 
   beforeEach(() => {
-    vi.clearAllMocks();
     // Disable chalk colors for deterministic console output assertions
     chalk.level = 0;
     // Use environment variables for config instead of mocking the module
@@ -104,7 +103,6 @@ describe("run command", () => {
         return HttpResponse.json({
           id: "scope-123",
           slug: "test-user",
-          type: "personal",
           createdAt: "2025-01-01T00:00:00Z",
           updatedAt: "2025-01-01T00:00:00Z",
         });
@@ -1948,96 +1946,6 @@ describe("run command", () => {
     });
   });
 
-  describe("concurrent run limit error handling", () => {
-    it("should show run list/kill hints when concurrent limit exceeded", async () => {
-      server.use(
-        http.post("http://localhost:3000/api/agent/runs", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "You have reached the concurrent agent run limit.",
-                code: "concurrent_run_limit_exceeded",
-              },
-            },
-            { status: 429 },
-          );
-        }),
-      );
-
-      await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact-name",
-          "test-artifact",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      // Verify error message is shown
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Run failed"),
-      );
-
-      // Verify hints are shown inline in the error message
-      const allErrors = mockConsoleError.mock.calls
-        .map((call) => call[0])
-        .filter((err): err is string => typeof err === "string");
-
-      expect(
-        allErrors.some((err) => err.includes("concurrent agent run limit")),
-      ).toBe(true);
-      expect(allErrors.some((err) => err.includes("vm0 run list"))).toBe(true);
-      expect(allErrors.some((err) => err.includes("vm0 run kill"))).toBe(true);
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should not show run list/kill hints for other API errors", async () => {
-      server.use(
-        http.post("http://localhost:3000/api/agent/runs", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "Some other server error",
-                code: "SERVER_ERROR",
-              },
-            },
-            { status: 500 },
-          );
-        }),
-      );
-
-      await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact-name",
-          "test-artifact",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      // Verify error message is shown
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Run failed"),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Some other server error"),
-      );
-
-      // Verify run list/kill hints are NOT shown in any output
-      const allErrors = mockConsoleError.mock.calls
-        .map((call) => call[0])
-        .filter((err): err is string => typeof err === "string");
-
-      expect(allErrors.some((err) => err.includes("vm0 run list"))).toBe(false);
-      expect(allErrors.some((err) => err.includes("vm0 run kill"))).toBe(false);
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-  });
-
   describe("error message formatting", () => {
     const errorTestRunId = "run-error-test-123";
     const errorTestRunResponse = {
@@ -2170,28 +2078,26 @@ describe("run command", () => {
       expect(allErrors.some((log) => log.includes("Unknown error"))).toBe(true);
     });
 
-    it("should display various error patterns correctly", async () => {
-      const errorPatterns = [
-        {
-          error: "Error: Authentication failed: Invalid API key",
-          expected: "Authentication failed",
-        },
-        {
-          error: "Error: Network request failed: ECONNREFUSED",
-          expected: "Network request failed",
-        },
-        {
-          error: "Error: Permission denied: Cannot write to /etc/passwd",
-          expected: "Permission denied",
-        },
-        {
-          error: "Error: Operation timed out after 300000ms",
-          expected: "timed out",
-        },
-      ];
-
-      for (const { error, expected } of errorPatterns) {
-        vi.clearAllMocks();
+    it.each([
+      {
+        error: "Error: Authentication failed: Invalid API key",
+        expected: "Authentication failed",
+      },
+      {
+        error: "Error: Network request failed: ECONNREFUSED",
+        expected: "Network request failed",
+      },
+      {
+        error: "Error: Permission denied: Cannot write to /etc/passwd",
+        expected: "Permission denied",
+      },
+      {
+        error: "Error: Operation timed out after 300000ms",
+        expected: "timed out",
+      },
+    ])(
+      "should display error pattern: $expected",
+      async ({ error, expected }) => {
         server.use(
           http.post("http://localhost:3000/api/agent/runs", () => {
             return HttpResponse.json(errorTestRunResponse, { status: 201 });
@@ -2217,7 +2123,7 @@ describe("run command", () => {
           .filter((log): log is string => typeof log === "string");
 
         expect(allErrors.some((log) => log.includes(expected))).toBe(true);
-      }
-    });
+      },
+    );
   });
 });

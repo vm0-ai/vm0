@@ -10,7 +10,7 @@ const router = tsr.router(connectorsMainContract, {
   /**
    * GET /api/connectors - List all connectors
    */
-  list: async ({ headers }) => {
+  list: async ({ headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -18,8 +18,9 @@ const router = tsr.router(connectorsMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { scope } = await resolveScope(userId, headers.authorization);
-    const connectorList = await listConnectors(scope.id);
+    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const { scope } = await resolveScope(userId, scopeSlug);
+    const connectorList = await listConnectors(scope.id, userId);
     const configuredTypes = getConfiguredConnectorTypes(
       globalThis.services.env,
     );

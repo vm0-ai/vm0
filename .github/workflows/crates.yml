@@ -21,7 +21,7 @@ jobs:
   detect:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260306
     outputs:
       workflow-changed: ${{ steps.detect.outputs.workflow-changed }}
       ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
@@ -70,7 +70,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260306
     needs: [detect]
     steps:
       - uses: actions/checkout@v6
@@ -109,7 +109,7 @@ jobs:
   runner-build:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260306
     needs: [detect]
     if: |
       needs.detect.outputs.workflow-changed == 'true' ||
@@ -119,6 +119,10 @@ jobs:
       needs.detect.outputs.guest-agent-changed == 'true' ||
       needs.detect.outputs.guest-mock-claude-changed == 'true'
     timeout-minutes: 20
+    env:
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+crt-static -C link-arg=-fuse-ld=mold"
+      CARGO_PROFILE: ci
+      TARGET_TRIPLE: aarch64-unknown-linux-musl
     outputs:
       host: ${{ steps.host.outputs.host }}
       job-ref: ${{ steps.host.outputs.job-ref }}
@@ -127,27 +131,36 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install mold linker
+        env:
+          MOLD_VERSION: "2.40.4"
+        run: |
+          curl -fsSL "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-x86_64-linux.tar.gz" \
+            | tar xz --strip-components=2 -C /usr/local/bin "mold-${MOLD_VERSION}-x86_64-linux/bin/mold"
+          ln -sf /usr/local/bin/mold /usr/local/bin/ld.mold
+          ln -sf /usr/local/bin/mold /usr/local/bin/aarch64-linux-gnu-ld.mold
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates -> target
-          shared-key: aarch64-musl
+          shared-key: aarch64-musl-ci
           save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-targets: false
 
       - name: Cross-compile guest binaries for ARM64
         run: |
           cd crates
-          cargo build --release --target aarch64-unknown-linux-musl \
+          cargo build --profile $CARGO_PROFILE --target $TARGET_TRIPLE \
             -p guest-agent -p guest-download -p guest-init -p guest-mock-claude
 
       - name: Cross-compile runner with embedded guests for ARM64
         run: |
           cd crates
-          GUEST_AGENT_PATH=target/aarch64-unknown-linux-musl/release/guest-agent \
-          GUEST_DOWNLOAD_PATH=target/aarch64-unknown-linux-musl/release/guest-download \
-          GUEST_INIT_PATH=target/aarch64-unknown-linux-musl/release/guest-init \
-          GUEST_MOCK_CLAUDE_PATH=target/aarch64-unknown-linux-musl/release/guest-mock-claude \
-          cargo build --release --target aarch64-unknown-linux-musl -p runner
+          GUEST_AGENT_PATH=target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-agent \
+          GUEST_DOWNLOAD_PATH=target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-download \
+          GUEST_INIT_PATH=target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-init \
+          GUEST_MOCK_CLAUDE_PATH=target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-mock-claude \
+          cargo build --profile $CARGO_PROFILE --target $TARGET_TRIPLE -p runner
 
       - name: Setup SSH
         env:
@@ -186,7 +199,7 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
-          TARGET_DIR="crates/target/aarch64-unknown-linux-musl/release"
+          TARGET_DIR="crates/target/${TARGET_TRIPLE}/${CARGO_PROFILE}"
 
           # Provision system dependencies (idempotent)
           echo "=== Provisioning system dependencies ==="
@@ -206,8 +219,8 @@ jobs:
           ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-local && mkdir -p ${BIN_DIR}"
           scp $SSH_OPTS "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
 
-          # Clean up old rootfs/snapshots, keep the 2 most recent
-          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 2"
+          # Clean up old rootfs/snapshots, keep the 3 most recent
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 3"
 
           # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
           echo "=== Running setup ==="
@@ -304,6 +317,7 @@ jobs:
             --name ${JOB_REF}-exec \
             --group vm0/exec-${JOB_REF} \
             --runner-dirname ${JOB_REF}-exec \
+            --max-concurrent 2 \
             --api-url https://not-a-real-server.test \
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
@@ -325,7 +339,8 @@ jobs:
           # Start transient runner service
           echo "--- Starting runner ---"
           "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true \
+            --balloon-reclaim
 
           # Submit a long-running job in background (keeps sandbox alive during tests)
           echo "--- Submitting long-running job ---"
@@ -335,14 +350,14 @@ jobs:
           # Read the run ID from our runner's status.json (not from /run/vm0/sock/)
           # to avoid matching sandboxes from parallel CI jobs (benchmark, upgrade).
           echo "--- Waiting for sandbox control socket ---"
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             RUN_ID=$(grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
               "$RUNNER_DIR/status.json" 2>/dev/null | head -1)
             [ -n "$RUN_ID" ] && [ -S "/run/vm0/sock/$RUN_ID/control.sock" ] && break
             RUN_ID=""
             sleep 1
           done
-          [ -z "$RUN_ID" ] && fail "control socket not found after 30s"
+          [ -z "$RUN_ID" ] && fail "control socket not found after 60s"
           echo "Found sandbox: $RUN_ID"
 
           # Test 1: basic exec
@@ -368,6 +383,184 @@ jobs:
           trap - EXIT
 
           echo "=== Exec test passed ==="
+          REMOTE_SCRIPT
+
+  runner-balloon:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 8
+    steps:
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      - name: Test balloon memory reclaim
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          ROOTFS_HASH: ${{ needs.runner-build.outputs.rootfs-hash }}
+          SNAPSHOT_HASH: ${{ needs.runner-build.outputs.snapshot-hash }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+          REMOTE="${METAL_USER}@${HOST}"
+          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+
+          echo "=== Generating config ==="
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+            --rootfs-hash ${ROOTFS_HASH} \
+            --snapshot-hash ${SNAPSHOT_HASH} \
+            --name ${JOB_REF}-balloon \
+            --group vm0/balloon-${JOB_REF} \
+            --runner-dirname ${JOB_REF}-balloon \
+            --max-concurrent 2 \
+            --api-url https://not-a-real-server.test \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "=== Running balloon test ==="
+          ssh $SSH_OPTS $REMOTE bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          BIN_DIR=$1; JOB_REF=$2
+          RUNNER_DIR="$HOME/.vm0-runner/runners/${JOB_REF}-balloon"
+          SVC="${JOB_REF}-balloon"
+          GROUP="vm0/balloon-${JOB_REF}"
+
+          fail() { echo "FAIL: $1"; exit 1; }
+
+          cleanup() {
+            echo "--- Cleanup ---"
+            "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          # Start transient runner service with balloon reclaim enabled
+          echo "--- Starting runner ---"
+          "$BIN_DIR/runner" service start --name "$SVC" \
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true \
+            --balloon-reclaim
+
+          # Submit a long-running job in background (keeps sandbox alive during tests)
+          echo "--- Submitting long-running job ---"
+          "$BIN_DIR/runner" submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
+
+          # Wait for sandbox control socket
+          echo "--- Waiting for sandbox control socket ---"
+          for i in $(seq 1 60); do
+            RUN_ID=$(grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
+              "$RUNNER_DIR/status.json" 2>/dev/null | head -1)
+            [ -n "$RUN_ID" ] && [ -S "/run/vm0/sock/$RUN_ID/control.sock" ] && break
+            RUN_ID=""
+            sleep 1
+          done
+          [ -z "$RUN_ID" ] && fail "control socket not found after 60s"
+          echo "Found sandbox: $RUN_ID"
+
+          API_SOCK="/run/vm0/sock/$RUN_ID/api.sock"
+
+          # Helper: read current balloon actual_mib
+          balloon_mib() {
+            curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics \
+              | jq '.actual_mib // 0' 2>/dev/null || echo 0
+          }
+
+          # Helper: read guest MemAvailable in kB
+          guest_avail_kb() {
+            "$BIN_DIR/runner" exec "$RUN_ID" -- grep MemAvailable /proc/meminfo \
+              | tr -s ' ' | cut -d' ' -f2
+          }
+
+          # Test 1: idle inflate — balloon controller gradually reclaims idle guest memory
+          # With per-tick cap (256 MiB), balloon inflates over multiple ticks.
+          echo "--- Test 1: balloon idle inflate ---"
+          ACTUAL=0
+          for i in $(seq 1 30); do
+            ACTUAL=$(balloon_mib)
+            [ "${ACTUAL:-0}" -gt 0 ] && break
+            sleep 1
+          done
+          [ "$ACTUAL" -gt 0 ] || fail "balloon did not inflate: actual_mib=$ACTUAL"
+          echo "PASS: balloon idle inflate (actual_mib=$ACTUAL)"
+
+          # Wait for balloon to stabilize (enters hysteresis band)
+          echo "--- Waiting for balloon to stabilize ---"
+          PREV=0
+          STABLE_COUNT=0
+          for i in $(seq 1 30); do
+            ACTUAL=$(balloon_mib)
+            if [ "$ACTUAL" -eq "$PREV" ] && [ "$ACTUAL" -gt 0 ]; then
+              STABLE_COUNT=$((STABLE_COUNT + 1))
+              [ "$STABLE_COUNT" -ge 2 ] && break
+            else
+              STABLE_COUNT=0
+            fi
+            PREV=$ACTUAL
+            sleep 3
+          done
+          INFLATE_MIB=$ACTUAL
+          echo "Balloon stabilized at ${INFLATE_MIB} MiB"
+
+          # Verify guest-side: MemAvailable decreased
+          AVAIL=$(guest_avail_kb)
+          [ "$AVAIL" -lt 1536000 ] || fail "MemAvailable too high after balloon: ${AVAIL}kB (expected < 1536000kB)"
+          echo "PASS: guest MemAvailable reduced (${AVAIL}kB)"
+
+          # Test 2: deflate under memory pressure — allocate 300 MiB anonymous memory
+          # in the guest to push available below deflate threshold (192 MiB).
+          # After inflate stabilizes (~1438 MiB), guest has ~476 MiB available.
+          # 300 MiB alloc drops available to ~176 MiB < 192 MiB threshold.
+          # Write script via base64 to avoid quoting issues with runner exec.
+          echo "--- Test 2: balloon deflate under memory pressure ---"
+          ALLOC_B64=$(printf 'import ctypes,time\nb=bytearray(300*1024*1024)\nctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b))\ntime.sleep(120)\n' | base64 -w0)
+          "$BIN_DIR/runner" exec "$RUN_ID" -- "echo $ALLOC_B64 | base64 -d > /tmp/alloc.py"
+          # Run allocator in guest foreground, host background
+          "$BIN_DIR/runner" exec "$RUN_ID" -- python3 /tmp/alloc.py &
+          ALLOC_PID=$!
+
+          # Wait for balloon to deflate (actual_mib decreases)
+          DEFLATED=0
+          for i in $(seq 1 30); do
+            ACTUAL=$(balloon_mib)
+            if [ "$ACTUAL" -lt "$INFLATE_MIB" ]; then
+              DEFLATED=1
+              break
+            fi
+            sleep 2
+          done
+          [ "$DEFLATED" -eq 1 ] || fail "balloon did not deflate: actual_mib=$ACTUAL (was $INFLATE_MIB)"
+          DEFLATE_MIB=$ACTUAL
+          echo "PASS: balloon deflated from ${INFLATE_MIB} to ${DEFLATE_MIB} MiB"
+
+          # Test 3: re-inflate after pressure released — kill python3 in guest,
+          # then kill host-side exec. The pkill may fail with "Operation not permitted"
+          # but the host-side kill terminates the vsock session which kills the process.
+          echo "--- Test 3: balloon re-inflate after pressure release ---"
+          "$BIN_DIR/runner" exec "$RUN_ID" -- "pkill -f alloc.py" 2>/dev/null || true
+          kill $ALLOC_PID 2>/dev/null || true
+          wait $ALLOC_PID 2>/dev/null || true
+
+          # Wait for balloon to re-inflate past midpoint between deflate and original inflate
+          MIDPOINT=$(( (INFLATE_MIB + DEFLATE_MIB) / 2 ))
+          REINFLATED=0
+          for i in $(seq 1 30); do
+            ACTUAL=$(balloon_mib)
+            if [ "$ACTUAL" -gt "$MIDPOINT" ]; then
+              REINFLATED=1
+              break
+            fi
+            sleep 2
+          done
+          [ "$REINFLATED" -eq 1 ] || fail "balloon did not re-inflate enough: actual_mib=$ACTUAL (midpoint=$MIDPOINT, was $DEFLATE_MIB)"
+          echo "PASS: balloon re-inflated from ${DEFLATE_MIB} to ${ACTUAL} MiB (midpoint=${MIDPOINT})"
+
+          # Stop transient service
+          "$BIN_DIR/runner" service stop --name "$SVC"
+          trap - EXIT
+
+          echo "=== Balloon test passed ==="
           REMOTE_SCRIPT
 
   runner-upgrade-local:
@@ -405,6 +598,7 @@ jobs:
               --name ${JOB_REF}-${SUFFIX} \
               --group ${GROUP} \
               --runner-dirname ${JOB_REF}-${SUFFIX} \
+              --max-concurrent 2 \
               --api-url https://not-a-real-server.test \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
           done
@@ -439,7 +633,8 @@ jobs:
           # 1. Install runner A
           echo "--- Installing runner A ---"
           "$BIN_DIR/runner" service install --name "$SVC_A" \
-            --config "$RUNNER_DIR_A/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR_A/runner.yaml" --local --env USE_MOCK_CLAUDE=true \
+            --balloon-reclaim
 
           # 2. Submit job 1 (background, long-running) → only A running
           echo "--- Submit job 1 (only A, long-running) ---"
@@ -449,7 +644,8 @@ jobs:
           # 3. Install runner B while job 1 still in-flight on A
           echo "--- Installing runner B ---"
           "$BIN_DIR/runner" service install --name "$SVC_B" \
-            --config "$RUNNER_DIR_B/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR_B/runner.yaml" --local --env USE_MOCK_CLAUDE=true \
+            --balloon-reclaim
 
           # 4. Submit job 2 (background, long-running) → A and B compete
           echo "--- Submit job 2 (A and B compete, long-running) ---"
@@ -486,15 +682,13 @@ jobs:
 
   runner-cleanup:
     runs-on: ubuntu-latest
-    needs: [runner-build, runner-benchmark, runner-exec, runner-upgrade-local]
+    needs: [runner-build, runner-benchmark, runner-exec, runner-balloon, runner-upgrade-local]
     if: ${{ always() && needs.runner-build.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v6
 
       - name: Install Ansible
-        run: |
-          apt-get update && apt-get install -y python3 python3-pip
-          pip3 install ansible
+        run: pip3 install ansible
 
       - name: Setup SSH key
         env:

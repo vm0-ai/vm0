@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { composeJobs } from "../../db/schema/compose-job";
 import type { ComposeJobSource } from "../../db/schema/compose-job";
 import { cliTokens } from "../../db/schema/cli-tokens";
@@ -313,14 +313,21 @@ async function spawnComposeJobSandbox(
       log.error(`  stderr: ${stderr}`);
 
       const truncatedError = errorMessage.slice(0, 1000);
-      await globalThis.services.db
-        .update(composeJobs)
-        .set({
-          status: "failed",
-          error: truncatedError,
-          completedAt: new Date(),
-        })
-        .where(eq(composeJobs.id, jobId));
+      // Wrap in try/catch to prevent unhandled rejection: this is already
+      // inside a fire-and-forget .catch() handler, so a DB failure here
+      // must not propagate as a second unhandled rejection.
+      try {
+        await globalThis.services.db
+          .update(composeJobs)
+          .set({
+            status: "failed",
+            error: truncatedError,
+            completedAt: new Date(),
+          })
+          .where(eq(composeJobs.id, jobId));
+      } catch (dbError) {
+        log.error(`Failed to update job ${jobId} status to failed:`, dbError);
+      }
 
       await notifySlackComposeComplete(jobId, null, truncatedError).catch(
         (notifyError) => {
@@ -391,31 +398,10 @@ export async function triggerComposeJob(
 ): Promise<TriggerComposeJobResult> {
   const { userId, source } = params;
 
-  // Idempotency: Check for existing active job for this user
-  const [existingJob] = await globalThis.services.db
-    .select()
-    .from(composeJobs)
-    .where(
-      and(
-        eq(composeJobs.userId, userId),
-        inArray(composeJobs.status, ["pending", "running"]),
-      ),
-    )
-    .limit(1);
-
-  if (existingJob) {
-    log.debug(`Returning existing job ${existingJob.id} for user ${userId}`);
-    return {
-      jobId: existingJob.id,
-      status: existingJob.status,
-      githubUrl: existingJob.githubUrl,
-      source: existingJob.source,
-      createdAt: existingJob.createdAt,
-      isExisting: true,
-    };
-  }
-
-  // Create new job
+  // Atomic idempotency: INSERT with ON CONFLICT DO NOTHING against the
+  // partial unique index (user_id WHERE status IN ('pending','running')).
+  // If the insert succeeds, we get the new row back via RETURNING.
+  // If a conflict occurs (active job already exists), RETURNING is empty.
   const jobId = crypto.randomUUID();
   const [newJob] = await globalThis.services.db
     .insert(composeJobs)
@@ -428,7 +414,43 @@ export async function triggerComposeJob(
         ? { githubUrl: params.githubUrl, overwrite: params.overwrite ?? false }
         : { content: params.content, instructions: params.instructions }),
     })
+    .onConflictDoNothing({
+      target: composeJobs.userId,
+      where: sql`status IN ('pending', 'running')`,
+    })
     .returning();
+
+  // Conflict: an active job already exists for this user
+  if (!newJob) {
+    const [existingJob] = await globalThis.services.db
+      .select()
+      .from(composeJobs)
+      .where(
+        and(
+          eq(composeJobs.userId, userId),
+          inArray(composeJobs.status, ["pending", "running"]),
+        ),
+      )
+      .limit(1);
+
+    // The active job may have completed between the INSERT conflict and this
+    // SELECT (rare race). Fail fast instead of masking with non-null assertion.
+    if (!existingJob) {
+      throw new Error(
+        `Active compose job not found for user ${userId} after insert conflict`,
+      );
+    }
+
+    log.debug(`Returning existing job ${existingJob.id} for user ${userId}`);
+    return {
+      jobId: existingJob.id,
+      status: existingJob.status,
+      githubUrl: existingJob.githubUrl,
+      source: existingJob.source,
+      createdAt: existingJob.createdAt,
+      isExisting: true,
+    };
+  }
 
   log.debug(`Created new job ${jobId} for user ${userId}`);
 
@@ -452,14 +474,21 @@ export async function triggerComposeJob(
       log.error(`Failed to spawn sandbox for job ${jobId}:`, error);
       const errorMessage =
         error instanceof Error ? error.message : "Failed to create sandbox";
-      await globalThis.services.db
-        .update(composeJobs)
-        .set({
-          status: "failed",
-          error: errorMessage,
-          completedAt: new Date(),
-        })
-        .where(eq(composeJobs.id, jobId));
+      // Wrap in try/catch to prevent unhandled rejection: this is already
+      // inside a fire-and-forget .catch() handler, so a DB failure here
+      // must not propagate as a second unhandled rejection.
+      try {
+        await globalThis.services.db
+          .update(composeJobs)
+          .set({
+            status: "failed",
+            error: errorMessage,
+            completedAt: new Date(),
+          })
+          .where(eq(composeJobs.id, jobId));
+      } catch (dbError) {
+        log.error(`Failed to update job ${jobId} status to failed:`, dbError);
+      }
 
       await notifySlackComposeComplete(jobId, null, errorMessage).catch(
         (notifyError) => {
@@ -472,11 +501,11 @@ export async function triggerComposeJob(
   );
 
   return {
-    jobId: newJob!.id,
+    jobId: newJob.id,
     status: "pending",
-    githubUrl: newJob!.githubUrl,
-    source: newJob!.source,
-    createdAt: newJob!.createdAt,
+    githubUrl: newJob.githubUrl,
+    source: newJob.source,
+    createdAt: newJob.createdAt,
     isExisting: false,
   };
 }

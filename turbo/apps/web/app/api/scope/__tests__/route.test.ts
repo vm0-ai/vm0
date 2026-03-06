@@ -1,11 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST, PUT } from "../route";
-import { POST as createOrgRoute } from "../../org/route";
-import { POST as switchScopeRoute } from "../../scope/use/route";
 import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
-import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
+import { testContext } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
-import { setupClerkOrgMock } from "../../../../src/__tests__/org-test-helpers";
 
 const context = testContext();
 
@@ -304,93 +301,6 @@ describe("/api/scope", () => {
       expect(response.status).toBe(200);
       expect(data.id).toBeDefined();
       expect(data.slug).toBeDefined();
-    });
-  });
-
-  describe("GET /api/scope with org token", () => {
-    it("should return org scope when using org token", async () => {
-      const user = await context.setupUser();
-      const slug = uniqueId("org");
-      const orgId = `org_${user.userId}`;
-      setupClerkOrgMock({
-        userId: user.userId,
-        orgId,
-        memberships: [{ userId: user.userId, role: "org:admin" }],
-      });
-
-      // Create org
-      const createReq = createTestRequest("http://localhost:3000/api/org", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug }),
-      });
-      const createRes = await createOrgRoute(createReq);
-      expect(createRes.status).toBe(201);
-
-      // Switch to org scope to get token
-      const useReq = createTestRequest("http://localhost:3000/api/scope/use", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug }),
-      });
-      const useRes = await switchScopeRoute(useReq);
-      const useData = await useRes.json();
-
-      // GET /api/scope with org token should return org scope
-      const request = createTestRequest("http://localhost:3000/api/scope", {
-        headers: { Authorization: `Bearer ${useData.token}` },
-      });
-      const response = await GET(request);
-      expect(response.status).toBe(200);
-
-      const data = await response.json();
-      expect(data.slug).toBe(slug);
-    });
-  });
-
-  describe("PUT /api/scope with org token", () => {
-    it("should update org scope slug when using org token", async () => {
-      const user = await context.setupUser();
-      const slug = uniqueId("org");
-      const orgId = `org_${user.userId}`;
-      setupClerkOrgMock({
-        userId: user.userId,
-        orgId,
-        memberships: [{ userId: user.userId, role: "org:admin" }],
-      });
-
-      // Create org
-      const createReq = createTestRequest("http://localhost:3000/api/org", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug }),
-      });
-      await createOrgRoute(createReq);
-
-      // Switch to org scope to get token
-      const useReq = createTestRequest("http://localhost:3000/api/scope/use", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug }),
-      });
-      const useRes = await switchScopeRoute(useReq);
-      const useData = await useRes.json();
-
-      // PUT /api/scope with org token should update org scope
-      const newSlug = uniqueId("renamed");
-      const request = createTestRequest("http://localhost:3000/api/scope", {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${useData.token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ slug: newSlug, force: true }),
-      });
-      const response = await PUT(request);
-      expect(response.status).toBe(200);
-
-      const data = await response.json();
-      expect(data.slug).toBe(newSlug);
     });
   });
 });

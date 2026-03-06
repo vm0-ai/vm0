@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import { requireOrgAuth } from "../../../../src/lib/org/require-org-auth";
+import { requireScopeFromRequest } from "../../../../src/lib/scope/resolve-scope";
 import { leaveOrganization } from "../../../../src/lib/org/org-service";
-import { isNotFound, isForbidden } from "../../../../src/lib/errors";
+import {
+  isBadRequest,
+  isNotFound,
+  isForbidden,
+} from "../../../../src/lib/errors";
 
 export async function POST(request: Request) {
   initServices();
@@ -17,24 +21,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const orgResult = await requireOrgAuth(authHeader);
-  if (!orgResult.ok) {
-    return NextResponse.json(
-      {
-        error: { message: orgResult.error.message, code: orgResult.error.code },
-      },
-      { status: orgResult.error.status },
-    );
-  }
-
   try {
-    await leaveOrganization(
-      userId,
-      orgResult.auth.scopeId,
-      orgResult.auth.role,
-    );
+    const { scope, member } = await requireScopeFromRequest(request, userId);
+    await leaveOrganization(userId, scope.id, member.role);
     return NextResponse.json({ message: "Left organization" });
   } catch (error) {
+    if (isBadRequest(error)) {
+      return NextResponse.json(
+        { error: { message: error.message, code: "BAD_REQUEST" } },
+        { status: 400 },
+      );
+    }
     if (isForbidden(error)) {
       return NextResponse.json(
         { error: { message: error.message, code: "FORBIDDEN" } },

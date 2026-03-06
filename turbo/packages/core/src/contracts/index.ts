@@ -407,6 +407,7 @@ export {
   getConnectorDerivedNames,
   getConnectorProvidedSecretNames,
   getConnectorOAuthConfig,
+  hasRequiredScopes,
   type ConnectorsMainContract,
   type ConnectorsByTypeContract,
   type ConnectorSessionsContract,
@@ -455,15 +456,17 @@ export {
 } from "./org";
 export {
   scopeListContract,
-  scopeUseContract,
   scopeListItemSchema,
   scopeListResponseSchema,
-  scopeUseRequestSchema,
-  scopeUseResponseSchema,
   type ScopeListContract,
-  type ScopeUseContract,
   type ScopeListItem,
   type ScopeListResponse,
-  type ScopeUseRequest,
-  type ScopeUseResponse,
 } from "./scope-list";
+export {
+  adminScopeTierContract,
+  scopeTierSchema,
+  setScopeTierRequestSchema,
+  setScopeTierResponseSchema,
+  type AdminScopeTierContract,
+  type ScopeTier,
+} from "./admin";

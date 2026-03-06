@@ -12,7 +12,6 @@ describe("withErrorHandler", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
-    vi.clearAllMocks();
     chalk.level = 0;
   });
 

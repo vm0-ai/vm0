@@ -18,7 +18,7 @@ interface VerifiedCallback<P = unknown> {
   /** Present only when the dispatcher includes callbackId (new behavior). */
   callbackId?: string;
   runId: string;
-  status: "completed" | "failed";
+  status: "completed" | "failed" | "progress";
   result?: Record<string, unknown>;
   error?: string;
   payload: P;
@@ -52,7 +52,7 @@ export async function verifyCallback<P = unknown>(
   let body: {
     callbackId?: string;
     runId?: string;
-    status: "completed" | "failed";
+    status: "completed" | "failed" | "progress";
     result?: Record<string, unknown>;
     error?: string;
     payload: P;

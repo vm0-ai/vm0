@@ -38,7 +38,7 @@ interface CallbackPayload {
 function createCallbackRequest(
   body: {
     runId: string;
-    status: "completed" | "failed";
+    status: "completed" | "failed" | "progress";
     result?: Record<string, unknown>;
     error?: string;
     payload: CallbackPayload;
@@ -572,6 +572,126 @@ describe("POST /api/internal/callbacks/slack", () => {
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error).toContain("payload");
+    });
+  });
+
+  describe("Progress Callback", () => {
+    it("should refresh thread status on progress and not post messages", async () => {
+      // Given a linked Slack user with an agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      const { binding } = await givenUserHasAgent(userLink, {
+        agentName: "test-agent",
+      });
+
+      // And a run with a registered callback
+      mockClerk({ userId: userLink.vm0UserId });
+      const { runId } = await createTestRun(binding.composeId, "Test prompt");
+      const channelId = `C-progress-${Date.now()}`;
+      const threadTs = `${Date.now()}.000000`;
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/slack",
+        payload: {
+          workspaceId: installation.slackWorkspaceId,
+          channelId,
+          threadTs,
+          messageTs: `${Date.now()}.123456`,
+          userLinkId: userLink.id,
+          agentName: "test-agent",
+          composeId: binding.composeId,
+        },
+      });
+
+      // When a progress callback is received
+      const request = createCallbackRequest(
+        {
+          runId,
+          status: "progress",
+          payload: {
+            workspaceId: installation.slackWorkspaceId,
+            channelId,
+            threadTs,
+            messageTs: `${Date.now()}.123456`,
+            userLinkId: userLink.id,
+            agentName: "test-agent",
+            composeId: binding.composeId,
+          },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      // Then the request should succeed
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      // And the thread status should be refreshed with "is thinking..."
+      expect(mockClient.assistant.threads.setStatus).toHaveBeenCalledTimes(1);
+      const statusCall = mockClient.assistant.threads.setStatus.mock
+        .calls[0]![0] as {
+        channel_id: string;
+        thread_ts: string;
+        status: string;
+      };
+      expect(statusCall.status).toBe("is thinking...");
+      expect(statusCall.channel_id).toBe(channelId);
+      expect(statusCall.thread_ts).toBe(threadTs);
+
+      // And NO messages should be posted (progress is status-only)
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
+    });
+
+    it("should return success even if setThreadStatus fails", async () => {
+      // Given a linked Slack user with an agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      const { binding } = await givenUserHasAgent(userLink, {
+        agentName: "test-agent",
+      });
+
+      // And setThreadStatus will fail
+      mockClient.assistant.threads.setStatus.mockRejectedValueOnce(
+        new Error("Slack API error"),
+      );
+
+      // And a run with a registered callback
+      mockClerk({ userId: userLink.vm0UserId });
+      const { runId } = await createTestRun(binding.composeId, "Test prompt");
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/slack",
+        payload: {
+          workspaceId: installation.slackWorkspaceId,
+          channelId: "C-fail",
+          threadTs: "123.456",
+          messageTs: "123.789",
+          userLinkId: userLink.id,
+          agentName: "test-agent",
+          composeId: binding.composeId,
+        },
+      });
+
+      // When a progress callback is received
+      const request = createCallbackRequest(
+        {
+          runId,
+          status: "progress",
+          payload: {
+            workspaceId: installation.slackWorkspaceId,
+            channelId: "C-fail",
+            threadTs: "123.456",
+            messageTs: "123.789",
+            userLinkId: userLink.id,
+            agentName: "test-agent",
+            composeId: binding.composeId,
+          },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      // Then it should still succeed (error is caught)
+      expect(response.status).toBe(200);
     });
   });
 });

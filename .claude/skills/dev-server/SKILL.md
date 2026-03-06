@@ -10,7 +10,7 @@ You are a development server specialist for the vm0 project. Your role is to man
 
 Parse the `args` parameter to determine which operation to perform:
 
-- **start**: Start the development server in background mode (tunnel is automatic for web app)
+- **start**: Start the development server in background mode (tunnel is automatic for web app). Supports `--tunnel-hostname=<fqdn>` to use a fixed tunnel domain instead of the auto-generated one.
 - **stop**: Stop the background development server
 - **logs [pattern]**: View development server logs with optional filtering
 - **auth**: Authenticate with local development server and get CLI token
@@ -80,7 +80,16 @@ fi
 
 ### Step 3: Start Dev Server in Background
 
-Start the server with non-interactive output using Bash tool with `run_in_background: true` parameter:
+Start the server with non-interactive output using Bash tool with `run_in_background: true` parameter.
+
+**If `--tunnel-hostname=<fqdn>` was provided in args**, pass it as `TUNNEL_HOSTNAME` env var:
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+cd "$PROJECT_ROOT/turbo" && TUNNEL_HOSTNAME=<fqdn> pnpm dev --ui=stream
+```
+
+**Otherwise** (default):
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)

@@ -251,6 +251,58 @@ describe("computeReplyRecipients", () => {
     expect(result.cc).toEqual([]);
   });
 
+  it("should preserve CC when bot is sole To recipient", () => {
+    const result = computeReplyRecipients({
+      from: "user@example.com",
+      to: ["my-agent@vm0.bot"],
+      cc: ["colleague@example.com"],
+      replyTo: [],
+      botDomain,
+    });
+    expect(result.to).toEqual(["user@example.com"]);
+    expect(result.cc).toEqual(["colleague@example.com"]);
+  });
+
+  it("should preserve multiple CC recipients", () => {
+    const result = computeReplyRecipients({
+      from: "user@example.com",
+      to: ["my-agent@vm0.bot"],
+      cc: ["cc1@example.com", "cc2@example.com", "cc3@example.com"],
+      replyTo: [],
+      botDomain,
+    });
+    expect(result.to).toEqual(["user@example.com"]);
+    expect(result.cc).toEqual([
+      "cc1@example.com",
+      "cc2@example.com",
+      "cc3@example.com",
+    ]);
+  });
+
+  it("should preserve non-bot CC when bot is CC'd with others", () => {
+    const result = computeReplyRecipients({
+      from: "user-a@example.com",
+      to: ["user-b@example.com"],
+      cc: ["my-agent@vm0.bot", "user-c@example.com"],
+      replyTo: [],
+      botDomain,
+    });
+    expect(result.to).toEqual(["user-a@example.com"]);
+    expect(result.cc).toEqual(["user-c@example.com"]);
+  });
+
+  it("should filter bot addresses from CC", () => {
+    const result = computeReplyRecipients({
+      from: "user@example.com",
+      to: ["my-agent@vm0.bot"],
+      cc: ["reply+token@vm0.bot", "colleague@example.com"],
+      replyTo: [],
+      botDomain,
+    });
+    expect(result.to).toEqual(["user@example.com"]);
+    expect(result.cc).toEqual(["colleague@example.com"]);
+  });
+
   it("should handle empty to and cc arrays", () => {
     const result = computeReplyRecipients({
       from: "user@example.com",

@@ -71,11 +71,10 @@ describe("/api/integrations/telegram", () => {
       expect(data.bot.username).toBeDefined();
       expect(data.agent).toBeDefined();
       expect(data.isAdmin).toBe(true);
-      expect(data.needsLink).toBe(false);
       expect(data.environment).toBeDefined();
     });
 
-    it("returns bot info with needsLink when admin has no user link", async () => {
+    it("returns 404 when admin has no user link", async () => {
       const user = await context.setupUser();
       // Create installation with admin but no user link (omit vm0UserId)
       await createTestTelegramInstallation({
@@ -86,13 +85,8 @@ describe("/api/integrations/telegram", () => {
         "http://localhost:3000/api/integrations/telegram",
       );
       const response = await GET(request);
-      const data = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(data.bot.id).toBeDefined();
-      expect(data.bot.username).toBeDefined();
-      expect(data.isAdmin).toBe(true);
-      expect(data.needsLink).toBe(true);
+      expect(response.status).toBe(404);
     });
   });
 

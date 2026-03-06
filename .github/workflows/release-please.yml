@@ -47,7 +47,7 @@ jobs:
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
     permissions:
       contents: read
     environment: production
@@ -144,7 +144,7 @@ jobs:
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
     permissions:
       contents: read
       deployments: write
@@ -210,6 +210,7 @@ jobs:
             AXIOM_DATASET_SUFFIX=prod
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
+            RUNNER_DEFAULT_GROUP=vm0/production
             ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
             CONCURRENT_RUN_LIMIT=1
             CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}
@@ -250,7 +251,10 @@ jobs:
             INTERVALS_ICU_OAUTH_CLIENT_ID=${{ vars.INTERVALS_ICU_OAUTH_CLIENT_ID }}
             INTERVALS_ICU_OAUTH_CLIENT_SECRET=${{ secrets.INTERVALS_ICU_OAUTH_CLIENT_SECRET }}
             XERO_OAUTH_CLIENT_ID=${{ vars.XERO_OAUTH_CLIENT_ID }}
+            MONDAY_OAUTH_CLIENT_ID=${{ vars.MONDAY_OAUTH_CLIENT_ID }}
+            MONDAY_OAUTH_APP_ID=${{ vars.MONDAY_OAUTH_APP_ID }}
             XERO_OAUTH_CLIENT_SECRET=${{ secrets.XERO_OAUTH_CLIENT_SECRET }}
+            MONDAY_OAUTH_CLIENT_SECRET=${{ secrets.MONDAY_OAUTH_CLIENT_SECRET }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
             NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
             PLATFORM_URL=${{ vars.PLATFORM_URL }}
@@ -258,6 +262,13 @@ jobs:
             RESEND_WEBHOOK_SECRET=${{ secrets.RESEND_WEBHOOK_SECRET }}
             RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
             VM0_ADMIN_USERS=${{ vars.VM0_ADMIN_USERS }}
+            VM0_DEFAULT_AGENT=${{ vars.VM0_DEFAULT_AGENT }}
+            GITHUB_APP_SLUG=${{ vars.VM0_GITHUB_APP_SLUG }}
+            GITHUB_APP_ID=${{ vars.VM0_GITHUB_APP_ID }}
+            GITHUB_APP_CLIENT_ID=${{ vars.VM0_GITHUB_APP_CLIENT_ID }}
+            GITHUB_APP_CLIENT_SECRET=${{ secrets.VM0_GITHUB_APP_CLIENT_SECRET }}
+            GITHUB_APP_WEBHOOK_SECRET=${{ secrets.VM0_GITHUB_APP_WEBHOOK_SECRET }}
+            GITHUB_APP_PRIVATE_KEY=${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
 
       - name: Calculate duration
         id: duration
@@ -308,7 +319,7 @@ jobs:
     if: ${{ needs.release-please.outputs.docs_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
     permissions:
       contents: read
       deployments: write
@@ -396,7 +407,7 @@ jobs:
     if: ${{ needs.release-please.outputs.platform_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
     permissions:
       contents: read
       deployments: write
@@ -587,7 +598,7 @@ jobs:
     if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260306
     permissions:
       contents: write
     environment: production
@@ -750,7 +761,7 @@ jobs:
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
     permissions:
       contents: read
     environment: production

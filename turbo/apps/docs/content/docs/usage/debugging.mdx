@@ -63,20 +63,68 @@ This approach lets you:
 
 ## Viewing Logs
 
-View full logs from a completed run:
+View logs from a completed run:
 
 ```bash
 vm0 logs <run-id>
 ```
 
-View the last N lines:
+By default, this shows the last 5 agent event entries.
+
+### Log Types
+
+The `vm0 logs` command supports four log types. These flags are mutually exclusive — you can only use one at a time:
+
+| Flag | Description |
+|------|-------------|
+| `-a`, `--agent` | Show agent events (default) |
+| `-s`, `--system` | Show system log |
+| `-m`, `--metrics` | Show metrics (CPU, memory, disk) |
+| `-n`, `--network` | Show network logs (proxy traffic) |
 
 ```bash
-vm0 logs <run-id> --tail 100
+# View system log
+vm0 logs <run-id> --system
+
+# View metrics
+vm0 logs <run-id> --metrics
+
+# View network traffic
+vm0 logs <run-id> --network
 ```
 
-View the first N lines:
+### Pagination
+
+Control how many entries are displayed with `--tail`, `--head`, or `--all`. These flags are mutually exclusive:
+
+| Flag | Description |
+|------|-------------|
+| `--tail <n>` | Show last N entries (default: 5) |
+| `--head <n>` | Show first N entries |
+| `--all` | Fetch all log entries |
 
 ```bash
+# Show last 100 entries
+vm0 logs <run-id> --tail 100
+
+# Show first 50 entries
 vm0 logs <run-id> --head 50
+
+# Show all entries
+vm0 logs <run-id> --all
+```
+
+### Filtering by Time
+
+Use `--since` to filter logs by timestamp. Accepts relative durations, ISO 8601 timestamps, or Unix timestamps:
+
+```bash
+# Logs from the last 5 minutes
+vm0 logs <run-id> --since 5m
+
+# Logs from the last 2 hours
+vm0 logs <run-id> --since 2h
+
+# Logs since a specific time
+vm0 logs <run-id> --since 2024-01-15T10:30:00Z
 ```

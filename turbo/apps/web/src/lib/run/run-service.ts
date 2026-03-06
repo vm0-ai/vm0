@@ -1,4 +1,4 @@
-import { eq, and, count, gt, or } from "drizzle-orm";
+import { eq, and, count, gt, or, sql } from "drizzle-orm";
 import { env } from "../../env";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
@@ -13,9 +13,11 @@ import {
   badRequest,
   forbidden,
   concurrentRunLimit,
+  isConcurrentRunLimit,
 } from "../errors";
+import { enqueueRun } from "./run-queue-service";
 import { logger } from "../logger";
-import type { ExecutionContext } from "./types";
+import type { Database } from "../../types/global";
 import type { AgentComposeSnapshot } from "../checkpoint/types";
 import type { AgentComposeYaml } from "../../types/agent-compose";
 import { getAgentSessionWithConversation } from "../agent-session";
@@ -26,57 +28,73 @@ import { executeDockerRun } from "./executors/docker-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
 import { buildExecutionContext as buildContext } from "./build-context";
 import { generateSandboxToken } from "../auth/sandbox-token";
+import { recordSandboxOperation } from "../metrics";
 import { canAccessCompose } from "../agent/permission-service";
 import { getUserEmail } from "../auth/get-user-email";
 import { extractTemplateVars } from "../config-validator";
 
 import { getUserScopeByClerkId } from "../scope/scope-service";
+import { getDefaultScope } from "../scope/scope-member-service";
 import { getVariableValues } from "../variable/variable-service";
 import { encryptCredentialValue } from "../crypto/secrets-encryption";
+import type { ScopeTier } from "@vm0/core";
 
 const log = logger("service:run");
 
 // Defense-in-depth: exclude pending runs older than this from concurrency check.
 // The cleanup-sandboxes cron job already transitions pending runs to "timeout" after 5 minutes,
 // so this TTL only matters if the cron job fails to run.
-const PENDING_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
+export const PENDING_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+/** Concurrent run limits by scope tier */
+const TIER_CONCURRENCY_LIMITS: Record<ScopeTier, number> = {
+  free: 1,
+  pro: 10,
+};
+
+function getConcurrencyLimitForTier(tier: ScopeTier): number {
+  return TIER_CONCURRENCY_LIMITS[tier];
+}
 
 /**
- * Check if user has reached concurrent run limit
+ * Check if scope has reached concurrent run limit
  *
- * @param userId User ID to check
- * @param limit Maximum allowed concurrent runs (default: 1, or CONCURRENT_RUN_LIMIT env var, 0 = no limit)
+ * @param scopeId Scope ID to check
+ * @param scopeTier Scope tier for tier-based limit (default: "free")
+ * @param db Optional database instance (for use within transactions)
  * @throws ConcurrentRunLimitError if limit exceeded
  */
 async function checkRunConcurrencyLimit(
-  userId: string,
-  limit?: number,
+  scopeId: string,
+  scopeTier: ScopeTier = "free",
+  db?: Database,
 ): Promise<void> {
-  // Use provided limit, or env var, or default to 1
+  // Use env var override if set, otherwise use tier-based limit
   // Note: 0 means no limit, so we need explicit undefined check
   const envLimit = env().CONCURRENT_RUN_LIMIT;
-  let effectiveLimit = 1; // Default
-
-  if (limit !== undefined) {
-    effectiveLimit = limit;
-  } else if (envLimit !== undefined && !isNaN(envLimit)) {
-    effectiveLimit = envLimit;
-  }
+  const effectiveLimit =
+    envLimit === 0
+      ? 0
+      : envLimit !== undefined && !isNaN(envLimit)
+        ? envLimit
+        : getConcurrencyLimitForTier(scopeTier);
 
   // Skip check if limit is 0 (no limit)
   if (effectiveLimit === 0) {
     return;
   }
 
+  const queryDb = db ?? globalThis.services.db;
+
   // Count active runs: all "running" runs + "pending" runs within TTL
   const staleThreshold = new Date(Date.now() - PENDING_RUN_TTL_MS);
 
-  const [result] = await globalThis.services.db
+  const [result] = await queryDb
     .select({ count: count() })
     .from(agentRuns)
     .where(
       and(
-        eq(agentRuns.userId, userId),
+        eq(agentRuns.scopeId, scopeId),
         or(
           eq(agentRuns.status, "running"),
           and(
@@ -91,7 +109,7 @@ async function checkRunConcurrencyLimit(
 
   if (activeRunCount >= effectiveLimit) {
     log.debug(
-      `User ${userId} has ${activeRunCount} active runs, limit is ${effectiveLimit}`,
+      `Scope ${scopeId} has ${activeRunCount} active runs, limit is ${effectiveLimit}`,
     );
     throw concurrentRunLimit();
   }
@@ -212,28 +230,6 @@ export async function validateAgentSession(
 }
 
 /**
- * Prepare execution context and dispatch to appropriate executor
- *
- * This is the unified entry point that handles both E2B and runner paths:
- * 1. Prepares the execution context (storage manifest, working dir, etc.)
- * 2. Routes to the appropriate executor based on runner group config
- *
- * @param context ExecutionContext built by buildExecutionContext()
- * @returns ExecutorResult with status and optional sandboxId
- */
-async function prepareAndDispatchRun(
-  context: ExecutionContext,
-): Promise<ExecutorResult> {
-  log.debug(`Preparing and dispatching run ${context.runId}...`);
-
-  // Layer 1: Prepare context (storage manifest, working dir, etc.)
-  const preparedContext = await prepareForExecution(context);
-
-  // Layer 2: Dispatch to appropriate executor
-  return await dispatchRun(preparedContext);
-}
-
-/**
  * Dispatch prepared context to appropriate executor.
  *
  * Routing:
@@ -242,13 +238,31 @@ async function prepareAndDispatchRun(
  * - Docker: local mode, requires DOCKER_SANDBOX_IMAGE
  *
  */
-async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
+async function dispatchRun(
+  context: PreparedContext,
+  userEmail: string,
+): Promise<ExecutorResult> {
   if (context.runnerGroup) {
     log.debug(
       `Dispatching run ${context.runId} to runner group: ${context.runnerGroup}`,
     );
     return await executeRunnerJob(context);
-  } else if (env().E2B_API_KEY) {
+  }
+
+  // Domain-based rollout: route @vm0.ai users to runner.
+  // Note: CI test accounts (e2e+clerk_test@vm0.ai) also match, but preview
+  // deploys don't set RUNNER_DEFAULT_GROUP so they still use E2B.
+  const defaultGroup = env().RUNNER_DEFAULT_GROUP;
+  if (defaultGroup) {
+    if (userEmail.endsWith("@vm0.ai")) {
+      log.debug(
+        `Dispatching run ${context.runId} to runner (domain rollout: ${userEmail})`,
+      );
+      return await executeRunnerJob({ ...context, runnerGroup: defaultGroup });
+    }
+  }
+
+  if (env().E2B_API_KEY) {
     log.debug(`Dispatching run ${context.runId} to E2B executor`);
     return await executeE2bRun(context);
   } else if (env().DOCKER_SANDBOX_IMAGE) {
@@ -304,10 +318,11 @@ export interface CreateRunParams {
   modelProvider?: string;
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
-  apiStartTime?: number;
   // Caller-resolved scope ID for variable resolution (org-aware).
   // When provided, used instead of getUserScopeByClerkId fallback.
   scopeId?: string;
+  // Caller-resolved scope tier for concurrency limit derivation.
+  scopeTier?: ScopeTier;
 }
 
 export interface CreateRunResult {
@@ -326,6 +341,7 @@ export interface CreateRunResult {
  */
 async function loadAndAuthorizeCompose(
   userId: string,
+  userEmail: string,
   agentComposeVersionId: string,
   callerComposeId?: string,
 ): Promise<{
@@ -366,7 +382,6 @@ async function loadAndAuthorizeCompose(
     throw notFound("Agent compose not found");
   }
 
-  const userEmail = await getUserEmail(userId);
   const hasAccess = await canAccessCompose(userId, userEmail, compose);
   if (!hasAccess) {
     throw forbidden("You do not have permission to access this agent");
@@ -401,7 +416,7 @@ async function validateComposeRequirements(
       const resolvedScopeId =
         scopeId ?? (await getUserScopeByClerkId(userId))?.id;
       const storedVars = resolvedScopeId
-        ? await getVariableValues(resolvedScopeId)
+        ? await getVariableValues(resolvedScopeId, userId)
         : {};
       const allVars = { ...storedVars, ...vars };
       const missingVars = requiredVars.filter(
@@ -467,96 +482,44 @@ async function markRunFailed(
 }
 
 /**
- * Unified run creation pipeline
- *
- * Validates, creates, and dispatches a run in a single call.
- * All callers (API Route, Schedule, Slack) should use this.
- *
- * Pipeline:
- * 1. Check concurrent run limit
- * 2. Load compose version content + compose metadata
- * 3. Permission check (canAccessCompose)
- * 4. Validate template vars and image access
- * 5. Validate mutual exclusivity (checkpointId vs sessionId)
- * 6. INSERT agentRuns
- * 7. Register callbacks (if any)
- * 8. Generate sandbox token
- * 9. Build execution context
- * 10. Dispatch to executor
- *
- * @throws ConcurrentRunLimitError - concurrent run limit reached
- * @throws ForbiddenError - user cannot access compose
- * @throws BadRequestError - validation failure (missing vars, mutual exclusivity)
- * @throws NotFoundError - compose version not found
- * @throws Error - dispatch failure (run already marked as "failed")
+ * Shared dispatch pipeline for steps 6-10 of the run creation flow.
+ * Used by both createRun (new runs) and executeQueuedRun (dequeued runs).
  */
-export async function createRun(
-  params: CreateRunParams,
-): Promise<CreateRunResult> {
+async function buildAndDispatchRun(opts: {
+  runId: string;
+  createdAt: Date;
+  params: CreateRunParams;
+  composeContent: AgentComposeYaml;
+  apiStartTime: number;
+  scopeId: string | undefined;
+  authorizeTime: number;
+  transactionTime: number;
+  userEmail: string;
+}): Promise<{ status: string; sandboxId?: string }> {
+  const {
+    runId,
+    createdAt,
+    params,
+    composeContent,
+    apiStartTime,
+    scopeId,
+    authorizeTime,
+    transactionTime,
+    userEmail,
+  } = opts;
   const { userId, agentComposeVersionId, prompt } = params;
 
-  // Step 1: Check concurrent run limit
-  await checkRunConcurrencyLimit(userId);
-
-  // Steps 2-3: Load compose version/metadata and verify access
-  const { composeContent } = await loadAndAuthorizeCompose(
-    userId,
-    agentComposeVersionId,
-    params.composeId,
-  );
-
-  // Step 4: Validate template vars and image access (for new runs only)
-  if (!params.checkpointId && !params.sessionId) {
-    await validateComposeRequirements(
-      userId,
-      composeContent,
-      params.vars,
-      params.checkEnv,
-      params.scopeId,
-    );
-  }
-
-  // Step 5: Validate mutual exclusivity
-  if (params.checkpointId && params.sessionId) {
-    throw badRequest(
-      "Cannot specify both checkpointId and sessionId. Use checkpointId to resume from a checkpoint, or sessionId to continue a session.",
-    );
-  }
-
-  // Step 6: INSERT agentRuns
-  const [run] = await globalThis.services.db
-    .insert(agentRuns)
-    .values({
-      userId,
-      agentComposeVersionId,
-      status: "pending",
-      prompt,
-      vars: params.vars ?? null,
-      secretNames: params.secrets ? Object.keys(params.secrets) : null,
-      resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
-      continuedFromSessionId: params.sessionId ?? null,
-      scheduleId: params.scheduleId ?? null,
-      lastHeartbeatAt: new Date(),
-    })
-    .returning();
-
-  if (!run) {
-    throw new Error("Failed to create run record");
-  }
-
-  log.debug(`Created run ${run.id} for user ${userId}`);
-
-  // From this point on, errors must mark the run as "failed"
   try {
-    // Step 7: Register callbacks (if any)
+    // Register callbacks (if any)
     if (params.callbacks && params.callbacks.length > 0) {
-      await registerCallbacks(run.id, params.callbacks);
+      await registerCallbacks(runId, params.callbacks);
     }
 
-    // Step 8: Generate sandbox token
-    const sandboxToken = await generateSandboxToken(userId, run.id);
+    // Generate sandbox token
+    const sandboxToken = await generateSandboxToken(userId, runId);
+    const tokenTime = Date.now();
 
-    // Step 9: Build execution context (pass pre-loaded compose to avoid double fetch)
+    // Build execution context
     const context = await buildContext({
       checkpointId: params.checkpointId,
       sessionId: params.sessionId,
@@ -569,7 +532,7 @@ export async function createRun(
       volumeVersions: params.volumeVersions,
       agentCompose: composeContent,
       prompt,
-      runId: run.id,
+      runId,
       sandboxToken,
       userId,
       agentName: params.agentName,
@@ -578,23 +541,252 @@ export async function createRun(
       debugNoMockClaude: params.debugNoMockClaude,
       modelProvider: params.modelProvider,
       checkEnv: params.checkEnv,
-      apiStartTime: params.apiStartTime,
-      scopeId: params.scopeId,
+      apiStartTime,
+      scopeId,
     });
+    const buildContextTime = Date.now();
 
-    // Step 10: Dispatch to executor
-    const result = await prepareAndDispatchRun(context);
+    // Prepare execution context (storage manifest, working dir, etc.)
+    const preparedContext = await prepareForExecution(context);
+    const prepareTime = Date.now();
 
-    log.debug(`Run ${run.id} dispatched with status: ${result.status}`);
+    // Dispatch to executor
+    const result = await dispatchRun(preparedContext, userEmail);
+    const dispatchTime = Date.now();
 
-    return {
-      runId: run.id,
-      status: result.status,
-      sandboxId: result.sandboxId,
-      createdAt: run.createdAt,
-    };
+    // Record per-step timing metrics for latency diagnosis
+    const steps = [
+      { op: "api_step_authorize", ms: authorizeTime - apiStartTime },
+      {
+        op: "api_step_validate_and_insert",
+        ms: transactionTime - authorizeTime,
+      },
+      { op: "api_step_callbacks_and_token", ms: tokenTime - transactionTime },
+      { op: "api_step_build_context", ms: buildContextTime - tokenTime },
+      { op: "api_step_prepare", ms: prepareTime - buildContextTime },
+      { op: "api_step_dispatch", ms: dispatchTime - prepareTime },
+    ];
+    for (const step of steps) {
+      recordSandboxOperation({
+        sandboxType: result.sandboxType,
+        actionType: step.op,
+        durationMs: step.ms,
+        success: true,
+      });
+    }
+
+    log.debug(`Run ${runId} dispatched with status: ${result.status}`);
+    return result;
   } catch (error) {
-    await markRunFailed(run.id, run.createdAt, error);
+    await markRunFailed(runId, createdAt, error);
     throw error;
   }
+}
+
+/**
+ * Unified run creation pipeline
+ *
+ * Validates, creates, and dispatches a run in a single call.
+ * All callers (API Route, Schedule, Slack) should use this.
+ *
+ * Pipeline:
+ * 1. Load compose version content + compose metadata
+ * 2. Permission check (canAccessCompose)
+ * 3. Validate template vars and image access
+ * 4. Validate mutual exclusivity (checkpointId vs sessionId)
+ * 5. Acquire per-user advisory lock, check concurrent run limit, INSERT agentRuns (atomic transaction)
+ * 6. Register callbacks (if any)
+ * 7. Generate sandbox token
+ * 8. Build execution context
+ * 9. Dispatch to executor
+ *
+ * @throws ForbiddenError - user cannot access compose
+ * @throws BadRequestError - validation failure (missing vars, mutual exclusivity)
+ * @throws NotFoundError - compose version not found
+ * @throws Error - dispatch failure (run already marked as "failed")
+ */
+export async function createRun(
+  params: CreateRunParams,
+): Promise<CreateRunResult> {
+  const apiStartTime = Date.now();
+  const { userId, agentComposeVersionId, prompt } = params;
+
+  // Fetch user email once, reused for authorization and dispatch routing
+  const userEmail = await getUserEmail(userId);
+
+  // Steps 1-2: Load compose version/metadata and verify access
+  const { composeContent } = await loadAndAuthorizeCompose(
+    userId,
+    userEmail,
+    agentComposeVersionId,
+    params.composeId,
+  );
+  const authorizeTime = Date.now();
+
+  // Step 3: Validate template vars and image access (for new runs only)
+  if (!params.checkpointId && !params.sessionId) {
+    await validateComposeRequirements(
+      userId,
+      composeContent,
+      params.vars,
+      params.checkEnv,
+      params.scopeId,
+    );
+  }
+
+  // Step 4: Validate mutual exclusivity
+  if (params.checkpointId && params.sessionId) {
+    throw badRequest(
+      "Cannot specify both checkpointId and sessionId. Use checkpointId to resume from a checkpoint, or sessionId to continue a session.",
+    );
+  }
+
+  // Resolve scope ID for the run record
+  const scopeId = params.scopeId ?? (await getDefaultScope(userId)).scope.id;
+
+  // Step 5: Concurrency check + INSERT in a transaction with advisory lock
+  // to prevent TOCTOU race where two concurrent requests both pass the
+  // concurrency check before either inserts.
+  // On concurrency failure, enqueue the run instead of rejecting.
+  let run;
+  try {
+    run = await globalThis.services.db.transaction(async (tx) => {
+      // Acquire per-scope advisory lock (released when transaction ends)
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${scopeId}))`);
+
+      // Check concurrent run limit within the serialized transaction
+      await checkRunConcurrencyLimit(scopeId, params.scopeTier ?? "free", tx);
+
+      // INSERT within the same transaction
+      const [newRun] = await tx
+        .insert(agentRuns)
+        .values({
+          userId,
+          scopeId,
+          agentComposeVersionId,
+          status: "pending",
+          prompt,
+          vars: params.vars ?? null,
+          secretNames: params.secrets ? Object.keys(params.secrets) : null,
+          resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
+          continuedFromSessionId: params.sessionId ?? null,
+          scheduleId: params.scheduleId ?? null,
+          lastHeartbeatAt: new Date(),
+        })
+        .returning();
+
+      if (!newRun) {
+        throw new Error("Failed to create run record");
+      }
+
+      return newRun;
+    });
+  } catch (error) {
+    if (isConcurrentRunLimit(error)) {
+      return enqueueRun({ ...params, scopeId });
+    }
+    throw error;
+  }
+
+  const transactionTime = Date.now();
+  log.debug(`Created run ${run.id} for user ${userId}`);
+
+  const result = await buildAndDispatchRun({
+    runId: run.id,
+    createdAt: run.createdAt,
+    params,
+    composeContent,
+    apiStartTime,
+    scopeId,
+    authorizeTime,
+    transactionTime,
+    userEmail,
+  });
+
+  return {
+    runId: run.id,
+    status: result.status,
+    sandboxId: result.sandboxId,
+    createdAt: run.createdAt,
+  };
+}
+
+/**
+ * Execute a previously queued run.
+ *
+ * Runs the createRun pipeline steps 1-10 for an existing agent_runs record.
+ * Re-checks concurrency (another request may have claimed the slot),
+ * then skips INSERT (record already exists) and dispatches.
+ *
+ * Called from drainUserQueue() after dequeuing an entry.
+ *
+ * @throws ConcurrentRunLimitError if the slot was claimed by another request
+ */
+export async function executeQueuedRun(
+  runId: string,
+  params: CreateRunParams,
+): Promise<void> {
+  const apiStartTime = Date.now();
+  const { userId, agentComposeVersionId } = params;
+
+  // Step 1: Re-check concurrency + update status atomically with advisory lock
+  // to prevent TOCTOU race where a concurrent createRun claims the slot.
+  const scopeId = params.scopeId ?? "";
+  const [run] = await globalThis.services.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${scopeId}))`);
+    await checkRunConcurrencyLimit(scopeId, params.scopeTier ?? "free", tx);
+
+    return tx
+      .update(agentRuns)
+      .set({
+        status: "pending",
+        lastHeartbeatAt: new Date(),
+      })
+      .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "queued")))
+      .returning();
+  });
+  const transactionTime = Date.now();
+
+  if (!run) {
+    throw new Error(`Queued run ${runId} not found or already processed`);
+  }
+
+  log.debug(`Executing queued run ${runId} for user ${userId}`);
+
+  // Fetch user email once, reused for authorization and dispatch routing
+  const userEmail = await getUserEmail(userId);
+
+  // Steps 2-3: Load compose version/metadata and verify access
+  const { composeContent } = await loadAndAuthorizeCompose(
+    userId,
+    userEmail,
+    agentComposeVersionId,
+    params.composeId,
+  );
+  const authorizeTime = Date.now();
+
+  // Step 4: Validate template vars and image access (for new runs only)
+  if (!params.checkpointId && !params.sessionId) {
+    await validateComposeRequirements(
+      userId,
+      composeContent,
+      params.vars,
+      params.checkEnv,
+      params.scopeId,
+    );
+  }
+
+  // Steps 5 already validated at enqueue time, skip
+
+  await buildAndDispatchRun({
+    runId,
+    createdAt: run.createdAt,
+    params,
+    composeContent,
+    apiStartTime,
+    scopeId: params.scopeId,
+    authorizeTime,
+    transactionTime,
+    userEmail,
+  });
 }

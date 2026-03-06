@@ -21,7 +21,7 @@ import { logger } from "../../../../src/lib/logger";
 const log = logger("api:storages:commit");
 
 const router = tsr.router(storagesCommitContract, {
-  commit: async ({ body, headers }) => {
+  commit: async ({ body, headers }, { request }) => {
     initServices();
 
     // Authenticate user
@@ -36,10 +36,8 @@ const router = tsr.router(storagesCommitContract, {
     }
 
     // Resolve user's scope
-    const { scope: userScope } = await resolveScope(
-      userId,
-      headers.authorization,
-    );
+    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const { scope: userScope } = await resolveScope(userId, scopeSlug);
 
     const { storageName, storageType, versionId, files, runId, message } = body;
 

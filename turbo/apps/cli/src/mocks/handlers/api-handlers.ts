@@ -66,7 +66,6 @@ export const apiHandlers = [
       {
         id: "scope-default",
         slug: "user-default",
-        type: "personal",
         displayName: null,
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",

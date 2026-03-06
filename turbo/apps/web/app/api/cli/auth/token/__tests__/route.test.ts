@@ -95,7 +95,6 @@ describe("POST /api/cli/auth/token", () => {
     expect(body.access_token).toMatch(/^vm0_live_/);
     expect(body.token_type).toBe("Bearer");
     expect(body.expires_in).toBe(90 * 24 * 60 * 60);
-    expect(body.refresh_token).toEqual(expect.any(String));
 
     // Verify the CLI token was persisted
     const tokenRow = await findTestCliToken(body.access_token);

@@ -63,8 +63,8 @@ export function mockClerk(options: { userId: string | null; email?: string }) {
     organizations: {
       createOrganization: vi
         .fn()
-        .mockImplementation(({ slug }: { slug: string }) =>
-          Promise.resolve({ id: `org_mock_${slug}` }),
+        .mockImplementation(({ name }: { name: string }) =>
+          Promise.resolve({ id: `org_mock_${name}` }),
         ),
     },
   } as unknown as Awaited<ReturnType<typeof clerkClient>>);

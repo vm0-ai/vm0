@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.11.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.10.0...sandbox-fc-v0.11.0) (2026-03-06)
+
+
+### Features
+
+* **sandbox-fc:** add balloon controller observability for production monitoring ([#3767](https://github.com/vm0-ai/vm0/issues/3767)) ([ecc4c4a](https://github.com/vm0-ai/vm0/commit/ecc4c4a2d9599138ee5422c470a4a1576749c9fb))
+
+## [0.10.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.9.0...sandbox-fc-v0.10.0) (2026-03-05)
+
+
+### Features
+
+* **runner:** balloon reclaim with per-tick inflate cap and full ci test ([#3711](https://github.com/vm0-ai/vm0/issues/3711)) ([7f7efc2](https://github.com/vm0-ai/vm0/commit/7f7efc2f845686899c62ce20cbf992cc9cc5c7df))
+
+## [0.9.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.8.0...sandbox-fc-v0.9.0) (2026-03-05)
+
+
+### Features
+
+* **sandbox-fc:** add per-sandbox balloon memory reclaim controller ([#3700](https://github.com/vm0-ai/vm0/issues/3700)) ([10f121b](https://github.com/vm0-ai/vm0/commit/10f121bc06e87f23a48af9b4b971faacef620442)), closes [#3697](https://github.com/vm0-ai/vm0/issues/3697)
+
+
+### Bug Fixes
+
+* **ci:** limit runner test concurrency to avoid netns init timeout ([#3712](https://github.com/vm0-ai/vm0/issues/3712)) ([df4d163](https://github.com/vm0-ai/vm0/commit/df4d163bf0c3a9ae89a05e66cc976735815cfd76))
+* **sandbox-fc:** fail fast when firecracker crashes during startup ([#3709](https://github.com/vm0-ai/vm0/issues/3709)) ([ad469b4](https://github.com/vm0-ai/vm0/commit/ad469b45110d59f8b5cfa210635012b9477de2a0))
+
+## [0.8.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.7.0...sandbox-fc-v0.8.0) (2026-03-05)
+
+
+### Features
+
+* **sandbox-fc:** enable balloon stats and add runtime balloon api ([#3694](https://github.com/vm0-ai/vm0/issues/3694)) ([b5918d6](https://github.com/vm0-ai/vm0/commit/b5918d6e7f7c82f79693b725bad2b5c547016655)), closes [#3688](https://github.com/vm0-ai/vm0/issues/3688)
+* **sandbox-fc:** enable virtio-balloon with deflate_on_oom as safety net ([#3679](https://github.com/vm0-ai/vm0/issues/3679)) ([2ce2b62](https://github.com/vm0-ai/vm0/commit/2ce2b62c991a9e4bc077438630eb21267b618dc2)), closes [#3666](https://github.com/vm0-ai/vm0/issues/3666)
+
 ## [0.7.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.6.7...sandbox-fc-v0.7.0) (2026-03-03)
 
 

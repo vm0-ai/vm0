@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -19,7 +19,6 @@ describe("schedule setup utilities", () => {
   let originalCwd: string;
 
   beforeEach(() => {
-    vi.clearAllMocks();
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-schedule-init-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);

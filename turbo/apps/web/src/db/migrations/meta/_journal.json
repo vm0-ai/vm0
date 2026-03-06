@@ -736,6 +736,34 @@
       "when": 1772616051401,
       "tag": "0104_steep_devos",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1772703622916,
+      "tag": "0105_friendly_excalibur",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1772716800000,
+      "tag": "0106_add_compose_jobs_user_active_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1772729278144,
+      "tag": "0107_majestic_green_goblin",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1772775700211,
+      "tag": "0108_right_glorian",
+      "breakpoints": true
     }
   ]
 }

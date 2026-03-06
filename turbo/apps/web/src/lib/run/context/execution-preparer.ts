@@ -188,28 +188,28 @@ export async function prepareForExecution(
     `Extracted config: workingDir=${workingDir}, cliAgentType=${cliAgentType}, runnerGroup=${runnerGroup}, firewall=${experimentalFirewall ? "enabled" : "disabled"}`,
   );
 
-  // Resolve runner's scope for artifact access
+  // Resolve runner's scope and owner's scope in parallel (independent DB queries)
   const userId = context.userId || "";
-  const runnerScope = await getUserScopeByClerkId(userId);
+  const [runnerScope, [composeInfo]] = await Promise.all([
+    getUserScopeByClerkId(userId),
+    globalThis.services.db
+      .select({
+        scopeId: agentComposes.scopeId,
+        scopeSlug: scopes.slug,
+      })
+      .from(agentComposeVersions)
+      .innerJoin(
+        agentComposes,
+        eq(agentComposeVersions.composeId, agentComposes.id),
+      )
+      .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
+      .where(eq(agentComposeVersions.id, context.agentComposeVersionId))
+      .limit(1),
+  ]);
+
   if (!runnerScope) {
     throw badRequest("Runner scope not found");
   }
-
-  // Resolve owner's scope from compose for volume access and agent metadata
-  const [composeInfo] = await globalThis.services.db
-    .select({
-      scopeId: agentComposes.scopeId,
-      scopeSlug: scopes.slug,
-    })
-    .from(agentComposeVersions)
-    .innerJoin(
-      agentComposes,
-      eq(agentComposeVersions.composeId, agentComposes.id),
-    )
-    .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
-    .where(eq(agentComposeVersions.id, context.agentComposeVersionId))
-    .limit(1);
-
   if (!composeInfo) {
     throw badRequest("Agent compose not found");
   }

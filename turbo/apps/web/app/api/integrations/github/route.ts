@@ -117,16 +117,13 @@ export async function GET(request: Request) {
   }
 
   // Resolve user's scope for resource queries
-  const { scope: userScope } = await resolveScope(
-    userId,
-    authHeader ?? undefined,
-  );
+  const { scope: userScope } = await resolveScope(userId);
 
   // Get user's existing secrets, vars, connectors
   const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(userScope.id),
-    listVariables(userScope.id),
-    listConnectors(userScope.id),
+    listSecrets(userScope.id, userId),
+    listVariables(userScope.id, userId),
+    listConnectors(userScope.id, userId),
   ]);
 
   const connectorProvided = getConnectorProvidedSecretNames(
@@ -314,7 +311,7 @@ export async function PATCH(request: Request) {
     }
     targetScopeId = targetScope.id;
   } else {
-    const { scope } = await resolveScope(userId, authHeader ?? undefined);
+    const { scope } = await resolveScope(userId);
     targetScopeId = scope.id;
   }
 

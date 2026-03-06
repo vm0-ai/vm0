@@ -458,7 +458,7 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         "VM0_API_START_TIME".into(),
         context
             .api_start_time
-            .map(|t| t.to_string())
+            .map(|t| (t as u64).to_string())
             .unwrap_or_default(),
     );
     // The API omits cli_agent_type for claude-code agents (the default).
@@ -695,7 +695,7 @@ mod tests {
         ctx.api_start_time = Some(1_700_000_000.5);
 
         let env = build_env_json(&ctx, "http://localhost");
-        assert_eq!(env.get("VM0_API_START_TIME").unwrap(), "1700000000.5");
+        assert_eq!(env.get("VM0_API_START_TIME").unwrap(), "1700000000");
     }
 
     #[test]

@@ -106,10 +106,10 @@ export default function SignInPage() {
 
         /* Input focus state */
         .cl-formFieldInput:focus,
-        .cl-formFieldInput input:focus,
-        .cl-card input:focus,
+        .cl-formFieldInput input:not([data-input-otp]):focus,
+        .cl-card input:not([data-input-otp]):focus,
         .cl-card [class*="formFieldInput"]:focus,
-        .cl-card [class*="formFieldInput"] input:focus {
+        .cl-card [class*="formFieldInput"] input:not([data-input-otp]):focus {
           border: 1px solid hsl(var(--primary)) !important;
           box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1) !important;
           outline: none !important;
@@ -262,6 +262,54 @@ export default function SignInPage() {
           background-color: transparent !important;
           background-image: none !important;
         }
+
+        /* OTP/Verification Code Input Boxes - Match cli-auth style */
+        .cl-otpCodeFieldInput {
+          height: 36px !important;
+          width: 36px !important;
+          background-color: hsl(var(--input)) !important;
+          border: 1px solid hsl(var(--border)) !important;
+          border-radius: 0.5rem !important;
+          color: hsl(var(--foreground)) !important;
+          font-size: 16px !important;
+          font-weight: 500 !important;
+          text-align: center !important;
+        }
+
+        /* OTP Input Focus State */
+        .cl-otpCodeFieldInput[data-focus-within="true"] {
+          border-color: hsl(var(--primary)) !important;
+          box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1) !important;
+        }
+
+        /* OTP caret color */
+        .cl-otpCodeFieldInput[data-focus-within="true"] > div > div {
+          background-color: hsl(var(--foreground)) !important;
+        }
+
+        /* "Didn't receive a code" text color */
+        .cl-formResendCodeLink,
+        [class*="formResendCode"],
+        [class*="resendCode"],
+        .cl-card [class*="alternativeMethodsBlockButton"],
+        button[class*="alternativeMethodsBlockButton"] {
+          color: hsl(var(--muted-foreground)) !important;
+        }
+
+        /* Email address display - use muted foreground */
+        .cl-identityPreviewText,
+        [class*="identityPreview"] [class*="text"],
+        .cl-card [class*="userPreview"],
+        .cl-card [class*="emailAddress"] {
+          color: hsl(var(--muted-foreground)) !important;
+        }
+
+        /* Keep resend link primary color */
+        .cl-formResendCodeLink a,
+        [class*="formResendCode"] a,
+        a[class*="resendCode"] {
+          color: hsl(var(--primary)) !important;
+        }
       `}</style>
       <div className="relative flex min-h-screen items-center justify-center bg-background p-6 overflow-hidden">
         {/* Background grid pattern - medium grid with subtle visibility */}
@@ -384,7 +432,8 @@ export default function SignInPage() {
               identityPreviewText: "text-foreground",
               identityPreviewEditButton: "text-muted-foreground",
               formFieldInputShowPasswordButton: "text-muted-foreground",
-              otpCodeFieldInput: "text-foreground rounded-lg",
+              otpCodeFieldInput:
+                "h-9 w-9 bg-input border border-border rounded-lg text-center text-base font-medium uppercase text-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10",
               formResendCodeLink: "text-primary",
               footer: "hidden",
             },

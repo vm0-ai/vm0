@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.15.0](https://github.com/vm0-ai/vm0/compare/docs-v2.14.0...docs-v2.15.0) (2026-03-05)
+
+
+### Features
+
+* **docs:** add 12 new skill pages and fix naming inconsistencies ([#3740](https://github.com/vm0-ai/vm0/issues/3740)) ([0e1e0ef](https://github.com/vm0-ai/vm0/commit/0e1e0ef5d01359fc1963d75cdf54929b1e23d64b))
+* **docs:** add missing environment variables to self-hosting docs ([#3733](https://github.com/vm0-ai/vm0/issues/3733)) ([26d0d3b](https://github.com/vm0-ai/vm0/commit/26d0d3b19005d9234890db133447fc2e3fb421f6))
+* **docs:** add missing log command flags to debugging docs ([#3730](https://github.com/vm0-ai/vm0/issues/3730)) ([2cbf9aa](https://github.com/vm0-ai/vm0/commit/2cbf9aadf59aad5bc59757444ee48b36df3c10a0))
+* **docs:** add missing options to run-agent documentation ([#3728](https://github.com/vm0-ai/vm0/issues/3728)) ([035a2dd](https://github.com/vm0-ai/vm0/commit/035a2dd38de7c45fbc00283bc6c2a35bf1db7f22))
+* **docs:** add process.env fallback and bare skill name syntax ([#3742](https://github.com/vm0-ai/vm0/issues/3742)) ([c300299](https://github.com/vm0-ai/vm0/commit/c300299dbd2020fd9d911cf196e55e7cba8e353a))
+* **docs:** fix agent-skills index categorization and skill count ([#3735](https://github.com/vm0-ai/vm0/issues/3735)) ([c2edacb](https://github.com/vm0-ai/vm0/commit/c2edacbf6e994058fd6ad947f09a05ca16bca020))
+* **docs:** fix broken internal links and add missing usage cards ([#3726](https://github.com/vm0-ai/vm0/issues/3726)) ([8443784](https://github.com/vm0-ai/vm0/commit/8443784d55a8a718a4bfe768376652113ca695d7))
+* **docs:** update CLI reference with missing commands and options ([#3729](https://github.com/vm0-ai/vm0/issues/3729)) ([0f87f88](https://github.com/vm0-ai/vm0/commit/0f87f884a57b748f821b374f4566ce87250db6c2))
+* **docs:** update configuration reference with missing fields and fixes ([#3732](https://github.com/vm0-ai/vm0/issues/3732)) ([ac032fb](https://github.com/vm0-ai/vm0/commit/ac032fbf1c8fa61255f0caae831297f0181b8b2f))
+* **docs:** update schedule-agent page to match actual cli options ([#3731](https://github.com/vm0-ai/vm0/issues/3731)) ([bf313d1](https://github.com/vm0-ai/vm0/commit/bf313d195c01a34c5781fbb482cb954b76a51ffa))
+* **docs:** update z.ai model list with glm-5 and fix casing ([#3727](https://github.com/vm0-ai/vm0/issues/3727)) ([2d84d3c](https://github.com/vm0-ai/vm0/commit/2d84d3c8b35bd03fe83cce335ba76f4805fe235d))
+
 ## [2.14.0](https://github.com/vm0-ai/vm0/compare/docs-v2.13.0...docs-v2.14.0) (2026-03-03)
 
 

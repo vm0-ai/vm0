@@ -14,7 +14,7 @@ import { logger } from "../../../../src/lib/logger";
 const log = logger("api:storages:list");
 
 const router = tsr.router(storagesListContract, {
-  list: async ({ query, headers }) => {
+  list: async ({ query, headers }, { request }) => {
     initServices();
 
     // Authenticate user
@@ -31,10 +31,8 @@ const router = tsr.router(storagesListContract, {
     const { type: storageType } = query;
 
     // Resolve user's scope
-    const { scope: userScope } = await resolveScope(
-      userId,
-      headers.authorization,
-    );
+    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const { scope: userScope } = await resolveScope(userId, scopeSlug);
 
     log.debug(`Listing ${storageType}s for scope ${userScope.slug}`);
 

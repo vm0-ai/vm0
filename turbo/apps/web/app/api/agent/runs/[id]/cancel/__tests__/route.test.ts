@@ -1,10 +1,12 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
 import { randomUUID } from "crypto";
 import {
   createTestRequest,
   createTestCompose,
   createTestRun,
+  findTestQueueEntry,
+  findTestRunRecord,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -12,6 +14,7 @@ import {
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { reloadEnv } from "../../../../../../../src/env";
 
 const context = testContext();
 
@@ -61,6 +64,71 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       expect(response.status).toBe(200);
       expect(data.status).toBe("cancelled");
       expect(context.mocks.e2b.sandbox.kill).toHaveBeenCalled();
+    });
+  });
+
+  describe("Cancel Queued Run", () => {
+    it("should cancel a queued run and remove queue entry", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      reloadEnv();
+
+      // Create a running run (claims the slot)
+      await createTestRun(testComposeId, "Running run");
+
+      // Create a second run that gets queued
+      const queued = await createTestRun(testComposeId, "Queued run");
+      expect(queued.status).toBe("queued");
+
+      // Verify queue entry exists
+      const queueBefore = await findTestQueueEntry(queued.runId);
+      expect(queueBefore).toBeDefined();
+
+      // Cancel the queued run
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${queued.runId}/cancel`,
+        { method: "POST" },
+      );
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.status).toBe("cancelled");
+
+      // Queue entry should be removed (encrypted secrets deleted)
+      const queueAfter = await findTestQueueEntry(queued.runId);
+      expect(queueAfter).toBeUndefined();
+    });
+
+    it("should drain queue after cancelling a running run", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      reloadEnv();
+
+      // Create a running run (claims the slot)
+      const running = await createTestRun(testComposeId, "Running run");
+      expect(running.status).toBe("running");
+
+      // Create a second run that gets queued
+      const queued = await createTestRun(testComposeId, "Queued run");
+      expect(queued.status).toBe("queued");
+
+      // Cancel the running run (frees the concurrency slot)
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${running.runId}/cancel`,
+        { method: "POST" },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Flush the after() callback which triggers drainUserQueue
+      await context.mocks.flushAfter();
+
+      // Queued run should now be dispatched (running)
+      const run = await findTestRunRecord(queued.runId);
+      expect(run!.status).toBe("running");
+
+      // Queue entry should be deleted
+      const queueEntry = await findTestQueueEntry(queued.runId);
+      expect(queueEntry).toBeUndefined();
     });
   });
 

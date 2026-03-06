@@ -5,7 +5,7 @@ import { logger } from "../logger";
 const log = logger("telegram:context");
 
 /** Maximum number of recent messages to fetch for context */
-const MAX_CONTEXT_MESSAGES = 50;
+const MAX_CONTEXT_MESSAGES = 10;
 
 const CONTEXT_PREAMBLE = [
   "The messages below are from a Telegram conversation. When responding:",

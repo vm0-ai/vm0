@@ -31,7 +31,6 @@ describe("Agent Sharing Commands", () => {
   const testScopeSlug = "test-user";
 
   beforeEach(() => {
-    vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
@@ -57,7 +56,6 @@ describe("Agent Sharing Commands", () => {
         return HttpResponse.json({
           id: "scope-123",
           slug: testScopeSlug,
-          type: "personal",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });

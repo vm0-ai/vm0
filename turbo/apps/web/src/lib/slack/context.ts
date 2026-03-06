@@ -43,6 +43,35 @@ interface SlackAttachment {
   fallback?: string;
 }
 
+interface RichTextStyle {
+  bold?: boolean;
+  italic?: boolean;
+  strike?: boolean;
+  code?: boolean;
+}
+
+interface RichTextElement {
+  type: string;
+  text?: string;
+  url?: string;
+  name?: string;
+  unicode?: string;
+  user_id?: string;
+  usergroup_id?: string;
+  channel_id?: string;
+  range?: string;
+  style?: RichTextStyle | string;
+  indent?: number;
+  offset?: number;
+  language?: string;
+  elements?: RichTextElement[];
+}
+
+interface SlackBlock {
+  type: string;
+  elements?: RichTextElement[];
+}
+
 interface SlackMessage {
   user?: string;
   text?: string;
@@ -50,6 +79,7 @@ interface SlackMessage {
   bot_id?: string;
   files?: SlackFile[];
   attachments?: SlackAttachment[];
+  blocks?: SlackBlock[];
 }
 
 /**
@@ -106,6 +136,119 @@ export async function fetchChannelContext(
 function isSupportedImageType(file: SlackFile): boolean {
   const mimetype = file.mimetype?.toLowerCase();
   return mimetype !== undefined && SUPPORTED_IMAGE_TYPES.includes(mimetype);
+}
+
+/**
+ * Apply markdown-like style wrappers to a text element.
+ */
+function applyTextStyle(
+  text: string,
+  style: RichTextStyle | string | undefined,
+): string {
+  if (typeof style === "string" || !style) return text;
+  if (style.code) return `\`${text}\``;
+  let result = text;
+  if (style?.bold) result = `**${result}**`;
+  if (style?.italic) result = `_${result}_`;
+  if (style?.strike) result = `~${result}~`;
+  return result;
+}
+
+/**
+ * Convert an inline rich text element to plain text with markdown-like formatting.
+ */
+function formatInlineElement(el: RichTextElement): string {
+  switch (el.type) {
+    case "text":
+      return applyTextStyle(el.text ?? "", el.style);
+    case "link":
+      return el.url ? `[${el.text ?? el.url}](${el.url})` : (el.text ?? "");
+    case "emoji":
+      return el.unicode
+        ? String.fromCodePoint(
+            ...el.unicode.split("-").map((h) => parseInt(h, 16)),
+          )
+        : `:${el.name ?? "emoji"}:`;
+    case "user":
+      return `<@${el.user_id ?? "unknown"}>`;
+    case "usergroup":
+      return `<!subteam^${el.usergroup_id ?? "unknown"}>`;
+    case "channel":
+      return `<#${el.channel_id ?? "unknown"}>`;
+    case "broadcast":
+      return `@${el.range ?? "here"}`;
+    default:
+      return el.text ?? "";
+  }
+}
+
+/**
+ * Convert an array of inline elements to a single text string.
+ */
+function inlineElementsToText(elements: RichTextElement[]): string {
+  return elements.map(formatInlineElement).join("");
+}
+
+/**
+ * Extract plain text content from Slack rich_text blocks.
+ * Returns undefined when no rich_text blocks are present so callers
+ * can fall back to msg.text.
+ */
+export function extractTextFromBlocks(
+  blocks: SlackBlock[] | undefined,
+): string | undefined {
+  if (!blocks || blocks.length === 0) return undefined;
+
+  const richTextBlocks = blocks.filter((b) => b.type === "rich_text");
+  if (richTextBlocks.length === 0) return undefined;
+
+  const parts: string[] = [];
+
+  for (const block of richTextBlocks) {
+    for (const section of block.elements ?? []) {
+      switch (section.type) {
+        case "rich_text_section":
+          parts.push(inlineElementsToText(section.elements ?? []));
+          break;
+        case "rich_text_list": {
+          const items = section.elements ?? [];
+          const indent = "  ".repeat(section.indent ?? 0);
+          items.forEach((item, i) => {
+            const listStyle =
+              typeof section.style === "string" ? section.style : undefined;
+            const bullet =
+              listStyle === "ordered"
+                ? `${(section.offset ?? 0) + i + 1}.`
+                : "-";
+            const text = inlineElementsToText(item.elements ?? []);
+            parts.push(`${indent}${bullet} ${text}`);
+          });
+          break;
+        }
+        case "rich_text_preformatted": {
+          const code = inlineElementsToText(section.elements ?? []);
+          const lang = section.language ?? "";
+          parts.push(`\`\`\`${lang}\n${code}\n\`\`\``);
+          break;
+        }
+        case "rich_text_quote":
+          parts.push(
+            (section.elements ?? [])
+              .map((el) => formatInlineElement(el))
+              .join("")
+              .split("\n")
+              .map((line) => `> ${line}`)
+              .join("\n"),
+          );
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  const result = parts.join("\n");
+  return result.length > 0 ? result : undefined;
 }
 
 /**
@@ -324,7 +467,7 @@ function formatMessageWithMetadata(
 ): string {
   const senderId = msg.bot_id ? "BOT" : (msg.user ?? "unknown");
   const msgId = msg.ts ?? "unknown";
-  const text = msg.text ?? "";
+  const text = extractTextFromBlocks(msg.blocks) ?? msg.text ?? "";
 
   const parts: string[] = [
     "---",

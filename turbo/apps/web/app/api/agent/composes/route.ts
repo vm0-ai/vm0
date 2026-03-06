@@ -40,12 +40,8 @@ const router = tsr.router(composesMainContract, {
       };
     }
 
-    // Resolve scope: use ?scope= slug, vm0_org_* token, or default scope
-    const { scope: resolvedScope } = await resolveScope(
-      userId,
-      headers.authorization,
-      query.scope,
-    );
+    // Resolve scope: use ?scope= query param or default scope
+    const { scope: resolvedScope } = await resolveScope(userId, query.scope);
     const scopeId = resolvedScope.id;
 
     // JOIN compose + version in a single query
@@ -238,10 +234,7 @@ const router = tsr.router(composesMainContract, {
     const versionId = computeComposeVersionId(resolvedContent);
 
     // Get user's scope (required for compose creation)
-    const { scope: userScope } = await resolveScope(
-      userId,
-      headers.authorization,
-    );
+    const { scope: userScope } = await resolveScope(userId);
 
     // Check compose and version existence in parallel
     const [existingComposes, existingVersions] = await Promise.all([

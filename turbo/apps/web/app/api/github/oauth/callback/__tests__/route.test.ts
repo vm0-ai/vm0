@@ -25,7 +25,6 @@ const TEST_TARGET_TYPE = "Organization";
 
 function setupGitHubMocks(installationId: string) {
   server.use(
-    // Mock GET /app/installations/{id} for installation info
     http.get(
       `https://api.github.com/app/installations/${installationId}`,
       () => {
@@ -39,7 +38,6 @@ function setupGitHubMocks(installationId: string) {
         });
       },
     ),
-    // Mock POST /app/installations/{id}/access_tokens
     http.post(
       `https://api.github.com/app/installations/${installationId}/access_tokens`,
       () => {
@@ -52,9 +50,6 @@ function setupGitHubMocks(installationId: string) {
   );
 }
 
-/**
- * Build a signed OAuth state string matching the install route's HMAC format.
- */
 function buildSignedState(vm0UserId: string, composeId: string): string {
   const { SECRETS_ENCRYPTION_KEY } = env();
   const payload = `${vm0UserId}:${composeId}`;
@@ -166,7 +161,6 @@ describe("/api/github/oauth/callback", () => {
     expect(location).toContain("settings?tab=integrations");
     expect(location).not.toContain("error=");
 
-    // Verify installation was created in DB
     const installations = await findTestGitHubInstallations(installationId);
     expect(installations).toHaveLength(1);
     const installation = installations[0]!;
@@ -196,7 +190,6 @@ describe("/api/github/oauth/callback", () => {
     expect(location).toContain("pending=true");
     expect(location).not.toContain("error=");
 
-    // Verify pending installation was created in DB
     const installations = await findTestGitHubInstallationsByTargetId(targetId);
     expect(installations).toHaveLength(1);
     const installation = installations[0]!;
@@ -208,6 +201,19 @@ describe("/api/github/oauth/callback", () => {
     expect(installation.defaultComposeId).toBe(composeId);
   });
 
+  it("should redirect with error when state contains invalid JSON", async () => {
+    const request = createTestRequest(
+      `http://localhost:3000/api/github/oauth/callback?installation_id=12345&setup_action=install&state=not-json`,
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("Location");
+    expect(location).toContain("settings?tab=integrations");
+    expect(location).toContain("error=");
+    expect(location).toContain("Invalid%20OAuth%20state");
+  });
+
   it("should skip creation when installation already exists", async () => {
     const userId = uniqueId("gh-user");
     mockClerk({ userId });
@@ -217,14 +223,12 @@ describe("/api/github/oauth/callback", () => {
     const installationId = uniqueId("install");
     setupGitHubMocks(installationId);
 
-    // First callback — creates installation
     const state = buildSignedState(userId, composeId);
     const request1 = createTestRequest(
       `http://localhost:3000/api/github/oauth/callback?installation_id=${installationId}&setup_action=install&state=${encodeURIComponent(state)}`,
     );
     await GET(request1);
 
-    // Second callback — should skip, not error
     const request2 = createTestRequest(
       `http://localhost:3000/api/github/oauth/callback?installation_id=${installationId}&setup_action=install&state=${encodeURIComponent(state)}`,
     );
@@ -235,7 +239,6 @@ describe("/api/github/oauth/callback", () => {
     expect(location).toContain("settings?tab=integrations");
     expect(location).not.toContain("error=");
 
-    // Verify only one installation record exists
     const installations = await findTestGitHubInstallations(installationId);
     expect(installations).toHaveLength(1);
   });

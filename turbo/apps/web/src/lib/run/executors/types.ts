@@ -71,4 +71,5 @@ export interface ExecutorResult {
   sandboxId?: string;
   createdAt: string;
   error?: string;
+  sandboxType: "runner" | "e2b" | "docker";
 }

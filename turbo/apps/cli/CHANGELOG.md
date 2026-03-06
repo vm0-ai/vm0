@@ -1,5 +1,79 @@
 # Changelog
 
+## [9.49.0](https://github.com/vm0-ai/vm0/compare/cli-v9.48.0...cli-v9.49.0) (2026-03-06)
+
+
+### Features
+
+* add scope tier with per-scope concurrency limits ([#3802](https://github.com/vm0-ai/vm0/issues/3802)) ([210a307](https://github.com/vm0-ai/vm0/commit/210a307d12be7dcc33c17af1c8c641feb3a1044a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.40.0
+
+## [9.48.0](https://github.com/vm0-ai/vm0/compare/cli-v9.47.2...cli-v9.48.0) (2026-03-06)
+
+
+### Features
+
+* **run-queue:** implement per-user run queue mechanism ([#3764](https://github.com/vm0-ai/vm0/issues/3764)) ([85a4fbd](https://github.com/vm0-ai/vm0/commit/85a4fbd7707e72f31631c21ae6a3f5698cd138bf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.39.0
+
+## [9.47.2](https://github.com/vm0-ai/vm0/compare/cli-v9.47.1...cli-v9.47.2) (2026-03-06)
+
+
+### Bug Fixes
+
+* **cli:** align schedule cli consistency with platform ui ([#3797](https://github.com/vm0-ai/vm0/issues/3797)) ([923a0b5](https://github.com/vm0-ai/vm0/commit/923a0b5729a3a4802f7a49a92aaa9f3cff6a655e))
+
+## [9.47.1](https://github.com/vm0-ai/vm0/compare/cli-v9.47.0...cli-v9.47.1) (2026-03-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.38.1
+
+## [9.47.0](https://github.com/vm0-ai/vm0/compare/cli-v9.46.0...cli-v9.47.0) (2026-03-05)
+
+
+### Features
+
+* **cli:** add HTTP proxy support via undici EnvHttpProxyAgent ([#3594](https://github.com/vm0-ai/vm0/issues/3594)) ([51e119a](https://github.com/vm0-ai/vm0/commit/51e119adb7913c4fd456b216573390083d1b8ff2))
+
+## [9.46.0](https://github.com/vm0-ai/vm0/compare/cli-v9.45.2...cli-v9.46.0) (2026-03-05)
+
+
+### Features
+
+* scope unification phase 3 — constraints, cleanup, and token simplification ([#3719](https://github.com/vm0-ai/vm0/issues/3719)) ([9ecbb1b](https://github.com/vm0-ai/vm0/commit/9ecbb1b1addfb855b0ac17fe45508bddd483485f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.38.0
+
+## [9.45.2](https://github.com/vm0-ai/vm0/compare/cli-v9.45.1...cli-v9.45.2) (2026-03-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.37.0
+
 ## [9.45.1](https://github.com/vm0-ai/vm0/compare/cli-v9.45.0...cli-v9.45.1) (2026-03-05)
 
 

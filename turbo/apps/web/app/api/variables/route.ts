@@ -24,7 +24,7 @@ const router = tsr.router(variablesMainContract, {
   /**
    * GET /api/variables - List all variables (includes values)
    */
-  list: async ({ headers }) => {
+  list: async ({ headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -32,8 +32,9 @@ const router = tsr.router(variablesMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { scope } = await resolveScope(userId, headers.authorization);
-    const vars = await listVariables(scope.id);
+    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const { scope } = await resolveScope(userId, scopeSlug);
+    const vars = await listVariables(scope.id, userId);
 
     return {
       status: 200 as const,
@@ -53,7 +54,7 @@ const router = tsr.router(variablesMainContract, {
   /**
    * PUT /api/variables - Create or update a variable
    */
-  set: async ({ body, headers }) => {
+  set: async ({ body, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -66,7 +67,8 @@ const router = tsr.router(variablesMainContract, {
     log.debug("setting variable", { userId, name });
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
+      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const { scope } = await resolveScope(userId, scopeSlug);
       const variable = await setVariable(
         scope.id,
         userId,

@@ -1,4 +1,5 @@
 mod api;
+mod balloon;
 mod command;
 mod config;
 pub mod control;
@@ -11,6 +12,7 @@ mod process;
 mod sandbox;
 mod snapshot;
 
+pub use api::{ApiClient, ApiError, BalloonStatistics};
 pub use config::{FirecrackerConfig, SnapshotConfig};
 pub use factory::{FirecrackerFactory, PREWARM_SCRIPT, config_hash};
 pub use paths::{

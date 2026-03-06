@@ -8,7 +8,9 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
+import { dispatchProgressCallbacks } from "../../../../../src/lib/callback";
 import { logger } from "../../../../../src/lib/logger";
+import { after } from "next/server";
 
 const log = logger("webhooks:heartbeat");
 
@@ -48,6 +50,14 @@ const router = tsr.router(webhookHeartbeatContract, {
     }
 
     log.debug(`Updated heartbeat for run ${body.runId}`);
+
+    // Dispatch progress notifications to integration callbacks (non-blocking).
+    // Keeps status indicators alive (e.g. Slack's assistant typing indicator).
+    after(() => {
+      dispatchProgressCallbacks(body.runId).catch((err) =>
+        log.debug("Failed to dispatch progress callbacks", { err }),
+      );
+    });
 
     return {
       status: 200 as const,

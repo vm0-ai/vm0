@@ -17,6 +17,7 @@ import { users } from "../src/db/schema/user";
 import {
   SELF_HOSTED_USER_ID,
   SELF_HOSTED_SCOPE_SLUG,
+  SELF_HOSTED_CLERK_ORG_ID,
 } from "../src/lib/auth/constants";
 
 async function main() {
@@ -45,8 +46,7 @@ async function main() {
       .insert(scopes)
       .values({
         slug: SELF_HOSTED_SCOPE_SLUG,
-        type: "personal",
-        ownerId: SELF_HOSTED_USER_ID,
+        clerkOrgId: SELF_HOSTED_CLERK_ORG_ID,
       })
       .onConflictDoNothing()
       .returning({ id: scopes.id });

@@ -26,6 +26,7 @@ import { githubIssueSessions } from "../db/schema/github-issue-session";
 import { slackThreadSessions } from "../db/schema/slack-thread-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
+import { agentRunQueue } from "../db/schema/agent-run-queue";
 import { agentSchedules } from "../db/schema/agent-schedule";
 import { telegramInstallations } from "../db/schema/telegram-installation";
 import { telegramMessages } from "../db/schema/telegram-message";
@@ -81,6 +82,7 @@ import {
 } from "../db/schema/agent-compose";
 import { agentPermissions } from "../db/schema/agent-permission";
 import { scopes } from "../db/schema/scope";
+import { scopeMembers } from "../db/schema/scope-member";
 import { conversations } from "../db/schema/conversation";
 import { uniqueId } from "./test-helpers";
 
@@ -320,6 +322,42 @@ export async function createTestScope(
 }
 
 /**
+ * Set the tier for a scope directly in the database.
+ *
+ * @param scopeId - The scope ID to update
+ * @param tier - The tier to set ("free" or "pro")
+ */
+export async function setScopeTier(
+  scopeId: string,
+  tier: "free" | "pro",
+): Promise<void> {
+  await globalThis.services.db
+    .update(scopes)
+    .set({ tier, updatedAt: new Date() })
+    .where(eq(scopes.id, scopeId));
+}
+
+/**
+ * Get a scope record by ID directly from the database.
+ *
+ * @param scopeId - The scope ID to look up
+ * @returns The scope record with slug and tier
+ */
+export async function getTestScope(
+  scopeId: string,
+): Promise<{ id: string; slug: string; tier: string }> {
+  const [scope] = await globalThis.services.db
+    .select({ id: scopes.id, slug: scopes.slug, tier: scopes.tier })
+    .from(scopes)
+    .where(eq(scopes.id, scopeId))
+    .limit(1);
+  if (!scope) {
+    throw new Error(`Scope ${scopeId} not found`);
+  }
+  return scope;
+}
+
+/**
  * Create a test compose via API route handler.
  *
  * @param agentName - The agent name
@@ -480,6 +518,7 @@ async function createTestComposeVersion(
 async function createTestRunDirect(
   userId: string,
   versionId: string,
+  scopeId: string,
   options?: {
     status?: string;
     prompt?: string;
@@ -490,6 +529,7 @@ async function createTestRunDirect(
     .insert(agentRuns)
     .values({
       userId,
+      scopeId,
       agentComposeVersionId: versionId,
       status: options?.status ?? "running",
       prompt: options?.prompt ?? "test prompt",
@@ -525,10 +565,19 @@ export async function createTestSessionWithConversation(
   userId: string,
   agentComposeId: string,
 ): Promise<{ id: string }> {
+  // Look up scopeId from the compose
+  const [compose] = await globalThis.services.db
+    .select({ scopeId: agentComposes.scopeId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, agentComposeId))
+    .limit(1);
+  if (!compose) {
+    throw new Error(`Compose ${agentComposeId} not found`);
+  }
   // Create compose version
   const versionId = await createTestComposeVersion(agentComposeId, userId);
   // Create run
-  const run = await createTestRunDirect(userId, versionId, {
+  const run = await createTestRunDirect(userId, versionId, compose.scopeId, {
     status: "completed",
   });
   // Create conversation
@@ -688,6 +737,41 @@ export async function completeTestRun(
   }
 
   return checkpoint;
+}
+
+/**
+ * Fail a test run via the complete webhook (exitCode=1).
+ *
+ * Unlike completeTestRun, no checkpoint is needed for a failed run.
+ */
+export async function failTestRun(
+  userId: string,
+  runId: string,
+  error?: string,
+): Promise<void> {
+  const sandboxToken = await generateSandboxToken(userId, runId);
+  const request = createTestRequest(
+    "http://localhost:3000/api/webhooks/agent/complete",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sandboxToken}`,
+      },
+      body: JSON.stringify({
+        runId,
+        exitCode: 1,
+        error: error ?? "test failure",
+      }),
+    },
+  );
+  const response = await completeWebhook(request);
+  if (!response.ok) {
+    const errorBody = await response.json();
+    throw new Error(
+      `Failed to fail run: ${(errorBody as { error?: { message?: string } }).error?.message || response.status}`,
+    );
+  }
 }
 
 // ============================================================================
@@ -1283,6 +1367,26 @@ export async function createTestVariable(
 // ============================================================================
 
 /**
+ * Resolve scopeId from a compose version ID.
+ * Shared by test helpers that insert agent_runs records directly.
+ */
+async function getScopeIdFromVersion(versionId: string): Promise<string> {
+  const [version] = await globalThis.services.db
+    .select({ scopeId: agentComposes.scopeId })
+    .from(agentComposeVersions)
+    .innerJoin(
+      agentComposes,
+      eq(agentComposes.id, agentComposeVersions.composeId),
+    )
+    .where(eq(agentComposeVersions.id, versionId))
+    .limit(1);
+  if (!version) {
+    throw new Error(`Compose version ${versionId} not found`);
+  }
+  return version.scopeId;
+}
+
+/**
  * Insert a stale pending run directly into the database.
  * This simulates a run stuck in "pending" state past the cleanup TTL,
  * which cannot be reproduced through normal API flows since the route
@@ -1298,11 +1402,14 @@ export async function insertStalePendingRun(
   agentComposeVersionId: string,
   ageMs: number = 20 * 60 * 1000,
 ): Promise<string> {
+  const scopeId = await getScopeIdFromVersion(agentComposeVersionId);
+
   const staleCreatedAt = new Date(Date.now() - ageMs);
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
+      scopeId,
       agentComposeVersionId,
       status: "pending",
       prompt: "Stale pending run",
@@ -1371,14 +1478,30 @@ export async function createTestConnector(
     externalEmail?: string;
     oauthScopes?: string[];
     accessToken?: string;
+    userId?: string;
   },
 ): Promise<typeof connectors.$inferSelect> {
   const type = options?.type ?? "github";
+
+  // Resolve userId: use provided value or look up from scope_members
+  let userId = options?.userId;
+  if (!userId) {
+    const [member] = await globalThis.services.db
+      .select({ userId: scopeMembers.userId })
+      .from(scopeMembers)
+      .where(eq(scopeMembers.scopeId, scopeId))
+      .limit(1);
+    if (!member) {
+      throw new Error(`No scope member found for scope ${scopeId}`);
+    }
+    userId = member.userId;
+  }
 
   const [connector] = await globalThis.services.db
     .insert(connectors)
     .values({
       scopeId,
+      userId,
       type,
       authMethod: options?.authMethod ?? "oauth",
       externalId: options?.externalId ?? "12345",
@@ -1396,6 +1519,7 @@ export async function createTestConnector(
 
   await globalThis.services.db.insert(secrets).values({
     scopeId,
+    userId,
     name: secretName,
     type: "connector",
     encryptedValue,
@@ -1576,10 +1700,13 @@ export async function createCompletedTestRun(options: {
   startedAt: Date;
   completedAt: Date;
 }): Promise<string> {
+  const scopeId = await getScopeIdFromVersion(options.composeVersionId);
+
   const [row] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId: options.userId,
+      scopeId,
       agentComposeVersionId: options.composeVersionId,
       status: "completed",
       prompt: "test",
@@ -1890,6 +2017,15 @@ export async function findTestRunCallbacks(
     .where(eq(agentRunCallbacks.runId, runId));
 }
 
+export async function findTestQueueEntry(runId: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(agentRunQueue)
+    .where(eq(agentRunQueue.runId, runId))
+    .limit(1);
+  return row;
+}
+
 export async function findTestSlackInstallation(workspaceId: string) {
   const [row] = await globalThis.services.db
     .select()
@@ -1979,10 +2115,13 @@ export async function createTestRunnerJob(
   runnerGroup: string,
   contextOverrides?: Partial<StoredExecutionContext>,
 ): Promise<{ runId: string }> {
+  const scopeId = await getScopeIdFromVersion(versionId);
+
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
+      scopeId,
       agentComposeVersionId: versionId,
       status: "pending",
       prompt: "test prompt",
@@ -2255,6 +2394,7 @@ export async function findTestGitHubIssueSession(
 export async function createTestTelegramInstallation(options?: {
   adminUserId?: string;
   vm0UserId?: string;
+  telegramBotId?: string;
 }): Promise<string> {
   initServices();
   const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
@@ -2266,10 +2406,15 @@ export async function createTestTelegramInstallation(options?: {
     .insert(scopes)
     .values({
       slug: uniqueId("scope"),
-      type: "personal",
-      ownerId: adminUserId,
+      clerkOrgId: uniqueId("org"),
     })
     .returning();
+
+  await globalThis.services.db.insert(scopeMembers).values({
+    scopeId: scope!.id,
+    userId: adminUserId,
+    role: "admin",
+  });
 
   const [compose] = await globalThis.services.db
     .insert(agentComposes)
@@ -2283,8 +2428,8 @@ export async function createTestTelegramInstallation(options?: {
   const [installation] = await globalThis.services.db
     .insert(telegramInstallations)
     .values({
-      telegramBotId: suffix,
-      botUsername: `bot_${suffix}`,
+      telegramBotId: options?.telegramBotId ?? suffix,
+      botUsername: `bot_${options?.telegramBotId ?? suffix}`,
       encryptedBotToken: encryptCredentialValue(
         "test-bot-token",
         SECRETS_ENCRYPTION_KEY,
@@ -2343,4 +2488,19 @@ export async function countTestTelegramMessages(
     .from(telegramMessages)
     .where(eq(telegramMessages.installationId, installationId));
   return result[0]!.count;
+}
+
+export async function markRunningRunsAsCompleted(userId: string) {
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({ status: "completed", completedAt: new Date() })
+    .where(and(eq(agentRuns.userId, userId), eq(agentRuns.status, "running")));
+}
+
+export async function expireQueueEntry(runId: string) {
+  // Set expiresAt far enough in the past to avoid any timing issues in CI
+  await globalThis.services.db
+    .update(agentRunQueue)
+    .set({ expiresAt: new Date(Date.now() - 60_000) })
+    .where(eq(agentRunQueue.runId, runId));
 }

@@ -42,6 +42,9 @@ pub struct StartArgs {
     /// Use local file queue provider instead of API (for testing)
     #[arg(long)]
     local: bool,
+    /// Enable active balloon memory reclaim per sandbox
+    #[arg(long)]
+    balloon_reclaim: bool,
 }
 
 /// Load config and run the main poll loop.
@@ -149,6 +152,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
 
     let mut fc_config = runner_config.firecracker_config();
     fc_config.proxy_port = Some(mitm.port());
+    fc_config.balloon_reclaim = args.balloon_reclaim;
     let registry_handle = mitm.registry_handle();
 
     // Destructure — no clones needed

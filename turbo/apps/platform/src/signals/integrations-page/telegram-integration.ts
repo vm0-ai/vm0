@@ -10,7 +10,6 @@ interface TelegramIntegrationData {
   bot: { id: string; username: string };
   agent: { id: string; name: string; scopeSlug: string } | null;
   isAdmin: boolean;
-  needsLink: boolean;
   environment: {
     requiredSecrets: string[];
     requiredVars: string[];

@@ -7,7 +7,7 @@ import type { OrgRole } from "@vm0/core";
 /**
  * Get a scope member record for a specific user in a scope
  */
-async function getScopeMember(scopeId: string, userId: string) {
+export async function getScopeMember(scopeId: string, userId: string) {
   const result = await globalThis.services.db
     .select()
     .from(scopeMembers)
@@ -20,37 +20,29 @@ async function getScopeMember(scopeId: string, userId: string) {
 }
 
 /**
- * Require a user to be a member of a scope, or throw 403
+ * Require a user to be a member of a scope, or throw 403.
+ * Returns the member record with role typed as OrgRole.
  */
 export async function requireScopeMember(scopeId: string, userId: string) {
   const member = await getScopeMember(scopeId, userId);
   if (!member) {
     throw forbidden("You are not a member of this scope");
   }
-  return member;
+  return { ...member, role: member.role as OrgRole };
 }
 
 /**
- * Ensure a scope_members record exists for the given user+scope.
- * Lazy-creates the record if missing (org token was generated after Clerk
- * verification, so the user is a verified member).
+ * Find the user's primary admin membership (first admin membership by creation date).
+ * Returns the raw scope_members record, or null if none found.
  */
-export async function ensureScopeMember(
-  scopeId: string,
-  userId: string,
-  role: OrgRole,
-) {
-  const existing = await getScopeMember(scopeId, userId);
-  if (existing) return existing;
-
-  await globalThis.services.db
-    .insert(scopeMembers)
-    .values({ scopeId, userId, role })
-    .onConflictDoNothing();
-
-  const member = await getScopeMember(scopeId, userId);
-  if (!member) throw forbidden("You are not a member of this scope");
-  return member;
+export async function getPrimaryAdminMembership(userId: string) {
+  const [record] = await globalThis.services.db
+    .select()
+    .from(scopeMembers)
+    .where(and(eq(scopeMembers.userId, userId), eq(scopeMembers.role, "admin")))
+    .orderBy(asc(scopeMembers.createdAt))
+    .limit(1);
+  return record ?? null;
 }
 
 /**

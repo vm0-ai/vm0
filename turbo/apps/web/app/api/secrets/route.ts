@@ -17,7 +17,7 @@ const router = tsr.router(secretsMainContract, {
   /**
    * GET /api/secrets - List all secrets
    */
-  list: async ({ headers }) => {
+  list: async ({ headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -25,8 +25,9 @@ const router = tsr.router(secretsMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { scope } = await resolveScope(userId, headers.authorization);
-    const secrets = await listSecrets(scope.id);
+    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const { scope } = await resolveScope(userId, scopeSlug);
+    const secrets = await listSecrets(scope.id, userId);
 
     return {
       status: 200 as const,
@@ -46,7 +47,7 @@ const router = tsr.router(secretsMainContract, {
   /**
    * PUT /api/secrets - Create or update a secret
    */
-  set: async ({ body, headers }) => {
+  set: async ({ body, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -59,7 +60,8 @@ const router = tsr.router(secretsMainContract, {
     log.debug("setting secret", { userId, name });
 
     try {
-      const { scope } = await resolveScope(userId, headers.authorization);
+      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const { scope } = await resolveScope(userId, scopeSlug);
       const secret = await setSecret(
         scope.id,
         userId,

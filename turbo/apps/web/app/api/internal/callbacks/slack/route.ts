@@ -250,6 +250,36 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { SECRETS_ENCRYPTION_KEY } = env();
 
+  // Handle progress notifications: refresh the Slack typing indicator
+  // to prevent the 2-minute auto-expiry on assistant.threads.setStatus.
+  if (status === "progress") {
+    const [inst] = await globalThis.services.db
+      .select()
+      .from(slackInstallations)
+      .where(eq(slackInstallations.slackWorkspaceId, payload.workspaceId))
+      .limit(1);
+
+    if (inst) {
+      const token = decryptCredentialValue(
+        inst.encryptedBotToken,
+        SECRETS_ENCRYPTION_KEY,
+      );
+      const slackClient = createSlackClient(token);
+      try {
+        await setThreadStatus(
+          slackClient,
+          payload.channelId,
+          payload.threadTs,
+          "is thinking...",
+        );
+      } catch (err) {
+        log.debug("Failed to refresh thread status", { runId, error: err });
+      }
+    }
+
+    return NextResponse.json({ success: true });
+  }
+
   // Get Slack installation for bot token
   const [installation] = await globalThis.services.db
     .select()
@@ -282,8 +312,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Post text response (if any content)
   if (responseText) {
-    const logsUrl = buildLogsUrl(runId);
-    const deepLinks = detectDeepLinks(responseText, getPlatformUrl());
+    const logsUrl = buildLogsUrl(runId, payload.agentName);
+    const deepLinks = detectDeepLinks(
+      responseText,
+      getPlatformUrl(),
+      payload.agentName,
+    );
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
       blocks: buildAgentResponseMessage(

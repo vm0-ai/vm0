@@ -42,11 +42,11 @@ export function TelegramConnectSuccessPage() {
 
               <div className="flex flex-col gap-1 text-center text-foreground">
                 <h1 className="text-lg font-medium leading-7">
-                  Telegram bot installed
+                  Telegram Bot Connected
                 </h1>
                 <p className="text-sm leading-5 text-muted-foreground">
-                  Your Telegram bot is now installed on VM0. You can start using
-                  it right away.
+                  Your account is linked. Open Telegram and send any message to
+                  the bot to start chatting with the agent.
                 </p>
               </div>
             </div>

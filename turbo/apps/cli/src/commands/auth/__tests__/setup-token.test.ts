@@ -37,7 +37,6 @@ describe("auth setup-token", () => {
     .mockImplementation(() => {});
 
   beforeEach(async () => {
-    vi.clearAllMocks();
     chalk.level = 0;
 
     // Ensure clean config state

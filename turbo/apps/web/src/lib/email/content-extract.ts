@@ -1,5 +1,4 @@
 import { convert, type FormatCallback } from "html-to-text";
-import { stripQuotedReply } from "./quote-strip";
 
 /**
  * Custom image formatter that replaces data URIs with a short placeholder.
@@ -40,14 +39,16 @@ const inlineImageFormatter: FormatCallback = (
  * Extract email body content following RFC 2046 priority:
  * 1. Prefer HTML (converted to plain text) if available
  * 2. Fallback to plain text
- * 3. Strip quoted replies from the result
+ *
+ * The full email body is preserved without quote stripping — forwarded
+ * content, reply chains, and blockquoted text are all kept intact so the
+ * agent receives the complete context the user intended to share.
  */
 export function extractEmailBody(html: string, text: string): string {
-  const raw = html
+  return html
     ? convert(html, {
         formatters: { inlineImageFormatter },
         selectors: [{ selector: "img", format: "inlineImageFormatter" }],
       })
     : text;
-  return stripQuotedReply(raw);
 }

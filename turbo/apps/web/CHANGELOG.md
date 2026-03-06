@@ -1,5 +1,139 @@
 # Changelog
 
+## [12.80.0](https://github.com/vm0-ai/vm0/compare/web-v12.79.0...web-v12.80.0) (2026-03-06)
+
+
+### Features
+
+* add scope tier with per-scope concurrency limits ([#3802](https://github.com/vm0-ai/vm0/issues/3802)) ([210a307](https://github.com/vm0-ai/vm0/commit/210a307d12be7dcc33c17af1c8c641feb3a1044a))
+
+
+### Performance Improvements
+
+* deduplicate clerk user email fetch in run creation ([#3810](https://github.com/vm0-ai/vm0/issues/3810)) ([6fd4cd1](https://github.com/vm0-ai/vm0/commit/6fd4cd19f5eb4e3ef92bb9e4690278073abb3203)), closes [#3806](https://github.com/vm0-ai/vm0/issues/3806)
+* **run:** parallelize independent db queries in prepare step ([#3812](https://github.com/vm0-ai/vm0/issues/3812)) ([c71fc97](https://github.com/vm0-ai/vm0/commit/c71fc973197465246c5de5a343e764111c7bb7ae)), closes [#3807](https://github.com/vm0-ai/vm0/issues/3807)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.40.0
+
+## [12.79.0](https://github.com/vm0-ai/vm0/compare/web-v12.78.0...web-v12.79.0) (2026-03-06)
+
+
+### Features
+
+* **run-queue:** implement per-user run queue mechanism ([#3764](https://github.com/vm0-ai/vm0/issues/3764)) ([85a4fbd](https://github.com/vm0-ai/vm0/commit/85a4fbd7707e72f31631c21ae6a3f5698cd138bf))
+
+
+### Bug Fixes
+
+* **connectors:** store requested oauth scopes instead of provider-granted scopes ([#3791](https://github.com/vm0-ai/vm0/issues/3791)) ([29acfa1](https://github.com/vm0-ai/vm0/commit/29acfa1573fb2cab40367ef3664a4530fcf87be2)), closes [#3756](https://github.com/vm0-ai/vm0/issues/3756)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.39.0
+
+## [12.78.0](https://github.com/vm0-ai/vm0/compare/web-v12.77.1...web-v12.78.0) (2026-03-06)
+
+
+### Features
+
+* **monday:** add domain verification file for marketplace review ([#3796](https://github.com/vm0-ai/vm0/issues/3796)) ([679220c](https://github.com/vm0-ai/vm0/commit/679220c094aeeb2885cb78f17892d06a59e19e00))
+
+
+### Bug Fixes
+
+* **slack:** keep spinner alive during long agent runs via progress callbacks ([#3788](https://github.com/vm0-ai/vm0/issues/3788)) ([b221421](https://github.com/vm0-ai/vm0/commit/b2214214cc6caedcf37464633789997aec0db12b))
+
+
+### Performance Improvements
+
+* add per-step timing metrics to run creation flow ([#3795](https://github.com/vm0-ai/vm0/issues/3795)) ([a900f49](https://github.com/vm0-ai/vm0/commit/a900f49c6e5c9c8ddc8f7f0c57f7789685ddfed1))
+
+## [12.77.1](https://github.com/vm0-ai/vm0/compare/web-v12.77.0...web-v12.77.1) (2026-03-06)
+
+
+### Bug Fixes
+
+* **e2e:** bypass clerk org creation in test-token endpoint ([#3785](https://github.com/vm0-ai/vm0/issues/3785)) ([84c53b7](https://github.com/vm0-ai/vm0/commit/84c53b7d60009204dccee5b4e9f4b44b87aa497d))
+* handle invalid json in github oauth callback state parameter ([#3744](https://github.com/vm0-ai/vm0/issues/3744)) ([cc55520](https://github.com/vm0-ai/vm0/commit/cc55520617c670e4bfe78cb85863e856e3ee6f80))
+* prevent compose job toctou race and catch handler rejections ([#3746](https://github.com/vm0-ai/vm0/issues/3746)) ([6588d26](https://github.com/vm0-ai/vm0/commit/6588d264763783a69944f052d1ee65c98d232135))
+* reject cron requests when cron secret is not configured ([#3743](https://github.com/vm0-ai/vm0/issues/3743)) ([1167750](https://github.com/vm0-ai/vm0/commit/1167750b0ea394249d1d05e66f3b560ad8b5d931))
+* remove unused refresh_token from cli auth token response ([#3747](https://github.com/vm0-ai/vm0/issues/3747)) ([0f5a09a](https://github.com/vm0-ai/vm0/commit/0f5a09a784b8d11ab242942c0ab145c3c1148193))
+* use advisory lock to prevent run concurrency limit race ([#3745](https://github.com/vm0-ai/vm0/issues/3745)) ([5bb4afb](https://github.com/vm0-ai/vm0/commit/5bb4afb99ab20eadf93913f73e1f9d13b5e2b297))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.38.1
+
+## [12.77.0](https://github.com/vm0-ai/vm0/compare/web-v12.76.0...web-v12.77.0) (2026-03-05)
+
+
+### Features
+
+* **docs:** add 12 new skill pages and fix naming inconsistencies ([#3740](https://github.com/vm0-ai/vm0/issues/3740)) ([0e1e0ef](https://github.com/vm0-ai/vm0/commit/0e1e0ef5d01359fc1963d75cdf54929b1e23d64b))
+* **docusign:** add pkce support and expand oauth scopes ([#3725](https://github.com/vm0-ai/vm0/issues/3725)) ([8aa15f3](https://github.com/vm0-ai/vm0/commit/8aa15f3e39c34c7c2486386ab00a25bbc7fdb1f1))
+* **github:** add issue context, reactions, and session validation to handler ([#3713](https://github.com/vm0-ai/vm0/issues/3713)) ([9b27b2a](https://github.com/vm0-ai/vm0/commit/9b27b2a2760fa7a35f5e4c34ef0fe1a3b291af19))
+* **monday:** add monday.com oauth connector ([#3753](https://github.com/vm0-ai/vm0/issues/3753)) ([8bdf5fb](https://github.com/vm0-ai/vm0/commit/8bdf5fb29edb1f309d692ee6f5d5fe0c74634ca5))
+* scope unification phase 3 — constraints, cleanup, and token simplification ([#3719](https://github.com/vm0-ai/vm0/issues/3719)) ([9ecbb1b](https://github.com/vm0-ai/vm0/commit/9ecbb1b1addfb855b0ac17fe45508bddd483485f))
+
+
+### Bug Fixes
+
+* remove email-reply-parser to preserve forwarded email content ([#3754](https://github.com/vm0-ai/vm0/issues/3754)) ([0d9233c](https://github.com/vm0-ai/vm0/commit/0d9233ce74b7dc22bab359bd362ccf6b6983f621))
+* replace non-english characters with english in source code ([#3757](https://github.com/vm0-ai/vm0/issues/3757)) ([b5d6b38](https://github.com/vm0-ai/vm0/commit/b5d6b38fe2cdba0cbd34df85f612cf2267a27734))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.38.0
+
+## [12.76.0](https://github.com/vm0-ai/vm0/compare/web-v12.75.0...web-v12.76.0) (2026-03-05)
+
+
+### Features
+
+* add batch backfill script for clerk organization ids ([#3671](https://github.com/vm0-ai/vm0/issues/3671)) ([621ca7c](https://github.com/vm0-ai/vm0/commit/621ca7c4ed7ef8d76d2965e88dd432c9b9ebe541))
+* **telegram:** streamline re-link flow after /disconnect ([#3701](https://github.com/vm0-ai/vm0/issues/3701)) ([8dd4db4](https://github.com/vm0-ai/vm0/commit/8dd4db4a9fc255bc34ad6928861a9cb077cd83c2))
+
+
+### Bug Fixes
+
+* set api start time inside create-run for e2e telemetry ([#3707](https://github.com/vm0-ai/vm0/issues/3707)) ([e902696](https://github.com/vm0-ai/vm0/commit/e902696adb72414e5b248552379ee59c9cbbabd0)), closes [#3706](https://github.com/vm0-ai/vm0/issues/3706)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.37.0
+
+## [12.75.0](https://github.com/vm0-ai/vm0/compare/web-v12.74.0...web-v12.75.0) (2026-03-05)
+
+
+### Features
+
+* **telegram:** add emoji branding, deep links, session reuse, and /new_session command ([#3678](https://github.com/vm0-ai/vm0/issues/3678)) ([a1cf9ca](https://github.com/vm0-ai/vm0/commit/a1cf9ca9ae8c19ede9d3fe3a2a606aa0ac25467d))
+* **telegram:** improve UX with bot commands and deep links ([#3695](https://github.com/vm0-ai/vm0/issues/3695)) ([9e15219](https://github.com/vm0-ai/vm0/commit/9e15219abbb0fe3f6e7a78a5b975a82e7fb94912))
+* **web:** route [@vm0](https://github.com/vm0).ai users to runner for domain-based rollout ([#3690](https://github.com/vm0-ai/vm0/issues/3690)) ([978f115](https://github.com/vm0-ai/vm0/commit/978f1153a41bb0672d730b4e7e27624663cac5bf))
+
+
+### Bug Fixes
+
+* **email:** preserve cc recipients when bot is sole to recipient ([#3677](https://github.com/vm0-ai/vm0/issues/3677)) ([94f6ec2](https://github.com/vm0-ai/vm0/commit/94f6ec28f46b33fc9467a8589746f19debbb1f48)), closes [#3675](https://github.com/vm0-ai/vm0/issues/3675)
+* **slack:** extract rich text content from blocks instead of lossy text fallback ([#3689](https://github.com/vm0-ai/vm0/issues/3689)) ([e2ad7b6](https://github.com/vm0-ai/vm0/commit/e2ad7b6aa33d35798b9c384e524ac07dd431fbf5))
+
 ## [12.74.0](https://github.com/vm0-ai/vm0/compare/web-v12.73.0...web-v12.74.0) (2026-03-05)
 
 

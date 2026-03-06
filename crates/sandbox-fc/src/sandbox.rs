@@ -13,7 +13,7 @@ use tracing::{info, warn};
 use vsock_host::VsockHost;
 
 use crate::config::FirecrackerConfig;
-use crate::network::{GUEST_NETWORK, PooledNetns, generate_boot_args};
+use crate::network::PooledNetns;
 use crate::paths::{SandboxPaths, SockPaths};
 
 /// Timeout for waiting for the guest to connect via vsock after start.
@@ -83,6 +83,8 @@ pub struct FirecrackerSandbox {
     crash_notify: Arc<Notify>,
     /// Control socket server for `runner exec`.
     control_server: Option<tokio::task::JoinHandle<()>>,
+    /// Balloon memory reclaim controller.
+    balloon_controller: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl FirecrackerSandbox {
@@ -108,6 +110,7 @@ impl FirecrackerSandbox {
             guest: Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>)),
             crash_notify: Arc::new(Notify::new()),
             control_server: None,
+            balloon_controller: None,
         }
     }
 
@@ -125,17 +128,16 @@ impl FirecrackerSandbox {
 
     /// Build the Firecracker JSON configuration for fresh boot.
     fn build_config(&self) -> serde_json::Value {
+        let inv = crate::factory::InvariantConfig::new();
         let kernel_path = self.factory_config.kernel_path.display().to_string();
         let rootfs_path = self.factory_config.rootfs_path.display().to_string();
         let overlay_path = self.overlay.display().to_string();
         let vsock_path = self.sock_paths.vsock().display().to_string();
 
-        let boot_args = generate_boot_args();
-
         serde_json::json!({
             "boot-source": {
                 "kernel_image_path": kernel_path,
-                "boot_args": boot_args,
+                "boot_args": inv.boot_args,
             },
             "drives": [
                 {
@@ -157,19 +159,19 @@ impl FirecrackerSandbox {
             },
             "network-interfaces": [
                 {
-                    "iface_id": "eth0",
-                    "guest_mac": GUEST_NETWORK.guest_mac,
-                    "host_dev_name": GUEST_NETWORK.tap_name,
+                    "iface_id": inv.iface_id,
+                    "guest_mac": inv.guest_mac,
+                    "host_dev_name": inv.tap_name,
                 },
             ],
             "vsock": {
-                "guest_cid": 3,
+                "guest_cid": inv.guest_cid,
                 "uds_path": vsock_path,
             },
             "balloon": {
-                "amount_mib": 0,
-                "deflate_on_oom": true,
-                "stats_polling_interval_s": 0,
+                "amount_mib": inv.balloon.amount_mib,
+                "deflate_on_oom": inv.balloon.deflate_on_oom,
+                "stats_polling_interval_s": inv.balloon.stats_polling_interval_s,
             },
         })
     }
@@ -256,6 +258,27 @@ impl FirecrackerSandbox {
                 })?;
         }
 
+        // Verify sock dir exists before spawning — if this fails, we know
+        // the directory was never created or was removed before spawn.
+        let api_sock = self.sock_paths.api_sock();
+        let sock_dir = self.sock_paths.dir();
+        let sock_dir_exists = tokio::fs::try_exists(sock_dir).await.unwrap_or(false);
+        if !sock_dir_exists {
+            return Err(SandboxError::StartFailed(format!(
+                "sock dir missing before spawn: {}",
+                sock_dir.display()
+            )));
+        }
+        info!(
+            id = %self.id,
+            api_sock = %api_sock.display(),
+            sock_dir = %sock_dir.display(),
+            overlay = %self.overlay.display(),
+            netns = %self.network.name,
+            binary = %self.factory_config.binary_path.display(),
+            "spawning firecracker (snapshot restore)"
+        );
+
         // Use positional args ($1..$8) to avoid shell injection from paths.
         let inner_cmd = r#"mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" sudo -u "$6" "$7" --api-sock "$8""#;
 
@@ -268,7 +291,7 @@ impl FirecrackerSandbox {
             .arg(&self.network.name) // $5
             .arg(&username) // $6
             .arg(&self.factory_config.binary_path) // $7
-            .arg(self.sock_paths.api_sock()) // $8
+            .arg(&api_sock) // $8
             .current_dir(self.sandbox_paths.workspace())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -286,15 +309,28 @@ impl FirecrackerSandbox {
             Arc::clone(&self.crash_notify),
         );
         self.process = Some(child);
-        info!(id = %self.id, "firecracker started (snapshot restore)");
 
-        // Wait for Firecracker API to be ready.
-        let api_sock = self.sock_paths.api_sock();
+        // Wait for Firecracker API to be ready, but bail early if the
+        // process crashes before the socket appears.
         let client = crate::api::ApiClient::new(&api_sock);
-        client
-            .wait_for_ready(API_READY_TIMEOUT)
-            .await
-            .map_err(|e| SandboxError::StartFailed(format!("API not ready: {e}")))?;
+        let crash = Arc::clone(&self.crash_notify);
+        tokio::select! {
+            result = client.wait_for_ready(API_READY_TIMEOUT) => {
+                result.map_err(|e| {
+                    let sock_dir_after = sock_dir.exists();
+                    SandboxError::StartFailed(format!(
+                        "API not ready: {e} (api_sock={}, sock_dir_exists_after={sock_dir_after})",
+                        api_sock.display()
+                    ))
+                })?;
+            }
+            () = crash.notified() => {
+                return Err(SandboxError::StartFailed(format!(
+                    "firecracker process exited before API became ready (api_sock={})",
+                    api_sock.display()
+                )));
+            }
+        }
 
         // Load snapshot and resume VM.
         let snapshot_str = snapshot.snapshot_path.display().to_string();
@@ -328,6 +364,9 @@ impl FirecrackerSandbox {
 impl Drop for FirecrackerSandbox {
     fn drop(&mut self) {
         if let Some(h) = self.control_server.take() {
+            h.abort();
+        }
+        if let Some(h) = self.balloon_controller.take() {
             h.abort();
         }
         // If the process is still alive (e.g. owning task panicked before
@@ -466,6 +505,15 @@ impl Sandbox for FirecrackerSandbox {
             Arc::clone(&self.guest),
         ));
 
+        // Spawn balloon controller if enabled and in snapshot mode.
+        if self.factory_config.balloon_reclaim && self.factory_config.snapshot.is_some() {
+            self.balloon_controller = Some(crate::balloon::spawn(
+                self.sock_paths.api_sock().to_owned(),
+                self.config.resources.memory_mb,
+                Arc::clone(&self.crash_notify),
+            ));
+        }
+
         info!(id = %self.id, "sandbox started");
         Ok(())
     }
@@ -476,6 +524,9 @@ impl Sandbox for FirecrackerSandbox {
         }
 
         if let Some(h) = self.control_server.take() {
+            h.abort();
+        }
+        if let Some(h) = self.balloon_controller.take() {
             h.abort();
         }
 
@@ -501,6 +552,9 @@ impl Sandbox for FirecrackerSandbox {
             return Ok(());
         }
         if let Some(h) = self.control_server.take() {
+            h.abort();
+        }
+        if let Some(h) = self.balloon_controller.take() {
             h.abort();
         }
         self.guest.lock().await.take();

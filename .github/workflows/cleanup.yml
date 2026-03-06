@@ -29,9 +29,7 @@ jobs:
 
       - name: Install Ansible
         if: steps.check.outputs.should-cleanup == 'true'
-        run: |
-          apt-get update && apt-get install -y python3 python3-pip
-          pip3 install ansible
+        run: pip3 install ansible
 
       - name: Setup SSH key
         if: steps.check.outputs.should-cleanup == 'true'
@@ -77,7 +75,7 @@ jobs:
   cleanup-database:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
     steps:
       - uses: actions/checkout@v6
 

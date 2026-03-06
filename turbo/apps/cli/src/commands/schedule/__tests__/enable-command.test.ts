@@ -48,7 +48,6 @@ describe("schedule enable command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
-    vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
@@ -151,9 +150,6 @@ describe("schedule enable command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to enable schedule"),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("No schedule found"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -182,6 +178,63 @@ describe("schedule enable command", () => {
         expect.stringContaining("vm0 auth login"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should require --name when agent has multiple schedules", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({
+            schedules: [
+              createMockSchedule({ name: "daily-report" }),
+              createMockSchedule({ name: "weekly-cleanup" }),
+            ],
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await enableCommand.parseAsync(["node", "cli", "test-agent"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("multiple schedules"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--name"),
+      );
+    });
+
+    it("should enable specific schedule with --name", async () => {
+      const schedule1 = createMockSchedule({ name: "daily-report" });
+      const schedule2 = createMockSchedule({ name: "weekly-cleanup" });
+      let enabledName: string | undefined;
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({
+            schedules: [schedule1, schedule2],
+          });
+        }),
+        http.post(
+          "http://localhost:3000/api/agent/schedules/:name/enable",
+          ({ params }) => {
+            enabledName = params.name as string;
+            return HttpResponse.json({ ...schedule2, enabled: true });
+          },
+        ),
+      );
+
+      await enableCommand.parseAsync([
+        "node",
+        "cli",
+        "test-agent",
+        "--name",
+        "weekly-cleanup",
+      ]);
+
+      expect(enabledName).toBe("weekly-cleanup");
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Enabled schedule");
     });
 
     it("should handle schedule past error", async () => {
@@ -213,9 +266,6 @@ describe("schedule enable command", () => {
         await enableCommand.parseAsync(["node", "cli", "test-agent"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to enable schedule"),
-      );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Scheduled time has already passed"),
       );

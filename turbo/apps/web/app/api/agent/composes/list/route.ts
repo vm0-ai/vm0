@@ -23,14 +23,10 @@ const router = tsr.router(composesListContract, {
       };
     }
 
-    // Resolve scope: use ?scope= slug, vm0_org_* token, or default scope
+    // Resolve scope: use ?scope= query param or default scope
     let scopeId: string;
     try {
-      const { scope: resolvedScope } = await resolveScope(
-        userId,
-        headers.authorization,
-        query.scope,
-      );
+      const { scope: resolvedScope } = await resolveScope(userId, query.scope);
       scopeId = resolvedScope.id;
     } catch (error) {
       if (isNotFound(error)) {
