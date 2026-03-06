@@ -18,6 +18,7 @@ import {
   completeTestRun,
   createTestPermission,
   insertStalePendingRun,
+  setScopeTier,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -606,12 +607,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should allow more concurrent runs for pro tier scopes", async () => {
       // Set scope to pro tier (allows 10 concurrent runs)
-      const { scopes } = await import("../../../../../src/db/schema/scope");
-      const { eq } = await import("drizzle-orm");
-      await globalThis.services.db
-        .update(scopes)
-        .set({ tier: "pro" })
-        .where(eq(scopes.id, user.scopeId));
+      await setScopeTier(user.scopeId, "pro");
 
       const run1 = await createTestRun(testComposeId, "Run 1");
       const run2 = await createTestRun(testComposeId, "Run 2");

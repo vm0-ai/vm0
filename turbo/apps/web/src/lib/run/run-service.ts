@@ -41,10 +41,12 @@ import type { ScopeTier } from "@vm0/core";
 
 const log = logger("service:run");
 
-/**
- * Tier-based concurrency limits.
- * Free tier: 1 concurrent run. Pro tier: 10 concurrent runs.
- */
+// Defense-in-depth: exclude pending runs older than this from concurrency check.
+// The cleanup-sandboxes cron job already transitions pending runs to "timeout" after 5 minutes,
+// so this TTL only matters if the cron job fails to run.
+export const PENDING_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+/** Concurrent run limits by scope tier */
 const TIER_CONCURRENCY_LIMITS: Record<ScopeTier, number> = {
   free: 1,
   pro: 10,
@@ -53,11 +55,6 @@ const TIER_CONCURRENCY_LIMITS: Record<ScopeTier, number> = {
 function getConcurrencyLimitForTier(tier: ScopeTier): number {
   return TIER_CONCURRENCY_LIMITS[tier];
 }
-
-// Defense-in-depth: exclude pending runs older than this from concurrency check.
-// The cleanup-sandboxes cron job already transitions pending runs to "timeout" after 5 minutes,
-// so this TTL only matters if the cron job fails to run.
-export const PENDING_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 /**
  * Check if scope has reached concurrent run limit
@@ -322,7 +319,7 @@ export interface CreateRunParams {
   // Caller-resolved scope ID for variable resolution (org-aware).
   // When provided, used instead of getUserScopeByClerkId fallback.
   scopeId?: string;
-  // Scope tier for tier-based concurrency limits
+  // Caller-resolved scope tier for concurrency limit derivation.
   scopeTier?: ScopeTier;
 }
 

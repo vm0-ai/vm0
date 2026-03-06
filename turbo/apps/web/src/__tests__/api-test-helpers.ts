@@ -322,6 +322,42 @@ export async function createTestScope(
 }
 
 /**
+ * Set the tier for a scope directly in the database.
+ *
+ * @param scopeId - The scope ID to update
+ * @param tier - The tier to set ("free" or "pro")
+ */
+export async function setScopeTier(
+  scopeId: string,
+  tier: "free" | "pro",
+): Promise<void> {
+  await globalThis.services.db
+    .update(scopes)
+    .set({ tier, updatedAt: new Date() })
+    .where(eq(scopes.id, scopeId));
+}
+
+/**
+ * Get a scope record by ID directly from the database.
+ *
+ * @param scopeId - The scope ID to look up
+ * @returns The scope record with slug and tier
+ */
+export async function getTestScope(
+  scopeId: string,
+): Promise<{ id: string; slug: string; tier: string }> {
+  const [scope] = await globalThis.services.db
+    .select({ id: scopes.id, slug: scopes.slug, tier: scopes.tier })
+    .from(scopes)
+    .where(eq(scopes.id, scopeId))
+    .limit(1);
+  if (!scope) {
+    throw new Error(`Scope ${scopeId} not found`);
+  }
+  return scope;
+}
+
+/**
  * Create a test compose via API route handler.
  *
  * @param agentName - The agent name

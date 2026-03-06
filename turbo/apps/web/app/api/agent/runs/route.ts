@@ -3,7 +3,12 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { runsMainContract, ALL_RUN_STATUSES, type RunStatus } from "@vm0/core";
+import {
+  runsMainContract,
+  ALL_RUN_STATUSES,
+  type RunStatus,
+  type ScopeTier,
+} from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
@@ -470,7 +475,7 @@ const router = tsr.router(runsMainContract, {
         modelProvider: body.modelProvider,
         checkEnv: body.checkEnv,
         scopeId: scope.id,
-        scopeTier: scope.tier,
+        scopeTier: scope.tier as ScopeTier,
       });
 
       log.debug(

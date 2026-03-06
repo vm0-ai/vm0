@@ -14,7 +14,7 @@ export const setScopeTierRequestSchema = z.object({
 
 export const setScopeTierResponseSchema = z.object({
   slug: z.string(),
-  tier: z.string(),
+  tier: scopeTierSchema,
   updatedAt: z.string(),
 });
 

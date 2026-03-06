@@ -3,10 +3,11 @@ import {
   testContext,
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
-import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestRequest,
+  getTestScope,
+} from "../../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { scopes } from "../../../../../../src/db/schema/scope";
-import { eq } from "drizzle-orm";
 import { reloadEnv } from "../../../../../../src/env";
 import { PUT } from "../route";
 
@@ -39,20 +40,16 @@ describe("PUT /api/admin/scope/tier", () => {
     const user = await context.setupUser();
     setupAdmin(user.userId);
 
-    const [scope] = await globalThis.services.db
-      .select()
-      .from(scopes)
-      .where(eq(scopes.id, user.scopeId))
-      .limit(1);
+    const scope = await getTestScope(user.scopeId);
 
     const response = await callSetTier({
-      slug: scope!.slug,
+      slug: scope.slug,
       tier: "pro",
     });
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.slug).toBe(scope!.slug);
+    expect(body.slug).toBe(scope.slug);
     expect(body.tier).toBe("pro");
     expect(body.updatedAt).toBeDefined();
   });
