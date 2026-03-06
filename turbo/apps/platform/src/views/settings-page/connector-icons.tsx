@@ -24,6 +24,7 @@ import slackIcon from "./icons/slack.svg";
 import stravaIcon from "./icons/strava.svg";
 import vercelIcon from "./icons/vercel.svg";
 import xIcon from "./icons/x.svg";
+import wixIcon from "./icons/wix.svg";
 import xeroIcon from "./icons/xero.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
@@ -50,6 +51,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   slack: slackIcon,
   strava: stravaIcon,
   vercel: vercelIcon,
+  wix: wixIcon,
   x: xIcon,
   xero: xeroIcon,
 });
