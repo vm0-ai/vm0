@@ -64,6 +64,7 @@
           // Collect system metrics (equivalent to node_exporter)
           prometheus.exporter.unix "default" {
             enable_collectors = ["systemd"]
+            disable_collectors = ["schedstat", "softnet", "cooling"]
             systemd {
               unit_include = "vm0-runner-v.+\\.service|alloy\\.service|docker\\.service"
             }
