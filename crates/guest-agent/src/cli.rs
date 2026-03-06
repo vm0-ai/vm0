@@ -177,9 +177,12 @@ pub async fn execute_cli(
         // update check, GitHub) add ~2s latency, telemetry has no receiver,
         // and the CLI version is baked into the rootfs image.
         cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
-        cmd.env("DISABLE_TELEMETRY", "1");
+        cmd.env("CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY", "1");
+        cmd.env("CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "1");
         cmd.env("DISABLE_AUTOUPDATER", "1");
+        cmd.env("DISABLE_ERROR_REPORTING", "1");
         cmd.env("DISABLE_INSTALLATION_CHECKS", "1");
+        cmd.env("DISABLE_TELEMETRY", "1");
     }
 
     let mut child = cmd.spawn()?;
