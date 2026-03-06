@@ -50,6 +50,10 @@ NOTION_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/NOTION_OAUTH_CLIENT_SE
 GOOGLE_OAUTH_CLIENT_ID=op://Development/vm0-env-local/GOOGLE_OAUTH_CLIENT_ID
 GOOGLE_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/GOOGLE_OAUTH_CLIENT_SECRET
 
+# Optional: HubSpot OAuth Connector
+HUBSPOT_OAUTH_CLIENT_ID=op://Development/vm0-env-local/HUBSPOT_OAUTH_CLIENT_ID
+HUBSPOT_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/HUBSPOT_OAUTH_CLIENT_SECRET
+
 # Optional: Deel OAuth Connector
 DEEL_OAUTH_CLIENT_ID=op://Development/vm0-env-local/DEEL_OAUTH_CLIENT_ID
 DEEL_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/DEEL_OAUTH_CLIENT_SECRET

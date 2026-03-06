@@ -294,6 +294,49 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  hubspot: {
+    label: "HubSpot",
+    helpText:
+      "Connect your HubSpot account to manage contacts, companies, deals, and tickets",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with HubSpot to grant access.",
+        secrets: {
+          HUBSPOT_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          HUBSPOT_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      HUBSPOT_TOKEN: "$secrets.HUBSPOT_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://app.hubspot.com/oauth/authorize",
+      tokenUrl: "https://api.hubapi.com/oauth/v1/token",
+      scopes: [
+        "crm.objects.contacts.read",
+        "crm.objects.contacts.write",
+        "crm.objects.companies.read",
+        "crm.objects.companies.write",
+        "crm.objects.deals.read",
+        "crm.objects.deals.write",
+        "tickets",
+        "crm.objects.line_items.read",
+        "crm.objects.quotes.read",
+        "crm.lists.read",
+        "crm.schemas.contacts.read",
+        "settings.users.read",
+      ],
+    } as ConnectorOAuthConfig,
+  },
   computer: {
     label: "Computer",
     helpText:
@@ -983,6 +1026,7 @@ export const connectorTypeSchema = z.enum([
   "github",
   "gmail",
   "google-sheets",
+  "hubspot",
   "google-docs",
   "google-drive",
   "google-calendar",
