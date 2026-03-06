@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
 import { decryptCredentialValue } from "../crypto/secrets-encryption";
 import { env } from "../../env";
@@ -87,6 +87,17 @@ export async function dispatchCallbacks(
   return results;
 }
 
+/**
+ * In local dev, rewrite self-referencing tunnel URLs to localhost to avoid
+ * hairpin (server fetching its own tunnel URL times out via cloudflare).
+ */
+function resolveCallbackUrl(url: string): string {
+  const { NODE_ENV } = env();
+  return NODE_ENV === "development" && url.startsWith("https://tunnel-")
+    ? url.replace(/^https:\/\/tunnel-[^/]+/, "http://localhost:3000")
+    : url;
+}
+
 async function dispatchSingleCallback(
   callback: CallbackRecord,
   runId: string,
@@ -97,13 +108,7 @@ async function dispatchSingleCallback(
 ): Promise<DispatchResult> {
   const { id, encryptedSecret, payload } = callback;
 
-  // In local dev, rewrite self-referencing tunnel URLs to localhost to avoid
-  // hairpin (server fetching its own tunnel URL times out via cloudflare).
-  const { NODE_ENV } = env();
-  const url =
-    NODE_ENV === "development" && callback.url.startsWith("https://tunnel-")
-      ? callback.url.replace(/^https:\/\/tunnel-[^/]+/, "http://localhost:3000")
-      : callback.url;
+  const url = resolveCallbackUrl(callback.url);
 
   // Decrypt the callback secret
   const secret = decryptCredentialValue(encryptedSecret, encryptionKey);
@@ -180,4 +185,66 @@ async function dispatchSingleCallback(
     log.error(`Callback ${id} failed with exception`, { error: err });
     return { callbackId: id, success: false, error: errorMessage };
   }
+}
+
+/**
+ * Send lightweight progress notifications to all pending callbacks for a run.
+ *
+ * Used by the heartbeat webhook to keep integration status indicators alive
+ * (e.g. Slack's assistant typing indicator which auto-expires after 2 minutes).
+ *
+ * Unlike dispatchCallbacks, this does NOT update callback status or attempt count.
+ * Failures are silently ignored — a missed progress notification is non-critical.
+ */
+export async function dispatchProgressCallbacks(runId: string): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+
+  const callbacks = await globalThis.services.db
+    .select({
+      id: agentRunCallbacks.id,
+      url: agentRunCallbacks.url,
+      encryptedSecret: agentRunCallbacks.encryptedSecret,
+      payload: agentRunCallbacks.payload,
+    })
+    .from(agentRunCallbacks)
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, runId),
+        eq(agentRunCallbacks.status, "pending"),
+      ),
+    );
+
+  if (callbacks.length === 0) {
+    return;
+  }
+
+  await Promise.allSettled(
+    callbacks.map((callback) => {
+      const url = resolveCallbackUrl(callback.url);
+      const secret = decryptCredentialValue(
+        callback.encryptedSecret,
+        SECRETS_ENCRYPTION_KEY,
+      );
+
+      const body = JSON.stringify({
+        callbackId: callback.id,
+        runId,
+        status: "progress",
+        payload: callback.payload,
+      });
+
+      const timestamp = Math.floor(Date.now() / 1000);
+      const signature = computeHmacSignature(body, secret, timestamp);
+
+      return fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-VM0-Signature": signature,
+          "X-VM0-Timestamp": timestamp.toString(),
+        },
+        body,
+      });
+    }),
+  );
 }
