@@ -6,8 +6,8 @@ import {
 import {
   runsMainContract,
   ALL_RUN_STATUSES,
+  scopeTierSchema,
   type RunStatus,
-  type ScopeTier,
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
@@ -475,7 +475,7 @@ const router = tsr.router(runsMainContract, {
         modelProvider: body.modelProvider,
         checkEnv: body.checkEnv,
         scopeId: scope.id,
-        scopeTier: scope.tier as ScopeTier,
+        scopeTier: scopeTierSchema.parse(scope.tier),
       });
 
       log.debug(

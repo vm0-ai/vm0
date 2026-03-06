@@ -4,7 +4,7 @@ import {
   extractVariableReferences,
   groupVariablesBySource,
   getConnectorProvidedSecretNames,
-  type ScopeTier,
+  scopeTierSchema,
 } from "@vm0/core";
 import { agentSchedules } from "../../db/schema/agent-schedule";
 import {
@@ -920,7 +920,9 @@ async function executeSchedule(
       agentName: compose.name,
       callbacks,
       scopeId: compose.scopeId,
-      scopeTier: scopeRecord?.tier as ScopeTier | undefined,
+      scopeTier: scopeRecord
+        ? scopeTierSchema.parse(scopeRecord.tier)
+        : undefined,
     });
     runId = result.runId;
   } catch (error) {
