@@ -646,6 +646,7 @@ jobs:
           RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
           RESEND_FROM_DOMAIN: ${{ vars.RESEND_FROM_DOMAIN }}
           VM0_ADMIN_USERS: ${{ vars.VM0_ADMIN_USERS }}
+          VM0_DEFAULT_AGENT: ${{ vars.VM0_DEFAULT_AGENT }}
           STRAPI_URL: ${{ vars.STRAPI_URL }}
           GITHUB_APP_SLUG: ${{ vars.VM0_GITHUB_APP_SLUG }}
           GITHUB_APP_ID: ${{ vars.VM0_GITHUB_APP_ID }}
@@ -808,6 +809,7 @@ jobs:
             RESEND_WEBHOOK_SECRET=${{ secrets.RESEND_WEBHOOK_SECRET }}
             RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
             VM0_ADMIN_USERS=${{ vars.VM0_ADMIN_USERS }}
+            VM0_DEFAULT_AGENT=${{ vars.VM0_DEFAULT_AGENT }}
             STRAPI_URL=${{ vars.STRAPI_URL }}
             GITHUB_APP_SLUG=${{ vars.VM0_GITHUB_APP_SLUG }}
             GITHUB_APP_ID=${{ vars.VM0_GITHUB_APP_ID }}
