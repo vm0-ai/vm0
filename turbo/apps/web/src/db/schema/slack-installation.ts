@@ -18,7 +18,7 @@ export const slackInstallations = pgTable("slack_installations", {
   // Workspace default agent — always set at install time
   defaultComposeId: uuid("default_compose_id")
     .notNull()
-    .references(() => agentComposes.id, { onDelete: "restrict" }),
+    .references(() => agentComposes.id, { onDelete: "cascade" }),
   // Admin: the Slack user who installed the app (can be transferred)
   adminSlackUserId: varchar("admin_slack_user_id", { length: 255 }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),

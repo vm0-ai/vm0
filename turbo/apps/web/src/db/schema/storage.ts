@@ -30,7 +30,7 @@ export const storages = pgTable(
     userId: text("user_id").notNull(), // Creator (who uploaded)
     scopeId: uuid("scope_id")
       .notNull()
-      .references(() => scopes.id), // Namespace (who owns)
+      .references(() => scopes.id, { onDelete: "cascade" }), // Namespace (who owns)
     name: varchar("name", { length: 256 }).notNull(),
     type: varchar("type", { length: 16 }).notNull().default("volume"),
     s3Prefix: text("s3_prefix").notNull(),

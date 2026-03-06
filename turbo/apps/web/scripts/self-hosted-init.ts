@@ -76,8 +76,8 @@ async function main() {
 
     // Create the default user with the well-known UUID
     await db.execute(
-      sqlTag`INSERT INTO users (id, scope_id, created_at, updated_at)
-             VALUES (${SELF_HOSTED_USER_ID}, ${scopeId}, NOW(), NOW())
+      sqlTag`INSERT INTO users (id, created_at, updated_at)
+             VALUES (${SELF_HOSTED_USER_ID}, NOW(), NOW())
              ON CONFLICT (id) DO NOTHING`,
     );
 

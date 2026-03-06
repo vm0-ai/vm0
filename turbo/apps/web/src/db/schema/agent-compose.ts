@@ -21,7 +21,7 @@ export const agentComposes = pgTable(
     userId: text("user_id").notNull(), // Clerk user ID
     scopeId: uuid("scope_id")
       .notNull()
-      .references(() => scopes.id), // Scope reference
+      .references(() => scopes.id, { onDelete: "cascade" }), // Scope reference
     name: varchar("name", { length: 64 }).notNull().default(""), // Agent name from compose
     headVersionId: varchar("head_version_id", { length: 64 }), // Points to latest version hash
     createdAt: timestamp("created_at").defaultNow().notNull(),
