@@ -75,7 +75,6 @@ export const CONNECTOR_TYPES = {
         "data.recordComments:write",
         "schema.bases:read",
         "schema.bases:write",
-        "webhook:manage",
         "user.email:read",
       ],
     } as ConnectorOAuthConfig,
