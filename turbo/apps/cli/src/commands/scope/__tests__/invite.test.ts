@@ -30,7 +30,7 @@ describe("org invite command", () => {
 
   it("should invite member and show success", async () => {
     server.use(
-      http.post("http://localhost:3000/api/org/invite", () => {
+      http.post("http://localhost:3000/api/scope/invite", () => {
         return HttpResponse.json({
           message: "Invitation sent to member@example.com",
         });
@@ -51,7 +51,7 @@ describe("org invite command", () => {
 
   it("should handle forbidden error (non-admin)", async () => {
     server.use(
-      http.post("http://localhost:3000/api/org/invite", () => {
+      http.post("http://localhost:3000/api/scope/invite", () => {
         return HttpResponse.json(
           {
             error: {

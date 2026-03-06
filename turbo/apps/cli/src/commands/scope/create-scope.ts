@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { createOrg } from "../../lib/api";
+import { createScope } from "../../lib/api";
 import { saveConfig } from "../../lib/api/config";
 
 export const createCommand = new Command()
@@ -9,7 +9,7 @@ export const createCommand = new Command()
   .argument("<slug>", "Scope slug (e.g., myteam)")
   .action(async (slug: string) => {
     try {
-      await createOrg(slug);
+      await createScope({ slug });
 
       // Auto-switch to the new org scope
       await saveConfig({ activeScope: slug });

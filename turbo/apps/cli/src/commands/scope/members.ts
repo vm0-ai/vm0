@@ -1,15 +1,15 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getOrgStatus } from "../../lib/api";
+import { getScopeMembers } from "../../lib/api";
 
 export const membersCommand = new Command()
   .name("members")
   .description("View scope members")
   .action(async () => {
     try {
-      const status = await getOrgStatus();
+      const status = await getScopeMembers();
 
-      console.log(chalk.bold(`Organization: ${status.slug}`));
+      console.log(chalk.bold(`Scope: ${status.slug}`));
       console.log(`  Role: ${status.role}`);
       console.log(
         `  Created: ${new Date(status.createdAt).toLocaleDateString()}`,

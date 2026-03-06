@@ -39,7 +39,7 @@ describe("org create command", () => {
 
   it("should create org and auto-switch scope, show success", async () => {
     server.use(
-      http.post("http://localhost:3000/api/org", () => {
+      http.post("http://localhost:3000/api/scope", () => {
         return HttpResponse.json(
           {
             slug: "my-team",
@@ -68,11 +68,11 @@ describe("org create command", () => {
 
   it("should handle 'already own an organization' error", async () => {
     server.use(
-      http.post("http://localhost:3000/api/org", () => {
+      http.post("http://localhost:3000/api/scope", () => {
         return HttpResponse.json(
           {
             error: {
-              message: "You already own an organization",
+              message: "You already have a scope",
               code: "BAD_REQUEST",
             },
           },
@@ -86,7 +86,7 @@ describe("org create command", () => {
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("already own an organization"),
+      expect.stringContaining("already have a scope"),
     );
     expect(mockExit).toHaveBeenCalledWith(1);
   });

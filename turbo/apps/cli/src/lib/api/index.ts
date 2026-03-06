@@ -23,7 +23,16 @@ export { createRun, getEvents, listRuns, cancelRun } from "./domains/runs";
 export { getSession, getCheckpoint } from "./domains/sessions";
 
 // Domain modules - Scopes
-export { getScope, createScope, updateScope } from "./domains/scopes";
+export {
+  getScope,
+  createScope,
+  updateScope,
+  getScopeMembers,
+  inviteScopeMember,
+  removeScopeMember,
+  leaveScope,
+  listScopes,
+} from "./domains/scopes";
 
 // Domain modules - Storages
 export {
@@ -76,16 +85,6 @@ export {
   deleteConnector,
   getConnector,
 } from "./domains/connectors";
-
-// Domain modules - Organizations
-export {
-  createOrg,
-  getOrgStatus,
-  inviteMember,
-  removeMember,
-  leaveOrg,
-  listScopes,
-} from "./domains/org";
 
 // Domain modules - Usage
 export { getUsage } from "./domains/usage";
