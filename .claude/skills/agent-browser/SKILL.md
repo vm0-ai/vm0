@@ -24,7 +24,7 @@ Run these before any agent-browser command:
 
 ```bash
 # Start Xvfb, x11vnc, and noVNC (idempotent - skips if already running)
-pgrep -x Xvfb > /dev/null || Xvfb :99 -screen 0 1280x720x24 > /dev/null 2>&1 &
+pgrep -x Xvfb > /dev/null || Xvfb :99 -screen 0 3008x1692x24 > /dev/null 2>&1 &
 sleep 1
 pgrep -x x11vnc > /dev/null || x11vnc -display :99 -nopw -forever -shared -rfbport 5900 > /dev/null 2>&1 &
 sleep 1
@@ -34,10 +34,12 @@ sleep 1
 
 ### Always Use Headed Mode
 
-All agent-browser commands must set `DISPLAY=:99` and use `--headed`:
+All agent-browser commands must set `DISPLAY=:99` and use `--headed`. After the first `open`, maximize the browser window to fill the virtual screen:
 
 ```bash
 DISPLAY=:99 agent-browser --headed open <url>
+DISPLAY=:99 xdotool search --class chromium windowmove 0 0 windowsize 3008 1692
+agent-browser set viewport 3008 1602
 ```
 
 ### Tell the User How to Connect
@@ -58,7 +60,8 @@ Every browser automation follows this pattern:
 
 1. **Start noVNC stack** (see above)
 2. **Navigate**: `DISPLAY=:99 agent-browser --headed open <url>`
-3. **Snapshot**: `DISPLAY=:99 agent-browser snapshot -i` (get element refs like `@e1`, `@e2`)
+3. **Maximize window**: `DISPLAY=:99 xdotool search --class chromium windowmove 0 0 windowsize 3008 1692`
+4. **Snapshot**: `DISPLAY=:99 agent-browser snapshot -i` (get element refs like `@e1`, `@e2`)
 4. **Interact**: Use refs to click, fill, select
 5. **Re-snapshot**: After navigation or DOM changes, get fresh refs
 

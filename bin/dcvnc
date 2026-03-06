@@ -35,6 +35,6 @@ if [ -z "$port" ]; then
     exit 1
 fi
 
-url="http://127.0.0.1:${port}/vnc.html"
+url="http://127.0.0.1:${port}/vnc.html?resize=scale&autoconnect=true"
 echo "Opening noVNC: ${url}"
 open "${url}"
