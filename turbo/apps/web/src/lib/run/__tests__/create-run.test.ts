@@ -106,11 +106,8 @@ describe("createRun()", () => {
   });
 
   describe("Concurrent Run Limit", () => {
-    it("should enqueue run when limit reached", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
-      reloadEnv();
-
-      // Create first run
+    it("should enqueue run when free tier limit reached", async () => {
+      // Free tier (default) allows only 1 concurrent run
       await createRun(baseParams({ prompt: "First run" }));
 
       // Second run should be queued (not rejected)
@@ -126,7 +123,20 @@ describe("createRun()", () => {
       expect(run!.prompt).toBe("Second run");
     });
 
-    it("should allow unlimited runs when limit is 0", async () => {
+    it("should allow multiple concurrent runs for pro tier", async () => {
+      // Pro tier allows up to 10 concurrent runs
+      const run1 = await createRun(
+        baseParams({ prompt: "Pro run 1", scopeTier: "pro" }),
+      );
+      const run2 = await createRun(
+        baseParams({ prompt: "Pro run 2", scopeTier: "pro" }),
+      );
+
+      expect(run1.status).toBe("running");
+      expect(run2.status).toBe("running");
+    });
+
+    it("should allow unlimited runs when CONCURRENT_RUN_LIMIT is 0", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
       reloadEnv();
 
@@ -138,22 +148,15 @@ describe("createRun()", () => {
     });
 
     it("should not count stale pending runs", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
-      reloadEnv();
-
-      // Insert a stale pending run (20 minutes old, beyond 15-min TTL)
+      // Free tier limit is 1; stale pending run should not count
       await insertStalePendingRun(user.userId, versionId);
 
-      // New run should succeed
       const result = await createRun(baseParams());
       expect(result.status).toBe("running");
     });
 
     it("should enqueue second run when concurrency limit reached", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
-      reloadEnv();
-
-      // Fire two concurrent createRun calls — advisory lock should serialize them
+      // Free tier limit is 1 — advisory lock should serialize them
       const results = await Promise.allSettled([
         createRun(baseParams({ prompt: "Concurrent A" })),
         createRun(baseParams({ prompt: "Concurrent B" })),
@@ -167,6 +170,23 @@ describe("createRun()", () => {
         (r) => r.status === "fulfilled" && r.value.status,
       );
       expect(statuses).toContain("queued");
+    });
+
+    it("should enforce limit per-scope, not per-user", async () => {
+      // Create a run in the default scope (fills its free-tier slot)
+      await createRun(baseParams({ prompt: "Scope 1 run" }));
+
+      // Create a second user with a different scope
+      const otherUser = await context.setupUser({ prefix: "scope-user" });
+      const otherCompose = await createTestCompose(uniqueId("other-agent"));
+
+      // Run in the other scope should succeed (separate scope, separate limit)
+      const result = await createRun({
+        userId: otherUser.userId,
+        agentComposeVersionId: otherCompose.versionId,
+        prompt: "Scope 2 run",
+      });
+      expect(result.status).toBe("running");
     });
   });
 
