@@ -158,6 +158,71 @@ describe("schedule delete command", () => {
     });
   });
 
+  describe("--name option (multi-schedule disambiguation)", () => {
+    it("should require --name when agent has multiple schedules", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({
+            schedules: [
+              createMockSchedule({ name: "daily-report" }),
+              createMockSchedule({ name: "weekly-cleanup" }),
+            ],
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await deleteCommand.parseAsync([
+          "node",
+          "cli",
+          "test-agent",
+          "--force",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("multiple schedules"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--name"),
+      );
+    });
+
+    it("should delete specific schedule with --name", async () => {
+      const schedule1 = createMockSchedule({ name: "daily-report" });
+      const schedule2 = createMockSchedule({ name: "weekly-cleanup" });
+      let deletedName: string | undefined;
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({
+            schedules: [schedule1, schedule2],
+          });
+        }),
+        http.delete(
+          "http://localhost:3000/api/agent/schedules/:name",
+          ({ params }) => {
+            deletedName = params.name as string;
+            return new HttpResponse(null, { status: 204 });
+          },
+        ),
+      );
+
+      await deleteCommand.parseAsync([
+        "node",
+        "cli",
+        "test-agent",
+        "--name",
+        "weekly-cleanup",
+        "--force",
+      ]);
+
+      expect(deletedName).toBe("weekly-cleanup");
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Deleted schedule");
+    });
+  });
+
   describe("confirmation", () => {
     it("should require --force in non-interactive mode", async () => {
       const schedule = createMockSchedule();

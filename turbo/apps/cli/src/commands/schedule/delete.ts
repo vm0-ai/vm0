@@ -9,56 +9,62 @@ export const deleteCommand = new Command()
   .alias("rm")
   .description("Delete a schedule")
   .argument("<agent-name>", "Agent name")
+  .option(
+    "-n, --name <schedule-name>",
+    "Schedule name (required when agent has multiple schedules)",
+  )
   .option("-f, --force", "Skip confirmation prompt")
-  .action(async (agentName: string, options: { force?: boolean }) => {
-    try {
-      // Resolve schedule by agent name
-      const resolved = await resolveScheduleByAgent(agentName);
+  .action(
+    async (agentName: string, options: { name?: string; force?: boolean }) => {
+      try {
+        // Resolve schedule by agent name
+        const resolved = await resolveScheduleByAgent(agentName, options.name);
 
-      // Confirm deletion
-      if (!options.force) {
-        if (!isInteractive()) {
-          console.error(
-            chalk.red("✗ --force required in non-interactive mode"),
+        // Confirm deletion
+        if (!options.force) {
+          if (!isInteractive()) {
+            console.error(
+              chalk.red("✗ --force required in non-interactive mode"),
+            );
+            process.exit(1);
+          }
+          const confirmed = await promptConfirm(
+            `Delete schedule for agent ${chalk.cyan(agentName)}?`,
+            false,
           );
-          process.exit(1);
+          if (!confirmed) {
+            console.log(chalk.dim("Cancelled"));
+            return;
+          }
         }
-        const confirmed = await promptConfirm(
-          `Delete schedule for agent ${chalk.cyan(agentName)}?`,
-          false,
+
+        // Call API
+        await deleteSchedule({
+          name: resolved.name,
+          composeId: resolved.composeId,
+        });
+
+        console.log(
+          chalk.green(`✓ Deleted schedule for agent ${chalk.cyan(agentName)}`),
         );
-        if (!confirmed) {
-          console.log(chalk.dim("Cancelled"));
-          return;
+      } catch (error) {
+        console.error(chalk.red("✗ Failed to delete schedule"));
+        if (error instanceof Error) {
+          if (error.message.includes("Not authenticated")) {
+            console.error(chalk.dim("  Run: vm0 auth login"));
+          } else if (
+            error.message.toLowerCase().includes("not found") ||
+            error.message.includes("No schedule found")
+          ) {
+            console.error(
+              chalk.dim(`  No schedule found for agent "${agentName}"`),
+            );
+            console.error(chalk.dim("  Run: vm0 schedule list"));
+          } else {
+            console.error(chalk.dim(`  ${error.message}`));
+          }
         }
+        process.exit(1);
       }
-
-      // Call API
-      await deleteSchedule({
-        name: resolved.name,
-        composeId: resolved.composeId,
-      });
-
-      console.log(
-        chalk.green(`✓ Deleted schedule for agent ${chalk.cyan(agentName)}`),
-      );
-    } catch (error) {
-      console.error(chalk.red("✗ Failed to delete schedule"));
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.dim("  Run: vm0 auth login"));
-        } else if (
-          error.message.toLowerCase().includes("not found") ||
-          error.message.includes("No schedule found")
-        ) {
-          console.error(
-            chalk.dim(`  No schedule found for agent "${agentName}"`),
-          );
-          console.error(chalk.dim("  Run: vm0 schedule list"));
-        } else {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-      }
-      process.exit(1);
-    }
-  });
+    },
+  );

@@ -367,8 +367,6 @@ async function run(): Promise<[number, string]> {
   recordSandboxOp("init_total", initDurationMs, true);
   logInfo(`✓ Initialization complete (${Math.floor(initDurationMs / 1000)}s)`);
 
-  recordE2eFromApi("api_to_init_complete");
-
   // Lifecycle: Execution
   logInfo("▷ Execution");
   const execStartTime = Date.now();
@@ -400,8 +398,6 @@ async function run(): Promise<[number, string]> {
     const proc = spawn(cmdExe, cmd.slice(1), {
       stdio: ["ignore", "pipe", "pipe"],
     });
-
-    recordE2eFromApi("api_to_cli_spawn");
 
     // Create promise to track process exit - register handlers BEFORE reading streams
     // This prevents race condition where process exits before handlers are registered

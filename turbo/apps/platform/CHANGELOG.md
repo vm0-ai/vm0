@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.88.0](https://github.com/vm0-ai/vm0/compare/platform-v0.87.0...platform-v0.88.0) (2026-03-06)
+
+
+### Features
+
+* **platform:** add loop schedule support to run dialog ([#3724](https://github.com/vm0-ai/vm0/issues/3724)) ([f1aeb4c](https://github.com/vm0-ai/vm0/commit/f1aeb4c27897dbb2b1c461172a8a739deb8e6a25))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.38.1
+
 ## [0.87.0](https://github.com/vm0-ai/vm0/compare/platform-v0.86.0...platform-v0.87.0) (2026-03-05)
 
 

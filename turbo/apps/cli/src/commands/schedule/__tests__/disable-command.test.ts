@@ -140,6 +140,65 @@ describe("schedule disable command", () => {
     });
   });
 
+  describe("--name option (multi-schedule disambiguation)", () => {
+    it("should require --name when agent has multiple schedules", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({
+            schedules: [
+              createMockSchedule({ name: "daily-report" }),
+              createMockSchedule({ name: "weekly-cleanup" }),
+            ],
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await disableCommand.parseAsync(["node", "cli", "test-agent"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("multiple schedules"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--name"),
+      );
+    });
+
+    it("should disable specific schedule with --name", async () => {
+      const schedule1 = createMockSchedule({ name: "daily-report" });
+      const schedule2 = createMockSchedule({ name: "weekly-cleanup" });
+      let disabledName: string | undefined;
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({
+            schedules: [schedule1, schedule2],
+          });
+        }),
+        http.post(
+          "http://localhost:3000/api/agent/schedules/:name/disable",
+          ({ params }) => {
+            disabledName = params.name as string;
+            return HttpResponse.json({ ...schedule1, enabled: false });
+          },
+        ),
+      );
+
+      await disableCommand.parseAsync([
+        "node",
+        "cli",
+        "test-agent",
+        "--name",
+        "daily-report",
+      ]);
+
+      expect(disabledName).toBe("daily-report");
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Disabled schedule");
+    });
+  });
+
   describe("error handling", () => {
     it("should handle schedule not found", async () => {
       server.use(

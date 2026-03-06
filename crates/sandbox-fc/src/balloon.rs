@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::Notify;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::api::ApiClient;
 
@@ -24,6 +24,9 @@ const MAX_INFLATE_PER_TICK_MIB: u32 = 256;
 const MIN_GUEST_MIB: u32 = 512;
 /// Poll interval for balloon stats.
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
+/// How often to emit status + host memory logs (in ticks).
+/// 12 ticks × 5s = 60s.
+const STATUS_INTERVAL_TICKS: u64 = 12;
 
 /// Spawn the balloon controller loop. Returns a `JoinHandle` that can be aborted.
 pub fn spawn(
@@ -45,11 +48,18 @@ async fn run_loop(api_sock: PathBuf, memory_mb: u32, crash_notify: Arc<Notify>) 
         return;
     }
     let mut interval = tokio::time::interval(POLL_INTERVAL);
+    let mut tick_count: u64 = 0;
 
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                tick(&client, max_inflate).await;
+                if tick_count.is_multiple_of(STATUS_INTERVAL_TICKS)
+                    && let Some((available_mib, total_mib)) = read_host_meminfo()
+                {
+                    info!(host_available_mib = available_mib, host_total_mib = total_mib, "host memory status");
+                }
+                tick(&client, max_inflate, tick_count).await;
+                tick_count += 1;
             }
             _ = crash_notify.notified() => {
                 debug!("balloon controller exiting: VM crashed");
@@ -75,7 +85,7 @@ async fn run_loop(api_sock: PathBuf, memory_mb: u32, crash_notify: Arc<Notify>) 
 /// - Inflate when `free_memory > TARGET_FREE + INFLATE_HYSTERESIS`
 /// - Deflate when `available_memory < TARGET_FREE - DEFLATE_HYSTERESIS`
 /// - No action in between to prevent oscillation
-async fn tick(client: &ApiClient<'_>, max_inflate: u32) {
+async fn tick(client: &ApiClient<'_>, max_inflate: u32, tick_count: u64) {
     let stats = match client.get_balloon_statistics().await {
         Ok(s) => s,
         Err(e) => {
@@ -85,38 +95,75 @@ async fn tick(client: &ApiClient<'_>, max_inflate: u32) {
     };
 
     let current = stats.actual_mib;
+    let free_mib = stats.free_memory.map(|b| b / (1024 * 1024));
+    let available_mib = stats.available_memory.map(|b| b / (1024 * 1024));
+
+    // Periodic status snapshot
+    if tick_count.is_multiple_of(STATUS_INTERVAL_TICKS) {
+        info!(
+            actual_mib = current,
+            free_mib = ?free_mib,
+            available_mib = ?available_mib,
+            max_inflate,
+            "balloon status"
+        );
+    }
 
     // Inflate decision: use free_memory (excludes reclaimable cache)
-    if let Some(free_bytes) = stats.free_memory {
-        let free_mib = free_bytes / (1024 * 1024);
-        if free_mib > TARGET_FREE_MIB + INFLATE_HYSTERESIS_MIB {
-            let reclaim = (free_mib - TARGET_FREE_MIB) as u32;
-            let reclaim = reclaim.min(MAX_INFLATE_PER_TICK_MIB);
-            let new_target = current.saturating_add(reclaim).min(max_inflate);
-            if new_target > current {
-                debug!(current, new_target, free_mib, "balloon inflate");
-                if let Err(e) = client.patch_balloon(new_target).await {
-                    warn!(error = %e, "balloon inflate failed");
-                }
+    if let Some(free_mib) = free_mib
+        && free_mib > TARGET_FREE_MIB + INFLATE_HYSTERESIS_MIB
+    {
+        let reclaim = (free_mib - TARGET_FREE_MIB) as u32;
+        let reclaim = reclaim.min(MAX_INFLATE_PER_TICK_MIB);
+        let new_target = current.saturating_add(reclaim).min(max_inflate);
+        if new_target > current {
+            info!(current, new_target, free_mib, "balloon inflate");
+            if let Err(e) = client.patch_balloon(new_target).await {
+                warn!(error = %e, "balloon inflate failed");
             }
-            return;
         }
+        return;
     }
 
     // Deflate decision: use available_memory (includes reclaimable cache)
-    if let Some(available_bytes) = stats.available_memory {
-        let available_mib = available_bytes / (1024 * 1024);
-        if available_mib < TARGET_FREE_MIB - DEFLATE_HYSTERESIS_MIB {
-            let deficit = (TARGET_FREE_MIB - available_mib) as u32;
-            let new_target = current.saturating_sub(deficit);
-            if new_target < current {
-                debug!(current, new_target, available_mib, "balloon deflate");
-                if let Err(e) = client.patch_balloon(new_target).await {
-                    warn!(error = %e, "balloon deflate failed");
-                }
+    if let Some(available_mib) = available_mib
+        && available_mib < TARGET_FREE_MIB - DEFLATE_HYSTERESIS_MIB
+    {
+        let deficit = (TARGET_FREE_MIB - available_mib) as u32;
+        let new_target = current.saturating_sub(deficit);
+        if new_target < current {
+            info!(current, new_target, available_mib, "balloon deflate");
+            if let Err(e) = client.patch_balloon(new_target).await {
+                warn!(error = %e, "balloon deflate failed");
             }
         }
     }
+}
+
+/// Read host memory info from /proc/meminfo. Returns (available_mib, total_mib).
+fn read_host_meminfo() -> Option<(u64, u64)> {
+    let content = match std::fs::read_to_string("/proc/meminfo") {
+        Ok(c) => c,
+        Err(e) => {
+            debug!(error = %e, "failed to read /proc/meminfo");
+            return None;
+        }
+    };
+    parse_meminfo(&content)
+}
+
+/// Parse meminfo content. Returns (available_mib, total_mib).
+fn parse_meminfo(content: &str) -> Option<(u64, u64)> {
+    let mut total_kb: Option<u64> = None;
+    let mut available_kb: Option<u64> = None;
+    for line in content.lines() {
+        if let Some(rest) = line.strip_prefix("MemTotal:") {
+            total_kb = rest.split_whitespace().next().and_then(|v| v.parse().ok());
+        } else if let Some(rest) = line.strip_prefix("MemAvailable:") {
+            available_kb = rest.split_whitespace().next().and_then(|v| v.parse().ok());
+        }
+    }
+    Some((available_kb? / 1024, total_kb? / 1024))
 }
 
 #[cfg(test)]
@@ -128,6 +175,14 @@ mod tests {
     /// Helper: spawn a mock server that handles one GET (stats) and optionally one PATCH.
     /// Returns the PATCH request body if one was received.
     async fn run_tick_with_mock(stats_json: &str, max_inflate: u32) -> Option<String> {
+        run_tick_with_mock_at(stats_json, max_inflate, 0).await
+    }
+
+    async fn run_tick_with_mock_at(
+        stats_json: &str,
+        max_inflate: u32,
+        tick_count: u64,
+    ) -> Option<String> {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
         let sock_path = dir.path().join("balloon-test.sock");
 
@@ -172,7 +227,7 @@ mod tests {
         });
 
         let client = ApiClient::new(&sock_path);
-        tick(&client, max_inflate).await;
+        tick(&client, max_inflate, tick_count).await;
 
         server.await.unwrap()
     }
@@ -314,6 +369,53 @@ mod tests {
 
         let client = ApiClient::new(&sock_path);
         // Should not panic — just logs warning and returns.
-        tick(&client, 1536).await;
+        tick(&client, 1536, 0).await;
+    }
+
+    #[tokio::test]
+    async fn tick_status_log_does_not_trigger_action() {
+        // tick_count=0 is a status tick (multiple of 12). In hysteresis band — no PATCH.
+        // Verifies that the status logging path doesn't interfere with decision logic.
+        let stats = r#"{"target_mib":100,"actual_mib":100,"target_pages":25600,"actual_pages":25600,"free_memory":314572800,"available_memory":314572800}"#;
+        let patch = run_tick_with_mock_at(stats, 1536, 0).await;
+        assert!(patch.is_none(), "status tick should not trigger PATCH");
+    }
+
+    #[tokio::test]
+    async fn tick_non_status_tick_still_inflates() {
+        // tick_count=1 is NOT a status tick. Should still inflate normally.
+        let stats = r#"{"target_mib":0,"actual_mib":0,"target_pages":0,"actual_pages":0,"free_memory":1073741824,"available_memory":1073741824}"#;
+        let patch = run_tick_with_mock_at(stats, 1536, 1).await;
+        assert!(patch.is_some(), "non-status tick should still inflate");
+    }
+
+    #[test]
+    fn parse_meminfo_typical() {
+        let content = "\
+MemTotal:       16384000 kB
+MemFree:         2048000 kB
+MemAvailable:    8192000 kB
+Buffers:          512000 kB
+";
+        let (available, total) = parse_meminfo(content).unwrap();
+        assert_eq!(total, 16000); // 16384000 / 1024
+        assert_eq!(available, 8000); // 8192000 / 1024
+    }
+
+    #[test]
+    fn parse_meminfo_missing_available() {
+        let content = "MemTotal:       16384000 kB\n";
+        assert!(parse_meminfo(content).is_none());
+    }
+
+    #[test]
+    fn parse_meminfo_missing_total() {
+        let content = "MemAvailable:    8192000 kB\n";
+        assert!(parse_meminfo(content).is_none());
+    }
+
+    #[test]
+    fn parse_meminfo_empty() {
+        assert!(parse_meminfo("").is_none());
     }
 }

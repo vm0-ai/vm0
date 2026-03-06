@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.10.0...sandbox-fc-v0.11.0) (2026-03-06)
+
+
+### Features
+
+* **sandbox-fc:** add balloon controller observability for production monitoring ([#3767](https://github.com/vm0-ai/vm0/issues/3767)) ([ecc4c4a](https://github.com/vm0-ai/vm0/commit/ecc4c4a2d9599138ee5422c470a4a1576749c9fb))
+
 ## [0.10.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.9.0...sandbox-fc-v0.10.0) (2026-03-05)
 
 

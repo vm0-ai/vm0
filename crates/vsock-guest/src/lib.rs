@@ -223,16 +223,17 @@ fn handle_exec(
     env: &[(&str, &str)],
     sudo: bool,
 ) -> (i32, Vec<u8>, Vec<u8>) {
-    let command = prepend_env(command, env);
     log(
         "INFO",
         &format!(
-            "exec: {} (timeout={}ms, sudo={})",
-            truncate_preview(&command),
+            "exec: {} (timeout={}ms, sudo={}, env_count={})",
+            truncate_preview(command),
             timeout_ms,
             sudo,
+            env.len(),
         ),
     );
+    let command = prepend_env(command, env);
 
     // Create new process group so we can kill the entire tree on timeout
     #[cfg(unix)]
@@ -364,16 +365,17 @@ fn handle_spawn_watch(
     seq: u32,
     writer: Arc<Mutex<UnixStream>>,
 ) -> io::Result<Vec<u8>> {
-    let command = prepend_env(command, env);
     log(
         "INFO",
         &format!(
-            "spawn_watch: {} (timeout={}ms, sudo={})",
-            truncate_preview(&command),
+            "spawn_watch: {} (timeout={}ms, sudo={}, env_count={})",
+            truncate_preview(command),
             timeout_ms,
             sudo,
+            env.len(),
         ),
     );
+    let command = prepend_env(command, env);
 
     // Create new process group so we can kill the entire tree on timeout
     #[cfg(unix)]

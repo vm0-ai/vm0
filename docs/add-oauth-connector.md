@@ -73,7 +73,9 @@ After both apps are registered and the credentials file is populated:
 1. Verify that the secrets/vars are correctly set on GitHub by running `gh variable list | grep PROVIDER` and `gh secret list | grep PROVIDER`.
 1. Make sure the local `.env.local` contains the correct secret/var values.
 1. Commit all changes and create a PR using `/pull-request`. This lets CI validate the implementation in parallel while you do local testing.
-1. Start the project locally with `pnpm dev` and verify that it can successfully connect to the OAuth provider and obtain user information. Use `agent-browser` to complete the OAuth flow:
+1. Start the project locally using `/dev-tunnel` (starts the dev server, creates a Cloudflare tunnel, and sets up the proxy). Verify the server is running and accessible before proceeding.
+
+1. **Connect `agent-browser` to the user's local Chrome.** All subsequent `agent-browser` commands in this guide require this connection.
 
    **Prerequisites:** The user must have Chrome running on macOS with remote debugging enabled:
    ```bash
@@ -84,17 +86,31 @@ After both apps are registered and the credentials file is populated:
      --remote-allow-origins='*'
    ```
 
-   **Connect and sign in:**
+   **Discover the CDP WebSocket URL** (run once per session — reuse `$CDP_URL` everywhere):
    ```bash
-   # Discover the CDP WebSocket URL (use IP to bypass Host header check)
    CDP_URL=$(curl -s http://0.250.250.254:9222/json/version | python3 -c "import sys,json; print(json.load(sys.stdin)['webSocketDebuggerUrl'])")
-   agent-browser --cdp "$CDP_URL" open "https://www.vm7.ai:8443/sign-in"
+   ```
+
+   All `agent-browser` commands below should include `--cdp "$CDP_URL"` to target the user's real browser. Refs (`@e1`, `@e2`, etc.) are dynamic — always run `snapshot -i` to get fresh refs before interacting.
+
+1. **Set up CLI authentication, scope, and model provider.** These are required before the OAuth flow and skill validation will work.
+
+   **Step A: CLI authentication**
+
+   Run `vm0 auth login` in the background — it will print a device code and wait for browser confirmation. Then use `agent-browser` to complete the login flow:
+
+   ```bash
+   # Start auth login in background (captures the device code URL)
+   vm0 auth login &
+   AUTH_PID=$!
+
+   # Open the CLI auth page and complete sign-in
+   agent-browser --cdp "$CDP_URL" open "https://www.vm7.ai:8443/cli-auth"
    agent-browser wait 3000 && agent-browser snapshot -i
 
    # Sign up (first time) or sign in with Clerk test credentials
    # Use any email containing +clerk_test (e.g., test+clerk_test@example.com)
    agent-browser fill @<email-ref> "test+clerk_test@example.com"
-   agent-browser fill @<password-ref> "<unique-password>"
    agent-browser click @<continue-ref>
    agent-browser wait 5000 && agent-browser snapshot -i
 
@@ -107,18 +123,67 @@ After both apps are registered and the credentials file is populated:
    # Enter Clerk test verification code
    agent-browser fill @<code-ref> "424242"
    agent-browser wait 5000 && agent-browser snapshot -i
+
+   # Enter the device code shown by `vm0 auth login` and confirm
+   # Wait for the background process to complete
+   wait $AUTH_PID
    ```
 
-   **Connect the OAuth provider:**
-   ```bash
-   # Option A: Navigate to connections settings and click Connect
-   agent-browser open "https://www.vm7.ai:8443/settings?tab=connections"
-   agent-browser wait 3000 && agent-browser snapshot -i
-   agent-browser click @<connect-button-ref>
-   agent-browser wait 5000 && agent-browser snapshot -i
+   > Alternatively, if the dev server exposes a test-token endpoint (`/api/cli/auth/test-token`), you can use that to get a token directly without the browser flow.
 
-   # Option B: Hit the authorize endpoint directly (faster)
-   agent-browser open "https://www.vm7.ai:8443/api/connectors/<connector-name>/authorize"
+   Verify authentication:
+   ```bash
+   vm0 auth status
+   # Expected: "✓ Authenticated"
+   ```
+
+   **Step B: Ensure scope exists**
+
+   ```bash
+   vm0 scope status
+   ```
+
+   If no scope is configured, create one:
+   ```bash
+   vm0 scope set test-user-scope
+   ```
+
+   > If `vm0 scope set` fails with a 500 error (Clerk org creation fails in dev), create the scope directly in the database:
+   > ```bash
+   > psql "$DATABASE_URL" -c "INSERT INTO scopes (slug, clerk_org_id) VALUES ('test-user-scope', 'org_test') RETURNING id, slug;"
+   > # Then create the scope membership using the returned scope ID and user ID from `vm0 auth status`:
+   > psql "$DATABASE_URL" -c "INSERT INTO scope_members (scope_id, user_id, role) VALUES ('<scope-id>', '<clerk-user-id>', 'admin');"
+   > ```
+
+   **Step C: Configure model provider**
+
+   ```bash
+   vm0 model-provider list
+   ```
+
+   If no model provider is configured, ask the user which provider to use:
+
+   | Provider | Type | Secret format |
+   |----------|------|---------------|
+   | Claude Code (OAuth) | `claude-code-oauth-token` | `sk-ant-oat01-...` |
+   | Moonshot (Kimi) | `moonshot-api-key` | API key from platform.moonshot.cn |
+
+   Then configure it:
+   ```bash
+   vm0 model-provider setup --type <type> --secret "<key>"
+   ```
+
+   **Verify all prerequisites:**
+   ```bash
+   vm0 auth status          # ✓ Authenticated
+   vm0 scope status         # Shows scope slug
+   vm0 model-provider list  # Shows default provider for claude-code
+   ```
+
+1. **Connect the OAuth provider.** Use `agent-browser` with the `$CDP_URL` established earlier:
+
+   ```bash
+   agent-browser --cdp "$CDP_URL" open "https://www.vm7.ai:8443/api/connectors/<connector-name>/authorize"
    agent-browser wait 5000 && agent-browser snapshot -i
    ```
 
@@ -126,14 +191,7 @@ After both apps are registered and the credentials file is populated:
    > 1. **Provider login page** (if not already logged in) — requires the user's real account credentials. Stop and ask the user to log in manually, then continue.
    > 2. **Authorization/consent page** — the page asking to grant permissions to our app. This can be clicked directly with `agent-browser click @<authorize-button-ref>` without human confirmation.
 
-   > **Note:** Refs (`@e1`, `@e2`, etc.) are dynamic — always run `snapshot -i` to get fresh refs before interacting.
-
    **If the callback returns an error page**, check the dev server logs and the error message in the URL. Before diving into code, **search the web for the error** — provider-specific quirks (e.g., OAuth scopes appended to the callback URL, non-standard token response shapes) are often documented in community forums or the provider's own changelog. Use `WebSearch` with the provider name and the error message to see if others have encountered the same issue.
-
-   **If the error is "No scope found for user"**, the test user has no scope in the dev database (known bug, to be fixed). Workaround: run this fetch in the browser while logged in as the test user, then retry the OAuth flow:
-   ```bash
-   agent-browser eval "fetch('/api/scope', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({slug: 'test-user-scope'})}).then(r=>r.json()).then(d=>JSON.stringify(d))"
-   ```
 
 ## Skill Validation Loop
 

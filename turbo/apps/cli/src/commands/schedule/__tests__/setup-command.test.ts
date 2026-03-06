@@ -304,8 +304,54 @@ describe("schedule setup command", () => {
       expect(logCalls).toContain("Updated schedule");
     });
 
-    // Test removed: --var option no longer supported
-    // vars are now managed via platform tables (vm0 var set)
+    it("should create schedule with custom --name", async () => {
+      const compose = createMockCompose();
+      const schedule = createMockSchedule({
+        name: "daily-report",
+        cronExpression: "0 9 * * *",
+      });
+      let deployPayload: Record<string, unknown> | undefined;
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(compose);
+        }),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+        http.post(
+          "http://localhost:3000/api/agent/schedules",
+          async ({ request }) => {
+            deployPayload = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(
+              { created: true, schedule },
+              { status: 201 },
+            );
+          },
+        ),
+      );
+
+      await setupCommand.parseAsync([
+        "node",
+        "cli",
+        "test-agent",
+        "--name",
+        "daily-report",
+        "--frequency",
+        "daily",
+        "--time",
+        "09:00",
+        "--prompt",
+        "Daily report",
+      ]);
+
+      expect(deployPayload).toBeDefined();
+      expect(deployPayload!.name).toBe("daily-report");
+      expect(deployPayload!.cronExpression).toBe("0 9 * * *");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Created schedule");
+    });
 
     it("should enable schedule with --enable flag", async () => {
       const compose = createMockCompose();

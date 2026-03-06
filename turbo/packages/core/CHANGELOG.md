@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.38.1](https://github.com/vm0-ai/vm0/compare/core-v8.38.0...core-v8.38.1) (2026-03-06)
+
+
+### Bug Fixes
+
+* remove unused refresh_token from cli auth token response ([#3747](https://github.com/vm0-ai/vm0/issues/3747)) ([0f5a09a](https://github.com/vm0-ai/vm0/commit/0f5a09a784b8d11ab242942c0ab145c3c1148193))
+
 ## [8.38.0](https://github.com/vm0-ai/vm0/compare/core-v8.37.0...core-v8.38.0) (2026-03-05)
 
 

@@ -357,22 +357,52 @@ interface ResolveScheduleResult {
 /**
  * Resolve a schedule by agent name using the list API.
  * Searches across all user's schedules and finds by composeName (agent name).
- * @throws Error if agent has no schedule
+ *
+ * When an agent has multiple schedules, scheduleName is required for disambiguation.
+ * When an agent has exactly one schedule, scheduleName is optional.
+ *
+ * @throws Error if agent has no schedule or disambiguation is needed
  */
 export async function resolveScheduleByAgent(
   agentName: string,
+  scheduleName?: string,
 ): Promise<ResolveScheduleResult> {
   const { schedules } = await listSchedules();
 
-  const schedule = schedules.find((s) => s.composeName === agentName);
+  const agentSchedules = schedules.filter((s) => s.composeName === agentName);
 
-  if (!schedule) {
+  if (agentSchedules.length === 0) {
     throw new Error(`No schedule found for agent "${agentName}"`);
   }
 
-  return {
-    name: schedule.name,
-    composeId: schedule.composeId,
-    composeName: schedule.composeName,
-  };
+  // If scheduleName is provided, filter by name
+  if (scheduleName) {
+    const match = agentSchedules.find((s) => s.name === scheduleName);
+    if (!match) {
+      const available = agentSchedules.map((s) => s.name).join(", ");
+      throw new Error(
+        `Schedule "${scheduleName}" not found for agent "${agentName}". Available schedules: ${available}`,
+      );
+    }
+    return {
+      name: match.name,
+      composeId: match.composeId,
+      composeName: match.composeName,
+    };
+  }
+
+  // Single schedule — return it directly (backward compatible)
+  if (agentSchedules.length === 1) {
+    return {
+      name: agentSchedules[0]!.name,
+      composeId: agentSchedules[0]!.composeId,
+      composeName: agentSchedules[0]!.composeName,
+    };
+  }
+
+  // Multiple schedules without --name — require disambiguation
+  const available = agentSchedules.map((s) => s.name).join(", ");
+  throw new Error(
+    `Agent "${agentName}" has multiple schedules. Use --name to specify which one: ${available}`,
+  );
 }

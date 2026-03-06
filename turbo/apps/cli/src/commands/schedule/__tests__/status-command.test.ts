@@ -218,6 +218,68 @@ describe("schedule status command", () => {
     });
   });
 
+  describe("--name option (multi-schedule disambiguation)", () => {
+    it("should require --name when agent has multiple schedules", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({
+            schedules: [
+              createMockSchedule({ name: "daily-report" }),
+              createMockSchedule({ name: "weekly-cleanup" }),
+            ],
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await statusCommand.parseAsync(["node", "cli", "test-agent"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("multiple schedules"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--name"),
+      );
+    });
+
+    it("should show status for specific schedule with --name", async () => {
+      const schedule1 = createMockSchedule({ name: "daily-report" });
+      const schedule2 = createMockSchedule({ name: "weekly-cleanup" });
+      let fetchedName: string | undefined;
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({
+            schedules: [schedule1, schedule2],
+          });
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/schedules/:name",
+          ({ params }) => {
+            fetchedName = params.name as string;
+            return HttpResponse.json(schedule1);
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules/:name/runs", () => {
+          return HttpResponse.json({ runs: [] });
+        }),
+      );
+
+      await statusCommand.parseAsync([
+        "node",
+        "cli",
+        "test-agent",
+        "--name",
+        "daily-report",
+      ]);
+
+      expect(fetchedName).toBe("daily-report");
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("test-agent");
+    });
+  });
+
   describe("--limit option", () => {
     it("should respect --limit option", async () => {
       const schedule = createMockSchedule();
