@@ -1,4 +1,4 @@
-import { createHmac, createHash } from "node:crypto";
+import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 /**
@@ -55,5 +55,8 @@ export function verifyTelegramLogin(
     .update(checkString)
     .digest("hex");
 
-  return hmac === auth.hash;
+  const hmacBuf = Buffer.from(hmac, "hex");
+  const hashBuf = Buffer.from(auth.hash, "hex");
+  if (hmacBuf.length !== hashBuf.length) return false;
+  return timingSafeEqual(hmacBuf, hashBuf);
 }

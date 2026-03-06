@@ -10,18 +10,22 @@ export interface TelegramAuthResult {
   hash: string;
 }
 
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 function extractAuth(d: Record<string, unknown>): TelegramAuthResult | null {
-  if (!d.id || !d.auth_date || !d.hash) {
+  if (!d.id || !d.auth_date || typeof d.hash !== "string") {
     return null;
   }
   return {
     id: Number(d.id),
-    first_name: (d.first_name as string) ?? undefined,
-    last_name: (d.last_name as string) ?? undefined,
-    username: (d.username as string) ?? undefined,
-    photo_url: (d.photo_url as string) ?? undefined,
+    first_name: optionalString(d.first_name),
+    last_name: optionalString(d.last_name),
+    username: optionalString(d.username),
+    photo_url: optionalString(d.photo_url),
     auth_date: Number(d.auth_date),
-    hash: d.hash as string,
+    hash: d.hash,
   };
 }
 
@@ -52,12 +56,20 @@ export function parseTelegramPostMessage(
   const obj = raw as Record<string, unknown>;
 
   // Our callback route sends { type: "telegram-auth", data: {...} }
-  if (obj.type === "telegram-auth" && obj.data) {
+  if (
+    obj.type === "telegram-auth" &&
+    typeof obj.data === "object" &&
+    obj.data !== null
+  ) {
     return extractAuth(obj.data as Record<string, unknown>);
   }
 
   // Telegram sends { event: "auth_result", result: {...} }
-  if (obj.event === "auth_result" && obj.result) {
+  if (
+    obj.event === "auth_result" &&
+    typeof obj.result === "object" &&
+    obj.result !== null
+  ) {
     return extractAuth(obj.result as Record<string, unknown>);
   }
 
