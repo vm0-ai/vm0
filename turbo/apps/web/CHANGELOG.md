@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.77.1](https://github.com/vm0-ai/vm0/compare/web-v12.77.0...web-v12.77.1) (2026-03-06)
+
+
+### Bug Fixes
+
+* **e2e:** bypass clerk org creation in test-token endpoint ([#3785](https://github.com/vm0-ai/vm0/issues/3785)) ([84c53b7](https://github.com/vm0-ai/vm0/commit/84c53b7d60009204dccee5b4e9f4b44b87aa497d))
+* handle invalid json in github oauth callback state parameter ([#3744](https://github.com/vm0-ai/vm0/issues/3744)) ([cc55520](https://github.com/vm0-ai/vm0/commit/cc55520617c670e4bfe78cb85863e856e3ee6f80))
+* prevent compose job toctou race and catch handler rejections ([#3746](https://github.com/vm0-ai/vm0/issues/3746)) ([6588d26](https://github.com/vm0-ai/vm0/commit/6588d264763783a69944f052d1ee65c98d232135))
+* reject cron requests when cron secret is not configured ([#3743](https://github.com/vm0-ai/vm0/issues/3743)) ([1167750](https://github.com/vm0-ai/vm0/commit/1167750b0ea394249d1d05e66f3b560ad8b5d931))
+* remove unused refresh_token from cli auth token response ([#3747](https://github.com/vm0-ai/vm0/issues/3747)) ([0f5a09a](https://github.com/vm0-ai/vm0/commit/0f5a09a784b8d11ab242942c0ab145c3c1148193))
+* use advisory lock to prevent run concurrency limit race ([#3745](https://github.com/vm0-ai/vm0/issues/3745)) ([5bb4afb](https://github.com/vm0-ai/vm0/commit/5bb4afb99ab20eadf93913f73e1f9d13b5e2b297))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.38.1
+
 ## [12.77.0](https://github.com/vm0-ai/vm0/compare/web-v12.76.0...web-v12.77.0) (2026-03-05)
 
 
