@@ -181,8 +181,8 @@ export function renderRunCreated(response: {
   sandboxId?: string;
 }): void {
   if (response.status === "queued") {
-    console.log(chalk.bold("⏳ Run queued"));
-    console.log(`  Run ID:   ${chalk.dim(response.runId)}`);
+    console.log(chalk.yellow("Run queued"));
+    console.log(`  Run ID:  ${chalk.dim(response.runId)}`);
     console.log(chalk.dim("  Waiting for current run to complete..."));
     console.log();
   } else {
