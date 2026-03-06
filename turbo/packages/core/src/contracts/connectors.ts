@@ -866,6 +866,32 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  todoist: {
+    label: "Todoist",
+    helpText:
+      "Connect your Todoist account to manage tasks, projects, labels, and comments",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Todoist to grant access.",
+        secrets: {
+          TODOIST_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      TODOIST_TOKEN: "$secrets.TODOIST_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://todoist.com/oauth/authorize",
+      tokenUrl: "https://todoist.com/oauth/access_token",
+      scopes: ["data:read_write", "data:delete", "project:delete"],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -896,6 +922,7 @@ export const connectorTypeSchema = z.enum([
   "intervals-icu",
   "xero",
   "monday",
+  "todoist",
 ]);
 
 /**
