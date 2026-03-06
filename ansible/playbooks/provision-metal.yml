@@ -12,6 +12,11 @@
   hosts: all
 
   tasks:
+    - name: Wait for apt lock to be released
+      shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done
+      become: true
+      changed_when: false
+
     - name: Install system packages
       apt:
         name:

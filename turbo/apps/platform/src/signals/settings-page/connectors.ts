@@ -62,6 +62,7 @@ const CONNECTOR_FEATURE_FLAGS = Object.freeze<
   strava: FeatureSwitchKey.StravaConnector,
   "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
   wix: FeatureSwitchKey.WixConnector,
+  supabase: FeatureSwitchKey.SupabaseConnector,
 });
 
 export const allConnectorTypes$ = computed(async (get) => {

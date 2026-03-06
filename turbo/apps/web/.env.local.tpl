@@ -128,6 +128,10 @@ MONDAY_OAUTH_APP_ID=op://Development/vm0-env-local/MONDAY_OAUTH_APP_ID
 WIX_OAUTH_CLIENT_ID=op://Development/vm0-env-local/WIX_OAUTH_CLIENT_ID
 WIX_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/WIX_OAUTH_CLIENT_SECRET
 
+# Optional: Supabase OAuth Connector
+SUPABASE_OAUTH_CLIENT_ID=op://Development/vm0-env-local/SUPABASE_OAUTH_CLIENT_ID
+SUPABASE_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/SUPABASE_OAUTH_CLIENT_SECRET
+
 # Optional: ngrok (Computer Connector)
 NGROK_API_KEY=op://Development/vm0-env-local/NGROK_API_KEY
 NGROK_COMPUTER_CONNECTOR_DOMAIN=computer.vm7.io

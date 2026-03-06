@@ -252,6 +252,8 @@ jobs:
             SENTRY_OAUTH_CLIENT_SECRET=${{ secrets.SENTRY_OAUTH_CLIENT_SECRET }}
             INTERVALS_ICU_OAUTH_CLIENT_ID=${{ vars.INTERVALS_ICU_OAUTH_CLIENT_ID }}
             INTERVALS_ICU_OAUTH_CLIENT_SECRET=${{ secrets.INTERVALS_ICU_OAUTH_CLIENT_SECRET }}
+            SUPABASE_OAUTH_CLIENT_ID=${{ vars.SUPABASE_OAUTH_CLIENT_ID }}
+            SUPABASE_OAUTH_CLIENT_SECRET=${{ secrets.SUPABASE_OAUTH_CLIENT_SECRET }}
             XERO_OAUTH_CLIENT_ID=${{ vars.XERO_OAUTH_CLIENT_ID }}
             MONDAY_OAUTH_CLIENT_ID=${{ vars.MONDAY_OAUTH_CLIENT_ID }}
             MONDAY_OAUTH_APP_ID=${{ vars.MONDAY_OAUTH_APP_ID }}
@@ -699,6 +701,9 @@ jobs:
           AWS_METAL_RUNNER_SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "$AWS_METAL_RUNNER_SSH_KEY" > ~/.ssh/prod-runner.pem
@@ -710,6 +715,18 @@ jobs:
             --private-key ~/.ssh/prod-runner.pem \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -v
+          if [ -n "${GRAFANA_CLOUD_API_KEY}" ]; then
+            ansible-playbook \
+              -i "${AWS_METAL_RUNNER_HOSTS}," \
+              playbooks/provision-monitoring.yml \
+              --private-key ~/.ssh/prod-runner.pem \
+              -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
+              -e "grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL}" \
+              -e "grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER}" \
+              -e "grafana_cloud_api_key=${GRAFANA_CLOUD_API_KEY}" \
+              -e "env_label=prod" \
+              -v
+          fi
           ansible-playbook \
             -i "${AWS_METAL_RUNNER_HOSTS}," \
             playbooks/deploy-runner.yml \

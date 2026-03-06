@@ -195,6 +195,9 @@ jobs:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           HOST: ${{ steps.host.outputs.host }}
           JOB_REF: ${{ steps.host.outputs.job-ref }}
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
@@ -212,6 +215,18 @@ jobs:
             --private-key $HOME/.ssh/runner.pem \
             -e "ansible_user=${METAL_USER}" \
             -v
+          if [ -n "${GRAFANA_CLOUD_API_KEY}" ]; then
+            ansible-playbook \
+              -i "${HOST}," \
+              playbooks/provision-monitoring.yml \
+              --private-key $HOME/.ssh/runner.pem \
+              -e "ansible_user=${METAL_USER}" \
+              -e "grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL}" \
+              -e "grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER}" \
+              -e "grafana_cloud_api_key=${GRAFANA_CLOUD_API_KEY}" \
+              -e "env_label=dev" \
+              -v
+          fi
           cd ..
 
           # Clean previous run artifacts and upload runner (guests are embedded)
