@@ -2504,3 +2504,198 @@ export async function expireQueueEntry(runId: string) {
     .set({ expiresAt: new Date(Date.now() - 60_000) })
     .where(eq(agentRunQueue.runId, runId));
 }
+
+// ============================================================================
+// Direct DB Helpers for Schema-Level Tests
+// ============================================================================
+
+/**
+ * Insert an agent compose record directly in the database.
+ *
+ * Direct DB insert is required for schema-level tests (e.g., CASCADE behavior)
+ * that need precise control over record creation without API side effects.
+ */
+export async function insertTestAgentCompose(
+  userId: string,
+  scopeId: string,
+  name: string,
+) {
+  const [row] = await globalThis.services.db
+    .insert(agentComposes)
+    .values({ userId, scopeId, name })
+    .returning();
+  return row!;
+}
+
+/**
+ * Insert an agent run record directly in the database.
+ *
+ * Direct DB insert is required for schema-level tests (e.g., CASCADE behavior)
+ * that need to verify foreign key constraints without running the full run flow.
+ */
+export async function insertTestAgentRun(
+  userId: string,
+  scopeId: string,
+  options?: { status?: string; prompt?: string },
+) {
+  const [row] = await globalThis.services.db
+    .insert(agentRuns)
+    .values({
+      userId,
+      scopeId,
+      status: options?.status ?? "completed",
+      prompt: options?.prompt ?? "test prompt",
+    })
+    .returning();
+  return row!;
+}
+
+/**
+ * Insert a storage record directly in the database.
+ *
+ * Direct DB insert is required for schema-level tests (e.g., CASCADE behavior)
+ * that need to verify foreign key constraints without the full storage flow.
+ */
+export async function insertTestStorageRecord(
+  userId: string,
+  scopeId: string,
+  name: string,
+) {
+  const [row] = await globalThis.services.db
+    .insert(storages)
+    .values({ userId, scopeId, name, s3Prefix: "test/prefix" })
+    .returning();
+  return row!;
+}
+
+/**
+ * Delete a scope directly from the database.
+ *
+ * Direct DB delete is required for schema-level tests that verify
+ * CASCADE foreign key behavior when a scope is removed.
+ */
+export async function deleteTestScope(scopeId: string) {
+  await globalThis.services.db.delete(scopes).where(eq(scopes.id, scopeId));
+}
+
+/**
+ * Find an agent compose by its internal ID.
+ *
+ * Direct DB read is required for schema-level tests that verify
+ * records were cascade-deleted.
+ */
+export async function findTestAgentComposeById(id: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(agentComposes)
+    .where(eq(agentComposes.id, id))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Find an agent run by its internal ID.
+ *
+ * Direct DB read is required for schema-level tests that verify
+ * records were cascade-deleted.
+ */
+export async function findTestAgentRunById(id: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.id, id))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Find a storage by its internal ID.
+ *
+ * Direct DB read is required for schema-level tests that verify
+ * records were cascade-deleted.
+ */
+export async function findTestStorageById(id: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(storages)
+    .where(eq(storages.id, id))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Find a Slack installation by its internal ID.
+ *
+ * Direct DB read is required for schema-level tests that verify
+ * records were cascade-deleted.
+ */
+export async function findTestSlackInstallationById(id: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.id, id))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Find a Telegram installation by its internal ID.
+ *
+ * Direct DB read is required for schema-level tests that verify
+ * records were cascade-deleted.
+ */
+export async function findTestTelegramInstallationById(id: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.id, id))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Insert a Slack installation record directly in the database.
+ *
+ * Direct DB insert is required for schema-level tests that need to link
+ * an installation to an existing compose without creating a new scope.
+ */
+export async function insertTestSlackInstallation(
+  composeId: string,
+  encryptedBotToken: string,
+) {
+  const [row] = await globalThis.services.db
+    .insert(slackInstallations)
+    .values({
+      slackWorkspaceId: uniqueId("T"),
+      encryptedBotToken,
+      botUserId: uniqueId("U"),
+      defaultComposeId: composeId,
+      adminSlackUserId: uniqueId("U"),
+    })
+    .returning();
+  return row!;
+}
+
+/**
+ * Insert a Telegram installation record directly in the database.
+ *
+ * Direct DB insert is required for schema-level tests that need to link
+ * an installation to an existing compose without creating a new scope.
+ */
+export async function insertTestTelegramInstallationRecord(
+  composeId: string,
+  adminUserId: string,
+  encryptedBotToken: string,
+) {
+  const [row] = await globalThis.services.db
+    .insert(telegramInstallations)
+    .values({
+      telegramBotId: uniqueId("bot"),
+      encryptedBotToken,
+      webhookSecret: uniqueId("secret"),
+      defaultComposeId: composeId,
+      adminUserId,
+    })
+    .returning();
+  return row!;
+}
