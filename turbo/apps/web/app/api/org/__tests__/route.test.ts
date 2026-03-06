@@ -75,6 +75,6 @@ describe("POST /api/org - Create Organization", () => {
     expect(response2.status).toBe(400);
 
     const data = await response2.json();
-    expect(data.error.message).toContain("already own an organization");
+    expect(data.error.message).toContain("already have a scope");
   });
 });

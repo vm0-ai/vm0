@@ -3,18 +3,15 @@ import { eq, and } from "drizzle-orm";
 import { scopes } from "../../db/schema/scope";
 import { scopeMembers } from "../../db/schema/scope-member";
 import { badRequest, forbidden, notFound } from "../errors";
-import { getScopeBySlug, isVm0Admin } from "../scope/scope-service";
-import { getPrimaryAdminMembership } from "../scope/scope-member-service";
-import { getUserEmail } from "../auth/get-user-email";
 import { logger } from "../logger";
-import type { OrgRole } from "@vm0/core";
+import type { ScopeRole } from "@vm0/core";
 
 const log = logger("service:org");
 
 /**
- * Map Clerk's internal role string to our OrgRole type.
+ * Map Clerk's internal role string to our ScopeRole type.
  */
-function mapClerkRole(clerkRole: string): OrgRole {
+function mapClerkRole(clerkRole: string): ScopeRole {
   return clerkRole === "org:admin" ? "admin" : "member";
 }
 
@@ -34,80 +31,6 @@ async function getOrgScope(scopeId: string) {
   }
 
   return scope as typeof scope & { clerkOrgId: string };
-}
-
-/**
- * Create a new organization.
- * Creates a Clerk Organization and a local scope.
- */
-export async function createOrganization(clerkUserId: string, slug: string) {
-  // TODO: "vm0" is hardcoded as the system scope slug. This should be configurable.
-  if (slug.startsWith("vm0")) {
-    const email = await getUserEmail(clerkUserId);
-    if (!isVm0Admin(email)) {
-      throw badRequest(`Scope slug "${slug}" is reserved`);
-    }
-  }
-
-  // Check one-org-per-user limit via scope_members (admin memberships)
-  const existingAdmin = await getPrimaryAdminMembership(clerkUserId);
-  if (existingAdmin) {
-    const [existingScope] = await globalThis.services.db
-      .select({ slug: scopes.slug })
-      .from(scopes)
-      .where(eq(scopes.id, existingAdmin.scopeId))
-      .limit(1);
-    throw badRequest(
-      `You already own an organization: ${existingScope?.slug ?? existingAdmin.scopeId}`,
-    );
-  }
-
-  // Check slug availability
-  const existingScope = await getScopeBySlug(slug);
-  if (existingScope) {
-    throw badRequest(`Scope slug "${slug}" is already taken`);
-  }
-
-  // Create Clerk Organization
-  const client = await clerkClient();
-  const clerkOrg = await client.organizations.createOrganization({
-    name: slug,
-    createdBy: clerkUserId,
-  });
-
-  // Create local scope + admin membership atomically
-  const scope = await globalThis.services.db.transaction(async (tx) => {
-    const [newScope] = await tx
-      .insert(scopes)
-      .values({
-        slug,
-        clerkOrgId: clerkOrg.id,
-      })
-      .returning();
-
-    if (!newScope) {
-      throw new Error("Failed to create organization scope");
-    }
-
-    await tx.insert(scopeMembers).values({
-      scopeId: newScope.id,
-      userId: clerkUserId,
-      role: "admin",
-    });
-
-    return newScope;
-  });
-
-  log.debug("Organization created", {
-    scopeId: scope.id,
-    slug,
-    clerkOrgId: clerkOrg.id,
-  });
-
-  return {
-    scope,
-    role: "admin" as const,
-  };
 }
 
 /**
@@ -176,7 +99,7 @@ export async function getOrganizationStatus(
 export async function inviteMember(
   callerUserId: string,
   scopeId: string,
-  role: OrgRole,
+  role: ScopeRole,
   email: string,
 ) {
   if (role !== "admin") {
@@ -218,7 +141,7 @@ export async function inviteMember(
 export async function removeMember(
   callerUserId: string,
   scopeId: string,
-  role: OrgRole,
+  role: ScopeRole,
   email: string,
 ) {
   if (role !== "admin") {
@@ -281,7 +204,7 @@ export async function removeMember(
 export async function leaveOrganization(
   clerkUserId: string,
   scopeId: string,
-  role: OrgRole,
+  role: ScopeRole,
 ) {
   if (role === "admin") {
     throw forbidden(

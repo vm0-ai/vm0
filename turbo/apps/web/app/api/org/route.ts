@@ -2,7 +2,8 @@ import { createHandler, tsr } from "../../../src/lib/ts-rest-handler";
 import { orgContract } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
-import { createOrganization } from "../../../src/lib/org/org-service";
+import { createScope, isVm0Admin } from "../../../src/lib/scope/scope-service";
+import { getUserEmail } from "../../../src/lib/auth/get-user-email";
 import { isBadRequest } from "../../../src/lib/errors";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import { logger } from "../../../src/lib/logger";
@@ -24,22 +25,42 @@ const router = tsr.router(orgContract, {
     }
 
     try {
-      const result = await createOrganization(userId, body.slug);
+      // vm0-admin slug policy: allow vm0-prefixed slugs for admin users only
+      let skipSlugValidation = false;
+      if (body.slug.startsWith("vm0")) {
+        const email = await getUserEmail(userId);
+        if (!isVm0Admin(email)) {
+          return {
+            status: 400 as const,
+            body: {
+              error: {
+                message: `Scope slug "${body.slug}" is reserved`,
+                code: "BAD_REQUEST",
+              },
+            },
+          };
+        }
+        skipSlugValidation = true;
+      }
+
+      const scope = await createScope(userId, body.slug, {
+        skipSlugValidation,
+      });
 
       return {
         status: 201 as const,
         body: {
-          slug: result.scope.slug,
-          role: result.role,
+          slug: scope.slug,
+          role: "admin" as const,
           members: [
             {
               userId,
               email: "",
               role: "admin" as const,
-              joinedAt: result.scope.createdAt.toISOString(),
+              joinedAt: scope.createdAt.toISOString(),
             },
           ],
-          createdAt: result.scope.createdAt.toISOString(),
+          createdAt: scope.createdAt.toISOString(),
         },
       };
     } catch (error) {
@@ -54,13 +75,13 @@ const router = tsr.router(orgContract, {
       const message =
         error instanceof Error ? error.message : "Internal server error";
       if (isClerkAPIResponseError(error)) {
-        log.error("Failed to create organization (Clerk API)", {
+        log.error("Failed to create scope (Clerk API)", {
           status: error.status,
           errors: error.errors,
           clerkTraceId: error.clerkTraceId,
         });
       } else {
-        log.error("Failed to create organization", { error: message });
+        log.error("Failed to create scope", { error: message });
       }
       return {
         status: 500 as const,
@@ -70,37 +91,6 @@ const router = tsr.router(orgContract, {
       };
     }
   },
-
-  // Stub handlers required by ts-rest contract router. The actual implementations
-  // live in separate Next.js route files (e.g., /api/org/status/route.ts) which
-  // take precedence over these stubs due to Next.js file-system routing.
-  status: async () => ({
-    status: 404 as const,
-    body: {
-      error: { message: "Use /api/org/status", code: "NOT_FOUND" },
-    },
-  }),
-
-  leave: async () => ({
-    status: 404 as const,
-    body: {
-      error: { message: "Use /api/org/leave", code: "NOT_FOUND" },
-    },
-  }),
-
-  invite: async () => ({
-    status: 404 as const,
-    body: {
-      error: { message: "Use /api/org/invite", code: "NOT_FOUND" },
-    },
-  }),
-
-  removeMember: async () => ({
-    status: 404 as const,
-    body: {
-      error: { message: "Use /api/org/members", code: "NOT_FOUND" },
-    },
-  }),
 });
 
 const handler = createHandler(orgContract, router);

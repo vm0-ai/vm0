@@ -2,7 +2,7 @@ import { eq, and, asc } from "drizzle-orm";
 import { scopeMembers } from "../../db/schema/scope-member";
 import { scopes } from "../../db/schema/scope";
 import { forbidden, notFound } from "../errors";
-import type { OrgRole } from "@vm0/core";
+import type { ScopeRole } from "@vm0/core";
 
 /**
  * Get a scope member record for a specific user in a scope
@@ -21,14 +21,14 @@ export async function getScopeMember(scopeId: string, userId: string) {
 
 /**
  * Require a user to be a member of a scope, or throw 403.
- * Returns the member record with role typed as OrgRole.
+ * Returns the member record with role typed as ScopeRole.
  */
 export async function requireScopeMember(scopeId: string, userId: string) {
   const member = await getScopeMember(scopeId, userId);
   if (!member) {
     throw forbidden("You are not a member of this scope");
   }
-  return { ...member, role: member.role as OrgRole };
+  return { ...member, role: member.role as ScopeRole };
 }
 
 /**

@@ -11,7 +11,7 @@ import { agentComposes } from "../../../db/schema/agent-compose";
 import { getPlatformUrl } from "../../url";
 import {
   getUserScopeByClerkId,
-  createUserScope,
+  createScope,
   generateDefaultScopeSlug,
 } from "../../scope/scope-service";
 import { validateAgentSession } from "../../run";
@@ -222,10 +222,7 @@ export function buildLogsUrl(runId: string, agentName: string): string {
 export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
   let scope = await getUserScopeByClerkId(vm0UserId);
   if (!scope) {
-    scope = await createUserScope(
-      vm0UserId,
-      generateDefaultScopeSlug(vm0UserId),
-    );
+    scope = await createScope(vm0UserId, generateDefaultScopeSlug(vm0UserId));
     log.info("Auto-created scope for Slack user", { userId: vm0UserId });
   }
 

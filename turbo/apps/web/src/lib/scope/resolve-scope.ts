@@ -3,7 +3,7 @@ import { scopeMembers } from "../../db/schema/scope-member";
 import { hasClerkAuth } from "../../env";
 import { isForbidden, badRequest, notFound } from "../errors";
 import { logger } from "../logger";
-import type { OrgRole } from "@vm0/core";
+import type { ScopeRole } from "@vm0/core";
 import { getScopeBySlug } from "./scope-service";
 import {
   requireScopeMember,
@@ -59,7 +59,7 @@ async function syncClerkMembership(scope: Scope, userId: string) {
     // If onConflictDoNothing returned nothing, the record was created by another concurrent request
     const record = member ?? (await getScopeMember(scope.id, userId));
     if (!record) return null;
-    return { ...record, role: record.role as OrgRole };
+    return { ...record, role: record.role as ScopeRole };
   } catch (error) {
     // Intentional exception to fail-fast principle: when Clerk is unavailable,
     // deny access (return null -> 403) rather than crashing the request.
