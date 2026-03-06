@@ -1326,6 +1326,8 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           BIN_DIR: ${{ steps.host.outputs.bin-dir }}
           RUNNER_DIR: ${{ steps.host.outputs.runner-dir }}
+          AXIOM_TOKEN_HOST_METRICS: ${{ secrets.AXIOM_TOKEN_HOST_METRICS }}
+          AXIOM_DATASET_HOST_METRICS: ${{ vars.AXIOM_DATASET_HOST_METRICS }}
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           TARGET_DIR="crates/target/${TARGET_TRIPLE}/${CARGO_PROFILE}"
@@ -1337,10 +1339,20 @@ jobs:
           cd ansible
           ansible-playbook \
             -i "${METAL_HOSTS}," \
-            playbooks/provision-metal.yml \
+            playbooks/provision-runner.yml \
             --private-key $HOME/.ssh/runner.pem \
             -e "ansible_user=${METAL_USER}" \
             -v
+          if [ -n "${AXIOM_TOKEN_HOST_METRICS}" ]; then
+            ansible-playbook \
+              -i "${METAL_HOSTS}," \
+              playbooks/provision-monitoring.yml \
+              --private-key $HOME/.ssh/runner.pem \
+              -e "ansible_user=${METAL_USER}" \
+              -e "axiom_token=${AXIOM_TOKEN_HOST_METRICS}" \
+              -e "axiom_dataset=${AXIOM_DATASET_HOST_METRICS}" \
+              -v
+          fi
           cd ..
 
           deploy_to_host() {

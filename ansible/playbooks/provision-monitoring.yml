@@ -1,0 +1,152 @@
+# Provision OpenTelemetry Collector for Host Metrics
+#
+# Idempotent playbook that installs otel-collector-contrib on bare-metal hosts
+# to collect system metrics (CPU, memory, disk, network, load) and push them
+# to Axiom via OTLP.
+#
+# Usage:
+#   ansible-playbook -i "host1,host2," playbooks/provision-monitoring.yml \
+#     -e "ansible_user=ubuntu" \
+#     -e "axiom_token=xaat-..." \
+#     -e "axiom_dataset=vm0-host-metrics-dev"
+#
+# Required variables:
+#   axiom_token   - Axiom API token with ingest permission
+#   axiom_dataset - Axiom dataset name (e.g. vm0-host-metrics-dev)
+
+- name: Provision OpenTelemetry Collector
+  hosts: all
+
+  vars:
+    otelcol_version: "0.147.0"
+    otelcol_arch_map:
+      aarch64: "arm64"
+      x86_64: "amd64"
+    otelcol_arch: "{{ otelcol_arch_map[ansible_architecture] }}"
+    otelcol_bin: "/usr/local/bin/otelcol-contrib"
+    otelcol_config_dir: "/etc/otelcol"
+    otelcol_config: "/etc/otelcol/config.yaml"
+    otelcol_env_file: "/etc/otelcol/env"
+    otelcol_service: "otelcol"
+
+  tasks:
+    - name: Check if otelcol-contrib is installed
+      command: "{{ otelcol_bin }} --version"
+      register: otelcol_check
+      changed_when: false
+      failed_when: false
+
+    - name: Download and extract otelcol-contrib
+      when: otelcol_check.rc != 0 or otelcol_version not in (otelcol_check.stdout | default(''))
+      become: true
+      block:
+        - name: Download otelcol-contrib tarball
+          get_url:
+            url: "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v{{ otelcol_version }}/otelcol-contrib_{{ otelcol_version }}_linux_{{ otelcol_arch }}.tar.gz"
+            dest: "/tmp/otelcol-contrib.tar.gz"
+            mode: '0644'
+
+        - name: Extract otelcol-contrib binary
+          shell: tar -xzf /tmp/otelcol-contrib.tar.gz -C /usr/local/bin/ otelcol-contrib
+          changed_when: true
+
+        - name: Clean up tarball
+          file:
+            path: /tmp/otelcol-contrib.tar.gz
+            state: absent
+
+    - name: Create config directory
+      file:
+        path: "{{ otelcol_config_dir }}"
+        state: directory
+        mode: '0755'
+      become: true
+
+    - name: Write otelcol config
+      copy:
+        dest: "{{ otelcol_config }}"
+        mode: '0644'
+        content: |
+          receivers:
+            hostmetrics:
+              collection_interval: 15s
+              scrapers:
+                cpu:
+                disk:
+                filesystem:
+                load:
+                memory:
+                network:
+                processes:
+
+          processors:
+            batch:
+              timeout: 30s
+            resourcedetection:
+              detectors: [env, system]
+              system:
+                hostname_sources: [os]
+
+          exporters:
+            otlphttp:
+              endpoint: https://api.axiom.co
+              headers:
+                authorization: "Bearer ${AXIOM_TOKEN}"
+                x-axiom-dataset: "${AXIOM_DATASET}"
+
+          service:
+            pipelines:
+              metrics:
+                receivers: [hostmetrics]
+                processors: [batch, resourcedetection]
+                exporters: [otlphttp]
+      become: true
+      notify: restart otelcol
+
+    - name: Write environment file
+      copy:
+        dest: "{{ otelcol_env_file }}"
+        mode: '0600'
+        content: |
+          AXIOM_TOKEN={{ axiom_token }}
+          AXIOM_DATASET={{ axiom_dataset }}
+      become: true
+      notify: restart otelcol
+
+    - name: Write systemd unit
+      copy:
+        dest: "/etc/systemd/system/{{ otelcol_service }}.service"
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=OpenTelemetry Collector
+          After=network-online.target
+
+          [Service]
+          Type=simple
+          ExecStart={{ otelcol_bin }} --config {{ otelcol_config }}
+          Restart=on-failure
+          RestartSec=5
+          MemoryMax=128M
+          EnvironmentFile={{ otelcol_env_file }}
+
+          [Install]
+          WantedBy=multi-user.target
+      become: true
+      notify: restart otelcol
+
+    - name: Enable and start otelcol
+      systemd:
+        name: "{{ otelcol_service }}"
+        enabled: true
+        state: started
+        daemon_reload: true
+      become: true
+
+  handlers:
+    - name: restart otelcol
+      systemd:
+        name: "{{ otelcol_service }}"
+        state: restarted
+        daemon_reload: true
+      become: true

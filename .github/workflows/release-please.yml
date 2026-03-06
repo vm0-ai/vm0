@@ -686,6 +686,8 @@ jobs:
           AWS_METAL_RUNNER_SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
+          AXIOM_TOKEN_HOST_METRICS: ${{ secrets.AXIOM_TOKEN_HOST_METRICS }}
+          AXIOM_DATASET_HOST_METRICS: ${{ vars.AXIOM_DATASET_HOST_METRICS }}
         run: |
           mkdir -p ~/.ssh
           echo "$AWS_METAL_RUNNER_SSH_KEY" > ~/.ssh/prod-runner.pem
@@ -693,10 +695,20 @@ jobs:
           cd ansible
           ansible-playbook \
             -i "${AWS_METAL_RUNNER_HOSTS}," \
-            playbooks/provision-metal.yml \
+            playbooks/provision-runner.yml \
             --private-key ~/.ssh/prod-runner.pem \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -v
+          if [ -n "${AXIOM_TOKEN_HOST_METRICS}" ]; then
+            ansible-playbook \
+              -i "${AWS_METAL_RUNNER_HOSTS}," \
+              playbooks/provision-monitoring.yml \
+              --private-key ~/.ssh/prod-runner.pem \
+              -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
+              -e "axiom_token=${AXIOM_TOKEN_HOST_METRICS}" \
+              -e "axiom_dataset=${AXIOM_DATASET_HOST_METRICS}" \
+              -v
+          fi
           ansible-playbook \
             -i "${AWS_METAL_RUNNER_HOSTS}," \
             playbooks/deploy-runner.yml \

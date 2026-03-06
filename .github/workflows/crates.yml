@@ -195,6 +195,8 @@ jobs:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           HOST: ${{ steps.host.outputs.host }}
           JOB_REF: ${{ steps.host.outputs.job-ref }}
+          AXIOM_TOKEN_HOST_METRICS: ${{ secrets.AXIOM_TOKEN_HOST_METRICS }}
+          AXIOM_DATASET_HOST_METRICS: ${{ vars.AXIOM_DATASET_HOST_METRICS }}
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
@@ -208,10 +210,20 @@ jobs:
           cd ansible
           ansible-playbook \
             -i "${HOST}," \
-            playbooks/provision-metal.yml \
+            playbooks/provision-runner.yml \
             --private-key $HOME/.ssh/runner.pem \
             -e "ansible_user=${METAL_USER}" \
             -v
+          if [ -n "${AXIOM_TOKEN_HOST_METRICS}" ]; then
+            ansible-playbook \
+              -i "${HOST}," \
+              playbooks/provision-monitoring.yml \
+              --private-key $HOME/.ssh/runner.pem \
+              -e "ansible_user=${METAL_USER}" \
+              -e "axiom_token=${AXIOM_TOKEN_HOST_METRICS}" \
+              -e "axiom_dataset=${AXIOM_DATASET_HOST_METRICS}" \
+              -v
+          fi
           cd ..
 
           # Clean previous run artifacts and upload runner (guests are embedded)
