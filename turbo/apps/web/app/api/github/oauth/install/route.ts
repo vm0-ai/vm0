@@ -175,7 +175,9 @@ async function tryLinkFromGitHubApi(
   try {
     installations = await listAppInstallations(appId, privateKey);
   } catch (err) {
-    log.error("Failed to list app installations", { error: err });
+    // Log and fall through to GitHub redirect — detection is best-effort;
+    // the user can still complete the flow via GitHub's install page.
+    log.warn("Failed to list app installations", { error: err });
     return null;
   }
 
@@ -247,7 +249,14 @@ async function tryLinkFromGitHubApi(
     })
     .returning({ id: githubInstallations.id });
 
-  await linkVm0User(db, newInstall!.id, vm0UserId, adminGithubUserId);
+  if (!newInstall) {
+    log.error("Failed to create GitHub installation record", {
+      ghInstallationId,
+    });
+    return null;
+  }
+
+  await linkVm0User(db, newInstall.id, vm0UserId, adminGithubUserId);
 
   return `${platformUrl}/settings?tab=integrations`;
 }
