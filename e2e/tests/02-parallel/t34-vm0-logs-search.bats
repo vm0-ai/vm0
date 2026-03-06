@@ -94,14 +94,22 @@ teardown() {
         return 1
     }
 
-    # Step 4: Search for keyword scoped to this run
+    # Step 4: Search for keyword scoped to this run with retry (Axiom ingestion is async)
     # Use "Claude Code" as keyword since mock-claude always produces init/completed events
     echo "# Step 4: Searching for 'Claude Code' in run events..."
-    run $CLI_COMMAND logs search "Claude Code" --run "$RUN_ID" --since 1h
-    assert_success
-
-    # Should show run header with short run ID
     SHORT_ID="${RUN_ID:0:8}"
+    local max_retries=5
+    local retry_delay=3
+    for i in $(seq 1 $max_retries); do
+        run $CLI_COMMAND logs search "Claude Code" --run "$RUN_ID" --since 1h
+        if [[ "$output" == *"$SHORT_ID"* ]]; then
+            echo "Search results found (attempt $i)"
+            assert_success
+            break
+        fi
+        echo "Retry $i/$max_retries: waiting for Axiom indexing..."
+        sleep $retry_delay
+    done
     assert_output --partial "$SHORT_ID"
 
     # Step 5: Search for non-matching keyword shows empty guidance
