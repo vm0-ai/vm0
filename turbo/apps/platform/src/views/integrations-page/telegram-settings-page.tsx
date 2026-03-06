@@ -375,9 +375,7 @@ export function TelegramSettingsPage() {
                         Connect your Telegram account
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {
-                          "Log in with Telegram to link your account. Make sure to run "
-                        }
+                        {"Link your Telegram account to VM0. Make sure to run "}
                         <code className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-xs">
                           /setdomain
                         </code>

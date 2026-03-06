@@ -18,7 +18,7 @@ export function TelegramLoginButton({ botId }: TelegramLoginButtonProps) {
 
   return (
     <Button size="sm" onClick={() => openPopup(botId)}>
-      Log in with Telegram
+      Connect
     </Button>
   );
 }
