@@ -6,6 +6,7 @@ import {
   type ProviderHandler,
 } from "./provider-types";
 import { airtableHandler } from "./providers/airtable-handler";
+import { canvaHandler } from "./providers/canva-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
@@ -41,6 +42,7 @@ export const PROVIDER_HANDLERS: Record<
   ProviderHandler
 > = {
   airtable: airtableHandler,
+  canva: canvaHandler,
   deel: deelHandler,
   docusign: docusignHandler,
   dropbox: dropboxHandler,

@@ -1,0 +1,127 @@
+# Provision Monitoring with Grafana Alloy
+#
+# Installs Grafana Alloy on bare metal hosts to collect system metrics
+# (via built-in prometheus.exporter.unix) and remote-write to Grafana Cloud.
+#
+# Usage:
+#   ansible-playbook -i "host1,host2," playbooks/provision-monitoring.yml \
+#     --private-key ~/.ssh/runner.pem \
+#     -e "ansible_user=ubuntu" \
+#     -e "grafana_cloud_prometheus_url=https://..." \
+#     -e "grafana_cloud_prometheus_user=123456" \
+#     -e "grafana_cloud_api_key=glc_..." \
+#     -e "env_label=prod"
+
+- name: Provision monitoring with Grafana Alloy
+  hosts: all
+
+  tasks:
+    - name: Wait for apt lock to be released
+      shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done
+      become: true
+      changed_when: false
+
+    - name: Install dependencies
+      apt:
+        name:
+          - gpg
+          - apt-transport-https
+          - software-properties-common
+        state: present
+        update_cache: true
+      become: true
+
+    - name: Ensure keyrings directory exists
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+      become: true
+
+    - name: Add Grafana GPG key
+      shell: |
+        curl -fsSL https://apt.grafana.com/gpg.key | gpg --dearmor -o /etc/apt/keyrings/grafana.gpg
+      args:
+        creates: /etc/apt/keyrings/grafana.gpg
+      become: true
+
+    - name: Add Grafana APT repository
+      copy:
+        content: "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main"
+        dest: /etc/apt/sources.list.d/grafana.list
+      become: true
+
+    - name: Install Grafana Alloy
+      apt:
+        name: alloy
+        state: present
+        update_cache: true
+      become: true
+
+    - name: Configure Grafana Alloy
+      copy:
+        content: |
+          // Collect system metrics (equivalent to node_exporter)
+          prometheus.exporter.unix "default" {
+            set_collectors = [
+              "cpu", "diskstats", "filesystem", "loadavg", "meminfo",
+              "netdev", "os", "pressure", "processes", "systemd",
+              "uname", "vmstat",
+            ]
+            netdev {
+              device_include = "^(en|eth|bond).*"
+            }
+            systemd {
+              unit_include = "vm0-runner-v.+\\.service|alloy\\.service|docker\\.service"
+            }
+          }
+
+          // Override instance label with inventory hostname
+          discovery.relabel "default" {
+            targets = prometheus.exporter.unix.default.targets
+
+            rule {
+              target_label = "instance"
+              replacement  = "{{ inventory_hostname }}"
+            }
+          }
+
+          prometheus.scrape "default" {
+            targets         = discovery.relabel.default.output
+            forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+            scrape_interval = "15s"
+          }
+
+          prometheus.remote_write "grafana_cloud" {
+            endpoint {
+              url = "{{ grafana_cloud_prometheus_url }}"
+              basic_auth {
+                username = "{{ grafana_cloud_prometheus_user }}"
+                password = "{{ grafana_cloud_api_key }}"
+              }
+            }
+            external_labels = {
+              env = "{{ env_label }}",
+            }
+          }
+        dest: /etc/alloy/config.alloy
+        owner: root
+        group: alloy
+        mode: "0640"
+      become: true
+      notify: Restart Alloy
+
+    - name: Enable and start Alloy
+      systemd:
+        name: alloy
+        state: started
+        enabled: true
+        daemon_reload: true
+      become: true
+
+  handlers:
+    - name: Restart Alloy
+      systemd:
+        name: alloy
+        state: restarted
+      become: true

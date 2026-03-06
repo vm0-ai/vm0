@@ -31,6 +31,7 @@ export function buildTodoistAuthorizationUrl(
     client_id: clientId,
     scope: oauthConfig.scopes.join(","),
     state,
+    redirect_uri: redirectUri,
   });
 
   return `${oauthConfig.authorizationUrl}?${params.toString()}`;
@@ -45,6 +46,7 @@ export async function exchangeTodoistCode(
   clientId: string,
   clientSecret: string,
   code: string,
+  redirectUri: string,
 ): Promise<TodoistTokenResult> {
   const oauthConfig = getConnectorOAuthConfig("todoist");
   if (!oauthConfig) {
@@ -60,6 +62,7 @@ export async function exchangeTodoistCode(
       client_id: clientId,
       client_secret: clientSecret,
       code,
+      redirect_uri: redirectUri,
     }),
   });
 

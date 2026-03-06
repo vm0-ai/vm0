@@ -10,6 +10,7 @@ export enum FeatureSwitchKey {
   PlatformSecrets = "platformSecrets",
   PlatformArtifacts = "platformArtifacts",
   PlatformApiKeys = "platformApiKeys",
+  CanvaConnector = "canvaConnector",
   ComputerConnector = "computerConnector",
   DeelConnector = "deelConnector",
   DocuSignConnector = "docusignConnector",

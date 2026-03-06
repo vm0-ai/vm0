@@ -894,6 +894,49 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  canva: {
+    label: "Canva",
+    helpText:
+      "Connect your Canva account to access designs, assets, and projects",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Canva to grant access.",
+        secrets: {
+          CANVA_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          CANVA_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://www.canva.com/api/oauth/authorize",
+      tokenUrl: "https://api.canva.com/rest/v1/oauth/token",
+      scopes: [
+        "asset:read",
+        "asset:write",
+        "brandtemplate:content:read",
+        "brandtemplate:meta:read",
+        "comment:read",
+        "comment:write",
+        "design:content:read",
+        "design:content:write",
+        "design:meta:read",
+        "folder:read",
+        "folder:write",
+        "profile:read",
+      ],
+    } as ConnectorOAuthConfig,
+  },
   xero: {
     label: "Xero",
     helpText:
@@ -1022,6 +1065,7 @@ export type ConnectorType = keyof typeof CONNECTOR_TYPES;
 
 export const connectorTypeSchema = z.enum([
   "airtable",
+  "canva",
   "github",
   "gmail",
   "google-sheets",

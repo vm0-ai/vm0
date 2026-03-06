@@ -124,6 +124,10 @@ MONDAY_OAUTH_CLIENT_ID=op://Development/vm0-env-local/MONDAY_OAUTH_CLIENT_ID
 MONDAY_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/MONDAY_OAUTH_CLIENT_SECRET
 MONDAY_OAUTH_APP_ID=op://Development/vm0-env-local/MONDAY_OAUTH_APP_ID
 
+# Optional: Canva OAuth Connector
+CANVA_OAUTH_CLIENT_ID=op://Development/vm0-env-local/CANVA_OAUTH_CLIENT_ID
+CANVA_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/CANVA_OAUTH_CLIENT_SECRET
+
 # Optional: Supabase OAuth Connector
 SUPABASE_OAUTH_CLIENT_ID=op://Development/vm0-env-local/SUPABASE_OAUTH_CLIENT_ID
 SUPABASE_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/SUPABASE_OAUTH_CLIENT_SECRET
