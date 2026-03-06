@@ -4,7 +4,6 @@
  * Defines all available feature switch identifiers.
  */
 export enum FeatureSwitchKey {
-  AirtableConnector = "airtableConnector",
   Dummy = "dummy",
   Pricing = "pricing",
   PlatformAgents = "platformAgents",
