@@ -181,9 +181,11 @@ export function renderRunCreated(response: {
   sandboxId?: string;
 }): void {
   if (response.status === "queued") {
-    console.log(chalk.yellow("Run queued"));
+    console.log(chalk.yellow("⚠ Run queued — concurrency limit reached"));
     console.log(`  Run ID:  ${chalk.dim(response.runId)}`);
-    console.log(chalk.dim("  Waiting for current run to complete..."));
+    console.log(
+      chalk.dim("  Will start automatically when a slot is available"),
+    );
     console.log();
   } else {
     EventRenderer.renderRunStarted({
