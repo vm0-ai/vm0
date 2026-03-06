@@ -647,6 +647,7 @@ jobs:
           VM0_ADMIN_USERS: ${{ vars.VM0_ADMIN_USERS }}
           STRAPI_URL: ${{ vars.STRAPI_URL }}
           GITHUB_APP_SLUG: ${{ vars.VM0_GITHUB_APP_SLUG }}
+          GITHUB_APP_ID: ${{ vars.VM0_GITHUB_APP_ID }}
           GITHUB_APP_CLIENT_ID: ${{ vars.VM0_GITHUB_APP_CLIENT_ID }}
           GITHUB_APP_CLIENT_SECRET: ${{ secrets.VM0_GITHUB_APP_CLIENT_SECRET }}
           GITHUB_APP_WEBHOOK_SECRET: ${{ secrets.VM0_GITHUB_APP_WEBHOOK_SECRET }}
@@ -807,6 +808,7 @@ jobs:
             VM0_ADMIN_USERS=${{ vars.VM0_ADMIN_USERS }}
             STRAPI_URL=${{ vars.STRAPI_URL }}
             GITHUB_APP_SLUG=${{ vars.VM0_GITHUB_APP_SLUG }}
+            GITHUB_APP_ID=${{ vars.VM0_GITHUB_APP_ID }}
             GITHUB_APP_CLIENT_ID=${{ vars.VM0_GITHUB_APP_CLIENT_ID }}
             GITHUB_APP_CLIENT_SECRET=${{ secrets.VM0_GITHUB_APP_CLIENT_SECRET }}
             GITHUB_APP_WEBHOOK_SECRET=${{ secrets.VM0_GITHUB_APP_WEBHOOK_SECRET }}
