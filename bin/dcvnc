@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+
+set -eu
+
+if [ $# -eq 0 ]; then
+    echo "Usage: dcvnc <vm_name>"
+    echo "Example: dcvnc vm01"
+    exit 1
+fi
+
+vm_name="$1"
+
+# Find the container and extract the host port mapped to container port 6080
+port=$(docker ps | grep "vsc-${vm_name}" | ggrep -oP '0\.0\.0\.0:\K[0-9]+(?=->6080)' | head -n1)
+
+if [ -z "$port" ]; then
+    echo "Error: Container for '${vm_name}' not found or no port 6080 mapping"
+    echo "Available containers:"
+    docker ps --format "table {{.Names}}\t{{.Ports}}" | grep vsc- || echo "No devcontainers running"
+    exit 1
+fi
+
+url="http://127.0.0.1:${port}/vnc.html"
+echo "Opening noVNC: ${url}"
+open "${url}"
