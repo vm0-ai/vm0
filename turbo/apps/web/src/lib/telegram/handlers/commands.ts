@@ -9,6 +9,7 @@ import { escapeHtml } from "../format";
 import { getPlatformUrl } from "../../url";
 import { getUserEmail } from "../../auth/get-user-email";
 import { removePermission } from "../../agent/permission-service";
+import { signConnectParams } from "../connect-token";
 import { logger } from "../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -65,7 +66,9 @@ export async function handleConnectCommand(
   }
 
   const platformUrl = getPlatformUrl();
-  const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}`;
+  const ts = Math.floor(Date.now() / 1000);
+  const sig = signConnectParams(installationId, fromUserId, ts, botToken);
+  const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}&tgUser=${fromUserId}&ts=${ts}&sig=${sig}`;
   await sendMessage(
     client,
     chatId,
@@ -180,7 +183,9 @@ export async function handleSettingsCommand(
 
   if (!userLink) {
     const platformUrl = getPlatformUrl();
-    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}`;
+    const ts = Math.floor(Date.now() / 1000);
+    const sig = signConnectParams(installationId, fromUserId, ts, botToken);
+    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}&tgUser=${fromUserId}&ts=${ts}&sig=${sig}`;
     await sendMessage(
       client,
       chatId,

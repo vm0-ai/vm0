@@ -66,7 +66,7 @@ function telegramDeleteMessage() {
 function createCallbackRequest(
   body: {
     runId: string;
-    status: "completed" | "failed";
+    status: "completed" | "failed" | "progress";
     result?: Record<string, unknown>;
     error?: string;
     payload: TelegramCallbackPayload;
@@ -271,6 +271,31 @@ describe("POST /api/internal/callbacks/telegram", () => {
       expect(data.success).toBe(true);
 
       expect(sendMessageHandler.mocked).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("Progress Callback", () => {
+    it("should refresh typing indicator and return early without sending a message", async () => {
+      const { runId, payload, secret } = await setupTelegramCallback();
+
+      const chatActionHandler = telegramSendChatAction();
+      const sendMessageHandler = telegramSendMessage();
+      server.use(chatActionHandler.handler, sendMessageHandler.handler);
+
+      const request = createCallbackRequest(
+        { runId, status: "progress", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      // Should refresh typing indicator
+      expect(chatActionHandler.mocked).toHaveBeenCalledTimes(1);
+      // Should NOT send a message (no error, no completion text)
+      expect(sendMessageHandler.mocked).not.toHaveBeenCalled();
     });
   });
 
