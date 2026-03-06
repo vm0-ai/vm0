@@ -18,28 +18,28 @@ type JobScope = "all" | "personal" | "team";
 export const ZERO_TEAM_JOBS: JobItem[] = [
   {
     id: "1",
-    agentName: "Ada Lovelace",
+    agentName: "Minion 1",
     title: "Daily Digest",
     description: "Get a daily summary of your team's important updates.",
     scope: "team",
   },
   {
     id: "2",
-    agentName: "Alan Turing",
+    agentName: "Minion 2",
     title: "GitHub Issue Triage",
     description: "Automatically categorize and prioritize new GitHub issues.",
     scope: "personal",
   },
   {
     id: "3",
-    agentName: "Grace Hopper",
+    agentName: "Minion 3",
     title: "Weekly Report",
     description: "Receive a weekly summary of your team's achievements.",
     scope: "team",
   },
   {
     id: "4",
-    agentName: "Margaret Hamilton",
+    agentName: "Minion 4",
     title: "Customer Feedback Digest",
     description: "Compile and analyze customer feedback from multiple sources.",
     scope: "personal",
@@ -72,10 +72,11 @@ export function ZeroJobsPage() {
         <div className="mx-auto max-w-[900px]">
           <div>
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              Team agents
+              Zero&apos;s sub agents
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Sub-agents running tailored needs under Zero.
+              Sub-agents created by Zero to run tailored workflows for you and
+              your team.
             </p>
           </div>
 
@@ -84,7 +85,7 @@ export function ZeroJobsPage() {
             onValueChange={(v) => setFilter(v as JobScope)}
             className="mt-4 w-full"
           >
-            <TabsList className="h-9 w-full sm:w-auto gap-1 bg-muted/60 px-1 py-1">
+            <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1">
               <TabsTrigger
                 value="all"
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
@@ -96,14 +97,14 @@ export function ZeroJobsPage() {
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
               >
                 <IconUser size={14} stroke={1.5} />
-                Personal
+                For you
               </TabsTrigger>
               <TabsTrigger
                 value="team"
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
               >
                 <IconUsers size={14} stroke={1.5} />
-                Team
+                For team
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -117,7 +118,7 @@ export function ZeroJobsPage() {
               key={job.id}
               role="button"
               tabIndex={0}
-              className="rounded-2xl border border-border/70 bg-card shadow-[0_1px_3px_rgba(0,0,0,0.04)] cursor-pointer hover:border-border transition-colors"
+              className="zero-card cursor-pointer hover:border-border transition-colors"
               onClick={() => setSelectedJobId(job.id)}
               onKeyDown={(e) => e.key === "Enter" && setSelectedJobId(job.id)}
             >
@@ -132,7 +133,7 @@ export function ZeroJobsPage() {
                       <h2 className="text-sm font-semibold tracking-tight text-foreground">
                         {job.title}
                       </h2>
-                      <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-1.5 py-0.5 text-xs font-medium text-secondary-foreground">
+                      <span className="zero-pill inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-xs font-medium">
                         {job.scope === "team" ? (
                           <IconUsers
                             size={12}

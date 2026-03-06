@@ -23,6 +23,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  cn,
 } from "@vm0/ui";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "../settings-page/connector-icons";
@@ -67,7 +68,7 @@ interface ZeroJobDetailPageProps {
 }
 
 export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
-  const [activeTab, setActiveTab] = useState("schedule");
+  const [activeTab, setActiveTab] = useState("settings");
   const [settingsName, setSettingsName] = useState(job.title);
   const [settingsDescription, setSettingsDescription] = useState(
     job.description,
@@ -131,7 +132,7 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
             <Button
               variant="outline"
               size="sm"
-              className="h-9 shrink-0 gap-2 rounded-lg px-4"
+              className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
             >
               <IconSparkles size={14} stroke={1.5} />
               Just ask
@@ -143,14 +144,7 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
             onValueChange={setActiveTab}
             className="mt-4 w-full"
           >
-            <TabsList className="h-9 w-full sm:w-auto gap-1 bg-muted/60 px-1 py-1">
-              <TabsTrigger
-                value="schedule"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                <IconCalendar size={14} stroke={1.5} />
-                Schedule
-              </TabsTrigger>
+            <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1">
               <TabsTrigger
                 value="settings"
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
@@ -164,6 +158,13 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
               >
                 <IconFileText size={14} stroke={1.5} />
                 Instructions
+              </TabsTrigger>
+              <TabsTrigger
+                value="schedule"
+                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+              >
+                <IconCalendar size={14} stroke={1.5} />
+                Schedule
               </TabsTrigger>
               <TabsTrigger
                 value="connectors"
@@ -180,7 +181,7 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-4 pb-8">
         <div className="mx-auto max-w-[900px]">
           {activeTab === "instructions" && (
-            <Card className="rounded-2xl border border-border bg-gradient-to-br from-stone-100/95 via-stone-50 to-stone-100/90 shadow-[0_1px_3px_rgba(0,0,0,0.06)] dark:from-stone-800/95 dark:via-stone-800/90 dark:to-stone-900/95 dark:border-border/80">
+            <Card className="zero-card-white">
               <CardContent className="px-7 py-7">
                 <div className="flex flex-col sm:flex-row gap-6 sm:gap-8 sm:items-end">
                   <div className="space-y-5 text-sm text-foreground leading-relaxed flex-1 min-w-0">
@@ -231,7 +232,7 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
                       src="/instructions-illustration.png"
                       alt=""
                       role="presentation"
-                      className="h-48 w-auto max-w-[220px] rounded-xl object-cover"
+                      className="h-48 w-auto max-w-[220px] rounded-xl object-contain"
                     />
                   </div>
                 </div>
@@ -252,7 +253,7 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
           )}
 
           {activeTab === "settings" && (
-            <Card className="rounded-2xl border border-border/70 bg-card shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            <Card className="zero-card">
               <CardContent className="px-7 py-7 flex flex-col gap-6">
                 <div className="flex flex-col gap-2">
                   <label
@@ -295,7 +296,7 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
                           key={skill}
                           className="flex min-w-[120px] max-w-[220px] flex-1 basis-[120px]"
                         >
-                          <span className="flex w-full min-w-0 items-center gap-2 rounded-2xl border border-border/80 bg-muted/50 px-3 py-2.5 text-sm text-foreground transition-colors duration-200 hover:bg-muted hover:border-border">
+                          <span className="zero-chip flex w-full min-w-0 items-center gap-2 rounded-2xl border px-3 py-2.5 text-sm text-foreground transition-colors duration-200">
                             {connectorType ? (
                               <ConnectorIcon type={connectorType} size={16} />
                             ) : (
@@ -331,7 +332,7 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
                             }
                           }}
                         >
-                          <SelectTrigger className="h-10 min-w-[120px] gap-2 rounded-2xl border border-border/80 bg-muted/50 px-3 py-2.5 text-sm text-foreground hover:bg-muted hover:border-border transition-colors duration-200">
+                          <SelectTrigger className="zero-chip h-10 min-w-[120px] gap-2 rounded-2xl border px-3 py-2.5 text-sm text-foreground transition-colors duration-200">
                             <IconPlus size={14} stroke={2} />
                             <SelectValue placeholder="Add skill" />
                           </SelectTrigger>
@@ -376,7 +377,7 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
                   const connected = connectedConnectors.includes(type);
                   return (
                     <li key={type}>
-                      <Card className="rounded-xl border border-border/70 bg-card">
+                      <Card className="zero-card">
                         <CardContent className="flex items-center gap-4 px-4 py-3">
                           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted overflow-hidden">
                             <ConnectorIcon type={type} size={24} />
@@ -392,7 +393,10 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
                           <Button
                             size="sm"
                             variant={connected ? "secondary" : "outline"}
-                            className="h-8 shrink-0 rounded-lg px-3"
+                            className={cn(
+                              "h-8 shrink-0 rounded-lg px-3",
+                              !connected && "zero-btn-morandi border",
+                            )}
                             onClick={() => toggleConnector(type)}
                           >
                             {connected ? "Connected" : "Connect"}
@@ -410,7 +414,7 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
             activeTab !== "settings" &&
             activeTab !== "connectors" &&
             activeTab !== "schedule" && (
-              <Card className="rounded-2xl border border-border/70 bg-card shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <Card className="zero-card">
                 <CardContent className="px-7 py-7">
                   <p className="text-sm text-muted-foreground">
                     {activeTab} — coming soon

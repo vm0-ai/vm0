@@ -70,15 +70,6 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "warning", label: "Warning" },
 ];
 
-function rowAccentClass(status: ActivityStatus): string {
-  const map = {
-    success: "border-l-emerald-400 dark:border-l-emerald-500",
-    error: "border-l-rose-400 dark:border-l-rose-500",
-    warning: "border-l-amber-400 dark:border-l-amber-500",
-  };
-  return map[status];
-}
-
 function toLogStatus(status: ActivityStatus): LogStatus {
   const map: Record<ActivityStatus, LogStatus> = {
     success: "completed",
@@ -110,10 +101,7 @@ function ActivityRow({
           onSelect(item);
         }
       }}
-      className={cn(
-        "border-l-2 pl-5 py-3 rounded-r-sm transition-colors hover:bg-muted/20 cursor-pointer",
-        rowAccentClass(item.status),
-      )}
+      className="py-3 rounded-r-sm transition-colors hover:bg-muted/20 cursor-pointer"
     >
       <div className={cn(ROW_GRID)}>
         <div className="text-left text-sm text-muted-foreground tabular-nums">
@@ -126,7 +114,7 @@ function ActivityRow({
           {typeLabel}
         </div>
         <div className="text-left">
-          <StatusBadge status={toLogStatus(item.status)} />
+          <StatusBadge status={toLogStatus(item.status)} zeroStyle />
         </div>
         <div className="text-left text-sm text-muted-foreground tabular-nums">
           {item.duration ? (
@@ -204,7 +192,7 @@ export function ZeroActivityPage() {
                 placeholder="Search logs..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 h-9 rounded-lg bg-muted/40 border-border/70"
+                className="zero-search-input pl-9 h-9 rounded-lg border"
               />
             </div>
             <div className="flex items-center gap-3">
@@ -250,11 +238,11 @@ export function ZeroActivityPage() {
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-2 pb-8">
         <div className="mx-auto max-w-[900px]">
           {filtered.length > 0 && (
-            <div className="border-l-2 border-l-transparent pl-5">
+            <div>
               <div
                 className={cn(
                   ROW_GRID,
-                  "py-2 pb-1.5 border-b border-divider text-sm font-medium text-muted-foreground",
+                  "zero-activity-header py-2 pb-1.5 border-b text-sm font-medium text-muted-foreground",
                 )}
               >
                 <div className="text-left">Time</div>

@@ -24,13 +24,292 @@
   --color-sidebar-accent: hsl(var(--gray-100));
 }
 
-/* Zero left nav: use background token; lighter dividers so nav lines are subtle. */
+/* Landing tagline carousel: smooth vertical fade-in */
+@keyframes zero-tagline-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.zero-tagline-animate-in {
+  animation: zero-tagline-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Zero app: all grays cool-toned (blue-gray hue 215–220), direct overrides so they always win */
+.zero-app {
+  --gray-0: 215 28% 99%;
+  --gray-50: 215 24% 96%;
+  --gray-100: 215 20% 93%;
+  --gray-200: 215 18% 90%;
+  --gray-300: 215 16% 87%;
+  --gray-400: 215 14% 84%;
+  --gray-500: 215 12% 78%;
+  --gray-600: 218 11% 70%;
+  --gray-700: 218 10% 54%;
+  --gray-800: 218 9% 48%;
+  --gray-900: 218 9% 37%;
+  --gray-950: 220 14% 11%;
+  /* All dividers and borders: same cool gray, light and elegant */
+  --divider: 215 8% 93%;
+  --border: 215 8% 93%;
+  /* Semantic tokens as direct cool values (no var) so they override :root */
+  --background: 215 28% 99%;
+  --card: 0 0% 100%;
+  --muted: 215 20% 93%;
+  --secondary: 215 20% 93%;
+  --sidebar: 215 24% 96%;
+  --sidebar-accent: 215 20% 93%;
+  --background-50: 215 24% 96%;
+  --muted-foreground: 218 9% 48%;
+  /* White card: single border, radius, subtle layered shadow (excludes chat bubbles) */
+  --zero-card-radius: 1rem;
+  --zero-card-border: hsl(220 5% 92%);
+  --zero-card-shadow:
+    0 1px 2px hsl(220 10% 20% / 0.04), 0 4px 12px hsl(220 10% 20% / 0.03);
+}
+
+/* Search bar / text input: cool gray background and border (not warm) */
+.zero-app .zero-search-input {
+  background-color: hsl(220 6% 97%);
+  border-color: hsl(220 5% 92%);
+}
+.zero-app .zero-search-input::placeholder {
+  color: hsl(218 9% 48%);
+}
+.zero-app .zero-search-input:focus {
+  border-color: hsl(var(--primary));
+  outline: none;
+}
+.dark .zero-app .zero-search-input,
+[data-theme="dark"] .zero-app .zero-search-input {
+  background-color: hsl(220 10% 22%);
+  border-color: hsl(220 8% 26%);
+}
+
+/* Pill/tag (e.g. "Super Manager"): cool gray, not warm */
+.zero-app .zero-pill {
+  background-color: hsl(220 6% 97%);
+  border-color: hsl(220 5% 92%);
+  color: hsl(218 9% 48%);
+}
+
+/* Zero chip-style gray (tone options, tone hint box, skill tags, Add skill): consistent cool gray */
+.zero-app .zero-chip {
+  background-color: hsl(220 6% 97%);
+  border-color: hsl(220 5% 92%);
+}
+.zero-app .zero-chip:hover {
+  background-color: hsl(220 5% 94%);
+  border-color: hsl(220 4% 90%);
+}
+.dark .zero-app .zero-chip,
+[data-theme="dark"] .zero-app .zero-chip {
+  background-color: hsl(220 10% 22%);
+  border-color: hsl(220 8% 26%);
+}
+.dark .zero-app .zero-chip:hover,
+[data-theme="dark"] .zero-app .zero-chip:hover {
+  background-color: hsl(220 10% 26%);
+  border-color: hsl(220 8% 30%);
+}
+
+/* Zero tabs (e.g. All agents / For you / For team): color only — neutral gray track, white active, inactive transparent */
+.zero-app .zero-tabs {
+  background-color: hsl(220 6% 93%);
+}
+.zero-app .zero-tabs [role="tab"] {
+  background-color: transparent;
+  color: hsl(218 9% 48%);
+}
+.zero-app .zero-tabs [role="tab"]:hover {
+  color: hsl(218 9% 25%);
+}
+.zero-app .zero-tabs [role="tab"].bg-background {
+  background-color: hsl(0 0% 100%);
+  color: hsl(218 9% 25%);
+}
+.dark .zero-app .zero-tabs,
+[data-theme="dark"] .zero-app .zero-tabs {
+  background-color: hsl(220 10% 20%);
+}
+.dark .zero-app .zero-tabs [role="tab"] {
+  color: hsl(220 14% 70%);
+}
+.dark .zero-app .zero-tabs [role="tab"]:hover {
+  color: hsl(220 14% 93%);
+}
+.dark .zero-app .zero-tabs [role="tab"].bg-background,
+[data-theme="dark"] .zero-app .zero-tabs [role="tab"].bg-background {
+  background-color: hsl(220 12% 14%);
+  color: hsl(220 14% 93%);
+}
+
+/* View toggle (list/gallery): track like zero-tabs, selected segment like white card */
+.zero-app .zero-view-toggle {
+  background-color: hsl(220 6% 93%);
+  border: 1px solid hsl(220 5% 92%);
+}
+.zero-app .zero-view-toggle .zero-view-toggle-selected {
+  background-color: hsl(0 0% 100%);
+  box-shadow: var(--zero-card-shadow);
+}
+.dark .zero-app .zero-view-toggle,
+[data-theme="dark"] .zero-app .zero-view-toggle {
+  background-color: hsl(220 10% 20%);
+  border-color: hsl(220 8% 26%);
+}
+.dark .zero-app .zero-view-toggle .zero-view-toggle-selected,
+[data-theme="dark"] .zero-app .zero-view-toggle .zero-view-toggle-selected {
+  background-color: hsl(220 12% 14%);
+}
+
+/* Zero left nav: same cool gray for sidebar border (slightly lighter for subtlety). */
 .zero-nav {
   --color-sidebar: hsl(var(--background));
   --color-sidebar-accent: hsl(var(--muted));
   --color-sidebar-active: hsl(var(--primary-100));
-  --color-sidebar-border: hsl(35 10% 91%);
-  --color-divider: hsl(35 10% 91%);
+  --color-sidebar-border: hsl(215 8% 94%);
+  --color-divider: hsl(215 8% 93%);
+}
+
+/* Morandi outline buttons (very light border, elegant) */
+.zero-app .zero-btn-morandi {
+  background-color: hsl(220 6% 97%);
+  border-color: hsl(220 5% 92%);
+  color: hsl(220 6% 22%);
+}
+.zero-app .zero-btn-morandi:hover {
+  background-color: hsl(220 5% 94%);
+  border-color: hsl(220 4% 90%);
+}
+
+/* Morandi cards (e.g. suggested prompts — same border, radius, shadow as .zero-card) */
+.zero-app .zero-card-morandi {
+  background-color: hsl(0 0% 100%);
+  border: 1px solid var(--zero-card-border);
+  border-radius: var(--zero-card-radius);
+  box-shadow: var(--zero-card-shadow);
+}
+.zero-app .zero-card-morandi:hover {
+  background-color: hsl(220 6% 97%);
+  border-color: hsl(220 4% 90%);
+}
+
+/* White card: shared border, radius, shadow (all white cards except chat bubbles) */
+.zero-app .zero-card {
+  background-color: hsl(0 0% 100%);
+  border: 1px solid var(--zero-card-border);
+  border-radius: var(--zero-card-radius);
+  box-shadow: var(--zero-card-shadow);
+}
+.dark .zero-app .zero-card,
+[data-theme="dark"] .zero-app .zero-card {
+  background-color: hsl(220 12% 12%);
+  border-color: hsl(220 8% 22%);
+}
+
+/* Same as .zero-card but less rounded (more rectangular), e.g. account dropdown / profile card */
+.zero-app .zero-card-rectangle {
+  background-color: hsl(0 0% 100%);
+  border: 1px solid var(--zero-card-border);
+  border-radius: 0.5rem;
+  box-shadow: var(--zero-card-shadow);
+}
+.dark .zero-app .zero-card-rectangle,
+[data-theme="dark"] .zero-app .zero-card-rectangle {
+  background-color: hsl(220 12% 12%);
+  border-color: hsl(220 8% 22%);
+}
+
+/* Instructions/content card: uses .zero-card style */
+.zero-app .zero-card-white {
+  background-color: hsl(0 0% 100%);
+  border: 1px solid var(--zero-card-border);
+  border-radius: var(--zero-card-radius);
+  box-shadow: var(--zero-card-shadow);
+}
+.dark .zero-app .zero-card-white,
+[data-theme="dark"] .zero-app .zero-card-white {
+  background-color: hsl(220 12% 12%);
+  border-color: hsl(220 8% 22%);
+}
+
+/* Instructions/feature cards: cool gray gradient (replaces stone) */
+.zero-app .zero-card-cool {
+  background: linear-gradient(
+    to bottom right,
+    hsl(215 22% 96% / 0.98),
+    hsl(215 24% 97%),
+    hsl(215 22% 96% / 0.95)
+  );
+  border-color: hsl(215 8% 93%);
+  box-shadow: 0 1px 3px hsl(215 10% 92% / 0.06);
+}
+.dark .zero-app .zero-card-cool,
+[data-theme="dark"] .zero-app .zero-card-cool {
+  background: linear-gradient(
+    to bottom right,
+    hsl(220 12% 14% / 0.98),
+    hsl(220 12% 12%),
+    hsl(220 12% 11% / 0.95)
+  );
+  border-color: hsl(220 10% 22%);
+}
+
+/* Message bubble (e.g. Meet Zero tone samples): cool gray */
+.zero-app .zero-bubble-cool {
+  background-color: hsl(215 18% 92% / 0.95);
+  color: hsl(218 9% 25%);
+}
+.dark .zero-app .zero-bubble-cool,
+[data-theme="dark"] .zero-app .zero-bubble-cool {
+  background-color: hsl(218 11% 28% / 0.95);
+  color: hsl(220 14% 93%);
+}
+
+/* Chat: user message bubble (cool gray, same as Morandi) */
+.zero-app .zero-chat-bubble-user {
+  background-color: hsl(220 6% 94%);
+  color: hsl(220 6% 18%);
+}
+
+/* Chat: assistant (Zero) message bubble — white */
+.zero-app .zero-chat-bubble-assistant {
+  background-color: hsl(0 0% 100%);
+  border-color: hsl(220 5% 92%);
+}
+.dark .zero-app .zero-chat-bubble-assistant,
+[data-theme="dark"] .zero-app .zero-chat-bubble-assistant {
+  background-color: hsl(220 12% 12%);
+  border-color: hsl(220 8% 22%);
+}
+
+/* Composer / input card (white, light border — “Just ask” / chat input) */
+.zero-app .zero-composer {
+  background-color: hsl(0 0% 100%);
+  border: 1px solid var(--zero-card-border);
+  border-radius: var(--zero-card-radius);
+  box-shadow: var(--zero-card-shadow);
+}
+.dark .zero-app .zero-composer,
+[data-theme="dark"] .zero-app .zero-composer {
+  background-color: hsl(220 12% 12%);
+  border-color: hsl(220 8% 22%);
+}
+
+/* Chat: outline buttons inside dialogue (Morandi, light border) */
+.zero-app .zero-chat-btn {
+  background-color: hsl(220 6% 97%);
+  border-color: hsl(220 5% 92%);
+  color: hsl(220 6% 22%);
+}
+.zero-app .zero-chat-btn:hover {
+  background-color: hsl(220 5% 94%);
+  border-color: hsl(220 4% 90%);
 }
 
 /* Lighter icons and "Recent dialogue" label; other styles unchanged */
@@ -258,8 +537,50 @@ details[open] > summary > span:first-child {
 /* Zero workspace: soft texture + gentle gradient — documents, records, thinking, meeting notes.
    Grid is on ::before with z-index: -1; container has z-index: 0 so the texture stays behind content only. */
 /* Document card body: serif for reading */
-.zero-doc-card-content {
+/* Document card (gallery): same border, radius, shadow as .zero-card so it matches other white cards */
+.zero-app .zero-doc-card {
+  border: 1px solid var(--zero-card-border);
+  border-radius: var(--zero-card-radius);
+  box-shadow: var(--zero-card-shadow);
+  background-color: hsl(0 0% 100%);
+}
+.dark .zero-app .zero-doc-card,
+[data-theme="dark"] .zero-app .zero-doc-card {
+  background-color: hsl(220 12% 12%);
+  border-color: hsl(220 8% 22%);
+}
+
+.zero-app .zero-doc-card-content {
   font-family: Georgia, "Times New Roman", "SimSun", serif;
+  background-color: hsl(220 6% 98%);
+  border-top-color: hsl(220 5% 92%);
+}
+.dark .zero-app .zero-doc-card-content,
+[data-theme="dark"] .zero-app .zero-doc-card-content {
+  background-color: hsl(220 10% 18%);
+  border-top-color: hsl(220 8% 22%);
+}
+
+/* Fade text to 30% opacity at bottom edge (no grey gradient overlay) */
+/* Only the last ~2 lines fade to 30% opacity */
+/* Activity table header divider: cold gray (matches --divider) */
+.zero-app .zero-activity-header {
+  border-bottom-color: hsl(215 8% 93%);
+}
+
+.zero-app .zero-doc-card-fade {
+  mask-image: linear-gradient(
+    to bottom,
+    black 0%,
+    black 88%,
+    rgba(0, 0, 0, 0.3) 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black 0%,
+    black 88%,
+    rgba(0, 0, 0, 0.3) 100%
+  );
 }
 
 .zero-workspace-bg {
@@ -308,7 +629,7 @@ details[open] > summary > span:first-child {
   }
 
   .zero-nav {
-    --color-sidebar-border: hsl(35 8% 22%);
-    --color-divider: hsl(35 8% 22%);
+    --color-sidebar-border: hsl(220 8% 26%);
+    --color-divider: hsl(220 10% 28%);
   }
 }
