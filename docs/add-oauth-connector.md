@@ -1,3 +1,69 @@
+## Connector Status Check
+
+Before starting work on an OAuth connector, run these checks to determine which stage it is at. The stages correspond to the [OAuth Providers board on Notion](https://www.notion.so/3170e96f013480ca98b3ffe66f4a4feb?v=3170e96f013480ceb2ab000c69423785).
+
+### Quick Diagnosis
+
+Run all checks for a given `<PROVIDER>` (e.g., `hubspot`, `todoist`, `gmail`). Use the **uppercase** env-var prefix (e.g., `HUBSPOT`, `TODOIST`, `GOOGLE`) where indicated.
+
+| # | Check | Command / Location | What it tells you |
+|---|-------|--------------------|-------------------|
+| 1 | **Connector code exists** | `ls turbo/apps/web/src/lib/connector/providers/<provider>*.ts` | Whether implementation has started |
+| 2 | **CONNECTOR_TYPES entry** | `grep '<provider>' turbo/packages/core/src/contracts/connectors.ts` | Whether the connector is registered |
+| 3 | **Feature switch exists** | `grep '<provider>' turbo/packages/core/src/feature-switch.ts` | Whether the connector is behind a feature flag |
+| 4 | **Feature switch enabled** | Check `enabled: true/false` in `FEATURE_SWITCHES[FeatureSwitchKey.<Provider>Connector]` in `turbo/packages/core/src/feature-switch.ts` | `false` = still gated (dev/testing); removed from `CONNECTOR_FEATURE_FLAGS` or `true` = public |
+| 5 | **`.env.tpl` entry** | `grep '<PREFIX>_OAUTH' turbo/apps/web/.env.local.tpl` | Whether 1Password references are set up |
+| 6 | **GitHub vars/secrets** | `gh variable list \| grep <PREFIX>_OAUTH` and `gh secret list \| grep <PREFIX>_OAUTH` | Whether CI/CD credentials are synced |
+| 7 | **Workflow env vars** | `grep '<PREFIX>_OAUTH' .github/workflows/turbo.yml .github/workflows/release-please.yml` | Whether deploy pipelines pass the credentials |
+| 8 | **Skill exists** | Check `vm0-ai/vm0-skills` repo for a `<provider>` skill directory | Whether a skill has been authored |
+| 9 | **Production app registered** | Check `/tmp/oauth-credentials/<PROVIDER>` for `_PROD` fields, or `gh variable list \| grep <PREFIX>_OAUTH_CLIENT_ID_PROD` | Whether the production OAuth app exists |
+
+### Stage Mapping
+
+Based on the checks above, determine the current stage:
+
+| Stage | Notion Status | Signals |
+|-------|---------------|---------|
+| **Not started** | — | No connector code, no feature switch, no env vars |
+| **Dev App Registration** | Dev App Registration | `/tmp/oauth-credentials/<PROVIDER>` may exist with non-`_PROD` fields; no connector code yet |
+| **Development & Testing** | Development & Testing | Connector code exists (checks 1–2 pass); feature switch exists and `enabled: false` (check 3–4); `.env.tpl` and workflow entries present (checks 5, 7); GitHub vars/secrets synced (check 6) |
+| **Skill Testing** | Skill Testing | All of the above, plus a skill exists in `vm0-ai/vm0-skills` (check 8); `vm0 cook` has been run to validate |
+| **Prod App Registration** | Prod App Registration | Skill tests pass; production OAuth app registration in progress (check 9 partially done) |
+| **Done** | Done | All checks pass; feature switch removed or set to `enabled: true`; production credentials synced; PR merged |
+
+### Example
+
+```bash
+# Quick status check for "hubspot"
+PROVIDER=hubspot
+PREFIX=HUBSPOT
+
+# 1–2: Code & registration
+ls turbo/apps/web/src/lib/connector/providers/${PROVIDER}*.ts 2>/dev/null && echo "✓ Code exists" || echo "✗ No code"
+grep -q "\"${PROVIDER}\"" turbo/packages/core/src/contracts/connectors.ts && echo "✓ CONNECTOR_TYPES entry" || echo "✗ Not in CONNECTOR_TYPES"
+
+# 3–4: Feature switch
+grep -q "${PROVIDER}" turbo/packages/core/src/feature-switch.ts && echo "✓ Feature switch exists (check enabled state manually)" || echo "✗ No feature switch"
+
+# 5: .env.tpl
+grep -q "${PREFIX}_OAUTH" turbo/apps/web/.env.local.tpl && echo "✓ .env.tpl entry" || echo "✗ Not in .env.tpl"
+
+# 6: GitHub vars/secrets
+gh variable list 2>/dev/null | grep -q "${PREFIX}_OAUTH" && echo "✓ GitHub vars set" || echo "✗ No GitHub vars"
+gh secret list 2>/dev/null | grep -q "${PREFIX}_OAUTH" && echo "✓ GitHub secrets set" || echo "✗ No GitHub secrets"
+
+# 7: Workflow env vars
+grep -q "${PREFIX}_OAUTH" .github/workflows/turbo.yml && echo "✓ turbo.yml" || echo "✗ Not in turbo.yml"
+grep -q "${PREFIX}_OAUTH" .github/workflows/release-please.yml && echo "✓ release-please.yml" || echo "✗ Not in release-please.yml"
+
+# 8: Skill (check vm0-ai/vm0-skills repo manually or via gh)
+
+# 9: Production app
+test -f "/tmp/oauth-credentials/${PROVIDER}" && grep -q "_PROD" "/tmp/oauth-credentials/${PROVIDER}" && echo "✓ Prod credentials file" || echo "✗ No prod credentials"
+```
+
+---
+
 ## OAuth App Registration
 
 Before writing any code, register the OAuth application with the provider. The client ID and client secret generated during registration are required for implementation.
