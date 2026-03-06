@@ -83,14 +83,17 @@ After both apps are registered and the credentials file is populated:
    ```
 
    **Start the VNC stack (idempotent — safe to run multiple times):**
+
+   **Important:** Each process must be wrapped in subshell `()` to avoid `||` and `&` operator precedence issues that can silently prevent later processes (especially websockify) from launching. Also, websockify must bind to `0.0.0.0:6080` (not just `6080`) so it's accessible from the host.
+
    ```bash
-   pgrep -x Xvfb > /dev/null || Xvfb :99 -screen 0 1344x840x24 > /dev/null 2>&1 &
+   pgrep -x Xvfb > /dev/null || (Xvfb :99 -screen 0 1344x840x24 > /dev/null 2>&1 &)
    sleep 1
-   pgrep -x openbox > /dev/null || DISPLAY=:99 openbox > /dev/null 2>&1 &
+   pgrep -x openbox > /dev/null || (DISPLAY=:99 openbox > /dev/null 2>&1 &)
    sleep 1
-   pgrep -x x11vnc > /dev/null || x11vnc -display :99 -nopw -forever -shared -rfbport 5900 > /dev/null 2>&1 &
+   pgrep -x x11vnc > /dev/null || (x11vnc -display :99 -nopw -forever -shared -rfbport 5900 > /dev/null 2>&1 &)
    sleep 1
-   pgrep -f websockify > /dev/null || websockify --web /usr/share/novnc/ 6080 localhost:5900 > /dev/null 2>&1 &
+   pgrep -f websockify > /dev/null || (websockify --web /usr/share/novnc/ 0.0.0.0:6080 localhost:5900 > /dev/null 2>&1 &)
    sleep 1
    ```
 
@@ -302,12 +305,32 @@ After fixes:
 
 Repeat Steps 2–4 until all examples pass.
 
-### Step 5: Clean up [AI]
+### Step 5: Check production OAuth app requirements [AI]
 
-```bash
-cd .. && rm -rf test-<connector-name>-connector
-```
+Before shipping, search the web to determine whether the provider's production OAuth app requires a publishing/review/approval process before external users can authorize it. Common patterns:
+
+| Pattern | Examples | Action |
+|---------|----------|--------|
+| **No review needed** — fill in support info (email, privacy policy, ToS) and the app is live | Airtable, Linear | Fill in the fields in the provider's developer portal and proceed to ship. |
+| **Review required** — the provider must approve the app before external users can use it | Google (OAuth consent screen verification), Slack (App Directory review), Notion (public integration review) | The connector stays behind the feature switch. Move the provider's Notion page to the "App 申请" column and update it with the submission instructions (see below). Hand off to ops. |
+| **No restrictions** — any registered OAuth app works for all users immediately | GitHub, Reddit | Proceed to ship directly. |
+
+**If review is required:**
+
+1. Open the project tracker in Notion: `https://www.notion.so/3170e96f013480ca98b3ffe66f4a4feb`
+2. Find the page for this connector/provider.
+3. Move it to the **App 申请** (App Review) column.
+4. Update the page content with:
+   - The provider's review/submission URL and process
+   - What information is needed (app description, screenshots, privacy policy, etc.)
+   - Current status of the production app (app ID, redirect URIs configured, scopes requested)
+   - Any special notes (e.g., "requires business verification", "takes 2-4 weeks")
+5. The feature switch stays **disabled** until the review is approved. Once ops confirms approval, remove the feature switch to make the connector public.
 
 ### Step 6: Ship [AI]
 
-If everything works, the connector is ready to be merged. Remove the feature switch to make the connector public.
+If no review is required (or after review approval):
+
+1. Remove the feature switch to make the connector public.
+2. Clean up the test directory: `cd .. && rm -rf test-<connector-name>-connector`
+3. Commit, push, and ensure CI passes.

@@ -41,6 +41,44 @@ export interface ConnectorOAuthConfig {
  * - Other values are passed through as literals
  */
 export const CONNECTOR_TYPES = {
+  airtable: {
+    label: "Airtable",
+    helpText:
+      "Connect your Airtable account to access bases, tables, and records",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Airtable to grant access.",
+        secrets: {
+          AIRTABLE_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          AIRTABLE_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://airtable.com/oauth2/v1/authorize",
+      tokenUrl: "https://airtable.com/oauth2/v1/token",
+      scopes: [
+        "data.records:read",
+        "data.records:write",
+        "data.recordComments:read",
+        "data.recordComments:write",
+        "schema.bases:read",
+        "schema.bases:write",
+        "user.email:read",
+      ],
+    } as ConnectorOAuthConfig,
+  },
   github: {
     label: "GitHub",
     helpText:
@@ -252,6 +290,49 @@ export const CONNECTOR_TYPES = {
       scopes: [
         "https://www.googleapis.com/auth/calendar",
         "https://www.googleapis.com/auth/userinfo.email",
+      ],
+    } as ConnectorOAuthConfig,
+  },
+  hubspot: {
+    label: "HubSpot",
+    helpText:
+      "Connect your HubSpot account to manage contacts, companies, deals, and tickets",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with HubSpot to grant access.",
+        secrets: {
+          HUBSPOT_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          HUBSPOT_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      HUBSPOT_TOKEN: "$secrets.HUBSPOT_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://app.hubspot.com/oauth/authorize",
+      tokenUrl: "https://api.hubapi.com/oauth/v1/token",
+      scopes: [
+        "crm.objects.contacts.read",
+        "crm.objects.contacts.write",
+        "crm.objects.companies.read",
+        "crm.objects.companies.write",
+        "crm.objects.deals.read",
+        "crm.objects.deals.write",
+        "tickets",
+        "crm.objects.line_items.read",
+        "crm.objects.quotes.read",
+        "crm.lists.read",
+        "crm.schemas.contacts.read",
+        "settings.users.read",
       ],
     } as ConnectorOAuthConfig,
   },
@@ -909,15 +990,43 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  todoist: {
+    label: "Todoist",
+    helpText:
+      "Connect your Todoist account to manage tasks, projects, labels, and comments",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Todoist to grant access.",
+        secrets: {
+          TODOIST_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      TODOIST_TOKEN: "$secrets.TODOIST_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://todoist.com/oauth/authorize",
+      tokenUrl: "https://todoist.com/oauth/access_token",
+      scopes: ["data:read_write", "data:delete", "project:delete"],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
 
 export const connectorTypeSchema = z.enum([
+  "airtable",
   "canva",
   "github",
   "gmail",
   "google-sheets",
+  "hubspot",
   "google-docs",
   "google-drive",
   "google-calendar",
@@ -940,6 +1049,7 @@ export const connectorTypeSchema = z.enum([
   "intervals-icu",
   "xero",
   "monday",
+  "todoist",
 ]);
 
 /**

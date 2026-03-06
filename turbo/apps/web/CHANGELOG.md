@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.81.0](https://github.com/vm0-ai/vm0/compare/web-v12.80.1...web-v12.81.0) (2026-03-06)
+
+
+### Features
+
+* add airtable oauth connector with pkce support ([#3833](https://github.com/vm0-ai/vm0/issues/3833)) ([2e64f13](https://github.com/vm0-ai/vm0/commit/2e64f1363058e9d258073c140f9a669047321438))
+
+
+### Bug Fixes
+
+* allow github app reinstall on different organization ([#3832](https://github.com/vm0-ai/vm0/issues/3832)) ([ee56499](https://github.com/vm0-ai/vm0/commit/ee56499cc872a43ef4e292456bf248c2483bcc14))
+
+
+### Refactoring
+
+* **web:** extract shared auth layout from sign-in and sign-up pages ([#3827](https://github.com/vm0-ai/vm0/issues/3827)) ([d4bee10](https://github.com/vm0-ai/vm0/commit/d4bee10a55ed79357f8191cd9f419caa805c0afd)), closes [#3826](https://github.com/vm0-ai/vm0/issues/3826)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.42.0
+
 ## [12.80.1](https://github.com/vm0-ai/vm0/compare/web-v12.80.0...web-v12.80.1) (2026-03-06)
 
 
