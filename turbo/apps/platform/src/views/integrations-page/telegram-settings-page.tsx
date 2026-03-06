@@ -1,9 +1,5 @@
 import { useGet, useSet } from "ccstate-react";
-import {
-  IconAlertTriangle,
-  IconChevronDown,
-  IconCopy,
-} from "@tabler/icons-react";
+import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
 import {
   CONNECTOR_TYPES,
   getConnectorProvidedSecretNames,
@@ -373,27 +369,19 @@ export function TelegramSettingsPage() {
                     </Button>
                   </>
                 ) : (
-                  <div className="flex flex-1 flex-col gap-3">
-                    <div className="flex flex-col gap-1">
+                  <>
+                    <div className="flex flex-1 flex-col gap-1">
                       <p className="text-sm font-medium">
                         Connect your Telegram account
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        Log in with Telegram to link your account, or send{" "}
-                        <code className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-xs">
-                          /connect
-                        </code>{" "}
-                        to the bot in Telegram.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {data?.bot && <TelegramLoginButton botId={data.bot.id} />}
-                    </div>
-                    <div className="flex flex-col gap-1 border-t border-border pt-3">
-                      <p className="text-xs text-muted-foreground">
                         {
-                          "Having trouble logging in? You need to configure the bot's domain in "
+                          "Log in with Telegram to link your account. Make sure to run "
                         }
+                        <code className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-xs">
+                          /setdomain
+                        </code>
+                        {" in "}
                         <a
                           href="https://t.me/BotFather"
                           target="_blank"
@@ -402,34 +390,26 @@ export function TelegramSettingsPage() {
                         >
                           @BotFather
                         </a>
-                        {" first. Send "}
-                        <code className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-xs">
-                          /setdomain
+                        {" and set domain to "}
+                        <code
+                          className="cursor-pointer rounded border border-border bg-muted px-1 py-0.5 font-mono text-xs hover:bg-accent"
+                          onClick={() => {
+                            detach(
+                              copyToClipboard(window.location.host),
+                              Reason.DomCallback,
+                            );
+                          }}
+                          title="Click to copy"
+                        >
+                          {copyStatus === "copied"
+                            ? "Copied!"
+                            : window.location.host}
                         </code>
-                        {
-                          " to @BotFather, select your bot, then set the domain to:"
-                        }
+                        {" first."}
                       </p>
-                      <code
-                        className="inline-flex w-fit cursor-pointer items-center gap-1.5 rounded border border-border bg-muted px-2 py-1 font-mono text-xs hover:bg-accent"
-                        onClick={() => {
-                          detach(
-                            copyToClipboard(window.location.host),
-                            Reason.DomCallback,
-                          );
-                        }}
-                        title="Click to copy"
-                      >
-                        {copyStatus === "copied"
-                          ? "Copied!"
-                          : window.location.host}
-                        <IconCopy
-                          size={12}
-                          className="shrink-0 text-muted-foreground"
-                        />
-                      </code>
                     </div>
-                  </div>
+                    {data?.bot && <TelegramLoginButton botId={data.bot.id} />}
+                  </>
                 )}
               </div>
             </div>
