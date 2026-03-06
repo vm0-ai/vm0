@@ -34,6 +34,10 @@ CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3
 # Optional: LLM API (OpenRouter)
 OPENROUTER_API_KEY=op://Development/vm0-env-local/OPENROUTER_API_KEY
 
+# Optional: Airtable OAuth Connector
+AIRTABLE_OAUTH_CLIENT_ID=op://Development/vm0-env-local/AIRTABLE_OAUTH_CLIENT_ID
+AIRTABLE_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/AIRTABLE_OAUTH_CLIENT_SECRET
+
 # Optional: GitHub OAuth Connector
 GH_OAUTH_CLIENT_ID=op://Development/vm0-env-local/GH_OAUTH_CLIENT_ID
 GH_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/GH_OAUTH_CLIENT_SECRET

@@ -7,8 +7,6 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { createTestCompose } from "../../../../../src/__tests__/api-test-helpers";
-import { GET as linkGET } from "../../../../api/integrations/telegram/link/route";
-import { PENDING_TELEGRAM_USER_ID } from "../../../../../src/lib/telegram/handlers/shared";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 
@@ -131,23 +129,13 @@ describe("POST /api/telegram/register", () => {
     expect(body.botUsername).toBe(`bot_${botId}`);
     expect(body.webhookUrl).toContain("/api/telegram/webhook/");
     expect(body.id).toBeDefined();
-    expect(body.linkToken).toBeUndefined();
-
-    // Verify pending user link was created via the link API
-    const linkResponse = await linkGET(
-      new Request("http://localhost:3000/api/integrations/telegram/link"),
-    );
-    const linkData = await linkResponse.json();
-    expect(linkResponse.status).toBe(200);
-    expect(linkData.linked).toBe(true);
-    expect(linkData.telegramUserId).toBe(PENDING_TELEGRAM_USER_ID);
 
     expect(getMeHandler.mocked).toHaveBeenCalledTimes(1);
     expect(setWebhookHandler.mocked).toHaveBeenCalledTimes(1);
     expect(setCommandsHandler.mocked).toHaveBeenCalledTimes(1);
   });
 
-  it("creates user link when bot is already registered", async () => {
+  it("returns 409 when bot is already registered", async () => {
     await context.setupUser();
 
     const botId = testBotId();
@@ -168,14 +156,15 @@ describe("POST /api/telegram/register", () => {
     );
     expect(first.status).toBe(201);
 
-    // Second registration with same bot creates a user link instead of 409
+    // Second registration returns conflict
     const second = await POST(
       registerRequest({ botToken: TEST_BOT_TOKEN, defaultAgentId: composeId }),
     );
     const body = await second.json();
 
-    expect(second.status).toBe(200);
-    expect(body.botUsername).toBeDefined();
+    expect(second.status).toBe(409);
+    expect(body.error.code).toBe("CONFLICT");
+    expect(body.error.message).toContain("/connect");
   });
 
   it("returns 400 when no default agent is available", async () => {

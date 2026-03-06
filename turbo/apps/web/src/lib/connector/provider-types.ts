@@ -8,18 +8,28 @@ export interface OAuthTokenResult {
   userInfo: { id: string; username: string | null; email: string | null };
 }
 
+/**
+ * Result from buildAuthUrl when PKCE is required.
+ * Providers that need PKCE return { url, codeVerifier } instead of a plain string.
+ */
+export interface AuthUrlResult {
+  url: string;
+  codeVerifier: string;
+}
+
 export interface ProviderHandler {
   buildAuthUrl(
     clientId: string,
     redirectUri: string,
     state: string,
-  ): string | Promise<string>;
+  ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
   exchangeCode(
     clientId: string,
     clientSecret: string,
     code: string,
     redirectUri: string,
     state?: string,
+    codeVerifier?: string,
   ): Promise<OAuthTokenResult>;
   getClientId(currentEnv: Env): string | undefined;
   getClientSecret(currentEnv: Env): string | undefined;

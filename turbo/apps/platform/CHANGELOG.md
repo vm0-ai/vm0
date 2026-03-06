@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.90.0](https://github.com/vm0-ai/vm0/compare/platform-v0.89.0...platform-v0.90.0) (2026-03-06)
+
+
+### Features
+
+* add airtable oauth connector with pkce support ([#3833](https://github.com/vm0-ai/vm0/issues/3833)) ([2e64f13](https://github.com/vm0-ai/vm0/commit/2e64f1363058e9d258073c140f9a669047321438))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.42.0
+
+## [0.89.0](https://github.com/vm0-ai/vm0/compare/platform-v0.88.2...platform-v0.89.0) (2026-03-06)
+
+
+### Features
+
+* **platform:** add zero app with shell, schedule, and polish ([#3825](https://github.com/vm0-ai/vm0/issues/3825)) ([456337d](https://github.com/vm0-ai/vm0/commit/456337def2a40bea8dcd2b86f3a662389c968389))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.41.0
+
 ## [0.88.2](https://github.com/vm0-ai/vm0/compare/platform-v0.88.1...platform-v0.88.2) (2026-03-06)
 
 
