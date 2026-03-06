@@ -183,6 +183,7 @@ export async function executeDockerRun(
       status: "running",
       sandboxId: sandbox.sandboxId,
       createdAt: new Date(startTime).toISOString(),
+      sandboxType: "docker",
     };
   } catch (error) {
     let errorMessage = error instanceof Error ? error.message : "Unknown error";
