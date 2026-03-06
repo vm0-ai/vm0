@@ -41,6 +41,45 @@ export interface ConnectorOAuthConfig {
  * - Other values are passed through as literals
  */
 export const CONNECTOR_TYPES = {
+  airtable: {
+    label: "Airtable",
+    helpText:
+      "Connect your Airtable account to access bases, tables, and records",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Airtable to grant access.",
+        secrets: {
+          AIRTABLE_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          AIRTABLE_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://airtable.com/oauth2/v1/authorize",
+      tokenUrl: "https://airtable.com/oauth2/v1/token",
+      scopes: [
+        "data.records:read",
+        "data.records:write",
+        "data.recordComments:read",
+        "data.recordComments:write",
+        "schema.bases:read",
+        "schema.bases:write",
+        "webhook:manage",
+        "user.email:read",
+      ],
+    } as ConnectorOAuthConfig,
+  },
   github: {
     label: "GitHub",
     helpText:
@@ -871,6 +910,7 @@ export const CONNECTOR_TYPES = {
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
 
 export const connectorTypeSchema = z.enum([
+  "airtable",
   "github",
   "gmail",
   "google-sheets",

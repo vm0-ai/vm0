@@ -639,6 +639,8 @@ jobs:
           MONDAY_OAUTH_APP_ID: ${{ vars.MONDAY_OAUTH_APP_ID }}
           XERO_OAUTH_CLIENT_SECRET: ${{ secrets.XERO_OAUTH_CLIENT_SECRET }}
           MONDAY_OAUTH_CLIENT_SECRET: ${{ secrets.MONDAY_OAUTH_CLIENT_SECRET }}
+          AIRTABLE_OAUTH_CLIENT_ID: ${{ vars.AIRTABLE_OAUTH_CLIENT_ID }}
+          AIRTABLE_OAUTH_CLIENT_SECRET: ${{ secrets.AIRTABLE_OAUTH_CLIENT_SECRET }}
           NGROK_API_KEY: ${{ secrets.NGROK_API_KEY }}
           NGROK_COMPUTER_CONNECTOR_DOMAIN: ${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
           PLATFORM_URL: ${{ needs.prepare.outputs.platform-preview-url }}
@@ -802,6 +804,8 @@ jobs:
             MONDAY_OAUTH_APP_ID=${{ vars.MONDAY_OAUTH_APP_ID }}
             XERO_OAUTH_CLIENT_SECRET=${{ secrets.XERO_OAUTH_CLIENT_SECRET }}
             MONDAY_OAUTH_CLIENT_SECRET=${{ secrets.MONDAY_OAUTH_CLIENT_SECRET }}
+            AIRTABLE_OAUTH_CLIENT_ID=${{ vars.AIRTABLE_OAUTH_CLIENT_ID }}
+            AIRTABLE_OAUTH_CLIENT_SECRET=${{ secrets.AIRTABLE_OAUTH_CLIENT_SECRET }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
             NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
             PLATFORM_URL=${{ needs.prepare.outputs.platform-preview-url }}

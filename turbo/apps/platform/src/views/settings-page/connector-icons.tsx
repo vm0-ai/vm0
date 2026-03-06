@@ -1,5 +1,6 @@
 import type { ConnectorType } from "@vm0/core";
 
+import airtableIcon from "./icons/airtable.svg";
 import computerIcon from "./icons/computer.svg";
 import deelIcon from "./icons/deel.svg";
 import docusignIcon from "./icons/docusign.svg";
@@ -27,6 +28,7 @@ import xIcon from "./icons/x.svg";
 import xeroIcon from "./icons/xero.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
+  airtable: airtableIcon,
   computer: computerIcon,
   deel: deelIcon,
   docusign: docusignIcon,

@@ -1,6 +1,11 @@
 import { type ConnectorType } from "@vm0/core";
 import { type Env } from "../../env";
-import { type OAuthTokenResult, type ProviderHandler } from "./provider-types";
+import {
+  type AuthUrlResult,
+  type OAuthTokenResult,
+  type ProviderHandler,
+} from "./provider-types";
+import { airtableHandler } from "./providers/airtable-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
@@ -26,12 +31,13 @@ import { vercelHandler } from "./providers/vercel-handler";
 import { xHandler } from "./providers/x-handler";
 import { xeroHandler } from "./providers/xero-handler";
 
-export type { OAuthTokenResult };
+export type { AuthUrlResult, OAuthTokenResult };
 
 export const PROVIDER_HANDLERS: Record<
   Exclude<ConnectorType, "computer">,
   ProviderHandler
 > = {
+  airtable: airtableHandler,
   deel: deelHandler,
   docusign: docusignHandler,
   dropbox: dropboxHandler,

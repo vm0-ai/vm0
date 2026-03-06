@@ -41,6 +41,11 @@ const STAFF_USER_HASHES: readonly string[] = [
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
+  [FeatureSwitchKey.AirtableConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
   [FeatureSwitchKey.Pricing]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
@@ -165,6 +170,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
 export const CONNECTOR_FEATURE_FLAGS: Partial<
   Record<ConnectorType, FeatureSwitchKey>
 > = {
+  airtable: FeatureSwitchKey.AirtableConnector,
   computer: FeatureSwitchKey.ComputerConnector,
   deel: FeatureSwitchKey.DeelConnector,
   docusign: FeatureSwitchKey.DocuSignConnector,
