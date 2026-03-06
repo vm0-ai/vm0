@@ -685,7 +685,7 @@ export async function executeQueuedRun(
   params: CreateRunParams,
 ): Promise<void> {
   const apiStartTime = Date.now();
-  const { userId, agentComposeVersionId, prompt } = params;
+  const { userId, agentComposeVersionId } = params;
 
   // Step 1: Re-check concurrency + update status atomically with advisory lock
   // to prevent TOCTOU race where a concurrent createRun claims the slot.
