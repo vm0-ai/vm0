@@ -24,6 +24,7 @@ import { intervalsIcuHandler } from "./providers/intervals-icu-handler";
 import { sentryHandler } from "./providers/sentry-handler";
 import { vercelHandler } from "./providers/vercel-handler";
 import { xHandler } from "./providers/x-handler";
+import { supabaseHandler } from "./providers/supabase-handler";
 import { xeroHandler } from "./providers/xero-handler";
 
 export type { OAuthTokenResult };
@@ -54,6 +55,7 @@ export const PROVIDER_HANDLERS: Record<
   slack: slackHandler,
   strava: stravaHandler,
   vercel: vercelHandler,
+  supabase: supabaseHandler,
   x: xHandler,
   xero: xeroHandler,
 };

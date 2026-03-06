@@ -61,6 +61,7 @@ const CONNECTOR_FEATURE_FLAGS = Object.freeze<
   "google-drive": FeatureSwitchKey.GoogleDriveConnector,
   strava: FeatureSwitchKey.StravaConnector,
   "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
+  supabase: FeatureSwitchKey.SupabaseConnector,
 });
 
 export const allConnectorTypes$ = computed(async (get) => {

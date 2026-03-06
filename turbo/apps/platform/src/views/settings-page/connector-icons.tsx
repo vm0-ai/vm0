@@ -22,6 +22,7 @@ import redditIcon from "./icons/reddit.svg";
 import sentryIcon from "./icons/sentry.svg";
 import slackIcon from "./icons/slack.svg";
 import stravaIcon from "./icons/strava.svg";
+import supabaseIcon from "./icons/supabase.svg";
 import vercelIcon from "./icons/vercel.svg";
 import xIcon from "./icons/x.svg";
 import xeroIcon from "./icons/xero.svg";
@@ -49,6 +50,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   sentry: sentryIcon,
   slack: slackIcon,
   strava: stravaIcon,
+  supabase: supabaseIcon,
   vercel: vercelIcon,
   x: xIcon,
   xero: xeroIcon,
