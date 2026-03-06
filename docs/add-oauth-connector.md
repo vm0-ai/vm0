@@ -83,14 +83,17 @@ After both apps are registered and the credentials file is populated:
    ```
 
    **Start the VNC stack (idempotent — safe to run multiple times):**
+
+   **Important:** Each process must be wrapped in subshell `()` to avoid `||` and `&` operator precedence issues that can silently prevent later processes (especially websockify) from launching. Also, websockify must bind to `0.0.0.0:6080` (not just `6080`) so it's accessible from the host.
+
    ```bash
-   pgrep -x Xvfb > /dev/null || Xvfb :99 -screen 0 1344x840x24 > /dev/null 2>&1 &
+   pgrep -x Xvfb > /dev/null || (Xvfb :99 -screen 0 1344x840x24 > /dev/null 2>&1 &)
    sleep 1
-   pgrep -x openbox > /dev/null || DISPLAY=:99 openbox > /dev/null 2>&1 &
+   pgrep -x openbox > /dev/null || (DISPLAY=:99 openbox > /dev/null 2>&1 &)
    sleep 1
-   pgrep -x x11vnc > /dev/null || x11vnc -display :99 -nopw -forever -shared -rfbport 5900 > /dev/null 2>&1 &
+   pgrep -x x11vnc > /dev/null || (x11vnc -display :99 -nopw -forever -shared -rfbport 5900 > /dev/null 2>&1 &)
    sleep 1
-   pgrep -f websockify > /dev/null || websockify --web /usr/share/novnc/ 6080 localhost:5900 > /dev/null 2>&1 &
+   pgrep -f websockify > /dev/null || (websockify --web /usr/share/novnc/ 0.0.0.0:6080 localhost:5900 > /dev/null 2>&1 &)
    sleep 1
    ```
 
