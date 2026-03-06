@@ -1,5 +1,6 @@
 import type { ConnectorType } from "@vm0/core";
 
+import airtableIcon from "./icons/airtable.svg";
 import computerIcon from "./icons/computer.svg";
 import deelIcon from "./icons/deel.svg";
 import docusignIcon from "./icons/docusign.svg";
@@ -7,6 +8,7 @@ import dropboxIcon from "./icons/dropbox.svg";
 import figmaIcon from "./icons/figma.svg";
 import garminConnectIcon from "./icons/garmin-connect.svg";
 import githubIcon from "./icons/github.svg";
+import hubspotIcon from "./icons/hubspot.svg";
 import intervalsIcuIcon from "./icons/intervals-icu.svg";
 import gmailIcon from "./icons/gmail.svg";
 import googleCalendarIcon from "./icons/google-calendar.svg";
@@ -22,12 +24,14 @@ import redditIcon from "./icons/reddit.svg";
 import sentryIcon from "./icons/sentry.svg";
 import slackIcon from "./icons/slack.svg";
 import stravaIcon from "./icons/strava.svg";
+import todoistIcon from "./icons/todoist.svg";
 import vercelIcon from "./icons/vercel.svg";
 import xIcon from "./icons/x.svg";
 import wixIcon from "./icons/wix.svg";
 import xeroIcon from "./icons/xero.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
+  airtable: airtableIcon,
   computer: computerIcon,
   deel: deelIcon,
   docusign: docusignIcon,
@@ -36,6 +40,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   "garmin-connect": garminConnectIcon,
   github: githubIcon,
   gmail: gmailIcon,
+  hubspot: hubspotIcon,
   "google-calendar": googleCalendarIcon,
   "google-docs": googleDocsIcon,
   "google-drive": googleDriveIcon,
@@ -50,6 +55,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   sentry: sentryIcon,
   slack: slackIcon,
   strava: stravaIcon,
+  todoist: todoistIcon,
   vercel: vercelIcon,
   wix: wixIcon,
   x: xIcon,

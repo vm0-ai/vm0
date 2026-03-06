@@ -22,6 +22,8 @@ import { listConnectors } from "../../../../src/lib/connector/connector-service"
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { deleteInstallation } from "../../../../src/lib/github/github-app";
+import { logger } from "../../../../src/lib/logger";
 
 /**
  * GET /api/integrations/github
@@ -77,8 +79,10 @@ export async function GET(request: Request) {
 
   const { installation } = result;
 
-  // Determine if current user is the admin
-  const isAdmin = result.link.githubUserId === installation.adminGithubUserId;
+  // Determine if current user is the admin (both must be non-null)
+  const isAdmin =
+    !!installation.adminGithubUserId &&
+    result.link.githubUserId === installation.adminGithubUserId;
 
   // Get default agent info with headVersionId for environment extraction
   const [compose] = await db
@@ -184,10 +188,13 @@ export async function DELETE(request: Request) {
 
   const db = globalThis.services.db;
 
+  const log = logger("github:uninstall");
+
   // Find user's GitHub App installation via user link
   const [result] = await db
     .select({
-      installationId: githubInstallations.id,
+      id: githubInstallations.id,
+      ghInstallationId: githubInstallations.installationId,
       adminGithubUserId: githubInstallations.adminGithubUserId,
       githubUserId: githubUserLinks.githubUserId,
     })
@@ -206,8 +213,11 @@ export async function DELETE(request: Request) {
     );
   }
 
-  // Only admin can delete
-  if (result.githubUserId !== result.adminGithubUserId) {
+  // Only admin can delete — also reject when adminGithubUserId is unset
+  if (
+    !result.adminGithubUserId ||
+    result.githubUserId !== result.adminGithubUserId
+  ) {
     return NextResponse.json(
       {
         error: {
@@ -219,10 +229,25 @@ export async function DELETE(request: Request) {
     );
   }
 
-  // Delete installation (cascades to github_issue_sessions and github_user_links)
+  // Uninstall from GitHub so reinstallation triggers a fresh callback
+  const { GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY } = env();
+  if (GITHUB_APP_ID && GITHUB_APP_PRIVATE_KEY && result.ghInstallationId) {
+    try {
+      await deleteInstallation(
+        GITHUB_APP_ID,
+        GITHUB_APP_PRIVATE_KEY,
+        result.ghInstallationId,
+      );
+    } catch (err) {
+      log.error("Failed to delete GitHub installation", { error: err });
+      // Continue with local deletion even if GitHub API fails
+    }
+  }
+
+  // Delete local installation record (cascades to github_issue_sessions and github_user_links)
   await db
     .delete(githubInstallations)
-    .where(eq(githubInstallations.id, result.installationId));
+    .where(eq(githubInstallations.id, result.id));
 
   return NextResponse.json({ ok: true });
 }
@@ -279,8 +304,11 @@ export async function PATCH(request: Request) {
     );
   }
 
-  // Only admin can change default agent
-  if (result.githubUserId !== result.adminGithubUserId) {
+  // Only admin can change default agent — also reject when adminGithubUserId is unset
+  if (
+    !result.adminGithubUserId ||
+    result.githubUserId !== result.adminGithubUserId
+  ) {
     return NextResponse.json(
       {
         error: {

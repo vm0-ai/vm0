@@ -27,6 +27,7 @@ export enum FeatureSwitchKey {
   RedditConnector = "redditConnector",
   IntervalsIcuConnector = "intervalsIcuConnector",
   WixConnector = "wixConnector",
+  TodoistConnector = "todoistConnector",
   GitHubIntegration = "githubIntegration",
   TelegramIntegration = "telegramIntegration",
 }

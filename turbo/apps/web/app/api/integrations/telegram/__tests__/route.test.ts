@@ -74,7 +74,7 @@ describe("/api/integrations/telegram", () => {
       expect(data.environment).toBeDefined();
     });
 
-    it("returns 404 when admin has no user link", async () => {
+    it("returns 200 with isConnected: false when admin has no user link", async () => {
       const user = await context.setupUser();
       // Create installation with admin but no user link (omit vm0UserId)
       await createTestTelegramInstallation({
@@ -85,8 +85,12 @@ describe("/api/integrations/telegram", () => {
         "http://localhost:3000/api/integrations/telegram",
       );
       const response = await GET(request);
+      const data = await response.json();
 
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(200);
+      expect(data.isAdmin).toBe(true);
+      expect(data.isConnected).toBe(false);
+      expect(data.bot.username).toBeDefined();
     });
   });
 

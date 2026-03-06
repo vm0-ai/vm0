@@ -171,9 +171,20 @@ function resolveRunnerGroup(agentCompose: unknown): string | null {
  * @param context ExecutionContext built by run-service
  * @returns PreparedContext ready for executor dispatch
  */
+interface PrepareTimings {
+  resolveScopes: number;
+  ensureArtifact: number;
+  storageManifest: number;
+}
+
+interface PrepareResult {
+  context: PreparedContext;
+  timings: PrepareTimings;
+}
+
 export async function prepareForExecution(
   context: ExecutionContext,
-): Promise<PreparedContext> {
+): Promise<PrepareResult> {
   log.debug(`Preparing execution context for run ${context.runId}...`);
 
   // Extract configuration from agent compose
@@ -190,6 +201,7 @@ export async function prepareForExecution(
 
   // Resolve runner's scope and owner's scope in parallel (independent DB queries)
   const userId = context.userId || "";
+  const scopeStart = Date.now();
   const [runnerScope, [composeInfo]] = await Promise.all([
     getUserScopeByClerkId(userId),
     globalThis.services.db
@@ -206,6 +218,7 @@ export async function prepareForExecution(
       .where(eq(agentComposeVersions.id, context.agentComposeVersionId))
       .limit(1),
   ]);
+  const scopeEnd = Date.now();
 
   if (!runnerScope) {
     throw badRequest("Runner scope not found");
@@ -215,6 +228,7 @@ export async function prepareForExecution(
   }
 
   // Auto-create artifact if it doesn't exist yet
+  const artifactStart = Date.now();
   if (context.artifactName) {
     await ensureArtifactExists(
       runnerScope.id,
@@ -223,10 +237,12 @@ export async function prepareForExecution(
       runnerScope.slug,
     );
   }
+  const artifactEnd = Date.now();
 
   // Prepare storage manifest with dual scopes
   // - Volumes: resolved from agent owner's scope
   // - Artifacts: resolved from runner's scope
+  const storageStart = Date.now();
   const storageManifest = await prepareStorageManifest(
     context.agentCompose as AgentComposeYaml,
     context.vars || {},
@@ -238,6 +254,7 @@ export async function prepareForExecution(
     context.resumeArtifact,
     workingDir,
   );
+  const storageEnd = Date.now();
 
   log.debug(
     `Storage manifest prepared with dual scopes: owner=${composeInfo.scopeId}, runner=${runnerScope.id}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
@@ -254,9 +271,17 @@ export async function prepareForExecution(
     composeInfo.scopeSlug,
   );
 
-  log.debug(`PreparedContext built for run ${context.runId}`);
+  const timings: PrepareTimings = {
+    resolveScopes: scopeEnd - scopeStart,
+    ensureArtifact: artifactEnd - artifactStart,
+    storageManifest: storageEnd - storageStart,
+  };
 
-  return preparedContext;
+  log.debug(
+    `PreparedContext built for run ${context.runId} (scopes=${timings.resolveScopes}ms, artifact=${timings.ensureArtifact}ms, storage=${timings.storageManifest}ms)`,
+  );
+
+  return { context: preparedContext, timings };
 }
 
 /**

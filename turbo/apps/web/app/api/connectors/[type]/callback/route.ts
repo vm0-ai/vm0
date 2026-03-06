@@ -29,9 +29,10 @@ const log = logger("api:connectors:callback");
  * stores connector and redirects to success page
  */
 
-// Cookie names for OAuth state and session
+// Cookie names for OAuth state, session, and PKCE
 const STATE_COOKIE_NAME = "connector_oauth_state";
 const SESSION_COOKIE_NAME = "connector_oauth_session";
+const PKCE_COOKIE_NAME = "connector_oauth_pkce";
 
 /**
  * Parse cookies from request header
@@ -62,6 +63,7 @@ async function exchangeTokenForConnector(
   code: string,
   redirectUri: string,
   state?: string,
+  codeVerifier?: string,
 ): Promise<OAuthTokenResult> {
   const currentEnv = env();
   const handler = PROVIDER_HANDLERS[connectorType];
@@ -70,7 +72,14 @@ async function exchangeTokenForConnector(
   if (!clientId || !clientSecret) {
     throw new Error(`${connectorType} OAuth not configured`);
   }
-  return handler.exchangeCode(clientId, clientSecret, code, redirectUri, state);
+  return handler.exchangeCode(
+    clientId,
+    clientSecret,
+    code,
+    redirectUri,
+    state,
+    codeVerifier,
+  );
 }
 
 /**
@@ -115,9 +124,10 @@ export async function GET(
     );
   }
 
-  // Get state and session from cookies
+  // Get state, session, and PKCE code_verifier from cookies
   const savedState = getCookie(request, STATE_COOKIE_NAME);
   const sessionId = getCookie(request, SESSION_COOKIE_NAME);
+  const codeVerifier = getCookie(request, PKCE_COOKIE_NAME);
 
   // Get code and state from query params
   const code = url.searchParams.get("code");
@@ -167,6 +177,7 @@ export async function GET(
         code,
         redirectUri,
         state ?? undefined,
+        codeVerifier,
       );
 
     log.debug("Storing connector", {
@@ -236,6 +247,10 @@ export async function GET(
       "Set-Cookie",
       buildDeleteCookieHeader(SESSION_COOKIE_NAME),
     );
+    response.headers.append(
+      "Set-Cookie",
+      buildDeleteCookieHeader(PKCE_COOKIE_NAME),
+    );
     return response;
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "OAuth failed";
@@ -282,6 +297,10 @@ function redirectWithError(
     response.headers.append(
       "Set-Cookie",
       buildDeleteCookieHeader(SESSION_COOKIE_NAME),
+    );
+    response.headers.append(
+      "Set-Cookie",
+      buildDeleteCookieHeader(PKCE_COOKIE_NAME),
     );
   }
   return response;

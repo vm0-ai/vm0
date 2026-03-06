@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.42.0](https://github.com/vm0-ai/vm0/compare/core-v8.41.0...core-v8.42.0) (2026-03-06)
+
+
+### Features
+
+* add airtable oauth connector with pkce support ([#3833](https://github.com/vm0-ai/vm0/issues/3833)) ([2e64f13](https://github.com/vm0-ai/vm0/commit/2e64f1363058e9d258073c140f9a669047321438))
+
+## [8.41.0](https://github.com/vm0-ai/vm0/compare/core-v8.40.0...core-v8.41.0) (2026-03-06)
+
+
+### Features
+
+* **connectors:** add project oauth scope to github connector ([#3828](https://github.com/vm0-ai/vm0/issues/3828)) ([e30136f](https://github.com/vm0-ai/vm0/commit/e30136f650e587c226d91f86d96b088d97aa7464)), closes [#3761](https://github.com/vm0-ai/vm0/issues/3761)
+
 ## [8.40.0](https://github.com/vm0-ai/vm0/compare/core-v8.39.0...core-v8.40.0) (2026-03-06)
 
 

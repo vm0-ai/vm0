@@ -1,12 +1,18 @@
 import { type ConnectorType } from "@vm0/core";
 import { type Env } from "../../env";
-import { type OAuthTokenResult, type ProviderHandler } from "./provider-types";
+import {
+  type AuthUrlResult,
+  type OAuthTokenResult,
+  type ProviderHandler,
+} from "./provider-types";
+import { airtableHandler } from "./providers/airtable-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
 import { figmaHandler } from "./providers/figma-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
 import { githubHandler } from "./providers/github-handler";
+import { hubspotHandler } from "./providers/hubspot-handler";
 import { gmailHandler } from "./providers/gmail-handler";
 import { googleCalendarHandler } from "./providers/google-calendar-handler";
 import { googleDocsHandler } from "./providers/google-docs-handler";
@@ -25,14 +31,16 @@ import { sentryHandler } from "./providers/sentry-handler";
 import { vercelHandler } from "./providers/vercel-handler";
 import { xHandler } from "./providers/x-handler";
 import { wixHandler } from "./providers/wix-handler";
+import { todoistHandler } from "./providers/todoist-handler";
 import { xeroHandler } from "./providers/xero-handler";
 
-export type { OAuthTokenResult };
+export type { AuthUrlResult, OAuthTokenResult };
 
 export const PROVIDER_HANDLERS: Record<
   Exclude<ConnectorType, "computer">,
   ProviderHandler
 > = {
+  airtable: airtableHandler,
   deel: deelHandler,
   docusign: docusignHandler,
   dropbox: dropboxHandler,
@@ -40,6 +48,7 @@ export const PROVIDER_HANDLERS: Record<
   "garmin-connect": garminConnectHandler,
   github: githubHandler,
   gmail: gmailHandler,
+  hubspot: hubspotHandler,
   "google-calendar": googleCalendarHandler,
   "google-docs": googleDocsHandler,
   "google-drive": googleDriveHandler,
@@ -54,6 +63,7 @@ export const PROVIDER_HANDLERS: Record<
   sentry: sentryHandler,
   slack: slackHandler,
   strava: stravaHandler,
+  todoist: todoistHandler,
   vercel: vercelHandler,
   wix: wixHandler,
   x: xHandler,

@@ -4,7 +4,10 @@ import { updatePage$ } from "../react-router.ts";
 import { navigate$, searchParams$ } from "../route.ts";
 import { hasAnyModelProvider$ } from "../external/model-providers.ts";
 import { throwIfAbort } from "../utils.ts";
-import { initTelegramConnect$ } from "./telegram-connect.ts";
+import {
+  initTelegramConnect$,
+  startTelegramConnectLoginListener$,
+} from "./telegram-connect.ts";
 import { TelegramConnectPage } from "../../views/telegram-connect/telegram-connect-page.tsx";
 
 export const setupTelegramConnectPage$ = command(
@@ -34,9 +37,22 @@ export const setupTelegramConnectPage$ = command(
       return;
     }
 
-    // Pass ?bot= param to init so it can look up existing installation
+    // Pass URL params to init
     const params = get(searchParams$);
     const botId = params.get("bot") ?? undefined;
-    await set(initTelegramConnect$, botId);
+    const tgUser = params.get("tgUser");
+    const ts = params.get("ts");
+    const sig = params.get("sig");
+
+    const connectParams =
+      tgUser && ts && sig
+        ? { telegramUserId: tgUser, timestamp: ts, signature: sig }
+        : undefined;
+
+    await set(initTelegramConnect$, { botId, connectParams });
+    signal.throwIfAborted();
+
+    // Start listening for Telegram OAuth postMessage (for connect-account step)
+    set(startTelegramConnectLoginListener$, signal);
   },
 );

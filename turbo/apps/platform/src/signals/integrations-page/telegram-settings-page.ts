@@ -5,6 +5,7 @@ import { navigate$ } from "../route.ts";
 import { TelegramSettingsPage } from "../../views/integrations-page/telegram-settings-page";
 import {
   fetchTelegramIntegration$,
+  startTelegramLoginListener$,
   telegramIntegrationNotLinked$,
 } from "./telegram-integration.ts";
 import { fetchAgentsList$ } from "../agents-page/agents-list.ts";
@@ -16,6 +17,7 @@ import { fetchAgentsList$ } from "../agents-page/agents-list.ts";
 export const setupTelegramSettingsPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(TelegramSettingsPage));
+    set(startTelegramLoginListener$, signal);
     await Promise.all([set(fetchTelegramIntegration$), set(fetchAgentsList$)]);
     signal.throwIfAborted();
 
