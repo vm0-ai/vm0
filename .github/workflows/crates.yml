@@ -21,7 +21,7 @@ jobs:
   detect:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260306
     outputs:
       workflow-changed: ${{ steps.detect.outputs.workflow-changed }}
       ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
@@ -70,7 +70,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260306
     needs: [detect]
     steps:
       - uses: actions/checkout@v6
@@ -109,7 +109,7 @@ jobs:
   runner-build:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260306
     needs: [detect]
     if: |
       needs.detect.outputs.workflow-changed == 'true' ||
