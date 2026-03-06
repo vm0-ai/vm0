@@ -8,7 +8,7 @@
   },
   "remoteUser": "vscode",
   "forwardPorts": [6080, 8443],
-  "runArgs": ["-p", "8443", "--hostname", "${localWorkspaceFolderBasename}"],
+  "runArgs": ["-p", "6080", "-p", "8443", "--hostname", "${localWorkspaceFolderBasename}"],
   "remoteEnv": {
     "CLAUDE_CONFIG_DIR": "/home/vscode/.config/claude",
     "CRUSH_GLOBAL_CONFIG": "/home/vscode/.config/crush",
