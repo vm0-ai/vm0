@@ -375,8 +375,11 @@ export function TelegramSettingsPage() {
                         Connect your Telegram account
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {"Link your Telegram account to VM0. Make sure to run "}
-                        <code className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-xs">
+                        Link your Telegram account to VM0.
+                      </p>
+                      <p className="text-sm text-amber-600 dark:text-amber-500">
+                        {"Make sure to run "}
+                        <code className="rounded border border-amber-300 bg-amber-50 px-1 py-0.5 font-mono text-xs dark:border-amber-700 dark:bg-amber-950/30">
                           /setdomain
                         </code>
                         {" in "}
@@ -384,13 +387,13 @@ export function TelegramSettingsPage() {
                           href="https://t.me/BotFather"
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="font-medium text-foreground hover:underline"
+                          className="font-medium hover:underline"
                         >
                           @BotFather
                         </a>
                         {" and set domain to "}
                         <code
-                          className="cursor-pointer rounded border border-border bg-muted px-1 py-0.5 font-mono text-xs hover:bg-accent"
+                          className="cursor-pointer rounded border border-amber-300 bg-amber-50 px-1 py-0.5 font-mono text-xs hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
                           onClick={() => {
                             detach(
                               copyToClipboard(window.location.host),
