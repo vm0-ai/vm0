@@ -110,6 +110,7 @@ XERO_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/XERO_OAUTH_CLIENT_SECRET
 # Optional: Monday.com OAuth Connector
 MONDAY_OAUTH_CLIENT_ID=op://Development/vm0-env-local/MONDAY_OAUTH_CLIENT_ID
 MONDAY_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/MONDAY_OAUTH_CLIENT_SECRET
+MONDAY_OAUTH_APP_ID=op://Development/vm0-env-local/MONDAY_OAUTH_APP_ID
 
 # Optional: ngrok (Computer Connector)
 NGROK_API_KEY=op://Development/vm0-env-local/NGROK_API_KEY
