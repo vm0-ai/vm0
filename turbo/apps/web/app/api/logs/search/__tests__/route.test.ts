@@ -175,7 +175,7 @@ describe("GET /api/logs/search", () => {
     await GET(request);
 
     const aplQuery = context.mocks.axiom.queryAxiom.mock.calls[0]![0] as string;
-    expect(aplQuery).toContain("search");
+    expect(aplQuery).toContain("tostring(eventData)");
     expect(aplQuery).toContain("deploy failed");
   });
 

@@ -139,11 +139,14 @@ const router = tsr.router(logsSearchContract, {
     }
 
     // Step 1: Search for matching events
+    // Note: search operator cannot penetrate nested JSON fields like eventData.
+    // Use tostring() to convert eventData to a searchable string, then use contains.
+    // See: https://axiom.co/docs/apl/tutorial (search with dynamic fields)
     const searchApl = `['${dataset}']
-| search "*${escapedKeyword}*"
 | where userId == "${escapeApl(userId)}"
 | where _time > datetime("${sinceISO}")
 ${runIdFilter}
+| where tostring(eventData) contains "${escapedKeyword}"
 | order by _time desc
 | limit ${limit + 1}`;
 
