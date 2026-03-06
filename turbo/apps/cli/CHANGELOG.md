@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.47.2](https://github.com/vm0-ai/vm0/compare/cli-v9.47.1...cli-v9.47.2) (2026-03-06)
+
+
+### Bug Fixes
+
+* **cli:** align schedule cli consistency with platform ui ([#3797](https://github.com/vm0-ai/vm0/issues/3797)) ([923a0b5](https://github.com/vm0-ai/vm0/commit/923a0b5729a3a4802f7a49a92aaa9f3cff6a655e))
+
 ## [9.47.1](https://github.com/vm0-ai/vm0/compare/cli-v9.47.0...cli-v9.47.1) (2026-03-06)
 
 

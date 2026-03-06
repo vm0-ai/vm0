@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.78.0](https://github.com/vm0-ai/vm0/compare/web-v12.77.1...web-v12.78.0) (2026-03-06)
+
+
+### Features
+
+* **monday:** add domain verification file for marketplace review ([#3796](https://github.com/vm0-ai/vm0/issues/3796)) ([679220c](https://github.com/vm0-ai/vm0/commit/679220c094aeeb2885cb78f17892d06a59e19e00))
+
+
+### Bug Fixes
+
+* **slack:** keep spinner alive during long agent runs via progress callbacks ([#3788](https://github.com/vm0-ai/vm0/issues/3788)) ([b221421](https://github.com/vm0-ai/vm0/commit/b2214214cc6caedcf37464633789997aec0db12b))
+
+
+### Performance Improvements
+
+* add per-step timing metrics to run creation flow ([#3795](https://github.com/vm0-ai/vm0/issues/3795)) ([a900f49](https://github.com/vm0-ai/vm0/commit/a900f49c6e5c9c8ddc8f7f0c57f7789685ddfed1))
+
 ## [12.77.1](https://github.com/vm0-ai/vm0/compare/web-v12.77.0...web-v12.77.1) (2026-03-06)
 
 
