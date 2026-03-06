@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.6.0...vsock-host-v0.6.1) (2026-03-06)
+
+
+### Refactoring
+
+* **vsock-host:** enable concurrent operations via background reader task ([#3460](https://github.com/vm0-ai/vm0/issues/3460)) ([9a93aa3](https://github.com/vm0-ai/vm0/commit/9a93aa3a73afc0f38fe675cb73b4853c1e07fecf))
+
 ## [0.6.0](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.5.0...vsock-host-v0.6.0) (2026-02-23)
 
 

@@ -1,5 +1,6 @@
 import type { ConnectorType } from "@vm0/core";
 
+import airtableIcon from "./icons/airtable.svg";
 import computerIcon from "./icons/computer.svg";
 import deelIcon from "./icons/deel.svg";
 import docusignIcon from "./icons/docusign.svg";
@@ -23,11 +24,13 @@ import sentryIcon from "./icons/sentry.svg";
 import slackIcon from "./icons/slack.svg";
 import stravaIcon from "./icons/strava.svg";
 import supabaseIcon from "./icons/supabase.svg";
+import todoistIcon from "./icons/todoist.svg";
 import vercelIcon from "./icons/vercel.svg";
 import xIcon from "./icons/x.svg";
 import xeroIcon from "./icons/xero.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
+  airtable: airtableIcon,
   computer: computerIcon,
   deel: deelIcon,
   docusign: docusignIcon,
@@ -51,6 +54,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   slack: slackIcon,
   strava: stravaIcon,
   supabase: supabaseIcon,
+  todoist: todoistIcon,
   vercel: vercelIcon,
   x: xIcon,
   xero: xeroIcon,

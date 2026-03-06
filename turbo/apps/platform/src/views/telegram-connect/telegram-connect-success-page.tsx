@@ -9,7 +9,9 @@ export function TelegramConnectSuccessPage() {
   const params = useGet(searchParams$);
 
   const botUsername = params.get("bot");
-  const telegramLink = botUsername ? `https://t.me/${botUsername}` : null;
+  const telegramLink = botUsername
+    ? `tg://resolve?domain=${botUsername}`
+    : null;
 
   const backgroundGradient =
     theme === "dark"
@@ -67,14 +69,8 @@ export function TelegramConnectSuccessPage() {
             {/* Action Buttons */}
             <div className="flex w-full flex-col gap-4">
               {telegramLink && (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() =>
-                    window.open(telegramLink, "_blank", "noopener,noreferrer")
-                  }
-                >
-                  Open in Telegram
+                <Button asChild variant="outline" className="w-full">
+                  <a href={telegramLink}>Open in Telegram</a>
                 </Button>
               )}
               <Button asChild variant="outline" className="w-full">

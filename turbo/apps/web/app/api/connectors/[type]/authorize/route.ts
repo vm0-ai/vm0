@@ -4,7 +4,10 @@ import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
-import { PROVIDER_HANDLERS } from "../../../../../src/lib/connector/provider-registry";
+import {
+  type AuthUrlResult,
+  PROVIDER_HANDLERS,
+} from "../../../../../src/lib/connector/provider-registry";
 
 /**
  * Connector OAuth Authorize Endpoint
@@ -14,9 +17,10 @@ import { PROVIDER_HANDLERS } from "../../../../../src/lib/connector/provider-reg
  * Redirects users to the OAuth provider's authorization page
  */
 
-// Cookie names for OAuth state and session
+// Cookie names for OAuth state, session, and PKCE
 const STATE_COOKIE_NAME = "connector_oauth_state";
 const SESSION_COOKIE_NAME = "connector_oauth_session";
+const PKCE_COOKIE_NAME = "connector_oauth_pkce";
 const COOKIE_MAX_AGE = 15 * 60; // 15 minutes
 
 /**
@@ -108,7 +112,15 @@ export async function GET(
       { status: 500 },
     );
   }
-  const authUrl = await handler.buildAuthUrl(clientId, redirectUri, state);
+  const authResult = await handler.buildAuthUrl(clientId, redirectUri, state);
+
+  // Normalize result — handlers may return a plain URL string or { url, codeVerifier }
+  const isAuthUrlResult = (v: string | AuthUrlResult): v is AuthUrlResult =>
+    typeof v === "object" && "url" in v;
+  const authUrl = isAuthUrlResult(authResult) ? authResult.url : authResult;
+  const codeVerifier = isAuthUrlResult(authResult)
+    ? authResult.codeVerifier
+    : undefined;
 
   // Create redirect response with state cookie
   const response = NextResponse.redirect(authUrl);
@@ -116,6 +128,14 @@ export async function GET(
     "Set-Cookie",
     buildCookieHeader(STATE_COOKIE_NAME, state, COOKIE_MAX_AGE),
   );
+
+  // If PKCE code_verifier was generated, store it in a cookie for the callback
+  if (codeVerifier) {
+    response.headers.append(
+      "Set-Cookie",
+      buildCookieHeader(PKCE_COOKIE_NAME, codeVerifier, COOKIE_MAX_AGE),
+    );
+  }
 
   // If session ID provided, store it in a cookie for the callback
   if (sessionId) {

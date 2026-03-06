@@ -49,6 +49,12 @@ describe("telegram connect page", () => {
       http.get("*/api/integrations/telegram/link", () => {
         return HttpResponse.json({ linked: false });
       }),
+      http.get("*/api/integrations/telegram", () => {
+        return HttpResponse.json(
+          { error: { message: "No linked Telegram bot", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
+      }),
     );
 
     await setupPage({
@@ -82,7 +88,7 @@ describe("telegram connect page", () => {
     });
 
     await vi.waitFor(() => {
-      expect(screen.getByText("Already Installed")).toBeInTheDocument();
+      expect(screen.getByText("Already Connected")).toBeInTheDocument();
     });
     expect(
       screen.getByText("Your account is already linked to a Telegram bot."),
@@ -92,18 +98,55 @@ describe("telegram connect page", () => {
     ).toBeInTheDocument();
   });
 
-  it("calls register API and navigates to success page on Install Bot", async () => {
+  it("shows connect-account step when user has existing installation (refresh)", async () => {
+    server.use(
+      http.get("*/api/integrations/telegram/link", () => {
+        return HttpResponse.json({ linked: false });
+      }),
+      http.get("*/api/integrations/telegram", () => {
+        return HttpResponse.json({
+          installationId: "installation_1",
+          bot: { id: "12345", username: "my_test_bot" },
+          isAdmin: true,
+          isConnected: false,
+          domainConfigured: false,
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/telegram/connect",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("Connect Your Telegram Account"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Skip" })).toBeInTheDocument();
+  });
+
+  it("calls register API and transitions to connect-account step on Install Bot", async () => {
     let capturedBody: Record<string, unknown> | null = null;
 
     server.use(
       http.get("*/api/integrations/telegram/link", () => {
         return HttpResponse.json({ linked: false });
       }),
+      http.get("*/api/integrations/telegram", () => {
+        return HttpResponse.json(
+          { error: { message: "Not found", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
+      }),
       http.post("*/api/telegram/register", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({
           id: "installation_1",
+          botId: "12345",
           botUsername: "my_test_bot",
+          domainConfigured: false,
         });
       }),
     );
@@ -132,18 +175,82 @@ describe("telegram connect page", () => {
     });
     expect(capturedBody!.botToken).toBe("123456:ABC-token");
 
+    // Should transition to connect-account step instead of navigating away
     await vi.waitFor(() => {
-      expect(context.store.get(pathname$)).toBe("/telegram/connect/success");
+      expect(
+        screen.getByText("Connect Your Telegram Account"),
+      ).toBeInTheDocument();
     });
-    const params = context.store.get(searchParams$);
-    expect(params.get("bot")).toBe("my_test_bot");
-    expect(params.get("token")).toBeNull();
+    expect(screen.getByRole("button", { name: "Skip" })).toBeInTheDocument();
+  });
+
+  it("transitions to complete step when skip is clicked", async () => {
+    server.use(
+      http.get("*/api/integrations/telegram/link", () => {
+        return HttpResponse.json({ linked: false });
+      }),
+      http.get("*/api/integrations/telegram", () => {
+        return HttpResponse.json(
+          { error: { message: "Not found", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
+      }),
+      http.post("*/api/telegram/register", () => {
+        return HttpResponse.json({
+          id: "installation_1",
+          botId: "12345",
+          botUsername: "my_test_bot",
+          domainConfigured: false,
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/telegram/connect",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Install Bot" }),
+      ).toBeInTheDocument();
+    });
+
+    const tokenInput = screen.getByPlaceholderText(
+      "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+    );
+    await user.type(tokenInput, "123456:ABC-token");
+    await user.click(screen.getByRole("button", { name: "Install Bot" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("Connect Your Telegram Account"),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Skip" }));
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("Telegram Bot Installed")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("link", { name: "Open in Telegram" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Go to Settings" }),
+    ).toBeInTheDocument();
   });
 
   it("shows error message when registration fails", async () => {
     server.use(
       http.get("*/api/integrations/telegram/link", () => {
         return HttpResponse.json({ linked: false });
+      }),
+      http.get("*/api/integrations/telegram", () => {
+        return HttpResponse.json(
+          { error: { message: "Not found", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
       }),
       http.post("*/api/telegram/register", () => {
         return HttpResponse.json(
