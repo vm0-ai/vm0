@@ -70,8 +70,11 @@ async function ensureTestScope(userId: string): Promise<void> {
         .insert(scopes)
         .values({ slug: fallbackSlug, clerkOrgId: TEST_CLERK_ORG_ID })
         .returning();
+      if (!fallback) {
+        throw new Error("Failed to create test scope with fallback slug");
+      }
       await tx.insert(scopeMembers).values({
-        scopeId: fallback!.id,
+        scopeId: fallback.id,
         userId,
         role: "admin",
       });
