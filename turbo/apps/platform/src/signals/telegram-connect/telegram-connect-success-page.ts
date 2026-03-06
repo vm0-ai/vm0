@@ -11,6 +11,6 @@ export const setupTelegramConnectSuccessPage$ = command(({ get, set }) => {
   const params = get(searchParams$);
   const botUsername = params.get("bot");
   if (botUsername) {
-    window.location.href = `tg://resolve?domain=${botUsername}`;
+    window.open(`tg://resolve?domain=${botUsername}`, "_blank");
   }
 });

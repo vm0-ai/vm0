@@ -7,7 +7,7 @@ const TELEGRAM_USER_ID = "99999";
 
 describe("connect-token", () => {
   afterEach(() => {
-    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   describe("signConnectParams", () => {
@@ -99,8 +99,9 @@ describe("connect-token", () => {
     });
 
     it("returns false for expired timestamp", () => {
-      vi.useFakeTimers();
-      const expired = Math.floor(Date.now() / 1000) - 700; // > 600s limit
+      const realNow = Date.now();
+      vi.spyOn(Date, "now").mockReturnValue(realNow);
+      const expired = Math.floor(realNow / 1000) - 700; // > 600s limit
       const sig = signConnectParams(
         INSTALLATION_ID,
         TELEGRAM_USER_ID,

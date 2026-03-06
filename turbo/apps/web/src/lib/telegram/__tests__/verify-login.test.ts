@@ -30,7 +30,7 @@ function makeAuth(overrides?: Partial<TelegramAuthData>): TelegramAuthData {
 
 describe("verifyTelegramLogin", () => {
   afterEach(() => {
-    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("returns true for valid auth data", () => {
@@ -50,8 +50,9 @@ describe("verifyTelegramLogin", () => {
   });
 
   it("returns false for expired auth_date", () => {
-    vi.useFakeTimers();
-    const past = Math.floor(Date.now() / 1000) - 400; // 400s ago, > 300s limit
+    const realNow = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(realNow);
+    const past = Math.floor(realNow / 1000) - 400; // 400s ago, > 300s limit
     const auth = makeAuth({ auth_date: past });
     expect(verifyTelegramLogin(auth, BOT_TOKEN)).toBe(false);
   });

@@ -1,3 +1,4 @@
+import { createHmac, createHash } from "node:crypto";
 import { describe, it, expect, beforeEach } from "vitest";
 import { DELETE, GET, POST } from "../route";
 import {
@@ -6,6 +7,33 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { createTestTelegramInstallation } from "../../../../../../src/__tests__/api-test-helpers";
+import { signConnectParams } from "../../../../../../src/lib/telegram/connect-token";
+
+const TEST_BOT_TOKEN = "test-bot-token";
+
+/**
+ * Build valid Telegram Login Widget auth data signed with the test bot token.
+ */
+function makeTelegramAuth(telegramUserId: number) {
+  const authDate = Math.floor(Date.now() / 1000);
+  const fields: Record<string, string | number> = {
+    auth_date: authDate,
+    id: telegramUserId,
+    first_name: "Test",
+  };
+
+  const checkString = Object.entries(fields)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\n");
+
+  const secretKey = createHash("sha256").update(TEST_BOT_TOKEN).digest();
+  const hash = createHmac("sha256", secretKey)
+    .update(checkString)
+    .digest("hex");
+
+  return { ...fields, hash };
+}
 
 const context = testContext();
 
@@ -189,6 +217,112 @@ describe("/api/integrations/telegram/link", () => {
       });
 
       const response = await POST(linkRequest("POST", { installationId }));
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("links account via telegramAuth with valid login widget data", async () => {
+      await context.setupUser();
+      const telegramBotId = uniqueId("bot");
+      const installationId = await createTestTelegramInstallation({
+        telegramBotId,
+      });
+
+      const telegramUserId = 99001;
+      const telegramAuth = makeTelegramAuth(telegramUserId);
+
+      const response = await POST(
+        linkRequest("POST", { installationId, telegramAuth }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.botUsername).toBe(`bot_${telegramBotId}`);
+      expect(data.telegramUserId).toBe(String(telegramUserId));
+
+      // Verify link was created
+      const getResponse = await GET(linkRequest("GET"));
+      const getData = await getResponse.json();
+      expect(getData.linked).toBe(true);
+    });
+
+    it("links account via connectSignature with valid signed params", async () => {
+      await context.setupUser();
+      const telegramBotId = uniqueId("bot");
+      const installationId = await createTestTelegramInstallation({
+        telegramBotId,
+      });
+
+      const telegramUserId = "99002";
+      const timestamp = Math.floor(Date.now() / 1000);
+      const signature = signConnectParams(
+        installationId,
+        telegramUserId,
+        timestamp,
+        TEST_BOT_TOKEN,
+      );
+
+      const response = await POST(
+        linkRequest("POST", {
+          installationId,
+          connectSignature: { telegramUserId, timestamp, signature },
+        }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.botUsername).toBe(`bot_${telegramBotId}`);
+      expect(data.telegramUserId).toBe(telegramUserId);
+
+      // Verify link was created
+      const getResponse = await GET(linkRequest("GET"));
+      const getData = await getResponse.json();
+      expect(getData.linked).toBe(true);
+    });
+
+    it("returns 400 for invalid telegramAuth hash", async () => {
+      await context.setupUser();
+      const telegramBotId = uniqueId("bot");
+      const installationId = await createTestTelegramInstallation({
+        telegramBotId,
+      });
+
+      const response = await POST(
+        linkRequest("POST", {
+          installationId,
+          telegramAuth: {
+            id: 12345,
+            first_name: "Test",
+            auth_date: Math.floor(Date.now() / 1000),
+            hash: "invalid_hash",
+          },
+        }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("returns 400 for invalid connectSignature", async () => {
+      await context.setupUser();
+      const telegramBotId = uniqueId("bot");
+      const installationId = await createTestTelegramInstallation({
+        telegramBotId,
+      });
+
+      const response = await POST(
+        linkRequest("POST", {
+          installationId,
+          connectSignature: {
+            telegramUserId: "99003",
+            timestamp: Math.floor(Date.now() / 1000),
+            signature: "a".repeat(64),
+          },
+        }),
+      );
       const data = await response.json();
 
       expect(response.status).toBe(400);
