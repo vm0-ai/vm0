@@ -547,11 +547,11 @@ async function buildAndDispatchRun(opts: {
     const buildContextTime = Date.now();
 
     // Prepare execution context (storage manifest, working dir, etc.)
-    const preparedContext = await prepareForExecution(context);
+    const prepareResult = await prepareForExecution(context);
     const prepareTime = Date.now();
 
     // Dispatch to executor
-    const result = await dispatchRun(preparedContext, userEmail);
+    const result = await dispatchRun(prepareResult.context, userEmail);
     const dispatchTime = Date.now();
 
     // Record per-step timing metrics for latency diagnosis
@@ -565,6 +565,19 @@ async function buildAndDispatchRun(opts: {
       { op: "api_step_build_context", ms: buildContextTime - tokenTime },
       { op: "api_step_prepare", ms: prepareTime - buildContextTime },
       { op: "api_step_dispatch", ms: dispatchTime - prepareTime },
+      // Sub-step timings within prepareForExecution
+      {
+        op: "api_prepare_resolve_scopes",
+        ms: prepareResult.timings.resolveScopes,
+      },
+      {
+        op: "api_prepare_ensure_artifact",
+        ms: prepareResult.timings.ensureArtifact,
+      },
+      {
+        op: "api_prepare_storage_manifest",
+        ms: prepareResult.timings.storageManifest,
+      },
     ];
     for (const step of steps) {
       recordSandboxOperation({
