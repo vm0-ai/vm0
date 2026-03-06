@@ -7,8 +7,13 @@ import {
 
 export const todoistHandler: ProviderHandler = {
   buildAuthUrl: buildTodoistAuthorizationUrl,
-  async exchangeCode(clientId, clientSecret, code) {
-    const result = await exchangeTodoistCode(clientId, clientSecret, code);
+  async exchangeCode(clientId, clientSecret, code, redirectUri) {
+    const result = await exchangeTodoistCode(
+      clientId,
+      clientSecret,
+      code,
+      redirectUri,
+    );
     return {
       accessToken: result.accessToken,
       refreshToken: null,
