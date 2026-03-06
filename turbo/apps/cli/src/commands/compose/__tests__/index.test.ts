@@ -3056,6 +3056,63 @@ agents:
       expect(result.setupUrl).not.toContain("JIRA_TOKEN");
     });
 
+    it("should not show warning when all secrets are connector-provided", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        yaml.stringify({
+          version: "1.0",
+          agents: {
+            test: {
+              framework: "claude-code",
+              working_dir: "/",
+              environment: {
+                GH_TOKEN: "${{ secrets.GH_TOKEN }}",
+                SLACK_TOKEN: "${{ secrets.SLACK_TOKEN }}",
+              },
+            },
+          },
+        }),
+      );
+
+      server.use(
+        composeApiHandler,
+        scopeApiHandler,
+        http.get("http://localhost:3000/api/secrets", () => {
+          return HttpResponse.json({ secrets: [] });
+        }),
+        http.get("http://localhost:3000/api/variables", () => {
+          return HttpResponse.json({ variables: [] });
+        }),
+        http.get("http://localhost:3000/api/connectors", () => {
+          return HttpResponse.json({
+            connectors: [],
+            connectorProvidedSecretNames: [
+              "GH_TOKEN",
+              "GITHUB_TOKEN",
+              "SLACK_TOKEN",
+            ],
+          });
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "--json"]);
+
+      const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.composeId !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonOutputCall).toBeDefined();
+      const result = JSON.parse(jsonOutputCall![0] as string);
+      // All secrets covered by connectors — no missing, no setupUrl
+      expect(result.missingSecrets).toBeUndefined();
+      expect(result.setupUrl).toBeUndefined();
+    });
+
     it("should show all secrets as missing when no connectors are connected", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
