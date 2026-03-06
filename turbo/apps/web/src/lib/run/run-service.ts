@@ -227,7 +227,10 @@ export async function validateAgentSession(
  * - Docker: local mode, requires DOCKER_SANDBOX_IMAGE
  *
  */
-async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
+async function dispatchRun(
+  context: PreparedContext,
+  userEmail: string,
+): Promise<ExecutorResult> {
   if (context.runnerGroup) {
     log.debug(
       `Dispatching run ${context.runId} to runner group: ${context.runnerGroup}`,
@@ -240,10 +243,9 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
   // deploys don't set RUNNER_DEFAULT_GROUP so they still use E2B.
   const defaultGroup = env().RUNNER_DEFAULT_GROUP;
   if (defaultGroup) {
-    const email = await getUserEmail(context.userId);
-    if (email.endsWith("@vm0.ai")) {
+    if (userEmail.endsWith("@vm0.ai")) {
       log.debug(
-        `Dispatching run ${context.runId} to runner (domain rollout: ${email})`,
+        `Dispatching run ${context.runId} to runner (domain rollout: ${userEmail})`,
       );
       return await executeRunnerJob({ ...context, runnerGroup: defaultGroup });
     }
@@ -326,6 +328,7 @@ export interface CreateRunResult {
  */
 async function loadAndAuthorizeCompose(
   userId: string,
+  userEmail: string,
   agentComposeVersionId: string,
   callerComposeId?: string,
 ): Promise<{
@@ -366,7 +369,6 @@ async function loadAndAuthorizeCompose(
     throw notFound("Agent compose not found");
   }
 
-  const userEmail = await getUserEmail(userId);
   const hasAccess = await canAccessCompose(userId, userEmail, compose);
   if (!hasAccess) {
     throw forbidden("You do not have permission to access this agent");
@@ -479,6 +481,7 @@ async function buildAndDispatchRun(opts: {
   scopeId: string | undefined;
   authorizeTime: number;
   transactionTime: number;
+  userEmail: string;
 }): Promise<{ status: string; sandboxId?: string }> {
   const {
     runId,
@@ -489,6 +492,7 @@ async function buildAndDispatchRun(opts: {
     scopeId,
     authorizeTime,
     transactionTime,
+    userEmail,
   } = opts;
   const { userId, agentComposeVersionId, prompt } = params;
 
@@ -534,7 +538,7 @@ async function buildAndDispatchRun(opts: {
     const prepareTime = Date.now();
 
     // Dispatch to executor
-    const result = await dispatchRun(preparedContext);
+    const result = await dispatchRun(preparedContext, userEmail);
     const dispatchTime = Date.now();
 
     // Record per-step timing metrics for latency diagnosis
@@ -594,9 +598,13 @@ export async function createRun(
   const apiStartTime = Date.now();
   const { userId, agentComposeVersionId, prompt } = params;
 
+  // Fetch user email once, reused for authorization and dispatch routing
+  const userEmail = await getUserEmail(userId);
+
   // Steps 1-2: Load compose version/metadata and verify access
   const { composeContent } = await loadAndAuthorizeCompose(
     userId,
+    userEmail,
     agentComposeVersionId,
     params.composeId,
   );
@@ -679,6 +687,7 @@ export async function createRun(
     scopeId,
     authorizeTime,
     transactionTime,
+    userEmail,
   });
 
   return {
@@ -730,9 +739,13 @@ export async function executeQueuedRun(
 
   log.debug(`Executing queued run ${runId} for user ${userId}`);
 
+  // Fetch user email once, reused for authorization and dispatch routing
+  const userEmail = await getUserEmail(userId);
+
   // Steps 2-3: Load compose version/metadata and verify access
   const { composeContent } = await loadAndAuthorizeCompose(
     userId,
+    userEmail,
     agentComposeVersionId,
     params.composeId,
   );
@@ -760,5 +773,6 @@ export async function executeQueuedRun(
     scopeId: params.scopeId,
     authorizeTime,
     transactionTime,
+    userEmail,
   });
 }
