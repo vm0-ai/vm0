@@ -10,6 +10,12 @@ interface TelegramInstallationInfo {
   botUsername: string;
 }
 
+interface ConnectSignatureParams {
+  telegramUserId: string;
+  timestamp: string;
+  signature: string;
+}
+
 interface TelegramConnectState {
   status:
     | "checking"
@@ -20,6 +26,8 @@ interface TelegramConnectState {
     | "error";
   isLinked: boolean;
   installation: TelegramInstallationInfo | null;
+  botId: string | null;
+  connectParams: ConnectSignatureParams | null;
   error: string | null;
 }
 
@@ -35,6 +43,8 @@ const telegramConnectState$ = state<TelegramConnectState>({
   status: "checking",
   isLinked: false,
   installation: null,
+  botId: null,
+  connectParams: null,
   error: null,
 });
 
@@ -50,6 +60,9 @@ export const telegramConnectError$ = computed(
 export const telegramConnectInstallation$ = computed(
   (get) => get(telegramConnectState$).installation,
 );
+export const telegramConnectParams$ = computed(
+  (get) => get(telegramConnectState$).connectParams,
+);
 
 const telegramBotTokenInput$ = state("");
 
@@ -64,11 +77,18 @@ export const setTelegramBotToken$ = command(({ set }, value: string) => {
  * When botId is provided, also checks for an existing installation to enable re-linking.
  */
 export const initTelegramConnect$ = command(
-  async ({ get, set }, botId?: string) => {
+  async (
+    { get, set },
+    opts?: { botId?: string; connectParams?: ConnectSignatureParams },
+  ) => {
+    const botId = opts?.botId;
+    const connectParams = opts?.connectParams ?? null;
     set(telegramConnectState$, {
       status: "checking",
       isLinked: false,
       installation: null,
+      botId: botId ?? null,
+      connectParams,
       error: null,
     });
 
@@ -93,6 +113,8 @@ export const initTelegramConnect$ = command(
         status: "ready",
         isLinked: data.linked,
         installation: data.installation ?? null,
+        botId: botId ?? null,
+        connectParams,
         error: null,
       });
     } catch (error) {
@@ -102,6 +124,8 @@ export const initTelegramConnect$ = command(
         status: "error",
         isLinked: false,
         installation: null,
+        botId: botId ?? null,
+        connectParams,
         error: "Failed to check connection status. Please try again.",
       });
     }
@@ -109,13 +133,17 @@ export const initTelegramConnect$ = command(
 );
 
 /**
- * Link user to an existing Telegram bot installation.
- * Generates a deep link token and returns the Telegram deep link URL.
+ * Link user via signed connect params from /connect command.
  */
 export const linkTelegramBot$ = command(
   async (
     { get, set },
-    installationId: string,
+    params: {
+      installationId: string;
+      telegramUserId: string;
+      timestamp: string;
+      signature: string;
+    },
   ): Promise<RegisterTelegramBotResult> => {
     const botUsername =
       get(telegramConnectState$).installation?.botUsername ?? "";
@@ -131,7 +159,14 @@ export const linkTelegramBot$ = command(
       const response = await fetchFn("/api/integrations/telegram/link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ installationId }),
+        body: JSON.stringify({
+          installationId: params.installationId,
+          connectSignature: {
+            telegramUserId: params.telegramUserId,
+            timestamp: Number(params.timestamp),
+            signature: params.signature,
+          },
+        }),
       });
 
       if (!response.ok) {
@@ -141,8 +176,6 @@ export const linkTelegramBot$ = command(
         throw new Error(data.error?.message ?? "Failed to link account");
       }
 
-      await response.json();
-
       set(telegramConnectState$, (prev) => ({
         ...prev,
         status: "success" as const,
@@ -150,7 +183,7 @@ export const linkTelegramBot$ = command(
 
       return {
         success: true,
-        installationId,
+        installationId: params.installationId,
         botUsername,
       };
     } catch (error) {

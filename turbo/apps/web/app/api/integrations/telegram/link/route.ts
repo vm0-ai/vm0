@@ -2,16 +2,76 @@ import { NextResponse } from "next/server";
 import { eq, desc } from "drizzle-orm";
 import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
+import { env } from "../../../../../src/env";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { telegramUserLinks } from "../../../../../src/db/schema/telegram-user-link";
 import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
 import {
   ensureScopeAndArtifact,
-  PENDING_TELEGRAM_USER_ID,
+  getWorkspaceAgent,
 } from "../../../../../src/lib/telegram/handlers/shared";
+import { decryptCredentialValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import {
+  createTelegramClient,
+  sendMessage,
+} from "../../../../../src/lib/telegram/client";
+import { escapeHtml } from "../../../../../src/lib/telegram/format";
+import { logger } from "../../../../../src/lib/logger";
+
+const log = logger("api:telegram:link");
+
+import {
+  telegramAuthSchema,
+  verifyTelegramLogin,
+} from "../../../../../src/lib/telegram/verify-login";
+import { verifyConnectSignature } from "../../../../../src/lib/telegram/connect-token";
+
+/**
+ * DELETE /api/integrations/telegram/link
+ *
+ * Disconnect the authenticated user's Telegram account (remove user link).
+ * Does not remove the bot installation.
+ */
+export async function DELETE(request: Request) {
+  initServices();
+
+  const authHeader = request.headers.get("authorization");
+  const userId = await getUserId(authHeader ?? undefined);
+
+  if (!userId) {
+    return NextResponse.json(
+      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+      { status: 401 },
+    );
+  }
+
+  const db = globalThis.services.db;
+
+  const deleted = await db
+    .delete(telegramUserLinks)
+    .where(eq(telegramUserLinks.vm0UserId, userId))
+    .returning({ id: telegramUserLinks.id });
+
+  if (deleted.length === 0) {
+    return NextResponse.json(
+      { error: { message: "No linked Telegram account", code: "NOT_FOUND" } },
+      { status: 404 },
+    );
+  }
+
+  return new NextResponse(null, { status: 204 });
+}
+
+const connectSignatureSchema = z.object({
+  telegramUserId: z.string().min(1),
+  timestamp: z.number(),
+  signature: z.string().min(1),
+});
 
 const linkBodySchema = z.object({
   installationId: z.string().min(1),
+  telegramAuth: telegramAuthSchema.optional(),
+  connectSignature: connectSignatureSchema.optional(),
 });
 
 /**
@@ -115,11 +175,15 @@ export async function POST(request: Request) {
   }
   const body = parseResult.data;
 
-  // Look up installation to get botUsername
+  const { SECRETS_ENCRYPTION_KEY } = env();
+
+  // Look up installation
   const [installation] = await globalThis.services.db
     .select({
       id: telegramInstallations.id,
       botUsername: telegramInstallations.botUsername,
+      encryptedBotToken: telegramInstallations.encryptedBotToken,
+      defaultComposeId: telegramInstallations.defaultComposeId,
     })
     .from(telegramInstallations)
     .where(eq(telegramInstallations.id, body.installationId))
@@ -132,21 +196,121 @@ export async function POST(request: Request) {
     );
   }
 
-  // Create a pending user link — it auto-completes when the user sends
-  // their first message to the bot (see resolveUserLink in shared.ts).
-  await globalThis.services.db
-    .insert(telegramUserLinks)
-    .values({
-      telegramUserId: PENDING_TELEGRAM_USER_ID,
-      installationId: installation.id,
-      vm0UserId: userId,
-    })
-    .onConflictDoNothing();
-  await ensureScopeAndArtifact(userId);
+  // If telegramAuth is provided, verify and create a direct link
+  if (body.telegramAuth) {
+    const botToken = decryptCredentialValue(
+      installation.encryptedBotToken,
+      SECRETS_ENCRYPTION_KEY,
+    );
 
-  const botLink = installation.botUsername
-    ? `https://t.me/${installation.botUsername}`
-    : null;
+    if (!verifyTelegramLogin(body.telegramAuth, botToken)) {
+      return NextResponse.json(
+        {
+          error: {
+            message: "Invalid Telegram authorization",
+            code: "BAD_REQUEST",
+          },
+        },
+        { status: 400 },
+      );
+    }
 
-  return NextResponse.json({ botUsername: installation.botUsername, botLink });
+    const telegramUserId = String(body.telegramAuth.id);
+
+    await globalThis.services.db
+      .insert(telegramUserLinks)
+      .values({
+        telegramUserId,
+        installationId: installation.id,
+        vm0UserId: userId,
+      })
+      .onConflictDoUpdate({
+        target: [
+          telegramUserLinks.telegramUserId,
+          telegramUserLinks.installationId,
+        ],
+        set: { vm0UserId: userId, updatedAt: new Date() },
+      });
+    await ensureScopeAndArtifact(userId);
+
+    return NextResponse.json({
+      botUsername: installation.botUsername,
+      telegramUserId,
+    });
+  }
+
+  // Connect via signed params from /connect command
+  if (body.connectSignature) {
+    const botToken = decryptCredentialValue(
+      installation.encryptedBotToken,
+      SECRETS_ENCRYPTION_KEY,
+    );
+
+    if (
+      !verifyConnectSignature(
+        body.installationId,
+        body.connectSignature.telegramUserId,
+        body.connectSignature.timestamp,
+        body.connectSignature.signature,
+        botToken,
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error: {
+            message:
+              "Invalid or expired connect link. Please use /connect again in Telegram.",
+            code: "BAD_REQUEST",
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    const telegramUserId = body.connectSignature.telegramUserId;
+
+    await globalThis.services.db
+      .insert(telegramUserLinks)
+      .values({
+        telegramUserId,
+        installationId: installation.id,
+        vm0UserId: userId,
+      })
+      .onConflictDoUpdate({
+        target: [
+          telegramUserLinks.telegramUserId,
+          telegramUserLinks.installationId,
+        ],
+        set: { vm0UserId: userId, updatedAt: new Date() },
+      });
+    await ensureScopeAndArtifact(userId);
+
+    // Send success message to user in Telegram (non-blocking)
+    const client = createTelegramClient(botToken);
+    const agent = await getWorkspaceAgent(installation.defaultComposeId);
+    const agentName = agent?.name ?? "Agent";
+    sendMessage(
+      client,
+      telegramUserId,
+      `✅ Account connected! 🤖 ${escapeHtml(agentName)} is ready.\n\nSend me a message to get started.`,
+    ).catch((err) => {
+      log.warn("Failed to send connect success message", { err });
+    });
+
+    return NextResponse.json({
+      botUsername: installation.botUsername,
+      telegramUserId,
+    });
+  }
+
+  // No auth method provided
+  return NextResponse.json(
+    {
+      error: {
+        message: "Either telegramAuth or connectSignature is required",
+        code: "BAD_REQUEST",
+      },
+    },
+    { status: 400 },
+  );
 }

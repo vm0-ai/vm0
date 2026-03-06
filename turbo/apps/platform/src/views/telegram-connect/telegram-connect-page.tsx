@@ -8,6 +8,7 @@ import {
   telegramConnectIsLinked$,
   telegramConnectError$,
   telegramConnectInstallation$,
+  telegramConnectParams$,
   telegramBotToken$,
   setTelegramBotToken$,
   registerTelegramBot$,
@@ -19,6 +20,7 @@ export function TelegramConnectPage() {
   const status = useGet(telegramConnectStatus$);
   const isLinked = useGet(telegramConnectIsLinked$);
   const installation = useGet(telegramConnectInstallation$);
+  const connectParams = useGet(telegramConnectParams$);
   const error = useGet(telegramConnectError$);
   const theme = useGet(theme$);
   const registerBot = useSet(registerTelegramBot$);
@@ -47,12 +49,15 @@ export function TelegramConnectPage() {
   };
 
   const handleLink = () => {
-    if (!installation) {
+    if (!installation || !connectParams) {
       return;
     }
     detach(
       (async () => {
-        const result = await linkBot(installation.id);
+        const result = await linkBot({
+          installationId: installation.id,
+          ...connectParams,
+        });
         if (result.success) {
           const successParams = new URLSearchParams();
           successParams.set("bot", result.botUsername);
@@ -65,12 +70,12 @@ export function TelegramConnectPage() {
     );
   };
 
+  const isLinking = status === "linking";
+
   const backgroundGradient =
     theme === "dark"
       ? "linear-gradient(91deg, rgba(255, 200, 176, 0.15) 0%, rgba(166, 222, 255, 0.15) 51%, rgba(255, 231, 162, 0.15) 100%), linear-gradient(90deg, hsl(var(--background)) 0%, hsl(var(--background)) 100%)"
       : "linear-gradient(91deg, rgba(255, 200, 176, 0.26) 0%, rgba(166, 222, 255, 0.26) 51%, rgba(255, 231, 162, 0.26) 100%), linear-gradient(90deg, hsl(var(--background)) 0%, hsl(var(--background)) 100%)";
-
-  const isLinking = status === "linking";
 
   return (
     <div
@@ -105,7 +110,7 @@ export function TelegramConnectPage() {
               <div className="flex flex-col items-center gap-4">
                 <div className="flex flex-col gap-1 text-center text-foreground">
                   <h1 className="text-lg font-medium leading-7">
-                    Already Installed
+                    Already Connected
                   </h1>
                   <p className="text-sm leading-5 text-muted-foreground">
                     Your account is already linked to a Telegram bot.
@@ -125,19 +130,19 @@ export function TelegramConnectPage() {
                   Go to Settings
                 </Button>
               </div>
-            ) : installation ? (
-              /* Re-link to existing bot */
+            ) : installation && connectParams ? (
+              /* Link account via signed connect params */
               <>
                 <div className="flex flex-col gap-1 text-center text-foreground">
                   <h1 className="text-lg font-medium leading-7">
                     Link Your Account
                   </h1>
                   <p className="text-sm leading-5 text-muted-foreground">
-                    A Telegram bot{" "}
+                    Link your VM0 account to Telegram bot{" "}
                     <span className="font-medium text-foreground">
                       @{installation.botUsername}
-                    </span>{" "}
-                    is already installed. Link your account to start using it.
+                    </span>
+                    {" to start using it."}
                   </p>
                 </div>
 

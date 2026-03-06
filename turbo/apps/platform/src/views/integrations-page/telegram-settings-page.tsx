@@ -26,6 +26,8 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   telegramIntegrationData$,
   telegramIntegrationLoading$,
+  telegramIntegrationIsConnected$,
+  disconnectTelegramAccount$,
   disconnectTelegram$,
   updateTelegramDefaultAgent$,
   telegramDisconnectDialogOpen$,
@@ -36,6 +38,7 @@ import { agentsList$ } from "../../signals/agents-page/agents-list.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
 import { AppShell } from "../layout/app-shell.tsx";
 import { Link } from "../router/link.tsx";
+import { TelegramLoginButton } from "./telegram-login-button.tsx";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -177,9 +180,11 @@ function DefaultAgentSection({
 export function TelegramSettingsPage() {
   const data = useGet(telegramIntegrationData$);
   const loading = useGet(telegramIntegrationLoading$);
+  const isConnected = useGet(telegramIntegrationIsConnected$);
   const agents = useGet(agentsList$);
   const navigate = useSet(navigateInReact$);
-  const disconnect = useSet(disconnectTelegram$);
+  const disconnectAccount = useSet(disconnectTelegramAccount$);
+  const uninstall = useSet(disconnectTelegram$);
   const updateAgent = useSet(updateTelegramDefaultAgent$);
   const confirmOpen = useGet(telegramDisconnectDialogOpen$);
   const openConfirm = useSet(openTelegramDisconnectDialog$);
@@ -212,10 +217,14 @@ export function TelegramSettingsPage() {
     ];
   })();
 
-  const handleDisconnect = () => {
+  const handleDisconnectAccount = () => {
+    detach(disconnectAccount(), Reason.DomCallback);
+  };
+
+  const handleUninstall = () => {
     detach(
       (async () => {
-        await disconnect();
+        await uninstall();
         closeConfirm();
         navigate("/settings", {
           searchParams: new URLSearchParams({ tab: "integrations" }),
@@ -251,7 +260,48 @@ export function TelegramSettingsPage() {
           </div>
         ) : (
           <>
-            {/* Link account banner */}
+            {/* Connect account banner */}
+            {!isConnected && data?.bot && (
+              <div className="flex flex-col gap-3 rounded-lg border border-blue-500 bg-blue-50 px-4 py-4 dark:border-blue-700 dark:bg-blue-950/30">
+                <div className="flex items-center gap-3">
+                  <IconAlertTriangle
+                    size={20}
+                    className="shrink-0 text-blue-500"
+                    stroke={1.5}
+                  />
+                  <p className="text-sm">
+                    Your account is not connected to this bot yet. Log in with
+                    Telegram to link your account.
+                  </p>
+                </div>
+                <div className="pl-8">
+                  <TelegramLoginButton botId={data.bot.id} />
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {
+                      "Having trouble? Make sure the bot domain is configured in "
+                    }
+                    <a
+                      href="https://t.me/BotFather"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                    >
+                      @BotFather
+                    </a>
+                    {" via "}
+                    <code className="rounded bg-blue-100 px-1 py-0.5 font-mono text-xs dark:bg-blue-900">
+                      /setdomain
+                    </code>
+                    {". Or send "}
+                    <code className="rounded bg-blue-100 px-1 py-0.5 font-mono text-xs dark:bg-blue-900">
+                      /connect
+                    </code>
+                    {" to the bot in Telegram."}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Bot info */}
             {data?.bot && (
               <div className="flex flex-col gap-4">
@@ -332,26 +382,53 @@ export function TelegramSettingsPage() {
               </div>
             </div>
 
-            {/* Disconnect section */}
-            <div className="flex flex-col gap-4">
-              <h3 className="text-base font-medium">Uninstall Telegram</h3>
-              <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
-                <div className="flex flex-1 flex-col gap-1">
-                  <p className="text-sm font-medium">Uninstall bot</p>
-                  <p className="text-sm text-muted-foreground">
-                    Your VM0 agent will be uninstalled from this Telegram bot.
-                    All linked accounts and message history will be removed.
-                  </p>
+            {/* Disconnect account */}
+            {isConnected && (
+              <div className="flex flex-col gap-4">
+                <h3 className="text-base font-medium">Disconnect account</h3>
+                <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
+                  <div className="flex flex-1 flex-col gap-1">
+                    <p className="text-sm font-medium">
+                      Disconnect your Telegram account
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Unlink your Telegram account from VM0. The bot
+                      installation will remain active for other users.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDisconnectAccount}
+                  >
+                    Disconnect
+                  </Button>
                 </div>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => openConfirm()}
-                >
-                  Uninstall
-                </Button>
               </div>
-            </div>
+            )}
+
+            {/* Uninstall bot (admin only) */}
+            {data?.isAdmin && (
+              <div className="flex flex-col gap-4">
+                <h3 className="text-base font-medium">Uninstall Telegram</h3>
+                <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
+                  <div className="flex flex-1 flex-col gap-1">
+                    <p className="text-sm font-medium">Uninstall bot</p>
+                    <p className="text-sm text-muted-foreground">
+                      Remove the Telegram bot installation. All linked accounts
+                      and message history will be deleted.
+                    </p>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => openConfirm()}
+                  >
+                    Uninstall
+                  </Button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -377,7 +454,7 @@ export function TelegramSettingsPage() {
             <Button variant="outline" onClick={() => closeConfirm()}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDisconnect}>
+            <Button variant="destructive" onClick={handleUninstall}>
               Uninstall
             </Button>
           </DialogFooter>
