@@ -62,7 +62,12 @@
       copy:
         content: |
           // Collect system metrics (equivalent to node_exporter)
-          prometheus.exporter.unix "default" {}
+          prometheus.exporter.unix "default" {
+            enable_collectors = ["systemd"]
+            systemd {
+              unit_include = "vm0-runner-v.+\\.service|alloy\\.service|docker\\.service"
+            }
+          }
 
           // Override instance label with inventory hostname
           discovery.relabel "default" {
