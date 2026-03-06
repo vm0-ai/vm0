@@ -38,13 +38,23 @@ if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
   CURL_HEADERS+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
 fi
 
-# Check if error is retryable (Vercel alias propagation delay)
+# Check if error is retryable (deployment propagation / cold start)
 is_retryable_error() {
   local http_code="$1"
   local body="$2"
 
   # Retry on 404 with DEPLOYMENT_NOT_FOUND (Vercel alias not yet propagated)
   if [[ "$http_code" == "404" ]] && [[ "$body" == *"DEPLOYMENT_NOT_FOUND"* ]]; then
+    return 0
+  fi
+
+  # Retry on 5xx server errors (cold start, transient failures)
+  if [[ "$http_code" =~ ^5[0-9][0-9]$ ]]; then
+    return 0
+  fi
+
+  # Retry on empty response (connection refused or DNS not ready)
+  if [[ -z "$http_code" ]] || [[ "$http_code" == "000" ]]; then
     return 0
   fi
 
@@ -59,7 +69,7 @@ call_test_token_endpoint() {
   local response http_code body
 
   while [[ $attempt -le $MAX_RETRIES ]]; do
-    echo "Calling test-token endpoint (attempt $attempt/$MAX_RETRIES)..."
+    echo "Calling test-token endpoint (attempt $attempt/$MAX_RETRIES)..." >&2
 
     response=$(curl -s -w "\n%{http_code}" \
       "${CURL_HEADERS[@]}" \
@@ -72,7 +82,7 @@ call_test_token_endpoint() {
     # Success
     if [[ "$http_code" == "200" ]]; then
       if [[ $attempt -gt 1 ]]; then
-        echo "Attempt $attempt/$MAX_RETRIES succeeded"
+        echo "Attempt $attempt/$MAX_RETRIES succeeded" >&2
       fi
       echo "$body"
       return 0
@@ -81,7 +91,7 @@ call_test_token_endpoint() {
     # Check if error is retryable
     if is_retryable_error "$http_code" "$body"; then
       if [[ $attempt -lt $MAX_RETRIES ]]; then
-        echo "Attempt $attempt/$MAX_RETRIES failed (DEPLOYMENT_NOT_FOUND), retrying in ${delay}s..."
+        echo "Attempt $attempt/$MAX_RETRIES failed (HTTP $http_code), retrying in ${delay}s..." >&2
         sleep "$delay"
         delay=$((delay * 2))
         attempt=$((attempt + 1))
@@ -90,8 +100,8 @@ call_test_token_endpoint() {
     fi
 
     # Non-retryable error or max retries exhausted
-    echo "Error: test-token endpoint returned $http_code"
-    echo "Response: $body"
+    echo "Error: test-token endpoint returned $http_code" >&2
+    echo "Response: $body" >&2
     return 1
   done
 
