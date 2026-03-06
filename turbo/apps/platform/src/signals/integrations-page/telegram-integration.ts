@@ -286,11 +286,7 @@ export const startTelegramLoginListener$ = command(
 );
 
 export const openTelegramLoginPopup$ = command((_ctx, botId: string) => {
-  // Telegram's /setdomain only accepts bare domains (no port), so origin
-  // must strip the port. return_to keeps the full origin so the callback
-  // reaches the correct server.
-  const bareOrigin = `${window.location.protocol}//${window.location.hostname}`;
-  const origin = encodeURIComponent(bareOrigin);
+  const origin = encodeURIComponent(window.location.origin);
   const returnTo = encodeURIComponent(
     `${window.location.origin}/api/integrations/telegram/auth-callback`,
   );
