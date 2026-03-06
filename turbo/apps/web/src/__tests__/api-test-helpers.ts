@@ -703,6 +703,41 @@ export async function completeTestRun(
   return checkpoint;
 }
 
+/**
+ * Fail a test run via the complete webhook (exitCode=1).
+ *
+ * Unlike completeTestRun, no checkpoint is needed for a failed run.
+ */
+export async function failTestRun(
+  userId: string,
+  runId: string,
+  error?: string,
+): Promise<void> {
+  const sandboxToken = await generateSandboxToken(userId, runId);
+  const request = createTestRequest(
+    "http://localhost:3000/api/webhooks/agent/complete",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sandboxToken}`,
+      },
+      body: JSON.stringify({
+        runId,
+        exitCode: 1,
+        error: error ?? "test failure",
+      }),
+    },
+  );
+  const response = await completeWebhook(request);
+  if (!response.ok) {
+    const errorBody = await response.json();
+    throw new Error(
+      `Failed to fail run: ${(errorBody as { error?: { message?: string } }).error?.message || response.status}`,
+    );
+  }
+}
+
 // ============================================================================
 // Schedule Test Helpers
 // ============================================================================

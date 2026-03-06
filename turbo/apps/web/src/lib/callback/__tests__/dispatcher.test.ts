@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { dispatchProgressCallbacks } from "../dispatcher";
-import { agentRuns } from "../../../db/schema/agent-run";
 import { testContext, type UserContext } from "../../../__tests__/test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
 import {
   createTestCompose,
   createTestRun,
   createTestCallback,
+  completeTestRun,
+  failTestRun,
 } from "../../../__tests__/api-test-helpers";
 
 const context = testContext();
@@ -138,11 +138,7 @@ describe("dispatchProgressCallbacks", () => {
       payload: { workspaceId: "T123" },
     });
 
-    // Mark run as completed
-    await globalThis.services.db
-      .update(agentRuns)
-      .set({ status: "completed", completedAt: new Date() })
-      .where(eq(agentRuns.id, testRunId));
+    await completeTestRun(user.userId, testRunId);
 
     await dispatchProgressCallbacks(testRunId);
 
@@ -165,11 +161,7 @@ describe("dispatchProgressCallbacks", () => {
       payload: { workspaceId: "T123" },
     });
 
-    // Mark run as failed
-    await globalThis.services.db
-      .update(agentRuns)
-      .set({ status: "failed", completedAt: new Date(), error: "test error" })
-      .where(eq(agentRuns.id, testRunId));
+    await failTestRun(user.userId, testRunId);
 
     await dispatchProgressCallbacks(testRunId);
 
