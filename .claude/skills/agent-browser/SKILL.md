@@ -36,6 +36,31 @@ pgrep -f websockify > /dev/null || (websockify --web /usr/share/novnc/ 0.0.0.0:6
 sleep 1
 ```
 
+### Troubleshooting noVNC
+
+If the user can't connect to noVNC (`dcvnc` fails or the page doesn't load):
+
+1. **websockify not listening** — The most common issue. Verify with `netstat -tlnp 2>/dev/null | grep 6080`. If not listening:
+   - Kill any stale process: `pkill -9 -f websockify`
+   - Restart with correct bind address (must be `0.0.0.0`, not `localhost`):
+     ```bash
+     (websockify --web /usr/share/novnc/ 0.0.0.0:6080 localhost:5900 > /dev/null 2>&1 &)
+     ```
+   - Verify: `sleep 2 && netstat -tlnp 2>/dev/null | grep 6080`
+
+2. **`||` and `&` precedence bug** — Running `pgrep ... || websockify ... &` without subshells causes `&` to background the entire pipeline, not just websockify. The `pgrep` succeeds (exit 0) and websockify never starts. Always wrap in `(...)`:
+   ```bash
+   # WRONG — websockify may silently not start
+   pgrep -f websockify > /dev/null || websockify ... &
+   # CORRECT — subshell ensures only websockify is backgrounded
+   pgrep -f websockify > /dev/null || (websockify ... &)
+   ```
+
+3. **Chrome profile lock from another VM** — If agent-browser fails with "profile appears to be in use by another Chromium process", remove the stale lock:
+   ```bash
+   rm -f ~/.local/share/agent-browser/profile/Singleton{Lock,Cookie,Socket}
+   ```
+
 ### Always Use Headed Mode
 
 All agent-browser commands must set `DISPLAY=:99` and use `--headed`. For local HTTPS dev servers, use `--ignore-https-errors` (Playwright flag, NOT Chrome's `--ignore-certificate-errors` which breaks stealth):

@@ -12,6 +12,7 @@ import { dropboxHandler } from "./providers/dropbox-handler";
 import { figmaHandler } from "./providers/figma-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
 import { githubHandler } from "./providers/github-handler";
+import { hubspotHandler } from "./providers/hubspot-handler";
 import { gmailHandler } from "./providers/gmail-handler";
 import { googleCalendarHandler } from "./providers/google-calendar-handler";
 import { googleDocsHandler } from "./providers/google-docs-handler";
@@ -47,6 +48,7 @@ export const PROVIDER_HANDLERS: Record<
   "garmin-connect": garminConnectHandler,
   github: githubHandler,
   gmail: gmailHandler,
+  hubspot: hubspotHandler,
   "google-calendar": googleCalendarHandler,
   "google-docs": googleDocsHandler,
   "google-drive": googleDriveHandler,
