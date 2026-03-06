@@ -75,7 +75,6 @@ export const CONNECTOR_TYPES = {
         "data.recordComments:write",
         "schema.bases:read",
         "schema.bases:write",
-        "webhook:manage",
         "user.email:read",
       ],
     } as ConnectorOAuthConfig,
@@ -895,46 +894,6 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
-  webflow: {
-    label: "Webflow",
-    helpText:
-      "Connect your Webflow account to manage sites, pages, CMS content, and assets",
-    authMethods: {
-      oauth: {
-        label: "OAuth (Recommended)",
-        helpText: "Sign in with Webflow to grant access.",
-        secrets: {
-          WEBFLOW_ACCESS_TOKEN: {
-            label: "Access Token",
-            required: true,
-          },
-        },
-      },
-    } as Record<string, ConnectorAuthMethodConfig>,
-    defaultAuthMethod: "oauth",
-    environmentMapping: {
-      WEBFLOW_TOKEN: "$secrets.WEBFLOW_ACCESS_TOKEN",
-    } as Record<string, string>,
-    oauth: {
-      authorizationUrl: "https://webflow.com/oauth/authorize",
-      tokenUrl: "https://api.webflow.com/oauth/access_token",
-      scopes: [
-        "authorized_user:read",
-        "sites:read",
-        "sites:write",
-        "pages:read",
-        "pages:write",
-        "cms:read",
-        "cms:write",
-        "forms:read",
-        "assets:read",
-        "assets:write",
-        "custom_code:read",
-        "custom_code:write",
-        "ecommerce:read",
-      ],
-    } as ConnectorOAuthConfig,
-  },
   xero: {
     label: "Xero",
     helpText:
@@ -1044,7 +1003,6 @@ export const connectorTypeSchema = z.enum([
   "vercel",
   "sentry",
   "intervals-icu",
-  "webflow",
   "xero",
   "monday",
   "todoist",

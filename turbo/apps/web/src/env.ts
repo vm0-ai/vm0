@@ -138,9 +138,6 @@ function initEnv() {
       // Xero OAuth (for connector)
       XERO_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       XERO_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
-      // Webflow OAuth (for connector)
-      WEBFLOW_OAUTH_CLIENT_ID: z.string().min(1).optional(),
-      WEBFLOW_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Todoist OAuth (for connector)
       TODOIST_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       TODOIST_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -277,8 +274,6 @@ function initEnv() {
         process.env.INTERVALS_ICU_OAUTH_CLIENT_SECRET,
       XERO_OAUTH_CLIENT_ID: process.env.XERO_OAUTH_CLIENT_ID,
       XERO_OAUTH_CLIENT_SECRET: process.env.XERO_OAUTH_CLIENT_SECRET,
-      WEBFLOW_OAUTH_CLIENT_ID: process.env.WEBFLOW_OAUTH_CLIENT_ID,
-      WEBFLOW_OAUTH_CLIENT_SECRET: process.env.WEBFLOW_OAUTH_CLIENT_SECRET,
       MONDAY_OAUTH_CLIENT_ID: process.env.MONDAY_OAUTH_CLIENT_ID,
       MONDAY_OAUTH_CLIENT_SECRET: process.env.MONDAY_OAUTH_CLIENT_SECRET,
       MONDAY_OAUTH_APP_ID: process.env.MONDAY_OAUTH_APP_ID,
