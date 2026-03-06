@@ -509,6 +509,57 @@ export type RunMetricsContract = typeof runMetricsContract;
 export type RunAgentEventsContract = typeof runAgentEventsContract;
 export type RunNetworkLogsContract = typeof runNetworkLogsContract;
 
+/**
+ * Logs search result schema
+ */
+const searchResultSchema = z.object({
+  runId: z.string(),
+  agentName: z.string(),
+  matchedEvent: runEventSchema,
+  contextBefore: z.array(runEventSchema),
+  contextAfter: z.array(runEventSchema),
+});
+
+/**
+ * Logs search response schema
+ */
+const logsSearchResponseSchema = z.object({
+  results: z.array(searchResultSchema),
+  hasMore: z.boolean(),
+});
+
+/**
+ * Logs search route contract (/api/logs/search)
+ * Search agent events across runs
+ */
+export const logsSearchContract = c.router({
+  /**
+   * GET /api/logs/search
+   * Search agent events across runs using keyword matching
+   */
+  searchLogs: {
+    method: "GET",
+    path: "/api/logs/search",
+    headers: authHeadersSchema,
+    query: z.object({
+      keyword: z.string().min(1),
+      agent: z.string().optional(),
+      runId: z.string().optional(),
+      since: z.coerce.number().optional(),
+      limit: z.coerce.number().min(1).max(50).default(20),
+      before: z.coerce.number().min(0).max(10).default(0),
+      after: z.coerce.number().min(0).max(10).default(0),
+    }),
+    responses: {
+      200: logsSearchResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Search agent events across runs",
+  },
+});
+
+export type LogsSearchContract = typeof logsSearchContract;
+
 // Export schemas for reuse
 export {
   runStatusSchema,
@@ -529,6 +580,8 @@ export {
   agentEventsResponseSchema,
   networkLogEntrySchema,
   networkLogsResponseSchema,
+  searchResultSchema,
+  logsSearchResponseSchema,
 };
 
 // Export inferred types for consumers
@@ -549,3 +602,5 @@ export type MetricsResponse = z.infer<typeof metricsResponseSchema>;
 export type AgentEventsResponse = z.infer<typeof agentEventsResponseSchema>;
 export type NetworkLogEntry = z.infer<typeof networkLogEntrySchema>;
 export type NetworkLogsResponse = z.infer<typeof networkLogsResponseSchema>;
+export type SearchResult = z.infer<typeof searchResultSchema>;
+export type LogsSearchResponse = z.infer<typeof logsSearchResponseSchema>;

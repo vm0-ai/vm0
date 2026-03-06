@@ -49,6 +49,7 @@ export {
   runMetricsContract,
   runAgentEventsContract,
   runNetworkLogsContract,
+  logsSearchContract,
   ALL_RUN_STATUSES,
   runStatusSchema,
   unifiedRunRequestSchema,
@@ -68,6 +69,8 @@ export {
   agentEventsResponseSchema,
   networkLogEntrySchema,
   networkLogsResponseSchema,
+  searchResultSchema,
+  logsSearchResponseSchema,
   type RunsMainContract,
   type RunsByIdContract,
   type RunsCancelContract,
@@ -77,6 +80,7 @@ export {
   type RunMetricsContract,
   type RunAgentEventsContract,
   type RunNetworkLogsContract,
+  type LogsSearchContract,
   // Inferred types
   type RunStatus,
   type RunResult,
@@ -95,6 +99,8 @@ export {
   type AgentEventsResponse,
   type NetworkLogEntry,
   type NetworkLogsResponse,
+  type SearchResult,
+  type LogsSearchResponse,
 } from "./runs";
 export {
   storagesContract,

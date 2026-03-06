@@ -6,6 +6,7 @@ import {
   runMetricsContract,
   runAgentEventsContract,
   runNetworkLogsContract,
+  logsSearchContract,
   composesMainContract,
   composesByIdContract,
   composesVersionsContract,
@@ -52,6 +53,7 @@ import type {
   AgentComposeSnapshot as CoreAgentComposeSnapshot,
   ComposeResponse,
   ScopeResponse as CoreScopeResponse,
+  LogsSearchResponse as CoreLogsSearchResponse,
 } from "@vm0/core";
 
 // Re-export types with CLI naming conventions for backward compatibility
@@ -72,6 +74,7 @@ export type GetSessionResponse = SessionResponse;
 export type GetCheckpointResponse = CheckpointResponse;
 export type GetComposeResponse = ComposeResponse;
 export type GetEventsResponse = EventsResponse;
+export type LogsSearchResponse = CoreLogsSearchResponse;
 
 // Usage API types
 export interface UsageResponse {
@@ -1218,6 +1221,45 @@ class ApiClient {
       method: "DELETE",
       headers,
     });
+  }
+
+  async searchLogs(options: {
+    keyword: string;
+    agent?: string;
+    runId?: string;
+    since?: number;
+    limit?: number;
+    before?: number;
+    after?: number;
+  }): Promise<LogsSearchResponse> {
+    const baseUrl = await this.getBaseUrl();
+    const headers = await this.getHeaders();
+
+    const client = initClient(logsSearchContract, {
+      baseUrl,
+      baseHeaders: headers,
+      jsonQuery: false,
+    });
+
+    const result = await client.searchLogs({
+      query: {
+        keyword: options.keyword,
+        agent: options.agent,
+        runId: options.runId,
+        since: options.since,
+        limit: options.limit,
+        before: options.before,
+        after: options.after,
+      },
+    });
+
+    if (result.status === 200) {
+      return result.body;
+    }
+
+    const errorBody = result.body as ApiErrorResponse;
+    const message = errorBody.error?.message || "Failed to search logs";
+    throw new Error(message);
   }
 }
 

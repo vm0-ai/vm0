@@ -13,6 +13,7 @@ import { ClaudeEventParser } from "../../lib/events/claude-event-parser";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { CodexEventRenderer } from "../../lib/events/codex-event-renderer";
 import { paginate } from "../../lib/utils/paginate";
+import { searchCommand } from "./search";
 
 /**
  * Maximum entries per API request
@@ -186,8 +187,9 @@ function getLogType(options: {
 
 export const logsCommand = new Command()
   .name("logs")
-  .description("View logs for an agent run")
-  .argument("<runId>", "Run ID to fetch logs for")
+  .description("View and search agent run logs")
+  .argument("[runId]", "Run ID to fetch logs for")
+  .addCommand(searchCommand)
   .option("-a, --agent", "Show agent events (default)")
   .option("-s, --system", "Show system log")
   .option("-m, --metrics", "Show metrics")
@@ -201,7 +203,7 @@ export const logsCommand = new Command()
   .option("--all", "Fetch all log entries")
   .action(
     async (
-      runId: string,
+      runId: string | undefined,
       options: {
         agent?: boolean;
         system?: boolean;
@@ -213,6 +215,11 @@ export const logsCommand = new Command()
         all?: boolean;
       },
     ) => {
+      if (!runId) {
+        logsCommand.help();
+        return;
+      }
+
       try {
         const logType = getLogType(options);
 

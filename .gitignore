@@ -6,6 +6,8 @@
 logs
 # Exception for platform logs API folder
 !**/app/api/platform/logs/
+# Exception for logs search API folder
+!**/app/api/logs/
 # Exception for CLI logs command
 !**/commands/logs/
 *.log
