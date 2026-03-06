@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { connectorTypeSchema } from "@vm0/core";
+import {
+  type ConnectorType,
+  connectorTypeSchema,
+  getConnectorOAuthConfig,
+} from "@vm0/core";
 import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
@@ -67,6 +71,15 @@ async function exchangeTokenForConnector(
     throw new Error(`${connectorType} OAuth not configured`);
   }
   return handler.exchangeCode(clientId, clientSecret, code, redirectUri, state);
+}
+
+/**
+ * Get the scopes we *request* from the OAuth provider (from our config).
+ * We store these instead of provider-granted scopes so that
+ * hasRequiredScopes() can reliably detect when code adds new scopes.
+ */
+function getRequestedScopes(connectorType: ConnectorType): string[] {
+  return getConnectorOAuthConfig(connectorType)?.scopes ?? [];
 }
 
 export async function GET(
@@ -148,18 +161,13 @@ export async function GET(
     const redirectUri = `${origin}/api/connectors/${type}/callback`;
 
     // Exchange code for token directly from provider
-    const {
-      accessToken,
-      refreshToken,
-      expiresIn,
-      userInfo,
-      scopes: oauthScopes,
-    } = await exchangeTokenForConnector(
-      connectorType,
-      code,
-      redirectUri,
-      state ?? undefined,
-    );
+    const { accessToken, refreshToken, expiresIn, userInfo } =
+      await exchangeTokenForConnector(
+        connectorType,
+        code,
+        redirectUri,
+        state ?? undefined,
+      );
 
     log.debug("Storing connector", {
       userId,
@@ -171,7 +179,11 @@ export async function GET(
     const handler = PROVIDER_HANDLERS[connectorType];
     const refreshSecretName = handler.getRefreshSecretName?.();
 
-    // Store connector and secret
+    // Store the *requested* scopes (from our config), not the provider-granted
+    // scopes. Providers may return different scope names than requested (e.g.
+    // GitHub deduplicates implied scopes, Salesforce omits scopes entirely).
+    // By storing what we requested, hasRequiredScopes() can reliably detect
+    // when the code adds new scopes and prompt users to re-authorize.
     // Note: do not read "scope" from the callback URL — OAuth providers (e.g., Monday.com)
     // may append OAuth scopes as ?scope=... which would be mistaken for an app scope slug.
     const { scope } = await resolveScope(userId);
@@ -185,7 +197,7 @@ export async function GET(
         username: userInfo.username ?? "",
         email: userInfo.email,
       },
-      oauthScopes,
+      getRequestedScopes(connectorType),
       { refreshToken, refreshSecretName, expiresIn },
     );
 
