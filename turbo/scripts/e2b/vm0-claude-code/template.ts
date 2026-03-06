@@ -12,7 +12,7 @@ import { Template } from "e2b";
 export const template = Template()
   .fromNodeImage("24")
   .aptInstall(["curl", "git", "ripgrep", "jq", "file", "tzdata"])
-  .npmInstall("@anthropic-ai/claude-code@2.1.69", { g: true })
+  .npmInstall("@anthropic-ai/claude-code@2.1.70", { g: true })
   // Install GitHub CLI
   // https://github.com/cli/cli/blob/trunk/docs/install_linux.md
   .runCmd(
