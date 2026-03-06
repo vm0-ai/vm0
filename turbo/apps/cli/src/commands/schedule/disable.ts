@@ -2,6 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { disableSchedule } from "../../lib/api";
 import { resolveScheduleByAgent } from "../../lib/domain/schedule-utils";
+import { withErrorHandler } from "../../lib/command";
 
 export const disableCommand = new Command()
   .name("disable")
@@ -11,8 +12,8 @@ export const disableCommand = new Command()
     "-n, --name <schedule-name>",
     "Schedule name (required when agent has multiple schedules)",
   )
-  .action(async (agentName: string, options: { name?: string }) => {
-    try {
+  .action(
+    withErrorHandler(async (agentName: string, options: { name?: string }) => {
       // Resolve schedule by agent name
       const resolved = await resolveScheduleByAgent(agentName, options.name);
 
@@ -25,23 +26,5 @@ export const disableCommand = new Command()
       console.log(
         chalk.green(`✓ Disabled schedule for agent ${chalk.cyan(agentName)}`),
       );
-    } catch (error) {
-      console.error(chalk.red("✗ Failed to disable schedule"));
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.dim("  Run: vm0 auth login"));
-        } else if (
-          error.message.toLowerCase().includes("not found") ||
-          error.message.includes("No schedule found")
-        ) {
-          console.error(
-            chalk.dim(`  No schedule found for agent "${agentName}"`),
-          );
-          console.error(chalk.dim("  Run: vm0 schedule list"));
-        } else {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

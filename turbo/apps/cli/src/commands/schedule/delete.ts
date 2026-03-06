@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { deleteSchedule } from "../../lib/api";
 import { resolveScheduleByAgent } from "../../lib/domain/schedule-utils";
 import { isInteractive, promptConfirm } from "../../lib/utils/prompt-utils";
+import { withErrorHandler } from "../../lib/command";
 
 export const deleteCommand = new Command()
   .name("delete")
@@ -13,20 +14,17 @@ export const deleteCommand = new Command()
     "-n, --name <schedule-name>",
     "Schedule name (required when agent has multiple schedules)",
   )
-  .option("-f, --force", "Skip confirmation prompt")
+  .option("-y, --yes", "Skip confirmation prompt")
   .action(
-    async (agentName: string, options: { name?: string; force?: boolean }) => {
-      try {
+    withErrorHandler(
+      async (agentName: string, options: { name?: string; yes?: boolean }) => {
         // Resolve schedule by agent name
         const resolved = await resolveScheduleByAgent(agentName, options.name);
 
         // Confirm deletion
-        if (!options.force) {
+        if (!options.yes) {
           if (!isInteractive()) {
-            console.error(
-              chalk.red("✗ --force required in non-interactive mode"),
-            );
-            process.exit(1);
+            throw new Error("--yes flag is required in non-interactive mode");
           }
           const confirmed = await promptConfirm(
             `Delete schedule for agent ${chalk.cyan(agentName)}?`,
@@ -47,24 +45,6 @@ export const deleteCommand = new Command()
         console.log(
           chalk.green(`✓ Deleted schedule for agent ${chalk.cyan(agentName)}`),
         );
-      } catch (error) {
-        console.error(chalk.red("✗ Failed to delete schedule"));
-        if (error instanceof Error) {
-          if (error.message.includes("Not authenticated")) {
-            console.error(chalk.dim("  Run: vm0 auth login"));
-          } else if (
-            error.message.toLowerCase().includes("not found") ||
-            error.message.includes("No schedule found")
-          ) {
-            console.error(
-              chalk.dim(`  No schedule found for agent "${agentName}"`),
-            );
-            console.error(chalk.dim("  Run: vm0 schedule list"));
-          } else {
-            console.error(chalk.dim(`  ${error.message}`));
-          }
-        }
-        process.exit(1);
-      }
-    },
+      },
+    ),
   );

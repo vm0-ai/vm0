@@ -6,6 +6,7 @@ import {
   detectTimezone,
   resolveScheduleByAgent,
 } from "../../lib/domain/schedule-utils";
+import { withErrorHandler } from "../../lib/command";
 import type { ScheduleResponse, RunSummary } from "@vm0/core";
 
 type RunStatus = RunSummary["status"];
@@ -155,28 +156,6 @@ async function printRecentRuns(
   }
 }
 
-/**
- * Handle status command errors
- */
-function handleStatusError(error: unknown, agentName: string): never {
-  console.error(chalk.red("✗ Failed to get schedule status"));
-  if (error instanceof Error) {
-    if (error.message.includes("Not authenticated")) {
-      console.error(chalk.dim("  Run: vm0 auth login"));
-    } else if (
-      error.message.includes("not found") ||
-      error.message.includes("Not found") ||
-      error.message.includes("No schedule found")
-    ) {
-      console.error(chalk.dim(`  No schedule found for agent "${agentName}"`));
-      console.error(chalk.dim("  Run: vm0 schedule list"));
-    } else {
-      console.error(chalk.dim(`  ${error.message}`));
-    }
-  }
-  process.exit(1);
-}
-
 export const statusCommand = new Command()
   .name("status")
   .description("Show detailed status of a schedule")
@@ -191,8 +170,8 @@ export const statusCommand = new Command()
     "5",
   )
   .action(
-    async (agentName: string, options: { name?: string; limit: string }) => {
-      try {
+    withErrorHandler(
+      async (agentName: string, options: { name?: string; limit: string }) => {
         const resolved = await resolveScheduleByAgent(agentName, options.name);
         const { name, composeId } = resolved;
 
@@ -213,8 +192,6 @@ export const statusCommand = new Command()
         await printRecentRuns(name, composeId, limit);
 
         console.log();
-      } catch (error) {
-        handleStatusError(error, agentName);
-      }
-    },
+      },
+    ),
   );

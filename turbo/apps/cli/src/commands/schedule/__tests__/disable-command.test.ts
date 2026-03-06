@@ -212,9 +212,6 @@ describe("schedule disable command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to disable schedule"),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("No schedule found"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);

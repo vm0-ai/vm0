@@ -383,9 +383,6 @@ describe("schedule status command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to get schedule status"),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("No schedule found"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);

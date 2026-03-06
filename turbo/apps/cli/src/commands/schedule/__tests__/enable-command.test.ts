@@ -150,9 +150,6 @@ describe("schedule enable command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to enable schedule"),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("No schedule found"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -269,9 +266,6 @@ describe("schedule enable command", () => {
         await enableCommand.parseAsync(["node", "cli", "test-agent"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to enable schedule"),
-      );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Scheduled time has already passed"),
       );

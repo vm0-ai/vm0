@@ -429,7 +429,7 @@ async function resolveAgent(
   }
   return {
     composeId: compose.id,
-    scheduleName: scheduleName || `${agentName}-schedule`,
+    scheduleName: scheduleName || "default",
     composeContent: compose.content,
   };
 }
@@ -730,10 +730,7 @@ export const setupCommand = new Command()
   .name("setup")
   .description("Create or edit a schedule for an agent")
   .argument("<agent-name>", "Agent name to configure schedule for")
-  .option(
-    "-n, --name <schedule-name>",
-    "Schedule name (default: <agent>-schedule)",
-  )
+  .option("-n, --name <schedule-name>", 'Schedule name (default: "default")')
   .option("-f, --frequency <type>", "Frequency: daily|weekly|monthly|once|loop")
   .option("-t, --time <HH:MM>", "Time to run (24-hour format)")
   .option("-d, --day <day>", "Day of week (mon-sun) or day of month (1-31)")

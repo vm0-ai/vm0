@@ -1,7 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { enableSchedule, ApiRequestError } from "../../lib/api";
+import { enableSchedule } from "../../lib/api";
 import { resolveScheduleByAgent } from "../../lib/domain/schedule-utils";
+import { withErrorHandler } from "../../lib/command";
 
 export const enableCommand = new Command()
   .name("enable")
@@ -11,8 +12,8 @@ export const enableCommand = new Command()
     "-n, --name <schedule-name>",
     "Schedule name (required when agent has multiple schedules)",
   )
-  .action(async (agentName: string, options: { name?: string }) => {
-    try {
+  .action(
+    withErrorHandler(async (agentName: string, options: { name?: string }) => {
       // Resolve schedule by agent name
       const resolved = await resolveScheduleByAgent(agentName, options.name);
 
@@ -25,34 +26,5 @@ export const enableCommand = new Command()
       console.log(
         chalk.green(`✓ Enabled schedule for agent ${chalk.cyan(agentName)}`),
       );
-    } catch (error) {
-      console.error(chalk.red("✗ Failed to enable schedule"));
-      if (error instanceof ApiRequestError) {
-        if (error.code === "SCHEDULE_PAST") {
-          console.error(chalk.dim("  Scheduled time has already passed"));
-          console.error(chalk.dim(`  Run: vm0 schedule setup ${agentName}`));
-        } else if (error.code === "NOT_FOUND") {
-          console.error(
-            chalk.dim(`  No schedule found for agent "${agentName}"`),
-          );
-          console.error(chalk.dim("  Run: vm0 schedule list"));
-        } else if (error.code === "UNAUTHORIZED") {
-          console.error(chalk.dim("  Run: vm0 auth login"));
-        } else {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-      } else if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.dim("  Run: vm0 auth login"));
-        } else if (error.message.includes("No schedule found")) {
-          console.error(
-            chalk.dim(`  No schedule found for agent "${agentName}"`),
-          );
-          console.error(chalk.dim("  Run: vm0 schedule list"));
-        } else {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

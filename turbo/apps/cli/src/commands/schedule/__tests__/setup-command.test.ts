@@ -171,6 +171,7 @@ describe("schedule setup command", () => {
       ]);
 
       expect(deployPayload).toBeDefined();
+      expect(deployPayload!.name).toBe("default");
       expect(deployPayload!.cronExpression).toBe("0 14 * * *");
       expect(deployPayload!.timezone).toBe("America/New_York");
       expect(deployPayload!.prompt).toBe("Run daily task");
@@ -266,8 +267,9 @@ describe("schedule setup command", () => {
 
     it("should update existing schedule", async () => {
       const compose = createMockCompose();
-      const existingSchedule = createMockSchedule();
+      const existingSchedule = createMockSchedule({ name: "default" });
       const updatedSchedule = createMockSchedule({
+        name: "default",
         cronExpression: "0 10 * * *",
         prompt: "Updated task",
       });
