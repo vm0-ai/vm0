@@ -6,17 +6,64 @@ allowed-tools: Bash(npx agent-browser:*), Bash(agent-browser:*)
 
 # Browser Automation with agent-browser
 
+## noVNC Setup (Required)
+
+This project runs in a headless devcontainer. **Always start the noVNC stack before using agent-browser** so the user can see and interact with the browser from their macOS host.
+
+### Prerequisites
+
+x11vnc and novnc are not baked into the dev image. Install them if missing:
+
+```bash
+which x11vnc || sudo apt-get update -qq && sudo apt-get install -y -qq x11vnc novnc
+```
+
+### Start the VNC Stack
+
+Run these before any agent-browser command:
+
+```bash
+# Start Xvfb, x11vnc, and noVNC (idempotent - skips if already running)
+pgrep -x Xvfb > /dev/null || Xvfb :99 -screen 0 1280x720x24 > /dev/null 2>&1 &
+sleep 1
+pgrep -x x11vnc > /dev/null || x11vnc -display :99 -nopw -forever -shared -rfbport 5900 > /dev/null 2>&1 &
+sleep 1
+pgrep -f websockify > /dev/null || websockify --web /usr/share/novnc/ 6080 localhost:5900 > /dev/null 2>&1 &
+sleep 1
+```
+
+### Always Use Headed Mode
+
+All agent-browser commands must set `DISPLAY=:99` and use `--headed`:
+
+```bash
+DISPLAY=:99 agent-browser --headed open <url>
+```
+
+### Tell the User How to Connect
+
+After starting the VNC stack, tell the user:
+
+> The browser is running in headed mode with noVNC. To view and interact with it from macOS, run:
+>
+> ```
+> dcvnc <vm_name>
+> ```
+>
+> (e.g., `dcvnc vm01`). This opens the noVNC viewer in your default browser.
+
 ## Core Workflow
 
 Every browser automation follows this pattern:
 
-1. **Navigate**: `agent-browser open <url>`
-2. **Snapshot**: `agent-browser snapshot -i` (get element refs like `@e1`, `@e2`)
-3. **Interact**: Use refs to click, fill, select
-4. **Re-snapshot**: After navigation or DOM changes, get fresh refs
+1. **Start noVNC stack** (see above)
+2. **Navigate**: `DISPLAY=:99 agent-browser --headed open <url>`
+3. **Snapshot**: `DISPLAY=:99 agent-browser snapshot -i` (get element refs like `@e1`, `@e2`)
+4. **Interact**: Use refs to click, fill, select
+5. **Re-snapshot**: After navigation or DOM changes, get fresh refs
 
 ```bash
-agent-browser open https://example.com/form
+DISPLAY=:99 agent-browser --headed open https://example.com/form
 agent-browser snapshot -i
 # Output: @e1 [input type="email"], @e2 [input type="password"], @e3 [button] "Submit"
 
@@ -219,17 +266,16 @@ AGENT_BROWSER_COLOR_SCHEME=dark agent-browser open https://example.com
 agent-browser set media dark
 ```
 
-### Visual Browser (Debugging)
+### Visual Browser (via noVNC)
+
+In this project, headed mode is the default (see noVNC Setup above). Additional debugging tools:
 
 ```bash
-agent-browser --headed open https://example.com
 agent-browser highlight @e1          # Highlight element
 agent-browser record start demo.webm # Record session
 agent-browser profiler start         # Start Chrome DevTools profiling
 agent-browser profiler stop trace.json # Stop and save profile (path optional)
 ```
-
-Use `AGENT_BROWSER_HEADED=1` to enable headed mode via environment variable. Browser extensions work in both headed and headless mode.
 
 ### Local Files (PDFs, HTML)
 
