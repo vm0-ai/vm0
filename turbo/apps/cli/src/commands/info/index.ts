@@ -8,6 +8,7 @@ import { detectPackageManager } from "../../lib/utils/update-checker";
 
 declare const __CLI_VERSION__: string;
 
+/** Return path to VM0 config file */
 function getConfigPath() {
   return join(homedir(), ".vm0", "config.json");
 }
