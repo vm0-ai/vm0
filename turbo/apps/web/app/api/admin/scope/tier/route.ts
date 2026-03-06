@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { adminScopeTierContract } from "@vm0/core";
+import { adminScopeTierContract, scopeTierSchema } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
@@ -69,7 +69,7 @@ const router = tsr.router(adminScopeTierContract, {
       status: 200 as const,
       body: {
         slug: updated!.slug,
-        tier: updated!.tier,
+        tier: scopeTierSchema.parse(updated!.tier),
         updatedAt: updated!.updatedAt.toISOString(),
       },
     };
