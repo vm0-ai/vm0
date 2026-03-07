@@ -1,6 +1,6 @@
 # Platform Environment Configuration
 # Use 1Password CLI to inject secrets: ./scripts/sync-env.sh
-VITE_CLERK_PUBLISHABLE_KEY=op://Development/vm0-env-local/CLERK_PUBLISHABLE_KEY
+VITE_CLERK_PUBLISHABLE_KEY=op://Development/clerk/CLERK_PUBLISHABLE_KEY
 VITE_API_URL=http://localhost:3000
 
 # Optional: Error Tracking (Sentry)
