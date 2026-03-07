@@ -53,7 +53,7 @@
 
     - name: Install Grafana Alloy
       apt:
-        name: alloy
+        name: alloy=1.13.2-1
         state: present
         update_cache: true
       become: true
