@@ -105,10 +105,10 @@ function buildRunIdFilter(runIds: string[]): string {
 }
 
 /**
- * Search events using Axiom-side filtering with extend + dynamic_to_json.
- * dynamic_to_json converts nested eventData to a canonical JSON string,
- * which can then be filtered with contains.
- * See: https://axiom.co/docs/apl/scalar-functions/conversion-functions/dynamic-to-json
+ * Search events using Axiom-side filtering.
+ * Uses the official Axiom pattern for searching dynamic/map fields:
+ *   extend extra = tostring(field) | search extra:"keyword"
+ * See: https://axiom.co/docs/apl/tutorial ("Search map fields" section)
  */
 async function searchEventsInAxiom(
   dataset: string,
@@ -120,8 +120,8 @@ async function searchEventsInAxiom(
   const apl = `['${dataset}']
 | where _time > datetime("${sinceISO}")
 ${runIdFilter}
-| extend _eventDataJson = dynamic_to_json(eventData)
-| where _eventDataJson contains "${escapeApl(keyword)}"
+| extend _searchable = tostring(eventData)
+| search _searchable:"${escapeApl(keyword)}"
 | order by _time desc
 | limit ${limit + 1}`;
 
