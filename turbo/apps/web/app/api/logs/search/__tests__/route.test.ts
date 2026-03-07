@@ -96,7 +96,6 @@ describe("GET /api/logs/search", () => {
   });
 
   it("should return matched events without context", async () => {
-    // First call: search query returns matches
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
       createAxiomAgentEvent(testRunId, 3, "OOM killed"),
     ]);
@@ -117,16 +116,26 @@ describe("GET /api/logs/search", () => {
   });
 
   it("should return matched events with context", async () => {
-    // First call: search query returns matches
+    // Single Axiom call returns all events; server filters by keyword and extracts context
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
-      createAxiomAgentEvent(testRunId, 5, "Error: OOM killed"),
-    ]);
-
-    // Second call: context query returns surrounding events
-    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
-      createAxiomAgentEvent(testRunId, 4, "Building..."),
-      createAxiomAgentEvent(testRunId, 5, "Error: OOM killed"),
-      createAxiomAgentEvent(testRunId, 6, "Retrying..."),
+      createAxiomAgentEvent(
+        testRunId,
+        4,
+        "Building...",
+        "2024-01-15T10:30:04Z",
+      ),
+      createAxiomAgentEvent(
+        testRunId,
+        5,
+        "Error: OOM killed",
+        "2024-01-15T10:30:05Z",
+      ),
+      createAxiomAgentEvent(
+        testRunId,
+        6,
+        "Retrying...",
+        "2024-01-15T10:30:06Z",
+      ),
     ]);
 
     const request = createTestRequest(
@@ -138,6 +147,7 @@ describe("GET /api/logs/search", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.results).toHaveLength(1);
+    expect(data.results[0].matchedEvent.sequenceNumber).toBe(5);
     expect(data.results[0].contextBefore).toHaveLength(1);
     expect(data.results[0].contextBefore[0].sequenceNumber).toBe(4);
     expect(data.results[0].contextAfter).toHaveLength(1);
@@ -165,22 +175,27 @@ describe("GET /api/logs/search", () => {
     expect(aplQuery).toContain(`runId == "${testRunId}"`);
   });
 
-  it("should include keyword in Axiom search query", async () => {
-    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+  it("should filter events by keyword in server-side matching", async () => {
+    // Axiom returns all events; server filters by keyword
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+      createAxiomAgentEvent(testRunId, 1, "deploy started"),
+      createAxiomAgentEvent(testRunId, 2, "deploy failed with error"),
+      createAxiomAgentEvent(testRunId, 3, "cleaning up"),
+    ]);
 
     const request = createTestRequest(
       "http://localhost:3000/api/logs/search?keyword=deploy+failed",
     );
 
-    await GET(request);
+    const response = await GET(request);
 
-    const aplQuery = context.mocks.axiom.queryAxiom.mock.calls[0]![0] as string;
-    expect(aplQuery).toContain("dynamic_to_json(eventData)");
-    expect(aplQuery).toContain("deploy failed");
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.results).toHaveLength(1);
+    expect(data.results[0].matchedEvent.sequenceNumber).toBe(2);
   });
 
   it("should filter by agent name via database lookup", async () => {
-    // When agent filter is provided but no runs match, should return empty
     const request = createTestRequest(
       "http://localhost:3000/api/logs/search?keyword=test&agent=nonexistent-agent",
     );
@@ -190,13 +205,11 @@ describe("GET /api/logs/search", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.results).toEqual([]);
-    // Axiom should NOT have been called since no runs matched the agent filter
     expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
   });
 
   it("should set hasMore when results exceed limit", async () => {
-    // Return limit+1 events to trigger hasMore
-    const events = Array.from({ length: 3 }, (_, i) =>
+    const events = Array.from({ length: 5 }, (_, i) =>
       createAxiomAgentEvent(testRunId, i, `Match ${i}`),
     );
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce(events);

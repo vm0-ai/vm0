@@ -12,9 +12,6 @@ load '../../helpers/setup'
 
 setup_file() {
     export AGENT_NAME="e2e-t34-$(date +%s%3N)-$RANDOM"
-    # Override default 60s timeout: this test runs an agent (~20s) then polls
-    # Axiom for async-indexed events, which can take over 60s in CI.
-    export BATS_TEST_TIMEOUT=180
 }
 
 setup() {
@@ -97,23 +94,12 @@ teardown() {
         return 1
     }
 
-    # Step 4: Search for keyword scoped to this run with retry (Axiom ingestion is async)
-    # Search for "hello from agent" which appears in the user prompt event data
-    # Note: "Claude Code Started/Completed" are rendered display text, NOT in eventData
+    # Step 4: Search for keyword scoped to this run
+    # Search for "hello from agent" which appears in the tool_use and tool_result event data
     echo "# Step 4: Searching for 'hello from agent' in run events..."
     SHORT_ID="${RUN_ID:0:8}"
-    local max_retries=20
-    local retry_delay=8
-    for i in $(seq 1 $max_retries); do
-        run $CLI_COMMAND logs search "hello from agent" --run "$RUN_ID" --since 1h
-        if [[ "$output" == *"$SHORT_ID"* ]]; then
-            echo "# Search results found (attempt $i)"
-            assert_success
-            break
-        fi
-        echo "# Retry $i/$max_retries: waiting for Axiom indexing..."
-        sleep $retry_delay
-    done
+    run $CLI_COMMAND logs search "hello from agent" --run "$RUN_ID" --since 1h
+    assert_success
     assert_output --partial "$SHORT_ID"
 
     # Step 5: Search for non-matching keyword shows empty guidance
