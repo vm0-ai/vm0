@@ -62,9 +62,9 @@ export type MessageResponse = z.infer<typeof messageResponseSchema>;
 export const scopeMemberContract = c.router({
   /**
    * GET /api/scope/members
-   * Get scope members and status
+   * Get scope members
    */
-  status: {
+  getMembers: {
     method: "GET",
     path: "/api/scope/members",
     headers: authHeadersSchema,

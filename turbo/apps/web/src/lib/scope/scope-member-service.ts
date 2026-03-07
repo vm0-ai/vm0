@@ -4,7 +4,7 @@ import { scopeMembers } from "../../db/schema/scope-member";
 import { scopes } from "../../db/schema/scope";
 import { badRequest, forbidden, notFound } from "../errors";
 import { logger } from "../logger";
-import type { MemberRole } from "@vm0/core";
+import { memberRoleSchema, type MemberRole } from "@vm0/core";
 
 const log = logger("service:scope-member");
 
@@ -57,7 +57,7 @@ export async function requireScopeMember(scopeId: string, userId: string) {
   if (!member) {
     throw forbidden("You are not a member of this scope");
   }
-  return { ...member, role: member.role as MemberRole };
+  return { ...member, role: memberRoleSchema.parse(member.role) };
 }
 
 /**

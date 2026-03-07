@@ -43,7 +43,7 @@ export async function getScopeMembers(): Promise<ScopeMembersResponse> {
   const config = await getClientConfig();
   const client = initClient(scopeMemberContract, config);
 
-  const result = await client.status({ headers: {} });
+  const result = await client.getMembers({ headers: {} });
 
   if (result.status === 200) {
     return result.body;

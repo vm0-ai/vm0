@@ -5,7 +5,7 @@ import { GET as listScopesRoute } from "../../scope/list/route";
 import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
-import { setupClerkOrgMock } from "../../../../src/__tests__/org-test-helpers";
+import { setupClerkOrgMock } from "../../../../src/__tests__/clerk-org-mock";
 
 const context = testContext();
 
@@ -122,10 +122,10 @@ describe("POST /api/scope/invite - Invite Member", () => {
     expect(listRes.status).toBe(200);
 
     const listData = await listRes.json();
-    const orgScope = listData.scopes.find(
+    const teamScope = listData.scopes.find(
       (s: { slug: string }) => s.slug === slug,
     );
-    expect(orgScope).toBeDefined();
-    expect(orgScope.role).toBe("member");
+    expect(teamScope).toBeDefined();
+    expect(teamScope.role).toBe("member");
   });
 });
