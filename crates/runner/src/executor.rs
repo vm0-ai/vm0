@@ -426,11 +426,7 @@ async fn restore_session(
     let session_dir = format!("/home/user/.claude/projects/-{project_name}");
 
     // Validate session_id to prevent path traversal (only allow alnum, dash, underscore)
-    if !session
-        .session_id
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
+    if !is_valid_session_id(&session.session_id) {
         return Err(crate::error::RunnerError::Internal(format!(
             "invalid session_id: {}",
             session.session_id
@@ -456,6 +452,14 @@ async fn restore_session(
 
 /// Proxy CA certificate path inside the guest rootfs (pre-baked at build time).
 const VM_PROXY_CA_PATH: &str = "/usr/local/share/ca-certificates/vm0-proxy-ca.crt";
+
+/// Returns true if the session ID contains only safe characters (alphanumeric, dash, underscore).
+fn is_valid_session_id(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
 
 /// Build the environment variables JSON, matching the TS `buildEnvironmentVariables`.
 fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, String> {
@@ -920,13 +924,16 @@ mod tests {
 
     #[test]
     fn session_id_validation_rejects_path_traversal() {
-        let invalid_ids = ["../../etc/passwd", "foo/bar", "a b", "id;rm -rf /", "a\nb"];
+        let invalid_ids = [
+            "../../etc/passwd",
+            "foo/bar",
+            "a b",
+            "id;rm -rf /",
+            "a\nb",
+            "",
+        ];
         for id in invalid_ids {
-            assert!(
-                !id.chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
-                "expected rejection for: {id:?}"
-            );
+            assert!(!is_valid_session_id(id), "expected rejection for: {id:?}");
         }
     }
 
@@ -939,11 +946,7 @@ mod tests {
             "01961d3a-c0ab-7891-a6d3-9b52cd28716c",
         ];
         for id in valid_ids {
-            assert!(
-                id.chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
-                "expected acceptance for: {id:?}"
-            );
+            assert!(is_valid_session_id(id), "expected acceptance for: {id:?}");
         }
     }
 }
