@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { requireScopeFromRequest } from "../../../../src/lib/scope/resolve-scope";
-import { leaveOrganization } from "../../../../src/lib/org/org-service";
+import { leaveScope } from "../../../../src/lib/scope/scope-member-service";
 import {
   isBadRequest,
   isNotFound,
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
 
   try {
     const { scope, member } = await requireScopeFromRequest(request, userId);
-    await leaveOrganization(userId, scope.id, member.role);
+    await leaveScope(userId, scope.id, member.role);
     return NextResponse.json({ message: "Left scope" });
   } catch (error) {
     if (isBadRequest(error)) {

@@ -3,9 +3,9 @@ import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { requireScopeFromRequest } from "../../../../src/lib/scope/resolve-scope";
 import {
-  getOrganizationStatus,
+  getScopeMembers,
   removeMember,
-} from "../../../../src/lib/org/org-service";
+} from "../../../../src/lib/scope/scope-member-service";
 import {
   isBadRequest,
   isNotFound,
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
 
   try {
     const { scope } = await requireScopeFromRequest(request, userId);
-    const status = await getOrganizationStatus(userId, scope.id);
+    const status = await getScopeMembers(userId, scope.id);
     return NextResponse.json(status);
   } catch (error) {
     if (isBadRequest(error)) {

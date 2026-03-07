@@ -437,14 +437,6 @@ export {
   type UpdateUserPreferencesRequest,
 } from "./user-preferences";
 export {
-  orgContract,
-  orgStatusResponseSchema,
-  createOrgRequestSchema,
-  type OrgContract,
-  type OrgStatusResponse,
-  type CreateOrgRequest,
-} from "./org";
-export {
   scopeListContract,
   scopeListItemSchema,
   scopeListResponseSchema,
