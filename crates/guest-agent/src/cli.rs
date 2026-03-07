@@ -264,8 +264,10 @@ pub async fn execute_cli(
                             }
                             // Prepare event (fast: mask secrets, add seq) and enqueue
                             // for background sending.  Never blocks the reading loop.
-                            if let Some(payload) = events::prepare_event(&mut event, seq, masker) {
-                                let _ = event_tx.send(payload);
+                            if let Some(payload) = events::prepare_event(&mut event, seq, masker)
+                                && event_tx.send(payload).is_err()
+                            {
+                                log_warn!(LOG_TAG, "Event channel closed, dropping event seq={seq}");
                             }
                             seq += 1;
                         }
@@ -309,7 +311,9 @@ pub async fn execute_cli(
     // so we drop unsent events to avoid stalling on retries.
     drop(event_tx);
     if event_result.is_ok() {
-        let _ = event_sender.await;
+        if let Err(e) = event_sender.await {
+            log_warn!(LOG_TAG, "Event sender task failed: {e}");
+        }
     } else {
         event_sender.abort();
     }
