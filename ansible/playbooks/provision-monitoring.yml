@@ -53,7 +53,7 @@
 
     - name: Install Grafana Alloy
       apt:
-        name: alloy
+        name: alloy=1.13.2-1
         state: present
         update_cache: true
       become: true
@@ -86,9 +86,21 @@
             }
           }
 
+          // Rewrite nodename label to inventory hostname
+          prometheus.relabel "default" {
+            forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+            rule {
+              source_labels = ["nodename"]
+              regex         = ".+"
+              target_label  = "nodename"
+              replacement   = "{{ inventory_hostname }}"
+            }
+          }
+
           prometheus.scrape "default" {
             targets         = discovery.relabel.default.output
-            forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+            forward_to      = [prometheus.relabel.default.receiver]
             scrape_interval = "15s"
           }
 
