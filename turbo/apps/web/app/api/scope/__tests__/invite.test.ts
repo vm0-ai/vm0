@@ -5,7 +5,7 @@ import { GET as listScopesRoute } from "../list/route";
 import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
-import { setupClerkOrgMock } from "../../../../src/__tests__/org-test-helpers";
+import { setupClerkOrgMock } from "../../../../src/__tests__/clerk-org-mock";
 
 const context = testContext();
 
