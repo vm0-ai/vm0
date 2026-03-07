@@ -322,7 +322,7 @@ async fn copy_guest_logs(sandbox: &dyn Sandbox, context: &ExecutionContext, log_
     ];
 
     for (guest_path, host_path) in &files {
-        let cat_cmd = format!("cat {guest_path}");
+        let cat_cmd = format!("cat '{guest_path}'");
         let result = sandbox
             .exec(&ExecRequest {
                 cmd: &cat_cmd,
@@ -424,9 +424,21 @@ async fn restore_session(
         .trim_start_matches('/')
         .replace('/', "-");
     let session_dir = format!("/home/user/.claude/projects/-{project_name}");
+
+    // Validate session_id to prevent path traversal (only allow alnum, dash, underscore)
+    if !session
+        .session_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(crate::error::RunnerError::Internal(format!(
+            "invalid session_id: {}",
+            session.session_id
+        )));
+    }
     let session_path = format!("{session_dir}/{}.jsonl", session.session_id);
 
-    let mkdir_cmd = format!("mkdir -p \"{session_dir}\"");
+    let mkdir_cmd = format!("mkdir -p '{}'", session_dir.replace('\'', "'\\''"));
     sandbox
         .exec(&ExecRequest {
             cmd: &mkdir_cmd,
