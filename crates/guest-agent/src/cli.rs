@@ -167,6 +167,21 @@ pub async fn execute_cli(
         .stderr(Stdio::piped())
         .process_group(0);
 
+    // Defense-in-depth: close inherited fds (vsock socket etc.) before exec.
+    // The primary fix is in vsock-guest's build_exec_command, but this ensures
+    // no leaked fds reach the CLI even if the spawn chain changes.
+    #[cfg(unix)]
+    {
+        unsafe {
+            cmd.pre_exec(|| {
+                for fd in 3..1024 {
+                    libc::close(fd);
+                }
+                Ok(())
+            });
+        }
+    }
+
     if env::cli_agent_type() == "codex" {
         // Pass CODEX_HOME via Command::env instead of global set_var
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
