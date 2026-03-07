@@ -1,5 +1,28 @@
 # Changelog
 
+## [12.82.0](https://github.com/vm0-ai/vm0/compare/web-v12.81.0...web-v12.82.0) (2026-03-07)
+
+
+### Features
+
+* **connectors:** add canva oauth connector ([#3837](https://github.com/vm0-ai/vm0/issues/3837)) ([522fe59](https://github.com/vm0-ai/vm0/commit/522fe59a0dc16478ee97907c8f143e98579635c4))
+* **connectors:** add hubspot oauth connector ([#3835](https://github.com/vm0-ai/vm0/issues/3835)) ([1cc3e37](https://github.com/vm0-ai/vm0/commit/1cc3e3795879b7a3988ec999ef16bca0cecd5ee9))
+* **connectors:** add supabase oauth connector ([#3836](https://github.com/vm0-ai/vm0/issues/3836)) ([b7c2d2e](https://github.com/vm0-ai/vm0/commit/b7c2d2e5146de7c429113c07291886afbd1ec7b5))
+* **connectors:** add todoist oauth connector ([#3850](https://github.com/vm0-ai/vm0/issues/3850)) ([7cce2b8](https://github.com/vm0-ai/vm0/commit/7cce2b89cfd5dc051d9fb0001be329ab5e17a46d))
+* **connectors:** add wix oauth connector ([#3851](https://github.com/vm0-ai/vm0/issues/3851)) ([faa337d](https://github.com/vm0-ai/vm0/commit/faa337d1e4513851024cb57c3e2d1f0de09cd11a))
+
+
+### Bug Fixes
+
+* **connectors:** add missing redirect_uri to todoist oauth flow ([#3857](https://github.com/vm0-ai/vm0/issues/3857)) ([cb25f4e](https://github.com/vm0-ai/vm0/commit/cb25f4e0e63c691e7bfde0e9ac855f915debc4b0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.43.0
+
 ## [12.81.0](https://github.com/vm0-ai/vm0/compare/web-v12.80.1...web-v12.81.0) (2026-03-06)
 
 
