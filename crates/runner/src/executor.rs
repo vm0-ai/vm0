@@ -917,4 +917,33 @@ mod tests {
         assert!(dmesg_indicates_oom("Killed process 99 (agent)"));
         assert!(dmesg_indicates_oom("OOM-kill: constraint=MEMCG"));
     }
+
+    #[test]
+    fn session_id_validation_rejects_path_traversal() {
+        let invalid_ids = ["../../etc/passwd", "foo/bar", "a b", "id;rm -rf /", "a\nb"];
+        for id in invalid_ids {
+            assert!(
+                !id.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+                "expected rejection for: {id:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn session_id_validation_accepts_valid_ids() {
+        let valid_ids = [
+            "abc-123",
+            "sess_456",
+            "a1b2c3",
+            "01961d3a-c0ab-7891-a6d3-9b52cd28716c",
+        ];
+        for id in valid_ids {
+            assert!(
+                id.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+                "expected acceptance for: {id:?}"
+            );
+        }
+    }
 }
