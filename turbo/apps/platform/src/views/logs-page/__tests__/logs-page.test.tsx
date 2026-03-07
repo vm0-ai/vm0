@@ -201,6 +201,47 @@ describe("logs page", () => {
     expect(within(dataRow!).getAllByText("-")).toHaveLength(2);
   });
 
+  it("should not crash when API returns an unknown status value", async () => {
+    // This data comes from the real API where backend may return status values
+    // not yet known to the frontend (e.g. "error" instead of "failed").
+    // Previously this caused a crash: StatusBadge did statusConfig[status].icon
+    // where statusConfig[status] was undefined for unknown values.
+    server.use(
+      http.get("*/api/platform/logs", () => {
+        return HttpResponse.json({
+          data: [
+            {
+              id: "run_unknown_status",
+              sessionId: null,
+              agentName: "Test Agent",
+              framework: null,
+              // "error" is not a known LogStatus value — it is not in the union
+              // pending | running | completed | failed | timeout | cancelled
+              status: "error",
+              createdAt: "2024-01-01T00:00:00Z",
+            },
+          ],
+          pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/logs",
+    });
+
+    // Wait for data to load
+    await waitFor(() => {
+      expect(screen.getByText("Test Agent")).toBeInTheDocument();
+    });
+
+    // The page must NOT show the error boundary fallback
+    expect(
+      screen.queryByText("Oops! Something went sideways"),
+    ).not.toBeInTheDocument();
+  });
+
   it("should handle API error gracefully", async () => {
     server.use(
       http.get("*/api/platform/logs", () => {

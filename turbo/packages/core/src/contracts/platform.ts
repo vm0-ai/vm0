@@ -35,6 +35,7 @@ const platformPaginationSchema = z.object({
  * Run status enum for platform logs
  */
 const platformLogStatusSchema = z.enum([
+  "queued",
   "pending",
   "running",
   "completed",

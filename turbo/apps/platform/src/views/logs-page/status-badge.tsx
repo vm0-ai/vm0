@@ -22,6 +22,11 @@ interface StatusBadgeProps {
 
 function getStatusConfig(): Record<LogStatus, StatusBadgeConfig> {
   return {
+    queued: {
+      label: "Queued",
+      icon: IconClock,
+      iconClassName: "text-gray-400",
+    },
     pending: {
       label: "Pending",
       icon: IconClock,

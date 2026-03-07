@@ -1,13 +1,8 @@
 // API response types (matching platform API contracts)
+import type { PlatformLogStatus } from "@vm0/core";
 
-// Run status enum for logs
-export type LogStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed"
-  | "timeout"
-  | "cancelled";
+// Re-export from core contract to stay in sync with the API schema
+export type LogStatus = PlatformLogStatus;
 
 // List response - contains basic fields for list display
 export interface LogEntry {
