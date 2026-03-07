@@ -3,7 +3,7 @@ import { scopeMembers } from "../../db/schema/scope-member";
 import { hasClerkAuth } from "../../env";
 import { isForbidden, badRequest, notFound } from "../errors";
 import { logger } from "../logger";
-import { scopeRoleSchema, type ScopeRole } from "@vm0/core";
+import { scopeRoleSchema } from "@vm0/core";
 import { getScopeBySlug } from "./scope-service";
 import {
   requireScopeMember,

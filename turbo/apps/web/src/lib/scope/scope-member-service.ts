@@ -2,7 +2,7 @@ import { eq, and, asc } from "drizzle-orm";
 import { scopeMembers } from "../../db/schema/scope-member";
 import { scopes } from "../../db/schema/scope";
 import { forbidden, notFound } from "../errors";
-import { scopeRoleSchema, type ScopeRole } from "@vm0/core";
+import { scopeRoleSchema } from "@vm0/core";
 
 /**
  * Get a scope member record for a specific user in a scope
