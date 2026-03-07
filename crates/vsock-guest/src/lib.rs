@@ -100,7 +100,7 @@ fn prepend_env(command: &str, env: &[(&str, &str)]) -> String {
 /// suffices. In debug builds the process is a normal user, so `sudo sh -c`
 /// is needed to elevate.
 fn build_exec_command(command: &str, sudo: bool) -> Command {
-    let mut c = match get_exec_user() {
+    match get_exec_user() {
         Some(user) => {
             if sudo {
                 // Release: already root — run directly
@@ -125,33 +125,7 @@ fn build_exec_command(command: &str, sudo: bool) -> Command {
                 c
             }
         }
-    };
-
-    // Close inherited file descriptors (3..1024) in child processes.
-    //
-    // The vsock socket created by guest-init leaks into child processes
-    // (guest-agent → CLI) via fork/exec fd inheritance. Node.js treats fd 3
-    // as a special IPC channel, which can interfere with the CLI event loop
-    // and cause it to hang. Closing fds >= 3 after fork (before exec) is
-    // standard Unix practice and only affects the child — the parent retains
-    // its own fd table intact.
-    //
-    // SAFETY: `close()` on an invalid fd returns EBADF which is harmless.
-    // This runs between fork() and exec() where only async-signal-safe
-    // functions are allowed — `close()` qualifies (POSIX.1-2008).
-    {
-        use std::os::unix::process::CommandExt;
-        unsafe {
-            c.pre_exec(|| {
-                for fd in 3..1024 {
-                    libc::close(fd);
-                }
-                Ok(())
-            });
-        }
     }
-
-    c
 }
 
 /// Truncate a command string for logging, preserving UTF-8 boundaries
@@ -521,7 +495,7 @@ pub fn connect_vsock() -> io::Result<UnixStream> {
     use std::os::unix::io::FromRawFd;
 
     // SAFETY: Creating a vsock socket with valid constants. fd is checked for errors below.
-    let fd = unsafe { libc::socket(libc::AF_VSOCK, libc::SOCK_STREAM, 0) };
+    let fd = unsafe { libc::socket(libc::AF_VSOCK, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0) };
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }
