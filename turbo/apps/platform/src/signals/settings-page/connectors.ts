@@ -50,7 +50,6 @@ export interface ConnectorTypeWithStatus {
 const CONNECTOR_FEATURE_FLAGS = Object.freeze<
   Partial<Record<ConnectorType, FeatureSwitchKey>>
 >({
-  airtable: FeatureSwitchKey.AirtableConnector,
   computer: FeatureSwitchKey.ComputerConnector,
   deel: FeatureSwitchKey.DeelConnector,
   docusign: FeatureSwitchKey.DocuSignConnector,
