@@ -202,10 +202,9 @@ describe("GET /api/logs/search", () => {
     expect(data.results).toHaveLength(1);
     expect(data.results[0].matchedEvent.sequenceNumber).toBe(2);
 
-    // Verify APL uses official Axiom pattern: extend + tostring + search
+    // Verify APL uses search operator
     const aplQuery = context.mocks.axiom.queryAxiom.mock.calls[0]![0] as string;
-    expect(aplQuery).toContain("extend _searchable = tostring(eventData)");
-    expect(aplQuery).toContain('search _searchable:"deploy failed"');
+    expect(aplQuery).toContain('search "*deploy failed*"');
   });
 
   it("should filter by agent name via database lookup", async () => {

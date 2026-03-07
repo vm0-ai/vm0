@@ -105,10 +105,8 @@ function buildRunIdFilter(runIds: string[]): string {
 }
 
 /**
- * Search events using Axiom-side filtering.
- * Uses the official Axiom pattern for searching dynamic/map fields:
- *   extend extra = tostring(field) | search extra:"keyword"
- * See: https://axiom.co/docs/apl/tutorial ("Search map fields" section)
+ * Search events using Axiom's search operator which supports maps and arrays.
+ * See: https://axiom.co/docs/apl/tabular-operators/search-operator
  */
 async function searchEventsInAxiom(
   dataset: string,
@@ -120,8 +118,7 @@ async function searchEventsInAxiom(
   const apl = `['${dataset}']
 | where _time > datetime("${sinceISO}")
 ${runIdFilter}
-| extend _searchable = tostring(eventData)
-| search _searchable:"${escapeApl(keyword)}"
+| search "*${escapeApl(keyword)}*"
 | order by _time desc
 | limit ${limit + 1}`;
 
