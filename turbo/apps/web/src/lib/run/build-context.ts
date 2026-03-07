@@ -836,9 +836,21 @@ async function resolveScopeId(params: BuildContextParams): Promise<string> {
   return (await getDefaultScope(params.userId)).scope.id;
 }
 
+interface BuildContextTimings {
+  resolveSource: number;
+  resolveScope: number;
+  resolveCredentials: number;
+  userPreferences: number;
+}
+
+interface BuildContextResult {
+  context: ExecutionContext;
+  timings: BuildContextTimings;
+}
+
 export async function buildExecutionContext(
   params: BuildContextParams,
-): Promise<ExecutionContext> {
+): Promise<BuildContextResult> {
   log.debug(`Building execution context for ${params.runId}`);
   log.debug(`params.volumeVersions=${JSON.stringify(params.volumeVersions)}`);
 
@@ -856,7 +868,9 @@ export async function buildExecutionContext(
   let resumeArtifact: ArtifactSnapshot | undefined;
 
   // Step 1: Resolve to conversation (unified path for checkpoint/session/direct)
+  const resolveSourceStart = Date.now();
   const resolution = await resolveSource(params);
+  const resolveSourceEnd = Date.now();
 
   // Step 2: Apply resolution defaults and build resumeSession (unified path)
   // Note: secrets are NEVER stored - caller must always provide fresh secrets via params
@@ -916,7 +930,9 @@ export async function buildExecutionContext(
   }
 
   // Resolve scope ID once for all credential/variable resolution
+  const resolveScopeStart = Date.now();
   const scopeId = await resolveScopeId(params);
+  const resolveScopeEnd = Date.now();
 
   // Step 4: Fetch secrets/credentials from user's scope and merge with CLI secrets
   // Extract compose structure
@@ -931,6 +947,7 @@ export async function buildExecutionContext(
     : undefined;
 
   // Step 4: Resolve all credentials and secrets, then expand environment
+  const resolveCredentialsStart = Date.now();
   const {
     secrets: resolvedSecrets,
     credentials: resolvedCredentials,
@@ -946,6 +963,7 @@ export async function buildExecutionContext(
     params.checkEnv,
     params.userId,
   );
+  const resolveCredentialsEnd = Date.now();
   secrets = resolvedSecrets;
 
   // Step 5: Merge credentials into secrets for client-side log masking
@@ -956,37 +974,47 @@ export async function buildExecutionContext(
     : secrets;
 
   // Fetch user timezone preference
+  const userPreferencesStart = Date.now();
   let userTimezone: string | undefined;
   if (params.userId) {
     const userPrefs = await getUserPreferences(params.userId);
     userTimezone = userPrefs.timezone ?? undefined;
   }
+  const userPreferencesEnd = Date.now();
 
   // Build final execution context
   return {
-    runId: params.runId,
-    userId: params.userId,
-    agentComposeVersionId,
-    agentCompose,
-    prompt: params.prompt,
-    vars,
-    secrets: mergedSecrets,
-    secretNames,
-    sandboxToken: params.sandboxToken,
-    artifactName,
-    artifactVersion,
-    volumeVersions,
-    environment,
-    userTimezone,
-    resumeSession,
-    resumeArtifact,
-    // Metadata for vm0_start event
-    agentName: params.agentName,
-    resumedFromCheckpointId: params.resumedFromCheckpointId,
-    continuedFromSessionId: params.continuedFromSessionId,
-    // Debug flag
-    debugNoMockClaude: params.debugNoMockClaude,
-    // API start time for E2E timing metrics
-    apiStartTime: params.apiStartTime,
+    context: {
+      runId: params.runId,
+      userId: params.userId,
+      agentComposeVersionId,
+      agentCompose,
+      prompt: params.prompt,
+      vars,
+      secrets: mergedSecrets,
+      secretNames,
+      sandboxToken: params.sandboxToken,
+      artifactName,
+      artifactVersion,
+      volumeVersions,
+      environment,
+      userTimezone,
+      resumeSession,
+      resumeArtifact,
+      // Metadata for vm0_start event
+      agentName: params.agentName,
+      resumedFromCheckpointId: params.resumedFromCheckpointId,
+      continuedFromSessionId: params.continuedFromSessionId,
+      // Debug flag
+      debugNoMockClaude: params.debugNoMockClaude,
+      // API start time for E2E timing metrics
+      apiStartTime: params.apiStartTime,
+    },
+    timings: {
+      resolveSource: resolveSourceEnd - resolveSourceStart,
+      resolveScope: resolveScopeEnd - resolveScopeStart,
+      resolveCredentials: resolveCredentialsEnd - resolveCredentialsStart,
+      userPreferences: userPreferencesEnd - userPreferencesStart,
+    },
   };
 }

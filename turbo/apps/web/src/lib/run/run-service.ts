@@ -520,7 +520,7 @@ async function buildAndDispatchRun(opts: {
     const tokenTime = Date.now();
 
     // Build execution context
-    const context = await buildContext({
+    const { context, timings: buildContextTimings } = await buildContext({
       checkpointId: params.checkpointId,
       sessionId: params.sessionId,
       conversationId: params.conversationId,
@@ -565,6 +565,23 @@ async function buildAndDispatchRun(opts: {
       { op: "api_step_build_context", ms: buildContextTime - tokenTime },
       { op: "api_step_prepare", ms: prepareTime - buildContextTime },
       { op: "api_step_dispatch", ms: dispatchTime - prepareTime },
+      // Sub-step timings within buildExecutionContext
+      {
+        op: "api_build_resolve_source",
+        ms: buildContextTimings.resolveSource,
+      },
+      {
+        op: "api_build_resolve_scope",
+        ms: buildContextTimings.resolveScope,
+      },
+      {
+        op: "api_build_resolve_credentials",
+        ms: buildContextTimings.resolveCredentials,
+      },
+      {
+        op: "api_build_user_preferences",
+        ms: buildContextTimings.userPreferences,
+      },
       // Sub-step timings within prepareForExecution
       {
         op: "api_prepare_resolve_scopes",
