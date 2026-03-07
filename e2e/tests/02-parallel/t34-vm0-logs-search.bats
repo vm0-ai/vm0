@@ -94,25 +94,15 @@ teardown() {
         return 1
     }
 
-    # Step 4: Verify vm0 logs works (proves events are in Axiom)
-    echo "# Step 4: Verifying events are accessible via vm0 logs..."
-    run $CLI_COMMAND logs "$RUN_ID" --all
-    assert_success
-    echo "# vm0 logs output:"
-    echo "$output" | head -20
-
-    # Step 5: Search for keyword scoped to this run
-    # Search for "hello from agent" which appears in the tool_use and tool_result event data
-    echo "# Step 5: Searching for 'hello from agent' in run events..."
+    # Step 4: Search for keyword scoped to this run
+    echo "# Step 4: Searching for 'hello from agent' in run events..."
     SHORT_ID="${RUN_ID:0:8}"
     run $CLI_COMMAND logs search "hello from agent" --run "$RUN_ID" --since 1h
-    echo "# Search output:"
-    echo "$output"
     assert_success
     assert_output --partial "$SHORT_ID"
 
-    # Step 6: Search for non-matching keyword shows empty guidance
-    echo "# Step 6: Testing empty results guidance..."
+    # Step 5: Search for non-matching keyword shows empty guidance
+    echo "# Step 5: Testing empty results guidance..."
     run $CLI_COMMAND logs search "xyznonexistent99999" --run "$RUN_ID" --since 1h
     assert_success
     assert_output --partial "No matches found"

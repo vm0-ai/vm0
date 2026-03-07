@@ -82,7 +82,6 @@ describe("GET /api/logs/search", () => {
   });
 
   it("should return empty results when Axiom is not configured", async () => {
-    // Both Axiom-side search and fallback return null
     context.mocks.axiom.queryAxiom.mockResolvedValue(null);
 
     const request = createTestRequest(
@@ -186,7 +185,7 @@ describe("GET /api/logs/search", () => {
     expect(aplQuery).toContain(`runId == "${testRunId}"`);
   });
 
-  it("should use dynamic_to_json in axiom query for keyword search", async () => {
+  it("should use search operator in axiom query for keyword search", async () => {
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
       createAxiomAgentEvent(testRunId, 2, "deploy failed with error"),
     ]);
