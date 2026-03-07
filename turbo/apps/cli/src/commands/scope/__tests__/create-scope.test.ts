@@ -1,5 +1,5 @@
 /**
- * Tests for org create command
+ * Tests for scope create command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -22,7 +22,7 @@ vi.mock("../../../lib/api/config", async (importOriginal) => {
   };
 });
 
-describe("org create command", () => {
+describe("scope create command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -37,22 +37,45 @@ describe("org create command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
-  it("should create org and auto-switch scope, show success", async () => {
+  it("should show friendly error when user already has a scope", async () => {
     server.use(
+      http.get("http://localhost:3000/api/scope", () => {
+        return HttpResponse.json({
+          id: "test-id",
+          slug: "user-a1b2c3d4",
+          tier: "free",
+          createdAt: "2025-01-01T00:00:00Z",
+          updatedAt: "2025-01-01T00:00:00Z",
+        });
+      }),
+    );
+
+    await expect(async () => {
+      await createCommand.parseAsync(["node", "cli", "my-team"]);
+    }).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("already have a scope: user-a1b2c3d4");
+    expect(errorCalls).toContain("vm0 scope set my-team --force");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("should create scope and auto-activate when user has none", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/scope", () => {
+        return HttpResponse.json(
+          { error: { message: "No scope configured", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
+      }),
       http.post("http://localhost:3000/api/scope", () => {
         return HttpResponse.json(
           {
+            id: "new-id",
             slug: "my-team",
-            role: "admin",
-            members: [
-              {
-                userId: "user-1",
-                email: "",
-                role: "admin",
-                joinedAt: "2025-01-01T00:00:00Z",
-              },
-            ],
+            tier: "free",
             createdAt: "2025-01-01T00:00:00Z",
+            updatedAt: "2025-01-01T00:00:00Z",
           },
           { status: 201 },
         );
@@ -63,31 +86,21 @@ describe("org create command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("my-team");
-    expect(logCalls).toContain("created");
+    expect(logCalls).toContain("created and activated");
   });
 
-  it("should handle 'already own an organization' error", async () => {
+  it("should propagate non-scope errors from pre-check", async () => {
     server.use(
-      http.post("http://localhost:3000/api/scope", () => {
+      http.get("http://localhost:3000/api/scope", () => {
         return HttpResponse.json(
-          {
-            error: {
-              message: "You already have a scope",
-              code: "BAD_REQUEST",
-            },
-          },
-          { status: 400 },
+          { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+          { status: 401 },
         );
       }),
     );
 
     await expect(async () => {
-      await createCommand.parseAsync(["node", "cli", "new-org"]);
-    }).rejects.toThrow("process.exit called");
-
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("already have a scope"),
-    );
-    expect(mockExit).toHaveBeenCalledWith(1);
+      await createCommand.parseAsync(["node", "cli", "my-team"]);
+    }).rejects.toThrow("Not authenticated");
   });
 });

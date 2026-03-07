@@ -1,26 +1,40 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { createScope } from "../../lib/api";
+import { createScope, getScope } from "../../lib/api";
 import { saveConfig } from "../../lib/api/config";
 
 export const createCommand = new Command()
   .name("create")
-  .description("Create a new team scope")
+  .description("Create a new scope")
   .argument("<slug>", "Scope slug (e.g., myteam)")
   .action(async (slug: string) => {
+    // Check if user already has a scope
     try {
-      await createScope({ slug });
-
-      // Auto-switch to the new org scope
-      await saveConfig({ activeScope: slug });
-
-      console.log(chalk.green(`✓ Scope '${slug}' created and activated.`));
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error(chalk.red(`✗ ${error.message}`));
-      } else {
-        console.error(chalk.red("✗ An unexpected error occurred"));
-      }
+      const existingScope = await getScope();
+      console.error(
+        chalk.yellow(`✗ You already have a scope: ${existingScope.slug}`),
+      );
+      console.error();
+      console.error("To rename your scope, use:");
+      console.error(chalk.cyan(`  vm0 scope set ${slug} --force`));
       process.exit(1);
+    } catch (error) {
+      // "No scope configured" means user has no scope — proceed with creation
+      if (
+        !(error instanceof Error) ||
+        !error.message.includes("No scope configured")
+      ) {
+        throw error;
+      }
     }
+
+    const scope = await createScope({ slug });
+
+    // Auto-switch to the new scope
+    await saveConfig({ activeScope: scope.slug });
+
+    console.log(chalk.green(`✓ Scope '${scope.slug}' created and activated.`));
+    console.log();
+    console.log("Your agents will now be namespaced as:");
+    console.log(chalk.cyan(`  ${scope.slug}/<agent-name>`));
   });
