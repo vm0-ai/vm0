@@ -23,12 +23,25 @@ pub async fn send_event(
     seq: u32,
     masker: &SecretMasker,
 ) -> Result<(), AgentError> {
+    let Some(payload) = prepare_event(event, seq, masker) else {
+        return Ok(());
+    };
+    post_event(&payload).await
+}
+
+/// Prepare an event for sending: extract session ID, add sequence number,
+/// mask secrets, and build the HTTP payload.
+///
+/// Returns `None` if there is no API token (local/test mode) or the event
+/// should not be posted.  This function is fast (no I/O) and safe to call
+/// inline in the stdout reading loop.
+pub fn prepare_event(event: &mut Value, seq: u32, masker: &SecretMasker) -> Option<Value> {
     // Extract session ID from init event (must happen before masking)
     extract_session_id(event);
 
     // No API token → local/test mode; skip posting events.
     if !env::has_api() {
-        return Ok(());
+        return None;
     }
 
     // Add sequence number
@@ -39,15 +52,18 @@ pub async fn send_event(
     // Mask secrets
     masker.mask_value(event);
 
-    // POST to events endpoint
-    let payload = json!({
+    // Build payload
+    Some(json!({
         "runId": env::run_id(),
         "events": [event],
-    });
+    }))
+}
 
+/// POST a prepared event payload to the webhook endpoint.
+pub async fn post_event(payload: &Value) -> Result<(), AgentError> {
     match http::post_json(
         urls::events_url(),
-        &payload,
+        payload,
         crate::constants::HTTP_MAX_RETRIES,
     )
     .await

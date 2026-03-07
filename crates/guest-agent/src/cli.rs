@@ -211,11 +211,11 @@ pub async fn execute_cli(
 
     // Stream stdout JSONL, racing against heartbeat and process exit.
     //
-    // When `child.wait()` fires we do NOT break — we keep reading events
-    // so buffered lines (including the final `result` event) are not lost.
-    // Events read after the CLI exits are buffered in memory (not sent via
-    // HTTP inline) so that slow HTTP POSTs don't prevent the pipe from
-    // draining.  Buffered events are sent after the pipe reaches EOF.
+    // Event sending is decoupled from stdout reading via an mpsc channel
+    // to prevent a deadlock: Bun (Claude CLI runtime) uses blocking stdout
+    // writes, so if the agent's HTTP POSTs are slow and the pipe buffer
+    // fills, the CLI's entire event loop blocks — including TCP I/O.
+    // See: https://github.com/vm0-ai/vm0/issues/3645
     let mut reader = tokio::io::BufReader::new(stdout).lines();
     let mut seq = 0u32;
 
@@ -224,10 +224,18 @@ pub async fn execute_cli(
     let pgid = child.id().map(|pid| pid as i32);
 
     let mut cli_status: Option<std::process::ExitStatus> = None;
-    // Events buffered during drain phase (after CLI exits).  Sent after
-    // the pipe reaches EOF so that slow HTTP POSTs don't block the loop
-    // while it drains remaining pipe data.
-    let mut deferred_events: Vec<(serde_json::Value, u32)> = Vec::new();
+
+    // Background event sender: HTTP POSTs happen here, never in the
+    // stdout reading loop.  Unbounded channel because events are small
+    // and CLI lifetime is bounded by JOB_TIMEOUT.
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
+    let event_sender = tokio::spawn(async move {
+        while let Some(payload) = event_rx.recv().await {
+            if let Err(e) = events::post_event(&payload).await {
+                log_warn!(LOG_TAG, "Event send failed: {e}");
+            }
+        }
+    });
 
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
@@ -254,11 +262,10 @@ pub async fn execute_cli(
                             {
                                 println!("{result}");
                             }
-                            if cli_status.is_some() {
-                                // CLI already exited — buffer for post-loop send.
-                                deferred_events.push((event, seq));
-                            } else if let Err(e) = events::send_event(&mut event, seq, masker).await {
-                                log_warn!(LOG_TAG, "Event send failed: {e}");
+                            // Prepare event (fast: mask secrets, add seq) and enqueue
+                            // for background sending.  Never blocks the reading loop.
+                            if let Some(payload) = events::prepare_event(&mut event, seq, masker) {
+                                let _ = event_tx.send(payload);
                             }
                             seq += 1;
                         }
@@ -297,16 +304,14 @@ pub async fn execute_cli(
         }
     };
 
-    // Send events that were buffered during the drain phase.
-    // Skip if the event loop exited with an error (e.g. heartbeat failure)
-    // because the server is likely unreachable and each retry would stall.
-    if event_result.is_ok() && !deferred_events.is_empty() {
-        log_info!(LOG_TAG, "Sending {} deferred events", deferred_events.len());
-        for (mut event, event_seq) in deferred_events {
-            if let Err(e) = events::send_event(&mut event, event_seq, masker).await {
-                log_warn!(LOG_TAG, "Deferred event send failed: {e}");
-            }
-        }
+    // Close the channel so the background sender can finish.
+    // On error (e.g. heartbeat failure) the server is likely unreachable,
+    // so we drop unsent events to avoid stalling on retries.
+    drop(event_tx);
+    if event_result.is_ok() {
+        let _ = event_sender.await;
+    } else {
+        event_sender.abort();
     }
 
     let status = match cli_status {
