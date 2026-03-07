@@ -35,7 +35,10 @@ op_safe_edit() {
   if err=$(op item edit "$item" --vault "$vault" "$@" 2>&1 >/dev/null); then
     return 0
   fi
-  if [[ "$err" == *"Password item requires ps value"* ]]; then
+  if [[ "$err" == *"isn't an item in"* ]] || [[ "$err" == *"not found"* ]]; then
+    # Item doesn't exist — create it
+    op item create --vault "$vault" --title "$item" --category Login "$@" >/dev/null
+  elif [[ "$err" == *"Password item requires ps value"* ]]; then
     op item edit "$item" --vault "$vault" "password[password]=placeholder" "$@" >/dev/null
   else
     echo "$err" >&2
