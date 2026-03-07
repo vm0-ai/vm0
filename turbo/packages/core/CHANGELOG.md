@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.45.0](https://github.com/vm0-ai/vm0/compare/core-v8.44.1...core-v8.45.0) (2026-03-07)
+
+
+### Features
+
+* add --memory flag for agent long-term memory ([#3424](https://github.com/vm0-ai/vm0/issues/3424)) ([9e0279f](https://github.com/vm0-ai/vm0/commit/9e0279f618efe5396dda9e1aaac43a72bba70bfe))
+* add webflow oauth connector ([#3883](https://github.com/vm0-ai/vm0/issues/3883)) ([2024d3e](https://github.com/vm0-ai/vm0/commit/2024d3e0f570980a48685851dc1f20e93dada88c))
+* remove airtable connector feature switch ([#3886](https://github.com/vm0-ai/vm0/issues/3886)) ([98dafdc](https://github.com/vm0-ai/vm0/commit/98dafdcc1057633e33973b92152ace10401c46ef))
+
+
+### Bug Fixes
+
+* remove defensive try-catch in skill-frontmatter ([#3875](https://github.com/vm0-ai/vm0/issues/3875)) ([d8df142](https://github.com/vm0-ai/vm0/commit/d8df14284a507a6f52e5a9e4b377b860bb3830ee))
+
 ## [8.44.1](https://github.com/vm0-ai/vm0/compare/core-v8.44.0...core-v8.44.1) (2026-03-07)
 
 

@@ -598,7 +598,7 @@ dependencies = [
 
 [[package]]
 name = "guest-agent"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "base64",
  "bytes",
@@ -626,7 +626,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "flate2",
  "guest-common",
@@ -640,7 +640,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "libc",
  "nix",
@@ -1463,7 +1463,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.19.4"
+version = "0.20.0"
 dependencies = [
  "ably-subscriber",
  "async-trait",
@@ -1614,7 +1614,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.11.1"
+version = "0.11.2"
 dependencies = [
  "async-trait",
  "base64",
@@ -2326,7 +2326,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vsock-guest"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "libc",
  "vsock-proto",
@@ -2347,7 +2347,7 @@ version = "0.6.0"
 
 [[package]]
 name = "vsock-test"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "tokio",
  "vsock-guest",

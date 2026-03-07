@@ -1,5 +1,30 @@
 # Changelog
 
+## [12.83.0](https://github.com/vm0-ai/vm0/compare/web-v12.82.2...web-v12.83.0) (2026-03-07)
+
+
+### Features
+
+* add --memory flag for agent long-term memory ([#3424](https://github.com/vm0-ai/vm0/issues/3424)) ([9e0279f](https://github.com/vm0-ai/vm0/commit/9e0279f618efe5396dda9e1aaac43a72bba70bfe))
+* add webflow oauth connector ([#3883](https://github.com/vm0-ai/vm0/issues/3883)) ([2024d3e](https://github.com/vm0-ai/vm0/commit/2024d3e0f570980a48685851dc1f20e93dada88c))
+
+
+### Bug Fixes
+
+* **connectors:** fix wix token exchange to use form-encoded body ([#3887](https://github.com/vm0-ai/vm0/issues/3887)) ([d324ed2](https://github.com/vm0-ai/vm0/commit/d324ed214bb01c3f1fba6f5339fdec95a59e363b))
+
+
+### Refactoring
+
+* replace scope role type assertions with runtime validation ([#3885](https://github.com/vm0-ai/vm0/issues/3885)) ([63277f3](https://github.com/vm0-ai/vm0/commit/63277f3c1cb5ab457bb0032cddf805af59416f27))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.45.0
+
 ## [12.82.2](https://github.com/vm0-ai/vm0/compare/web-v12.82.1...web-v12.82.2) (2026-03-07)
 
 

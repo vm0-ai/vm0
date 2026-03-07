@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.6.2...vsock-guest-v0.6.3) (2026-03-07)
+
+
+### Bug Fixes
+
+* **guest:** close inherited fds in child processes to prevent cli hangs ([#3881](https://github.com/vm0-ai/vm0/issues/3881)) ([bd5b49b](https://github.com/vm0-ai/vm0/commit/bd5b49b718f853569029d29e6c8b2323a90b2f91))
+
 ## [0.6.2](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.6.1...vsock-guest-v0.6.2) (2026-03-06)
 
 

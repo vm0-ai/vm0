@@ -1,5 +1,29 @@
 # Changelog
 
+## [9.50.0](https://github.com/vm0-ai/vm0/compare/cli-v9.49.5...cli-v9.50.0) (2026-03-07)
+
+
+### Features
+
+* add --memory flag for agent long-term memory ([#3424](https://github.com/vm0-ai/vm0/issues/3424)) ([9e0279f](https://github.com/vm0-ai/vm0/commit/9e0279f618efe5396dda9e1aaac43a72bba70bfe))
+
+
+### Bug Fixes
+
+* **cli:** add warning for missing sentry environment config ([#3876](https://github.com/vm0-ai/vm0/issues/3876)) ([5b3c0c3](https://github.com/vm0-ai/vm0/commit/5b3c0c363d0318d8ff27418faff784ffd4a35bd2))
+
+
+### Refactoring
+
+* **cli:** improve scope create and scope set commands ([#3880](https://github.com/vm0-ai/vm0/issues/3880)) ([f200f13](https://github.com/vm0-ai/vm0/commit/f200f13e0e1956b47e31aa94fb762b14de47b458))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.45.0
+
 ## [9.49.5](https://github.com/vm0-ai/vm0/compare/cli-v9.49.4...cli-v9.49.5) (2026-03-07)
 
 

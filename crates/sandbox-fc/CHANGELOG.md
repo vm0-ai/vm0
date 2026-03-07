@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.11.1...sandbox-fc-v0.11.2) (2026-03-07)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** flush conntrack entries on namespace release ([#3888](https://github.com/vm0-ai/vm0/issues/3888)) ([612c491](https://github.com/vm0-ai/vm0/commit/612c49176f6335297d262486b3968605b4539428)), closes [#3645](https://github.com/vm0-ai/vm0/issues/3645)
+
 ## [0.11.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.11.0...sandbox-fc-v0.11.1) (2026-03-06)
 
 ## [0.11.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.10.0...sandbox-fc-v0.11.0) (2026-03-06)

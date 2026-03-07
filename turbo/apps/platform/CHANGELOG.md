@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.93.0](https://github.com/vm0-ai/vm0/compare/platform-v0.92.1...platform-v0.93.0) (2026-03-07)
+
+
+### Features
+
+* add webflow oauth connector ([#3883](https://github.com/vm0-ai/vm0/issues/3883)) ([2024d3e](https://github.com/vm0-ai/vm0/commit/2024d3e0f570980a48685851dc1f20e93dada88c))
+* remove airtable connector feature switch ([#3886](https://github.com/vm0-ai/vm0/issues/3886)) ([98dafdc](https://github.com/vm0-ai/vm0/commit/98dafdcc1057633e33973b92152ace10401c46ef))
+
+
+### Bug Fixes
+
+* **platform:** deduplicate events by sequence number to prevent unknown blocks in log detail ([#3890](https://github.com/vm0-ai/vm0/issues/3890)) ([9359771](https://github.com/vm0-ai/vm0/commit/93597717ebb0608827cd98fd90c97e53e7863a40))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.45.0
+
 ## [0.92.1](https://github.com/vm0-ai/vm0/compare/platform-v0.92.0...platform-v0.92.1) (2026-03-07)
 
 
