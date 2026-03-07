@@ -9,6 +9,7 @@ import {
   getDefaultScope,
 } from "./scope-member-service";
 import { badRequest, notFound, forbidden, isNotFound } from "../errors";
+import { getUserEmail } from "../auth/get-user-email";
 import { logger } from "../logger";
 import { env, hasClerkAuth } from "../../env";
 import { SELF_HOSTED_CLERK_ORG_ID } from "../auth/constants";
@@ -54,9 +55,10 @@ export function generateDefaultScopeSlug(clerkUserId: string): string {
 }
 
 /**
- * Validate scope slug format
+ * Validate scope slug format.
+ * Pass adminEmail to allow vm0 admins to use reserved slugs.
  */
-function validateScopeSlug(slug: string): void {
+function validateScopeSlug(slug: string, adminEmail?: string): void {
   if (slug.length < 3 || slug.length > 64) {
     throw badRequest("Scope slug must be between 3 and 64 characters");
   }
@@ -69,6 +71,9 @@ function validateScopeSlug(slug: string): void {
 
   // TODO: "vm0" is hardcoded as the system scope slug. This should be configurable.
   if (RESERVED_SLUGS.includes(slug) || slug.startsWith("vm0")) {
+    if (adminEmail && isVm0Admin(adminEmail)) {
+      return;
+    }
     throw badRequest(`Scope slug "${slug}" is reserved`);
   }
 }
@@ -100,10 +105,9 @@ export async function getScopeBySlug(slug: string) {
 }
 
 /**
- * Create a personal scope for a user and link it to their user record
- * This is the main entry point for setting up a user's scope
+ * Create a scope and link the creator as admin.
  */
-export async function createUserScope(clerkUserId: string, slug: string) {
+export async function createScope(clerkUserId: string, slug: string) {
   // Check if user already has a scope via scope_members (admin role)
   const existingAdmin = await getPrimaryAdminMembership(clerkUserId);
   if (existingAdmin) {
@@ -117,7 +121,9 @@ export async function createUserScope(clerkUserId: string, slug: string) {
     );
   }
 
-  validateScopeSlug(slug);
+  // Pass email for admin bypass check on reserved slugs
+  const email = hasClerkAuth() ? await getUserEmail(clerkUserId) : undefined;
+  validateScopeSlug(slug, email);
 
   // Create Clerk Organization so every scope is backed by one.
   // If Clerk auth is configured, org creation is required (fail-fast).
@@ -158,7 +164,7 @@ export async function createUserScope(clerkUserId: string, slug: string) {
     return newScope;
   });
 
-  log.debug("user scope created", {
+  log.debug("scope created", {
     clerkUserId,
     scopeId: scope.id,
     slug,

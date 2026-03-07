@@ -1,5 +1,5 @@
 /**
- * Tests for org invite command
+ * Tests for scope invite command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -13,7 +13,7 @@ import { server } from "../../../mocks/server";
 import { inviteCommand } from "../invite";
 import chalk from "chalk";
 
-describe("org invite command", () => {
+describe("scope invite command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -30,7 +30,7 @@ describe("org invite command", () => {
 
   it("should invite member and show success", async () => {
     server.use(
-      http.post("http://localhost:3000/api/org/invite", () => {
+      http.post("http://localhost:3000/api/scope/invite", () => {
         return HttpResponse.json({
           message: "Invitation sent to member@example.com",
         });
@@ -51,7 +51,7 @@ describe("org invite command", () => {
 
   it("should handle forbidden error (non-admin)", async () => {
     server.use(
-      http.post("http://localhost:3000/api/org/invite", () => {
+      http.post("http://localhost:3000/api/scope/invite", () => {
         return HttpResponse.json(
           {
             error: {

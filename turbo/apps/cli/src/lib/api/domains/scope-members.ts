@@ -1,8 +1,8 @@
 import { initClient } from "@ts-rest/core";
 import {
-  orgContract,
+  scopeMemberContract,
   scopeListContract,
-  type OrgStatusResponse,
+  type ScopeMembersResponse,
   type ScopeListResponse,
 } from "@vm0/core";
 import {
@@ -14,7 +14,7 @@ import { getToken } from "../config";
 
 /**
  * Get client config that always uses the user token (vm0_live_),
- * not the org token. Used for scope list/use operations.
+ * not the scope token. Used for scope list/use operations.
  */
 async function getUserTokenClientConfig(): Promise<{
   baseUrl: string;
@@ -37,29 +37,11 @@ async function getUserTokenClientConfig(): Promise<{
 }
 
 /**
- * Create a new organization
+ * Get scope members and status (requires scope access token)
  */
-export async function createOrg(slug: string): Promise<OrgStatusResponse> {
-  const config = await getUserTokenClientConfig();
-  const client = initClient(orgContract, config);
-
-  const result = await client.create({
-    body: { slug },
-  });
-
-  if (result.status === 201) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to create organization");
-}
-
-/**
- * Get organization status and members (requires org access token)
- */
-export async function getOrgStatus(): Promise<OrgStatusResponse> {
+export async function getScopeMembers(): Promise<ScopeMembersResponse> {
   const config = await getClientConfig();
-  const client = initClient(orgContract, config);
+  const client = initClient(scopeMemberContract, config);
 
   const result = await client.status({ headers: {} });
 
@@ -67,15 +49,15 @@ export async function getOrgStatus(): Promise<OrgStatusResponse> {
     return result.body;
   }
 
-  handleError(result, "Failed to get organization status");
+  handleError(result, "Failed to get scope members");
 }
 
 /**
- * Invite a member to the organization (requires org access token)
+ * Invite a member to the scope (requires scope access token)
  */
 export async function inviteMember(email: string): Promise<void> {
   const config = await getClientConfig();
-  const client = initClient(orgContract, config);
+  const client = initClient(scopeMemberContract, config);
 
   const result = await client.invite({
     body: { email },
@@ -89,11 +71,11 @@ export async function inviteMember(email: string): Promise<void> {
 }
 
 /**
- * Remove a member from the organization (requires org access token)
+ * Remove a member from the scope (requires scope access token)
  */
 export async function removeMember(email: string): Promise<void> {
   const config = await getClientConfig();
-  const client = initClient(orgContract, config);
+  const client = initClient(scopeMemberContract, config);
 
   const result = await client.removeMember({
     body: { email },
@@ -107,11 +89,11 @@ export async function removeMember(email: string): Promise<void> {
 }
 
 /**
- * Leave the current organization (requires org access token)
+ * Leave the current scope (requires scope access token)
  */
-export async function leaveOrg(): Promise<void> {
+export async function leaveScope(): Promise<void> {
   const config = await getClientConfig();
-  const client = initClient(orgContract, config);
+  const client = initClient(scopeMemberContract, config);
 
   const result = await client.leave({
     body: {},
@@ -121,7 +103,7 @@ export async function leaveOrg(): Promise<void> {
     return;
   }
 
-  handleError(result, "Failed to leave organization");
+  handleError(result, "Failed to leave scope");
 }
 
 /**

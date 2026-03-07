@@ -11,7 +11,7 @@ import { deviceCodes } from "../../../../../src/db/schema/device-codes";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 import {
   getUserScopeByClerkId,
-  createUserScope,
+  createScope,
   generateDefaultScopeSlug,
 } from "../../../../../src/lib/scope/scope-service";
 import { isBadRequest } from "../../../../../src/lib/errors";
@@ -87,7 +87,7 @@ const router = tsr.router(cliAuthTokenContract, {
         if (!existingScope) {
           const defaultSlug = generateDefaultScopeSlug(userId);
           try {
-            await createUserScope(userId, defaultSlug);
+            await createScope(userId, defaultSlug);
             log.debug("auto-created default scope for user", {
               userId,
               slug: defaultSlug,
@@ -99,7 +99,7 @@ const router = tsr.router(cliAuthTokenContract, {
               error.message.includes("already exists")
             ) {
               const fallbackSlug = `user-${crypto.randomBytes(4).toString("hex")}`;
-              await createUserScope(userId, fallbackSlug);
+              await createScope(userId, fallbackSlug);
               log.debug("auto-created fallback scope for user", {
                 userId,
                 slug: fallbackSlug,

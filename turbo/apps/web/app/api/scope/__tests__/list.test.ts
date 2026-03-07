@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { POST as createOrgRoute } from "../../org/route";
-import { POST as inviteRoute } from "../../org/invite/route";
+import { POST as createScopeRoute } from "../route";
+import { POST as inviteRoute } from "../invite/route";
 import { GET } from "../../scope/list/route";
 import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
@@ -42,10 +42,10 @@ describe("GET /api/scope/list - Scope List", () => {
     expect(personal).toBeDefined();
   });
 
-  it("should return org scopes with memberships", async () => {
-    // Create an org (admin gets one scope from org creation)
+  it("should return team scopes with memberships", async () => {
+    // Create a scope (admin gets membership from scope creation)
     const adminUserId = uniqueId("list-admin");
-    const slug = uniqueId("org");
+    const slug = uniqueId("scope");
     const orgId = `org_${adminUserId}`;
     setupClerkOrgMock({
       userId: adminUserId,
@@ -53,12 +53,12 @@ describe("GET /api/scope/list - Scope List", () => {
       memberships: [{ userId: adminUserId, role: "org:admin" }],
     });
 
-    const createReq = createTestRequest("http://localhost:3000/api/org", {
+    const createReq = createTestRequest("http://localhost:3000/api/scope", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ slug }),
     });
-    const createRes = await createOrgRoute(createReq);
+    const createRes = await createScopeRoute(createReq);
     expect(createRes.status).toBe(201);
 
     // Invite a member — the Clerk mock maps "list-member@example.com" -> "user_list-member"
@@ -74,7 +74,7 @@ describe("GET /api/scope/list - Scope List", () => {
     });
 
     const inviteReq = createTestRequest(
-      `http://localhost:3000/api/org/invite?scope=${slug}`,
+      `http://localhost:3000/api/scope/invite?scope=${slug}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

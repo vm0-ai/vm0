@@ -7,7 +7,7 @@ import { scopeContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
 import {
-  createUserScope,
+  createScope,
   updateScopeSlug,
 } from "../../../src/lib/scope/scope-service";
 import { resolveScope } from "../../../src/lib/scope/resolve-scope";
@@ -71,7 +71,7 @@ const router = tsr.router(scopeContract, {
     log.debug("creating user scope", { userId, slug });
 
     try {
-      const scope = await createUserScope(userId, slug);
+      const scope = await createScope(userId, slug);
 
       return {
         status: 201 as const,

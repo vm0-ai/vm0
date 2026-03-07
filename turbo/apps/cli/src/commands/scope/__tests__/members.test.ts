@@ -1,5 +1,5 @@
 /**
- * Tests for org status command
+ * Tests for scope members command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -13,7 +13,7 @@ import { server } from "../../../mocks/server";
 import { membersCommand } from "../members";
 import chalk from "chalk";
 
-describe("org status command", () => {
+describe("scope members command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -30,7 +30,7 @@ describe("org status command", () => {
 
   it("should display org name, role, and member list", async () => {
     server.use(
-      http.get("http://localhost:3000/api/org/status", () => {
+      http.get("http://localhost:3000/api/scope/members", () => {
         return HttpResponse.json({
           slug: "my-team",
           role: "admin",
@@ -65,11 +65,11 @@ describe("org status command", () => {
 
   it("should show helpful error when no org scope active", async () => {
     server.use(
-      http.get("http://localhost:3000/api/org/status", () => {
+      http.get("http://localhost:3000/api/scope/members", () => {
         return HttpResponse.json(
           {
             error: {
-              message: "Organization access token required",
+              message: "Scope access token required",
               code: "FORBIDDEN",
             },
           },

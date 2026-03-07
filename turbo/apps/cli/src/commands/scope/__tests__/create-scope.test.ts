@@ -1,5 +1,5 @@
 /**
- * Tests for org create command
+ * Tests for scope create command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -22,7 +22,7 @@ vi.mock("../../../lib/api/config", async (importOriginal) => {
   };
 });
 
-describe("org create command", () => {
+describe("scope create command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -39,7 +39,7 @@ describe("org create command", () => {
 
   it("should create org and auto-switch scope, show success", async () => {
     server.use(
-      http.post("http://localhost:3000/api/org", () => {
+      http.post("http://localhost:3000/api/scope", () => {
         return HttpResponse.json(
           {
             slug: "my-team",
@@ -68,7 +68,7 @@ describe("org create command", () => {
 
   it("should handle 'already own an organization' error", async () => {
     server.use(
-      http.post("http://localhost:3000/api/org", () => {
+      http.post("http://localhost:3000/api/scope", () => {
         return HttpResponse.json(
           {
             error: {

@@ -437,23 +437,21 @@ export {
   type UpdateUserPreferencesRequest,
 } from "./user-preferences";
 export {
-  orgContract,
-  orgRoleSchema,
-  orgMemberSchema,
-  orgStatusResponseSchema,
-  createOrgRequestSchema,
+  scopeMemberContract,
+  memberRoleSchema,
+  scopeMemberSchema,
+  scopeMembersResponseSchema,
   inviteRequestSchema,
   removeMemberRequestSchema,
   messageResponseSchema,
-  type OrgContract,
-  type OrgRole,
-  type OrgMember,
-  type OrgStatusResponse,
-  type CreateOrgRequest,
+  type ScopeMemberContract,
+  type MemberRole,
+  type ScopeMember,
+  type ScopeMembersResponse,
   type InviteRequest,
   type RemoveMemberRequest,
   type MessageResponse,
-} from "./org";
+} from "./scope-member";
 export {
   scopeListContract,
   scopeListItemSchema,

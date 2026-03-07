@@ -45,7 +45,7 @@ function isTestTokenAllowed(request: Request): boolean {
 
 /**
  * Ensure the test user has a scope, creating one directly in the database
- * if necessary. Unlike the normal createUserScope flow, this bypasses
+ * if necessary. Unlike the normal createScope flow, this bypasses
  * Clerk Organization creation entirely — test scopes don't need a real
  * Clerk org, and the Clerk Backend API rejects org creation for
  * e2e test users (403 Forbidden).

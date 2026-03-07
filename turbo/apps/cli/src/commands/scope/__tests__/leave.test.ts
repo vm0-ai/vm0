@@ -1,5 +1,5 @@
 /**
- * Tests for org leave command
+ * Tests for scope leave command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -22,7 +22,7 @@ vi.mock("../../../lib/api/config", async (importOriginal) => {
   };
 });
 
-describe("org leave command", () => {
+describe("scope leave command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -39,7 +39,7 @@ describe("org leave command", () => {
 
   it("should leave org and show success", async () => {
     server.use(
-      http.post("http://localhost:3000/api/org/leave", () => {
+      http.post("http://localhost:3000/api/scope/leave", () => {
         return HttpResponse.json({
           message: "Left organization",
         });
@@ -55,7 +55,7 @@ describe("org leave command", () => {
 
   it("should handle admin-cannot-leave error", async () => {
     server.use(
-      http.post("http://localhost:3000/api/org/leave", () => {
+      http.post("http://localhost:3000/api/scope/leave", () => {
         return HttpResponse.json(
           {
             error: {

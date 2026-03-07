@@ -1,5 +1,5 @@
 /**
- * Tests for org remove command
+ * Tests for scope remove command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -13,7 +13,7 @@ import { server } from "../../../mocks/server";
 import { removeCommand } from "../remove";
 import chalk from "chalk";
 
-describe("org remove command", () => {
+describe("scope remove command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -30,7 +30,7 @@ describe("org remove command", () => {
 
   it("should remove member and show success", async () => {
     server.use(
-      http.delete("http://localhost:3000/api/org/members", () => {
+      http.delete("http://localhost:3000/api/scope/members", () => {
         return HttpResponse.json({
           message: "Removed member@example.com from organization",
         });
@@ -46,7 +46,7 @@ describe("org remove command", () => {
 
   it("should handle API error", async () => {
     server.use(
-      http.delete("http://localhost:3000/api/org/members", () => {
+      http.delete("http://localhost:3000/api/scope/members", () => {
         return HttpResponse.json(
           {
             error: {

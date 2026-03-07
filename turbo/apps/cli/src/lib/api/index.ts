@@ -77,15 +77,14 @@ export {
   getConnector,
 } from "./domains/connectors";
 
-// Domain modules - Organizations
+// Domain modules - Scope Members
 export {
-  createOrg,
-  getOrgStatus,
+  getScopeMembers,
   inviteMember,
   removeMember,
-  leaveOrg,
+  leaveScope,
   listScopes,
-} from "./domains/org";
+} from "./domains/scope-members";
 
 // Domain modules - Usage
 export { getUsage } from "./domains/usage";
