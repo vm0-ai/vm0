@@ -168,12 +168,14 @@ const router = tsr.router(logsSearchContract, {
         : `| where runId in (${targetRunIds.map((id) => `"${escapeApl(id)}"`).join(", ")})`;
 
     // Step 1: Search for matching events
-    // Note: tostring() is required to search inside nested JSON/dynamic fields.
-    // See: https://axiom.co/docs/apl/tutorial (search with dynamic fields)
+    // Note: dynamic_to_json() is required to search inside nested JSON/dynamic fields.
+    // tostring() only handles scalar values; dynamic_to_json() recursively serializes
+    // property bags and arrays into searchable JSON strings.
+    // See: https://axiom.co/docs/apl/scalar-functions/conversion-functions/dynamic-to-json
     const searchApl = `['${dataset}']
 | where _time > datetime("${sinceISO}")
 ${runIdFilter}
-| where tostring(eventData) contains "${escapedKeyword}"
+| where dynamic_to_json(eventData) contains "${escapedKeyword}"
 | order by _time desc
 | limit ${limit + 1}`;
 
