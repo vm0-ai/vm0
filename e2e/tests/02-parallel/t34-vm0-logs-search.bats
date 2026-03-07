@@ -103,15 +103,15 @@ teardown() {
     echo "# Step 4: Searching for 'hello from agent' in run events..."
     SHORT_ID="${RUN_ID:0:8}"
     local max_retries=20
-    local retry_delay=5
+    local retry_delay=8
     for i in $(seq 1 $max_retries); do
         run $CLI_COMMAND logs search "hello from agent" --run "$RUN_ID" --since 1h
         if [[ "$output" == *"$SHORT_ID"* ]]; then
-            echo "Search results found (attempt $i)"
+            echo "# Search results found (attempt $i)"
             assert_success
             break
         fi
-        echo "Retry $i/$max_retries: waiting for Axiom indexing..."
+        echo "# Retry $i/$max_retries: waiting for Axiom indexing..."
         sleep $retry_delay
     done
     assert_output --partial "$SHORT_ID"
