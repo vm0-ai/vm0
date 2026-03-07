@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { setCommand } from "../set";
@@ -13,14 +13,9 @@ describe("scope set command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
-  });
-
-  afterEach(() => {
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
   });
 
   it("should exit with error if not authenticated", async () => {

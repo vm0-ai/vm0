@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { createScope, getScope } from "../../lib/api";
+import { createScope, getScope, ApiRequestError } from "../../lib/api";
 import { saveConfig } from "../../lib/api/config";
 
 export const createCommand = new Command()
@@ -19,11 +19,8 @@ export const createCommand = new Command()
       console.error(chalk.cyan(`  vm0 scope set ${slug} --force`));
       process.exit(1);
     } catch (error) {
-      // "No scope configured" means user has no scope — proceed with creation
-      if (
-        !(error instanceof Error) ||
-        !error.message.includes("No scope configured")
-      ) {
+      // 404 means user has no scope — proceed with creation
+      if (!(error instanceof ApiRequestError) || error.status !== 404) {
         throw error;
       }
     }
