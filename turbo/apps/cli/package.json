@@ -36,7 +36,7 @@
     "tar": "^7.5.2",
     "undici": "^6.23.0",
     "yaml": "^2.3.4",
-    "zod": "^4.1.12"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
