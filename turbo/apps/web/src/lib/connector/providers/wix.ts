@@ -95,14 +95,14 @@ export async function exchangeWixCode(
   const response = await fetch(WIX_TOKEN_URL, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: JSON.stringify({
+    body: new URLSearchParams({
       grant_type: "client_credentials",
       client_id: clientId,
       client_secret: clientSecret,
       instance_id: instanceId,
-    }),
+    }).toString(),
   });
 
   if (!response.ok) {
@@ -146,14 +146,14 @@ export async function refreshWixToken(
   const response = await fetch(WIX_TOKEN_URL, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: JSON.stringify({
+    body: new URLSearchParams({
       grant_type: "client_credentials",
       client_id: clientId,
       client_secret: clientSecret,
       instance_id: instanceId,
-    }),
+    }).toString(),
   });
 
   if (!response.ok) {
@@ -182,7 +182,7 @@ export async function refreshWixToken(
 async function fetchWixUserInfo(accessToken: string): Promise<WixUserInfo> {
   const response = await fetch("https://www.wixapis.com/apps/v1/instance", {
     headers: {
-      Authorization: accessToken,
+      Authorization: `Bearer ${accessToken}`,
     },
   });
 
