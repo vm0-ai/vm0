@@ -95,8 +95,6 @@ export interface ManifestStorage {
   vasVersionId: string;
   /** Presigned URL for downloading archive.tar.gz */
   archiveUrl: string;
-  /** Size of archive.tar.gz in bytes */
-  archiveSize: number;
 }
 
 /**
@@ -108,8 +106,6 @@ export interface ManifestArtifact {
   vasVersionId: string;
   /** Presigned URL for downloading archive.tar.gz */
   archiveUrl: string;
-  /** Size of archive.tar.gz in bytes */
-  archiveSize: number;
   /** Presigned URL for downloading manifest.json (for incremental upload) */
   manifestUrl?: string;
 }

@@ -1,9 +1,5 @@
 import { resolveVolumes } from "./storage-resolver";
-import {
-  generatePresignedUrl,
-  listS3Objects,
-  putS3Object,
-} from "../s3/s3-client";
+import { generatePresignedUrl, putS3Object } from "../s3/s3-client";
 import { logger } from "../logger";
 import { badRequest } from "../errors";
 import type {
@@ -308,17 +304,12 @@ export async function prepareStorageManifest(
         const archiveKey = `${s3Key}/archive.tar.gz`;
         const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
 
-        // Get archive size from S3
-        const archiveObjects = await listS3Objects(bucketName, archiveKey);
-        const archiveSize = archiveObjects[0]?.size ?? 0;
-
         const manifestStorage: ManifestStorage = {
           name: volume.name,
           mountPath: volume.mountPath,
           vasStorageName: volume.vasStorageName,
           vasVersionId: versionId,
           archiveUrl,
-          archiveSize,
         };
 
         log.debug(`Generated archive URL for volume "${volume.name}"`);
@@ -373,16 +364,11 @@ export async function prepareStorageManifest(
         const manifestKey = `${s3Key}/manifest.json`;
         const manifestUrl = await generatePresignedUrl(bucketName, manifestKey);
 
-        // Get archive size from S3
-        const archiveObjects = await listS3Objects(bucketName, archiveKey);
-        const archiveSize = archiveObjects[0]?.size ?? 0;
-
         const manifestArtifact: ManifestArtifact = {
           mountPath: artifactSource.mountPath,
           vasStorageName: artifactSource.vasStorageName,
           vasVersionId: versionId,
           archiveUrl,
-          archiveSize,
           manifestUrl,
         };
 
