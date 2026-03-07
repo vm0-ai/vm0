@@ -472,6 +472,21 @@ async fn delete_namespace_resources(ns_name: &str, host_device: &str) {
     info!(name = %ns_name, "namespace deleted");
 }
 
+/// Flush conntrack entries for a given IP address.
+///
+/// Namespaces are reused between VMs with the same peer IP. Without
+/// flushing, stale conntrack entries from a previous VM can cause the
+/// stateful iptables rule (`-m state --state RELATED,ESTABLISHED`) to
+/// misroute or silently drop return packets for a new VM.
+async fn flush_conntrack(peer_ip: &str) {
+    let src_args = ["-D", "-s", peer_ip];
+    let dst_args = ["-D", "-d", peer_ip];
+    tokio::join!(
+        exec_ignore_errors("conntrack", &src_args, Privilege::Sudo),
+        exec_ignore_errors("conntrack", &dst_args, Privilege::Sudo),
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Pool index lock
 // ---------------------------------------------------------------------------
@@ -719,6 +734,11 @@ impl NetnsPool {
             info!(name = %ns.name, "namespace already in pool, ignoring");
             return Ok(());
         }
+
+        // Flush stale conntrack entries so the next VM using this namespace
+        // does not inherit connection tracking state from the previous VM.
+        flush_conntrack(&ns.peer_ip).await;
+
         info!(
             name = %ns.name,
             available = target_queue.len() + 1,
