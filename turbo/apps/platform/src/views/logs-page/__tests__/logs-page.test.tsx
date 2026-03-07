@@ -201,23 +201,19 @@ describe("logs page", () => {
     expect(within(dataRow!).getAllByText("-")).toHaveLength(2);
   });
 
-  it("should not crash when API returns an unknown status value", async () => {
-    // This data comes from the real API where backend may return status values
-    // not yet known to the frontend (e.g. "error" instead of "failed").
-    // Previously this caused a crash: StatusBadge did statusConfig[status].icon
-    // where statusConfig[status] was undefined for unknown values.
+  it("should not crash when API returns a queued status", async () => {
+    // "queued" was missing from the frontend LogStatus type and statusConfig,
+    // causing StatusBadge to crash with TypeError when a run was in queued state.
     server.use(
       http.get("*/api/platform/logs", () => {
         return HttpResponse.json({
           data: [
             {
-              id: "run_unknown_status",
+              id: "run_queued_status",
               sessionId: null,
               agentName: "Test Agent",
               framework: null,
-              // "error" is not a known LogStatus value — it is not in the union
-              // pending | running | completed | failed | timeout | cancelled
-              status: "error",
+              status: "queued",
               createdAt: "2024-01-01T00:00:00Z",
             },
           ],
