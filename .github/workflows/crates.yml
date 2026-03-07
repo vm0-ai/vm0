@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - 'crates/**'
+      - 'ansible/**'
       - '.github/workflows/crates.yml'
   push:
     branches:
       - main
     paths:
       - 'crates/**'
+      - 'ansible/**'
       - '.github/workflows/crates.yml'
   merge_group:
 
@@ -23,7 +25,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260306
     outputs:
-      workflow-changed: ${{ steps.detect.outputs.workflow-changed }}
+      ci-changed: ${{ steps.detect.outputs.ci-changed }}
       ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
       guest-init-changed: ${{ steps.detect.outputs.guest-init-changed }}
@@ -47,11 +49,11 @@ jobs:
           # Git 2.35.2+ rejects such repos unless marked as safe.
           git config --global --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
 
-          # Check if the workflow file itself changed
-          if git diff --name-only "$BASE_REF" HEAD | grep -q "^\.github/workflows/crates\.yml$"; then
-            echo "workflow-changed=true" >> "$GITHUB_OUTPUT"
+          # Check if the workflow file or ansible playbooks changed
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^\.github/workflows/crates\.yml$|^ansible/"; then
+            echo "ci-changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "workflow-changed=false" >> "$GITHUB_OUTPUT"
+            echo "ci-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
           # scripts/crate-changed.sh: exit 0=changed, 1=not changed, 2+=error
@@ -99,7 +101,7 @@ jobs:
       - name: Run ably-subscriber smoke test
         if: |
           needs.detect.outputs.ably-subscriber-changed == 'true' ||
-          needs.detect.outputs.workflow-changed == 'true'
+          needs.detect.outputs.ci-changed == 'true'
         env:
           ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
         run: |
@@ -112,7 +114,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260306
     needs: [detect]
     if: |
-      needs.detect.outputs.workflow-changed == 'true' ||
+      needs.detect.outputs.ci-changed == 'true' ||
       needs.detect.outputs.runner-changed == 'true' ||
       needs.detect.outputs.guest-init-changed == 'true' ||
       needs.detect.outputs.guest-download-changed == 'true' ||
