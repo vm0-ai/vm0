@@ -5,22 +5,14 @@ import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
 import { buildWixAuthorizationUrl } from "../../../../../src/lib/connector/providers/wix";
 
-const STATE_COOKIE_NAME = "connector_oauth_state";
-const COOKIE_MAX_AGE = 15 * 60; // 15 minutes
-
-function generateState(): string {
-  const array = new Uint8Array(32);
-  crypto.getRandomValues(array);
-  return Array.from(array, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 /**
  * Wix Connector Authorization Endpoint
  *
  * GET /api/connectors/wix/authorize
  *
  * Redirects users to the Wix installer page. After installing the app,
- * Wix redirects back to /api/connectors/wix/complete with the instanceId.
+ * Wix opens the Dashboard Page extension (iFrame) where the user
+ * completes the VM0 connection via /connector/wix.
  */
 export async function GET(request: Request) {
   initServices();
@@ -47,22 +39,6 @@ export async function GET(request: Request) {
     );
   }
 
-  const state = generateState();
-  const redirectUri = `${origin}/api/connectors/wix/complete`;
-  const authUrl = buildWixAuthorizationUrl(clientId, redirectUri, state);
-
-  const response = NextResponse.redirect(authUrl);
-  const cookieParts = [
-    `${STATE_COOKIE_NAME}=${state}`,
-    `Max-Age=${COOKIE_MAX_AGE}`,
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Lax",
-  ];
-  if (currentEnv.NODE_ENV === "production") {
-    cookieParts.push("Secure");
-  }
-  response.headers.set("Set-Cookie", cookieParts.join("; "));
-
-  return response;
+  const authUrl = buildWixAuthorizationUrl(clientId);
+  return NextResponse.redirect(authUrl);
 }

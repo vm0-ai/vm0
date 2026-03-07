@@ -7,11 +7,11 @@ import {
 } from "./wix";
 
 export const wixHandler: ProviderHandler = {
-  buildAuthUrl: buildWixAuthorizationUrl,
+  buildAuthUrl: (clientId) => buildWixAuthorizationUrl(clientId),
   async exchangeCode(clientId, clientSecret, code) {
-    // For Wix, `code` is actually the instanceId extracted from the
-    // Wix instance JWT. The new Wix OAuth uses client_credentials
-    // flow with instanceId instead of authorization_code.
+    // For Wix, `code` is the instanceId obtained from the Dashboard Page
+    // extension iFrame's ?instance=<JWT> parameter. The Wix custom app OAuth
+    // uses client_credentials flow with instanceId.
     const result = await exchangeWixCode(clientId, clientSecret, code);
     return {
       accessToken: result.accessToken,

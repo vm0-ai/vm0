@@ -6,24 +6,23 @@ import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
 import { resolveScope } from "../../../../../src/lib/scope/resolve-scope";
 import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
-import { exchangeWixCode } from "../../../../../src/lib/connector/providers/wix";
+import {
+  exchangeWixCode,
+  decodeWixInstance,
+} from "../../../../../src/lib/connector/providers/wix";
 import { logger } from "../../../../../src/lib/logger";
 
-const log = logger("api:connectors:wix:complete");
+const log = logger("api:connectors:wix:link");
 
 /**
- * Wix Connection Completion Endpoint
+ * Wix Connector Link Endpoint
  *
- * GET /api/connectors/wix/complete?instanceId=XXX
+ * GET /api/connectors/wix/link?instance=<JWT>
  *
- * Receives the Wix instanceId, exchanges it for an access token via
- * client_credentials, stores the connector, and redirects to the
- * success page.
- *
- * This endpoint requires authentication (Clerk session cookies).
- * It is called either:
- * - From the setup page form submission (via navigation)
- * - From the Wix Dashboard iFrame "Complete Connection" link
+ * Opened as a popup from the Wix Dashboard extension iFrame (/connector/wix).
+ * Requires VM0 authentication (Clerk). Decodes the Wix instance JWT to
+ * obtain the instanceId, exchanges it for an access token, and stores
+ * the connector. Redirects to /connector/wix/success on completion.
  */
 export async function GET(request: Request) {
   initServices();
@@ -42,9 +41,16 @@ export async function GET(request: Request) {
     return NextResponse.redirect(loginUrl.toString());
   }
 
-  const instanceId = url.searchParams.get("instanceId");
-  if (!instanceId) {
-    return redirectWithError(origin, "Missing Instance ID");
+  const instanceJwt = url.searchParams.get("instance");
+  if (!instanceJwt) {
+    return redirectWithError(origin, "Missing Wix instance parameter");
+  }
+
+  let instanceId: string;
+  try {
+    ({ instanceId } = decodeWixInstance(instanceJwt));
+  } catch {
+    return redirectWithError(origin, "Invalid Wix instance JWT");
   }
 
   const clientId = currentEnv.WIX_OAUTH_CLIENT_ID;
@@ -75,26 +81,25 @@ export async function GET(request: Request) {
       },
     );
 
-    log.info("Wix connector created via complete endpoint", {
+    log.info("Wix connector linked", {
       userId,
       instanceId,
       username: result.userInfo.username,
     });
 
-    const successUrl = new URL("/connector/success", origin);
-    successUrl.searchParams.set("type", "wix");
+    // Redirect to success page that closes the popup
+    const successUrl = new URL("/connector/wix/success", origin);
     successUrl.searchParams.set("username", result.userInfo.username ?? "");
     return NextResponse.redirect(successUrl.toString());
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    log.error("Wix complete failed", { error: msg, instanceId });
+    log.error("Wix link failed", { error: msg, instanceId });
     return redirectWithError(origin, msg);
   }
 }
 
 function redirectWithError(origin: string, message: string): NextResponse {
-  const errorUrl = new URL("/connector/error", origin);
-  errorUrl.searchParams.set("type", "wix");
+  const errorUrl = new URL("/connector/wix/error", origin);
   errorUrl.searchParams.set("message", message);
   return NextResponse.redirect(errorUrl.toString());
 }

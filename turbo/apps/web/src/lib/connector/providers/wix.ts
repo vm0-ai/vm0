@@ -22,33 +22,49 @@ interface WixRefreshResult {
 const WIX_TOKEN_URL = "https://www.wixapis.com/oauth2/token";
 
 /**
- * Build Wix OAuth authorization URL.
+ * Build Wix installer URL.
  *
- * Wix uses the installer page as its OAuth consent screen. After the user
- * installs the app by clicking "Agree & Add", Wix redirects to the
- * provided redirectUri with the instanceId as a query parameter. The
- * instanceId is then exchanged for an access token via client_credentials.
+ * Wix custom apps use the installer page as the entry point. After the user
+ * installs the app by clicking "Agree & Add", Wix opens the Dashboard Page
+ * extension URL (iFrame) where the user completes the VM0 connection.
  */
-export function buildWixAuthorizationUrl(
-  clientId: string,
-  redirectUri: string,
-  state: string,
-): string {
-  const params = new URLSearchParams({
-    appId: clientId,
-    redirectUrl: redirectUri,
-    state,
-  });
-
+export function buildWixAuthorizationUrl(clientId: string): string {
+  const params = new URLSearchParams({ appId: clientId });
   return `https://www.wix.com/installer/install?${params.toString()}`;
+}
+
+/**
+ * Decode the Wix instance JWT to extract the instanceId.
+ *
+ * The instance param is a signed JWT in format: signature.payload
+ * The payload is base64url-encoded JSON containing instanceId.
+ */
+export function decodeWixInstance(instance: string): {
+  instanceId: string;
+  siteOwnerId?: string;
+} {
+  // Instance format: signature.base64payload
+  const parts = instance.split(".");
+  const payload = parts[1];
+  if (!payload) {
+    throw new Error("Invalid Wix instance format");
+  }
+
+  const decoded = JSON.parse(Buffer.from(payload, "base64").toString("utf-8"));
+
+  return z
+    .object({
+      instanceId: z.string(),
+      siteOwnerId: z.string().optional(),
+    })
+    .parse(decoded);
 }
 
 /**
  * Exchange instanceId for access token using client_credentials grant.
  *
- * New Wix apps use client_credentials flow instead of authorization_code.
- * The instanceId is obtained from the Dashboard page iFrame parameters
- * after the app is installed on a site.
+ * Wix custom apps use client_credentials flow. The instanceId is obtained
+ * from the Dashboard Page extension iFrame's ?instance=<JWT> parameter.
  */
 export async function exchangeWixCode(
   clientId: string,
@@ -98,7 +114,7 @@ export async function exchangeWixCode(
 /**
  * Refresh a Wix access token.
  *
- * For new Wix apps, "refreshing" means requesting a new token
+ * For Wix custom apps, "refreshing" means requesting a new token
  * via client_credentials using the stored instanceId.
  */
 export async function refreshWixToken(
