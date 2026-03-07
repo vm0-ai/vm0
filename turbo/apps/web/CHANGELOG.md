@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.84.0](https://github.com/vm0-ai/vm0/compare/web-v12.83.0...web-v12.84.0) (2026-03-07)
+
+
+### Features
+
+* hardcode memory name convention in slack, telegram, and email handlers ([#3899](https://github.com/vm0-ai/vm0/issues/3899)) ([5d543f1](https://github.com/vm0-ai/vm0/commit/5d543f1c1f7e1ae5a6b7f9f5f2bd293948cfd23b))
+
 ## [12.83.0](https://github.com/vm0-ai/vm0/compare/web-v12.82.2...web-v12.83.0) (2026-03-07)
 
 
