@@ -106,7 +106,9 @@ function buildRunIdFilter(runIds: string[]): string {
 
 /**
  * Search events using Axiom-side filtering with extend + dynamic_to_json.
- * Returns null if Axiom query fails (caller should fall back to server-side filtering).
+ * dynamic_to_json converts nested eventData to a canonical JSON string,
+ * which can then be filtered with contains.
+ * See: https://axiom.co/docs/apl/scalar-functions/conversion-functions/dynamic-to-json
  */
 async function searchEventsInAxiom(
   dataset: string,
@@ -115,8 +117,6 @@ async function searchEventsInAxiom(
   keyword: string,
   limit: number,
 ): Promise<AxiomAgentEvent[] | null> {
-  // Use extend to convert eventData to JSON string, then filter with contains.
-  // This is the documented Axiom pattern for searching nested dynamic fields.
   const apl = `['${dataset}']
 | where _time > datetime("${sinceISO}")
 ${runIdFilter}
@@ -126,32 +126,6 @@ ${runIdFilter}
 | limit ${limit + 1}`;
 
   return queryAxiom<AxiomAgentEvent>(apl);
-}
-
-/**
- * Fetch all events and filter by keyword in TypeScript.
- * Fallback when Axiom-side filtering is unavailable.
- */
-async function searchEventsWithFallback(
-  dataset: string,
-  sinceISO: string,
-  runIdFilter: string,
-  keyword: string,
-  maxEvents: number,
-): Promise<AxiomAgentEvent[] | null> {
-  const apl = `['${dataset}']
-| where _time > datetime("${sinceISO}")
-${runIdFilter}
-| order by _time desc
-| limit ${maxEvents}`;
-
-  const allEvents = await queryAxiom<AxiomAgentEvent>(apl);
-  if (allEvents === null || allEvents.length === 0) return allEvents;
-
-  const lowerKeyword = keyword.toLowerCase();
-  return allEvents.filter((e) =>
-    JSON.stringify(e.eventData).toLowerCase().includes(lowerKeyword),
-  );
 }
 
 /**
@@ -243,24 +217,13 @@ const router = tsr.router(logsSearchContract, {
 
     const runIdFilter = buildRunIdFilter(targetRunIds);
 
-    // Try Axiom-side filtering first; fall back to server-side if it fails
-    let matchedEvents = await searchEventsInAxiom(
+    const matchedEvents = await searchEventsInAxiom(
       dataset,
       sinceISO,
       runIdFilter,
       keyword,
       limit,
     );
-
-    if (matchedEvents === null) {
-      matchedEvents = await searchEventsWithFallback(
-        dataset,
-        sinceISO,
-        runIdFilter,
-        keyword,
-        targetRunIds.length * 200,
-      );
-    }
 
     if (matchedEvents === null || matchedEvents.length === 0) {
       return {

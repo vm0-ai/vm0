@@ -186,15 +186,9 @@ describe("GET /api/logs/search", () => {
     expect(aplQuery).toContain(`runId == "${testRunId}"`);
   });
 
-  it("should fall back to server-side filtering when axiom search fails", async () => {
-    // First call (Axiom-side search with dynamic_to_json) fails
-    context.mocks.axiom.queryAxiom.mockResolvedValueOnce(null);
-
-    // Second call (fallback fetch) returns all events
+  it("should use dynamic_to_json in axiom query for keyword search", async () => {
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
-      createAxiomAgentEvent(testRunId, 1, "deploy started"),
       createAxiomAgentEvent(testRunId, 2, "deploy failed with error"),
-      createAxiomAgentEvent(testRunId, 3, "cleaning up"),
     ]);
 
     const request = createTestRequest(
@@ -205,9 +199,15 @@ describe("GET /api/logs/search", () => {
 
     expect(response.status).toBe(200);
     const data = await response.json();
-    // Server-side filter should match only "deploy failed"
     expect(data.results).toHaveLength(1);
     expect(data.results[0].matchedEvent.sequenceNumber).toBe(2);
+
+    // Verify APL uses extend + dynamic_to_json pattern
+    const aplQuery = context.mocks.axiom.queryAxiom.mock.calls[0]![0] as string;
+    expect(aplQuery).toContain(
+      "extend _eventDataJson = dynamic_to_json(eventData)",
+    );
+    expect(aplQuery).toContain('_eventDataJson contains "deploy failed"');
   });
 
   it("should filter by agent name via database lookup", async () => {
