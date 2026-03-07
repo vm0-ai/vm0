@@ -71,6 +71,10 @@ const router = tsr.router(webhookEventsContract, {
         sequenceNumber: event.sequenceNumber,
         eventType: event.type,
         eventData: event, // Already masked by client
+        // Flat string for keyword search — Axiom APL cannot reliably search
+        // inside nested dynamic fields, so we store a searchable text
+        // representation as a top-level string field.
+        searchText: JSON.stringify(event),
       }),
     );
 
