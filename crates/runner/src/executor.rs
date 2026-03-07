@@ -308,7 +308,12 @@ async fn run_in_sandbox(
 /// The guest-agent writes checkpoint errors to `/tmp/vm0-checkpoint-error-{run_id}`
 /// so the runner can surface them even though stdout/stderr are redirected to the
 /// system log file.
+///
+/// NOTE: This path must match the convention in `crates/guest-agent/src/paths.rs`
+/// (`checkpoint_error_file()`). The runner and guest-agent are separate binaries
+/// running in different processes, so the path is duplicated by design.
 async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: Uuid) -> Option<String> {
+    // Mirror of guest-agent paths::checkpoint_error_file()
     let error_path = format!("/tmp/vm0-checkpoint-error-{run_id}");
     let cat_cmd = format!("cat {error_path} 2>/dev/null");
     match sandbox
