@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.44.0](https://github.com/vm0-ai/vm0/compare/core-v8.43.0...core-v8.44.0) (2026-03-07)
+
+
+### Features
+
+* **connectors:** gate airtable connector behind internal feature switch ([#3864](https://github.com/vm0-ai/vm0/issues/3864)) ([5250661](https://github.com/vm0-ai/vm0/commit/5250661e5a48673b9f843a9d03385f7e825a163d))
+
 ## [8.43.0](https://github.com/vm0-ai/vm0/compare/core-v8.42.0...core-v8.43.0) (2026-03-07)
 
 

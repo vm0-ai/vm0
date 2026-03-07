@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.92.0](https://github.com/vm0-ai/vm0/compare/platform-v0.91.0...platform-v0.92.0) (2026-03-07)
+
+
+### Features
+
+* **connectors:** gate airtable connector behind internal feature switch ([#3864](https://github.com/vm0-ai/vm0/issues/3864)) ([5250661](https://github.com/vm0-ai/vm0/commit/5250661e5a48673b9f843a9d03385f7e825a163d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.44.0
+
 ## [0.91.0](https://github.com/vm0-ai/vm0/compare/platform-v0.90.0...platform-v0.91.0) (2026-03-07)
 
 
