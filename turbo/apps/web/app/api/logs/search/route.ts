@@ -10,7 +10,7 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, gte } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import {
   queryAxiom,
@@ -71,26 +71,41 @@ async function getAgentNames(
 }
 
 /**
- * Filter run IDs by agent name. Returns only run IDs whose agent matches the given name.
+ * Get run IDs belonging to a user, optionally filtered by agent name and time.
+ * This ensures we only search events the user owns (ownership verified via DB,
+ * not via Axiom userId field, matching the pattern used by other telemetry endpoints).
  */
-async function filterRunIdsByAgent(
+async function getUserRunIds(
   userId: string,
-  agentName: string,
+  since: Date,
+  agentName?: string,
 ): Promise<string[]> {
+  const conditions = [
+    eq(agentRuns.userId, userId),
+    gte(agentRuns.createdAt, since),
+  ];
+
+  if (agentName) {
+    const rows = await globalThis.services.db
+      .select({ runId: agentRuns.id })
+      .from(agentRuns)
+      .leftJoin(
+        agentComposeVersions,
+        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+      )
+      .leftJoin(
+        agentComposes,
+        eq(agentComposeVersions.composeId, agentComposes.id),
+      )
+      .where(and(...conditions, eq(agentComposes.name, agentName)));
+
+    return rows.map((r) => r.runId);
+  }
+
   const rows = await globalThis.services.db
     .select({ runId: agentRuns.id })
     .from(agentRuns)
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .leftJoin(
-      agentComposes,
-      eq(agentComposeVersions.composeId, agentComposes.id),
-    )
-    .where(
-      and(eq(agentRuns.userId, userId), eq(agentComposes.name, agentName)),
-    );
+    .where(and(...conditions));
 
   return rows.map((r) => r.runId);
 }
@@ -111,15 +126,34 @@ const router = tsr.router(logsSearchContract, {
 
     const { keyword, agent, runId, limit, before, after } = query;
     const since = query.since ?? Date.now() - SEVEN_DAYS_MS;
-    const sinceISO = new Date(since).toISOString();
+    const sinceDate = new Date(since);
+    const sinceISO = sinceDate.toISOString();
     const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
     const escapedKeyword = escapeApl(keyword);
 
-    // If agent filter is provided, resolve matching run IDs first
-    let agentRunIds: string[] | undefined;
-    if (agent) {
-      agentRunIds = await filterRunIdsByAgent(userId, agent);
-      if (agentRunIds.length === 0) {
+    // Determine which run IDs to search.
+    // Ownership is verified via DB (not Axiom userId), matching the pattern
+    // used by existing telemetry endpoints like /telemetry/agent.
+    let targetRunIds: string[];
+    if (runId) {
+      // Verify this run belongs to the user
+      const [run] = await globalThis.services.db
+        .select({ id: agentRuns.id })
+        .from(agentRuns)
+        .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)))
+        .limit(1);
+
+      if (!run) {
+        return {
+          status: 200 as const,
+          body: { results: [], hasMore: false },
+        };
+      }
+      targetRunIds = [runId];
+    } else {
+      // Get all user's run IDs within the time range (optionally filtered by agent)
+      targetRunIds = await getUserRunIds(userId, sinceDate, agent);
+      if (targetRunIds.length === 0) {
         return {
           status: 200 as const,
           body: { results: [], hasMore: false },
@@ -128,22 +162,15 @@ const router = tsr.router(logsSearchContract, {
     }
 
     // Build run ID filter for APL
-    let runIdFilter = "";
-    if (runId) {
-      runIdFilter = `| where runId == "${escapeApl(runId)}"`;
-    } else if (agentRunIds) {
-      const runIdList = agentRunIds
-        .map((id) => `"${escapeApl(id)}"`)
-        .join(", ");
-      runIdFilter = `| where runId in (${runIdList})`;
-    }
+    const runIdFilter =
+      targetRunIds.length === 1
+        ? `| where runId == "${escapeApl(targetRunIds[0]!)}"`
+        : `| where runId in (${targetRunIds.map((id) => `"${escapeApl(id)}"`).join(", ")})`;
 
     // Step 1: Search for matching events
-    // Note: search operator cannot penetrate nested JSON fields like eventData.
-    // Use tostring() to convert eventData to a searchable string, then use contains.
+    // Note: tostring() is required to search inside nested JSON/dynamic fields.
     // See: https://axiom.co/docs/apl/tutorial (search with dynamic fields)
     const searchApl = `['${dataset}']
-| where userId == "${escapeApl(userId)}"
 | where _time > datetime("${sinceISO}")
 ${runIdFilter}
 | where tostring(eventData) contains "${escapedKeyword}"
@@ -166,8 +193,8 @@ ${runIdFilter}
     // Step 2: Build context query — fetch surrounding events for each match
     if (before === 0 && after === 0) {
       // No context needed, just return matched events
-      const runIds = [...new Set(matches.map((e) => e.runId))];
-      const agentNames = await getAgentNames(runIds, userId);
+      const matchedRunIds = [...new Set(matches.map((e) => e.runId))];
+      const agentNames = await getAgentNames(matchedRunIds, userId);
 
       const results = matches.map((match) => ({
         runId: match.runId,
@@ -191,7 +218,6 @@ ${runIdFilter}
     });
 
     const contextApl = `['${dataset}']
-| where userId == "${escapeApl(userId)}"
 | where ${contextConditions.join("\n  or ")}
 | order by runId asc, sequenceNumber asc`;
 
@@ -206,8 +232,8 @@ ${runIdFilter}
     }
 
     // Assemble results
-    const runIds = [...new Set(matches.map((e) => e.runId))];
-    const agentNames = await getAgentNames(runIds, userId);
+    const matchedRunIds = [...new Set(matches.map((e) => e.runId))];
+    const agentNames = await getAgentNames(matchedRunIds, userId);
 
     const results = matches.map((match) => {
       const contextBefore: RunEvent[] = [];
