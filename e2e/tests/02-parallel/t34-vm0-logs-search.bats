@@ -96,9 +96,21 @@ teardown() {
 
     # Step 4: Search for keyword scoped to this run
     # Search for "hello from agent" which appears in the tool_use and tool_result event data
+    # Use retry loop because Axiom ingestion is async
     echo "# Step 4: Searching for 'hello from agent' in run events..."
     SHORT_ID="${RUN_ID:0:8}"
-    run $CLI_COMMAND logs search "hello from agent" --run "$RUN_ID" --since 1h
+    local max_retries=10
+    local retry_delay=3
+    for i in $(seq 1 $max_retries); do
+        run $CLI_COMMAND logs search "hello from agent" --run "$RUN_ID" --since 1h
+        if [[ "$output" == *"$SHORT_ID"* ]]; then
+            echo "Search results found (attempt $i)"
+            assert_success
+            break
+        fi
+        echo "Retry $i/$max_retries: waiting for Axiom ingestion..."
+        sleep $retry_delay
+    done
     assert_success
     assert_output --partial "$SHORT_ID"
 
