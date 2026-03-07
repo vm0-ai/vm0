@@ -94,30 +94,25 @@ teardown() {
         return 1
     }
 
-    # Step 4: Search for keyword scoped to this run
+    # Step 4: Verify vm0 logs works (proves events are in Axiom)
+    echo "# Step 4: Verifying events are accessible via vm0 logs..."
+    run $CLI_COMMAND logs "$RUN_ID" --all
+    assert_success
+    echo "# vm0 logs output:"
+    echo "$output" | head -20
+
+    # Step 5: Search for keyword scoped to this run
     # Search for "hello from agent" which appears in the tool_use and tool_result event data
-    # Use retry loop because Axiom ingestion is async (may take 10-30s)
-    echo "# Step 4: Searching for 'hello from agent' in run events..."
+    echo "# Step 5: Searching for 'hello from agent' in run events..."
     SHORT_ID="${RUN_ID:0:8}"
-    local max_retries=10
-    local retry_delay=3
-    for i in $(seq 1 $max_retries); do
-        run $CLI_COMMAND logs search "hello from agent" --run "$RUN_ID" --since 1h
-        if [[ "$output" == *"$SHORT_ID"* ]]; then
-            echo "Search results found (attempt $i)"
-            assert_success
-            break
-        fi
-        echo "Retry $i/$max_retries: waiting for Axiom ingestion..."
-        if [ "$i" -lt "$max_retries" ]; then
-            sleep $retry_delay
-        fi
-    done
+    run $CLI_COMMAND logs search "hello from agent" --run "$RUN_ID" --since 1h
+    echo "# Search output:"
+    echo "$output"
     assert_success
     assert_output --partial "$SHORT_ID"
 
-    # Step 5: Search for non-matching keyword shows empty guidance
-    echo "# Step 5: Testing empty results guidance..."
+    # Step 6: Search for non-matching keyword shows empty guidance
+    echo "# Step 6: Testing empty results guidance..."
     run $CLI_COMMAND logs search "xyznonexistent99999" --run "$RUN_ID" --since 1h
     assert_success
     assert_output --partial "No matches found"
