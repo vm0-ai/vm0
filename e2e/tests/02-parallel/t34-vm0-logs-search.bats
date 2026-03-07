@@ -12,6 +12,9 @@ load '../../helpers/setup'
 
 setup_file() {
     export AGENT_NAME="e2e-t34-$(date +%s%3N)-$RANDOM"
+    # Override default 60s timeout: this test runs an agent (~20s) then polls
+    # Axiom for async-indexed events, which can take over 60s in CI.
+    export BATS_TEST_TIMEOUT=180
 }
 
 setup() {
@@ -99,8 +102,8 @@ teardown() {
     # Note: "Claude Code Started/Completed" are rendered display text, NOT in eventData
     echo "# Step 4: Searching for 'hello from agent' in run events..."
     SHORT_ID="${RUN_ID:0:8}"
-    local max_retries=15
-    local retry_delay=8
+    local max_retries=12
+    local retry_delay=3
     for i in $(seq 1 $max_retries); do
         run $CLI_COMMAND logs search "hello from agent" --run "$RUN_ID" --since 1h
         if [[ "$output" == *"$SHORT_ID"* ]]; then
