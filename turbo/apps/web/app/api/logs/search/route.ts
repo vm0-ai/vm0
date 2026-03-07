@@ -19,7 +19,6 @@ import {
 } from "../../../../src/lib/axiom";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-const MAX_EVENTS_PER_RUN = 200;
 
 interface AxiomAgentEvent {
   _time: string;
@@ -30,25 +29,10 @@ interface AxiomAgentEvent {
   eventData: unknown;
 }
 
-/**
- * Escape a string for use inside APL string literals.
- */
 function escapeApl(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-/**
- * Check if an event's data contains the keyword (case-insensitive).
- * Uses JSON.stringify to convert nested objects to searchable strings.
- */
-function eventMatchesKeyword(event: AxiomAgentEvent, keyword: string): boolean {
-  const json = JSON.stringify(event.eventData);
-  return json.toLowerCase().includes(keyword.toLowerCase());
-}
-
-/**
- * Look up agent names for a set of run IDs.
- */
 async function getAgentNames(
   runIds: string[],
   userId: string,
@@ -79,9 +63,6 @@ async function getAgentNames(
   return result;
 }
 
-/**
- * Get run IDs belonging to a user, optionally filtered by agent name and time.
- */
 async function getUserRunIds(
   userId: string,
   since: Date,
@@ -115,6 +96,103 @@ async function getUserRunIds(
     .where(and(...conditions));
 
   return rows.map((r) => r.runId);
+}
+
+function buildRunIdFilter(runIds: string[]): string {
+  return runIds.length === 1
+    ? `| where runId == "${escapeApl(runIds[0]!)}"`
+    : `| where runId in (${runIds.map((id) => `"${escapeApl(id)}"`).join(", ")})`;
+}
+
+/**
+ * Search events using Axiom-side filtering with extend + dynamic_to_json.
+ * Returns null if Axiom query fails (caller should fall back to server-side filtering).
+ */
+async function searchEventsInAxiom(
+  dataset: string,
+  sinceISO: string,
+  runIdFilter: string,
+  keyword: string,
+  limit: number,
+): Promise<AxiomAgentEvent[] | null> {
+  // Use extend to convert eventData to JSON string, then filter with contains.
+  // This is the documented Axiom pattern for searching nested dynamic fields.
+  const apl = `['${dataset}']
+| where _time > datetime("${sinceISO}")
+${runIdFilter}
+| extend _eventDataJson = dynamic_to_json(eventData)
+| where _eventDataJson contains "${escapeApl(keyword)}"
+| order by _time desc
+| limit ${limit + 1}`;
+
+  return queryAxiom<AxiomAgentEvent>(apl);
+}
+
+/**
+ * Fetch all events and filter by keyword in TypeScript.
+ * Fallback when Axiom-side filtering is unavailable.
+ */
+async function searchEventsWithFallback(
+  dataset: string,
+  sinceISO: string,
+  runIdFilter: string,
+  keyword: string,
+  maxEvents: number,
+): Promise<AxiomAgentEvent[] | null> {
+  const apl = `['${dataset}']
+| where _time > datetime("${sinceISO}")
+${runIdFilter}
+| order by _time desc
+| limit ${maxEvents}`;
+
+  const allEvents = await queryAxiom<AxiomAgentEvent>(apl);
+  if (allEvents === null || allEvents.length === 0) return allEvents;
+
+  const lowerKeyword = keyword.toLowerCase();
+  return allEvents.filter((e) =>
+    JSON.stringify(e.eventData).toLowerCase().includes(lowerKeyword),
+  );
+}
+
+/**
+ * Fetch context events (surrounding events by sequenceNumber) for matched events.
+ */
+async function fetchContextEvents(
+  dataset: string,
+  matches: AxiomAgentEvent[],
+  before: number,
+  after: number,
+): Promise<Map<string, AxiomAgentEvent>> {
+  const contextMap = new Map<string, AxiomAgentEvent>();
+  if (before === 0 && after === 0) return contextMap;
+
+  const contextConditions = matches.map((match) => {
+    const seqMin = Math.max(0, match.sequenceNumber - before);
+    const seqMax = match.sequenceNumber + after;
+    return `(runId == "${escapeApl(match.runId)}" and sequenceNumber >= ${seqMin} and sequenceNumber <= ${seqMax})`;
+  });
+
+  const apl = `['${dataset}']
+| where ${contextConditions.join("\n  or ")}
+| order by runId asc, sequenceNumber asc`;
+
+  const contextEvents = await queryAxiom<AxiomAgentEvent>(apl);
+  if (contextEvents) {
+    for (const event of contextEvents) {
+      contextMap.set(`${event.runId}:${event.sequenceNumber}`, event);
+    }
+  }
+
+  return contextMap;
+}
+
+function toRunEvent(event: AxiomAgentEvent): RunEvent {
+  return {
+    sequenceNumber: event.sequenceNumber,
+    eventType: event.eventType,
+    eventData: event.eventData,
+    createdAt: event._time,
+  };
 }
 
 const router = tsr.router(logsSearchContract, {
@@ -163,35 +241,28 @@ const router = tsr.router(logsSearchContract, {
       }
     }
 
-    // Fetch events from Axiom using the same pattern as /telemetry/agent.
-    // Keyword filtering is done in TypeScript using JSON.stringify,
-    // avoiding Axiom APL compatibility issues with nested JSON search.
-    const runIdFilter =
-      targetRunIds.length === 1
-        ? `| where runId == "${escapeApl(targetRunIds[0]!)}"`
-        : `| where runId in (${targetRunIds.map((id) => `"${escapeApl(id)}"`).join(", ")})`;
+    const runIdFilter = buildRunIdFilter(targetRunIds);
 
-    const fetchApl = `['${dataset}']
-| where _time > datetime("${sinceISO}")
-${runIdFilter}
-| order by _time desc
-| limit ${targetRunIds.length * MAX_EVENTS_PER_RUN}`;
-
-    const allEvents = await queryAxiom<AxiomAgentEvent>(fetchApl);
-
-    if (allEvents === null || allEvents.length === 0) {
-      return {
-        status: 200 as const,
-        body: { results: [], hasMore: false },
-      };
-    }
-
-    // Filter events by keyword in TypeScript
-    const matchedEvents = allEvents.filter((e) =>
-      eventMatchesKeyword(e, keyword),
+    // Try Axiom-side filtering first; fall back to server-side if it fails
+    let matchedEvents = await searchEventsInAxiom(
+      dataset,
+      sinceISO,
+      runIdFilter,
+      keyword,
+      limit,
     );
 
-    if (matchedEvents.length === 0) {
+    if (matchedEvents === null) {
+      matchedEvents = await searchEventsWithFallback(
+        dataset,
+        sinceISO,
+        runIdFilter,
+        keyword,
+        targetRunIds.length * 200,
+      );
+    }
+
+    if (matchedEvents === null || matchedEvents.length === 0) {
       return {
         status: 200 as const,
         body: { results: [], hasMore: false },
@@ -201,13 +272,15 @@ ${runIdFilter}
     const hasMore = matchedEvents.length > limit;
     const matches = hasMore ? matchedEvents.slice(0, limit) : matchedEvents;
 
-    // Build event index for context lookup
-    const eventIndex = new Map<string, AxiomAgentEvent>();
-    for (const event of allEvents) {
-      eventIndex.set(`${event.runId}:${event.sequenceNumber}`, event);
-    }
+    // Fetch context events
+    const contextMap = await fetchContextEvents(
+      dataset,
+      matches,
+      before,
+      after,
+    );
 
-    // Assemble results with context
+    // Assemble results
     const matchedRunIds = [...new Set(matches.map((e) => e.runId))];
     const agentNames = await getAgentNames(matchedRunIds, userId);
 
@@ -220,7 +293,7 @@ ${runIdFilter}
         i < match.sequenceNumber;
         i++
       ) {
-        const event = eventIndex.get(`${match.runId}:${i}`);
+        const event = contextMap.get(`${match.runId}:${i}`);
         if (event) contextBefore.push(toRunEvent(event));
       }
 
@@ -229,7 +302,7 @@ ${runIdFilter}
         i <= match.sequenceNumber + after;
         i++
       ) {
-        const event = eventIndex.get(`${match.runId}:${i}`);
+        const event = contextMap.get(`${match.runId}:${i}`);
         if (event) contextAfter.push(toRunEvent(event));
       }
 
@@ -248,15 +321,6 @@ ${runIdFilter}
     };
   },
 });
-
-function toRunEvent(event: AxiomAgentEvent): RunEvent {
-  return {
-    sequenceNumber: event.sequenceNumber,
-    eventType: event.eventType,
-    eventData: event.eventData,
-    createdAt: event._time,
-  };
-}
 
 function errorHandler(err: unknown): TsRestResponse | void {
   if (err && typeof err === "object" && "queryError" in err) {

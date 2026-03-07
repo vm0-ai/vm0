@@ -82,6 +82,7 @@ describe("GET /api/logs/search", () => {
   });
 
   it("should return empty results when Axiom is not configured", async () => {
+    // Both Axiom-side search and fallback return null
     context.mocks.axiom.queryAxiom.mockResolvedValue(null);
 
     const request = createTestRequest(
@@ -116,7 +117,17 @@ describe("GET /api/logs/search", () => {
   });
 
   it("should return matched events with context", async () => {
-    // Single Axiom call returns all events; server filters by keyword and extracts context
+    // First Axiom call: search returns matched event
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+      createAxiomAgentEvent(
+        testRunId,
+        5,
+        "Error: OOM killed",
+        "2024-01-15T10:30:05Z",
+      ),
+    ]);
+
+    // Second Axiom call: context query returns surrounding events
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
       createAxiomAgentEvent(
         testRunId,
@@ -175,8 +186,11 @@ describe("GET /api/logs/search", () => {
     expect(aplQuery).toContain(`runId == "${testRunId}"`);
   });
 
-  it("should filter events by keyword in server-side matching", async () => {
-    // Axiom returns all events; server filters by keyword
+  it("should fall back to server-side filtering when axiom search fails", async () => {
+    // First call (Axiom-side search with dynamic_to_json) fails
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce(null);
+
+    // Second call (fallback fetch) returns all events
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
       createAxiomAgentEvent(testRunId, 1, "deploy started"),
       createAxiomAgentEvent(testRunId, 2, "deploy failed with error"),
@@ -191,6 +205,7 @@ describe("GET /api/logs/search", () => {
 
     expect(response.status).toBe(200);
     const data = await response.json();
+    // Server-side filter should match only "deploy failed"
     expect(data.results).toHaveLength(1);
     expect(data.results[0].matchedEvent.sequenceNumber).toBe(2);
   });
