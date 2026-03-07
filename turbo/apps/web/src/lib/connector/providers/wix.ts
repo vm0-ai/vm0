@@ -24,15 +24,10 @@ const WIX_TOKEN_URL = "https://www.wixapis.com/oauth2/token";
 /**
  * Build Wix OAuth authorization URL.
  *
- * Wix uses a custom install flow via the installer page.
- * For new Wix apps, the legacy redirectUrl flow is not supported.
- * Instead, after installation, the Dashboard page iFrame receives
- * the instance JWT with the instanceId, which is used to get tokens
- * via client_credentials.
- *
- * The installer URL still accepts a redirectUrl parameter. Although
- * the redirect itself fails for new apps, the app IS installed on
- * the site after the user clicks "Agree & Add".
+ * Wix uses the installer page as its OAuth consent screen. After the user
+ * installs the app by clicking "Agree & Add", Wix redirects to the
+ * provided redirectUri with the instanceId as a query parameter. The
+ * instanceId is then exchanged for an access token via client_credentials.
  */
 export function buildWixAuthorizationUrl(
   clientId: string,
@@ -46,38 +41,6 @@ export function buildWixAuthorizationUrl(
   });
 
   return `https://www.wix.com/installer/install?${params.toString()}`;
-}
-
-/**
- * Decode the Wix instance JWT to extract the instanceId.
- *
- * The instance param is a signed JWT in format: signature.payload
- * The payload is base64url-encoded JSON containing instanceId.
- */
-export function decodeWixInstance(instance: string): {
-  instanceId: string;
-  siteOwnerId?: string;
-  metaSiteId?: string;
-} {
-  // Instance format: signature.base64payload
-  const parts = instance.split(".");
-  // The JWT payload is the second part
-  const payload = parts[1];
-  if (!payload) {
-    throw new Error("Invalid Wix instance format");
-  }
-
-  const decoded = JSON.parse(Buffer.from(payload, "base64").toString("utf-8"));
-
-  const data = z
-    .object({
-      instanceId: z.string(),
-      siteOwnerId: z.string().optional(),
-      metaSiteId: z.string().optional(),
-    })
-    .parse(decoded);
-
-  return data;
 }
 
 /**
