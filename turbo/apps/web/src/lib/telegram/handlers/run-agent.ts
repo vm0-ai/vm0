@@ -110,6 +110,7 @@ export async function runAgentForTelegram(
       sessionId,
       agentName,
       artifactName: "artifact",
+      memoryName: "memory",
       callbacks: [
         {
           url: callbackUrl,
