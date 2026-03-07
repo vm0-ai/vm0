@@ -65,6 +65,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },
+  [FeatureSwitchKey.AirtableConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
@@ -185,6 +190,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
 export const CONNECTOR_FEATURE_FLAGS: Partial<
   Record<ConnectorType, FeatureSwitchKey>
 > = {
+  airtable: FeatureSwitchKey.AirtableConnector,
   canva: FeatureSwitchKey.CanvaConnector,
   computer: FeatureSwitchKey.ComputerConnector,
   deel: FeatureSwitchKey.DeelConnector,
