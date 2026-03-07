@@ -64,6 +64,7 @@ const CONNECTOR_FEATURE_FLAGS = Object.freeze<
   "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
   wix: FeatureSwitchKey.WixConnector,
   supabase: FeatureSwitchKey.SupabaseConnector,
+  webflow: FeatureSwitchKey.WebflowConnector,
 });
 
 export const allConnectorTypes$ = computed(async (get) => {

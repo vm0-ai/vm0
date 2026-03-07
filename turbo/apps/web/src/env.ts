@@ -154,6 +154,9 @@ function initEnv() {
       // Supabase OAuth (for connector)
       SUPABASE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       SUPABASE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Webflow OAuth (for connector)
+      WEBFLOW_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      WEBFLOW_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // GitHub App (for issue integration)
       GITHUB_APP_ID: z.string().min(1).optional(),
       GITHUB_APP_SLUG: z.string().min(1).optional(),
@@ -294,6 +297,8 @@ function initEnv() {
       SUPABASE_OAUTH_CLIENT_SECRET: process.env.SUPABASE_OAUTH_CLIENT_SECRET,
       TODOIST_OAUTH_CLIENT_ID: process.env.TODOIST_OAUTH_CLIENT_ID,
       TODOIST_OAUTH_CLIENT_SECRET: process.env.TODOIST_OAUTH_CLIENT_SECRET,
+      WEBFLOW_OAUTH_CLIENT_ID: process.env.WEBFLOW_OAUTH_CLIENT_ID,
+      WEBFLOW_OAUTH_CLIENT_SECRET: process.env.WEBFLOW_OAUTH_CLIENT_SECRET,
       GITHUB_APP_ID: process.env.GITHUB_APP_ID,
       GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
       GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,

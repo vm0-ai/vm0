@@ -34,6 +34,7 @@ import { xHandler } from "./providers/x-handler";
 import { wixHandler } from "./providers/wix-handler";
 import { supabaseHandler } from "./providers/supabase-handler";
 import { todoistHandler } from "./providers/todoist-handler";
+import { webflowHandler } from "./providers/webflow-handler";
 import { xeroHandler } from "./providers/xero-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
@@ -68,6 +69,7 @@ export const PROVIDER_HANDLERS: Record<
   strava: stravaHandler,
   todoist: todoistHandler,
   vercel: vercelHandler,
+  webflow: webflowHandler,
   wix: wixHandler,
   supabase: supabaseHandler,
   x: xHandler,

@@ -31,6 +31,7 @@ export enum FeatureSwitchKey {
   WixConnector = "wixConnector",
   SupabaseConnector = "supabaseConnector",
   TodoistConnector = "todoistConnector",
+  WebflowConnector = "webflowConnector",
   GitHubIntegration = "githubIntegration",
   TelegramIntegration = "telegramIntegration",
 }

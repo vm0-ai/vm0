@@ -1089,6 +1089,49 @@ export const CONNECTOR_TYPES = {
       scopes: ["data:read_write", "data:delete", "project:delete"],
     } as ConnectorOAuthConfig,
   },
+  webflow: {
+    label: "Webflow",
+    helpText:
+      "Connect your Webflow account to manage sites, pages, CMS collections, and ecommerce",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Webflow to grant access.",
+        secrets: {
+          WEBFLOW_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      WEBFLOW_TOKEN: "$secrets.WEBFLOW_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://webflow.com/oauth/authorize",
+      tokenUrl: "https://api.webflow.com/oauth/access_token",
+      scopes: [
+        "authorized_user:read",
+        "sites:read",
+        "sites:write",
+        "pages:read",
+        "pages:write",
+        "cms:read",
+        "cms:write",
+        "assets:read",
+        "assets:write",
+        "forms:read",
+        "ecommerce:read",
+        "ecommerce:write",
+        "users:read",
+        "workspace:read",
+        "custom_code:read",
+        "custom_code:write",
+      ],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -1125,6 +1168,7 @@ export const connectorTypeSchema = z.enum([
   "wix",
   "supabase",
   "todoist",
+  "webflow",
 ]);
 
 /**
