@@ -105,9 +105,10 @@ function buildRunIdFilter(runIds: string[]): string {
 }
 
 /**
- * Search events using the searchText field stored at ingestion time.
- * searchText is a flat JSON.stringify of the event data, stored as a
- * top-level string field in Axiom for reliable keyword search.
+ * Search events using Axiom-side filtering with extend + dynamic_to_json.
+ * dynamic_to_json converts nested eventData to a canonical JSON string,
+ * which can then be filtered with contains.
+ * See: https://axiom.co/docs/apl/scalar-functions/conversion-functions/dynamic-to-json
  */
 async function searchEventsInAxiom(
   dataset: string,
@@ -119,7 +120,8 @@ async function searchEventsInAxiom(
   const apl = `['${dataset}']
 | where _time > datetime("${sinceISO}")
 ${runIdFilter}
-| where searchText contains "${escapeApl(keyword)}"
+| extend _eventDataJson = dynamic_to_json(eventData)
+| where _eventDataJson contains "${escapeApl(keyword)}"
 | order by _time desc
 | limit ${limit + 1}`;
 
