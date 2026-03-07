@@ -637,13 +637,22 @@ export function groupEventsIntoMessages(
     (a, b) => a.sequenceNumber - b.sequenceNumber,
   );
 
+  const seen = new Set<number>();
+  const deduped = sorted.filter((e) => {
+    if (seen.has(e.sequenceNumber)) {
+      return false;
+    }
+    seen.add(e.sequenceNumber);
+    return true;
+  });
+
   const ctx: GroupingContext = {
     grouped: [],
     pendingToolUses: new Map(),
     todoState: new Map(),
   };
 
-  for (const event of sorted) {
+  for (const event of deduped) {
     const eventData = event.eventData as GroupingEventData;
 
     if (event.eventType === "system") {
