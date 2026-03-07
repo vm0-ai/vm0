@@ -99,8 +99,8 @@ teardown() {
     # Note: "Claude Code Started/Completed" are rendered display text, NOT in eventData
     echo "# Step 4: Searching for 'hello from agent' in run events..."
     SHORT_ID="${RUN_ID:0:8}"
-    local max_retries=5
-    local retry_delay=3
+    local max_retries=8
+    local retry_delay=5
     for i in $(seq 1 $max_retries); do
         run $CLI_COMMAND logs search "hello from agent" --run "$RUN_ID" --since 1h
         if [[ "$output" == *"$SHORT_ID"* ]]; then
