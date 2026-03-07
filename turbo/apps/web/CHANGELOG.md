@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.82.2](https://github.com/vm0-ai/vm0/compare/web-v12.82.1...web-v12.82.2) (2026-03-07)
+
+
+### Bug Fixes
+
+* add cascade foreign keys to enable scope deletion ([#3846](https://github.com/vm0-ai/vm0/issues/3846)) ([9cb668c](https://github.com/vm0-ai/vm0/commit/9cb668c7a2e5a871259e2e60c06b4b385ef5f6d6))
+* use server-computed connector-provided secret names in compose warning ([#3843](https://github.com/vm0-ai/vm0/issues/3843)) ([b66c877](https://github.com/vm0-ai/vm0/commit/b66c87774aa6fd21c73878026f3d0f2e7420928b))
+
+
+### Refactoring
+
+* unify scope creation and migrate org endpoints ([#3847](https://github.com/vm0-ai/vm0/issues/3847)) ([df5317c](https://github.com/vm0-ai/vm0/commit/df5317cd3eb171eaaf1f19148db58a754a68bf5e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.44.1
+
 ## [12.82.1](https://github.com/vm0-ai/vm0/compare/web-v12.82.0...web-v12.82.1) (2026-03-07)
 
 

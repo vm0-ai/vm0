@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.44.1](https://github.com/vm0-ai/vm0/compare/core-v8.44.0...core-v8.44.1) (2026-03-07)
+
+
+### Bug Fixes
+
+* use server-computed connector-provided secret names in compose warning ([#3843](https://github.com/vm0-ai/vm0/issues/3843)) ([b66c877](https://github.com/vm0-ai/vm0/commit/b66c87774aa6fd21c73878026f3d0f2e7420928b))
+
+
+### Refactoring
+
+* unify scope creation and migrate org endpoints ([#3847](https://github.com/vm0-ai/vm0/issues/3847)) ([df5317c](https://github.com/vm0-ai/vm0/commit/df5317cd3eb171eaaf1f19148db58a754a68bf5e))
+
 ## [8.44.0](https://github.com/vm0-ai/vm0/compare/core-v8.43.0...core-v8.44.0) (2026-03-07)
 
 
