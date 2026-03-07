@@ -10,13 +10,14 @@ fi
 
 vm_name="$1"
 
-# Find the container and extract its port
-port=$(docker ps | grep "vsc-${vm_name}" | ggrep -oP '0\.0\.0\.0:\K[0-9]+(?=->8443)' | head -n1)
+# Find the container ID and extract its port via docker port
+container_id=$(docker ps --format "{{.ID}} {{.Image}}" | grep "vsc-${vm_name}-" | awk '{print $1}' | head -n1)
+port=$(docker port "${container_id}" 8443 2>/dev/null | grep '0.0.0.0:' | cut -d: -f2 | head -n1)
 
-if [ -z "$port" ]; then
-    echo "Error: Container for '${vm_name}' not found or no port mapping"
+if [ -z "$container_id" ] || [ -z "$port" ]; then
+    echo "Error: Container for '${vm_name}' not found or no port mapping for 8443"
     echo "Available containers:"
-    docker ps --format "table {{.Names}}\t{{.Ports}}" | grep vsc- || echo "No devcontainers running"
+    docker ps --format "table {{.ID}}\t{{.Image}}\t{{.Ports}}" | grep vsc- || echo "No devcontainers running"
     exit 1
 fi
 
