@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 
 use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory};
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 /// Maximum wall-clock time for a single job (2 hours).
 const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
@@ -288,12 +289,43 @@ async fn run_in_sandbox(
 
     let error_msg = if exit.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
-        Some(stderr).filter(|s| !s.is_empty())
+        if !stderr.is_empty() {
+            Some(stderr)
+        } else {
+            // Stderr is empty (redirected to log file). Check for a structured
+            // error file written by the guest-agent (e.g. checkpoint failures).
+            read_guest_error_file(sandbox, context.run_id).await
+        }
     } else {
         None
     };
 
     Ok((exit.exit_code, error_msg))
+}
+
+/// Read a structured error file from the guest filesystem.
+///
+/// The guest-agent writes checkpoint errors to `/tmp/vm0-checkpoint-error-{run_id}`
+/// so the runner can surface them even though stdout/stderr are redirected to the
+/// system log file.
+async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: Uuid) -> Option<String> {
+    let error_path = format!("/tmp/vm0-checkpoint-error-{run_id}");
+    let cat_cmd = format!("cat {error_path} 2>/dev/null");
+    match sandbox
+        .exec(&ExecRequest {
+            cmd: &cat_cmd,
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+        })
+        .await
+    {
+        Ok(result) if result.exit_code == 0 && !result.stdout.is_empty() => {
+            let msg = String::from_utf8_lossy(&result.stdout).trim().to_string();
+            Some(msg).filter(|s| !s.is_empty())
+        }
+        _ => None,
+    }
 }
 
 /// Returns true if dmesg output indicates an OOM kill.

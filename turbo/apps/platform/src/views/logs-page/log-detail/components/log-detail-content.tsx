@@ -148,7 +148,11 @@ export function LogDetailContent() {
         <div className="px-4 sm:px-8">
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Missing required secrets</AlertTitle>
+            <AlertTitle>
+              {missingSecrets.length > 0
+                ? "Missing required secrets"
+                : "Run failed"}
+            </AlertTitle>
             <AlertDescription>
               {missingSecrets.length > 0 ? (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2">

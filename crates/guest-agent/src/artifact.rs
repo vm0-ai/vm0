@@ -131,7 +131,7 @@ pub async fn create_snapshot(
         );
         let commit_payload = json!({
             "storageName": storage_name,
-            "storageType": "artifact",
+            "storageType": storage_type,
             "versionId": version_id,
             "files": files,
             "runId": run_id,

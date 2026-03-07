@@ -209,12 +209,14 @@ async fn execute(
                 );
             }
             Err(e) => {
-                log_error!(LOG_TAG, "Checkpoint failed: {e}");
+                let msg = format!("Checkpoint failed: {e}");
+                log_error!(LOG_TAG, "{msg}");
                 log_info!(
                     LOG_TAG,
                     "✗ Checkpoint failed ({}s)",
                     cp_start.elapsed().as_secs()
                 );
+                let _ = std::fs::write(paths::checkpoint_error_file(), &msg);
                 exit_code = 1;
             }
         }

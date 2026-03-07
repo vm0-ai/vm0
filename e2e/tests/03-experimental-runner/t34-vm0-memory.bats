@@ -136,3 +136,19 @@ teardown_file() {
     assert_output --partial "● Bash("
     assert_output --partial "memory-marker-t34"
 }
+
+@test "t34-5: fresh run with --memory reads previously written marker (dedup path)" {
+    # This triggers the dedup path: memory content is unchanged since t34-2,
+    # so the prepare endpoint returns existing=true and the commit must use
+    # the correct storageType ("memory", not "artifact").
+    echo "# Running fresh agent with --memory $MEMORY_NAME (dedup path)..."
+    run $CLI_COMMAND run "$AGENT_NAME" \
+        --memory "$MEMORY_NAME" \
+        "cat /home/user/.vm0/memory/marker.txt"
+
+    assert_success
+    assert_output --partial "● Bash("
+    assert_output --partial "memory-marker-t34"
+    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial "Checkpoint:"
+}
