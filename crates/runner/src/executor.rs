@@ -499,8 +499,38 @@ fn is_valid_session_id(id: &str) -> bool {
 }
 
 /// Build the environment variables JSON, matching the TS `buildEnvironmentVariables`.
+///
+/// User-provided `environment` and `vars` are inserted first so that
+/// system variables (VM0_*, secrets, etc.) always take precedence.
 fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, String> {
     let mut env = HashMap::new();
+
+    // --- User-provided variables first (lowest priority) ---
+
+    if let Some(user_env) = &context.environment {
+        for (k, v) in user_env {
+            env.insert(k.clone(), v.clone());
+        }
+    }
+
+    if let Some(vars) = &context.vars {
+        for (k, v) in vars {
+            env.insert(k.clone(), v.clone());
+        }
+    }
+
+    // --- System variables below (override user values) ---
+
+    // User timezone as TZ env var (if not already set in user environment)
+    if let Some(tz) = &context.user_timezone {
+        let has_tz = context
+            .environment
+            .as_ref()
+            .is_some_and(|e| e.contains_key("TZ"));
+        if !has_tz {
+            env.insert("TZ".into(), tz.clone());
+        }
+    }
 
     env.insert("VM0_API_URL".into(), api_url.into());
     env.insert("VM0_RUN_ID".into(), context.run_id.to_string());
@@ -582,24 +612,6 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         env.insert("VM0_RESUME_SESSION_ID".into(), session.session_id.clone());
     }
 
-    // User timezone as TZ env var (if not already set in user environment)
-    if let Some(tz) = &context.user_timezone {
-        let has_tz = context
-            .environment
-            .as_ref()
-            .is_some_and(|e| e.contains_key("TZ"));
-        if !has_tz {
-            env.insert("TZ".into(), tz.clone());
-        }
-    }
-
-    // User environment variables
-    if let Some(user_env) = &context.environment {
-        for (k, v) in user_env {
-            env.insert(k.clone(), v.clone());
-        }
-    }
-
     // Secret values (base64-encoded, comma-separated)
     if let Some(secrets) = &context.secret_values
         && !secrets.is_empty()
@@ -610,13 +622,6 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
             .map(|s| base64::engine::general_purpose::STANDARD.encode(s))
             .collect();
         env.insert("VM0_SECRET_VALUES".into(), encoded.join(","));
-    }
-
-    // User vars (may override anything above, matching TS behavior)
-    if let Some(vars) = &context.vars {
-        for (k, v) in vars {
-            env.insert(k.clone(), v.clone());
-        }
     }
 
     env
@@ -731,7 +736,7 @@ mod tests {
     }
 
     #[test]
-    fn build_env_json_user_vars_override() {
+    fn build_env_json_user_vars_cannot_override_system() {
         let mut ctx = minimal_context();
         ctx.vars = Some(HashMap::from([
             ("VM0_PROMPT".into(), "overridden".into()),
@@ -739,7 +744,8 @@ mod tests {
         ]));
 
         let env = build_env_json(&ctx, "http://localhost");
-        assert_eq!(env.get("VM0_PROMPT").unwrap(), "overridden");
+        // System variables take precedence over user vars
+        assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
         assert_eq!(env.get("CUSTOM").unwrap(), "value");
     }
 
