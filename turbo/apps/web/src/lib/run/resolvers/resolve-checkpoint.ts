@@ -63,19 +63,23 @@ export async function resolveCheckpoint(
   // Get secret names from snapshot (values are NEVER stored)
   const secretNames = agentComposeSnapshot.secretNames as string[] | undefined;
 
+  // Verify checkpoint belongs to user (must complete before doing further work)
+  const [originalRun] = await globalThis.services.db
+    .select()
+    .from(agentRuns)
+    .where(
+      and(eq(agentRuns.id, checkpoint.runId), eq(agentRuns.userId, userId)),
+    )
+    .limit(1);
+
+  if (!originalRun) {
+    throw unauthorized("Checkpoint does not belong to authenticated user");
+  }
+
   // Run independent queries in parallel:
-  // - Auth check (needs checkpoint.runId)
   // - Conversation → session history chain (needs checkpoint.conversationId)
   // - Compose version lookup (needs snapshot.agentComposeVersionId)
-  const [authResult, conversationResult, versionResult] = await Promise.all([
-    // Auth: verify checkpoint belongs to user
-    globalThis.services.db
-      .select()
-      .from(agentRuns)
-      .where(
-        and(eq(agentRuns.id, checkpoint.runId), eq(agentRuns.userId, userId)),
-      )
-      .limit(1),
+  const [conversationResult, versionResult] = await Promise.all([
     // Conversation → session history (serial chain)
     (async () => {
       const [conversation] = await globalThis.services.db
@@ -102,11 +106,6 @@ export async function resolveCheckpoint(
       .where(eq(agentComposeVersions.id, agentComposeVersionId))
       .limit(1),
   ]);
-
-  const [originalRun] = authResult;
-  if (!originalRun) {
-    throw unauthorized("Checkpoint does not belong to authenticated user");
-  }
 
   const { conversation, sessionHistory } = conversationResult;
 
