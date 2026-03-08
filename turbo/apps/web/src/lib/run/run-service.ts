@@ -345,7 +345,7 @@ async function loadCompose(
   callerComposeId?: string,
 ): Promise<{
   composeContent: AgentComposeYaml;
-  compose: { id: string; userId: string; scopeId: string | null };
+  compose: { id: string; userId: string; scopeId: string };
 }> {
   const [version] = await globalThis.services.db
     .select({
@@ -387,7 +387,7 @@ async function loadCompose(
 async function authorizeCompose(
   userId: string,
   userEmail: string,
-  compose: { id: string; userId: string; scopeId: string | null },
+  compose: { id: string; userId: string; scopeId: string },
 ): Promise<void> {
   const hasAccess = await canAccessCompose(userId, userEmail, compose);
   if (!hasAccess) {

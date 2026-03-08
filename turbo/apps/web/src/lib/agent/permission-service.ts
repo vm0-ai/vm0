@@ -18,26 +18,24 @@ const log = logger("agent:permission");
 export async function canAccessCompose(
   userId: string,
   userEmail: string,
-  compose: { id: string; userId: string; scopeId: string | null },
+  compose: { id: string; userId: string; scopeId: string },
 ): Promise<boolean> {
   // 1. Owner always has access
   if (compose.userId === userId) return true;
 
   // 2. Check scope membership (members of the scope can access its agents)
-  if (compose.scopeId) {
-    const [member] = await globalThis.services.db
-      .select({ id: scopeMembers.id })
-      .from(scopeMembers)
-      .where(
-        and(
-          eq(scopeMembers.scopeId, compose.scopeId),
-          eq(scopeMembers.userId, userId),
-        ),
-      )
-      .limit(1);
+  const [member] = await globalThis.services.db
+    .select({ id: scopeMembers.id })
+    .from(scopeMembers)
+    .where(
+      and(
+        eq(scopeMembers.scopeId, compose.scopeId),
+        eq(scopeMembers.userId, userId),
+      ),
+    )
+    .limit(1);
 
-    if (member) return true;
-  }
+  if (member) return true;
 
   // 3. Check ACL
   const permissionResult = await globalThis.services.db
