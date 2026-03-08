@@ -560,8 +560,8 @@ importers:
         specifier: ^5.2.0
         version: 5.2.0(eslint@9.34.0(jiti@2.6.1))
       eslint-plugin-turbo:
-        specifier: ^2.5.6
-        version: 2.5.6(eslint@9.34.0(jiti@2.6.1))(turbo@2.8.14)
+        specifier: ^2.8.14
+        version: 2.8.14(eslint@9.34.0(jiti@2.6.1))(turbo@2.8.14)
       globals:
         specifier: ^16.3.0
         version: 16.3.0
@@ -6054,8 +6054,8 @@ packages:
     peerDependencies:
       eslint: ^3 || ^4 || ^5 || ^6 || ^7 || ^8 || ^9.7
 
-  eslint-plugin-turbo@2.5.6:
-    resolution: {integrity: sha512-KUDE23aP2JV8zbfZ4TeM1HpAXzMM/AYG/bJam7P4AalUxas8Pd/lS/6R3p4uX91qJcH1LwL4h0ED48nDe8KorQ==}
+  eslint-plugin-turbo@2.8.14:
+    resolution: {integrity: sha512-AU3H0trwN9AoDZHHIx+TWSLc/AXIqk0iB93dy5zF5EmhAS3KTVPlFRJHWXc4BdKo8gy/Z11DKrZZQTpqIZ8k4A==}
     peerDependencies:
       eslint: '>6.6.0'
       turbo: '>2.0.0'
@@ -15106,7 +15106,7 @@ snapshots:
       string.prototype.matchall: 4.0.12
       string.prototype.repeat: 1.0.0
 
-  eslint-plugin-turbo@2.5.6(eslint@9.34.0(jiti@2.6.1))(turbo@2.8.14):
+  eslint-plugin-turbo@2.8.14(eslint@9.34.0(jiti@2.6.1))(turbo@2.8.14):
     dependencies:
       dotenv: 16.0.3
       eslint: 9.34.0(jiti@2.6.1)
