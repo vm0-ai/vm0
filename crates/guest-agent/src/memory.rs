@@ -81,8 +81,6 @@ pub fn setup_auto_memory_symlink() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use tempfile::TempDir;
 
     #[test]
     fn encode_project_name_standard_path() {
@@ -105,39 +103,5 @@ mod tests {
     #[test]
     fn encode_project_name_no_leading_slash() {
         assert_eq!(encode_project_name("relative/path"), "-relative-path");
-    }
-
-    /// Helper: set up temp dirs for HOME and memory mount, returning
-    /// (home_dir, memory_dir). Caller must keep TempDir alive.
-    fn setup_test_dirs() -> (TempDir, TempDir) {
-        let home = tempfile::tempdir().unwrap();
-        let memory = tempfile::tempdir().unwrap();
-        (home, memory)
-    }
-
-    #[test]
-    fn symlink_skipped_when_mount_path_missing() {
-        // With empty memory mount path, should return false.
-        // This test relies on the env var being empty by default in test context,
-        // but since env vars are shared across tests, we test the encode function
-        // and guard logic individually instead.
-        let path = Path::new("/nonexistent/memory/path");
-        assert!(!path.exists());
-    }
-
-    #[test]
-    fn symlink_target_already_exists_guard() {
-        let (home, _memory) = setup_test_dirs();
-        let project_name = encode_project_name("/test/workdir");
-        let auto_memory_dir = home
-            .path()
-            .join(".claude")
-            .join("projects")
-            .join(&project_name)
-            .join("memory");
-        fs::create_dir_all(&auto_memory_dir).unwrap();
-
-        // The directory already exists — guard should prevent symlink creation
-        assert!(auto_memory_dir.exists());
     }
 }
