@@ -182,10 +182,9 @@ async function resolveModelProviderCredential(
   userId: string,
   framework: string,
   hasExplicitModelProviderConfig: boolean,
-  existingCredentials: Record<string, string> | undefined,
   explicitModelProvider?: string,
 ): Promise<ModelProviderCredentialResult> {
-  let credentials = existingCredentials;
+  let credentials: Record<string, string> | undefined;
 
   // Skip if explicit model provider config exists or framework doesn't use model providers
   if (
@@ -403,9 +402,8 @@ interface ConnectorCredentialResult {
 async function resolveConnectorCredentials(
   scopeId: string,
   userId: string,
-  existingCredentials: Record<string, string> | undefined,
 ): Promise<ConnectorCredentialResult> {
-  let credentials = existingCredentials;
+  let credentials: Record<string, string> | undefined;
 
   // Query connected connectors directly (only need the type for environmentMapping)
   const userConnectors = await globalThis.services.db
@@ -747,57 +745,42 @@ async function resolveCredentialsAndEnvironment(
   );
   const framework = firstAgent?.framework || "claude-code";
 
-  // Run credential resolution chain and variable fetching in parallel
-  const [credentialChainResult, mergedVars] = await Promise.all([
-    (async () => {
-      // Fetch secrets/credentials referenced in environment
-      const dbSecrets = await fetchReferencedCredentials(
-        scopeId,
-        userId,
-        firstAgent?.environment,
-      );
-
-      // Merge DB secrets with CLI secrets (CLI takes priority)
-      let secrets = mergeSecrets(dbSecrets, cliSecrets);
-
-      // credentials is used for backwards compatibility with credentials.* syntax
-      let credentials: Record<string, string> | undefined = dbSecrets;
-
-      const modelProviderResult = await resolveModelProviderCredential(
+  // Run all credential resolution and variable fetching in parallel.
+  // The three resolve functions have independent DB queries (different secret types),
+  // so there is no data dependency between them.
+  const [dbSecrets, modelProviderResult, connectorResult, mergedVars] =
+    await Promise.all([
+      fetchReferencedCredentials(scopeId, userId, firstAgent?.environment),
+      resolveModelProviderCredential(
         scopeId,
         userId,
         framework,
         hasExplicitModelProviderConfig,
-        credentials,
         modelProvider,
-      );
-      credentials = modelProviderResult.credentials;
-      const modelProviderEnvVars = modelProviderResult.injectedEnvVars;
+      ),
+      resolveConnectorCredentials(scopeId, userId),
+      fetchAndMergeVariables(scopeId, userId, vars),
+    ]);
 
-      // Resolve connector credentials (GH_TOKEN, GITHUB_TOKEN, etc.)
-      const connectorResult = await resolveConnectorCredentials(
-        scopeId,
-        userId,
-        credentials,
-      );
-      credentials = connectorResult.credentials;
-      const connectorEnvVars = connectorResult.injectedEnvVars;
+  // Merge credentials from all sources (connector > model-provider > user)
+  const credentials: Record<string, string> = {
+    ...dbSecrets,
+    ...modelProviderResult.credentials,
+    ...connectorResult.credentials,
+  };
 
-      // Merge connector secrets into secrets pool for explicit ${{ secrets.* }} references only.
-      // Connector secrets only fill gaps — user/CLI secrets take precedence.
-      secrets = mergeConnectorSecretsForReferences(
-        firstAgent?.environment,
-        secrets,
-        connectorEnvVars,
-      );
+  // Merge secrets: DB user secrets + CLI secrets (CLI takes priority)
+  let secrets = mergeSecrets(dbSecrets, cliSecrets);
 
-      return { secrets, credentials, modelProviderEnvVars };
-    })(),
-    fetchAndMergeVariables(scopeId, userId, vars),
-  ]);
+  // Merge connector secrets into secrets pool for explicit ${{ secrets.* }} references only.
+  // Connector secrets only fill gaps — user/CLI secrets take precedence.
+  secrets = mergeConnectorSecretsForReferences(
+    firstAgent?.environment,
+    secrets,
+    connectorResult.injectedEnvVars,
+  );
 
-  const { secrets, credentials } = credentialChainResult;
-  const { modelProviderEnvVars } = credentialChainResult;
+  const modelProviderEnvVars = modelProviderResult.injectedEnvVars;
 
   // Expand environment variables from compose config
   const { environment: expandedEnvironment } = expandEnvironmentFromCompose(
