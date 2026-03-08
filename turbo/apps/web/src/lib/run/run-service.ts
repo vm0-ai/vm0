@@ -334,11 +334,10 @@ export interface CreateRunResult {
 }
 
 /**
- * Load compose version and compose metadata, then verify access.
+ * Load compose version and compose metadata.
  *
  * @returns composeContent and compose record
  * @throws NotFoundError - version or compose not found
- * @throws ForbiddenError - user cannot access compose
  */
 async function loadCompose(
   agentComposeVersionId: string,
