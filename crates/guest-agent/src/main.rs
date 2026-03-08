@@ -131,6 +131,14 @@ async fn execute(
     }
     record_sandbox_op("working_dir_setup", wd_start.elapsed(), true, None);
 
+    // Set up Claude Code auto-memory symlink (links vm0 memory to Claude Code's native path)
+    let mem_start = Instant::now();
+    let mem_linked = guest_agent::memory::setup_auto_memory_symlink();
+    record_sandbox_op("memory_symlink_setup", mem_start.elapsed(), true, None);
+    if mem_linked {
+        log_info!(LOG_TAG, "Auto-memory symlink created");
+    }
+
     // Codex setup (sandbox op recorded inside setup_codex)
     if env::cli_agent_type() == "codex"
         && let Err(e) = cli::setup_codex()

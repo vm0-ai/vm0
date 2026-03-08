@@ -12,6 +12,7 @@ import {
   SESSION_ID_FILE,
   SESSION_HISTORY_PATH_FILE,
   EVENT_ERROR_FLAG,
+  encodeProjectName,
 } from "./common.js";
 import { logInfo, logError } from "./log.js";
 import { httpPostJson } from "./http-client.js";
@@ -73,9 +74,7 @@ export async function sendEvent(
       sessionHistoryPath = `CODEX_SEARCH:${codexHome}/sessions:${sessionId}`;
     } else {
       // Claude Code uses ~/.claude (default, no CLAUDE_CONFIG_DIR override)
-      // Path encoding: e.g., /home/user/workspace -> -home-user-workspace
-      const projectName = WORKING_DIR.replace(/^\//, "").replace(/\//g, "-");
-      sessionHistoryPath = `${homeDir}/.claude/projects/-${projectName}/${sessionId}.jsonl`;
+      sessionHistoryPath = `${homeDir}/.claude/projects/${encodeProjectName(WORKING_DIR)}/${sessionId}.jsonl`;
     }
 
     fs.writeFileSync(SESSION_HISTORY_PATH_FILE, sessionHistoryPath);

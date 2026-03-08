@@ -29,6 +29,7 @@ import {
   CLI_AGENT_TYPE,
   OPENAI_MODEL,
   API_START_TIME,
+  MEMORY_MOUNT_PATH,
   validateConfig,
   recordSandboxOp,
 } from "./lib/common.js";
@@ -38,6 +39,7 @@ import { createCheckpoint } from "./lib/checkpoint.js";
 import { httpPostJson } from "./lib/http-client.js";
 import { startHeartbeat, requestShutdown } from "./lib/heartbeat.js";
 import { startMetricsCollector, stopMetricsCollector } from "./lib/metrics.js";
+import { setupAutoMemorySymlink } from "./lib/memory.js";
 import {
   startTelemetryUpload,
   stopTelemetryUpload,
@@ -357,6 +359,18 @@ async function run(): Promise<[number, string]> {
     );
   }
   recordSandboxOp("working_dir_setup", Date.now() - workingDirStart, true);
+
+  // Set up Claude Code auto-memory symlink (links vm0 memory to Claude Code's native path)
+  const memoryStart = Date.now();
+  const memoryLinked = setupAutoMemorySymlink(
+    WORKING_DIR,
+    MEMORY_MOUNT_PATH,
+    CLI_AGENT_TYPE,
+  );
+  recordSandboxOp("memory_symlink_setup", Date.now() - memoryStart, true);
+  if (memoryLinked) {
+    logInfo("Auto-memory symlink created");
+  }
 
   // Set up Codex configuration if using Codex CLI
   if (CLI_AGENT_TYPE === "codex") {

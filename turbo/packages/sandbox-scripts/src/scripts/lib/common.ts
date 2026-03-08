@@ -85,6 +85,18 @@ export const SANDBOX_OPS_LOG_FILE = `/tmp/vm0-sandbox-ops-${RUN_ID}.jsonl`;
 export const METRICS_INTERVAL = 5; // seconds
 
 /**
+ * Compute Claude Code's project directory name from a working directory path.
+ * Encoding: strip leading "/", replace remaining "/" with "-", prepend "-".
+ * Example: "/home/user/workspace" → "-home-user-workspace"
+ *
+ * This encoding matches Claude Code's internal project path derivation,
+ * also used for session history paths.
+ */
+export function encodeProjectName(workingDir: string): string {
+  return `-${workingDir.replace(/^\//, "").replace(/\//g, "-")}`;
+}
+
+/**
  * Validate required configuration.
  * Throws Error if configuration is invalid.
  * Returns true if valid.

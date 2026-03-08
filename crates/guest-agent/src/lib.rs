@@ -10,6 +10,7 @@ pub mod events;
 pub mod heartbeat;
 pub mod http;
 pub mod masker;
+pub mod memory;
 pub mod metrics;
 pub mod paths;
 pub mod telemetry;
