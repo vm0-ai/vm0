@@ -340,9 +340,7 @@ export interface CreateRunResult {
  * @throws NotFoundError - version or compose not found
  * @throws ForbiddenError - user cannot access compose
  */
-async function loadAndAuthorizeCompose(
-  userId: string,
-  userEmail: string,
+async function loadCompose(
   agentComposeVersionId: string,
   callerComposeId?: string,
 ): Promise<{
@@ -383,12 +381,18 @@ async function loadAndAuthorizeCompose(
     throw notFound("Agent compose not found");
   }
 
+  return { composeContent, compose };
+}
+
+async function authorizeCompose(
+  userId: string,
+  userEmail: string,
+  compose: { id: string; userId: string; scopeId: string | null },
+): Promise<void> {
   const hasAccess = await canAccessCompose(userId, userEmail, compose);
   if (!hasAccess) {
     throw forbidden("You do not have permission to access this agent");
   }
-
-  return { composeContent, compose };
 }
 
 /**
@@ -643,16 +647,12 @@ export async function createRun(
   const apiStartTime = Date.now();
   const { userId, agentComposeVersionId, prompt } = params;
 
-  // Fetch user email once, reused for authorization and dispatch routing
-  const userEmail = await getUserEmail(userId);
-
-  // Steps 1-2: Load compose version/metadata and verify access
-  const { composeContent } = await loadAndAuthorizeCompose(
-    userId,
-    userEmail,
-    agentComposeVersionId,
-    params.composeId,
-  );
+  // Steps 1-2: Load compose and fetch user email in parallel, then authorize
+  const [{ composeContent, compose }, userEmail] = await Promise.all([
+    loadCompose(agentComposeVersionId, params.composeId),
+    getUserEmail(userId),
+  ]);
+  await authorizeCompose(userId, userEmail, compose);
   const authorizeTime = Date.now();
 
   // Step 3: Validate template vars and image access (for new runs only)
@@ -785,16 +785,13 @@ export async function executeQueuedRun(
 
   log.debug(`Executing queued run ${runId} for user ${userId}`);
 
-  // Fetch user email once, reused for authorization and dispatch routing
-  const userEmail = await getUserEmail(userId);
-
-  // Steps 2-3: Load compose version/metadata and verify access
-  const { composeContent } = await loadAndAuthorizeCompose(
-    userId,
-    userEmail,
-    agentComposeVersionId,
-    params.composeId,
-  );
+  // Steps 2-3: Load compose and fetch user email in parallel, then authorize
+  const [{ composeContent, compose: queuedCompose }, userEmail] =
+    await Promise.all([
+      loadCompose(agentComposeVersionId, params.composeId),
+      getUserEmail(userId),
+    ]);
+  await authorizeCompose(userId, userEmail, queuedCompose);
   const authorizeTime = Date.now();
 
   // Step 4: Validate template vars and image access (for new runs only)
