@@ -44,30 +44,6 @@ export async function resolveCheckpoint(
     throw notFound("Checkpoint not found");
   }
 
-  // Verify checkpoint belongs to user
-  const [originalRun] = await globalThis.services.db
-    .select()
-    .from(agentRuns)
-    .where(
-      and(eq(agentRuns.id, checkpoint.runId), eq(agentRuns.userId, userId)),
-    )
-    .limit(1);
-
-  if (!originalRun) {
-    throw unauthorized("Checkpoint does not belong to authenticated user");
-  }
-
-  // Load conversation
-  const [conversation] = await globalThis.services.db
-    .select()
-    .from(conversations)
-    .where(eq(conversations.id, checkpoint.conversationId))
-    .limit(1);
-
-  if (!conversation) {
-    throw notFound("Conversation not found");
-  }
-
   // Extract snapshots (artifactSnapshot may be null for runs without artifact)
   const agentComposeSnapshot =
     checkpoint.agentComposeSnapshot as unknown as AgentComposeSnapshot;
@@ -84,26 +60,61 @@ export async function resolveCheckpoint(
     throw badRequest("Invalid checkpoint: missing agentComposeVersionId");
   }
 
-  // Lookup content from version table
-  const [version] = await globalThis.services.db
-    .select()
-    .from(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, agentComposeVersionId))
-    .limit(1);
+  // Get secret names from snapshot (values are NEVER stored)
+  const secretNames = agentComposeSnapshot.secretNames as string[] | undefined;
 
+  // Run independent queries in parallel:
+  // - Auth check (needs checkpoint.runId)
+  // - Conversation → session history chain (needs checkpoint.conversationId)
+  // - Compose version lookup (needs snapshot.agentComposeVersionId)
+  const [authResult, conversationResult, versionResult] = await Promise.all([
+    // Auth: verify checkpoint belongs to user
+    globalThis.services.db
+      .select()
+      .from(agentRuns)
+      .where(
+        and(eq(agentRuns.id, checkpoint.runId), eq(agentRuns.userId, userId)),
+      )
+      .limit(1),
+    // Conversation → session history (serial chain)
+    (async () => {
+      const [conversation] = await globalThis.services.db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.id, checkpoint.conversationId))
+        .limit(1);
+
+      if (!conversation) {
+        throw notFound("Conversation not found");
+      }
+
+      const sessionHistory = await resolveSessionHistory(
+        conversation.cliAgentSessionHistoryHash,
+        conversation.cliAgentSessionHistory,
+      );
+
+      return { conversation, sessionHistory };
+    })(),
+    // Compose version lookup
+    globalThis.services.db
+      .select()
+      .from(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, agentComposeVersionId))
+      .limit(1),
+  ]);
+
+  const [originalRun] = authResult;
+  if (!originalRun) {
+    throw unauthorized("Checkpoint does not belong to authenticated user");
+  }
+
+  const { conversation, sessionHistory } = conversationResult;
+
+  const [version] = versionResult;
   if (!version) {
     throw notFound(`Agent compose version ${agentComposeVersionId} not found`);
   }
   const agentCompose = version.content as AgentComposeYaml;
-
-  // Get secret names from snapshot (values are NEVER stored)
-  const secretNames = agentComposeSnapshot.secretNames as string[] | undefined;
-
-  // Resolve session history from R2 hash or legacy TEXT field
-  const sessionHistory = await resolveSessionHistory(
-    conversation.cliAgentSessionHistoryHash,
-    conversation.cliAgentSessionHistory,
-  );
 
   return {
     conversationId: checkpoint.conversationId,

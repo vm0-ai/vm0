@@ -50,58 +50,72 @@ export async function resolveSession(
     throw notFound("Agent session has no conversation ID");
   }
 
-  // Load agent compose
-  const [compose] = await globalThis.services.db
-    .select()
-    .from(agentComposes)
-    .where(eq(agentComposes.id, session.agentComposeId))
-    .limit(1);
+  // Capture narrowed conversation for use in parallel closures
+  // (TypeScript doesn't narrow across async IIFE boundaries)
+  const conversation = session.conversation;
 
-  if (!compose) {
-    throw notFound("Agent compose not found");
-  }
+  // Run independent operations in parallel:
+  // - Compose → version → framework check chain (needs session.agentComposeId)
+  // - Session history from R2 (needs session.conversation)
+  // - Last run vars (needs conversation.runId)
+  const [composeResult, sessionHistory, lastRunResult] = await Promise.all([
+    // Compose → version → framework check (serial chain)
+    (async () => {
+      const [compose] = await globalThis.services.db
+        .select()
+        .from(agentComposes)
+        .where(eq(agentComposes.id, session.agentComposeId))
+        .limit(1);
 
-  if (!compose.headVersionId) {
-    throw badRequest("Agent compose has no versions. Run 'vm0 build' first.");
-  }
+      if (!compose) {
+        throw notFound("Agent compose not found");
+      }
 
-  // Always use HEAD compose version — continue behaves like a new run + conversation history
-  const versionId = compose.headVersionId;
+      if (!compose.headVersionId) {
+        throw badRequest(
+          "Agent compose has no versions. Run 'vm0 build' first.",
+        );
+      }
 
-  // Get compose version content
-  const [version] = await globalThis.services.db
-    .select()
-    .from(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, versionId))
-    .limit(1);
+      const versionId = compose.headVersionId;
 
-  if (!version) {
-    throw notFound(`Agent compose version ${versionId} not found`);
-  }
+      const [version] = await globalThis.services.db
+        .select()
+        .from(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, versionId))
+        .limit(1);
 
-  // Framework compatibility check: block continue if framework changed
-  const headFramework = extractCliAgentType(version.content);
-  const sessionFramework = session.conversation.cliAgentType;
-  if (headFramework !== sessionFramework) {
-    throw badRequest(
-      `Cannot continue session: framework changed from "${sessionFramework}" to "${headFramework}". ` +
-        `Start a new run instead.`,
-    );
-  }
+      if (!version) {
+        throw notFound(`Agent compose version ${versionId} not found`);
+      }
 
-  // Resolve session history from R2 hash or legacy TEXT field
-  const sessionHistory = await resolveSessionHistory(
-    session.conversation.cliAgentSessionHistoryHash,
-    session.conversation.cliAgentSessionHistory,
-  );
+      // Framework compatibility check: block continue if framework changed
+      const headFramework = extractCliAgentType(version.content);
+      const sessionFramework = conversation.cliAgentType;
+      if (headFramework !== sessionFramework) {
+        throw badRequest(
+          `Cannot continue session: framework changed from "${sessionFramework}" to "${headFramework}". ` +
+            `Start a new run instead.`,
+        );
+      }
 
-  // Read vars from the last run as fallback for continue operations
-  const [lastRun] = await globalThis.services.db
-    .select({ vars: agentRuns.vars })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, session.conversation.runId))
-    .limit(1);
+      return { versionId, version };
+    })(),
+    // Session history from R2 hash or legacy TEXT field
+    resolveSessionHistory(
+      conversation.cliAgentSessionHistoryHash,
+      conversation.cliAgentSessionHistory,
+    ),
+    // Last run vars as fallback for continue operations
+    globalThis.services.db
+      .select({ vars: agentRuns.vars })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, conversation.runId))
+      .limit(1),
+  ]);
 
+  const { versionId, version } = composeResult;
+  const [lastRun] = lastRunResult;
   const lastRunVars =
     (lastRun?.vars as Record<string, string> | null) ?? undefined;
 
@@ -111,7 +125,7 @@ export async function resolveSession(
     agentCompose: version.content,
     workingDir: extractWorkingDir(version.content),
     conversationData: {
-      cliAgentSessionId: session.conversation.cliAgentSessionId,
+      cliAgentSessionId: conversation.cliAgentSessionId,
       cliAgentSessionHistory: sessionHistory,
     },
     artifactName: session.artifactName ?? undefined,
