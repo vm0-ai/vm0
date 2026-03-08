@@ -762,12 +762,17 @@ async function resolveCredentialsAndEnvironment(
       fetchAndMergeVariables(scopeId, userId, vars),
     ]);
 
-  // Merge credentials from all sources (connector > model-provider > user)
-  const credentials: Record<string, string> = {
-    ...dbSecrets,
-    ...modelProviderResult.credentials,
-    ...connectorResult.credentials,
-  };
+  // Merge credentials from all sources (connector > model-provider > user).
+  // Return undefined when no source contributed credentials (preserves original behavior).
+  const hasCredentials =
+    dbSecrets || modelProviderResult.credentials || connectorResult.credentials;
+  const credentials: Record<string, string> | undefined = hasCredentials
+    ? {
+        ...dbSecrets,
+        ...modelProviderResult.credentials,
+        ...connectorResult.credentials,
+      }
+    : undefined;
 
   // Merge secrets: DB user secrets + CLI secrets (CLI takes priority)
   let secrets = mergeSecrets(dbSecrets, cliSecrets);
