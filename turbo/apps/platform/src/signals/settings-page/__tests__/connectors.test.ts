@@ -76,7 +76,7 @@ describe("allConnectorTypes$", () => {
     expect(computerConnector).toBeUndefined();
   });
 
-  it("should hide docusign connector when feature flag is disabled", async () => {
+  it("should hide docusign connector when OAuth feature flag is disabled", async () => {
     const { store } = context;
 
     await setupPage({
@@ -92,7 +92,7 @@ describe("allConnectorTypes$", () => {
     expect(docusignConnector).toBeUndefined();
   });
 
-  it("should hide dropbox connector when feature flag is disabled", async () => {
+  it("should show dropbox connector when OAuth flag is disabled (has api-token)", async () => {
     const { store } = context;
 
     await setupPage({
@@ -105,10 +105,11 @@ describe("allConnectorTypes$", () => {
     const types = await store.get(allConnectorTypes$);
     const dropboxConnector = types.find((t) => t.type === "dropbox");
 
-    expect(dropboxConnector).toBeUndefined();
+    expect(dropboxConnector).toBeDefined();
+    expect(dropboxConnector?.availableAuthMethods).toStrictEqual(["api-token"]);
   });
 
-  it("should hide deel connector when feature flag is disabled", async () => {
+  it("should show deel connector when OAuth flag is disabled (has api-token)", async () => {
     const { store } = context;
 
     await setupPage({
@@ -121,10 +122,11 @@ describe("allConnectorTypes$", () => {
     const types = await store.get(allConnectorTypes$);
     const deelConnector = types.find((t) => t.type === "deel");
 
-    expect(deelConnector).toBeUndefined();
+    expect(deelConnector).toBeDefined();
+    expect(deelConnector?.availableAuthMethods).toStrictEqual(["api-token"]);
   });
 
-  it("should hide figma connector when feature flag is disabled", async () => {
+  it("should show figma connector when OAuth flag is disabled (has api-token)", async () => {
     const { store } = context;
 
     await setupPage({
@@ -137,10 +139,11 @@ describe("allConnectorTypes$", () => {
     const types = await store.get(allConnectorTypes$);
     const figmaConnector = types.find((t) => t.type === "figma");
 
-    expect(figmaConnector).toBeUndefined();
+    expect(figmaConnector).toBeDefined();
+    expect(figmaConnector?.availableAuthMethods).toStrictEqual(["api-token"]);
   });
 
-  it("should hide google-sheets connector when feature flag is disabled", async () => {
+  it("should hide google-sheets connector when OAuth feature flag is disabled", async () => {
     const { store } = context;
 
     await setupPage({
@@ -156,7 +159,7 @@ describe("allConnectorTypes$", () => {
     expect(googleSheetsConnector).toBeUndefined();
   });
 
-  it("should hide google-docs connector when feature flag is disabled", async () => {
+  it("should hide google-docs connector when OAuth feature flag is disabled", async () => {
     const { store } = context;
 
     await setupPage({
@@ -172,7 +175,7 @@ describe("allConnectorTypes$", () => {
     expect(googleDocsConnector).toBeUndefined();
   });
 
-  it("should hide google-drive connector when feature flag is disabled", async () => {
+  it("should hide google-drive connector when OAuth feature flag is disabled", async () => {
     const { store } = context;
 
     await setupPage({
@@ -188,7 +191,7 @@ describe("allConnectorTypes$", () => {
     expect(googleDriveConnector).toBeUndefined();
   });
 
-  it("should hide mercury connector when feature flag is disabled", async () => {
+  it("should show mercury connector when OAuth flag is disabled (has api-token)", async () => {
     const { store } = context;
 
     await setupPage({
@@ -201,10 +204,11 @@ describe("allConnectorTypes$", () => {
     const types = await store.get(allConnectorTypes$);
     const mercuryConnector = types.find((t) => t.type === "mercury");
 
-    expect(mercuryConnector).toBeUndefined();
+    expect(mercuryConnector).toBeDefined();
+    expect(mercuryConnector?.availableAuthMethods).toStrictEqual(["api-token"]);
   });
 
-  it("should hide strava connector when feature flag is disabled", async () => {
+  it("should hide strava connector when OAuth feature flag is disabled", async () => {
     const { store } = context;
 
     await setupPage({
@@ -220,7 +224,7 @@ describe("allConnectorTypes$", () => {
     expect(stravaConnector).toBeUndefined();
   });
 
-  it("should hide garmin-connect connector when feature flag is disabled", async () => {
+  it("should hide garmin-connect connector when OAuth feature flag is disabled", async () => {
     const { store } = context;
 
     await setupPage({
@@ -234,6 +238,44 @@ describe("allConnectorTypes$", () => {
     const garminConnector = types.find((t) => t.type === "garmin-connect");
 
     expect(garminConnector).toBeUndefined();
+  });
+
+  it("should not report scope mismatch for api-token connections", async () => {
+    const { store } = context;
+
+    server.use(
+      http.get("/api/connectors", () => {
+        return HttpResponse.json({
+          connectors: [
+            {
+              id: "conn-1",
+              type: "figma",
+              authMethod: "api-token",
+              externalId: null,
+              externalUsername: null,
+              externalEmail: null,
+              oauthScopes: null,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+          configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const types = await store.get(allConnectorTypes$);
+    const figmaConnector = types.find((t) => t.type === "figma");
+
+    expect(figmaConnector).toBeDefined();
+    expect(figmaConnector?.connected).toBeTruthy();
+    expect(figmaConnector?.scopeMismatch).toBeFalsy();
   });
 });
 

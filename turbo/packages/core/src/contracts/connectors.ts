@@ -447,6 +447,18 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "Access Token",
+        helpText:
+          '1. Go to [Dropbox App Console](https://www.dropbox.com/developers/apps)\n2. Select or create your app\n3. Under **Settings**, click "Generate" to create an access token\n4. Copy the token\n\n> **Note:** Generated tokens are short-lived (4 hours). You may need to regenerate periodically.',
+        secrets: {
+          DROPBOX_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+            placeholder: "sl.xxxxxxxx",
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
@@ -510,6 +522,17 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Go to **Apps & Integrations > Developer Center** in Deel\n2. Navigate to the **Organization tokens** tab\n3. Create a new token with required scopes\n4. Copy the generated token",
+        secrets: {
+          DEEL_ACCESS_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
@@ -545,6 +568,18 @@ export const CONNECTOR_TYPES = {
           FIGMA_REFRESH_TOKEN: {
             label: "Refresh Token",
             required: true,
+          },
+        },
+      },
+      "api-token": {
+        label: "Personal Access Token",
+        helpText:
+          "1. Go to [Figma Settings > Security](https://www.figma.com/settings#personal-access-tokens)\n2. Create a new personal access token\n3. Select required scopes (e.g., File content: Read/Write)\n4. Copy the generated token",
+        secrets: {
+          FIGMA_ACCESS_TOKEN: {
+            label: "Personal Access Token",
+            required: true,
+            placeholder: "figd_xxxxxxxx",
           },
         },
       },
@@ -585,6 +620,18 @@ export const CONNECTOR_TYPES = {
           MERCURY_REFRESH_TOKEN: {
             label: "Refresh Token",
             required: true,
+          },
+        },
+      },
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to your [Mercury Dashboard](https://app.mercury.com)\n2. Go to **Settings** and find the API section\n3. Generate a new API token\n4. Copy the token",
+        secrets: {
+          MERCURY_ACCESS_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "secret-token:mercury_production_...",
           },
         },
       },
@@ -713,6 +760,18 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "API Key",
+        helpText:
+          '1. Go to [Neon Console > Account Settings > API Keys](https://console.neon.tech/app/settings/api-keys)\n2. Click "Create new API key"\n3. Copy the generated key',
+        secrets: {
+          NEON_ACCESS_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "napi_xxxxxxxx",
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
@@ -834,6 +893,17 @@ export const CONNECTOR_TYPES = {
         secrets: {
           INTERVALS_ICU_ACCESS_TOKEN: {
             label: "Access Token",
+            required: true,
+          },
+        },
+      },
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Go to [Intervals.icu Settings > Developer Settings](https://intervals.icu/settings)\n2. Scroll to the bottom to find **Developer Settings**\n3. Generate or copy your API key",
+        secrets: {
+          INTERVALS_ICU_ACCESS_TOKEN: {
+            label: "API Key",
             required: true,
           },
         },
@@ -1009,6 +1079,18 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "Service Role Key",
+        helpText:
+          '1. Go to [Supabase Dashboard > Project Settings > API](https://supabase.com/dashboard/project/_/settings/api)\n2. Find the **service_role** key under "Project API keys"\n3. Copy the key\n\n> **Note:** The service_role key bypasses Row Level Security. Keep it secret.',
+        secrets: {
+          SUPABASE_ACCESS_TOKEN: {
+            label: "Service Role Key",
+            required: true,
+            placeholder: "eyJhbGci... or sb_secret_...",
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
@@ -1074,6 +1156,17 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "Site Token",
+        helpText:
+          '1. Go to your Webflow site\'s **Settings > Apps & integrations > API access**\n2. Click "Generate API token"\n3. Select required scopes\n4. Copy the generated token\n\n> Tokens expire after 365 days of inactivity.',
+        secrets: {
+          WEBFLOW_ACCESS_TOKEN: {
+            label: "Site Token",
+            required: true,
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
@@ -1100,6 +1193,67 @@ export const CONNECTOR_TYPES = {
         "custom_code:read",
         "custom_code:write",
       ],
+    } as ConnectorOAuthConfig,
+  },
+  "outlook-mail": {
+    label: "Outlook Mail",
+    helpText: "Connect your Microsoft Outlook account to send and read emails",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Microsoft to grant Outlook Mail access.",
+        secrets: {
+          OUTLOOK_MAIL_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          OUTLOOK_MAIL_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl:
+        "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      scopes: ["Mail.ReadWrite", "Mail.Send", "User.Read", "offline_access"],
+    } as ConnectorOAuthConfig,
+  },
+  "outlook-calendar": {
+    label: "Outlook Calendar",
+    helpText:
+      "Connect your Microsoft account to access and manage Outlook calendar events",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Microsoft to grant Outlook Calendar access.",
+        secrets: {
+          OUTLOOK_CALENDAR_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          OUTLOOK_CALENDAR_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl:
+        "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      scopes: ["Calendars.ReadWrite", "User.Read", "offline_access"],
     } as ConnectorOAuthConfig,
   },
   asana: {
@@ -1386,6 +1540,8 @@ export const connectorTypeSchema = z.enum([
   "supabase",
   "todoist",
   "webflow",
+  "outlook-mail",
+  "outlook-calendar",
   "meta-ads",
   "stripe",
 ]);
@@ -1795,3 +1951,30 @@ export const computerConnectorContract = c.router({
 });
 
 export type ComputerConnectorContract = typeof computerConnectorContract;
+
+/**
+ * Connector token contract for /api/connectors/[type]/token
+ * Submit API token for connectors that support the api-token auth method
+ */
+export const connectorTokenContract = c.router({
+  submit: {
+    method: "POST",
+    path: "/api/connectors/:type/token",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      type: connectorTypeSchema,
+    }),
+    body: z.object({
+      secrets: z.record(z.string(), z.string()),
+    }),
+    responses: {
+      200: connectorResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Submit API token for a connector",
+  },
+});
+
+export type ConnectorTokenContract = typeof connectorTokenContract;

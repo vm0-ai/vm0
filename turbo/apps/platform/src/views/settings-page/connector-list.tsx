@@ -21,12 +21,50 @@ import {
   connectConnector$,
   openDisconnectDialog$,
   removeFromConnectionsList$,
+  selectedConnectorType$,
+  setSelectedConnectorType$,
   type ConnectorTypeWithStatus,
 } from "../../signals/settings-page/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import { AddConnectionDialog } from "./add-connection-dialog.tsx";
+import { AddConnectionDialog, ConnectModal } from "./add-connection-dialog.tsx";
+
+function ConnectorStatusBadge({
+  item,
+  isPolling,
+}: {
+  item: ConnectorTypeWithStatus;
+  isPolling: boolean;
+}) {
+  if (item.connected && item.connector?.externalUsername) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+        <IconCircleCheck className="h-3 w-3 text-green-600" />
+        Connected as {item.connector.externalUsername}
+      </span>
+    );
+  }
+  if (item.connected && !item.connector?.externalUsername) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+        <IconCircleCheck className="h-3 w-3 text-green-600" />
+        {item.connector?.authMethod === "api-token"
+          ? "Connected via API Token"
+          : "Connected"}
+      </span>
+    );
+  }
+  if (!item.connected && isPolling) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+        <IconLoader className="h-3 w-3 text-yellow-600 animate-spin" />
+        Connecting...
+      </span>
+    );
+  }
+  return null;
+}
 
 function ConnectorRow({
   item,
@@ -41,9 +79,19 @@ function ConnectorRow({
   const connect = useSet(connectConnector$);
   const openDisconnect = useSet(openDisconnectDialog$);
   const removeFromList = useSet(removeFromConnectionsList$);
+  const setSelected = useSet(setSelectedConnectorType$);
   const pageSignal = useGet(pageSignal$);
 
   const isPolling = pollingType === item.type;
+  const hasApiToken = item.availableAuthMethods.includes("api-token");
+
+  const handleConnect = () => {
+    if (hasApiToken) {
+      setSelected(item.type);
+    } else {
+      detach(connect(item.type, pageSignal), Reason.DomCallback);
+    }
+  };
 
   return (
     <div
@@ -59,28 +107,11 @@ function ConnectorRow({
 
       {/* Status */}
       <div className="shrink-0">
-        {item.connected && item.connector?.externalUsername && (
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-            <IconCircleCheck className="h-3 w-3 text-green-600" />
-            Connected as {item.connector.externalUsername}
-          </span>
-        )}
-        {item.connected && !item.connector?.externalUsername && (
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-            <IconCircleCheck className="h-3 w-3 text-green-600" />
-            Connected
-          </span>
-        )}
+        <ConnectorStatusBadge item={item} isPolling={isPolling} />
         {item.connected && item.scopeMismatch && (
           <span className="inline-flex items-center gap-1.5 rounded-lg border border-yellow-300 bg-yellow-50 px-1.5 py-1 text-xs font-medium text-yellow-800 dark:border-yellow-700 dark:bg-yellow-950 dark:text-yellow-300">
             <IconAlertTriangle className="h-3 w-3" />
             Permissions outdated
-          </span>
-        )}
-        {!item.connected && isPolling && (
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-            <IconLoader className="h-3 w-3 text-yellow-600 animate-spin" />
-            Connecting...
           </span>
         )}
       </div>
@@ -101,9 +132,7 @@ function ConnectorRow({
         )}
         {!item.connected && !isPolling && (
           <button
-            onClick={() =>
-              detach(connect(item.type, pageSignal), Reason.DomCallback)
-            }
+            onClick={handleConnect}
             className="flex items-center shrink-0 rounded-lg border border-border bg-background overflow-hidden hover:bg-muted transition-colors"
           >
             <span className="px-4 py-2 text-sm font-medium text-foreground">
@@ -151,6 +180,8 @@ export function ConnectorList() {
   const setAddDialogOpen = useSet(setAddConnectionDialogOpen$);
   const listItems = useLastResolved(connectionsListItems$);
   const types = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+  const selectedType = useGet(selectedConnectorType$);
+  const setSelected = useSet(setSelectedConnectorType$);
 
   return (
     <div className="flex flex-col gap-4">
@@ -204,6 +235,8 @@ export function ConnectorList() {
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
       />
+
+      {selectedType && <ConnectModal onClose={() => setSelected(null)} />}
     </div>
   );
 }

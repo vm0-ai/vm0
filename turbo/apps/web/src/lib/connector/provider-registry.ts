@@ -36,6 +36,8 @@ import { xHandler } from "./providers/x-handler";
 import { supabaseHandler } from "./providers/supabase-handler";
 import { todoistHandler } from "./providers/todoist-handler";
 import { webflowHandler } from "./providers/webflow-handler";
+import { outlookCalendarHandler } from "./providers/outlook-calendar-handler";
+import { outlookMailHandler } from "./providers/outlook-mail-handler";
 import { metaAdsHandler } from "./providers/meta-ads-handler";
 import { xeroHandler } from "./providers/xero-handler";
 
@@ -65,6 +67,8 @@ export const PROVIDER_HANDLERS: Record<
   monday: mondayHandler,
   neon: neonHandler,
   notion: notionHandler,
+  "outlook-calendar": outlookCalendarHandler,
+  "outlook-mail": outlookMailHandler,
   reddit: redditHandler,
   "intervals-icu": intervalsIcuHandler,
   sentry: sentryHandler,
