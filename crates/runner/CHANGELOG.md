@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.20.4...runner-rs-v0.21.0) (2026-03-09)
+
+
+### Features
+
+* **connectors:** add experimental connectors data pipeline ([#4048](https://github.com/vm0-ai/vm0/issues/4048)) ([f3ad976](https://github.com/vm0-ai/vm0/commit/f3ad976c82d86300636b545aa8b5b23c6ebfc744))
+
 ## [0.20.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.20.3...runner-rs-v0.20.4) (2026-03-09)
 
 

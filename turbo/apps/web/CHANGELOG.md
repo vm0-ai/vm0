@@ -1,5 +1,32 @@
 # Changelog
 
+## [12.88.0](https://github.com/vm0-ai/vm0/compare/web-v12.87.0...web-v12.88.0) (2026-03-09)
+
+
+### Features
+
+* **connectors:** add experimental connectors data pipeline ([#4048](https://github.com/vm0-ai/vm0/issues/4048)) ([f3ad976](https://github.com/vm0-ai/vm0/commit/f3ad976c82d86300636b545aa8b5b23c6ebfc744))
+* **schedule:** associate schedules with scope and user identity for cross-scope sharing ([#4011](https://github.com/vm0-ai/vm0/issues/4011)) ([ac3e58b](https://github.com/vm0-ai/vm0/commit/ac3e58b100d7b272b54abc2e1ec962b40652f0d2))
+* **scope:** extend resolve-scope to support clerk org id resolution ([#4047](https://github.com/vm0-ai/vm0/issues/4047)) ([9933100](https://github.com/vm0-ai/vm0/commit/993310046b13d62571dd4cba6d4ba342e11452eb))
+
+
+### Bug Fixes
+
+* **blog:** handle empty and invalid json responses from strapi api ([#4045](https://github.com/vm0-ai/vm0/issues/4045)) ([f481ed7](https://github.com/vm0-ai/vm0/commit/f481ed76eddd87d0bfbb3df13da3b35f652d466c))
+* **blog:** handle truncated json responses from strapi cms ([#4044](https://github.com/vm0-ai/vm0/issues/4044)) ([cbb66a6](https://github.com/vm0-ai/vm0/commit/cbb66a6e64ff47f1c6f80e7e9e4daa888eda46fc))
+
+
+### Refactoring
+
+* **scope:** discover existing clerk orgs via jit api instead of creating new ones ([#4049](https://github.com/vm0-ai/vm0/issues/4049)) ([fdfb9c7](https://github.com/vm0-ai/vm0/commit/fdfb9c7bc14fb90c67215cd42042cb5e065bda8d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.48.0
+
 ## [12.87.0](https://github.com/vm0-ai/vm0/compare/web-v12.86.0...web-v12.87.0) (2026-03-09)
 
 
