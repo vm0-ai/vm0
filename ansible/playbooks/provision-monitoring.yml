@@ -5,7 +5,6 @@
 #
 # Usage:
 #   ansible-playbook -i "host1,host2," playbooks/provision-monitoring.yml \
-#     --private-key ~/.ssh/runner.pem \
 #     -e "ansible_user=ubuntu" \
 #     -e "grafana_cloud_prometheus_url=https://..." \
 #     -e "grafana_cloud_prometheus_user=123456" \
