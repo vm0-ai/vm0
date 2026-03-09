@@ -190,12 +190,7 @@ fn download_all_parallel(tasks: Vec<DownloadTask>) -> bool {
                             true
                         }
                         Err(e) if e.status_code == Some(404) && task.allow_404 => {
-                            record_sandbox_op(
-                                task.op_name,
-                                start.elapsed(),
-                                false,
-                                Some(&e.message),
-                            );
+                            record_sandbox_op(task.op_name, start.elapsed(), true, None);
                             log_info!(LOG_TAG, "{} not found, skipping (first run)", task.label);
                             true
                         }
