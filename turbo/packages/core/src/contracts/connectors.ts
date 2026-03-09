@@ -1102,6 +1102,39 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  "meta-ads": {
+    label: "Meta Ads",
+    helpText:
+      "Connect your Meta Ads Manager account to manage ad campaigns, audiences, and insights",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Facebook to grant access to Ads Manager.",
+        secrets: {
+          META_ADS_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://www.facebook.com/v22.0/dialog/oauth",
+      tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
+      scopes: [
+        "ads_management",
+        "ads_read",
+        "business_management",
+        "pages_read_engagement",
+        "read_insights",
+        "email",
+      ],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -1287,6 +1320,7 @@ export const connectorTypeSchema = z.enum([
   "supabase",
   "todoist",
   "webflow",
+  "meta-ads",
 ]);
 
 /**

@@ -145,6 +145,9 @@ function initEnv() {
       MONDAY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       MONDAY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       MONDAY_OAUTH_APP_ID: z.string().min(1).optional(),
+      // Meta Ads OAuth (for connector)
+      META_ADS_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      META_ADS_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Canva OAuth (for connector)
       CANVA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       CANVA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -286,6 +289,8 @@ function initEnv() {
       MONDAY_OAUTH_CLIENT_ID: process.env.MONDAY_OAUTH_CLIENT_ID,
       MONDAY_OAUTH_CLIENT_SECRET: process.env.MONDAY_OAUTH_CLIENT_SECRET,
       MONDAY_OAUTH_APP_ID: process.env.MONDAY_OAUTH_APP_ID,
+      META_ADS_OAUTH_CLIENT_ID: process.env.META_ADS_OAUTH_CLIENT_ID,
+      META_ADS_OAUTH_CLIENT_SECRET: process.env.META_ADS_OAUTH_CLIENT_SECRET,
       CANVA_OAUTH_CLIENT_ID: process.env.CANVA_OAUTH_CLIENT_ID,
       CANVA_OAUTH_CLIENT_SECRET: process.env.CANVA_OAUTH_CLIENT_SECRET,
       SUPABASE_OAUTH_CLIENT_ID: process.env.SUPABASE_OAUTH_CLIENT_ID,
