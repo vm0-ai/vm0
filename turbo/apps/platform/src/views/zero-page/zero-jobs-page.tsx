@@ -4,16 +4,15 @@ import {
   IconUsers,
   IconTrash,
   IconDotsVertical,
+  IconMessageCircle,
 } from "@tabler/icons-react";
-import { Card, CardContent, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
+import { Button, Card, CardContent } from "@vm0/ui";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@vm0/ui/components/ui/popover";
 import { ZeroJobDetailPage, type JobItem } from "./zero-job-detail-page.tsx";
-
-type JobScope = "all" | "personal" | "team";
 
 export const ZERO_TEAM_JOBS: JobItem[] = [
   {
@@ -46,16 +45,16 @@ export const ZERO_TEAM_JOBS: JobItem[] = [
   },
 ];
 
-export function ZeroJobsPage() {
-  const [filter, setFilter] = useState<JobScope>("all");
+export function ZeroJobsPage({
+  onNavigateToChat,
+}: {
+  onNavigateToChat?: () => void;
+} = {}) {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
   const selectedJob = selectedJobId
     ? ZERO_TEAM_JOBS.find((j) => j.id === selectedJobId)
     : null;
-  const filteredJobs = ZERO_TEAM_JOBS.filter(
-    (job) => filter === "all" || job.scope === filter,
-  );
 
   if (selectedJob) {
     return (
@@ -69,7 +68,7 @@ export function ZeroJobsPage() {
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
-        <div className="mx-auto max-w-[900px]">
+        <div className="mx-auto max-w-[900px] flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
               Zero&apos;s sub agents
@@ -79,41 +78,21 @@ export function ZeroJobsPage() {
               your team.
             </p>
           </div>
-
-          <Tabs
-            value={filter}
-            onValueChange={(v) => setFilter(v as JobScope)}
-            className="mt-4 w-full"
-          >
-            <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1">
-              <TabsTrigger
-                value="all"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                All agents
-              </TabsTrigger>
-              <TabsTrigger
-                value="personal"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                <IconUser size={14} stroke={1.5} />
-                For you
-              </TabsTrigger>
-              <TabsTrigger
-                value="team"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                <IconUsers size={14} stroke={1.5} />
-                For team
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {onNavigateToChat && (
+            <Button
+              className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
+              onClick={onNavigateToChat}
+            >
+              <IconMessageCircle size={14} stroke={1.5} />
+              Create sub agent
+            </Button>
+          )}
         </div>
       </header>
 
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-4 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
-          {filteredJobs.map((job) => (
+          {ZERO_TEAM_JOBS.map((job) => (
             <Card
               key={job.id}
               role="button"

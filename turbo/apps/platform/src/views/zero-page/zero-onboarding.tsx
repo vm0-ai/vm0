@@ -9,9 +9,33 @@ import {
   Input,
 } from "@vm0/ui";
 import { ConnectorIcon } from "../settings-page/connector-icons";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import { ProviderIcon } from "../settings-page/provider-icons";
+import {
+  CONNECTOR_TYPES,
+  getDefaultAuthMethod,
+  getDefaultModel,
+  hasAuthMethods,
+  hasModelSelection,
+  MODEL_PROVIDER_TYPES,
+  type ConnectorType,
+  type ModelProviderType,
+} from "@vm0/core";
+import { ProviderFormFields } from "../shared/provider-form-fields";
+import { getUILabel } from "../settings-page/provider-ui-config";
 
-type OnboardingStep = "1" | "2" | "3" | "done";
+type OnboardingStep = "1" | "2" | "3" | "4" | "done";
+
+const MODEL_PROVIDER_LIST: ModelProviderType[] = [
+  "claude-code-oauth-token",
+  "anthropic-api-key",
+  "openrouter-api-key",
+  "moonshot-api-key",
+  "minimax-api-key",
+  "deepseek-api-key",
+  "zai-api-key",
+  "azure-foundry",
+  "aws-bedrock",
+];
 
 const CONNECTOR_LIST: ConnectorType[] = [
   "github",
@@ -50,11 +74,48 @@ export function ZeroOnboarding({
 }) {
   const [step, setStep] = useState<OnboardingStep>("1");
   const [name, setName] = useState("Zero");
+  const [selectedProviderType, setSelectedProviderType] =
+    useState<ModelProviderType | null>(null);
+  const [providerFormValues, setProviderFormValues] = useState({
+    secret: "",
+    selectedModel: "",
+    useDefaultModel: true,
+    authMethod: "",
+    secrets: {} as Record<string, string>,
+  });
+
+  const handleSelectProvider = (type: ModelProviderType) => {
+    const defaultAuth = hasAuthMethods(type)
+      ? (getDefaultAuthMethod(type) ?? "")
+      : "";
+    const defaultModel = hasModelSelection(type)
+      ? (getDefaultModel(type) ?? "")
+      : "";
+    setProviderFormValues({
+      secret: "",
+      selectedModel: defaultModel,
+      useDefaultModel: true,
+      authMethod: defaultAuth,
+      secrets: {},
+    });
+    setSelectedProviderType(type);
+  };
 
   const handleStep1Next = () => setStep("2");
-  const handleStep2Next = () => setStep("3");
-  const handleStep2Back = () => setStep("1");
+  const handleStep2Next = () => {
+    setSelectedProviderType(null);
+    setStep("3");
+  };
+  const handleStep2Back = () => {
+    if (selectedProviderType) {
+      setSelectedProviderType(null);
+    } else {
+      setStep("1");
+    }
+  };
+  const handleStep3Next = () => setStep("4");
   const handleStep3Back = () => setStep("2");
+  const handleStep4Back = () => setStep("3");
   const handleAddToSlack = () => setStep("done");
   const handleContinueWithWeb = () => setStep("done");
 
@@ -96,8 +157,8 @@ export function ZeroOnboarding({
               </DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-[360px] mt-1 mb-6">
-              A smart agent that works across your tools. It learns what you
-              need and gets better over time. First—what should we call it?
+              Your AI teammate works across all your tools, learns what you
+              need, and gets better over time. Give it a name to get started.
             </p>
             <div className="w-full max-w-[320px] flex flex-col gap-2 text-left">
               <Input
@@ -120,8 +181,117 @@ export function ZeroOnboarding({
         </DialogContent>
       </Dialog>
 
-      {/* Step 2: Set connectors */}
+      {/* Step 2: Add model provider */}
       <Dialog open={step === "2"}>
+        <DialogContent
+          className={`${dialogBaseClass} zero-onboarding-dialog`}
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col justify-center px-8 pt-8 pb-8">
+            {selectedProviderType ? (
+              <div className="flex flex-col items-center pt-10">
+                <div className="flex items-center justify-center gap-3 mb-6">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden">
+                    <ProviderIcon type={selectedProviderType} size={28} />
+                  </span>
+                  <h2 className="text-xl font-semibold tracking-tight text-foreground">
+                    {getUILabel(selectedProviderType)}
+                  </h2>
+                </div>
+                <div className="w-full max-w-md flex flex-col gap-4 text-left">
+                  <ProviderFormFields
+                    providerType={selectedProviderType}
+                    formValues={providerFormValues}
+                    onProviderTypeChange={() => {}}
+                    onSecretChange={(v) =>
+                      setProviderFormValues((prev) => ({ ...prev, secret: v }))
+                    }
+                    onModelChange={(v) =>
+                      setProviderFormValues((prev) => ({
+                        ...prev,
+                        selectedModel: v,
+                        useDefaultModel: false,
+                      }))
+                    }
+                    onUseDefaultModelChange={(v) =>
+                      setProviderFormValues((prev) => ({
+                        ...prev,
+                        useDefaultModel: v,
+                        selectedModel: v ? "" : prev.selectedModel,
+                      }))
+                    }
+                    onAuthMethodChange={(v) =>
+                      setProviderFormValues((prev) => ({
+                        ...prev,
+                        authMethod: v,
+                        secrets: {},
+                      }))
+                    }
+                    onSecretFieldChange={(key, value) =>
+                      setProviderFormValues((prev) => ({
+                        ...prev,
+                        secrets: { ...prev.secrets, [key]: value },
+                      }))
+                    }
+                    isLoading={false}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center text-center">
+                <DialogHeader className="space-y-2">
+                  <DialogTitle className="text-xl font-semibold tracking-tight">
+                    Add model provider
+                  </DialogTitle>
+                </DialogHeader>
+                <p className="text-sm text-muted-foreground leading-relaxed mt-1 mb-6 max-w-[400px]">
+                  Bring your own model. We never charge for chat. Pick a
+                  provider below to get started.
+                </p>
+                <div className="w-full flex flex-wrap justify-center gap-3">
+                  {MODEL_PROVIDER_LIST.map((type) => {
+                    const config = MODEL_PROVIDER_TYPES[type];
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => handleSelectProvider(type)}
+                        className="zero-card flex items-center gap-2 rounded-xl border border-border px-3 py-2 min-w-0 hover:border-primary/30 hover:bg-muted/30 transition-colors text-left"
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
+                          <ProviderIcon type={type} size={18} />
+                        </span>
+                        <span className="text-sm font-medium text-foreground whitespace-nowrap">
+                          {config.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className={`${footerClass} justify-between`}>
+            <Button
+              variant="ghost"
+              className="rounded-lg text-muted-foreground"
+              onClick={handleStep2Back}
+            >
+              Back
+            </Button>
+            <Button
+              onClick={handleStep2Next}
+              className="rounded-lg min-w-[100px]"
+            >
+              Next
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Step 3: Set connectors */}
+      <Dialog open={step === "3"}>
         <DialogContent
           className={`${dialogBaseClass} zero-onboarding-dialog`}
           onPointerDownOutside={(e) => e.preventDefault()}
@@ -162,12 +332,12 @@ export function ZeroOnboarding({
             <Button
               variant="ghost"
               className="rounded-lg text-muted-foreground"
-              onClick={handleStep2Back}
+              onClick={handleStep3Back}
             >
               Back
             </Button>
             <Button
-              onClick={handleStep2Next}
+              onClick={handleStep3Next}
               className="rounded-lg min-w-[100px]"
             >
               Next
@@ -176,8 +346,8 @@ export function ZeroOnboarding({
         </DialogContent>
       </Dialog>
 
-      {/* Step 3: Where would you like to work with Zero? */}
-      <Dialog open={step === "3"}>
+      {/* Step 4: Where would you like to work with Zero? */}
+      <Dialog open={step === "4"}>
         <DialogContent
           className={`${dialogBaseClass} zero-onboarding-dialog`}
           onPointerDownOutside={(e) => e.preventDefault()}
@@ -240,11 +410,11 @@ export function ZeroOnboarding({
               </div>
             </div>
           </div>
-          <div className={`${footerClass} justify-end`}>
+          <div className={`${footerClass} justify-start`}>
             <Button
               variant="ghost"
               className="rounded-lg text-muted-foreground"
-              onClick={handleStep3Back}
+              onClick={handleStep4Back}
             >
               Back
             </Button>

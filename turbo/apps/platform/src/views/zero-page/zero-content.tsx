@@ -6,7 +6,6 @@ import { ZeroMeetPage } from "./zero-meet-page.tsx";
 import { ZeroProductionPage } from "./zero-production-page.tsx";
 import { ZeroActivityPage } from "./zero-activity-page.tsx";
 import { ZeroWorksPage } from "./zero-works-page.tsx";
-import { ZeroTeamPage } from "./zero-team-page.tsx";
 import { ZeroSchedulePage } from "./zero-schedule-page.tsx";
 
 const RECENT_ID_TO_SCENARIO: Record<string, DemoScenarioId> = {
@@ -26,6 +25,7 @@ interface ZeroContentProps {
   onNavigateToActivity?: () => void;
   onNavigateToSchedule?: () => void;
   onNavigateToJob?: () => void;
+  onNavigateToChat?: () => void;
   zeroAvatarSrc?: string;
   onAvatarClick?: () => void;
 }
@@ -38,7 +38,6 @@ const SECTION_TITLES: Record<ZeroNavId, string> = {
   production: "Documents",
   activity: "Activities",
   works: "Where Zero works",
-  team: "Workspace settings",
   account: "Account",
 };
 
@@ -51,6 +50,7 @@ export function ZeroContent({
   onNavigateToActivity,
   onNavigateToSchedule,
   onNavigateToJob,
+  onNavigateToChat,
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroContentProps) {
@@ -82,7 +82,7 @@ export function ZeroContent({
     return <ZeroSchedulePage />;
   }
   if (sectionId === "job") {
-    return <ZeroJobsPage />;
+    return <ZeroJobsPage onNavigateToChat={onNavigateToChat} />;
   }
   if (sectionId === "production") {
     return <ZeroProductionPage />;
@@ -92,9 +92,6 @@ export function ZeroContent({
   }
   if (sectionId === "works") {
     return <ZeroWorksPage />;
-  }
-  if (sectionId === "team") {
-    return <ZeroTeamPage />;
   }
   if (sectionId === "account") {
     return <ZeroAccountPage accountSubId={accountSubId ?? null} />;

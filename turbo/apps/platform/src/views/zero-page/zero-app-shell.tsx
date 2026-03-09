@@ -16,14 +16,6 @@ const ZERO_AVATARS = [
   "/avatars/avatar-4.png",
 ];
 
-const ZERO_AVATARS = [
-  "/zero-avatar.png",
-  "/avatars/avatar-1.png",
-  "/avatars/avatar-2.png",
-  "/avatars/avatar-3.png",
-  "/avatars/avatar-4.png",
-];
-
 const RECENT_LABELS: Record<string, string> = {
   hello: "Hello from Zero",
   "1": "Daily digest workflow",
@@ -93,6 +85,7 @@ export function ZeroAppShell() {
           onNavigateToActivity={() => setActiveId("activity")}
           onNavigateToSchedule={() => setActiveId("schedule")}
           onNavigateToJob={() => setActiveId("job")}
+          onNavigateToChat={() => setActiveId("chat")}
           zeroAvatarSrc={zeroAvatarSrc}
           onAvatarClick={cycleAvatar}
         />

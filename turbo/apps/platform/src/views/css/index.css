@@ -212,13 +212,22 @@
   border-color: hsl(220 8% 22%);
 }
 
-/* Onboarding modal footer: divider (same as card border but lighter) + buttons */
+/* Onboarding modal footer: frosted glass */
+.zero-onboarding-footer,
 .zero-app .zero-onboarding-footer {
-  border-top-color: hsl(220 5% 95%);
+  border-top: 1px solid hsl(220 5% 90% / 0.6);
+  background: hsl(var(--background) / 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
+.dark .zero-onboarding-footer,
 .dark .zero-app .zero-onboarding-footer,
+[data-theme="dark"] .zero-onboarding-footer,
 [data-theme="dark"] .zero-app .zero-onboarding-footer {
-  border-top-color: hsl(220 8% 26%);
+  border-top-color: hsl(220 8% 26% / 0.6);
+  background: hsl(var(--background) / 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 /* Zero onboarding dialogs: hide close button (portaled to body, so no .zero-app ancestor) */
@@ -226,35 +235,28 @@
   display: none !important;
 }
 
-/* First onboarding step: subtle dot texture on background */
-.zero-app .zero-onboarding-step1 {
-  position: relative;
-}
-.zero-app .zero-onboarding-step1::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  border-radius: inherit;
+/* All onboarding steps: same dotted gray as homepage chat (zero-workspace-bg) */
+.zero-onboarding-dialog,
+.zero-app .zero-onboarding-dialog {
+  background-color: hsl(var(--background));
   background-image: radial-gradient(
     circle at center,
-    hsl(220 10% 20% / 0.05) 1px,
+    hsl(var(--foreground) / 0.06) 1px,
     transparent 1px
   );
-  background-size: 12px 12px;
+  background-size: 14px 14px;
 }
-.zero-app .zero-onboarding-step1 > * {
-  position: relative;
-  z-index: 1;
-}
-.dark .zero-app .zero-onboarding-step1::before,
-[data-theme="dark"] .zero-app .zero-onboarding-step1::before {
+.dark .zero-onboarding-dialog,
+.dark .zero-app .zero-onboarding-dialog,
+[data-theme="dark"] .zero-onboarding-dialog,
+[data-theme="dark"] .zero-app .zero-onboarding-dialog {
+  background-color: hsl(var(--background));
   background-image: radial-gradient(
     circle at center,
-    hsl(220 10% 90% / 0.06) 1px,
+    hsl(var(--foreground) / 0.05) 1px,
     transparent 1px
   );
+  background-size: 14px 14px;
 }
 
 /* Same as .zero-card but less rounded (more rectangular), e.g. account dropdown / profile card */

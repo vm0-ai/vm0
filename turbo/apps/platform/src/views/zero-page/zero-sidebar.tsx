@@ -6,7 +6,6 @@ import {
   IconChartLine,
   IconSelector,
   IconLayoutGrid,
-  IconSettings,
   IconCalendar,
   IconAdjustmentsHorizontal,
   IconUser,
@@ -23,7 +22,6 @@ export type ZeroNavId =
   | "production"
   | "activity"
   | "works"
-  | "team"
   | "account";
 
 const MAIN_NAV: {
