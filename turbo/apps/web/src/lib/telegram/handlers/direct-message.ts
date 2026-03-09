@@ -21,7 +21,7 @@ import {
   buildAgentLogsUrl,
   buildLogsUrl,
 } from "./shared";
-import { escapeHtml } from "../format";
+import { buildTelegramErrorResponse, escapeHtml } from "../format";
 import { logger } from "../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -205,7 +205,7 @@ export async function handleTelegramDirectMessage(
     await sendMessage(
       client,
       chatId,
-      `❌ <b>Agent Execution Error</b>\n\n${escapeHtml(errorDetail)}\n\n<a href="${escapeHtml(linkUrl)}">📋 View logs</a>`,
+      buildTelegramErrorResponse(errorDetail, linkUrl),
     );
   }
 }
