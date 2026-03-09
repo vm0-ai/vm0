@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import {
   IconArrowLeft,
   IconFileText,
@@ -9,6 +10,7 @@ import {
   IconPlus,
   IconTool,
   IconCalendar,
+  IconPencil,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -47,6 +49,12 @@ const WORKFLOW_SKILLS_OPTIONS = [
   "Linear",
 ];
 
+const INITIAL_SKILLS = [
+  "Slack",
+  "Data Analysis",
+  "Content Summarization",
+] as const;
+
 const CONNECTOR_LIST: ConnectorType[] = [
   "github",
   "linear",
@@ -73,11 +81,7 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
   const [settingsDescription, setSettingsDescription] = useState(
     job.description,
   );
-  const [skills, setSkills] = useState<string[]>([
-    "Slack",
-    "Data Analysis",
-    "Content Summarization",
-  ]);
+  const [skills, setSkills] = useState<string[]>([...INITIAL_SKILLS]);
   const ADD_SKILL_PLACEHOLDER = "__add_skill__";
   const [addSkillValue, setAddSkillValue] = useState(ADD_SKILL_PLACEHOLDER);
   const [connectedConnectors, setConnectedConnectors] = useState<
@@ -100,6 +104,38 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
   const availableSkills = WORKFLOW_SKILLS_OPTIONS.filter(
     (s) => !skills.includes(s),
   );
+
+  const [savedSettings, setSavedSettings] = useState<{
+    name: string;
+    description: string;
+    skills: string[];
+  }>({
+    name: job.title,
+    description: job.description,
+    skills: [...INITIAL_SKILLS],
+  });
+
+  const isSettingsDirty =
+    settingsName !== savedSettings.name ||
+    settingsDescription !== savedSettings.description ||
+    JSON.stringify([...skills].sort()) !==
+      JSON.stringify([...savedSettings.skills].sort());
+  const showSaveBar = isSettingsDirty;
+
+  const handleReset = () => {
+    setSettingsName(savedSettings.name);
+    setSettingsDescription(savedSettings.description);
+    setSkills([...savedSettings.skills]);
+  };
+
+  const handleSave = () => {
+    setSavedSettings({
+      name: settingsName,
+      description: settingsDescription,
+      skills: [...skills],
+    });
+    // API persist would go here
+  };
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -178,7 +214,12 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto px-4 sm:px-6 pt-4 pb-8">
+      <main
+        className={cn(
+          "flex-1 overflow-auto px-4 sm:px-6 pt-4",
+          showSaveBar ? "pb-24" : "pb-8",
+        )}
+      >
         <div className="mx-auto max-w-[900px]">
           {activeTab === "instructions" && (
             <Card className="zero-card-white">
@@ -424,6 +465,40 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
             )}
         </div>
       </main>
+
+      {showSaveBar &&
+        createPortal(
+          <div className="zero-app fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 sm:left-[255px]">
+            <div className="zero-card flex max-w-md items-center justify-between gap-4 rounded-xl border border-border bg-card px-5 py-4 shadow-lg">
+              <div className="flex items-center gap-2 text-sm text-foreground">
+                <IconPencil
+                  size={18}
+                  stroke={1.5}
+                  className="shrink-0 text-muted-foreground"
+                />
+                <span>You have unsaved changes</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={handleReset}
+                >
+                  Discard
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={handleSave}
+                >
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

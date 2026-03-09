@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import {
   IconMessageCircle,
   IconUser,
@@ -8,6 +9,7 @@ import {
   IconPlus,
   IconTool,
   IconCalendar,
+  IconPencil,
 } from "@tabler/icons-react";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "../settings-page/connector-icons";
@@ -99,8 +101,34 @@ export function ZeroMeetPage({
   const [agentName, setAgentName] = useState("Zero");
   const [tone, setTone] = useState<string>("Professional");
   const [skills, setSkills] = useState<string[]>([...AVAILABLE_SKILLS]);
+  const [savedSettings, setSavedSettings] = useState({
+    name: "Zero",
+    tone: "Professional",
+    skills: [...AVAILABLE_SKILLS],
+  });
   const ADD_SKILL_PLACEHOLDER = "__add_skill__";
   const [addSkillValue, setAddSkillValue] = useState(ADD_SKILL_PLACEHOLDER);
+
+  const isSettingsDirty =
+    agentName !== savedSettings.name ||
+    tone !== savedSettings.tone ||
+    JSON.stringify([...skills].sort()) !==
+      JSON.stringify([...savedSettings.skills].sort());
+  const showSaveBar = isSettingsDirty;
+
+  const handleResetSettings = () => {
+    setAgentName(savedSettings.name);
+    setTone(savedSettings.tone);
+    setSkills([...savedSettings.skills]);
+  };
+
+  const handleSaveSettings = () => {
+    setSavedSettings({
+      name: agentName,
+      tone,
+      skills: [...skills],
+    });
+  };
 
   const removeSkill = (skill: string) => {
     setSkills((prev) => prev.filter((s) => s !== skill));
@@ -197,7 +225,12 @@ export function ZeroMeetPage({
         </div>
       </header>
 
-      <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
+      <main
+        className={cn(
+          "shrink-0 px-4 sm:px-6 pt-4",
+          showSaveBar ? "pb-24" : "pb-16",
+        )}
+      >
         {activeTab === "schedule" && (
           <div className="mx-auto max-w-[900px] px-7">
             <ZeroScheduleCard
@@ -490,6 +523,40 @@ export function ZeroMeetPage({
           </div>
         )}
       </main>
+
+      {showSaveBar &&
+        createPortal(
+          <div className="zero-app fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 sm:left-[255px]">
+            <div className="zero-card flex max-w-md items-center justify-between gap-4 rounded-xl border border-border bg-card px-5 py-4 shadow-lg">
+              <div className="flex items-center gap-2 text-sm text-foreground">
+                <IconPencil
+                  size={18}
+                  stroke={1.5}
+                  className="shrink-0 text-muted-foreground"
+                />
+                <span>You have unsaved changes</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={handleResetSettings}
+                >
+                  Discard
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={handleSaveSettings}
+                >
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

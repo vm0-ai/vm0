@@ -85,6 +85,7 @@ export function ZeroAppShell() {
           onNavigateToActivity={() => setActiveId("activity")}
           onNavigateToSchedule={() => setActiveId("schedule")}
           onNavigateToJob={() => setActiveId("job")}
+          onNavigateToChat={() => setActiveId("chat")}
           zeroAvatarSrc={zeroAvatarSrc}
           onAvatarClick={cycleAvatar}
         />
