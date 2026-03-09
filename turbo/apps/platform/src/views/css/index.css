@@ -212,6 +212,51 @@
   border-color: hsl(220 8% 22%);
 }
 
+/* Onboarding modal footer: divider (same as card border but lighter) + buttons */
+.zero-app .zero-onboarding-footer {
+  border-top-color: hsl(220 5% 95%);
+}
+.dark .zero-app .zero-onboarding-footer,
+[data-theme="dark"] .zero-app .zero-onboarding-footer {
+  border-top-color: hsl(220 8% 26%);
+}
+
+/* Zero onboarding dialogs: hide close button (portaled to body, so no .zero-app ancestor) */
+.zero-onboarding-dialog button[aria-label="Close"] {
+  display: none !important;
+}
+
+/* First onboarding step: subtle dot texture on background */
+.zero-app .zero-onboarding-step1 {
+  position: relative;
+}
+.zero-app .zero-onboarding-step1::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background-image: radial-gradient(
+    circle at center,
+    hsl(220 10% 20% / 0.05) 1px,
+    transparent 1px
+  );
+  background-size: 12px 12px;
+}
+.zero-app .zero-onboarding-step1 > * {
+  position: relative;
+  z-index: 1;
+}
+.dark .zero-app .zero-onboarding-step1::before,
+[data-theme="dark"] .zero-app .zero-onboarding-step1::before {
+  background-image: radial-gradient(
+    circle at center,
+    hsl(220 10% 90% / 0.06) 1px,
+    transparent 1px
+  );
+}
+
 /* Same as .zero-card but less rounded (more rectangular), e.g. account dropdown / profile card */
 .zero-app .zero-card-rectangle {
   background-color: hsl(0 0% 100%);

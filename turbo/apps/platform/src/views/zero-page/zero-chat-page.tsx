@@ -22,6 +22,7 @@ import { Button, Card, CardContent, cn } from "@vm0/ui";
 import { ZERO_TEAM_JOBS } from "./zero-jobs-page";
 
 export type DemoScenarioId =
+  | "hello-from-zero"
   | "approve"
   | "ask-options"
   | "team-personal"
@@ -33,7 +34,7 @@ const ACTION_BUTTONS: {
   label: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
 }[] = [
-  { label: "Create workflow", icon: IconBriefcase },
+  { label: "Automate workflows", icon: IconBriefcase },
   { label: "Customize Zero", icon: IconSettings },
   { label: "Add connectors", icon: IconPlug },
 ];
@@ -45,14 +46,14 @@ const SUGGESTED_PROMPTS: {
   iconClassName?: string;
 }[] = [
   {
-    title: "Daily team digest",
-    description: "Summarize activity and updates for the team",
+    title: "Auto-organize inbox",
+    description: "Smart categorization, reply, and daily email digest",
     icon: IconChartBar,
     iconClassName: "text-emerald-600 dark:text-emerald-400",
   },
   {
-    title: "Reimbursement workflow",
-    description: "Submit and track reimbursement requests",
+    title: "Daily morning brief",
+    description: "Trending topics on a schedule, your personalized digest",
     icon: IconReceipt,
     iconClassName: "text-primary",
   },
@@ -63,6 +64,11 @@ const STREAMED_SCENARIOS: {
   userMessage: string;
   assistantMessage: string;
 }[] = [
+  {
+    id: "hello-from-zero",
+    userMessage: "Hi",
+    assistantMessage: "",
+  },
   {
     id: "approve",
     userMessage: "Run the deployment to production",
@@ -103,7 +109,7 @@ const STREAM_DELAY_MS = 1400;
 const LANDING_TAGLINES = [
   "I'm Zero. Customize me and assign tasks anytime.",
   "Your intelligent teammate, tuned to you.",
-  "Create workflows, run automations, get things done.",
+  "Automate workflows, run automations, get things done.",
   "Ask me anything, I'll route it to the right minions.",
   "200+ connectors, ready when you are.",
 ];
@@ -124,6 +130,62 @@ interface ChatScenarioBlockProps {
   setConnectorConnected: (v: boolean) => void;
   zeroAvatarSrc?: string;
   onAvatarClick?: () => void;
+}
+
+function HelloFromZeroBlock({
+  zeroAvatarSrc = "/zero-avatar.png",
+  onAvatarClick,
+}: {
+  zeroAvatarSrc?: string;
+  onAvatarClick?: () => void;
+}) {
+  const avatarButton = (
+    <button
+      type="button"
+      onClick={onAvatarClick}
+      className="h-9 w-9 shrink-0 mt-0.5 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      aria-label="Switch Zero avatar"
+    >
+      <img
+        src={zeroAvatarSrc}
+        alt=""
+        role="presentation"
+        className="h-9 w-9 rounded-full object-cover object-top"
+      />
+    </button>
+  );
+  return (
+    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
+        {avatarButton}
+        <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0">
+          <p className="text-foreground">
+            Hi! I&apos;m Zero, your AI teammate. I help you automate tasks, run
+            workflows, and get things done across your connected tools.
+          </p>
+        </div>
+      </div>
+      <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
+        {avatarButton}
+        <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-2">
+          <p className="font-medium text-foreground">
+            You&apos;ve connected Notion.
+          </p>
+          <p className="text-muted-foreground">
+            Here are a few ways you can use me with it:
+          </p>
+          <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+            <li>Create a weekly summary page from your meeting notes</li>
+            <li>Sync action items from Slack into a Notion database</li>
+            <li>
+              Generate doc outlines from a prompt and save to a Notion page
+            </li>
+            <li>Turn emails into structured Notion tasks with due dates</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ChatScenarioBlock({
@@ -722,25 +784,33 @@ export function ZeroChatPage({
         </header>
         <main className="flex-1 overflow-auto px-4 sm:px-6 py-4">
           <div className="mx-auto max-w-[900px] flex flex-col gap-6 pb-4">
-            {scenariosToShow.map((scene) => (
-              <ChatScenarioBlock
-                key={scene.id}
-                scene={scene}
-                onNavigateToActivity={onNavigateToActivity}
-                commandAllowed={commandAllowed}
-                setCommandAllowed={setCommandAllowed}
-                approveDone={approveDone}
-                setApproveDone={setApproveDone}
-                selectedOption={selectedOption}
-                setSelectedOption={setSelectedOption}
-                teamPersonalChoice={teamPersonalChoice}
-                setTeamPersonalChoice={setTeamPersonalChoice}
-                connectorConnected={connectorConnected}
-                setConnectorConnected={setConnectorConnected}
-                zeroAvatarSrc={zeroAvatarSrc}
-                onAvatarClick={onAvatarClick}
-              />
-            ))}
+            {scenariosToShow.map((scene) =>
+              scene.id === "hello-from-zero" ? (
+                <HelloFromZeroBlock
+                  key={scene.id}
+                  zeroAvatarSrc={zeroAvatarSrc}
+                  onAvatarClick={onAvatarClick}
+                />
+              ) : (
+                <ChatScenarioBlock
+                  key={scene.id}
+                  scene={scene}
+                  onNavigateToActivity={onNavigateToActivity}
+                  commandAllowed={commandAllowed}
+                  setCommandAllowed={setCommandAllowed}
+                  approveDone={approveDone}
+                  setApproveDone={setApproveDone}
+                  selectedOption={selectedOption}
+                  setSelectedOption={setSelectedOption}
+                  teamPersonalChoice={teamPersonalChoice}
+                  setTeamPersonalChoice={setTeamPersonalChoice}
+                  connectorConnected={connectorConnected}
+                  setConnectorConnected={setConnectorConnected}
+                  zeroAvatarSrc={zeroAvatarSrc}
+                  onAvatarClick={onAvatarClick}
+                />
+              ),
+            )}
             {showSubAgentList && (
               <div
                 ref={subAgentListRef}
@@ -836,7 +906,7 @@ export function ZeroChatPage({
                   <textarea
                     className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
                     rows={3}
-                    placeholder="Ask me to create workflows, manage tasks..."
+                    placeholder="Ask me to automate workflows, manage tasks..."
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -934,7 +1004,7 @@ export function ZeroChatPage({
                 <textarea
                   className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
                   rows={3}
-                  placeholder="Ask me to create workflows, manage tasks..."
+                  placeholder="Ask me to automate workflows, manage tasks..."
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}

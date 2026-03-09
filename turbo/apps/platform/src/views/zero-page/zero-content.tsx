@@ -10,6 +10,7 @@ import { ZeroTeamPage } from "./zero-team-page.tsx";
 import { ZeroSchedulePage } from "./zero-schedule-page.tsx";
 
 const RECENT_ID_TO_SCENARIO: Record<string, DemoScenarioId> = {
+  hello: "hello-from-zero",
   "1": "rich-summary",
   "2": "connect-connector",
   "3": "agent-operations",

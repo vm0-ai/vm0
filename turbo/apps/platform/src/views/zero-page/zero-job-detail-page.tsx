@@ -68,7 +68,7 @@ interface ZeroJobDetailPageProps {
 }
 
 export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
-  const [activeTab, setActiveTab] = useState("settings");
+  const [activeTab, setActiveTab] = useState("connectors");
   const [settingsName, setSettingsName] = useState(job.title);
   const [settingsDescription, setSettingsDescription] = useState(
     job.description,
@@ -146,6 +146,20 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
           >
             <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1">
               <TabsTrigger
+                value="connectors"
+                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+              >
+                <IconPlug size={14} stroke={1.5} />
+                Connectors
+              </TabsTrigger>
+              <TabsTrigger
+                value="schedule"
+                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+              >
+                <IconCalendar size={14} stroke={1.5} />
+                Schedule
+              </TabsTrigger>
+              <TabsTrigger
                 value="settings"
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
               >
@@ -158,20 +172,6 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
               >
                 <IconFileText size={14} stroke={1.5} />
                 Instructions
-              </TabsTrigger>
-              <TabsTrigger
-                value="schedule"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                <IconCalendar size={14} stroke={1.5} />
-                Schedule
-              </TabsTrigger>
-              <TabsTrigger
-                value="connectors"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                <IconPlug size={14} stroke={1.5} />
-                Connectors
               </TabsTrigger>
             </TabsList>
           </Tabs>
