@@ -2,7 +2,12 @@ import { eq } from "drizzle-orm";
 import { telegramInstallations } from "../../../db/schema/telegram-installation";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
-import { createTelegramClient, sendMessage, deleteMessage } from "../client";
+import {
+  createTelegramClient,
+  sendMessage,
+  editMessageText,
+  deleteMessage,
+} from "../client";
 import {
   sendThinkingMessage,
   enrichTelegramPrompt,
@@ -181,11 +186,20 @@ export async function handleTelegramDirectMessage(
   });
 
   if (status === "queued") {
-    await sendMessage(
-      client,
-      chatId,
-      "⏳ Run queued — concurrency limit reached. Will start automatically when a slot is available.",
-    );
+    if (thinkingMessage) {
+      await editMessageText(
+        client,
+        chatId,
+        thinkingMessage.message_id,
+        "⏳ Run queued — concurrency limit reached. Will start automatically when a slot is available.",
+      );
+    } else {
+      await sendMessage(
+        client,
+        chatId,
+        "⏳ Run queued — concurrency limit reached. Will start automatically when a slot is available.",
+      );
+    }
   } else if (status === "failed") {
     log.error("Failed to dispatch agent run (DM)", {
       chatId,
