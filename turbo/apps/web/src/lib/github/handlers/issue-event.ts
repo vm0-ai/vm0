@@ -341,12 +341,17 @@ function buildFullPrompt(
   issueContext: string,
   isCommentTrigger: boolean,
 ): string {
-  if (!issueContext) return prompt;
+  const integrationContext =
+    "# Current Integration\nYou are currently running inside: GitHub";
+
+  if (!issueContext) {
+    return `${integrationContext}\n\n# User Prompt\n\n${prompt}`;
+  }
 
   if (isCommentTrigger) {
-    return `${issueContext}\n\n# User Prompt\n\n${prompt}`;
+    return `${integrationContext}\n\n${issueContext}\n\n# User Prompt\n\n${prompt}`;
   }
-  return `${issueContext}\n\nBased on the GitHub issue above and its discussion, analyze the request and decide on the appropriate action.`;
+  return `${integrationContext}\n\n${issueContext}\n\nBased on the GitHub issue above and its discussion, analyze the request and decide on the appropriate action.`;
 }
 
 /**

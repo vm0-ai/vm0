@@ -94,9 +94,11 @@ export async function runAgentForTelegram(
     versionId = latestVersion.id;
   }
 
+  const integrationContext =
+    "# Current Integration\nYou are currently running inside: Telegram";
   const fullPrompt = threadContext
-    ? `${threadContext}\n\n# User Prompt\n\n${prompt}`
-    : prompt;
+    ? `${integrationContext}\n\n${threadContext}\n\n# User Prompt\n\n${prompt}`
+    : `${integrationContext}\n\n# User Prompt\n\n${prompt}`;
 
   const callbackUrl = `${getApiUrl()}/api/internal/callbacks/telegram`;
   const callbackSecret = generateCallbackSecret();

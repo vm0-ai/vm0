@@ -95,10 +95,12 @@ export async function runAgentForSlack(
       versionId = latestVersion.id;
     }
 
-    // Build the full prompt with thread context
+    // Build the full prompt with integration context and thread context
+    const integrationContext =
+      "# Current Integration\nYou are currently running inside: Slack";
     const fullPrompt = threadContext
-      ? `${threadContext}\n\n# User Prompt\n\n${prompt}`
-      : prompt;
+      ? `${integrationContext}\n\n${threadContext}\n\n# User Prompt\n\n${prompt}`
+      : `${integrationContext}\n\n# User Prompt\n\n${prompt}`;
 
     // Build callback for run completion notification
     const callbackUrl = `${getApiUrl()}/api/internal/callbacks/slack`;

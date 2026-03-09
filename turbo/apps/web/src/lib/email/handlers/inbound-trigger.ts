@@ -265,11 +265,14 @@ export async function handleInboundEmailTrigger(
     },
   ];
 
-  // 12. Create and dispatch run
+  // 12. Inject integration context and create run
+  const integrationContext =
+    "# Current Integration\nYou are currently running inside: Email";
+  const fullPrompt = `${integrationContext}\n\n# User Prompt\n\n${prompt}`;
   const result = await createRun({
     userId,
     agentComposeVersionId: compose.headVersionId,
-    prompt,
+    prompt: fullPrompt,
     composeId: compose.composeId,
     agentName: triggerAddress.agent,
     artifactName: "artifact",

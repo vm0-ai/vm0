@@ -196,11 +196,14 @@ export async function handleInboundEmailReply(
     },
   ];
 
-  // 12. Create and dispatch run via unified pipeline
+  // 12. Inject integration context and create run
+  const integrationContext =
+    "# Current Integration\nYou are currently running inside: Email";
+  const fullPrompt = `${integrationContext}\n\n# User Prompt\n\n${replyContent}`;
   const result = await createRun({
     userId: session.userId,
     agentComposeVersionId: compose.headVersionId ?? "",
-    prompt: replyContent,
+    prompt: fullPrompt,
     composeId: session.composeId,
     sessionId: session.agentSessionId,
     agentName: compose.name,
