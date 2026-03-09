@@ -59,7 +59,7 @@ export function isProtectedSkipRoute(pathname: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// i18n middleware (shared between Clerk and local modes)
+// i18n middleware
 // ---------------------------------------------------------------------------
 
 const intlMiddleware = createIntlMiddleware({
@@ -108,7 +108,7 @@ export async function runLayers(
 }
 
 // ---------------------------------------------------------------------------
-// Shared layers (used by both Clerk and local middleware)
+// Shared layers
 // ---------------------------------------------------------------------------
 
 /**

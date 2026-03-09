@@ -1,19 +1,99 @@
-import { NextFetchEvent, NextRequest } from "next/server";
-import { env } from "./src/env";
-import clerkMiddleware from "./middleware.clerk";
-import localMiddleware from "./middleware.local";
+import {
+  clerkMiddleware,
+  createRouteMatcher,
+  type ClerkMiddlewareAuth,
+} from "@clerk/nextjs/server";
+import { NextRequest } from "next/server";
+import {
+  runLayers,
+  corsLayer,
+  authRedirectLayer,
+  localeGuardLayer,
+  i18nLayer,
+  MiddlewareLayer,
+  isProtectedSkipRoute,
+} from "./middleware.layers";
 
-export { config } from "./middleware.config";
+// ---------------------------------------------------------------------------
+// Clerk-specific route config
+// ---------------------------------------------------------------------------
 
-export default async function middleware(
-  request: NextRequest,
-  event: NextFetchEvent,
-) {
-  const useLocalAuth = !env().NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const isPublicRoute = createRouteMatcher([
+  "/",
+  "/:locale",
+  "/:locale/skills",
+  "/:locale/glossary",
+  "/:locale/pricing",
+  "/:locale/terms-of-use",
+  "/:locale/privacy-policy",
+  "/:locale/design-system",
+  "/:locale/blog",
+  "/:locale/blog/posts/:slug",
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+  "/api/cli/auth/device",
+  "/api/cli/auth/token",
+  "/api/slack/oauth/(.*)",
+  "/slack/success",
+  "/slack/failed",
+  "/robots.txt",
+  "/sitemap.xml",
+]);
 
-  if (useLocalAuth) {
-    return localMiddleware(request);
+// ---------------------------------------------------------------------------
+// Clerk auth layer
+// ---------------------------------------------------------------------------
+
+/**
+ * Captured Clerk `auth` handle. Set by the clerkMiddleware wrapper before
+ * `runLayers` is invoked, so authLayer can call `auth.protect()`.
+ */
+let _clerkAuth: ClerkMiddlewareAuth;
+
+const clerkAuthLayer: MiddlewareLayer = async (ctx) => {
+  if (ctx.routeKind === "skip") {
+    if (isProtectedSkipRoute(ctx.request.nextUrl.pathname)) {
+      await _clerkAuth.protect();
+    }
+    return null;
   }
 
-  return clerkMiddleware(request, event);
-}
+  // Page routes: protect non-public routes
+  if (ctx.routeKind === "page") {
+    if (!isPublicRoute(ctx.request)) {
+      await _clerkAuth.protect();
+    }
+  }
+
+  return null;
+};
+
+// ---------------------------------------------------------------------------
+// Middleware
+// ---------------------------------------------------------------------------
+
+export default clerkMiddleware(async (auth, request: NextRequest) => {
+  _clerkAuth = auth;
+
+  return runLayers(request, [
+    corsLayer,
+    authRedirectLayer,
+    localeGuardLayer,
+    clerkAuthLayer,
+    i18nLayer,
+  ]);
+});
+
+export const config = {
+  matcher: [
+    // Match all routes except:
+    // - _next (Next.js internals)
+    // - _vercel (Vercel internals)
+    // - assets (static assets)
+    // - files with extensions (images, fonts, etc.)
+    // - sign-in and sign-up (Clerk auth pages, no i18n)
+    "/((?!_next|_vercel|assets|sign-in|sign-up|.*\\..*).*)",
+    // Match API routes for CORS handling
+    "/(api|v1|trpc)(.*)",
+  ],
+};

@@ -9,7 +9,6 @@ import {
 } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { getClerkPublishableKey } from "../src/lib/clerk-config";
-import { hasClerkAuth } from "../src/env";
 import { getPlatformUrl } from "../src/lib/url";
 import { ThemeProvider } from "./components/ThemeProvider";
 import "./globals.css";
@@ -132,23 +131,26 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const content = (
-    <html lang="en" data-theme="dark" suppressHydrationWarning>
-      <head>
-        {hasClerkAuth() && (
-          <>
-            <link rel="preconnect" href="https://fonts.googleapis.com" />
-            <link
-              rel="preconnect"
-              href="https://fonts.gstatic.com"
-              crossOrigin="anonymous"
-            />
-            <link rel="dns-prefetch" href="https://plausible.io" />
-          </>
-        )}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
+  return (
+    <ClerkProvider
+      publishableKey={getClerkPublishableKey()}
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
+      afterSignInUrl={getPlatformUrl()}
+      afterSignUpUrl={getPlatformUrl()}
+    >
+      <html lang="en" data-theme="dark" suppressHydrationWarning>
+        <head>
+          <link rel="preconnect" href="https://fonts.googleapis.com" />
+          <link
+            rel="preconnect"
+            href="https://fonts.gstatic.com"
+            crossOrigin="anonymous"
+          />
+          <link rel="dns-prefetch" href="https://plausible.io" />
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `
                 (function() {
                   try {
                     var theme = localStorage.getItem('theme');
@@ -160,118 +162,94 @@ export default function RootLayout({
                   } catch (e) {}
                 })();
               `,
-          }}
-        />
-        {hasClerkAuth() && (
-          <>
-            <Script
-              src="https://plausible.io/js/pa-eEj_2G8vS8xPlTUzW2A3U.js"
-              data-domain="vm0.ai"
-              strategy="afterInteractive"
-              async
-            />
-            <Script id="plausible-init" strategy="afterInteractive">
-              {`
+            }}
+          />
+          <Script
+            src="https://plausible.io/js/pa-eEj_2G8vS8xPlTUzW2A3U.js"
+            data-domain="vm0.ai"
+            strategy="afterInteractive"
+            async
+          />
+          <Script id="plausible-init" strategy="afterInteractive">
+            {`
                 window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
                 plausible.init({domain:"vm0.ai"})
               `}
-            </Script>
-          </>
-        )}
-      </head>
-      <body
-        className={`${notoSans.variable} ${firaCode.variable} ${firaMono.variable} ${jetBrainsMono.variable}`}
-      >
-        {hasClerkAuth() && (
-          <>
-            <Script
-              id="json-ld"
-              type="application/ld+json"
-              dangerouslySetInnerHTML={{
-                __html: JSON.stringify({
-                  "@context": "https://schema.org",
-                  "@type": "Organization",
-                  name: "VM0",
-                  url: "https://vm0.ai",
-                  logo: "https://vm0.ai/assets/vm0-logo.svg",
-                  description:
-                    "Build agents and automate workflows with natural language. Infrastructure for AI agents, not workflows.",
+          </Script>
+        </head>
+        <body
+          className={`${notoSans.variable} ${firaCode.variable} ${firaMono.variable} ${jetBrainsMono.variable}`}
+        >
+          <Script
+            id="json-ld"
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "Organization",
+                name: "VM0",
+                url: "https://vm0.ai",
+                logo: "https://vm0.ai/assets/vm0-logo.svg",
+                description:
+                  "Build agents and automate workflows with natural language. Infrastructure for AI agents, not workflows.",
+                email: "contact@vm0.ai",
+                foundingDate: "2025",
+                sameAs: [
+                  "https://twitter.com/vm0_ai",
+                  "https://github.com/vm0-ai",
+                  "https://github.com/vm0-ai/vm0",
+                ],
+                contactPoint: {
+                  "@type": "ContactPoint",
                   email: "contact@vm0.ai",
-                  foundingDate: "2025",
-                  sameAs: [
-                    "https://twitter.com/vm0_ai",
-                    "https://github.com/vm0-ai",
-                    "https://github.com/vm0-ai/vm0",
-                  ],
-                  contactPoint: {
-                    "@type": "ContactPoint",
-                    email: "contact@vm0.ai",
-                    contactType: "customer support",
-                  },
-                }),
-              }}
-            />
-            <Script
-              id="json-ld-website"
-              type="application/ld+json"
-              dangerouslySetInnerHTML={{
-                __html: JSON.stringify({
-                  "@context": "https://schema.org",
-                  "@type": "WebSite",
-                  name: "VM0",
-                  url: "https://vm0.ai",
-                  description:
-                    "Build agents and automate workflows with natural language",
-                }),
-              }}
-            />
-            <Script
-              id="json-ld-software"
-              type="application/ld+json"
-              dangerouslySetInnerHTML={{
-                __html: JSON.stringify({
-                  "@context": "https://schema.org",
-                  "@type": "SoftwareApplication",
-                  name: "VM0",
-                  applicationCategory: "DeveloperApplication",
-                  operatingSystem: "Web, Linux, macOS, Windows",
-                  offers: {
-                    "@type": "Offer",
-                    price: "0",
-                    priceCurrency: "USD",
-                  },
-                  description:
-                    "Build agents and automate workflows with natural language. Infrastructure for AI agents, not workflows.",
-                  url: "https://vm0.ai",
-                  image: "https://vm0.ai/og-image.png",
-                }),
-              }}
-            />
-          </>
-        )}
-        <ThemeProvider>{children}</ThemeProvider>
-        <Script
-          src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
-          strategy="lazyOnload"
-        />
-      </body>
-    </html>
-  );
-
-  if (!hasClerkAuth()) {
-    return content;
-  }
-
-  return (
-    <ClerkProvider
-      publishableKey={getClerkPublishableKey()}
-      signInUrl="/sign-in"
-      signUpUrl="/sign-up"
-      signInFallbackRedirectUrl={getPlatformUrl()}
-      signUpFallbackRedirectUrl={getPlatformUrl()}
-      allowedRedirectOrigins={[getPlatformUrl(), `${getPlatformUrl()}/`]}
-    >
-      {content}
+                  contactType: "customer support",
+                },
+              }),
+            }}
+          />
+          <Script
+            id="json-ld-website"
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "WebSite",
+                name: "VM0",
+                url: "https://vm0.ai",
+                description:
+                  "Build agents and automate workflows with natural language",
+              }),
+            }}
+          />
+          <Script
+            id="json-ld-software"
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "SoftwareApplication",
+                name: "VM0",
+                applicationCategory: "DeveloperApplication",
+                operatingSystem: "Web, Linux, macOS, Windows",
+                offers: {
+                  "@type": "Offer",
+                  price: "0",
+                  priceCurrency: "USD",
+                },
+                description:
+                  "Build agents and automate workflows with natural language. Infrastructure for AI agents, not workflows.",
+                url: "https://vm0.ai",
+                image: "https://vm0.ai/og-image.png",
+              }),
+            }}
+          />
+          <ThemeProvider>{children}</ThemeProvider>
+          <Script
+            src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
+            strategy="lazyOnload"
+          />
+        </body>
+      </html>
     </ClerkProvider>
   );
 }

@@ -8,7 +8,7 @@ import Navbar from "./Navbar";
 import Footer from "./Footer";
 import AnnouncementBanner from "./AnnouncementBanner";
 import { getPlatformUrl } from "../../src/lib/url";
-import { useAuth } from "../hooks/use-auth";
+import { useUser } from "@clerk/nextjs";
 
 const TYPED_TEXT = "Help me build an agent for tech news aggregation";
 const RUN_TYPED_TEXT = {
@@ -2393,7 +2393,7 @@ function FinalCtaSection({ isSignedIn }: { isSignedIn: boolean }) {
 }
 
 export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn } = useUser();
   const [mainTab, setMainTab] = useState<"build" | "run">("run");
 
   return (
@@ -2430,7 +2430,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
         {/* Hero Section */}
         <section className="w-full max-w-[1440px] pb-0">
           <div className="max-w-[1200px] mx-auto px-[30px]">
-            <HeroSection isSignedIn={isSignedIn} />
+            <HeroSection isSignedIn={isSignedIn ?? false} />
 
             {/* Agent Tabs */}
             <div className="flex gap-[12px] items-center mb-[30px] justify-center">
@@ -3544,7 +3544,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
         </section>
 
         {/* Final CTA */}
-        <FinalCtaSection isSignedIn={isSignedIn} />
+        <FinalCtaSection isSignedIn={isSignedIn ?? false} />
       </main>
 
       <Footer />

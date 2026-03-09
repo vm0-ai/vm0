@@ -13,8 +13,6 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../../../../src/lib/axiom";
-import { querySystemLog } from "../../../../../../../src/lib/telemetry/local-store";
-
 interface AxiomSystemLogEvent {
   _time: string;
   runId: string;
@@ -68,22 +66,11 @@ ${sinceFilter}
     // Query Axiom for system logs
     const events = await queryAxiom<AxiomSystemLogEvent>(apl);
 
-    // If Axiom is not configured or query failed, try DB fallback
-    if (events === null) {
-      const dbResult = await querySystemLog(params.id, {
-        since,
-        limit,
-        order,
-      });
-      return {
-        status: 200 as const,
-        body: dbResult,
-      };
-    }
+    const resolvedEvents = events ?? [];
 
     // Check if there are more records
-    const hasMore = events.length > limit;
-    const records = hasMore ? events.slice(0, limit) : events;
+    const hasMore = resolvedEvents.length > limit;
+    const records = hasMore ? resolvedEvents.slice(0, limit) : resolvedEvents;
 
     // Aggregate system logs from records
     const aggregatedSystemLog = records.map((r) => r.log).join("");

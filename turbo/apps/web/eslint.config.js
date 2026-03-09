@@ -42,7 +42,6 @@ export default [
       "instrumentation-client.ts",
       "sentry.edge.config.ts",
       "sentry.server.config.ts",
-      "app/hooks/use-auth.ts",
     ],
     rules: {
       "no-restricted-syntax": ["error", ...classRestrictions],

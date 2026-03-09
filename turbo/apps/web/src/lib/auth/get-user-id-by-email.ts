@@ -1,4 +1,4 @@
-import { getAuthProvider } from "./auth-provider";
+import { clerkClient } from "@clerk/nextjs/server";
 
 /**
  * Look up a user ID by their email address.
@@ -7,6 +7,8 @@ import { getAuthProvider } from "./auth-provider";
  * @returns The user ID if found, null otherwise
  */
 export async function getUserIdByEmail(email: string): Promise<string | null> {
-  const provider = getAuthProvider();
-  return provider.getUserIdByEmail(email);
+  const client = await clerkClient();
+  const users = await client.users.getUserList({ emailAddress: [email] });
+  const user = users.data[0];
+  return user?.id ?? null;
 }
