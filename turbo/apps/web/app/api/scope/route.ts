@@ -110,7 +110,7 @@ const router = tsr.router(scopeContract, {
   /**
    * PUT /api/scope - Update active scope slug
    *
-   * Resolves the active scope via ?scope=<slug> query param,
+   * Resolves the active scope via clerkOrgId from Clerk session,
    * or falls back to the user's default scope (first admin membership).
    */
   update: async ({ body, headers }) => {
@@ -122,12 +122,13 @@ const router = tsr.router(scopeContract, {
     }
 
     const { slug, force } = body;
+    const orgId = await getAuthProvider().getOrgId();
 
     log.debug("updating scope", { userId, slug, force });
 
     let existingScope;
     try {
-      ({ scope: existingScope } = await resolveScope(userId));
+      ({ scope: existingScope } = await resolveScope(userId, undefined, orgId));
     } catch (error) {
       if (isNotFound(error)) {
         return createErrorResponse(
