@@ -3,20 +3,12 @@ import { slackInstallations } from "../../../db/schema/slack-installation";
 import { slackUserLinks } from "../../../db/schema/slack-user-link";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
-import {
-  createSlackClient,
-  fetchSlackUserInfo,
-  postMessage,
-  setThreadStatus,
-} from "../client";
+import { createSlackClient, postMessage, setThreadStatus } from "../client";
 import { buildLoginPromptMessage } from "../blocks";
-import {
-  extractMessageContent,
-  formatCurrentMessageFiles,
-  type SlackFile,
-} from "../context";
+import { extractMessageContent, type SlackFile } from "../context";
 import { runAgentForSlack } from "./run-agent";
 import {
+  enrichMessageContent,
   fetchConversationContexts,
   lookupThreadSession,
   buildLoginUrl,
@@ -126,33 +118,16 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
   // 5. Show assistant thinking status
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
 
-  // Extract message content (remove bot mention)
-  let messageContent = extractMessageContent(context.messageText, botUserId);
-
-  // Include files attached to the current message in the prompt
-  if (context.files && context.files.length > 0) {
-    const imageSessionId = `${context.channelId}-${threadTs}`;
-    const filesText = await formatCurrentMessageFiles(
-      context.files,
-      botToken,
-      imageSessionId,
-    );
-    messageContent = `${messageContent}\n\n${filesText}`;
-  }
-
-  // Prepend Slack user info to the prompt
-  const userInfo = await fetchSlackUserInfo(client, context.userId).catch(
-    (err) => {
-      log.warn("Failed to fetch Slack user info", {
-        userId: context.userId,
-        error: err,
-      });
-      return undefined;
-    },
-  );
-  if (userInfo) {
-    messageContent = `[Slack User]\n${userInfo}\n\n${messageContent}`;
-  }
+  // Extract message content (remove bot mention) and enrich with files/user info
+  const messageContent = await enrichMessageContent({
+    messageContent: extractMessageContent(context.messageText, botUserId),
+    files: context.files,
+    botToken,
+    channelId: context.channelId,
+    threadTs,
+    client,
+    userId: context.userId,
+  });
 
   // 6. Look up existing thread session for deduplication
   let existingSessionId: string | undefined;
