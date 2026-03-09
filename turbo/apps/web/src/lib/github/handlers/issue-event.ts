@@ -7,7 +7,6 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
-import { scopes } from "../../../db/schema/scope";
 import { createRun, validateAgentSession } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
@@ -456,17 +455,14 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
 
   const vm0UserId = userLink.vm0UserId;
 
-  // 3. Resolve agent compose and version (with scope slug for storage resolution)
+  // 3. Resolve agent compose and version
   const [compose] = await globalThis.services.db
     .select({
       id: agentComposes.id,
       name: agentComposes.name,
-      scopeId: agentComposes.scopeId,
-      scopeSlug: scopes.slug,
       headVersionId: agentComposes.headVersionId,
     })
     .from(agentComposes)
-    .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
 
@@ -541,8 +537,6 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
           payload: callbackContext,
         },
       ],
-      scopeId: compose.scopeId,
-      scopeSlug: compose.scopeSlug,
     });
 
     log.info("Agent run dispatched for GitHub issue", {
