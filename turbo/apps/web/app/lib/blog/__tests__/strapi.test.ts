@@ -267,6 +267,68 @@ describe("blog/strapi", () => {
     });
   });
 
+  describe("empty and invalid JSON responses", () => {
+    it("throws descriptive error when Strapi returns empty body", async () => {
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, () => {
+          return new HttpResponse("", { status: 200 });
+        }),
+      );
+
+      await expect(getPostsFromStrapi("en")).rejects.toThrow(
+        "Strapi returned empty response",
+      );
+    });
+
+    it("throws descriptive error when Strapi returns invalid JSON", async () => {
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, () => {
+          return new HttpResponse("<html>Bad Gateway</html>", { status: 200 });
+        }),
+      );
+
+      await expect(getPostsFromStrapi("en")).rejects.toThrow(
+        "Strapi returned invalid JSON",
+      );
+    });
+
+    it("throws on empty body for getPostBySlugFromStrapi", async () => {
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, () => {
+          return new HttpResponse("", { status: 200 });
+        }),
+      );
+
+      await expect(getPostBySlugFromStrapi("test-post", "en")).rejects.toThrow(
+        "Strapi returned empty response",
+      );
+    });
+
+    it("throws on empty body for getFeaturedPostFromStrapi", async () => {
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, () => {
+          return new HttpResponse("", { status: 200 });
+        }),
+      );
+
+      await expect(getFeaturedPostFromStrapi("en")).rejects.toThrow(
+        "Strapi returned empty response",
+      );
+    });
+
+    it("throws on empty body for getAllCategoriesFromStrapi", async () => {
+      server.use(
+        http.get(`${STRAPI_URL}/api/categories`, () => {
+          return new HttpResponse("", { status: 200 });
+        }),
+      );
+
+      await expect(getAllCategoriesFromStrapi("en")).rejects.toThrow(
+        "Strapi returned empty response",
+      );
+    });
+  });
+
   describe("article transformation", () => {
     it("handles relative cover URLs by prepending STRAPI_URL", async () => {
       server.use(
