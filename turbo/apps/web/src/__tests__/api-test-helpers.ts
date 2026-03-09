@@ -2760,14 +2760,6 @@ export async function insertTestTelegramInstallationRecord(
 // ============================================================================
 
 /**
- * Clear all rows from the email_outbox table. Use in beforeEach for test isolation.
- */
-export async function clearEmailOutbox() {
-  initServices();
-  await globalThis.services.db.delete(emailOutbox);
-}
-
-/**
  * Insert a raw email outbox item (bypasses enqueueEmail for direct state testing).
  */
 export async function insertTestOutboxItem(values: {

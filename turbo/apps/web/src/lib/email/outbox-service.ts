@@ -77,7 +77,7 @@ export async function enqueueEmail(
  * Drain a specific outbox item by ID.
  * Used for inline drain after enqueue to avoid processing stale items.
  */
-async function drainById(itemId: string): Promise<boolean> {
+export async function drainById(itemId: string): Promise<boolean> {
   return globalThis.services.db.transaction(async (tx) => {
     const rows = await tx.execute<OutboxRow>(
       sql`SELECT id, from_address, to_addresses, cc_addresses, subject,
@@ -100,7 +100,7 @@ async function drainById(itemId: string): Promise<boolean> {
  * Uses SELECT FOR UPDATE SKIP LOCKED to prevent concurrent processing.
  * Returns true if an item was processed, false if queue is empty.
  */
-export async function drainNext(): Promise<boolean> {
+async function drainNext(): Promise<boolean> {
   return globalThis.services.db.transaction(async (tx) => {
     const rows = await tx.execute<OutboxRow>(
       sql`SELECT id, from_address, to_addresses, cc_addresses, subject,
