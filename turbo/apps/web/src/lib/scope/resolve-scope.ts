@@ -1,4 +1,4 @@
-import { clerkClient } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { scopeMembers } from "../../db/schema/scope-member";
 import { isForbidden, badRequest, notFound } from "../errors";
 import { logger } from "../logger";
@@ -113,9 +113,12 @@ export async function resolveScope(
     return { scope, member };
   }
 
-  // 2. Clerk org ID from session token
-  if (clerkOrgId) {
-    const scope = await getScopeByClerkOrgId(clerkOrgId);
+  // 2. Clerk org ID — use provided value or auto-detect from session token.
+  // For CLI tokens, auth().orgId returns null (no Clerk session),
+  // so this tier is skipped and we fall through to the default scope.
+  const effectiveOrgId = clerkOrgId ?? (await auth()).orgId ?? null;
+  if (effectiveOrgId) {
+    const scope = await getScopeByClerkOrgId(effectiveOrgId);
     if (scope) {
       const member = await requireMemberWithClerkSync(scope, userId);
       return { scope, member };
