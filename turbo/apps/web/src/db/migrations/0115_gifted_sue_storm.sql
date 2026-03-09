@@ -1,1 +1,0 @@
-DROP TABLE "agent_run_events_local" CASCADE;
