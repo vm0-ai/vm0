@@ -22,6 +22,8 @@ import {
   setTokenFormSubmitting$,
   activeAuthMethods$,
   setActiveAuthMethod$,
+  selectedConnectorType$,
+  setSelectedConnectorType$,
   type ConnectorTypeWithStatus,
 } from "../../signals/settings-page/connectors.ts";
 import { openAddSecretDialog$ } from "../../signals/settings-page/secrets.ts";
@@ -48,15 +50,31 @@ function renderMarkdown(text: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// API Token form (inline within connector card)
+// Connected status text helper
+// ---------------------------------------------------------------------------
+
+function connectedStatusText(item: ConnectorTypeWithStatus): string {
+  if (item.connector?.authMethod === "api-token") {
+    return "Connected via API Token";
+  }
+  if (item.connector?.externalUsername) {
+    return `Connected as @${item.connector.externalUsername}`;
+  }
+  return "Connected";
+}
+
+// ---------------------------------------------------------------------------
+// API Token form (shown inside connect modal)
 // ---------------------------------------------------------------------------
 
 function ApiTokenForm({
   type,
   item,
+  onSuccess,
 }: {
   type: ConnectorType;
   item: ConnectorTypeWithStatus;
+  onSuccess: () => void;
 }) {
   const config = CONNECTOR_TYPES[type];
   const apiTokenConfig = config.authMethods["api-token"];
@@ -88,6 +106,7 @@ function ApiTokenForm({
         await submit(type, secretValues, pageSignal);
         setSubmitting(null);
         clearForm(type);
+        onSuccess();
       })().catch(() => {
         setSubmitting(null);
       }),
@@ -96,7 +115,7 @@ function ApiTokenForm({
   };
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       {item.connected && item.connector?.authMethod === "oauth" && (
         <p className="text-xs text-amber-600">
           This will replace your current OAuth connection.
@@ -104,15 +123,15 @@ function ApiTokenForm({
       )}
       {apiTokenConfig.helpText && (
         <div
-          className="text-xs text-muted-foreground leading-relaxed [&_a]:text-primary [&_a]:underline"
+          className="text-sm text-muted-foreground leading-relaxed [&_a]:text-primary [&_a]:underline"
           dangerouslySetInnerHTML={{
             __html: renderMarkdown(apiTokenConfig.helpText),
           }}
         />
       )}
       {secretEntries.map(([name, secretConfig]) => (
-        <div key={name} className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-foreground">
+        <div key={name} className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-foreground">
             {secretConfig.label}
           </label>
           <input
@@ -120,14 +139,14 @@ function ApiTokenForm({
             placeholder={secretConfig.placeholder}
             value={secretValues[name] ?? ""}
             onChange={(e) => setFormValue(type, name, e.target.value)}
-            className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
       ))}
       <button
         onClick={handleSubmit}
         disabled={!allFilled || submitting}
-        className="rounded-md bg-primary px-2 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+        className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
       >
         {submitting ? "Saving..." : "Save"}
       </button>
@@ -136,15 +155,22 @@ function ApiTokenForm({
 }
 
 // ---------------------------------------------------------------------------
-// Auth method selector (extracted to reduce complexity)
+// Auth method content inside connect modal
 // ---------------------------------------------------------------------------
 
-function ConnectorAuthActions({ item }: { item: ConnectorTypeWithStatus }) {
+function ConnectModalAuth({
+  item,
+  onSuccess,
+}: {
+  item: ConnectorTypeWithStatus;
+  onSuccess: () => void;
+}) {
   const connect = useSet(connectConnector$);
   const pageSignal = useGet(pageSignal$);
   const activeAuthMethodMap = useGet(activeAuthMethods$);
   const setActiveAuthMethod = useSet(setActiveAuthMethod$);
 
+  const config = CONNECTOR_TYPES[item.type];
   const hasOAuth = item.availableAuthMethods.includes("oauth");
   const hasApiToken = item.availableAuthMethods.includes("api-token");
   const hasMultipleMethods = hasOAuth && hasApiToken;
@@ -159,12 +185,12 @@ function ConnectorAuthActions({ item }: { item: ConnectorTypeWithStatus }) {
   const activeMethod = activeAuthMethodMap[item.type] ?? defaultTab;
 
   return (
-    <div className="mt-auto flex flex-col gap-2">
+    <div className="flex flex-col gap-4">
       {hasMultipleMethods && (
         <div className="flex gap-1 rounded-md bg-muted p-0.5">
           <button
             onClick={() => setActiveAuthMethod(item.type, "oauth")}
-            className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
+            className={`flex-1 rounded px-3 py-1.5 text-sm font-medium transition-colors ${
               activeMethod === "oauth"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
@@ -174,14 +200,13 @@ function ConnectorAuthActions({ item }: { item: ConnectorTypeWithStatus }) {
           </button>
           <button
             onClick={() => setActiveAuthMethod(item.type, "api-token")}
-            className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
+            className={`flex-1 rounded px-3 py-1.5 text-sm font-medium transition-colors ${
               activeMethod === "api-token"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {CONNECTOR_TYPES[item.type].authMethods["api-token"]?.label ??
-              "API Token"}
+            {config.authMethods["api-token"]?.label ?? "API Token"}
           </button>
         </div>
       )}
@@ -191,43 +216,78 @@ function ConnectorAuthActions({ item }: { item: ConnectorTypeWithStatus }) {
           onClick={() =>
             detach(connect(item.type, pageSignal), Reason.DomCallback)
           }
-          className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
         >
-          Connect
+          Sign in with {config.label}
         </button>
       )}
 
       {activeMethod === "api-token" && hasApiToken && (
-        <ApiTokenForm type={item.type} item={item} />
+        <ApiTokenForm type={item.type} item={item} onSuccess={onSuccess} />
       )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Connected status text helper
+// Connect modal (opened when clicking a connector card)
 // ---------------------------------------------------------------------------
 
-function connectedStatusText(item: ConnectorTypeWithStatus): string {
-  if (item.connector?.authMethod === "api-token") {
-    return "Connected via API Token";
+function ConnectModal({ onClose }: { onClose: () => void }) {
+  const selectedType = useGet(selectedConnectorType$);
+  const connectorTypes = useLastResolved(allConnectorTypes$);
+  const pollingType = useGet(pollingConnectorType$);
+
+  const item = connectorTypes?.find((c) => c.type === selectedType);
+
+  if (!selectedType || !item) {
+    return null;
   }
-  if (item.connector?.externalUsername) {
-    return `Connected as @${item.connector.externalUsername}`;
-  }
-  return "Connected";
+
+  const config = CONNECTOR_TYPES[selectedType];
+  const isPolling = pollingType === selectedType;
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <ConnectorIcon type={selectedType} size={28} />
+            <DialogTitle>{config.label}</DialogTitle>
+          </div>
+        </DialogHeader>
+
+        {item.connected && (
+          <p className="text-sm text-muted-foreground">
+            {connectedStatusText(item)}
+          </p>
+        )}
+
+        {isPolling ? (
+          <p className="text-sm text-muted-foreground">Connecting...</p>
+        ) : (
+          <ConnectModalAuth item={item} onSuccess={onClose} />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // ---------------------------------------------------------------------------
-// Connector row (for use inside dialog)
+// Connector card (simple, clickable)
 // ---------------------------------------------------------------------------
 
-function ConnectorRowInDialog({ item }: { item: ConnectorTypeWithStatus }) {
+function ConnectorCard({ item }: { item: ConnectorTypeWithStatus }) {
+  const setSelected = useSet(setSelectedConnectorType$);
   const pollingType = useGet(pollingConnectorType$);
   const isPolling = pollingType === item.type;
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/50">
+    <button
+      type="button"
+      onClick={() => setSelected(item.type)}
+      className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+    >
       <div className="flex items-center gap-3">
         <div className="shrink-0">
           <ConnectorIcon type={item.type} size={28} />
@@ -241,21 +301,16 @@ function ConnectorRowInDialog({ item }: { item: ConnectorTypeWithStatus }) {
       <div className="text-xs text-muted-foreground line-clamp-2">
         {item.helpText}
       </div>
-
-      {item.connected ? (
-        <div className="mt-auto">
-          <span className="text-xs text-muted-foreground">
-            {connectedStatusText(item)}
-          </span>
-        </div>
-      ) : isPolling ? (
-        <div className="mt-auto">
-          <span className="text-xs text-muted-foreground">Connecting...</span>
-        </div>
-      ) : (
-        <ConnectorAuthActions item={item} />
-      )}
-    </div>
+      <div className="mt-auto">
+        <span className="text-xs text-muted-foreground">
+          {item.connected
+            ? connectedStatusText(item)
+            : isPolling
+              ? "Connecting..."
+              : "Not connected"}
+        </span>
+      </div>
+    </button>
   );
 }
 
@@ -332,6 +387,8 @@ export function AddConnectionDialog({
   const types = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
   const openAddSecret = useSet(openAddSecretDialog$);
   const openAddVariable = useSet(openAddVariableDialog$);
+  const selectedType = useGet(selectedConnectorType$);
+  const setSelected = useSet(setSelectedConnectorType$);
 
   const handleAddSecret = () => {
     openAddSecret();
@@ -344,61 +401,65 @@ export function AddConnectionDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden pr-0 pb-0">
-        <DialogHeader>
-          <DialogTitle>Add connection</DialogTitle>
-        </DialogHeader>
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="pt-4 pb-6 pr-6">
-            <Tabs
-              value={tab}
-              onValueChange={(v) => setTab(v as "connectors" | "custom-api")}
-              className="flex flex-col min-h-0"
-            >
-              <TabsList className="w-fit">
-                <TabsTrigger value="connectors">Connectors</TabsTrigger>
-                <TabsTrigger value="custom-api">Custom API</TabsTrigger>
-              </TabsList>
-              {tab === "connectors" && (
-                <div className="flex flex-col gap-4 mt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Connect third-party services to your agents.
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    {connectorTypes
-                      ? connectorTypes.map((item) => (
-                          <ConnectorRowInDialog key={item.type} item={item} />
-                        ))
-                      : types.slice(0, 6).map((type) => (
-                          <div
-                            key={type}
-                            className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 animate-pulse"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="h-7 w-7 rounded bg-muted" />
-                              <div className="h-4 w-20 rounded bg-muted" />
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden pr-0 pb-0">
+          <DialogHeader>
+            <DialogTitle>Add connection</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="pt-4 pb-6 pr-6">
+              <Tabs
+                value={tab}
+                onValueChange={(v) => setTab(v as "connectors" | "custom-api")}
+                className="flex flex-col min-h-0"
+              >
+                <TabsList className="w-fit">
+                  <TabsTrigger value="connectors">Connectors</TabsTrigger>
+                  <TabsTrigger value="custom-api">Custom API</TabsTrigger>
+                </TabsList>
+                {tab === "connectors" && (
+                  <div className="flex flex-col gap-4 mt-4">
+                    <p className="text-sm text-muted-foreground">
+                      Connect third-party services to your agents.
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {connectorTypes
+                        ? connectorTypes.map((item) => (
+                            <ConnectorCard key={item.type} item={item} />
+                          ))
+                        : types.slice(0, 6).map((type) => (
+                            <div
+                              key={type}
+                              className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 animate-pulse"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="h-7 w-7 rounded bg-muted" />
+                                <div className="h-4 w-20 rounded bg-muted" />
+                              </div>
+                              <div className="h-3 w-full rounded bg-muted" />
+                              <div className="h-3 w-3/4 rounded bg-muted" />
+                              <div className="h-7 w-full rounded bg-muted" />
                             </div>
-                            <div className="h-3 w-full rounded bg-muted" />
-                            <div className="h-3 w-3/4 rounded bg-muted" />
-                            <div className="h-7 w-full rounded bg-muted" />
-                          </div>
-                        ))}
+                          ))}
+                    </div>
                   </div>
-                </div>
-              )}
-              {tab === "custom-api" && (
-                <div className="mt-4">
-                  <CustomAPITabContent
-                    onAddSecret={handleAddSecret}
-                    onAddVariable={handleAddVariable}
-                  />
-                </div>
-              )}
-            </Tabs>
+                )}
+                {tab === "custom-api" && (
+                  <div className="mt-4">
+                    <CustomAPITabContent
+                      onAddSecret={handleAddSecret}
+                      onAddVariable={handleAddVariable}
+                    />
+                  </div>
+                )}
+              </Tabs>
+            </div>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      {selectedType && <ConnectModal onClose={() => setSelected(null)} />}
+    </>
   );
 }

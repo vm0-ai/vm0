@@ -238,6 +238,20 @@ export const connectionsListItems$ = computed(async (get) => {
 });
 
 // ---------------------------------------------------------------------------
+// Selected connector for connect modal
+// ---------------------------------------------------------------------------
+
+const internalSelectedConnectorType$ = state<ConnectorType | null>(null);
+export const selectedConnectorType$ = computed((get) =>
+  get(internalSelectedConnectorType$),
+);
+export const setSelectedConnectorType$ = command(
+  ({ set }, type: ConnectorType | null) => {
+    set(internalSelectedConnectorType$, type);
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Token form state (used by add-connection dialog)
 // ---------------------------------------------------------------------------
 
