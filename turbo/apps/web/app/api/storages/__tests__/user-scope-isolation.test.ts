@@ -4,6 +4,7 @@ import {
   createTestRequest,
   createTestArtifact,
   createTestVolume,
+  createTestMemory,
   findTestStorage,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../src/__tests__/test-helpers";
@@ -48,6 +49,16 @@ describe("Storage user-scope isolation", () => {
     expect(record!.userId).toBe(user.userId);
   });
 
+  it("should store memory with real userId in database", async () => {
+    const user = await context.user;
+
+    await createTestMemory("my-memory");
+
+    const record = await findTestStorage(user.scopeId, "my-memory", "memory");
+    expect(record).toBeDefined();
+    expect(record!.userId).toBe(user.userId);
+  });
+
   it("should isolate artifacts per user - different users cannot see each other's artifacts", async () => {
     // User A creates an artifact
     await createTestArtifact("shared-name");
@@ -64,6 +75,24 @@ describe("Storage user-scope isolation", () => {
     const userBResponse = await listStorages("artifact");
     const userBArtifacts = await userBResponse.json();
     expect(userBArtifacts).toHaveLength(0);
+  });
+
+  it("should isolate memory per user - different users cannot see each other's memory", async () => {
+    // User A creates a memory storage
+    await createTestMemory("agent-memory");
+
+    const userAResponse = await listStorages("memory");
+    const userAMemories = await userAResponse.json();
+    expect(userAMemories).toHaveLength(1);
+    expect(userAMemories[0].name).toBe("agent-memory");
+
+    // User B should not see User A's memory
+    const userB = await context.setupUser({ prefix: "other-user" });
+    mockClerk({ userId: userB.userId });
+
+    const userBResponse = await listStorages("memory");
+    const userBMemories = await userBResponse.json();
+    expect(userBMemories).toHaveLength(0);
   });
 
   it("should allow same artifact name for different users", async () => {
@@ -91,5 +120,43 @@ describe("Storage user-scope isolation", () => {
     const userAResponse = await listStorages("artifact");
     const userAArtifacts = await userAResponse.json();
     expect(userAArtifacts).toHaveLength(1);
+  });
+
+  it("should share volumes across users via sentinel userId", async () => {
+    const userA = await context.user;
+
+    // User A creates a volume
+    await createTestVolume("shared-data");
+
+    const userAResponse = await listStorages("volume");
+    const userAVolumes = await userAResponse.json();
+    expect(userAVolumes).toHaveLength(1);
+    expect(userAVolumes[0].name).toBe("shared-data");
+
+    // User B (different scope) creates volume with same name in their scope
+    const userB = await context.setupUser({ prefix: "other-user" });
+    mockClerk({ userId: userB.userId });
+
+    await createTestVolume("shared-data");
+
+    // User B should see their scope's volume
+    const userBResponse = await listStorages("volume");
+    const userBVolumes = await userBResponse.json();
+    expect(userBVolumes).toHaveLength(1);
+    expect(userBVolumes[0].name).toBe("shared-data");
+
+    // Both volumes use sentinel userId, not the real user
+    const recordA = await findTestStorage(
+      userA.scopeId,
+      "shared-data",
+      "volume",
+    );
+    const recordB = await findTestStorage(
+      userB.scopeId,
+      "shared-data",
+      "volume",
+    );
+    expect(recordA!.userId).toBe(VOLUME_SCOPE_USER_ID);
+    expect(recordB!.userId).toBe(VOLUME_SCOPE_USER_ID);
   });
 });

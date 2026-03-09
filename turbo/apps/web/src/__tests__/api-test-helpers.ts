@@ -1018,8 +1018,8 @@ interface TestFile {
 }
 
 interface CreateTestStorageOptions {
-  /** Storage type: "artifact" or "volume" */
-  type?: "artifact" | "volume";
+  /** Storage type: "artifact", "volume", or "memory" */
+  type?: "artifact" | "volume" | "memory";
   /** Files to include in the storage */
   files?: TestFile[];
   /** Skip the commit step (creates storage in prepare-only state) */
@@ -1166,6 +1166,26 @@ export async function createTestVolume(
   fileCount: number;
 }> {
   return createTestStorage(name, { ...options, type: "volume" });
+}
+
+/**
+ * Create a test memory storage via API route handlers.
+ * Convenience wrapper around createTestStorage with type="memory".
+ *
+ * @param name - Memory storage name
+ * @param options - Optional configuration
+ * @returns The created memory storage with versionId
+ */
+export async function createTestMemory(
+  name: string,
+  options?: Omit<CreateTestStorageOptions, "type">,
+): Promise<{
+  versionId: string;
+  name: string;
+  size: number;
+  fileCount: number;
+}> {
+  return createTestStorage(name, { ...options, type: "memory" });
 }
 
 /**
