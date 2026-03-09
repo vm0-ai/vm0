@@ -4,6 +4,7 @@ DB_DRIVER=pg
 # Required: Authentication (Clerk)
 CLERK_SECRET_KEY=op://Development/clerk/CLERK_SECRET_KEY
 CLERK_PUBLISHABLE_KEY=op://Development/clerk/CLERK_PUBLISHABLE_KEY
+CLERK_WEBHOOK_SIGNING_SECRET=op://Development/clerk/CLERK_WEBHOOK_SIGNING_SECRET
 
 # Required: Sandbox Runtime (E2B)
 E2B_API_KEY=op://Development/e2b/E2B_API_KEY

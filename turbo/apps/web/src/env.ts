@@ -47,6 +47,7 @@ function initEnv() {
       // Set to 'pg' for local development with standard Postgres
       DB_DRIVER: z.enum(["pg", "neon"]).default("neon"),
       CLERK_SECRET_KEY: z.string().min(1).optional(),
+      CLERK_WEBHOOK_SIGNING_SECRET: z.string().min(1).optional(),
       E2B_API_KEY: z.string().min(1).optional(),
       VM0_API_URL: z.string().url().optional(),
       VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
@@ -213,6 +214,7 @@ function initEnv() {
       DB_POOL_CONNECT_TIMEOUT_MS: process.env.DB_POOL_CONNECT_TIMEOUT_MS,
       DB_DRIVER: process.env.DB_DRIVER,
       CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
+      CLERK_WEBHOOK_SIGNING_SECRET: process.env.CLERK_WEBHOOK_SIGNING_SECRET,
 
       E2B_API_KEY: process.env.E2B_API_KEY,
       VM0_API_URL: process.env.VM0_API_URL,

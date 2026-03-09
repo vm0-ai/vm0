@@ -49,14 +49,16 @@ async function syncClerkMembership(scope: Scope, userId: string) {
 
     const role = membership.role === "org:admin" ? "admin" : "member";
 
-    // Create scope_members record
+    // Upsert scope_members record — create if missing, update role if stale
     const [member] = await globalThis.services.db
       .insert(scopeMembers)
       .values({ scopeId: scope.id, userId, role })
-      .onConflictDoNothing()
+      .onConflictDoUpdate({
+        target: [scopeMembers.scopeId, scopeMembers.userId],
+        set: { role, updatedAt: new Date() },
+      })
       .returning();
 
-    // If onConflictDoNothing returned nothing, the record was created by another concurrent request
     const record = member ?? (await getScopeMember(scope.id, userId));
     if (!record) return null;
     return { ...record, role: scopeRoleSchema.parse(record.role) };

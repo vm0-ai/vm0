@@ -2700,3 +2700,77 @@ export async function insertTestTelegramInstallationRecord(
     .returning();
   return row!;
 }
+
+// ---------------------------------------------------------------------------
+// Clerk Webhook Test Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a scope directly in the DB with a known clerk_org_id.
+ * Used by Clerk webhook tests that need to match incoming org events.
+ */
+export async function createTestScopeWithClerkOrg(
+  slug: string,
+  clerkOrgId: string,
+): Promise<{ scopeId: string; clerkOrgId: string }> {
+  initServices();
+  const [scope] = await globalThis.services.db
+    .insert(scopes)
+    .values({ slug, clerkOrgId })
+    .returning();
+  return { scopeId: scope!.id, clerkOrgId };
+}
+
+/**
+ * Insert a scope_members record directly in the DB.
+ */
+export async function insertTestScopeMember(
+  scopeId: string,
+  userId: string,
+  role: "admin" | "member",
+) {
+  initServices();
+  await globalThis.services.db
+    .insert(scopeMembers)
+    .values({ scopeId, userId, role });
+}
+
+/**
+ * Query scope_members for a specific user in a scope.
+ */
+export async function findTestScopeMember(scopeId: string, userId: string) {
+  initServices();
+  const [member] = await globalThis.services.db
+    .select()
+    .from(scopeMembers)
+    .where(
+      and(eq(scopeMembers.scopeId, scopeId), eq(scopeMembers.userId, userId)),
+    );
+  return member ?? null;
+}
+
+/**
+ * Count scope_members for a given user across all scopes.
+ */
+export async function countTestScopeMembersForUser(userId: string) {
+  initServices();
+  const rows = await globalThis.services.db
+    .select()
+    .from(scopeMembers)
+    .where(eq(scopeMembers.userId, userId));
+  return rows.length;
+}
+
+/**
+ * Look up a scope by ID and return its clerkOrgId.
+ */
+export async function findTestScopeClerkOrgId(
+  scopeId: string,
+): Promise<string | null> {
+  initServices();
+  const [scope] = await globalThis.services.db
+    .select({ clerkOrgId: scopes.clerkOrgId })
+    .from(scopes)
+    .where(eq(scopes.id, scopeId));
+  return scope?.clerkOrgId ?? null;
+}
