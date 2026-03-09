@@ -346,41 +346,66 @@ async function loadCompose(
   composeContent: AgentComposeYaml;
   compose: { id: string; userId: string; scopeId: string };
 }> {
-  const [version] = await globalThis.services.db
+  if (callerComposeId) {
+    // When caller provides composeId, both queries are independent — run in parallel
+    const [versionResult, composeResult] = await Promise.all([
+      globalThis.services.db
+        .select({ content: agentComposeVersions.content })
+        .from(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, agentComposeVersionId))
+        .limit(1),
+      globalThis.services.db
+        .select({
+          id: agentComposes.id,
+          userId: agentComposes.userId,
+          scopeId: agentComposes.scopeId,
+        })
+        .from(agentComposes)
+        .where(eq(agentComposes.id, callerComposeId))
+        .limit(1),
+    ]);
+
+    if (!versionResult[0]) {
+      throw notFound("Agent compose version not found");
+    }
+    if (!composeResult[0]) {
+      throw notFound("Agent compose not found");
+    }
+
+    return {
+      composeContent: versionResult[0].content as AgentComposeYaml,
+      compose: composeResult[0],
+    };
+  }
+
+  // No caller composeId — must fetch version first to get composeId via JOIN
+  const [result] = await globalThis.services.db
     .select({
-      id: agentComposeVersions.id,
       content: agentComposeVersions.content,
-      composeId: agentComposeVersions.composeId,
+      composeId: agentComposes.id,
+      composeUserId: agentComposes.userId,
+      composeScopeId: agentComposes.scopeId,
     })
     .from(agentComposeVersions)
+    .innerJoin(
+      agentComposes,
+      eq(agentComposeVersions.composeId, agentComposes.id),
+    )
     .where(eq(agentComposeVersions.id, agentComposeVersionId))
     .limit(1);
 
-  if (!version) {
+  if (!result) {
     throw notFound("Agent compose version not found");
   }
 
-  const composeContent = version.content as AgentComposeYaml;
-
-  // Use caller-provided composeId when available to avoid content-addressed
-  // version collisions (version.composeId may point to a different user's compose)
-  const resolvedComposeId = callerComposeId ?? version.composeId;
-
-  const [compose] = await globalThis.services.db
-    .select({
-      id: agentComposes.id,
-      userId: agentComposes.userId,
-      scopeId: agentComposes.scopeId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, resolvedComposeId))
-    .limit(1);
-
-  if (!compose) {
-    throw notFound("Agent compose not found");
-  }
-
-  return { composeContent, compose };
+  return {
+    composeContent: result.content as AgentComposeYaml,
+    compose: {
+      id: result.composeId,
+      userId: result.composeUserId,
+      scopeId: result.composeScopeId,
+    },
+  };
 }
 
 async function authorizeCompose(
