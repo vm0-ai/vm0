@@ -148,8 +148,9 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   // Build response text
   const logsUrl = buildLogsUrl(runId, agentName);
   let htmlOutput: string;
+  let responseText: string | undefined;
   if (status === "completed") {
-    const responseText = output ?? "Task completed successfully.";
+    responseText = output ?? "Task completed successfully.";
     const deepLinks = detectDeepLinks(
       responseText,
       getPlatformUrl(),

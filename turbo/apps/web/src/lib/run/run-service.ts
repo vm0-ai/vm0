@@ -751,7 +751,6 @@ export async function createRun(
       scopeId,
       authorizeTime,
       transactionTime,
-      userEmail,
     });
 
     return {
