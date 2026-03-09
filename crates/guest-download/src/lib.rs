@@ -84,156 +84,132 @@ pub fn run(manifest_path: &str) -> bool {
         }
     };
 
-    let mut all_success = true;
+    // Build unified task list: storages + artifact + memory, all downloaded in parallel.
+    let mut tasks: Vec<DownloadTask> = Vec::new();
 
-    // Download storages in parallel
-    if !download_storages_parallel(&manifest.storages) {
-        all_success = false;
+    // Storages: 404 is fatal
+    for (i, s) in manifest.storages.iter().enumerate() {
+        if is_valid_url(&s.archive_url)
+            && let Some(url) = s.archive_url.clone()
+        {
+            tasks.push(DownloadTask {
+                label: format!("storage {}", i + 1),
+                op_name: "storage_download",
+                url,
+                mount_path: s.mount_path.clone(),
+                allow_404: false,
+            });
+        }
     }
 
-    // Download artifact if present (after storages complete).
-    // Only 404 is non-fatal (artifact may not exist in S3 on first run).
-    // Other errors (500, timeouts, network) are fatal.
+    // Artifact: 404 is non-fatal (may not exist on first run)
     if let Some(artifact) = &manifest.artifact
         && is_valid_url(&artifact.archive_url)
-        && let Some(url) = artifact.archive_url.as_deref()
+        && let Some(url) = artifact.archive_url.clone()
     {
-        let start = Instant::now();
-        log_info!(
-            LOG_TAG,
-            "Downloading artifact from {url} to {}",
-            artifact.mount_path
-        );
-
-        match download_with_retry(url, &artifact.mount_path) {
-            Ok(()) => {
-                let elapsed = start.elapsed();
-                record_sandbox_op("artifact_download", elapsed, true, None);
-                log_info!(LOG_TAG, "Artifact downloaded in {}ms", elapsed.as_millis());
-            }
-            Err(e) if e.status_code == Some(404) => {
-                record_sandbox_op(
-                    "artifact_download",
-                    start.elapsed(),
-                    false,
-                    Some(&e.message),
-                );
-                log_info!(LOG_TAG, "Artifact not found, skipping (first run)");
-            }
-            Err(e) => {
-                record_sandbox_op(
-                    "artifact_download",
-                    start.elapsed(),
-                    false,
-                    Some(&e.message),
-                );
-                log_error!(LOG_TAG, "Artifact download failed: {e}");
-                all_success = false;
-            }
-        }
+        tasks.push(DownloadTask {
+            label: "artifact".to_string(),
+            op_name: "artifact_download",
+            url,
+            mount_path: artifact.mount_path.clone(),
+            allow_404: true,
+        });
     }
 
-    // Download memory if present (same pattern as artifact, 404 is non-fatal)
+    // Memory: 404 is non-fatal (may not exist on first run)
     if let Some(memory) = &manifest.memory
         && is_valid_url(&memory.archive_url)
-        && let Some(url) = memory.archive_url.as_deref()
+        && let Some(url) = memory.archive_url.clone()
     {
-        let start = Instant::now();
-        log_info!(
-            LOG_TAG,
-            "Downloading memory from {url} to {}",
-            memory.mount_path
-        );
-
-        match download_with_retry(url, &memory.mount_path) {
-            Ok(()) => {
-                let elapsed = start.elapsed();
-                record_sandbox_op("memory_download", elapsed, true, None);
-                log_info!(LOG_TAG, "Memory downloaded in {}ms", elapsed.as_millis());
-            }
-            Err(e) if e.status_code == Some(404) => {
-                record_sandbox_op("memory_download", start.elapsed(), false, Some(&e.message));
-                log_info!(LOG_TAG, "Memory not found, skipping (first run)");
-            }
-            Err(e) => {
-                record_sandbox_op("memory_download", start.elapsed(), false, Some(&e.message));
-                log_error!(LOG_TAG, "Memory download failed: {e}");
-                all_success = false;
-            }
-        }
+        tasks.push(DownloadTask {
+            label: "memory".to_string(),
+            op_name: "memory_download",
+            url,
+            mount_path: memory.mount_path.clone(),
+            allow_404: true,
+        });
     }
 
-    all_success
+    download_all_parallel(tasks)
 }
 
-/// Download all storages in parallel using std::thread.
+struct DownloadTask {
+    label: String,
+    op_name: &'static str,
+    url: String,
+    mount_path: String,
+    /// When true, HTTP 404 is treated as success (artifact/memory may not exist on first run).
+    allow_404: bool,
+}
+
+/// Download all tasks in parallel using std::thread.
 /// Limits concurrency to MAX_CONCURRENT to avoid spawning too many threads.
 /// Returns true if all downloads succeeded, false if any failed.
-fn download_storages_parallel(storages: &[Storage]) -> bool {
-    // Collect storages that need downloading (have valid archive_url)
-    let download_tasks: Vec<_> = storages
-        .iter()
-        .enumerate()
-        .filter(|(_, s)| is_valid_url(&s.archive_url))
-        .filter_map(|(i, s)| {
-            s.archive_url
-                .clone()
-                .map(|url| (i, url, s.mount_path.clone()))
-        })
-        .collect();
-
-    if download_tasks.is_empty() {
+fn download_all_parallel(tasks: Vec<DownloadTask>) -> bool {
+    if tasks.is_empty() {
         return true;
     }
 
     log_info!(
         LOG_TAG,
-        "Downloading {} storages (max {} concurrent)",
-        download_tasks.len(),
+        "Downloading {} items (max {} concurrent)",
+        tasks.len(),
         MAX_CONCURRENT
     );
 
     let mut all_success = true;
-    let mut download_tasks = download_tasks;
+    let mut tasks = tasks;
 
     // Process in chunks to limit concurrency
-    while !download_tasks.is_empty() {
-        let chunk: Vec<_> = download_tasks
-            .drain(..download_tasks.len().min(MAX_CONCURRENT))
-            .collect();
+    while !tasks.is_empty() {
+        let chunk: Vec<_> = tasks.drain(..tasks.len().min(MAX_CONCURRENT)).collect();
 
         let handles: Vec<_> = chunk
             .into_iter()
-            .map(|(idx, url, mount_path)| {
+            .map(|task| {
                 thread::spawn(move || {
                     let start = Instant::now();
                     log_info!(
                         LOG_TAG,
-                        "Downloading storage {} from {url} to {}",
-                        idx + 1,
-                        mount_path
+                        "Downloading {} from {} to {}",
+                        task.label,
+                        task.url,
+                        task.mount_path
                     );
 
-                    let result = download_with_retry(&url, &mount_path);
-                    let elapsed = start.elapsed();
-
-                    match &result {
+                    match download_with_retry(&task.url, &task.mount_path) {
                         Ok(()) => {
-                            record_sandbox_op("storage_download", elapsed, true, None);
+                            let elapsed = start.elapsed();
+                            record_sandbox_op(task.op_name, elapsed, true, None);
                             log_info!(
                                 LOG_TAG,
-                                "Storage {} downloaded in {}ms",
-                                idx + 1,
+                                "{} downloaded in {}ms",
+                                task.label,
                                 elapsed.as_millis()
                             );
+                            true
+                        }
+                        Err(e) if e.status_code == Some(404) && task.allow_404 => {
+                            record_sandbox_op(
+                                task.op_name,
+                                start.elapsed(),
+                                false,
+                                Some(&e.message),
+                            );
+                            log_info!(LOG_TAG, "{} not found, skipping (first run)", task.label);
+                            true
                         }
                         Err(e) => {
-                            record_sandbox_op("storage_download", elapsed, false, Some(&e.message));
-                            log_error!(LOG_TAG, "Storage {} download failed: {}", idx + 1, e);
+                            record_sandbox_op(
+                                task.op_name,
+                                start.elapsed(),
+                                false,
+                                Some(&e.message),
+                            );
+                            log_error!(LOG_TAG, "{} download failed: {}", task.label, e);
+                            false
                         }
                     }
-
-                    result.is_ok()
                 })
             })
             .collect();
