@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
 import { agentRuns } from "../../db/schema/agent-run";
 import { decryptCredentialValue } from "../crypto/secrets-encryption";
@@ -54,7 +54,7 @@ export async function dispatchCallbacks(
 ): Promise<DispatchResult[]> {
   const { SECRETS_ENCRYPTION_KEY } = env();
 
-  // Fetch all pending callbacks for this run
+  // Fetch only pending callbacks for this run (prevents double dispatch on retries)
   const callbacks = await globalThis.services.db
     .select({
       id: agentRunCallbacks.id,
@@ -63,7 +63,15 @@ export async function dispatchCallbacks(
       payload: agentRunCallbacks.payload,
     })
     .from(agentRunCallbacks)
-    .where(eq(agentRunCallbacks.runId, runId));
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, runId),
+        or(
+          eq(agentRunCallbacks.status, "pending"),
+          eq(agentRunCallbacks.status, "failed"),
+        ),
+      ),
+    );
 
   if (callbacks.length === 0) {
     return [];

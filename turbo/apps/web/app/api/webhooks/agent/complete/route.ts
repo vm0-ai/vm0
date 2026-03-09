@@ -8,7 +8,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { killSandbox } from "../../../../../src/lib/sandbox/sandbox-service";
 import type {
@@ -23,6 +23,90 @@ import { executeQueuedRun } from "../../../../../src/lib/run/run-service";
 import { after } from "next/server";
 
 const log = logger("webhook:complete");
+
+/**
+ * Atomically transition a run to a terminal status.
+ * Uses WHERE status IN ('pending', 'running') to prevent double transitions.
+ * Returns true if the transition was applied (this caller "won" the race).
+ */
+async function atomicTransition(
+  runId: string,
+  update: {
+    status: "completed" | "failed";
+    completedAt: Date;
+    result?: RunResult;
+    error?: string;
+  },
+): Promise<boolean> {
+  const [updated] = await globalThis.services.db
+    .update(agentRuns)
+    .set(update)
+    .where(
+      and(
+        eq(agentRuns.id, runId),
+        inArray(agentRuns.status, ["pending", "running"]),
+      ),
+    )
+    .returning({ id: agentRuns.id });
+  return !!updated;
+}
+
+/**
+ * Schedule callback dispatch and queue drain in a non-blocking after() block.
+ */
+function scheduleCallbackDispatch(
+  runId: string,
+  status: "completed" | "failed",
+  userId: string,
+  errorMsg?: string,
+): void {
+  after(async () => {
+    await Promise.all([
+      dispatchCallbacks(runId, status, undefined, errorMsg).catch((err) =>
+        log.error("Failed to dispatch callbacks", { err }),
+      ),
+      drainUserQueue(userId, executeQueuedRun).catch((err) =>
+        log.error("Failed to drain user queue", { err }),
+      ),
+    ]);
+  });
+}
+
+/**
+ * Build a RunResult from a checkpoint record.
+ */
+function buildRunResult(
+  checkpoint: typeof checkpoints.$inferSelect,
+  sessionId: string | undefined,
+): RunResult {
+  const artifactSnapshot =
+    checkpoint.artifactSnapshot as ArtifactSnapshot | null;
+  const memorySnapshot = checkpoint.memorySnapshot as MemorySnapshot | null;
+  const volumeVersions = checkpoint.volumeVersionsSnapshot as
+    | { versions: Record<string, string> }
+    | undefined;
+
+  const result: RunResult = {
+    checkpointId: checkpoint.id,
+    agentSessionId: sessionId ?? checkpoint.conversationId,
+    conversationId: checkpoint.conversationId,
+    volumes: volumeVersions?.versions,
+  };
+
+  if (artifactSnapshot) {
+    result.artifact = {
+      [artifactSnapshot.artifactName]: artifactSnapshot.artifactVersion,
+    };
+  }
+
+  if (memorySnapshot) {
+    result.memory = {
+      [memorySnapshot.memoryName]: memorySnapshot.memoryVersion,
+    };
+  }
+
+  return result;
+}
 
 const router = tsr.router(webhookCompleteContract, {
   complete: async ({ body, headers }) => {
@@ -91,18 +175,25 @@ const router = tsr.router(webhookCompleteContract, {
         .limit(1);
 
       if (!checkpoint) {
-        // Update run status to failed
-        await globalThis.services.db
-          .update(agentRuns)
-          .set({
-            status: "failed",
-            completedAt: new Date(),
-            error: "Checkpoint for run not found",
-          })
-          .where(eq(agentRuns.id, body.runId));
+        const transitioned = await atomicTransition(body.runId, {
+          status: "failed",
+          completedAt: new Date(),
+          error: "Checkpoint for run not found",
+        });
 
         if (sandboxId) {
           await killSandbox(sandboxId);
+        }
+
+        // Dispatch callbacks so the user gets notified about the failure
+        // (previously this path returned without dispatching)
+        if (transitioned) {
+          scheduleCallbackDispatch(
+            body.runId,
+            "failed",
+            userId,
+            "Checkpoint for run not found",
+          );
         }
 
         return {
@@ -123,45 +214,27 @@ const router = tsr.router(webhookCompleteContract, {
         .where(eq(agentSessions.conversationId, checkpoint.conversationId))
         .limit(1);
 
-      // Extract artifact and memory info from checkpoint (may be null for runs without them)
-      const artifactSnapshot =
-        checkpoint.artifactSnapshot as ArtifactSnapshot | null;
-      const memorySnapshot = checkpoint.memorySnapshot as MemorySnapshot | null;
-      const volumeVersions = checkpoint.volumeVersionsSnapshot as
-        | { versions: Record<string, string> }
-        | undefined;
+      const result = buildRunResult(checkpoint, session?.id);
 
-      // Build result object to store in run table
-      const result: RunResult = {
-        checkpointId: checkpoint.id,
-        agentSessionId: session?.id ?? checkpoint.conversationId,
-        conversationId: checkpoint.conversationId,
-        volumes: volumeVersions?.versions,
-      };
+      // Atomically transition to "completed" only if still pending/running
+      const transitioned = await atomicTransition(body.runId, {
+        status: "completed",
+        completedAt: new Date(),
+        result,
+      });
 
-      // Only add artifact if present in checkpoint
-      if (artifactSnapshot) {
-        result.artifact = {
-          [artifactSnapshot.artifactName]: artifactSnapshot.artifactVersion,
+      if (!transitioned) {
+        log.debug(
+          `Run ${body.runId} already transitioned, skipping duplicate completion`,
+        );
+        if (sandboxId) {
+          await killSandbox(sandboxId);
+        }
+        return {
+          status: 200 as const,
+          body: { success: true, status: "completed" as const },
         };
       }
-
-      // Only add memory if present in checkpoint
-      if (memorySnapshot) {
-        result.memory = {
-          [memorySnapshot.memoryName]: memorySnapshot.memoryVersion,
-        };
-      }
-
-      // Update run status and result
-      await globalThis.services.db
-        .update(agentRuns)
-        .set({
-          status: "completed",
-          completedAt: new Date(),
-          result,
-        })
-        .where(eq(agentRuns.id, body.runId));
 
       finalStatus = "completed";
       log.debug(`Run ${body.runId} completed successfully`);
@@ -170,37 +243,35 @@ const router = tsr.router(webhookCompleteContract, {
       const errorMessage =
         body.error || `Agent exited with code ${body.exitCode}`;
 
-      // Update run status and error
-      await globalThis.services.db
-        .update(agentRuns)
-        .set({
-          status: "failed",
-          completedAt: new Date(),
-          error: errorMessage,
-        })
-        .where(eq(agentRuns.id, body.runId));
+      const transitioned = await atomicTransition(body.runId, {
+        status: "failed",
+        completedAt: new Date(),
+        error: errorMessage,
+      });
+
+      if (!transitioned) {
+        log.debug(
+          `Run ${body.runId} already transitioned, skipping duplicate failure`,
+        );
+        if (sandboxId) {
+          await killSandbox(sandboxId);
+        }
+        return {
+          status: 200 as const,
+          body: { success: true, status: "failed" as const },
+        };
+      }
 
       finalStatus = "failed";
       log.warn(`Run ${body.runId} failed: ${errorMessage}`);
     }
 
     // Dispatch all registered callbacks and drain run queue (non-blocking)
-    // This handles Slack mentions, schedule notifications, email replies, etc.
-    after(async () => {
-      const errorMsg =
-        finalStatus === "failed"
-          ? (body.error ?? `Agent exited with code ${body.exitCode}`)
-          : undefined;
-
-      await Promise.all([
-        dispatchCallbacks(body.runId, finalStatus, undefined, errorMsg).catch(
-          (err) => log.error("Failed to dispatch callbacks", { err }),
-        ),
-        drainUserQueue(userId, executeQueuedRun).catch((err) =>
-          log.error("Failed to drain user queue", { err }),
-        ),
-      ]);
-    });
+    const errorMsg =
+      finalStatus === "failed"
+        ? (body.error ?? `Agent exited with code ${body.exitCode}`)
+        : undefined;
+    scheduleCallbackDispatch(body.runId, finalStatus, userId, errorMsg);
 
     // Kill sandbox (wait for completion to ensure cleanup before response)
     if (sandboxId) {
