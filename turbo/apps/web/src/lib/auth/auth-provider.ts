@@ -12,6 +12,8 @@ export { SELF_HOSTED_USER_ID } from "./constants";
  */
 interface AuthProvider {
   getUserId(): Promise<string | null>;
+  getOrgId(): Promise<string | null>;
+  getOrgSlug(): Promise<string | null>;
   getUserEmail(userId: string): Promise<string>;
   getUserIdByEmail(email: string): Promise<string | null>;
 }
@@ -24,6 +26,16 @@ function createClerkAuthProvider(): AuthProvider {
     async getUserId() {
       const { userId } = await auth();
       return userId;
+    },
+
+    async getOrgId() {
+      const { orgId } = await auth();
+      return orgId ?? null;
+    },
+
+    async getOrgSlug() {
+      const { orgSlug } = await auth();
+      return orgSlug ?? null;
     },
 
     async getUserEmail(userId: string) {
@@ -51,6 +63,14 @@ function createLocalAuthProvider(): AuthProvider {
   return {
     async getUserId() {
       return SELF_HOSTED_USER_ID;
+    },
+
+    async getOrgId() {
+      return null;
+    },
+
+    async getOrgSlug() {
+      return null;
     },
 
     async getUserEmail() {

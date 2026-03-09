@@ -65,6 +65,54 @@ describe("AuthProvider", () => {
       expect(email).toBe("primary@example.com");
     });
 
+    it("should return orgId from Clerk session", async () => {
+      mockAuth.mockResolvedValue({
+        userId: "clerk_user_123",
+        orgId: "org_abc",
+      } as Awaited<ReturnType<typeof auth>>);
+
+      const provider = getAuthProvider();
+      const orgId = await provider.getOrgId();
+
+      expect(orgId).toBe("org_abc");
+    });
+
+    it("should return null when no active org", async () => {
+      mockAuth.mockResolvedValue({
+        userId: "clerk_user_123",
+        orgId: undefined,
+      } as Awaited<ReturnType<typeof auth>>);
+
+      const provider = getAuthProvider();
+      const orgId = await provider.getOrgId();
+
+      expect(orgId).toBeNull();
+    });
+
+    it("should return orgSlug from Clerk session", async () => {
+      mockAuth.mockResolvedValue({
+        userId: "clerk_user_123",
+        orgSlug: "my-org",
+      } as Awaited<ReturnType<typeof auth>>);
+
+      const provider = getAuthProvider();
+      const orgSlug = await provider.getOrgSlug();
+
+      expect(orgSlug).toBe("my-org");
+    });
+
+    it("should return null orgSlug when no active org", async () => {
+      mockAuth.mockResolvedValue({
+        userId: "clerk_user_123",
+        orgSlug: undefined,
+      } as Awaited<ReturnType<typeof auth>>);
+
+      const provider = getAuthProvider();
+      const orgSlug = await provider.getOrgSlug();
+
+      expect(orgSlug).toBeNull();
+    });
+
     it("should return empty string when no email found", async () => {
       mockClerkClient.mockResolvedValue({
         users: {
@@ -115,6 +163,20 @@ describe("AuthProvider", () => {
       await provider.getUserId();
 
       expect(mockAuth).not.toHaveBeenCalled();
+    });
+
+    it("should return null for orgId", async () => {
+      const provider = getAuthProvider();
+      const orgId = await provider.getOrgId();
+
+      expect(orgId).toBeNull();
+    });
+
+    it("should return null for orgSlug", async () => {
+      const provider = getAuthProvider();
+      const orgSlug = await provider.getOrgSlug();
+
+      expect(orgSlug).toBeNull();
     });
 
     it("should return consistent values on repeated calls", async () => {
