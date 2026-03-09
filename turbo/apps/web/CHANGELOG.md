@@ -1,5 +1,33 @@
 # Changelog
 
+## [12.85.0](https://github.com/vm0-ai/vm0/compare/web-v12.84.0...web-v12.85.0) (2026-03-09)
+
+
+### Features
+
+* **cli:** add vm0 logs search subcommand ([#3845](https://github.com/vm0-ai/vm0/issues/3845)) ([b3e0b4d](https://github.com/vm0-ai/vm0/commit/b3e0b4deda133396223b1e1b5b3d043454451144))
+* **slack:** support file attachments and inject user info into prompts ([#3948](https://github.com/vm0-ai/vm0/issues/3948)) ([f7e1ddd](https://github.com/vm0-ai/vm0/commit/f7e1ddd31d77a5aab354456b30f38c702d1f65d4))
+
+
+### Bug Fixes
+
+* **storage:** unify memory storage auto-creation with artifact pattern ([#3944](https://github.com/vm0-ai/vm0/issues/3944)) ([e2af883](https://github.com/vm0-ai/vm0/commit/e2af88330c3bf305c1586ffd4315dff19a4e7504))
+* use upsert for storage prepare to prevent race condition ([#3946](https://github.com/vm0-ai/vm0/issues/3946)) ([1cba856](https://github.com/vm0-ai/vm0/commit/1cba85668aeb351fb4445f3f5764c959055a83ec))
+* **web:** filter browser extension errors in sentry config ([#3963](https://github.com/vm0-ai/vm0/issues/3963)) ([d556bf2](https://github.com/vm0-ai/vm0/commit/d556bf269dcba631315009cb410f97f31fc608b2))
+
+
+### Refactoring
+
+* **scope:** eliminate org layer and consolidate into scope ([#3901](https://github.com/vm0-ai/vm0/issues/3901)) ([622fc9d](https://github.com/vm0-ai/vm0/commit/622fc9db32ded7ad82da013550c9c5c9cbc0f283))
+* **telegram:** deduplicate connect url construction into shared helper ([#3958](https://github.com/vm0-ai/vm0/issues/3958)) ([90416d0](https://github.com/vm0-ai/vm0/commit/90416d00a2864823d1d1087321d16f84d09147a4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.46.0
+
 ## [12.84.0](https://github.com/vm0-ai/vm0/compare/web-v12.83.0...web-v12.84.0) (2026-03-07)
 
 

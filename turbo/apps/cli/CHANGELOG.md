@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.51.0](https://github.com/vm0-ai/vm0/compare/cli-v9.50.0...cli-v9.51.0) (2026-03-09)
+
+
+### Features
+
+* **cli:** add vm0 logs search subcommand ([#3845](https://github.com/vm0-ai/vm0/issues/3845)) ([b3e0b4d](https://github.com/vm0-ai/vm0/commit/b3e0b4deda133396223b1e1b5b3d043454451144))
+
+
+### Bug Fixes
+
+* **cli:** remove noisy sentry environment warning from user output ([#3959](https://github.com/vm0-ai/vm0/issues/3959)) ([ca62336](https://github.com/vm0-ai/vm0/commit/ca6233651a653d28c58d813d71a737ea2eacbe2d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.46.0
+
 ## [9.50.0](https://github.com/vm0-ai/vm0/compare/cli-v9.49.5...cli-v9.50.0) (2026-03-07)
 
 

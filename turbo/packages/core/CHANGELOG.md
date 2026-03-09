@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.46.0](https://github.com/vm0-ai/vm0/compare/core-v8.45.0...core-v8.46.0) (2026-03-09)
+
+
+### Features
+
+* **cli:** add vm0 logs search subcommand ([#3845](https://github.com/vm0-ai/vm0/issues/3845)) ([b3e0b4d](https://github.com/vm0-ai/vm0/commit/b3e0b4deda133396223b1e1b5b3d043454451144))
+
+
+### Refactoring
+
+* **scope:** eliminate org layer and consolidate into scope ([#3901](https://github.com/vm0-ai/vm0/issues/3901)) ([622fc9d](https://github.com/vm0-ai/vm0/commit/622fc9db32ded7ad82da013550c9c5c9cbc0f283))
+
 ## [8.45.0](https://github.com/vm0-ai/vm0/compare/core-v8.44.1...core-v8.45.0) (2026-03-07)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.20.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.20.2...runner-rs-v0.20.3) (2026-03-09)
+
+
+### Bug Fixes
+
+* **storage:** unify memory storage auto-creation with artifact pattern ([#3944](https://github.com/vm0-ai/vm0/issues/3944)) ([e2af883](https://github.com/vm0-ai/vm0/commit/e2af88330c3bf305c1586ffd4315dff19a4e7504))
+
+
+### Refactoring
+
+* **runner:** make runner doctor tolerant of transient states ([#3943](https://github.com/vm0-ai/vm0/issues/3943)) ([f0c0dbf](https://github.com/vm0-ai/vm0/commit/f0c0dbfbcc3581ba8f1e157b871358dfe5632fab))
+
 ## [0.20.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.20.1...runner-rs-v0.20.2) (2026-03-08)
 
 ## [0.20.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.20.0...runner-rs-v0.20.1) (2026-03-07)
