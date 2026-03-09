@@ -146,15 +146,20 @@ describe("createRun()", () => {
     });
 
     it("should allow multiple concurrent runs for max tier", async () => {
+      // Create 3 concurrent runs to verify max tier allows more than pro tier (which allows 2)
       const run1 = await createRun(
         baseParams({ prompt: "Max run 1", scopeTier: "max" }),
       );
       const run2 = await createRun(
         baseParams({ prompt: "Max run 2", scopeTier: "max" }),
       );
+      const run3 = await createRun(
+        baseParams({ prompt: "Max run 3", scopeTier: "max" }),
+      );
 
       expect(run1.status).toBe("running");
       expect(run2.status).toBe("running");
+      expect(run3.status).toBe("running");
     });
 
     it("should allow unlimited runs when CONCURRENT_RUN_LIMIT is 0", async () => {
