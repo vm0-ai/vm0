@@ -616,8 +616,19 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(run2.status).toBe("running");
     });
 
-    it("should allow more concurrent runs for pro tier scopes", async () => {
-      // Set scope to pro tier (allows 10 concurrent runs)
+    it("should allow 2 concurrent runs for pro tier scopes", async () => {
+      // Set scope to pro tier (allows 2 concurrent runs)
+      await setScopeTier(user.scopeId, "pro");
+
+      const run1 = await createTestRun(testComposeId, "Run 1");
+      const run2 = await createTestRun(testComposeId, "Run 2");
+
+      expect(run1.status).toBe("running");
+      expect(run2.status).toBe("running");
+    });
+
+    it("should queue 3rd concurrent run for pro tier scopes", async () => {
+      // Pro tier only allows 2 concurrent runs
       await setScopeTier(user.scopeId, "pro");
 
       const run1 = await createTestRun(testComposeId, "Run 1");
@@ -626,7 +637,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       expect(run1.status).toBe("running");
       expect(run2.status).toBe("running");
-      expect(run3.status).toBe("running");
+      expect(run3.status).toBe("queued");
     });
 
     it("should not count stale pending runs toward concurrency limit", async () => {
