@@ -1,5 +1,18 @@
 # Changelog
 
+## [12.85.2](https://github.com/vm0-ai/vm0/compare/web-v12.85.1...web-v12.85.2) (2026-03-09)
+
+
+### Bug Fixes
+
+* **slack:** allow file_share subtype in dm event filter ([#3980](https://github.com/vm0-ai/vm0/issues/3980)) ([d4c4844](https://github.com/vm0-ai/vm0/commit/d4c4844427cf83e54b921da47f9bc8de73c32bc0))
+* **telegram:** improve reliability, security, and add image support ([#3949](https://github.com/vm0-ai/vm0/issues/3949)) ([8990fd9](https://github.com/vm0-ai/vm0/commit/8990fd915c2bb04cfcd9a568fe10f872da1503f6))
+
+
+### Refactoring
+
+* **run:** remove e2b executor from dispatch logic ([#3951](https://github.com/vm0-ai/vm0/issues/3951)) ([212b8da](https://github.com/vm0-ai/vm0/commit/212b8da09fc719310ce427856b16a07d69e6d1a8))
+
 ## [12.85.1](https://github.com/vm0-ai/vm0/compare/web-v12.85.0...web-v12.85.1) (2026-03-09)
 
 
