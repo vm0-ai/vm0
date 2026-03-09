@@ -118,7 +118,7 @@ describe("blog/strapi", () => {
       );
     });
 
-    it("returns empty array when response body is truncated JSON", async () => {
+    it("throws when response body is truncated JSON", async () => {
       server.use(
         http.get(`${STRAPI_URL}/api/articles`, () => {
           return new HttpResponse('{"data":[{"id":1', {
@@ -128,8 +128,7 @@ describe("blog/strapi", () => {
         }),
       );
 
-      const posts = await getPostsFromStrapi("en");
-      expect(posts).toEqual([]);
+      await expect(getPostsFromStrapi("en")).rejects.toThrow();
     });
 
     it("uses default locale when not provided", async () => {
@@ -194,7 +193,7 @@ describe("blog/strapi", () => {
       expect(post).toBeNull();
     });
 
-    it("returns null when response body is truncated JSON", async () => {
+    it("throws when response body is truncated JSON", async () => {
       server.use(
         http.get(`${STRAPI_URL}/api/articles`, () => {
           return new HttpResponse('{"data":[', {
@@ -204,8 +203,9 @@ describe("blog/strapi", () => {
         }),
       );
 
-      const post = await getPostBySlugFromStrapi("test-post", "en");
-      expect(post).toBeNull();
+      await expect(
+        getPostBySlugFromStrapi("test-post", "en"),
+      ).rejects.toThrow();
     });
 
     it("throws error when fetch fails", async () => {
@@ -244,7 +244,7 @@ describe("blog/strapi", () => {
       expect(post).toBeNull();
     });
 
-    it("returns null when response body is truncated JSON", async () => {
+    it("throws when response body is truncated JSON", async () => {
       server.use(
         http.get(`${STRAPI_URL}/api/articles`, () => {
           return new HttpResponse("{", {
@@ -254,8 +254,7 @@ describe("blog/strapi", () => {
         }),
       );
 
-      const post = await getFeaturedPostFromStrapi("en");
-      expect(post).toBeNull();
+      await expect(getFeaturedPostFromStrapi("en")).rejects.toThrow();
     });
 
     it("throws error when fetch fails", async () => {
@@ -293,7 +292,7 @@ describe("blog/strapi", () => {
       expect(categories).toEqual([]);
     });
 
-    it("returns empty array when response body is truncated JSON", async () => {
+    it("throws when response body is truncated JSON", async () => {
       server.use(
         http.get(`${STRAPI_URL}/api/categories`, () => {
           return new HttpResponse('{"data":', {
@@ -303,8 +302,7 @@ describe("blog/strapi", () => {
         }),
       );
 
-      const categories = await getAllCategoriesFromStrapi("en");
-      expect(categories).toEqual([]);
+      await expect(getAllCategoriesFromStrapi("en")).rejects.toThrow();
     });
 
     it("throws error when fetch fails", async () => {

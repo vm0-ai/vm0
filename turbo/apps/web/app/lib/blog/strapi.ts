@@ -57,20 +57,6 @@ interface StrapiArticle {
   blocks?: StrapiBlock[];
 }
 
-async function safeJsonParse<T>(
-  res: Response,
-  context: string,
-): Promise<T | null> {
-  try {
-    return (await res.json()) as T;
-  } catch (error) {
-    console.warn(
-      `[blog] Failed to parse JSON response from Strapi (${context}): ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return null;
-  }
-}
-
 function transformArticle(article: StrapiArticle): BlogPost {
   let coverUrl = "/covers/default.png";
   if (article.cover?.url) {
@@ -138,13 +124,7 @@ export async function getPostsFromStrapi(
     throw new Error(`Failed to fetch posts: ${res.status} ${res.statusText}`);
   }
 
-  const data = await safeJsonParse<StrapiResponse<StrapiArticle[]>>(
-    res,
-    "getPostsFromStrapi",
-  );
-  if (!data) {
-    return [];
-  }
+  const data: StrapiResponse<StrapiArticle[]> = await res.json();
   return data.data.map(transformArticle);
 }
 
@@ -165,11 +145,9 @@ export async function getPostBySlugFromStrapi(
     );
   }
 
-  const data = await safeJsonParse<StrapiResponse<StrapiArticle[]>>(
-    res,
-    "getPostBySlugFromStrapi",
-  );
-  if (!data || data.data.length === 0) {
+  const data: StrapiResponse<StrapiArticle[]> = await res.json();
+
+  if (data.data.length === 0) {
     return null;
   }
 
@@ -192,11 +170,9 @@ export async function getFeaturedPostFromStrapi(
     );
   }
 
-  const data = await safeJsonParse<StrapiResponse<StrapiArticle[]>>(
-    res,
-    "getFeaturedPostFromStrapi",
-  );
-  if (!data || data.data.length === 0) {
+  const data: StrapiResponse<StrapiArticle[]> = await res.json();
+
+  if (data.data.length === 0) {
     return null;
   }
 
@@ -225,12 +201,6 @@ export async function getAllCategoriesFromStrapi(
     slug: string;
   }
 
-  const data = await safeJsonParse<StrapiResponse<StrapiCategory[]>>(
-    res,
-    "getAllCategoriesFromStrapi",
-  );
-  if (!data) {
-    return [];
-  }
+  const data: StrapiResponse<StrapiCategory[]> = await res.json();
   return data.data.map((cat) => cat.name);
 }
