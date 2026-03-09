@@ -7,7 +7,7 @@ import { storagesPrepareContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import {
@@ -147,7 +147,7 @@ const router = tsr.router(storagesPrepareContract, {
       })
       .onConflictDoUpdate({
         target: [storages.scopeId, storages.name, storages.type],
-        set: { updatedAt: sql`now()` },
+        set: { updatedAt: new Date() },
       })
       .returning();
 

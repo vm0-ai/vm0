@@ -10,7 +10,7 @@ import {
   storages,
   storageVersions,
 } from "../../../../../../src/db/schema/storage";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
 import { getUserScopeByClerkId } from "../../../../../../src/lib/scope/scope-service";
 import {
@@ -102,7 +102,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       })
       .onConflictDoUpdate({
         target: [storages.scopeId, storages.name, storages.type],
-        set: { updatedAt: sql`now()` },
+        set: { updatedAt: new Date() },
       })
       .returning();
 
