@@ -528,13 +528,13 @@ async function buildAndDispatchRun(opts: {
   const { userId, agentComposeVersionId, prompt } = params;
 
   try {
-    // Register callbacks (if any)
-    if (params.callbacks && params.callbacks.length > 0) {
-      await registerCallbacks(runId, params.callbacks);
-    }
-
-    // Generate sandbox token
-    const sandboxToken = await generateSandboxToken(userId, runId);
+    // Register callbacks and generate sandbox token in parallel (independent operations)
+    const [, sandboxToken] = await Promise.all([
+      params.callbacks && params.callbacks.length > 0
+        ? registerCallbacks(runId, params.callbacks)
+        : null,
+      generateSandboxToken(userId, runId),
+    ]);
     const tokenTime = Date.now();
 
     // Build execution context
