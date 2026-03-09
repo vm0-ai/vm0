@@ -45,6 +45,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          ANSIBLE_SSH_ARGS: "-F $HOME/.ssh/config"
         run: |
           cd ansible
           ansible-playbook \
@@ -60,6 +61,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          ANSIBLE_SSH_ARGS: "-F $HOME/.ssh/config"
         run: |
           cd ansible
           ansible-playbook \

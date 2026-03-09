@@ -724,6 +724,7 @@ jobs:
           GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          ANSIBLE_SSH_ARGS: "-F $HOME/.ssh/config"
         run: |
           cd ansible
           ansible-playbook \

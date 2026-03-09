@@ -199,6 +199,7 @@ jobs:
           GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          ANSIBLE_SSH_ARGS: "-F $HOME/.ssh/config"
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
@@ -715,6 +716,7 @@ jobs:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          ANSIBLE_SSH_ARGS: "-F $HOME/.ssh/config"
         run: |
           cd ansible
           ansible-playbook \
