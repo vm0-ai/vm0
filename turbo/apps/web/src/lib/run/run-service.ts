@@ -6,6 +6,7 @@ import {
   agentComposeVersions,
   agentComposes,
 } from "../../db/schema/agent-compose";
+import { scopes } from "../../db/schema/scope";
 import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
 import {
   notFound,
@@ -340,7 +341,7 @@ async function loadCompose(
   callerComposeId?: string,
 ): Promise<{
   composeContent: AgentComposeYaml;
-  compose: { id: string; userId: string; scopeId: string };
+  compose: { id: string; userId: string; scopeId: string; scopeSlug: string };
 }> {
   if (callerComposeId) {
     // When caller provides composeId, both queries are independent — run in parallel
@@ -355,8 +356,10 @@ async function loadCompose(
           id: agentComposes.id,
           userId: agentComposes.userId,
           scopeId: agentComposes.scopeId,
+          scopeSlug: scopes.slug,
         })
         .from(agentComposes)
+        .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
         .where(eq(agentComposes.id, callerComposeId))
         .limit(1),
     ]);
@@ -374,7 +377,7 @@ async function loadCompose(
     };
   }
 
-  // No caller composeId — fetch version with compose via LEFT JOIN
+  // No caller composeId — fetch version with compose and scope via JOINs
   // Use LEFT JOIN so we can distinguish "version missing" from "compose missing"
   const [result] = await globalThis.services.db
     .select({
@@ -382,12 +385,14 @@ async function loadCompose(
       composeId: agentComposes.id,
       composeUserId: agentComposes.userId,
       composeScopeId: agentComposes.scopeId,
+      composeScopeSlug: scopes.slug,
     })
     .from(agentComposeVersions)
     .leftJoin(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
+    .leftJoin(scopes, eq(agentComposes.scopeId, scopes.id))
     .where(eq(agentComposeVersions.id, agentComposeVersionId))
     .limit(1);
 
@@ -395,7 +400,12 @@ async function loadCompose(
     throw notFound("Agent compose version not found");
   }
 
-  if (!result.composeId || !result.composeUserId || !result.composeScopeId) {
+  if (
+    !result.composeId ||
+    !result.composeUserId ||
+    !result.composeScopeId ||
+    !result.composeScopeSlug
+  ) {
     throw notFound("Agent compose not found");
   }
 
@@ -405,6 +415,7 @@ async function loadCompose(
       id: result.composeId,
       userId: result.composeUserId,
       scopeId: result.composeScopeId,
+      scopeSlug: result.composeScopeSlug,
     },
   };
 }
@@ -412,7 +423,7 @@ async function loadCompose(
 async function authorizeCompose(
   userId: string,
   userEmail: string,
-  compose: { id: string; userId: string; scopeId: string },
+  compose: { id: string; userId: string; scopeId: string; scopeSlug: string },
 ): Promise<void> {
   const hasAccess = await canAccessCompose(userId, userEmail, compose);
   if (!hasAccess) {
@@ -521,6 +532,7 @@ async function buildAndDispatchRun(opts: {
   composeContent: AgentComposeYaml;
   apiStartTime: number;
   scopeId: string | undefined;
+  composeScope: { id: string; slug: string };
   authorizeTime: number;
   transactionTime: number;
 }): Promise<{ status: string; sandboxId?: string }> {
@@ -531,6 +543,7 @@ async function buildAndDispatchRun(opts: {
     composeContent,
     apiStartTime,
     scopeId,
+    composeScope,
     authorizeTime,
     transactionTime,
   } = opts;
@@ -579,7 +592,11 @@ async function buildAndDispatchRun(opts: {
     const buildContextTime = Date.now();
 
     // Prepare execution context (storage manifest, working dir, etc.)
-    const prepareResult = await prepareForExecution(context, userScope);
+    const prepareResult = await prepareForExecution(
+      context,
+      userScope,
+      composeScope,
+    );
     const prepareTime = Date.now();
 
     // Dispatch to executor
@@ -607,10 +624,6 @@ async function buildAndDispatchRun(opts: {
         ms: buildContextTimings.resolveCredentials,
       },
       // Sub-step timings within prepareForExecution
-      {
-        op: "api_prepare_resolve_scopes",
-        ms: prepareResult.timings.resolveScopes,
-      },
       {
         op: "api_prepare_ensure_storage",
         ms: prepareResult.timings.ensureStorage,
@@ -748,6 +761,7 @@ export async function createRun(
     composeContent,
     apiStartTime,
     scopeId,
+    composeScope: { id: compose.scopeId, slug: compose.scopeSlug },
     authorizeTime,
     transactionTime,
   });
@@ -831,6 +845,10 @@ export async function executeQueuedRun(
     composeContent,
     apiStartTime,
     scopeId: params.scopeId,
+    composeScope: {
+      id: queuedCompose.scopeId,
+      slug: queuedCompose.scopeSlug,
+    },
     authorizeTime,
     transactionTime,
   });
