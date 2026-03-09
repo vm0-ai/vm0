@@ -13,6 +13,7 @@ import { validateAgentSession } from "../../run";
 import { ensureStorageExists } from "../../storage/storage-service";
 import {
   sendMessage,
+  editMessageText,
   type TelegramClient,
   type TelegramSentMessage,
 } from "../client";
@@ -325,6 +326,31 @@ export async function sendThinkingMessage(
   } catch (err) {
     log.warn("Failed to send thinking message", { chatId, error: err });
     return undefined;
+  }
+}
+
+const QUEUED_MESSAGE =
+  "⏳ Run queued — concurrency limit reached. Will start automatically when a slot is available.";
+
+/**
+ * Update the thinking message to show queued status, or send a new message if
+ * no thinking message exists.
+ */
+export async function sendQueuedNotification(
+  client: TelegramClient,
+  chatId: string | number,
+  thinkingMessage: TelegramSentMessage | undefined,
+  options?: { replyToMessageId?: number },
+): Promise<void> {
+  if (thinkingMessage) {
+    await editMessageText(
+      client,
+      chatId,
+      thinkingMessage.message_id,
+      QUEUED_MESSAGE,
+    );
+  } else {
+    await sendMessage(client, chatId, QUEUED_MESSAGE, options);
   }
 }
 

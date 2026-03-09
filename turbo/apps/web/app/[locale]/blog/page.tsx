@@ -13,7 +13,7 @@ import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import { isBlogEnabled } from "../../../src/env";
 
-export const revalidate = 60;
+export const revalidate = 3600;
 
 interface BlogPageProps {
   params: Promise<{ locale: string }>;

@@ -158,12 +158,38 @@ describe("/api/scope", () => {
       expect(data.error.message).toContain("already exists");
     });
 
-    it("should reject duplicate scope creation for same user", async () => {
-      // Create a user and their first scope
-      const userId = `dup-test-user-${Date.now()}`;
+    it("should allow creating multiple scopes for same user", async () => {
+      const userId = `multi-scope-user-${Date.now()}`;
       mockClerk({ userId });
 
-      const slug1 = `dup-test-${Date.now()}`;
+      const slug1 = `scope-one-${Date.now()}`;
+      const request1 = createTestRequest("http://localhost:3000/api/scope", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: slug1 }),
+      });
+      const response1 = await POST(request1);
+      expect(response1.status).toBe(201);
+
+      const slug2 = `scope-two-${Date.now()}`;
+      const request2 = createTestRequest("http://localhost:3000/api/scope", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: slug2 }),
+      });
+      const response2 = await POST(request2);
+      const data2 = await response2.json();
+
+      expect(response2.status).toBe(201);
+      expect(data2.slug).toBe(slug2);
+    });
+
+    it("should return first scope as default after creating multiple", async () => {
+      const userId = `default-scope-user-${Date.now()}`;
+      mockClerk({ userId });
+
+      // Create first scope
+      const slug1 = `first-${Date.now()}`;
       const request1 = createTestRequest("http://localhost:3000/api/scope", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -171,17 +197,22 @@ describe("/api/scope", () => {
       });
       await POST(request1);
 
-      // Try to create another scope for same user
+      // Create second scope
+      const slug2 = `second-${Date.now()}`;
       const request2 = createTestRequest("http://localhost:3000/api/scope", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: `${slug1}-2` }),
+        body: JSON.stringify({ slug: slug2 }),
       });
-      const response = await POST(request2);
+      await POST(request2);
+
+      // GET /api/scope should return the first (default) scope
+      const getRequest = createTestRequest("http://localhost:3000/api/scope");
+      const response = await GET(getRequest);
       const data = await response.json();
 
-      expect(response.status).toBe(409);
-      expect(data.error.message).toContain("already have a scope");
+      expect(response.status).toBe(200);
+      expect(data.slug).toBe(slug1);
     });
 
     describe("slug validation", () => {

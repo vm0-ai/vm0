@@ -73,6 +73,33 @@ function telegramSendMessage() {
   return { ...handler, calls };
 }
 
+function telegramEditMessageText() {
+  const calls: Array<{
+    chat_id: string;
+    message_id: number;
+    text: string;
+  }> = [];
+  const handler = http.post(
+    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/editMessageText`,
+    async ({ request }) => {
+      const body = (await request.json()) as {
+        chat_id: string;
+        message_id: number;
+        text: string;
+      };
+      calls.push(body);
+      return HttpResponse.json({
+        ok: true,
+        result: {
+          message_id: body.message_id,
+          chat: { id: TELEGRAM_USER_ID },
+        },
+      });
+    },
+  );
+  return { ...handler, calls };
+}
+
 describe("Telegram bot commands", () => {
   let installationId: string;
   let composeId: string;
@@ -514,7 +541,8 @@ describe("Telegram bot commands", () => {
   describe("queued run notification", () => {
     it("should send queued message for DM when run is queued", async () => {
       const sendMsg = telegramSendMessage();
-      server.use(sendMsg.handler);
+      const editMsg = telegramEditMessageText();
+      server.use(sendMsg.handler, editMsg.handler);
 
       vi.spyOn(runModule, "createRun").mockResolvedValue({
         runId: "mock-run-id",
@@ -538,8 +566,8 @@ describe("Telegram bot commands", () => {
       expect(response.status).toBe(200);
       await flushAfterCallbacks();
 
-      // Should have sent the thinking message + queued notification
-      const queuedMsg = sendMsg.calls.find((c) =>
+      // Queued notification edits the thinking message (not a new sendMessage)
+      const queuedMsg = editMsg.calls.find((c) =>
         c.text.includes("Run queued"),
       );
       expect(queuedMsg).toBeDefined();
@@ -548,7 +576,8 @@ describe("Telegram bot commands", () => {
 
     it("should send queued message for group mention when run is queued", async () => {
       const sendMsg = telegramSendMessage();
-      server.use(sendMsg.handler);
+      const editMsg = telegramEditMessageText();
+      server.use(sendMsg.handler, editMsg.handler);
 
       vi.spyOn(runModule, "createRun").mockResolvedValue({
         runId: "mock-run-id",
@@ -573,7 +602,8 @@ describe("Telegram bot commands", () => {
       expect(response.status).toBe(200);
       await flushAfterCallbacks();
 
-      const queuedMsg = sendMsg.calls.find((c) =>
+      // Queued notification edits the thinking message (not a new sendMessage)
+      const queuedMsg = editMsg.calls.find((c) =>
         c.text.includes("Run queued"),
       );
       expect(queuedMsg).toBeDefined();

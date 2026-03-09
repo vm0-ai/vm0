@@ -98,15 +98,6 @@ const router = tsr.router(scopeContract, {
       return { status: 201 as const, body: scopeToResponseBody(scope) };
     } catch (error) {
       if (isBadRequest(error)) {
-        // Check if it's a conflict error (user already has scope)
-        if (error.message.includes("already have a scope")) {
-          return {
-            status: 409 as const,
-            body: {
-              error: { message: error.message, code: "CONFLICT" },
-            },
-          };
-        }
         return createErrorResponse("BAD_REQUEST", error.message);
       }
       throw error;

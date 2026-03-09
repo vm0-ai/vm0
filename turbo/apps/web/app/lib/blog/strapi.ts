@@ -131,7 +131,8 @@ export async function getPostsFromStrapi(
   const url = `${getStrapiUrl()}/api/articles?locale=${locale}&populate[0]=cover&populate[1]=blocks&populate[2]=category&populate[3]=author.avatar&sort=publishedAt:desc`;
 
   const res = await fetch(url, {
-    next: { revalidate: 60 },
+    next: { revalidate: 3600 },
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {
@@ -152,7 +153,8 @@ export async function getPostBySlugFromStrapi(
   const url = `${getStrapiUrl()}/api/articles?locale=${locale}&filters[slug][$eq]=${slug}&populate[0]=cover&populate[1]=blocks&populate[2]=category&populate[3]=author.avatar`;
 
   const res = await fetch(url, {
-    next: { revalidate: 60 },
+    next: { revalidate: 3600 },
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {
@@ -179,7 +181,8 @@ export async function getFeaturedPostFromStrapi(
   const url = `${getStrapiUrl()}/api/articles?locale=${locale}&populate[0]=cover&populate[1]=blocks&populate[2]=category&populate[3]=author.avatar&sort=publishedAt:desc&pagination[limit]=1`;
 
   const res = await fetch(url, {
-    next: { revalidate: 60 },
+    next: { revalidate: 3600 },
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {
@@ -207,7 +210,8 @@ export async function getAllCategoriesFromStrapi(
 ): Promise<string[]> {
   const url = `${getStrapiUrl()}/api/categories?locale=${locale}`;
   const res = await fetch(url, {
-    next: { revalidate: 60 },
+    next: { revalidate: 3600 },
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {

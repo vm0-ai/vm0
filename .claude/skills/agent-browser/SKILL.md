@@ -6,93 +6,57 @@ allowed-tools: Bash(npx agent-browser:*), Bash(agent-browser:*)
 
 # Browser Automation with agent-browser
 
-## noVNC Setup (Required)
+## noVNC + Chrome Setup (Required)
 
-This project runs in a headless devcontainer. **Always start the noVNC stack before using agent-browser** so the user can see and interact with the browser from their macOS host.
+This project runs in a headless devcontainer. **Always run `scripts/start-vnc.sh` before using agent-browser.** This script starts the VNC stack AND launches Chrome with CDP (remote debugging). The user watches via noVNC; agent-browser connects to the **same Chrome** via CDP.
 
-### Prerequisites
+**CRITICAL:** The project root `agent-browser.json` configures `"cdp": 9222` globally so all agent-browser commands automatically connect to the Chrome started by `start-vnc.sh`. **Do NOT use `--headed`** — that launches a separate Chrome instance the user cannot see. Do NOT use `agent-browser close` — that kills the shared Chrome and breaks the user's noVNC view.
 
-x11vnc and novnc are not baked into the dev image. Install them if missing:
+### Start the VNC Stack + Chrome
 
-```bash
-which x11vnc || sudo apt-get update -qq && sudo apt-get install -y -qq x11vnc novnc openbox
-```
-
-### Start the VNC Stack
-
-Run these before any agent-browser command:
-
-**Important:** Each process must be started in a separate shell command to avoid `||` and `&` operator precedence issues that can silently prevent later processes (especially websockify) from launching.
+Run this before any agent-browser command:
 
 ```bash
-# Start each process individually (idempotent - skips if already running)
-pgrep -x Xvfb > /dev/null || (Xvfb :99 -screen 0 1344x840x24 > /dev/null 2>&1 &)
-sleep 1
-pgrep -x openbox > /dev/null || (DISPLAY=:99 openbox > /dev/null 2>&1 &)
-sleep 1
-pgrep -x x11vnc > /dev/null || (x11vnc -display :99 -nopw -forever -shared -rfbport 5900 > /dev/null 2>&1 &)
-sleep 1
-pgrep -f websockify > /dev/null || (websockify --web /usr/share/novnc/ 0.0.0.0:6080 localhost:5900 > /dev/null 2>&1 &)
-sleep 1
+VNC_URL=$(scripts/start-vnc.sh)
 ```
 
-### Troubleshooting noVNC
+The script (idempotent — skips already-running processes):
+1. Installs missing dependencies (x11vnc, xvfb, openbox, novnc)
+2. Starts the VNC stack (Xvfb → openbox → x11vnc → websockify)
+3. Launches Chrome with `--remote-debugging-port=9222`
+4. Opens a Cloudflare Tunnel to expose noVNC to the public internet
+5. Outputs the tunnel URL to stdout (e.g., `https://ethan-vm04.vnc.vm7.ai`)
 
-If the user can't connect to noVNC (`dcvnc` fails or the page doesn't load):
-
-1. **websockify not listening** — The most common issue. Verify with `netstat -tlnp 2>/dev/null | grep 6080`. If not listening:
-   - Kill any stale process: `pkill -9 -f websockify`
-   - Restart with correct bind address (must be `0.0.0.0`, not `localhost`):
-     ```bash
-     (websockify --web /usr/share/novnc/ 0.0.0.0:6080 localhost:5900 > /dev/null 2>&1 &)
-     ```
-   - Verify: `sleep 2 && netstat -tlnp 2>/dev/null | grep 6080`
-
-2. **`||` and `&` precedence bug** — Running `pgrep ... || websockify ... &` without subshells causes `&` to background the entire pipeline, not just websockify. The `pgrep` succeeds (exit 0) and websockify never starts. Always wrap in `(...)`:
-   ```bash
-   # WRONG — websockify may silently not start
-   pgrep -f websockify > /dev/null || websockify ... &
-   # CORRECT — subshell ensures only websockify is backgrounded
-   pgrep -f websockify > /dev/null || (websockify ... &)
-   ```
-
-3. **Chrome profile lock from another VM** — If agent-browser fails with "profile appears to be in use by another Chromium process", remove the stale lock:
-   ```bash
-   rm -f ~/.local/share/agent-browser/profile/Singleton{Lock,Cookie,Socket}
-   ```
-
-### Always Use Headed Mode
-
-All agent-browser commands must set `DISPLAY=:99` and use `--headed`. For local HTTPS dev servers, use `--ignore-https-errors` (Playwright flag, NOT Chrome's `--ignore-certificate-errors` which breaks stealth):
-
-```bash
-DISPLAY=:99 agent-browser --headed --ignore-https-errors open <url>
-```
+Environment variables: `DISPLAY` (default `:99`), `VNC_PORT` (default `5900`), `NOVNC_PORT` (default `6080`), `SCREEN_RES` (default `1344x840x24`), `CDP_PORT` (default `9222`), `TUNNEL_HOSTNAME` (optional fixed domain).
 
 ### Tell the User How to Connect
 
-After starting the VNC stack, tell the user:
+After starting the VNC stack, tell the user the tunnel URL:
 
-> The browser is running in headed mode with noVNC. To view and interact with it from macOS, run:
+> The browser is running in headed mode with noVNC. Open this URL to view and interact:
 >
-> ```
-> dcvnc <vm_name>
-> ```
->
-> (e.g., `dcvnc vm01`). This opens the noVNC viewer in your default browser.
+> `<tunnel-url>/vnc.html`
+
+### Troubleshooting
+
+1. **websockify not listening** — Verify with `netstat -tlnp 2>/dev/null | grep 6080`. Fix: `pkill -9 -f websockify && scripts/start-vnc.sh`
+
+2. **Chrome not responding on CDP** — Verify with `curl -s http://localhost:9222/json/version`. Fix: `pkill -f chrome && scripts/start-vnc.sh`
+
+3. **Chrome profile lock from another VM** — Handled automatically by `start-vnc.sh` (clears stale locks on startup).
 
 ## Core Workflow
 
 Every browser automation follows this pattern:
 
-1. **Start noVNC stack** (see above)
-2. **Navigate**: `DISPLAY=:99 agent-browser --headed open <url>`
-3. **Snapshot**: `DISPLAY=:99 agent-browser snapshot -i` (get element refs like `@e1`, `@e2`)
+1. **Start VNC + Chrome**: `scripts/start-vnc.sh`
+2. **Navigate**: `agent-browser open <url>`
+3. **Snapshot**: `agent-browser snapshot -i` (get element refs like `@e1`, `@e2`)
 4. **Interact**: Use refs to click, fill, select
 5. **Re-snapshot**: After navigation or DOM changes, get fresh refs
 
 ```bash
-DISPLAY=:99 agent-browser --headed open https://example.com/form
+agent-browser open https://example.com/form
 agent-browser snapshot -i
 # Output: @e1 [input type="email"], @e2 [input type="password"], @e3 [button] "Submit"
 
@@ -273,14 +237,7 @@ agent-browser session list
 
 ### Connect to Existing Chrome
 
-```bash
-# Auto-discover running Chrome with remote debugging enabled
-agent-browser --auto-connect open https://example.com
-agent-browser --auto-connect snapshot
-
-# Or with explicit CDP port
-agent-browser --cdp 9222 snapshot
-```
+The project-level `agent-browser.json` configures `"cdp": 9222` automatically. All commands connect to the shared Chrome started by `scripts/start-vnc.sh` — no extra flags needed.
 
 ### Color Scheme (Dark Mode)
 
@@ -538,17 +495,9 @@ agent-browser eval -b "$(echo -n 'Array.from(document.querySelectorAll("a")).map
 
 ## Configuration File
 
-Create `agent-browser.json` in the project root for persistent settings:
+This project has `agent-browser.json` in the project root with `"cdp": 9222` pre-configured. This ensures all agent-browser commands connect to the shared Chrome instance started by `scripts/start-vnc.sh`.
 
-```json
-{
-  "headed": true,
-  "proxy": "http://localhost:8080",
-  "profile": "./browser-data"
-}
-```
-
-Priority (lowest to highest): `~/.agent-browser/config.json` < `./agent-browser.json` < env vars < CLI flags. Use `--config <path>` or `AGENT_BROWSER_CONFIG` env var for a custom config file (exits with error if missing/invalid). All CLI options map to camelCase keys (e.g., `--executable-path` -> `"executablePath"`). Boolean flags accept `true`/`false` values (e.g., `--headed false` overrides config). Extensions from user and project configs are merged, not replaced.
+Priority (lowest to highest): `~/.agent-browser/config.json` < `./agent-browser.json` < env vars < CLI flags. All CLI options map to camelCase keys (e.g., `--executable-path` -> `"executablePath"`).
 
 ## Deep-Dive Documentation
 

@@ -10,9 +10,11 @@ import {
   createTelegramClient,
   sendMessage,
   sendChatAction,
+  editMessageText,
   deleteMessage,
 } from "../../../../../src/lib/telegram/client";
 import {
+  escapeHtml,
   splitMessage,
   buildTelegramResponse,
   buildTelegramErrorResponse,
@@ -268,6 +270,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (status === "progress") {
     try {
       await sendChatAction(client, payload.chatId, "typing");
+      if (payload.thinkingMessageId) {
+        const thinkingText = `<i>🤖 ${escapeHtml(payload.agentName)} is thinking...</i>`;
+        await editMessageText(
+          client,
+          payload.chatId,
+          Number(payload.thinkingMessageId),
+          thinkingText,
+        );
+      }
     } catch (err) {
       log.debug("Failed to refresh typing indicator", { runId, error: err });
     }
