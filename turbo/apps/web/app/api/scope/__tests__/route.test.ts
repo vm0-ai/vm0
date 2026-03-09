@@ -580,6 +580,11 @@ describe("/api/scope", () => {
     });
 
     it("should work without orgId (CLI / self-hosted compatibility)", async () => {
+      // Simulate self-hosted mode (no Clerk) to test the user-{hash} fallback
+      vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "");
+      vi.stubEnv("CLERK_SECRET_KEY", "");
+      reloadEnv();
+
       const userId = `no-org-${Date.now()}`;
       mockClerk({ userId });
 
