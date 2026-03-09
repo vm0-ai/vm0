@@ -173,3 +173,4 @@ turbo/apps/storybook/storybook-static/
 # VHS tape generated GIFs (regenerate with `vhs <name>.tape`)
 docs/tapes/**/*.gif
 docs/tapes/*.gif
+.env*.local
