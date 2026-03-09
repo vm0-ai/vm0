@@ -1,5 +1,18 @@
 # Changelog
 
+## [12.85.1](https://github.com/vm0-ai/vm0/compare/web-v12.85.0...web-v12.85.1) (2026-03-09)
+
+
+### Bug Fixes
+
+* **email:** add missing progress status guard to trigger and schedule callbacks ([#3971](https://github.com/vm0-ai/vm0/issues/3971)) ([3c6e38d](https://github.com/vm0-ai/vm0/commit/3c6e38df3cdd7acb6c39d6b03469851d1e95ebe1)), closes [#3970](https://github.com/vm0-ai/vm0/issues/3970)
+* **web:** disable sentry error reporting in preview deployments ([#3975](https://github.com/vm0-ai/vm0/issues/3975)) ([f27c79d](https://github.com/vm0-ai/vm0/commit/f27c79d73ecd99c240037f53eb40281e69725ba9))
+
+
+### CI
+
+* remove e2e 02-parallel test suite and ci job ([#3977](https://github.com/vm0-ai/vm0/issues/3977)) ([16feb8b](https://github.com/vm0-ai/vm0/commit/16feb8bd5d7f22093c6b2573b59d3ee57af7d7d7))
+
 ## [12.85.0](https://github.com/vm0-ai/vm0/compare/web-v12.84.0...web-v12.85.0) (2026-03-09)
 
 

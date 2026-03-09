@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.51.1](https://github.com/vm0-ai/vm0/compare/cli-v9.51.0...cli-v9.51.1) (2026-03-09)
+
+
+### CI
+
+* remove e2e 02-parallel test suite and ci job ([#3977](https://github.com/vm0-ai/vm0/issues/3977)) ([16feb8b](https://github.com/vm0-ai/vm0/commit/16feb8bd5d7f22093c6b2573b59d3ee57af7d7d7))
+
 ## [9.51.0](https://github.com/vm0-ai/vm0/compare/cli-v9.50.0...cli-v9.51.0) (2026-03-09)
 
 
