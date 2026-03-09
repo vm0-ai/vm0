@@ -1106,6 +1106,155 @@ export const CONNECTOR_TYPES = {
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
 
+/**
+ * Proxy-side connector configuration for token replacement.
+ *
+ * Defines which URL targets each connector covers and how auth headers
+ * are constructed. Used by the proxy to intercept requests matching a
+ * connector's targets and replace placeholder tokens with real credentials.
+ *
+ * `${token}` in header values is replaced with the real OAuth access token.
+ *
+ * NOTE: Currently hardcoded in CONNECTOR_PROXY_CONFIGS below.
+ * Will be migrated to GitHub-hosted connector.yaml definitions in Phase 2.
+ */
+export interface ConnectorProxyConfig {
+  targets: string[];
+  auth: {
+    headers: Record<string, string>;
+  };
+}
+
+const BEARER_AUTH = { headers: { Authorization: "Bearer ${token}" } };
+
+const CONNECTOR_PROXY_CONFIGS: Partial<
+  Record<ConnectorType, ConnectorProxyConfig>
+> = {
+  airtable: {
+    targets: ["https://api.airtable.com"],
+    auth: BEARER_AUTH,
+  },
+  github: {
+    targets: ["https://api.github.com"],
+    auth: BEARER_AUTH,
+  },
+  notion: {
+    targets: ["https://api.notion.com/v1"],
+    auth: {
+      headers: {
+        Authorization: "Bearer ${token}",
+        "Notion-Version": "2022-06-28",
+      },
+    },
+  },
+  gmail: {
+    targets: ["https://gmail.googleapis.com/gmail/v1/users/me"],
+    auth: BEARER_AUTH,
+  },
+  "google-sheets": {
+    targets: ["https://sheets.googleapis.com/v4/spreadsheets"],
+    auth: BEARER_AUTH,
+  },
+  "google-docs": {
+    targets: ["https://docs.googleapis.com/v1/documents"],
+    auth: BEARER_AUTH,
+  },
+  "google-drive": {
+    targets: ["https://www.googleapis.com/drive/v3"],
+    auth: BEARER_AUTH,
+  },
+  "google-calendar": {
+    targets: ["https://www.googleapis.com/calendar/v3"],
+    auth: BEARER_AUTH,
+  },
+  hubspot: {
+    targets: ["https://api.hubapi.com"],
+    auth: BEARER_AUTH,
+  },
+  slack: {
+    targets: ["https://slack.com/api", "https://files.slack.com"],
+    auth: BEARER_AUTH,
+  },
+  docusign: {
+    targets: [
+      "https://demo.docusign.net/restapi",
+      "https://na1.docusign.net/restapi",
+    ],
+    auth: BEARER_AUTH,
+  },
+  dropbox: {
+    targets: [
+      "https://api.dropboxapi.com/2",
+      "https://content.dropboxapi.com/2",
+    ],
+    auth: BEARER_AUTH,
+  },
+  linear: {
+    targets: ["https://api.linear.app"],
+    auth: BEARER_AUTH,
+  },
+  deel: {
+    targets: ["https://api.deel.com"],
+    auth: BEARER_AUTH,
+  },
+  figma: {
+    targets: ["https://api.figma.com"],
+    auth: BEARER_AUTH,
+  },
+  mercury: {
+    targets: ["https://api.mercury.com"],
+    auth: BEARER_AUTH,
+  },
+  reddit: {
+    targets: ["https://oauth.reddit.com"],
+    auth: BEARER_AUTH,
+  },
+  strava: {
+    targets: ["https://www.strava.com/api/v3"],
+    auth: BEARER_AUTH,
+  },
+  x: {
+    targets: ["https://api.x.com/2"],
+    auth: BEARER_AUTH,
+  },
+  neon: {
+    targets: ["https://console.neon.tech/api/v2"],
+    auth: BEARER_AUTH,
+  },
+  vercel: {
+    targets: ["https://api.vercel.com"],
+    auth: BEARER_AUTH,
+  },
+  sentry: {
+    targets: ["https://sentry.io/api"],
+    auth: BEARER_AUTH,
+  },
+  monday: {
+    targets: ["https://api.monday.com/v2"],
+    auth: BEARER_AUTH,
+  },
+  canva: {
+    targets: ["https://api.canva.com/rest/v1"],
+    auth: BEARER_AUTH,
+  },
+  xero: {
+    targets: ["https://api.xero.com"],
+    auth: BEARER_AUTH,
+  },
+  supabase: {
+    targets: ["https://api.supabase.com/v1"],
+    auth: BEARER_AUTH,
+  },
+  todoist: {
+    targets: ["https://api.todoist.com/rest/v2"],
+    auth: BEARER_AUTH,
+  },
+  webflow: {
+    targets: ["https://api.webflow.com/v2"],
+    auth: BEARER_AUTH,
+  },
+};
+
 export const connectorTypeSchema = z.enum([
   "airtable",
   "canva",
@@ -1185,6 +1334,16 @@ export function getConnectorEnvironmentMapping(
   type: ConnectorType,
 ): Record<string, string> {
   return CONNECTOR_TYPES[type].environmentMapping;
+}
+
+/**
+ * Get proxy config for a connector type (targets + auth headers).
+ * Returns undefined if the connector has no proxy config (e.g., computer connector).
+ */
+export function getConnectorProxyConfig(
+  type: ConnectorType,
+): ConnectorProxyConfig | undefined {
+  return CONNECTOR_PROXY_CONFIGS[type];
 }
 
 /**

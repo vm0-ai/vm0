@@ -81,6 +81,12 @@ interface AgentDefinition {
    * When enabled, filters outbound traffic by domain/IP rules.
    */
   experimental_firewall?: ExperimentalFirewall;
+  /**
+   * Experimental connectors for proxy-side token replacement.
+   * Array of connector type names (e.g., ["gmail", "github"]).
+   * Requires experimental_runner to be configured.
+   */
+  experimental_connectors?: string[];
 }
 
 export interface AgentComposeYaml {

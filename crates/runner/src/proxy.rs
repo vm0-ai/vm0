@@ -28,6 +28,7 @@ struct VmEntry {
     mitm_enabled: bool,
     seal_secrets_enabled: bool,
     network_log_path: String,
+    connectors: Option<crate::types::ExperimentalConnectors>,
 }
 
 /// Firewall rule for network filtering (first-match-wins).
@@ -65,6 +66,7 @@ pub struct VmRegistration<'a> {
     pub mitm_enabled: bool,
     pub seal_secrets_enabled: bool,
     pub network_log_path: &'a std::path::Path,
+    pub connectors: Option<&'a crate::types::ExperimentalConnectors>,
 }
 
 /// Embedded mitmproxy addon script (compiled into the binary).
@@ -435,6 +437,7 @@ impl ProxyRegistryHandle {
                 mitm_enabled: registration.mitm_enabled,
                 seal_secrets_enabled: registration.seal_secrets_enabled,
                 network_log_path: registration.network_log_path.to_string_lossy().into_owned(),
+                connectors: registration.connectors.cloned(),
             },
         );
         registry.updated_at = now;
@@ -510,6 +513,7 @@ mod tests {
                 mitm_enabled: true,
                 seal_secrets_enabled: false,
                 network_log_path: "/tmp/network-test-run.jsonl".to_string(),
+                connectors: None,
             },
         );
         write_registry(&registry_path, &registry).await.unwrap();
@@ -614,6 +618,7 @@ mod tests {
             mitm_enabled: true,
             seal_secrets_enabled: false,
             network_log_path: std::path::Path::new("/tmp/network-run-1.jsonl"),
+            connectors: None,
         };
         handle
             .register_vm("10.200.0.2", &registration)
@@ -633,6 +638,7 @@ mod tests {
             mitm_enabled: false,
             seal_secrets_enabled: true,
             network_log_path: std::path::Path::new("/tmp/network-run-2.jsonl"),
+            connectors: None,
         };
         handle
             .register_vm("10.200.0.2", &registration2)
@@ -686,6 +692,7 @@ mod tests {
                     mitm_enabled: false,
                     seal_secrets_enabled: false,
                     network_log_path: &log_path,
+                    connectors: None,
                 };
                 h.register_vm(&ip, &registration).await.unwrap();
             });
@@ -731,6 +738,7 @@ mod tests {
                 mitm_enabled: true,
                 seal_secrets_enabled: true,
                 network_log_path: "/tmp/network-run-1.jsonl".to_string(),
+                connectors: None,
             },
         );
         write_registry(&registry_path, &registry).await.unwrap();
