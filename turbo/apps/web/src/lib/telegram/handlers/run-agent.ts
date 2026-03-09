@@ -3,7 +3,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
-import { createRun } from "../../run";
+import { createRun, type RunDispatchError } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
 import { isConcurrentRunLimit } from "../../errors";
 import { logger } from "../../logger";
@@ -126,21 +126,6 @@ export async function runAgentForTelegram(
       ],
     });
 
-    if (result.status === "failed") {
-      log.error("Run dispatch failed", {
-        runId: result.runId,
-        composeId,
-        agentName,
-        userId,
-      });
-      return {
-        status: "failed",
-        response:
-          "Something went wrong while starting the agent. Please try again later.",
-        runId: result.runId,
-      };
-    }
-
     const status = result.status === "queued" ? "queued" : "dispatched";
     log.debug(`Run ${result.runId} ${status} for Telegram agent ${agentName}`);
 
@@ -162,12 +147,13 @@ export async function runAgentForTelegram(
         runId: undefined,
       };
     }
+    const runId = (error as RunDispatchError).runId;
     log.error("Failed to create run", { composeId, agentName, userId, error });
     return {
       status: "failed",
       response:
         "Something went wrong while starting the agent. Please try again later.",
-      runId: undefined,
+      runId,
     };
   }
 }

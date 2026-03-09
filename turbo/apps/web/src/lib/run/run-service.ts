@@ -741,34 +741,23 @@ export async function createRun(
   const transactionTime = Date.now();
   log.debug(`Created run ${run.id} for user ${userId}`);
 
-  try {
-    const result = await buildAndDispatchRun({
-      runId: run.id,
-      createdAt: run.createdAt,
-      params,
-      composeContent,
-      apiStartTime,
-      scopeId,
-      authorizeTime,
-      transactionTime,
-    });
+  const result = await buildAndDispatchRun({
+    runId: run.id,
+    createdAt: run.createdAt,
+    params,
+    composeContent,
+    apiStartTime,
+    scopeId,
+    authorizeTime,
+    transactionTime,
+  });
 
-    return {
-      runId: run.id,
-      status: result.status,
-      sandboxId: result.sandboxId,
-      createdAt: run.createdAt,
-    };
-  } catch (error) {
-    // Run record exists but dispatch failed (already marked as "failed" by buildAndDispatchRun).
-    // Return instead of throwing so callers can use the runId for error reporting.
-    log.error(`Run ${run.id} dispatch failed`, { error });
-    return {
-      runId: run.id,
-      status: "failed",
-      createdAt: run.createdAt,
-    };
-  }
+  return {
+    runId: run.id,
+    status: result.status,
+    sandboxId: result.sandboxId,
+    createdAt: run.createdAt,
+  };
 }
 
 /**

@@ -296,11 +296,9 @@ describe("createRun()", () => {
         new Error("Sandbox creation failed"),
       );
 
-      // createRun returns { status: "failed" } instead of throwing
-      // so callers can use runId for error reporting
-      const result = await createRun(baseParams());
-      expect(result.status).toBe("failed");
-      expect(result.runId).toBeDefined();
+      await expect(createRun(baseParams())).rejects.toThrow(
+        "Sandbox creation failed",
+      );
 
       // Verify run is marked as failed in DB
       const runs = await findTestRunsByUserAndPrompt(
@@ -566,12 +564,10 @@ describe("createRun()", () => {
         ["mydata:/data"],
       );
 
-      // Should return failed status — required volume doesn't exist
-      const result = await createRun(
-        baseParams({ agentComposeVersionId: compose.versionId }),
-      );
-      expect(result.status).toBe("failed");
-      expect(result.runId).toBeDefined();
+      // Should fail - required volume doesn't exist
+      await expect(
+        createRun(baseParams({ agentComposeVersionId: compose.versionId })),
+      ).rejects.toThrow(/not found/);
     });
 
     it("should skip optional volume during checkpoint resume when it was skipped originally", async () => {

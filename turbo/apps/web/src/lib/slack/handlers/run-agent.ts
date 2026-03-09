@@ -3,7 +3,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
-import { createRun } from "../../run";
+import { createRun, type RunDispatchError } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
 import { queryAxiom, getDatasetName, DATASETS } from "../../axiom";
 import { logger } from "../../logger";
@@ -125,21 +125,6 @@ export async function runAgentForSlack(
       ],
     });
 
-    if (result.status === "failed") {
-      log.error("Run dispatch failed", {
-        runId: result.runId,
-        composeId: compose.id,
-        agentName,
-        userId,
-      });
-      return {
-        status: "failed",
-        response:
-          "Something went wrong while starting the agent. Please try again later.",
-        runId: result.runId,
-      };
-    }
-
     const status = result.status === "queued" ? "queued" : "dispatched";
     log.debug(`Run ${result.runId} ${status} for Slack agent ${agentName}`);
 
@@ -148,12 +133,13 @@ export async function runAgentForSlack(
       runId: result.runId,
     };
   } catch (error) {
+    const runId = (error as RunDispatchError).runId;
     log.error("Error running agent for Slack:", error);
     return {
       status: "failed",
       response:
         "Something went wrong while starting the agent. Please try again later.",
-      runId: undefined,
+      runId,
     };
   }
 }
