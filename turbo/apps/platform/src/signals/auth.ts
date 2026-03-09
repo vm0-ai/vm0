@@ -6,6 +6,17 @@ import { hasClerkAuth } from "../env.ts";
 const reload$ = state(0);
 
 /**
+ * Resolve the web app origin from the current platform origin.
+ * Replaces "platform" with "www" in the hostname so sign-in/sign-out
+ * redirects land on the web app where auth pages live.
+ */
+function resolveWebOrigin(): string {
+  const url = new URL(location.origin);
+  url.hostname = url.hostname.replace("platform", "www");
+  return url.origin;
+}
+
+/**
  * In self-hosted mode, return a mock Clerk-like object that satisfies
  * all call sites without actually loading the Clerk SDK.
  */
@@ -48,8 +59,13 @@ export const clerk$ = computed(async () => {
     throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY environment variable");
   }
 
+  const webOrigin = resolveWebOrigin();
   const clerkInstance = new Clerk(publishableKey);
-  await clerkInstance.load();
+  await clerkInstance.load({
+    signInUrl: `${webOrigin}/sign-in`,
+    signUpUrl: `${webOrigin}/sign-up`,
+    afterSignOutUrl: `${webOrigin}/sign-in`,
+  });
   return clerkInstance;
 });
 

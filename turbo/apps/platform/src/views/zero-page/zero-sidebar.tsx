@@ -12,7 +12,11 @@ import {
   IconUsers,
   IconLogout,
 } from "@tabler/icons-react";
+import { useLoadable } from "ccstate-react";
 import slackIcon from "../settings-page/icons/slack.svg";
+import { clerk$, user$ } from "../../signals/auth.ts";
+import { hasClerkAuth } from "../../env.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 
 export type ZeroNavId =
   | "chat"
@@ -83,14 +87,26 @@ export function ZeroSidebar({
   onAccountAction,
 }: ZeroSidebarProps) {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const accountName = "Ming Li";
-  const accountEmail = "ming@vm0.ai";
-  const accountInitial = "M";
+  const clerkLoadable = useLoadable(clerk$);
+  const userLoadable = useLoadable(user$);
+  const user = userLoadable.state === "hasData" ? userLoadable.data : null;
+  const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
+  const accountName = user?.fullName ?? "User";
+  const accountEmail = user?.primaryEmailAddress?.emailAddress ?? "";
+  const accountInitial = accountName.charAt(0).toUpperCase();
 
   const closeAccountMenu = () => setAccountMenuOpen(false);
 
   const handleAccountAction = (action: ZeroAccountAction) => {
     closeAccountMenu();
+    if (action === "signout") {
+      detach(clerk?.signOut(), Reason.DomCallback);
+      return;
+    }
+    if (action === "manage") {
+      detach(clerk?.openUserProfile(), Reason.DomCallback);
+      return;
+    }
     onAccountAction?.(action);
   };
 
@@ -236,9 +252,19 @@ export function ZeroSidebar({
                 aria-expanded={accountMenuOpen}
                 aria-haspopup="true"
               >
-                <div className="h-8 w-8 shrink-0 rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 text-sm font-medium">
-                  {accountInitial}
-                </div>
+                {user?.imageUrl ? (
+                  <div className="h-8 w-8 shrink-0 rounded-xl overflow-hidden">
+                    <img
+                      src={user.imageUrl}
+                      alt={accountName}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="h-8 w-8 shrink-0 rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 text-sm font-medium">
+                    {accountInitial}
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <p
                     className={`text-sm font-medium leading-tight truncate ${
@@ -266,9 +292,19 @@ export function ZeroSidebar({
               <div className="zero-card-rectangle absolute bottom-full left-0 right-0 mb-2 overflow-hidden z-20">
                 <div className="px-5 py-4 border-b border-border">
                   <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 text-sm font-medium shrink-0">
-                      {accountInitial}
-                    </div>
+                    {user?.imageUrl ? (
+                      <div className="h-9 w-9 shrink-0 rounded-xl overflow-hidden">
+                        <img
+                          src={user.imageUrl}
+                          alt={accountName}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="h-9 w-9 rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 text-sm font-medium shrink-0">
+                        {accountInitial}
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="text-sm leading-5 font-medium text-foreground truncate">
                         {accountName}
@@ -295,22 +331,24 @@ export function ZeroSidebar({
                     Preferences
                   </span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleAccountAction("manage")}
-                  className="w-full flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-muted transition-colors text-left"
-                >
-                  <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
-                    <IconUser
-                      size={20}
-                      stroke={1.5}
-                      className="text-foreground"
-                    />
-                  </div>
-                  <span className="text-sm leading-5 text-foreground">
-                    Manage account
-                  </span>
-                </button>
+                {hasClerkAuth && (
+                  <button
+                    type="button"
+                    onClick={() => handleAccountAction("manage")}
+                    className="w-full flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-muted transition-colors text-left"
+                  >
+                    <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
+                      <IconUser
+                        size={20}
+                        stroke={1.5}
+                        className="text-foreground"
+                      />
+                    </div>
+                    <span className="text-sm leading-5 text-foreground">
+                      Manage account
+                    </span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => handleAccountAction("signout")}

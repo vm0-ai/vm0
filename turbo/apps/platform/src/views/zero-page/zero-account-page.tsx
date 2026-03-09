@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { Card, CardContent } from "@vm0/ui/components/ui/card";
+import { useLoadable } from "ccstate-react";
 import type { ZeroAccountSubId } from "./zero-sidebar.tsx";
+import { user$ } from "../../signals/auth.ts";
 
 interface ZeroAccountPageProps {
   accountSubId: ZeroAccountSubId;
@@ -104,6 +106,12 @@ function ZeroPreferencesSubPage() {
 }
 
 function ZeroManageAccountSubPage() {
+  const userLoadable = useLoadable(user$);
+  const user = userLoadable.state === "hasData" ? userLoadable.data : null;
+  const displayName = user?.fullName ?? "User";
+  const displayEmail = user?.primaryEmailAddress?.emailAddress ?? "";
+  const initial = displayName.charAt(0).toUpperCase();
+
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <header className="shrink-0 border-b border-divider bg-transparent px-4 sm:px-6 pt-6 sm:pt-6 pb-4 sm:pb-5">
@@ -119,15 +127,25 @@ function ZeroManageAccountSubPage() {
           <Card className="zero-card-rectangle">
             <CardContent className="p-6">
               <div className="flex items-center gap-4 mb-6">
-                <div className="h-12 w-12 rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 text-lg font-medium shrink-0">
-                  M
-                </div>
+                {user?.imageUrl ? (
+                  <div className="h-12 w-12 shrink-0 rounded-xl overflow-hidden">
+                    <img
+                      src={user.imageUrl}
+                      alt={displayName}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="h-12 w-12 rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 text-lg font-medium shrink-0">
+                    {initial}
+                  </div>
+                )}
                 <div>
                   <div className="text-sm font-medium text-foreground">
-                    Ming Li
+                    {displayName}
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    ming@vm0.ai
+                    {displayEmail}
                   </div>
                 </div>
               </div>

@@ -45,13 +45,9 @@ export function ZeroAppShell() {
   }, []);
 
   const handleAccountAction = useCallback((action: ZeroAccountAction) => {
-    if (action === "signout") {
-      setAccountSubId(null);
-      setActiveId("chat");
-    } else {
-      setActiveId("account");
-      setAccountSubId(action);
-    }
+    if (action === "signout" || action === "manage") return;
+    setActiveId("account");
+    setAccountSubId(action);
   }, []);
 
   const handleClearRecent = useCallback(() => {
@@ -62,10 +58,13 @@ export function ZeroAppShell() {
 
   return (
     <div className="zero-app flex h-dvh w-full bg-background">
-      <ZeroOnboarding
-        zeroAvatarSrc={zeroAvatarSrc}
-        onAvatarClick={cycleAvatar}
-      />
+      {/* TODO: re-enable onboarding when ready */}
+      {false && (
+        <ZeroOnboarding
+          zeroAvatarSrc={zeroAvatarSrc}
+          onAvatarClick={cycleAvatar}
+        />
+      )}
       <ZeroSidebar
         activeId={activeId}
         onSelect={handleNavSelect}
