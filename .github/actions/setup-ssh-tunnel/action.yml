@@ -53,12 +53,17 @@ runs:
           > "$HOME/.ssh/cf-proxy.sh"
         chmod 755 "$HOME/.ssh/cf-proxy.sh"
 
-        {
-          echo "Host *.vm3.ai"
-          echo "  StrictHostKeyChecking no"
-          echo "  UserKnownHostsFile /dev/null"
-          echo "  ConnectTimeout 10"
-          echo "  IdentityFile $HOME/.ssh/runner.pem"
-          echo "  ProxyCommand $HOME/.ssh/cf-proxy.sh %h ${CF_ACCESS_CLIENT_ID} ${CF_ACCESS_CLIENT_SECRET}"
-        } > "$HOME/.ssh/config"
+        SSH_CONFIG="Host *.vm3.ai
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+          ConnectTimeout 10
+          IdentityFile $HOME/.ssh/runner.pem
+          ProxyCommand $HOME/.ssh/cf-proxy.sh %h ${CF_ACCESS_CLIENT_ID} ${CF_ACCESS_CLIENT_SECRET}"
+
+        # Write to user config
+        echo "$SSH_CONFIG" > "$HOME/.ssh/config"
         chmod 600 "$HOME/.ssh/config"
+
+        # Also write to system config so ssh/scp in containers read it
+        mkdir -p /etc/ssh/ssh_config.d
+        echo "$SSH_CONFIG" > /etc/ssh/ssh_config.d/tunnel.conf
