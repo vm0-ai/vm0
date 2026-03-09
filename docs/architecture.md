@@ -234,7 +234,7 @@ sandbox:
 - Logs requests/responses to per-run JSONL files
 - Firewall enforcement with first-match-wins rules (domain, IP, terminal)
 - CA certificate injected into VM trust store
-- Proxy registry: `/tmp/vm0-registry.json` (flock-based coordination)
+- Proxy registry: `{base_dir}/proxy-registry.json` (flock-based coordination)
 
 #### Execution Flow
 
