@@ -18,7 +18,11 @@ import {
 } from "../client";
 import { escapeHtml } from "../format";
 import { signConnectParams } from "../connect-token";
-import { pickBestPhoto } from "../images";
+import {
+  pickBestPhoto,
+  downloadAndUploadTelegramPhoto,
+  formatPhotoForContext,
+} from "../images";
 import { logger } from "../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -315,6 +319,58 @@ export async function sendThinkingMessage(
     log.warn("Failed to send thinking message", { chatId, error: err });
     return undefined;
   }
+}
+
+/**
+ * Format the replied-to message as a quote block to prepend to the prompt.
+ * Returns undefined if there's no meaningful reply content.
+ */
+export function formatReplyQuote(
+  replyMessage: TelegramHandlerUpdate["message"]["reply_to_message"],
+): string | undefined {
+  if (!replyMessage) {
+    return undefined;
+  }
+
+  const replyText = replyMessage.text ?? replyMessage.caption;
+  if (!replyText) {
+    return undefined;
+  }
+
+  const sender = replyMessage.from?.username
+    ? `@${replyMessage.from.username}`
+    : (replyMessage.from?.first_name ?? "Unknown");
+
+  return `[Replying to ${sender}]\n> ${replyText}`;
+}
+
+/**
+ * Append photo context to the prompt if the message contains a photo.
+ * Handles picking the best resolution, downloading, uploading, and formatting.
+ */
+export async function appendPhotoContext(
+  prompt: string,
+  message: TelegramHandlerUpdate["message"],
+  client: TelegramClient,
+  installationId: string,
+  chatId: string,
+): Promise<string> {
+  if (!message.photo) {
+    return prompt;
+  }
+  const bestPhoto = pickBestPhoto(message.photo);
+  if (!bestPhoto) {
+    return prompt;
+  }
+  const presignedUrl = await downloadAndUploadTelegramPhoto(
+    client,
+    bestPhoto.file_id,
+    `${installationId}-${chatId}`,
+  );
+  if (!presignedUrl) {
+    return prompt;
+  }
+  return `${prompt}\n\n${formatPhotoForContext(presignedUrl, bestPhoto)}`;
 }
 
 /**

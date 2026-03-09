@@ -3,13 +3,13 @@ import { telegramInstallations } from "../../../db/schema/telegram-installation"
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createTelegramClient, sendMessage, deleteMessage } from "../client";
-import { sendThinkingMessage, enrichTelegramPrompt } from "./shared";
-import { fetchTelegramContext } from "../context";
 import {
-  pickBestPhoto,
-  downloadAndUploadTelegramPhoto,
-  formatPhotoForContext,
-} from "../images";
+  sendThinkingMessage,
+  enrichTelegramPrompt,
+  formatReplyQuote,
+  appendPhotoContext,
+} from "./shared";
+import { fetchTelegramContext } from "../context";
 import { runAgentForTelegram } from "./run-agent";
 import {
   lookupTelegramThreadSession,
@@ -110,18 +110,18 @@ export async function handleTelegramMention(
 
   // 6b. Enrich prompt with user info and current message's photo
   let enrichedPrompt = enrichTelegramPrompt(messageText, message.from);
-  if (message.photo) {
-    const bestPhoto = pickBestPhoto(message.photo);
-    if (bestPhoto) {
-      const presignedUrl = await downloadAndUploadTelegramPhoto(
-        client,
-        bestPhoto.file_id,
-        `${installationId}-${chatId}`,
-      );
-      if (presignedUrl) {
-        enrichedPrompt += `\n\n${formatPhotoForContext(presignedUrl, bestPhoto)}`;
-      }
-    }
+  enrichedPrompt = await appendPhotoContext(
+    enrichedPrompt,
+    message,
+    client,
+    installationId,
+    chatId,
+  );
+
+  // 6c. Prepend reply context if this message is a reply to another message
+  const replyQuote = formatReplyQuote(message.reply_to_message);
+  if (replyQuote) {
+    enrichedPrompt = `${replyQuote}\n\n${enrichedPrompt}`;
   }
 
   // 7. Determine thread anchor and resolve session
