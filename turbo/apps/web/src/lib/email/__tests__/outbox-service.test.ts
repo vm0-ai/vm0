@@ -6,7 +6,13 @@ import {
   insertTestOutboxItem,
   findTestOutboxItems,
   findTestOutboxItemById,
+  createTestCompose,
+  createTestAgentSession,
+  createTestEmailThreadSession,
+  findTestEmailThreadSession,
 } from "../../../__tests__/api-test-helpers";
+import { uniqueId } from "../../../__tests__/test-helpers";
+import { generateReplyToken } from "../handlers/shared";
 import {
   enqueueEmail,
   drainNext,
@@ -295,6 +301,88 @@ describe("outbox-service", () => {
       // emails.send called, but emails.get should NOT be called (no threading needed)
       expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
       expect(mockResend.emails.get).not.toHaveBeenCalled();
+    });
+
+    it("should save new thread session on save_thread_session action", async () => {
+      const user = await context.setupUser({ prefix: "outbox-save" });
+      const { composeId } = await createTestCompose(uniqueId("outbox-agent"));
+      const agentSession = await createTestAgentSession(user.userId, composeId);
+      const replyToken = generateReplyToken(agentSession.id);
+
+      await insertTestOutboxItem({
+        fromAddress: "agent@vm7.bot",
+        toAddresses: "user@example.com",
+        subject: "Save thread",
+        template: {
+          template: "agent-reply",
+          props: {
+            agentName: "test",
+            output: "Hello",
+            logsUrl: "https://example.com",
+          },
+        },
+        postSendAction: {
+          action: "save_thread_session",
+          userId: user.userId,
+          composeId,
+          agentSessionId: agentSession.id,
+          replyToToken: replyToken,
+        },
+      });
+
+      await drainNext();
+
+      // getMessageId should have been called for threading
+      expect(mockResend.emails.get).toHaveBeenCalledTimes(1);
+
+      // Thread session should have been created with the message ID
+      const session = await findTestEmailThreadSession(replyToken);
+      expect(session).not.toBeNull();
+      expect(session!.lastEmailMessageId).toBe("<mock-message-id@vm7.bot>");
+    });
+
+    it("should update existing thread session on update_thread_session action", async () => {
+      const user = await context.setupUser({ prefix: "outbox-update" });
+      const { composeId } = await createTestCompose(uniqueId("outbox-agent"));
+      const agentSession = await createTestAgentSession(user.userId, composeId);
+      const replyToken = generateReplyToken(agentSession.id);
+
+      // Create an existing thread session
+      const emailSession = await createTestEmailThreadSession({
+        userId: user.userId,
+        composeId,
+        agentSessionId: agentSession.id,
+        replyToToken: replyToken,
+        lastEmailMessageId: "<old-msg@vm7.bot>",
+      });
+
+      await insertTestOutboxItem({
+        fromAddress: "agent@vm7.bot",
+        toAddresses: "user@example.com",
+        subject: "Update thread",
+        template: {
+          template: "agent-reply",
+          props: {
+            agentName: "test",
+            output: "Reply",
+            logsUrl: "https://example.com",
+          },
+        },
+        postSendAction: {
+          action: "update_thread_session",
+          sessionId: emailSession.id,
+        },
+      });
+
+      await drainNext();
+
+      // getMessageId should have been called
+      expect(mockResend.emails.get).toHaveBeenCalledTimes(1);
+
+      // Thread session should have been updated with the new message ID
+      const updated = await findTestEmailThreadSession(replyToken);
+      expect(updated).not.toBeNull();
+      expect(updated!.lastEmailMessageId).toBe("<mock-message-id@vm7.bot>");
     });
   });
 });

@@ -29,6 +29,7 @@ import { agentRunCallbacks } from "../db/schema/agent-run-callback";
 import { agentRunQueue } from "../db/schema/agent-run-queue";
 import { agentSchedules } from "../db/schema/agent-schedule";
 import { emailOutbox } from "../db/schema/email-outbox";
+import type { EmailTemplate, PostSendAction } from "../lib/email/types";
 import { telegramInstallations } from "../db/schema/telegram-installation";
 import { telegramMessages } from "../db/schema/telegram-message";
 import { telegramUserLinks } from "../db/schema/telegram-user-link";
@@ -2773,10 +2774,10 @@ export async function insertTestOutboxItem(values: {
   fromAddress: string;
   toAddresses: string | string[];
   subject: string;
-  template: unknown;
+  template: EmailTemplate;
   status?: string;
   attempts?: number;
-  postSendAction?: unknown;
+  postSendAction?: PostSendAction;
   createdAt?: Date;
   resendId?: string;
 }) {
