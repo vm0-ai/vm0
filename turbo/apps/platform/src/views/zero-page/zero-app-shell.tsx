@@ -33,7 +33,7 @@ const showOnboarding = false;
 export function ZeroAppShell() {
   const userLoadable = useLoadable(user$);
   const isLoggedIn =
-    userLoadable.state === "hasData" && userLoadable.data != null;
+    userLoadable.state === "hasData" && userLoadable.data !== undefined;
   const [activeId, setActiveId] = useState<ZeroNavId>("chat");
   const [recentId, setRecentId] = useState<string | null>(null);
   const [accountSubId, setAccountSubId] = useState<ZeroAccountSubId>(null);
