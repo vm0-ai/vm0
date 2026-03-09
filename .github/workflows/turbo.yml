@@ -574,6 +574,8 @@ jobs:
           AIRTABLE_OAUTH_CLIENT_SECRET: ${{ secrets.AIRTABLE_OAUTH_CLIENT_SECRET }}
           TODOIST_OAUTH_CLIENT_ID: ${{ vars.TODOIST_OAUTH_CLIENT_ID }}
           TODOIST_OAUTH_CLIENT_SECRET: ${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
+          STRIPE_OAUTH_CLIENT_ID: ${{ vars.STRIPE_OAUTH_CLIENT_ID }}
+          STRIPE_OAUTH_CLIENT_SECRET: ${{ secrets.STRIPE_OAUTH_CLIENT_SECRET }}
           NGROK_API_KEY: ${{ secrets.NGROK_API_KEY }}
           NGROK_COMPUTER_CONNECTOR_DOMAIN: ${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
           PLATFORM_URL: ${{ needs.prepare.outputs.platform-preview-url }}
@@ -751,6 +753,8 @@ jobs:
             AIRTABLE_OAUTH_CLIENT_SECRET=${{ secrets.AIRTABLE_OAUTH_CLIENT_SECRET }}
             TODOIST_OAUTH_CLIENT_ID=${{ vars.TODOIST_OAUTH_CLIENT_ID }}
             TODOIST_OAUTH_CLIENT_SECRET=${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
+            STRIPE_OAUTH_CLIENT_ID=${{ vars.STRIPE_OAUTH_CLIENT_ID }}
+            STRIPE_OAUTH_CLIENT_SECRET=${{ secrets.STRIPE_OAUTH_CLIENT_SECRET }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
             NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
             PLATFORM_URL=${{ needs.prepare.outputs.platform-preview-url }}
