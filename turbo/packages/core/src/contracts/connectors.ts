@@ -1102,6 +1102,36 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  asana: {
+    label: "Asana",
+    helpText:
+      "Connect your Asana account to manage tasks, projects, portfolios, goals, and team workflows",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Asana to grant access.",
+        secrets: {
+          ASANA_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          ASANA_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://app.asana.com/-/oauth_authorize",
+      tokenUrl: "https://app.asana.com/-/oauth_token",
+      scopes: [],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -1253,10 +1283,15 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
     targets: ["https://api.webflow.com/v2"],
     auth: BEARER_AUTH,
   },
+  asana: {
+    targets: ["https://app.asana.com/api/1.0"],
+    auth: BEARER_AUTH,
+  },
 };
 
 export const connectorTypeSchema = z.enum([
   "airtable",
+  "asana",
   "canva",
   "github",
   "gmail",

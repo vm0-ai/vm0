@@ -129,6 +129,9 @@ function initEnv() {
       VERCEL_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       VERCEL_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       VERCEL_INTEGRATION_SLUG: z.string().min(1).optional(),
+      // Asana OAuth (for connector)
+      ASANA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      ASANA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Sentry OAuth (for connector)
       SENTRY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       SENTRY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -276,6 +279,8 @@ function initEnv() {
       VERCEL_OAUTH_CLIENT_ID: process.env.VERCEL_OAUTH_CLIENT_ID,
       VERCEL_OAUTH_CLIENT_SECRET: process.env.VERCEL_OAUTH_CLIENT_SECRET,
       VERCEL_INTEGRATION_SLUG: process.env.VERCEL_INTEGRATION_SLUG,
+      ASANA_OAUTH_CLIENT_ID: process.env.ASANA_OAUTH_CLIENT_ID,
+      ASANA_OAUTH_CLIENT_SECRET: process.env.ASANA_OAUTH_CLIENT_SECRET,
       SENTRY_OAUTH_CLIENT_ID: process.env.SENTRY_OAUTH_CLIENT_ID,
       SENTRY_OAUTH_CLIENT_SECRET: process.env.SENTRY_OAUTH_CLIENT_SECRET,
       INTERVALS_ICU_OAUTH_CLIENT_ID: process.env.INTERVALS_ICU_OAUTH_CLIENT_ID,

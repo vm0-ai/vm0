@@ -6,6 +6,7 @@ import {
   type ProviderHandler,
 } from "./provider-types";
 import { airtableHandler } from "./providers/airtable-handler";
+import { asanaHandler } from "./providers/asana-handler";
 import { canvaHandler } from "./providers/canva-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { docusignHandler } from "./providers/docusign-handler";
@@ -43,6 +44,7 @@ export const PROVIDER_HANDLERS: Record<
   ProviderHandler
 > = {
   airtable: airtableHandler,
+  asana: asanaHandler,
   canva: canvaHandler,
   deel: deelHandler,
   docusign: docusignHandler,
