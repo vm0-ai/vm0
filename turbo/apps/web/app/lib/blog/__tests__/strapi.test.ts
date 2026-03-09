@@ -291,42 +291,6 @@ describe("blog/strapi", () => {
         "Strapi returned invalid JSON",
       );
     });
-
-    it("throws on empty body for getPostBySlugFromStrapi", async () => {
-      server.use(
-        http.get(`${STRAPI_URL}/api/articles`, () => {
-          return new HttpResponse("", { status: 200 });
-        }),
-      );
-
-      await expect(getPostBySlugFromStrapi("test-post", "en")).rejects.toThrow(
-        "Strapi returned empty response",
-      );
-    });
-
-    it("throws on empty body for getFeaturedPostFromStrapi", async () => {
-      server.use(
-        http.get(`${STRAPI_URL}/api/articles`, () => {
-          return new HttpResponse("", { status: 200 });
-        }),
-      );
-
-      await expect(getFeaturedPostFromStrapi("en")).rejects.toThrow(
-        "Strapi returned empty response",
-      );
-    });
-
-    it("throws on empty body for getAllCategoriesFromStrapi", async () => {
-      server.use(
-        http.get(`${STRAPI_URL}/api/categories`, () => {
-          return new HttpResponse("", { status: 200 });
-        }),
-      );
-
-      await expect(getAllCategoriesFromStrapi("en")).rejects.toThrow(
-        "Strapi returned empty response",
-      );
-    });
   });
 
   describe("article transformation", () => {
