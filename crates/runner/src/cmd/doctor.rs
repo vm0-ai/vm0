@@ -32,6 +32,9 @@ pub struct DoctorArgs {
 const RECHECK_DELAY: Duration = Duration::from_secs(3);
 
 /// Maximum number of recheck attempts before reporting persistent anomalies.
+///
+/// Worst-case latency: `RECHECK_MAX_ATTEMPTS × RECHECK_DELAY` = 9 s (only
+/// when anomalies persist across all attempts; zero overhead when healthy).
 const RECHECK_MAX_ATTEMPTS: u32 = 3;
 
 /// A detected anomaly that carries enough context to recheck itself.
