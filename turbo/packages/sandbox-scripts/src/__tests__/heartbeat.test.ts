@@ -10,11 +10,14 @@ function failResponse(): Response {
 }
 
 describe("heartbeat", () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.useFakeTimers();
     resetShutdown();
-    // Suppress log output (log module uses console.error for all levels)
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    // Spy on console.error (log module uses it for all levels) to suppress
+    // noise and allow assertions on log output in failure tests
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -44,6 +47,9 @@ describe("heartbeat", () => {
         "Network connectivity check failed",
       );
       expect(scheduleNext).not.toHaveBeenCalled();
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Network connectivity check failed"),
+      );
     });
 
     it("should reject when first heartbeat throws error", async () => {
@@ -61,6 +67,9 @@ describe("heartbeat", () => {
         "Network connectivity check failed",
       );
       expect(scheduleNext).not.toHaveBeenCalled();
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Network connectivity check failed"),
+      );
     });
 
     it("should schedule next heartbeat when first succeeds", async () => {
@@ -79,6 +88,9 @@ describe("heartbeat", () => {
       expect(scheduleNext).toHaveBeenCalledWith(
         expect.any(Function),
         baseConfig.intervalSeconds * 1000,
+      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Heartbeat sent (initial)"),
       );
     });
 
