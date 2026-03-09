@@ -270,11 +270,11 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       expect(cleanedResult.reason).toBe("Run timed out (no heartbeat)");
     });
 
-    it("should skip sandbox.kill for runner-dispatched runs (no sandboxId)", async () => {
+    it("should call sandbox.kill for expired runs with sandboxId", async () => {
       // Record the time when run is created
       const runCreationTime = Date.now();
 
-      // Create a run (runner mock does not set sandboxId)
+      // Create a run (will have sandboxId from the mock)
       await createTestRun(testComposeId, "Test prompt");
 
       // Mock Date.now to return time 3 minutes in the future
@@ -291,8 +291,8 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
 
       await GET(request);
 
-      // Runner runs have no sandboxId, so sandbox.kill should NOT be called
-      expect(context.mocks.e2b.sandbox.kill).not.toHaveBeenCalled();
+      // Verify sandbox.kill was called (via the mock from setupMocks)
+      expect(context.mocks.e2b.sandbox.kill).toHaveBeenCalled();
     });
   });
 });

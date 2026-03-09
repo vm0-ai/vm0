@@ -26,7 +26,9 @@ import {
   type CreateRunResult,
 } from "../run-service";
 import { isForbidden, isBadRequest } from "../../errors";
+import { Sandbox } from "@e2b/code-interpreter";
 import { POST as createComposeRoute } from "../../../../app/api/agent/composes/route";
+import { mockClerk } from "../../../__tests__/clerk-mock";
 
 const context = testContext();
 
@@ -58,6 +60,7 @@ describe("createRun()", () => {
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("running");
+      expect(result.sandboxId).toBeDefined();
       expect(result.createdAt).toBeInstanceOf(Date);
 
       // Verify run record in DB
@@ -263,15 +266,12 @@ describe("createRun()", () => {
 
   describe("Dispatch Failure", () => {
     it("should mark run as failed when dispatch throws", async () => {
-      const { executeRunnerJob } = await import(
-        "../../run/executors/runner-executor"
-      );
-      vi.mocked(executeRunnerJob).mockRejectedValueOnce(
-        new Error("Runner dispatch failed"),
+      vi.mocked(Sandbox.create).mockRejectedValueOnce(
+        new Error("Sandbox creation failed"),
       );
 
       await expect(createRun(baseParams())).rejects.toThrow(
-        "Runner dispatch failed",
+        "Sandbox creation failed",
       );
 
       // Verify run is marked as failed in DB
@@ -282,7 +282,7 @@ describe("createRun()", () => {
       const run = runs.find((r) => r.status === "failed");
 
       expect(run).toBeDefined();
-      expect(run!.error).toContain("Runner dispatch failed");
+      expect(run!.error).toContain("Sandbox creation failed");
       expect(run!.completedAt).toBeDefined();
     });
   });
@@ -319,6 +319,16 @@ describe("createRun()", () => {
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("running");
+
+      // Verify sandbox was called with full memory env vars including VERSION_ID
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      expect(createCall).toBeDefined();
+      const sandboxOptions = createCall![1] as {
+        envs?: Record<string, string>;
+      };
+      expect(sandboxOptions.envs?.VM0_MEMORY_NAME).toBe(memoryName);
+      expect(sandboxOptions.envs?.VM0_MEMORY_VERSION_ID).toBeDefined();
+      expect(sandboxOptions.envs?.VM0_MEMORY_DRIVER).toBe("vas");
     });
 
     it("should succeed when memory already exists (idempotent)", async () => {
@@ -382,10 +392,7 @@ describe("createRun()", () => {
       };
 
       // Step 2: Continue from session WITHOUT specifying memoryName
-      const { executeRunnerJob } = await import(
-        "../../run/executors/runner-executor"
-      );
-      vi.mocked(executeRunnerJob).mockClear();
+      vi.mocked(Sandbox.create).mockClear();
       const continueResult = await createRun(
         baseParams({
           sessionId: agentSessionId,
@@ -396,10 +403,13 @@ describe("createRun()", () => {
       expect(continueResult.runId).toBeDefined();
       expect(continueResult.status).toBe("running");
 
-      // Step 3: Verify runner was called with memory name in context
-      const runnerCall = vi.mocked(executeRunnerJob).mock.calls[0];
-      expect(runnerCall).toBeDefined();
-      expect(runnerCall![0].memoryName).toBe("restored-memory");
+      // Step 3: Verify Sandbox.create was called with VM0_MEMORY_NAME
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      expect(createCall).toBeDefined();
+      const sandboxOptions = createCall![1] as {
+        envs?: Record<string, string>;
+      };
+      expect(sandboxOptions.envs?.VM0_MEMORY_NAME).toBe("restored-memory");
     });
   });
 
@@ -623,6 +633,39 @@ describe("createRun()", () => {
       const result = await createRun(
         baseParams({ agentComposeVersionId: compose.versionId }),
       );
+
+      expect(result.status).toBe("running");
+    });
+  });
+
+  describe("Domain-based Runner Rollout", () => {
+    it("should route @vm0.ai users to runner when RUNNER_DEFAULT_GROUP is set", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      mockClerk({ userId: user.userId, email: "team@vm0.ai" });
+
+      const result = await createRun(baseParams());
+
+      expect(result.status).toBe("pending");
+    });
+
+    it("should route non-vm0.ai users to E2B when RUNNER_DEFAULT_GROUP is set", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      mockClerk({ userId: user.userId, email: "user@example.com" });
+
+      const result = await createRun(baseParams());
+
+      expect(result.status).toBe("running");
+    });
+
+    it("should skip domain check when RUNNER_DEFAULT_GROUP is not set", async () => {
+      // RUNNER_DEFAULT_GROUP is not set by default in test env
+      mockClerk({ userId: user.userId, email: "team@vm0.ai" });
+
+      const result = await createRun(baseParams());
 
       expect(result.status).toBe("running");
     });

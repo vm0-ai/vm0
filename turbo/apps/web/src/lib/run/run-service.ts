@@ -22,6 +22,7 @@ import type { AgentComposeSnapshot } from "../checkpoint/types";
 import type { AgentComposeYaml } from "../../types/agent-compose";
 import { getAgentSessionWithConversation } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
+import { executeE2bRun } from "./executors/e2b-executor";
 import { executeRunnerJob } from "./executors/runner-executor";
 import { executeDockerRun } from "./executors/docker-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
@@ -234,11 +235,15 @@ export async function validateAgentSession(
  * Dispatch prepared context to appropriate executor.
  *
  * Routing:
- * - Runner Group: explicit runner config in compose, or default group
- * - Docker: local dev mode, requires DOCKER_SANDBOX_IMAGE
+ * - Runner Group: explicit runner config in compose
+ * - E2B: cloud mode, requires E2B_API_KEY
+ * - Docker: local mode, requires DOCKER_SANDBOX_IMAGE
  *
  */
-async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
+async function dispatchRun(
+  context: PreparedContext,
+  userEmail: string,
+): Promise<ExecutorResult> {
   if (context.runnerGroup) {
     log.debug(
       `Dispatching run ${context.runId} to runner group: ${context.runnerGroup}`,
@@ -246,19 +251,29 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
     return await executeRunnerJob(context);
   }
 
-  if (env().DOCKER_SANDBOX_IMAGE) {
+  // Domain-based rollout: route @vm0.ai users to runner.
+  // Note: CI test accounts (e2e+clerk_test@vm0.ai) also match, but preview
+  // deploys don't set RUNNER_DEFAULT_GROUP so they still use E2B.
+  const defaultGroup = env().RUNNER_DEFAULT_GROUP;
+  if (defaultGroup) {
+    if (userEmail.endsWith("@vm0.ai")) {
+      log.debug(
+        `Dispatching run ${context.runId} to runner (domain rollout: ${userEmail})`,
+      );
+      return await executeRunnerJob({ ...context, runnerGroup: defaultGroup });
+    }
+  }
+
+  if (env().E2B_API_KEY) {
+    log.debug(`Dispatching run ${context.runId} to E2B executor`);
+    return await executeE2bRun(context);
+  } else if (env().DOCKER_SANDBOX_IMAGE) {
     log.debug(`Dispatching run ${context.runId} to Docker executor`);
     return await executeDockerRun(context);
   }
 
-  const defaultGroup = env().RUNNER_DEFAULT_GROUP;
-  if (defaultGroup) {
-    log.debug(`Dispatching run ${context.runId} to runner (default group)`);
-    return await executeRunnerJob({ ...context, runnerGroup: defaultGroup });
-  }
-
   throw new Error(
-    "No executor configured: set RUNNER_DEFAULT_GROUP or DOCKER_SANDBOX_IMAGE",
+    "No executor configured: set E2B_API_KEY for cloud mode or DOCKER_SANDBOX_IMAGE for Docker mode",
   );
 }
 
@@ -515,6 +530,7 @@ async function buildAndDispatchRun(opts: {
   scopeId: string | undefined;
   authorizeTime: number;
   transactionTime: number;
+  userEmail: string;
 }): Promise<{ status: string; sandboxId?: string }> {
   const {
     runId,
@@ -525,6 +541,7 @@ async function buildAndDispatchRun(opts: {
     scopeId,
     authorizeTime,
     transactionTime,
+    userEmail,
   } = opts;
   const { userId, agentComposeVersionId, prompt } = params;
 
@@ -571,7 +588,7 @@ async function buildAndDispatchRun(opts: {
     const prepareTime = Date.now();
 
     // Dispatch to executor
-    const result = await dispatchRun(prepareResult.context);
+    const result = await dispatchRun(prepareResult.context, userEmail);
     const dispatchTime = Date.now();
 
     // Record per-step timing metrics for latency diagnosis
@@ -742,6 +759,7 @@ export async function createRun(
     scopeId,
     authorizeTime,
     transactionTime,
+    userEmail,
   });
 
   return {
@@ -825,5 +843,6 @@ export async function executeQueuedRun(
     scopeId: params.scopeId,
     authorizeTime,
     transactionTime,
+    userEmail,
   });
 }
