@@ -12,8 +12,8 @@ import {
   isVm0Admin,
   ensureDefaultScope,
 } from "../../../src/lib/scope/scope-service";
+import { auth } from "@clerk/nextjs/server";
 import { getUserEmail } from "../../../src/lib/auth/get-user-email";
-import { getAuthProvider } from "../../../src/lib/auth/auth-provider";
 import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
@@ -51,10 +51,14 @@ const router = tsr.router(scopeContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const orgId = await getAuthProvider().getOrgId();
+    const { orgId } = await auth();
 
     try {
-      const { scope } = await resolveScope(userId, undefined, orgId);
+      const { scope } = await resolveScope(
+        userId,
+        undefined,
+        orgId ?? undefined,
+      );
 
       return { status: 200 as const, body: scopeToResponseBody(scope) };
     } catch (error) {
@@ -129,13 +133,17 @@ const router = tsr.router(scopeContract, {
     }
 
     const { slug, force } = body;
-    const orgId = await getAuthProvider().getOrgId();
+    const { orgId } = await auth();
 
     log.debug("updating scope", { userId, slug, force });
 
     let existingScope;
     try {
-      ({ scope: existingScope } = await resolveScope(userId, undefined, orgId));
+      ({ scope: existingScope } = await resolveScope(
+        userId,
+        undefined,
+        orgId ?? undefined,
+      ));
     } catch (error) {
       if (isNotFound(error)) {
         return createErrorResponse(
