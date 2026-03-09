@@ -185,10 +185,43 @@ async function resolveVersion(
   storageType: "volume" | "artifact" | "memory",
   version: string,
 ): Promise<{ versionId: string; s3Key: string }> {
-  // Query database for storage
-  // Must include type in query since same name can exist for different types
+  if (version === "latest") {
+    // Fetch storage + HEAD version in a single JOIN query
+    const [result] = await globalThis.services.db
+      .select({
+        headVersionId: storages.headVersionId,
+        versionId: storageVersions.id,
+        s3Key: storageVersions.s3Key,
+      })
+      .from(storages)
+      .leftJoin(storageVersions, eq(storages.headVersionId, storageVersions.id))
+      .where(
+        and(
+          eq(storages.scopeId, scopeId),
+          eq(storages.name, storageName),
+          eq(storages.type, storageType),
+        ),
+      )
+      .limit(1);
+
+    if (!result) {
+      throw new Error(`Storage "${storageName}" not found in database`);
+    }
+
+    if (!result.headVersionId) {
+      throw new Error(`Storage "${storageName}" has no HEAD version`);
+    }
+
+    if (!result.versionId || !result.s3Key) {
+      throw new Error(`Storage "${storageName}" HEAD version not found`);
+    }
+
+    return { versionId: result.versionId, s3Key: result.s3Key };
+  }
+
+  // For non-latest versions, need storage ID first for prefix resolution
   const [dbStorage] = await globalThis.services.db
-    .select()
+    .select({ id: storages.id })
     .from(storages)
     .where(
       and(
@@ -201,25 +234,6 @@ async function resolveVersion(
 
   if (!dbStorage) {
     throw new Error(`Storage "${storageName}" not found in database`);
-  }
-
-  if (version === "latest") {
-    // Get HEAD version
-    if (!dbStorage.headVersionId) {
-      throw new Error(`Storage "${storageName}" has no HEAD version`);
-    }
-
-    const [headVersion] = await globalThis.services.db
-      .select()
-      .from(storageVersions)
-      .where(eq(storageVersions.id, dbStorage.headVersionId))
-      .limit(1);
-
-    if (!headVersion) {
-      throw new Error(`Storage "${storageName}" HEAD version not found`);
-    }
-
-    return { versionId: headVersion.id, s3Key: headVersion.s3Key };
   }
 
   // Use shared version resolver for exact match and prefix match
