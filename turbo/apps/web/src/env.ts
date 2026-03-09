@@ -13,7 +13,7 @@ export function isBlogEnabled(): boolean {
 function initEnv() {
   const env = createEnv({
     server: {
-      DATABASE_URL: z.string().min(1),
+      DATABASE_URL: z.string().min(1).optional(),
       NODE_ENV: z
         .enum(["development", "test", "production"])
         .default("development"),
@@ -320,8 +320,6 @@ function initEnv() {
       NEXT_PUBLIC_DATA_SOURCE: process.env.NEXT_PUBLIC_DATA_SOURCE,
       NEXT_PUBLIC_STRAPI_URL: process.env.NEXT_PUBLIC_STRAPI_URL,
     },
-    // Skip validation during build when server env vars are unavailable
-    skipValidation: process.env.SKIP_ENV_VALIDATION === "true",
     emptyStringAsUndefined: true,
   });
 
@@ -331,6 +329,11 @@ function initEnv() {
   const isServer = typeof window === "undefined";
 
   if (isServer) {
+    // DATABASE_URL is optional at build time but required at runtime
+    if (!env.DATABASE_URL) {
+      throw new Error("DATABASE_URL is required at runtime");
+    }
+
     // Slack integration validation
     const slackEnabled = env.SLACK_INTEGRATION_ENABLED === "true";
     if (slackEnabled) {
