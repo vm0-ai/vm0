@@ -126,21 +126,19 @@ function rehypeRewriteHandler(...args: RewriteArgs) {
     return;
   }
 
-  // Strip heading anchor links (`.anchor` class) that contain escaped `<svg>` text
-  if ("children" in node) {
-    const children = node.children;
-    for (let i = children.length - 1; i >= 0; i--) {
-      const child = children[i];
-      if (
-        child &&
-        child.type === "element" &&
-        child.tagName === "a" &&
-        Array.isArray(child.properties?.className) &&
-        (child.properties.className as string[]).includes("anchor")
-      ) {
-        children.splice(i, 1);
-      }
-    }
+  // Strip heading anchor links (`.anchor` class) that contain escaped `<svg>` text.
+  if (
+    node.type === "element" &&
+    node.tagName === "a" &&
+    node.properties?.class === "anchor"
+  ) {
+    Object.assign(node, {
+      type: "text",
+      value: "",
+      tagName: undefined,
+      properties: undefined,
+      children: undefined,
+    });
   }
 }
 
