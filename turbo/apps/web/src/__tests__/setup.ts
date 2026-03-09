@@ -25,6 +25,8 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("R2_ACCESS_KEY_ID", "test-access-key");
     vi.stubEnv("R2_SECRET_ACCESS_KEY", "test-secret-key");
     vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-bucket");
+    // Default runner group for tests (all runs dispatch to runner by default)
+    vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     // Optional env vars
     vi.stubEnv("AXIOM_DATASET_SUFFIX", "dev");
     // Slack integration test vars
@@ -107,6 +109,32 @@ vi.mock("@e2b/code-interpreter", () => ({
     create: vi.fn(),
     connect: vi.fn(),
   },
+}));
+
+// Mock runner executor — simulates runner picking up job immediately
+// Updates DB to "running" with startedAt (like real runner does after claiming),
+// so that completion flows and usage calculations work correctly in tests.
+vi.mock("../lib/run/executors/runner-executor", () => ({
+  executeRunnerJob: vi
+    .fn()
+    .mockImplementation(async (context: { runId: string }) => {
+      const { agentRuns } = await import("../db/schema/agent-run");
+      const { eq } = await import("drizzle-orm");
+      await globalThis.services.db
+        .update(agentRuns)
+        .set({
+          status: "running",
+          startedAt: new Date(),
+          lastHeartbeatAt: new Date(),
+        })
+        .where(eq(agentRuns.id, context.runId));
+      return {
+        runId: context.runId,
+        status: "running",
+        createdAt: new Date().toISOString(),
+        sandboxType: "runner",
+      };
+    }),
 }));
 
 // Mock AWS S3

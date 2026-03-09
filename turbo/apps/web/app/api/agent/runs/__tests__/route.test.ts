@@ -4,7 +4,6 @@ import { POST as createComposeRoute } from "../../composes/route";
 import { PUT as putSecret } from "../../../secrets/route";
 import { PUT as setVariableRoute } from "../../../variables/route";
 import { randomUUID } from "crypto";
-import { Sandbox } from "@e2b/code-interpreter";
 import {
   createTestRequest,
   createTestCompose,
@@ -65,9 +64,12 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(run.completedAt).toBeNull();
     });
 
-    it("should return failed status if sandbox preparation fails", async () => {
-      vi.mocked(Sandbox.create).mockRejectedValueOnce(
-        new Error("Sandbox creation failed"),
+    it("should return failed status if dispatch fails", async () => {
+      const { executeRunnerJob } = await import(
+        "../../../../../src/lib/run/executors/runner-executor"
+      );
+      vi.mocked(executeRunnerJob).mockRejectedValueOnce(
+        new Error("Runner dispatch failed"),
       );
 
       const data = await createTestRun(testComposeId, "Test failure");
@@ -78,7 +80,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const run = await getTestRun(data.runId);
 
       expect(run.status).toBe("failed");
-      expect(run.error).toContain("Sandbox creation failed");
+      expect(run.error).toContain("Runner dispatch failed");
       expect(run.completedAt).toBeDefined();
     });
 
@@ -834,7 +836,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
   describe("Connector Injection", () => {
     it("should satisfy ${{ secrets.GH_TOKEN }} from connector when user has no GH_TOKEN secret", async () => {
-      vi.mocked(Sandbox.create).mockClear();
+      const { executeRunnerJob } = await import(
+        "../../../../../src/lib/run/executors/runner-executor"
+      );
+      vi.mocked(executeRunnerJob).mockClear();
 
       // Create a GitHub connector for the test user
       await createTestConnector(user.scopeId, {
@@ -854,16 +859,19 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await createTestRun(composeId, "Test with GitHub connector");
       expect(data.status).toBe("running");
 
-      // Verify Sandbox.create was called with the connector's token as GH_TOKEN
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+      // Verify executor was called with the connector's token as GH_TOKEN
+      expect(executeRunnerJob).toHaveBeenCalled();
+      const runnerContext = vi.mocked(executeRunnerJob).mock.calls[0]![0];
+      const envs = { ...runnerContext.environment, ...runnerContext.secrets };
 
       expect(envs?.GH_TOKEN).toBe("ghp-test-connector-token");
     });
 
     it("should not override user-provided GH_TOKEN secret with connector token", async () => {
-      vi.mocked(Sandbox.create).mockClear();
+      const { executeRunnerJob } = await import(
+        "../../../../../src/lib/run/executors/runner-executor"
+      );
+      vi.mocked(executeRunnerJob).mockClear();
 
       // Create a GitHub connector
       await createTestConnector(user.scopeId, {
@@ -887,15 +895,18 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("running");
 
       // Verify user-provided secret takes precedence
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+      expect(executeRunnerJob).toHaveBeenCalled();
+      const runnerContext = vi.mocked(executeRunnerJob).mock.calls[0]![0];
+      const envs = { ...runnerContext.environment, ...runnerContext.secrets };
 
       expect(envs?.GH_TOKEN).toBe("user-provided-token");
     });
 
     it("should not inject connector secrets when compose does not reference them", async () => {
-      vi.mocked(Sandbox.create).mockClear();
+      const { executeRunnerJob } = await import(
+        "../../../../../src/lib/run/executors/runner-executor"
+      );
+      vi.mocked(executeRunnerJob).mockClear();
 
       // Create a GitHub connector
       await createTestConnector(user.scopeId, {
@@ -908,10 +919,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await createTestRun(composeId, "Test no GH_TOKEN ref");
       expect(data.status).toBe("running");
 
-      // Verify GH_TOKEN is NOT in sandbox envs
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+      // Verify GH_TOKEN is NOT in executor context
+      expect(executeRunnerJob).toHaveBeenCalled();
+      const runnerContext = vi.mocked(executeRunnerJob).mock.calls[0]![0];
+      const envs = { ...runnerContext.environment, ...runnerContext.secrets };
 
       expect(envs?.GH_TOKEN).toBeUndefined();
       expect(envs?.GITHUB_TOKEN).toBeUndefined();
@@ -927,7 +938,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     });
 
     it("should satisfy ${{ secrets.SLACK_TOKEN }} from Slack connector when user has no SLACK_TOKEN secret", async () => {
-      vi.mocked(Sandbox.create).mockClear();
+      const { executeRunnerJob } = await import(
+        "../../../../../src/lib/run/executors/runner-executor"
+      );
+      vi.mocked(executeRunnerJob).mockClear();
 
       // Create a Slack connector for the test user
       await createTestConnector(user.scopeId, {
@@ -951,16 +965,19 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await createTestRun(composeId, "Test with Slack connector");
       expect(data.status).toBe("running");
 
-      // Verify Sandbox.create was called with the connector's token as SLACK_TOKEN
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+      // Verify executor was called with the connector's token as SLACK_TOKEN
+      expect(executeRunnerJob).toHaveBeenCalled();
+      const runnerContext = vi.mocked(executeRunnerJob).mock.calls[0]![0];
+      const envs = { ...runnerContext.environment, ...runnerContext.secrets };
 
       expect(envs?.SLACK_TOKEN).toBe("xoxp-test-slack-connector-token");
     });
 
     it("should not override user-provided SLACK_TOKEN secret with Slack connector token", async () => {
-      vi.mocked(Sandbox.create).mockClear();
+      const { executeRunnerJob } = await import(
+        "../../../../../src/lib/run/executors/runner-executor"
+      );
+      vi.mocked(executeRunnerJob).mockClear();
 
       // Create a Slack connector
       await createTestConnector(user.scopeId, {
@@ -992,9 +1009,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("running");
 
       // Verify user-provided secret takes precedence
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+      expect(executeRunnerJob).toHaveBeenCalled();
+      const runnerContext = vi.mocked(executeRunnerJob).mock.calls[0]![0];
+      const envs = { ...runnerContext.environment, ...runnerContext.secrets };
 
       expect(envs?.SLACK_TOKEN).toBe("user-provided-slack-token");
     });
@@ -1122,7 +1139,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.error.message).toMatch(/checkpoint/i);
     });
 
-    it("should write session history to claude-code path format for claude-code framework", async () => {
+    it("should pass resume session to executor for claude-code framework", async () => {
       // Create and complete a run to get a checkpoint
       const { composeId } = await createTestCompose(
         `claude-code-resume-path-${Date.now()}`,
@@ -1135,25 +1152,20 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
       const { checkpointId } = await completeTestRun(user.userId, initialRunId);
 
-      // Clear mocks before resume run
-      context.mocks.e2b.sandbox.files.write.mockClear();
+      const { executeRunnerJob } = await import(
+        "../../../../../src/lib/run/executors/runner-executor"
+      );
+      vi.mocked(executeRunnerJob).mockClear();
 
       // Create a resume run using checkpointId
       await createTestRun(composeId, "Resume run", { checkpointId });
 
-      // Find the session history write call (ends with .jsonl)
-      const writeCalls = context.mocks.e2b.sandbox.files.write.mock.calls;
-      const sessionHistoryCall = writeCalls.find((call) => {
-        const path = call?.[0] as string;
-        return path?.endsWith(".jsonl");
-      });
-
-      expect(sessionHistoryCall).toBeDefined();
-      const writePath = sessionHistoryCall?.[0] as string;
-
-      // Claude-code path format: /home/user/.claude/projects/-{workingDir}/session-id.jsonl
-      expect(writePath).toMatch(/^\/home\/user\/\.claude\/projects\/-/);
-      expect(writePath).toMatch(/\.jsonl$/);
+      // Verify executor received resume session context
+      expect(executeRunnerJob).toHaveBeenCalled();
+      const runnerContext = vi.mocked(executeRunnerJob).mock.calls[0]![0];
+      expect(runnerContext.resumeSession).toBeDefined();
+      expect(runnerContext.resumeSession?.sessionId).toBeDefined();
+      expect(runnerContext.resumeSession?.sessionHistory).toBeDefined();
     });
 
     // Note: "Missing required secrets" validation is tested in the Validation
@@ -1345,7 +1357,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     });
 
     it("should use CLI vars over server-stored vars when both exist", async () => {
-      vi.mocked(Sandbox.create).mockClear();
+      const { executeRunnerJob } = await import(
+        "../../../../../src/lib/run/executors/runner-executor"
+      );
+      vi.mocked(executeRunnerJob).mockClear();
 
       // Create compose that requires a template variable
       const { composeId } = await createTestCompose(uniqueId("cli-override"), {
@@ -1367,10 +1382,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       expect(data.status).toBe("running");
 
-      // Verify Sandbox.create was called with CLI value (not server value)
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+      // Verify executor was called with CLI value (not server value)
+      expect(executeRunnerJob).toHaveBeenCalled();
+      const runnerContext = vi.mocked(executeRunnerJob).mock.calls[0]![0];
+      const envs = { ...runnerContext.environment, ...runnerContext.secrets };
 
       expect(envs?.MY_VAR).toBe("cli-value");
     });

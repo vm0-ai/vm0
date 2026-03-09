@@ -427,11 +427,11 @@ describe("POST /api/webhooks/agent/telemetry", () => {
   });
 
   describe("Sandbox type detection", () => {
-    it("should detect E2B sandbox type when run has sandboxId", async () => {
-      // E2B runs have sandboxId set by E2B executor (mock returns unique sandboxId per test)
+    it("should detect runner sandbox type when run has no sandboxId", async () => {
+      // Runner runs have no sandboxId (runner mock does not set it)
       const { runId } = await createRunForWebhook(
         testComposeId,
-        "Test E2B run",
+        "Test runner run",
       );
       const testToken = await createTestSandboxToken(user.userId, runId);
 
@@ -462,7 +462,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
 
       expect(recordSandboxInternalOperationSpy).toHaveBeenCalledWith({
         actionType: "api_to_agent_start",
-        sandboxType: "e2b",
+        sandboxType: "runner",
         durationMs: 1500,
         success: true,
       });
