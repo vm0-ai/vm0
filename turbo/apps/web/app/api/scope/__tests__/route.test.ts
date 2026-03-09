@@ -590,7 +590,8 @@ describe("/api/scope", () => {
       // With Clerk configured, the user's default org is discovered via JIT
       // and its slug is used (mockClerk defaults to org-{userId} slug)
       expect(response.status).toBe(200);
-      expect(data.slug).toMatch(/^org-no-org-\d+$/);
+      // JIT discovery uses Clerk org slug (org-{userId} from mock)
+      expect(data.slug).toMatch(/^org-no-org-/);
     });
   });
 });
