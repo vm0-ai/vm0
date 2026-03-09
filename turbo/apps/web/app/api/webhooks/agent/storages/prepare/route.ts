@@ -88,36 +88,23 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       };
     }
 
-    // Find or create storage
-    let [storage] = await globalThis.services.db
-      .select()
-      .from(storages)
-      .where(
-        and(
-          eq(storages.scopeId, userScope.id),
-          eq(storages.name, storageName),
-          eq(storages.type, storageType),
-        ),
-      )
-      .limit(1);
-
-    if (!storage) {
-      // Create new storage if it doesn't exist
-      const [newStorage] = await globalThis.services.db
-        .insert(storages)
-        .values({
-          userId,
-          scopeId: userScope.id,
-          name: storageName,
-          type: storageType,
-          s3Prefix: `${userScope.slug}/${storageType}/${storageName}`,
-          size: 0,
-          fileCount: 0,
-        })
-        .returning();
-      storage = newStorage;
-      log.debug(`Created new storage: ${storage?.id}`);
-    }
+    // Find or create storage (upsert to handle concurrent requests)
+    const [storage] = await globalThis.services.db
+      .insert(storages)
+      .values({
+        userId,
+        scopeId: userScope.id,
+        name: storageName,
+        type: storageType,
+        s3Prefix: `${userScope.slug}/${storageType}/${storageName}`,
+        size: 0,
+        fileCount: 0,
+      })
+      .onConflictDoUpdate({
+        target: [storages.scopeId, storages.name, storages.type],
+        set: { updatedAt: new Date() },
+      })
+      .returning();
 
     if (!storage) {
       return {
@@ -130,6 +117,8 @@ const router = tsr.router(webhookStoragesPrepareContract, {
         },
       };
     }
+
+    log.debug(`Storage ready: ${storage.id}`);
 
     // Handle incremental upload - merge files with base version
     let mergedFiles = files;
