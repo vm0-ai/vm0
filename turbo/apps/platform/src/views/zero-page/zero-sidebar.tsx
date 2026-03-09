@@ -15,7 +15,6 @@ import {
 import { useLoadable } from "ccstate-react";
 import slackIcon from "../settings-page/icons/slack.svg";
 import { clerk$, user$ } from "../../signals/auth.ts";
-import { hasClerkAuth } from "../../env.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 
 export type ZeroNavId =
@@ -131,20 +130,18 @@ function AccountMenuPopup({
         </div>
         <span className="text-sm leading-5 text-foreground">Preferences</span>
       </button>
-      {hasClerkAuth && (
-        <button
-          type="button"
-          onClick={() => onAction("manage")}
-          className="w-full flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-muted transition-colors text-left"
-        >
-          <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
-            <IconUser size={20} stroke={1.5} className="text-foreground" />
-          </div>
-          <span className="text-sm leading-5 text-foreground">
-            Manage account
-          </span>
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => onAction("manage")}
+        className="w-full flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-muted transition-colors text-left"
+      >
+        <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
+          <IconUser size={20} stroke={1.5} className="text-foreground" />
+        </div>
+        <span className="text-sm leading-5 text-foreground">
+          Manage account
+        </span>
+      </button>
       <button
         type="button"
         onClick={() => onAction("signout")}

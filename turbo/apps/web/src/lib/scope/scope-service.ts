@@ -211,14 +211,7 @@ export async function ensureDefaultScope(clerkUserId: string) {
   const existing = await getUserScopeByClerkId(clerkUserId);
   if (existing) return existing;
 
-  // JIT Clerk org discovery (SaaS mode)
-  if (hasClerkAuth()) {
-    return await discoverAndCreateScope(clerkUserId);
-  }
-
-  // Self-hosted fallback
-  const defaultSlug = generateDefaultScopeSlug(clerkUserId);
-  return await createScope(clerkUserId, defaultSlug);
+  return await discoverAndCreateScope(clerkUserId);
 }
 
 /**
