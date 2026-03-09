@@ -477,6 +477,18 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "Access Token",
+        helpText:
+          '1. Go to [Dropbox App Console](https://www.dropbox.com/developers/apps)\n2. Select or create your app\n3. Under **Settings**, click "Generate" to create an access token\n4. Copy the token\n\n> **Note:** Generated tokens are short-lived (4 hours). You may need to regenerate periodically.',
+        secrets: {
+          DROPBOX_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+            placeholder: "sl.xxxxxxxx",
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
@@ -540,6 +552,17 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Go to **Apps & Integrations > Developer Center** in Deel\n2. Navigate to the **Organization tokens** tab\n3. Create a new token with required scopes\n4. Copy the generated token",
+        secrets: {
+          DEEL_ACCESS_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
@@ -575,6 +598,18 @@ export const CONNECTOR_TYPES = {
           FIGMA_REFRESH_TOKEN: {
             label: "Refresh Token",
             required: true,
+          },
+        },
+      },
+      "api-token": {
+        label: "Personal Access Token",
+        helpText:
+          "1. Go to [Figma Settings > Security](https://www.figma.com/settings#personal-access-tokens)\n2. Create a new personal access token\n3. Select required scopes (e.g., File content: Read/Write)\n4. Copy the generated token",
+        secrets: {
+          FIGMA_ACCESS_TOKEN: {
+            label: "Personal Access Token",
+            required: true,
+            placeholder: "figd_xxxxxxxx",
           },
         },
       },
@@ -615,6 +650,18 @@ export const CONNECTOR_TYPES = {
           MERCURY_REFRESH_TOKEN: {
             label: "Refresh Token",
             required: true,
+          },
+        },
+      },
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to your [Mercury Dashboard](https://app.mercury.com)\n2. Go to **Settings** and find the API section\n3. Generate a new API token\n4. Copy the token",
+        secrets: {
+          MERCURY_ACCESS_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "secret-token:mercury_production_...",
           },
         },
       },
@@ -743,6 +790,18 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "API Key",
+        helpText:
+          '1. Go to [Neon Console > Account Settings > API Keys](https://console.neon.tech/app/settings/api-keys)\n2. Click "Create new API key"\n3. Copy the generated key',
+        secrets: {
+          NEON_ACCESS_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "napi_xxxxxxxx",
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
@@ -864,6 +923,17 @@ export const CONNECTOR_TYPES = {
         secrets: {
           INTERVALS_ICU_ACCESS_TOKEN: {
             label: "Access Token",
+            required: true,
+          },
+        },
+      },
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Go to [Intervals.icu Settings > Developer Settings](https://intervals.icu/settings)\n2. Scroll to the bottom to find **Developer Settings**\n3. Generate or copy your API key",
+        secrets: {
+          INTERVALS_ICU_ACCESS_TOKEN: {
+            label: "API Key",
             required: true,
           },
         },
@@ -1039,6 +1109,18 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "Service Role Key",
+        helpText:
+          '1. Go to [Supabase Dashboard > Project Settings > API](https://supabase.com/dashboard/project/_/settings/api)\n2. Find the **service_role** key under "Project API keys"\n3. Copy the key\n\n> **Note:** The service_role key bypasses Row Level Security. Keep it secret.',
+        secrets: {
+          SUPABASE_ACCESS_TOKEN: {
+            label: "Service Role Key",
+            required: true,
+            placeholder: "eyJhbGci... or sb_secret_...",
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
@@ -1104,6 +1186,17 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "Site Token",
+        helpText:
+          '1. Go to your Webflow site\'s **Settings > Apps & integrations > API access**\n2. Click "Generate API token"\n3. Select required scopes\n4. Copy the generated token\n\n> Tokens expire after 365 days of inactivity.',
+        secrets: {
+          WEBFLOW_ACCESS_TOKEN: {
+            label: "Site Token",
+            required: true,
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
@@ -1132,12 +1225,260 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  asana: {
+    label: "Asana",
+    helpText:
+      "Connect your Asana account to manage tasks, projects, portfolios, goals, and team workflows",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Asana to grant access.",
+        secrets: {
+          ASANA_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          ASANA_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://app.asana.com/-/oauth_authorize",
+      tokenUrl: "https://app.asana.com/-/oauth_token",
+      scopes: [],
+    } as ConnectorOAuthConfig,
+  },
+  "meta-ads": {
+    label: "Meta Ads",
+    helpText:
+      "Connect your Meta Ads Manager account to manage ad campaigns, audiences, and insights",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Facebook to grant access to Ads Manager.",
+        secrets: {
+          META_ADS_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://www.facebook.com/v22.0/dialog/oauth",
+      tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
+      scopes: ["ads_management", "ads_read", "business_management"],
+    } as ConnectorOAuthConfig,
+  },
+  stripe: {
+    label: "Stripe",
+    helpText:
+      "Connect your Stripe account to manage payments, customers, and subscriptions",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Stripe to grant access.",
+        secrets: {
+          STRIPE_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          STRIPE_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: false,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      STRIPE_API_KEY: "$secrets.STRIPE_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://connect.stripe.com/oauth/authorize",
+      tokenUrl: "https://connect.stripe.com/oauth/token",
+      scopes: ["read_write"],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
 
+/**
+ * Proxy-side connector configuration for token replacement.
+ *
+ * Defines which URL targets each connector covers and how auth headers
+ * are constructed. Used by the proxy to intercept requests matching a
+ * connector's targets and replace placeholder tokens with real credentials.
+ *
+ * `${token}` in header values is replaced with the real OAuth access token.
+ *
+ * NOTE: Currently hardcoded in CONNECTOR_PROXY_CONFIGS below.
+ * Will be migrated to GitHub-hosted connector.yaml definitions in Phase 2.
+ */
+export interface ConnectorProxyConfig {
+  targets: string[];
+  auth: {
+    headers: Record<string, string>;
+  };
+}
+
+const BEARER_AUTH = { headers: { Authorization: "Bearer ${token}" } };
+
+const CONNECTOR_PROXY_CONFIGS: Partial<
+  Record<ConnectorType, ConnectorProxyConfig>
+> = {
+  airtable: {
+    targets: ["https://api.airtable.com"],
+    auth: BEARER_AUTH,
+  },
+  github: {
+    targets: ["https://api.github.com"],
+    auth: BEARER_AUTH,
+  },
+  notion: {
+    targets: ["https://api.notion.com/v1"],
+    auth: {
+      headers: {
+        Authorization: "Bearer ${token}",
+        "Notion-Version": "2022-06-28",
+      },
+    },
+  },
+  gmail: {
+    targets: ["https://gmail.googleapis.com/gmail/v1/users/me"],
+    auth: BEARER_AUTH,
+  },
+  "google-sheets": {
+    targets: ["https://sheets.googleapis.com/v4/spreadsheets"],
+    auth: BEARER_AUTH,
+  },
+  "google-docs": {
+    targets: ["https://docs.googleapis.com/v1/documents"],
+    auth: BEARER_AUTH,
+  },
+  "google-drive": {
+    targets: ["https://www.googleapis.com/drive/v3"],
+    auth: BEARER_AUTH,
+  },
+  "google-calendar": {
+    targets: ["https://www.googleapis.com/calendar/v3"],
+    auth: BEARER_AUTH,
+  },
+  hubspot: {
+    targets: ["https://api.hubapi.com"],
+    auth: BEARER_AUTH,
+  },
+  slack: {
+    targets: ["https://slack.com/api", "https://files.slack.com"],
+    auth: BEARER_AUTH,
+  },
+  docusign: {
+    targets: [
+      "https://demo.docusign.net/restapi",
+      "https://na1.docusign.net/restapi",
+    ],
+    auth: BEARER_AUTH,
+  },
+  dropbox: {
+    targets: [
+      "https://api.dropboxapi.com/2",
+      "https://content.dropboxapi.com/2",
+    ],
+    auth: BEARER_AUTH,
+  },
+  linear: {
+    targets: ["https://api.linear.app"],
+    auth: BEARER_AUTH,
+  },
+  deel: {
+    targets: ["https://api.deel.com"],
+    auth: BEARER_AUTH,
+  },
+  figma: {
+    targets: ["https://api.figma.com"],
+    auth: BEARER_AUTH,
+  },
+  mercury: {
+    targets: ["https://api.mercury.com"],
+    auth: BEARER_AUTH,
+  },
+  reddit: {
+    targets: ["https://oauth.reddit.com"],
+    auth: BEARER_AUTH,
+  },
+  strava: {
+    targets: ["https://www.strava.com/api/v3"],
+    auth: BEARER_AUTH,
+  },
+  x: {
+    targets: ["https://api.x.com/2"],
+    auth: BEARER_AUTH,
+  },
+  neon: {
+    targets: ["https://console.neon.tech/api/v2"],
+    auth: BEARER_AUTH,
+  },
+  vercel: {
+    targets: ["https://api.vercel.com"],
+    auth: BEARER_AUTH,
+  },
+  sentry: {
+    targets: ["https://sentry.io/api"],
+    auth: BEARER_AUTH,
+  },
+  monday: {
+    targets: ["https://api.monday.com/v2"],
+    auth: BEARER_AUTH,
+  },
+  canva: {
+    targets: ["https://api.canva.com/rest/v1"],
+    auth: BEARER_AUTH,
+  },
+  xero: {
+    targets: ["https://api.xero.com"],
+    auth: BEARER_AUTH,
+  },
+  supabase: {
+    targets: ["https://api.supabase.com/v1"],
+    auth: BEARER_AUTH,
+  },
+  todoist: {
+    targets: ["https://api.todoist.com/rest/v2"],
+    auth: BEARER_AUTH,
+  },
+  webflow: {
+    targets: ["https://api.webflow.com/v2"],
+    auth: BEARER_AUTH,
+  },
+  asana: {
+    targets: ["https://app.asana.com/api/1.0"],
+    auth: BEARER_AUTH,
+  },
+  "meta-ads": {
+    targets: ["https://graph.facebook.com"],
+    auth: BEARER_AUTH,
+  },
+  stripe: {
+    targets: ["https://api.stripe.com"],
+    auth: BEARER_AUTH,
+  },
+};
+
 export const connectorTypeSchema = z.enum([
   "airtable",
+  "asana",
   "canva",
   "close",
   "github",
@@ -1169,6 +1510,8 @@ export const connectorTypeSchema = z.enum([
   "supabase",
   "todoist",
   "webflow",
+  "meta-ads",
+  "stripe",
 ]);
 
 /**
@@ -1216,6 +1559,16 @@ export function getConnectorEnvironmentMapping(
   type: ConnectorType,
 ): Record<string, string> {
   return CONNECTOR_TYPES[type].environmentMapping;
+}
+
+/**
+ * Get proxy config for a connector type (targets + auth headers).
+ * Returns undefined if the connector has no proxy config (e.g., computer connector).
+ */
+export function getConnectorProxyConfig(
+  type: ConnectorType,
+): ConnectorProxyConfig | undefined {
+  return CONNECTOR_PROXY_CONFIGS[type];
 }
 
 /**
@@ -1566,3 +1919,30 @@ export const computerConnectorContract = c.router({
 });
 
 export type ComputerConnectorContract = typeof computerConnectorContract;
+
+/**
+ * Connector token contract for /api/connectors/[type]/token
+ * Submit API token for connectors that support the api-token auth method
+ */
+export const connectorTokenContract = c.router({
+  submit: {
+    method: "POST",
+    path: "/api/connectors/:type/token",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      type: connectorTypeSchema,
+    }),
+    body: z.object({
+      secrets: z.record(z.string(), z.string()),
+    }),
+    responses: {
+      200: connectorResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Submit API token for a connector",
+  },
+});
+
+export type ConnectorTokenContract = typeof connectorTokenContract;

@@ -13,6 +13,7 @@ import {
   ensureDefaultScope,
 } from "../../../src/lib/scope/scope-service";
 import { getUserEmail } from "../../../src/lib/auth/get-user-email";
+import { getAuthProvider } from "../../../src/lib/auth/auth-provider";
 import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
@@ -39,7 +40,7 @@ const router = tsr.router(scopeContract, {
   /**
    * GET /api/scope - Get current user's scope
    *
-   * Resolves the active scope via ?scope=<slug> query param,
+   * Resolves the active scope via clerkOrgId from Clerk session,
    * or falls back to the user's default scope (first admin membership).
    */
   get: async ({ headers }) => {
@@ -50,15 +51,24 @@ const router = tsr.router(scopeContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
+    const orgId = await getAuthProvider().getOrgId();
+
     try {
-      const { scope } = await resolveScope(userId);
+      const { scope } = await resolveScope(userId, undefined, orgId);
 
       return { status: 200 as const, body: scopeToResponseBody(scope) };
     } catch (error) {
       if (isNotFound(error)) {
-        // Auto-create default scope for new users
-        const scope = await ensureDefaultScope(userId);
-        return { status: 200 as const, body: scopeToResponseBody(scope) };
+        // Auto-create default scope for new users via JIT Clerk org discovery
+        try {
+          const scope = await ensureDefaultScope(userId);
+          return { status: 200 as const, body: scopeToResponseBody(scope) };
+        } catch (ensureError) {
+          if (isNotFound(ensureError)) {
+            return createErrorResponse("NOT_FOUND", ensureError.message);
+          }
+          throw ensureError;
+        }
       }
       throw error;
     }
@@ -107,7 +117,7 @@ const router = tsr.router(scopeContract, {
   /**
    * PUT /api/scope - Update active scope slug
    *
-   * Resolves the active scope via ?scope=<slug> query param,
+   * Resolves the active scope via clerkOrgId from Clerk session,
    * or falls back to the user's default scope (first admin membership).
    */
   update: async ({ body, headers }) => {
@@ -119,12 +129,13 @@ const router = tsr.router(scopeContract, {
     }
 
     const { slug, force } = body;
+    const orgId = await getAuthProvider().getOrgId();
 
     log.debug("updating scope", { userId, slug, force });
 
     let existingScope;
     try {
-      ({ scope: existingScope } = await resolveScope(userId));
+      ({ scope: existingScope } = await resolveScope(userId, undefined, orgId));
     } catch (error) {
       if (isNotFound(error)) {
         return createErrorResponse(

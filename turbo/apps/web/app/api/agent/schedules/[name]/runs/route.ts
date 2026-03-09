@@ -9,6 +9,7 @@ import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { getScheduleRecentRuns } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../../src/lib/errors";
+import { resolveScopeId } from "../../../../../../src/lib/scope/scope-member-service";
 
 const log = logger("api:schedules:runs");
 
@@ -31,8 +32,11 @@ const router = tsr.router(scheduleRunsContract, {
     );
 
     try {
+      const scopeId = await resolveScopeId(userId, query.scopeId);
+
       const runs = await getScheduleRecentRuns(
         userId,
+        scopeId,
         query.composeId,
         params.name,
         query.limit,

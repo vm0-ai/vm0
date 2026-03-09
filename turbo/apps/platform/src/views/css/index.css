@@ -65,11 +65,20 @@
   --sidebar-accent: 215 20% 93%;
   --background-50: 215 24% 96%;
   --muted-foreground: 218 9% 48%;
-  /* White card: single border, radius, subtle layered shadow (excludes chat bubbles) */
+  /* White card: single border, radius, elegant layered shadow (excludes chat bubbles) */
   --zero-card-radius: 1rem;
   --zero-card-border: hsl(220 5% 92%);
   --zero-card-shadow:
-    0 1px 2px hsl(220 10% 20% / 0.04), 0 4px 12px hsl(220 10% 20% / 0.03);
+    0 1px 1px hsl(220 12% 20% / 0.02), 0 2px 8px hsl(220 12% 20% / 0.025),
+    0 8px 24px hsl(220 12% 20% / 0.02);
+}
+
+/* Floating nav card (About / Pricing / Sign in): stronger shadow for elevation */
+.zero-app .zero-float-card {
+  box-shadow:
+    0 2px 4px hsl(220 12% 20% / 0.04),
+    0 6px 16px hsl(220 12% 20% / 0.06),
+    0 16px 40px hsl(220 12% 20% / 0.05);
 }
 
 /* Search bar / text input: cool gray background and border (not warm) */

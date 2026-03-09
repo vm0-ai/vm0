@@ -56,6 +56,8 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub experimental_firewall: Option<ExperimentalFirewall>,
     #[serde(default)]
+    pub experimental_connectors: Option<ExperimentalConnectors>,
+    #[serde(default)]
     pub debug_no_mock_claude: Option<bool>,
     #[serde(default)]
     pub api_start_time: Option<f64>,
@@ -75,6 +77,28 @@ pub struct ExperimentalFirewall {
     pub experimental_mitm: Option<bool>,
     #[serde(default)]
     pub experimental_seal_secrets: Option<bool>,
+}
+
+/// Connector manifest for proxy-side token replacement.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ExperimentalConnectors {
+    pub connectors: Vec<ConnectorEntry>,
+}
+
+/// A single connector entry with target URLs and auth header templates.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ConnectorEntry {
+    pub name: String,
+    pub targets: Vec<String>,
+    pub placeholder: String,
+    pub auth: ConnectorAuth,
+}
+
+/// Auth header templates for a connector.
+/// The `${token}` placeholder in header values is replaced by the proxy.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ConnectorAuth {
+    pub headers: HashMap<String, String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

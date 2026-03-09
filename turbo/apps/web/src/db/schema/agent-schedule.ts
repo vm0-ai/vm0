@@ -13,11 +13,16 @@ import {
 import { sql } from "drizzle-orm";
 import { agentComposes } from "./agent-compose";
 import { agentRuns } from "./agent-run";
+import { scopes } from "./scope";
 
 /**
  * Agent Schedules table
  * Stores schedule configurations for automated agent runs
  * Supports 1:N (one agent can have multiple named schedules)
+ *
+ * Each schedule carries its own (scopeId, userId) pair for execution identity.
+ * This allows cross-scope sharing: User B (scope-b) can schedule User A's
+ * agent (scope-a) and the schedule resolves secrets from scope-b + user-b.
  *
  * Note: The migration includes a CHECK constraint (trigger_check) ensuring
  * exactly one trigger type is set, matching the trigger_type column:
@@ -32,6 +37,10 @@ export const agentSchedules = pgTable(
     composeId: uuid("compose_id")
       .notNull()
       .references(() => agentComposes.id, { onDelete: "cascade" }),
+    scopeId: uuid("scope_id")
+      .notNull()
+      .references(() => scopes.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
 
     // Trigger type discriminator: 'cron' | 'once' | 'loop'
@@ -71,13 +80,17 @@ export const agentSchedules = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    // Schedule name unique within agent
-    uniqueIndex("idx_agent_schedules_compose_name").on(
+    // Schedule name unique within agent per scope+user
+    uniqueIndex("idx_agent_schedules_compose_name_scope_user").on(
       table.composeId,
       table.name,
+      table.scopeId,
+      table.userId,
     ),
     // Index for finding schedules by compose
     index("idx_agent_schedules_compose").on(table.composeId),
+    // Index for listing user's schedules within a scope
+    index("idx_agent_schedules_scope_user").on(table.scopeId, table.userId),
     // Partial index for efficient cron polling: enabled schedules with due next_run_at
     index("idx_agent_schedules_next_run")
       .on(table.nextRunAt)

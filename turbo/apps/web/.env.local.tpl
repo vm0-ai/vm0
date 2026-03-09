@@ -107,6 +107,10 @@ VERCEL_OAUTH_CLIENT_ID=op://Development/vercel/VERCEL_OAUTH_CLIENT_ID
 VERCEL_OAUTH_CLIENT_SECRET=op://Development/vercel/VERCEL_OAUTH_CLIENT_SECRET
 VERCEL_INTEGRATION_SLUG=op://Development/vercel/VERCEL_INTEGRATION_SLUG
 
+# Optional: Asana OAuth Connector
+ASANA_OAUTH_CLIENT_ID=op://Development/asana/ASANA_OAUTH_CLIENT_ID
+ASANA_OAUTH_CLIENT_SECRET=op://Development/asana/ASANA_OAUTH_CLIENT_SECRET
+
 # Optional: Sentry OAuth Connector
 SENTRY_OAUTH_CLIENT_ID=op://Development/sentry/SENTRY_OAUTH_CLIENT_ID
 SENTRY_OAUTH_CLIENT_SECRET=op://Development/sentry/SENTRY_OAUTH_CLIENT_SECRET
@@ -132,6 +136,10 @@ MONDAY_OAUTH_APP_ID=op://Development/monday/MONDAY_OAUTH_APP_ID
 WIX_OAUTH_CLIENT_ID=op://Development/wix/WIX_OAUTH_CLIENT_ID
 WIX_OAUTH_CLIENT_SECRET=op://Development/wix/WIX_OAUTH_CLIENT_SECRET
 
+# Optional: Meta Ads OAuth Connector
+META_ADS_OAUTH_CLIENT_ID=op://Development/meta-ads/META_ADS_OAUTH_CLIENT_ID
+META_ADS_OAUTH_CLIENT_SECRET=op://Development/meta-ads/META_ADS_OAUTH_CLIENT_SECRET
+
 # Optional: Canva OAuth Connector
 CANVA_OAUTH_CLIENT_ID=op://Development/canva/CANVA_OAUTH_CLIENT_ID
 CANVA_OAUTH_CLIENT_SECRET=op://Development/canva/CANVA_OAUTH_CLIENT_SECRET
@@ -139,6 +147,10 @@ CANVA_OAUTH_CLIENT_SECRET=op://Development/canva/CANVA_OAUTH_CLIENT_SECRET
 # Optional: Webflow OAuth Connector
 WEBFLOW_OAUTH_CLIENT_ID=op://Development/webflow/WEBFLOW_OAUTH_CLIENT_ID
 WEBFLOW_OAUTH_CLIENT_SECRET=op://Development/webflow/WEBFLOW_OAUTH_CLIENT_SECRET
+
+# Optional: Stripe OAuth Connector
+STRIPE_OAUTH_CLIENT_ID=op://Development/stripe/STRIPE_OAUTH_CLIENT_ID
+STRIPE_OAUTH_CLIENT_SECRET=op://Development/stripe/STRIPE_OAUTH_CLIENT_SECRET
 
 # Optional: Supabase OAuth Connector
 SUPABASE_OAUTH_CLIENT_ID=op://Development/supabase/SUPABASE_OAUTH_CLIENT_ID
@@ -174,3 +186,7 @@ GITHUB_APP_ID=op://Development/github/GITHUB_APP_ID
 GITHUB_APP_PRIVATE_KEY=op://Development/github/GITHUB_APP_PRIVATE_KEY
 GITHUB_APP_SLUG=op://Development/github/GITHUB_APP_SLUG
 GITHUB_APP_WEBHOOK_SECRET=op://Development/github/GITHUB_APP_WEBHOOK_SECRET
+
+# Optional: Self-hosted Runner (for local development with runner on dev-1)
+# RUNNER_DEFAULT_GROUP is auto-configured by sync-env.sh — do not add here
+OFFICIAL_RUNNER_SECRET=op://Development/vm0/OFFICIAL_RUNNER_SECRET

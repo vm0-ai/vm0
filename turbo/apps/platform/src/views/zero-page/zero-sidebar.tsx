@@ -12,7 +12,11 @@ import {
   IconUsers,
   IconLogout,
 } from "@tabler/icons-react";
+import { useLoadable } from "ccstate-react";
 import slackIcon from "../settings-page/icons/slack.svg";
+import { clerk$, user$ } from "../../signals/auth.ts";
+import { hasClerkAuth } from "../../env.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 
 export type ZeroNavId =
   | "chat"
@@ -61,7 +65,7 @@ const FOOTER_NAV: {
 
 export type ZeroAccountAction = "preferences" | "manage" | "signout";
 
-export type ZeroAccountSubId = "preferences" | "manage" | null;
+export type ZeroAccountSubId = "preferences" | null;
 
 interface ZeroSidebarProps {
   activeId: ZeroNavId;
@@ -73,6 +77,191 @@ interface ZeroSidebarProps {
   onAccountAction?: (action: ZeroAccountAction) => void;
 }
 
+function AccountMenuPopup({
+  accountName,
+  accountEmail,
+  accountInitial,
+  imageUrl,
+  onAction,
+}: {
+  accountName: string;
+  accountEmail: string;
+  accountInitial: string;
+  imageUrl: string | undefined;
+  onAction: (action: ZeroAccountAction) => void;
+}) {
+  return (
+    <div className="zero-card-rectangle absolute bottom-full left-0 right-0 mb-2 overflow-hidden z-20">
+      <div className="px-5 py-4 border-b border-border">
+        <div className="flex items-center gap-3">
+          {imageUrl ? (
+            <div className="h-9 w-9 shrink-0 rounded-xl overflow-hidden">
+              <img
+                src={imageUrl}
+                alt={accountName}
+                className="h-full w-full object-cover"
+              />
+            </div>
+          ) : (
+            <div className="h-9 w-9 rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 text-sm font-medium shrink-0">
+              {accountInitial}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="text-sm leading-5 font-medium text-foreground truncate">
+              {accountName}
+            </div>
+            <div className="text-xs leading-4 text-muted-foreground truncate">
+              {accountEmail}
+            </div>
+          </div>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => onAction("preferences")}
+        className="w-full flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-muted transition-colors text-left"
+      >
+        <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
+          <IconAdjustmentsHorizontal
+            size={20}
+            stroke={1.5}
+            className="text-foreground"
+          />
+        </div>
+        <span className="text-sm leading-5 text-foreground">Preferences</span>
+      </button>
+      {hasClerkAuth && (
+        <button
+          type="button"
+          onClick={() => onAction("manage")}
+          className="w-full flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-muted transition-colors text-left"
+        >
+          <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
+            <IconUser size={20} stroke={1.5} className="text-foreground" />
+          </div>
+          <span className="text-sm leading-5 text-foreground">
+            Manage account
+          </span>
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => onAction("signout")}
+        className="w-full flex items-center gap-3 px-5 py-4 hover:bg-muted transition-colors text-left"
+      >
+        <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
+          <IconLogout size={20} stroke={1.5} className="text-foreground" />
+        </div>
+        <span className="text-sm leading-5 text-foreground">Sign out</span>
+      </button>
+    </div>
+  );
+}
+
+function AccountDropdown({
+  activeId,
+  onAccountAction,
+}: {
+  activeId: ZeroNavId;
+  onAccountAction?: (action: ZeroAccountAction) => void;
+}) {
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const clerkLoadable = useLoadable(clerk$);
+  const userLoadable = useLoadable(user$);
+  const user = userLoadable.state === "hasData" ? userLoadable.data : null;
+  const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
+  const accountName = user?.fullName ?? "User";
+  const accountEmail = user?.primaryEmailAddress?.emailAddress ?? "";
+  const accountInitial = accountName.charAt(0).toUpperCase();
+
+  const closeAccountMenu = () => setAccountMenuOpen(false);
+
+  const handleAccountAction = (action: ZeroAccountAction) => {
+    closeAccountMenu();
+    if (action === "signout") {
+      detach(clerk?.signOut(), Reason.DomCallback);
+      return;
+    }
+    if (action === "manage") {
+      detach(clerk?.openUserProfile(), Reason.DomCallback);
+      return;
+    }
+    onAccountAction?.(action);
+  };
+
+  return (
+    <div className="mt-2 pt-1 relative">
+      {accountMenuOpen && (
+        <div
+          className="fixed inset-0 z-10"
+          onClick={closeAccountMenu}
+          aria-hidden="true"
+        />
+      )}
+      <div
+        className={`rounded-lg p-2 transition-colors duration-200 ${
+          activeId === "account" || accountMenuOpen
+            ? "bg-sidebar-active"
+            : "hover:bg-sidebar-accent/50"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setAccountMenuOpen((open) => !open)}
+          className="flex w-full items-center gap-2 text-left"
+          aria-expanded={accountMenuOpen}
+          aria-haspopup="true"
+        >
+          {user?.imageUrl ? (
+            <div className="h-8 w-8 shrink-0 rounded-xl overflow-hidden">
+              <img
+                src={user.imageUrl}
+                alt={accountName}
+                className="h-full w-full object-cover"
+              />
+            </div>
+          ) : (
+            <div className="h-8 w-8 shrink-0 rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 text-sm font-medium">
+              {accountInitial}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p
+              className={`text-sm font-medium leading-tight truncate ${
+                activeId === "account" || accountMenuOpen
+                  ? "text-sidebar-primary"
+                  : "text-sidebar-foreground"
+              }`}
+            >
+              {accountName}
+            </p>
+            <p
+              className={`text-xs leading-tight truncate mt-px ${
+                activeId === "account" || accountMenuOpen
+                  ? "text-sidebar-primary/80"
+                  : "text-sidebar-foreground opacity-70"
+              }`}
+            >
+              {accountEmail}
+            </p>
+          </div>
+        </button>
+      </div>
+
+      {accountMenuOpen && (
+        <AccountMenuPopup
+          accountName={accountName}
+          accountEmail={accountEmail}
+          accountInitial={accountInitial}
+          imageUrl={user?.imageUrl}
+          onAction={handleAccountAction}
+        />
+      )}
+    </div>
+  );
+}
+
 export function ZeroSidebar({
   activeId,
   onSelect,
@@ -82,18 +271,6 @@ export function ZeroSidebar({
   onAvatarClick,
   onAccountAction,
 }: ZeroSidebarProps) {
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const accountName = "Ming Li";
-  const accountEmail = "ming@vm0.ai";
-  const accountInitial = "M";
-
-  const closeAccountMenu = () => setAccountMenuOpen(false);
-
-  const handleAccountAction = (action: ZeroAccountAction) => {
-    closeAccountMenu();
-    onAccountAction?.(action);
-  };
-
   return (
     <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden">
       {/* Zero + workspace — single module */}
@@ -214,122 +391,10 @@ export function ZeroSidebar({
             </button>
           ))}
           {/* Account — dropdown (aligned with workspace block above) */}
-          <div className="mt-2 pt-1 relative">
-            {accountMenuOpen && (
-              <div
-                className="fixed inset-0 z-10"
-                onClick={closeAccountMenu}
-                aria-hidden="true"
-              />
-            )}
-            <div
-              className={`rounded-lg p-2 transition-colors duration-200 ${
-                activeId === "account" || accountMenuOpen
-                  ? "bg-sidebar-active"
-                  : "hover:bg-sidebar-accent/50"
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => setAccountMenuOpen((open) => !open)}
-                className="flex w-full items-center gap-2 text-left"
-                aria-expanded={accountMenuOpen}
-                aria-haspopup="true"
-              >
-                <div className="h-8 w-8 shrink-0 rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 text-sm font-medium">
-                  {accountInitial}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p
-                    className={`text-sm font-medium leading-tight truncate ${
-                      activeId === "account" || accountMenuOpen
-                        ? "text-sidebar-primary"
-                        : "text-sidebar-foreground"
-                    }`}
-                  >
-                    {accountName}
-                  </p>
-                  <p
-                    className={`text-xs leading-tight truncate mt-px ${
-                      activeId === "account" || accountMenuOpen
-                        ? "text-sidebar-primary/80"
-                        : "text-sidebar-foreground opacity-70"
-                    }`}
-                  >
-                    {accountEmail}
-                  </p>
-                </div>
-              </button>
-            </div>
-
-            {accountMenuOpen && (
-              <div className="zero-card-rectangle absolute bottom-full left-0 right-0 mb-2 overflow-hidden z-20">
-                <div className="px-5 py-4 border-b border-border">
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 text-sm font-medium shrink-0">
-                      {accountInitial}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm leading-5 font-medium text-foreground truncate">
-                        {accountName}
-                      </div>
-                      <div className="text-xs leading-4 text-muted-foreground truncate">
-                        {accountEmail}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleAccountAction("preferences")}
-                  className="w-full flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-muted transition-colors text-left"
-                >
-                  <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
-                    <IconAdjustmentsHorizontal
-                      size={20}
-                      stroke={1.5}
-                      className="text-foreground"
-                    />
-                  </div>
-                  <span className="text-sm leading-5 text-foreground">
-                    Preferences
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleAccountAction("manage")}
-                  className="w-full flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-muted transition-colors text-left"
-                >
-                  <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
-                    <IconUser
-                      size={20}
-                      stroke={1.5}
-                      className="text-foreground"
-                    />
-                  </div>
-                  <span className="text-sm leading-5 text-foreground">
-                    Manage account
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleAccountAction("signout")}
-                  className="w-full flex items-center gap-3 px-5 py-4 hover:bg-muted transition-colors text-left"
-                >
-                  <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
-                    <IconLogout
-                      size={20}
-                      stroke={1.5}
-                      className="text-foreground"
-                    />
-                  </div>
-                  <span className="text-sm leading-5 text-foreground">
-                    Sign out
-                  </span>
-                </button>
-              </div>
-            )}
-          </div>
+          <AccountDropdown
+            activeId={activeId}
+            onAccountAction={onAccountAction}
+          />
         </div>
       </div>
     </aside>

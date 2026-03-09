@@ -1,12 +1,12 @@
 #!/bin/bash
-# Start the noVNC stack (Xvfb + openbox + x11vnc + websockify), launch Chrome,
-# and expose noVNC to the public internet via a Cloudflare Tunnel.
+# Start the noVNC stack (Xvfb + openbox + x11vnc + websockify) and launch Chrome.
 #
-# Outputs the tunnel URL to stdout. All other messages go to stderr.
+# If CF_ACCESS_TOKEN is set, also creates a Cloudflare Tunnel with Access
+# protection (only your email can access). Otherwise, noVNC is local-only
+# (use `dcvnc <vm>` to open it from the host).
+#
+# Outputs the access URL to stdout. All other messages go to stderr.
 # Idempotent — safe to call multiple times; skips already-running processes.
-#
-# For @vm0.ai users, creates a named tunnel at <username>-<hostname>.vnc.vm7.ai
-# (e.g., ethan-vm04.vnc.vm7.ai). Otherwise, creates an anonymous tunnel.
 #
 # Usage: scripts/start-vnc.sh
 #
@@ -15,6 +15,7 @@
 #   VNC_PORT         - VNC server port (default: 5900)
 #   NOVNC_PORT       - noVNC websocket port (default: 6080)
 #   SCREEN_RES       - Screen resolution (default: 1344x840x24)
+#   CF_ACCESS_TOKEN  - Cloudflare API token with Access:Edit permission (optional)
 #   TUNNEL_HOSTNAME  - Override tunnel domain (optional)
 
 set -euo pipefail
@@ -116,29 +117,37 @@ fi
 
 log "noVNC stack ready — local viewer at http://localhost:${NOVNC_PORT}/vnc.html"
 
-# --- Compute tunnel hostname for VNC ---
-# Format: <username>-<hostname>.vnc.vm7.ai (e.g., ethan-vm04.vnc.vm7.ai)
-# Requires Advanced Certificate Manager for *.vnc.vm7.ai SSL coverage.
-if [[ -z "${TUNNEL_HOSTNAME:-}" ]]; then
-  EMAIL=$(git config user.email 2>/dev/null || true)
-  DOMAIN="${EMAIL##*@}"
-  if [[ "$DOMAIN" == "vm0.ai" ]]; then
-    USERNAME="${EMAIL%%@*}"
-    TUNNEL_HOSTNAME="${USERNAME}-$(hostname).vnc.vm7.ai"
+# --- Cloudflare Tunnel + Access (only when CF_ACCESS_TOKEN is set) ---
+if [[ -n "${CF_ACCESS_TOKEN:-}" ]]; then
+  # Compute tunnel hostname for VNC
+  # Format: <username>-<hostname>.vnc.vm7.ai (e.g., ethan-vm04.vnc.vm7.ai)
+  if [[ -z "${TUNNEL_HOSTNAME:-}" ]]; then
+    EMAIL=$(git config user.email 2>/dev/null || true)
+    DOMAIN="${EMAIL##*@}"
+    if [[ "$DOMAIN" == "vm0.ai" ]]; then
+      USERNAME="${EMAIL%%@*}"
+      TUNNEL_HOSTNAME="${USERNAME}-$(hostname).vnc.vm7.ai"
+    fi
   fi
-fi
 
-# --- Start Cloudflare Tunnel (idempotent) ---
-TUNNEL_PIDFILE="/tmp/cloudflared-${NOVNC_PORT}.pid"
-if [[ -f "$TUNNEL_PIDFILE" ]] && kill -0 "$(cat "$TUNNEL_PIDFILE")" 2>/dev/null; then
-  TUNNEL_URL="https://${TUNNEL_HOSTNAME:-localhost:${NOVNC_PORT}}"
-  log "Cloudflare Tunnel already running (pid: $(cat "$TUNNEL_PIDFILE"))"
+  TUNNEL_PIDFILE="/tmp/cloudflared-${NOVNC_PORT}.pid"
+  if [[ -f "$TUNNEL_PIDFILE" ]] && kill -0 "$(cat "$TUNNEL_PIDFILE")" 2>/dev/null; then
+    TUNNEL_URL="https://${TUNNEL_HOSTNAME:-localhost:${NOVNC_PORT}}"
+    log "Cloudflare Tunnel already running (pid: $(cat "$TUNNEL_PIDFILE"))"
+  else
+    log "Starting Cloudflare Tunnel for port ${NOVNC_PORT}..."
+    TUNNEL_URL=$(TUNNEL_HOSTNAME="${TUNNEL_HOSTNAME:-}" "${SCRIPT_DIR}/tunnel.sh" "$NOVNC_PORT")
+  fi
+
+  # Apply Cloudflare Access protection
+  if [[ -n "${TUNNEL_HOSTNAME:-}" ]]; then
+    "${SCRIPT_DIR}/tunnel-access.sh" "$TUNNEL_HOSTNAME"
+  fi
+
+  log "noVNC available at: ${TUNNEL_URL}/vnc.html"
+  echo "$TUNNEL_URL"
 else
-  log "Starting Cloudflare Tunnel for port ${NOVNC_PORT}..."
-  TUNNEL_URL=$(TUNNEL_HOSTNAME="${TUNNEL_HOSTNAME:-}" "${SCRIPT_DIR}/tunnel.sh" "$NOVNC_PORT")
+  log "No CF_ACCESS_TOKEN set — skipping tunnel (local-only mode)"
+  log "Use 'dcvnc $(hostname)' from the host to open noVNC"
+  echo "http://localhost:${NOVNC_PORT}"
 fi
-
-log "noVNC available at: ${TUNNEL_URL}/vnc.html"
-
-# Output tunnel URL to stdout (same convention as tunnel.sh)
-echo "$TUNNEL_URL"

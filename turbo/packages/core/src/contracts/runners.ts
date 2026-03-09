@@ -80,6 +80,25 @@ export const runnersPollContract = c.router({
 });
 
 /**
+ * Connector entry in experimental connectors manifest
+ */
+export const connectorEntrySchema = z.object({
+  name: z.string(),
+  targets: z.array(z.string()),
+  placeholder: z.string(),
+  auth: z.object({
+    headers: z.record(z.string(), z.string()),
+  }),
+});
+
+/**
+ * Experimental connectors configuration for proxy-side token replacement
+ */
+export const experimentalConnectorsSchema = z.object({
+  connectors: z.array(connectorEntrySchema),
+});
+
+/**
  * Storage entry in manifest
  */
 export const storageEntrySchema = z.object({
@@ -138,6 +157,8 @@ export const storedExecutionContextSchema = z.object({
   agentScopeSlug: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
+  // Experimental connectors for proxy-side token replacement
+  experimentalConnectors: experimentalConnectorsSchema.optional(),
 });
 
 /**
@@ -171,6 +192,8 @@ export const executionContextSchema = z.object({
   agentScopeSlug: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
+  // Experimental connectors for proxy-side token replacement
+  experimentalConnectors: experimentalConnectorsSchema.optional(),
 });
 
 /**
@@ -213,3 +236,7 @@ export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
 export type FirewallRule = z.infer<typeof firewallRuleSchema>;
 export type ExperimentalFirewall = z.infer<typeof experimentalFirewallSchema>;
+export type ConnectorEntry = z.infer<typeof connectorEntrySchema>;
+export type ExperimentalConnectors = z.infer<
+  typeof experimentalConnectorsSchema
+>;

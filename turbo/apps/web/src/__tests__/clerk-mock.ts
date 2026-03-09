@@ -36,14 +36,36 @@ const mockClerkClient = vi.mocked(clerkClient);
  * @param options.email - Email address for the user (default: "test@example.com")
  * @param options.orgId - Organization ID from active org session (optional)
  * @param options.orgSlug - Organization slug from active org session (optional)
+ * @param options.clerkOrgs - Clerk orgs the user belongs to (for JIT discovery)
  */
 export function mockClerk(options: {
   userId: string | null;
   email?: string;
   orgId?: string | null;
   orgSlug?: string | null;
+  clerkOrgs?: Array<{ id: string; slug: string; name: string }>;
 }) {
   const email = options.email ?? "test@example.com";
+
+  // Default: one org per user (simulates signup-created org).
+  // The org ID is derived from userId to ensure uniqueness across tests.
+  const safeSlug = options.userId
+    ? `org-${options.userId}`
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .slice(0, 64)
+    : "";
+  const clerkOrgs =
+    options.clerkOrgs ??
+    (options.userId
+      ? [
+          {
+            id: `org_mock_${options.userId}`,
+            slug: safeSlug,
+            name: `org-${options.userId}`,
+          },
+        ]
+      : []);
 
   mockAuth.mockResolvedValue({
     userId: options.userId,
@@ -67,6 +89,13 @@ export function mockClerk(options: {
           });
         }
         return Promise.resolve({ data: [] });
+      }),
+      getOrganizationMembershipList: vi.fn().mockResolvedValue({
+        data: clerkOrgs.map((org) => ({
+          organization: { id: org.id, slug: org.slug, name: org.name },
+          role: "org:admin",
+          publicUserData: { userId: options.userId },
+        })),
       }),
     },
     organizations: {

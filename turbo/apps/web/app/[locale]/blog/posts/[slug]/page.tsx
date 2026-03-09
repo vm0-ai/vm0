@@ -14,7 +14,7 @@ import { getPost, getPosts, getBlogBaseUrl } from "../../../../lib/blog";
 import { locales } from "../../../../../i18n";
 import { isBlogEnabled } from "../../../../../src/env";
 
-export const revalidate = 60;
+export const revalidate = 3600;
 
 interface PageProps {
   params: Promise<{ slug: string; locale: string }>;

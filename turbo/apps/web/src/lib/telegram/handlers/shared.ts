@@ -4,11 +4,7 @@ import { telegramMessages } from "../../../db/schema/telegram-message";
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { getPlatformUrl } from "../../url";
-import {
-  getUserScopeByClerkId,
-  createScope,
-  generateDefaultScopeSlug,
-} from "../../scope/scope-service";
+import { ensureDefaultScope } from "../../scope/scope-service";
 import { validateAgentSession } from "../../run";
 import { ensureStorageExists } from "../../storage/storage-service";
 import {
@@ -246,11 +242,7 @@ async function completePendingLink(
  * Ensure scope and artifact storage exist for a user.
  */
 export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
-  let scope = await getUserScopeByClerkId(vm0UserId);
-  if (!scope) {
-    scope = await createScope(vm0UserId, generateDefaultScopeSlug(vm0UserId));
-    log.info("Auto-created scope for Telegram user", { userId: vm0UserId });
-  }
+  const scope = await ensureDefaultScope(vm0UserId);
 
   await ensureStorageExists(
     scope.id,

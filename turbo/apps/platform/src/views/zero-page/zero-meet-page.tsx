@@ -454,14 +454,6 @@ export function ZeroMeetPage({
                       </ol>
                     </div>
                   </div>
-                  <div className="shrink-0 flex justify-center sm:justify-end sm:items-end">
-                    <img
-                      src="/instructions-illustration.png"
-                      alt=""
-                      role="presentation"
-                      className="h-48 w-auto max-w-[220px] rounded-xl object-contain"
-                    />
-                  </div>
                 </div>
                 <p className="text-muted-foreground text-xs pt-5 mt-5 border-t border-border/60">
                   Edit the instructions directly to customize your agent&apos;s

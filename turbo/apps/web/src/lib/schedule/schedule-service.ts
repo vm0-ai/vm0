@@ -33,6 +33,7 @@ export interface ScheduleResponse {
   composeId: string;
   composeName: string;
   scopeSlug: string;
+  userId: string;
   name: string;
   triggerType: "cron" | "once" | "loop";
   cronExpression: string | null;
@@ -180,6 +181,7 @@ function toResponse(
     composeId: schedule.composeId,
     composeName,
     scopeSlug,
+    userId: schedule.userId,
     name: schedule.name,
     triggerType: schedule.triggerType as "cron" | "once" | "loop",
     cronExpression: schedule.cronExpression,
@@ -203,45 +205,83 @@ function toResponse(
 }
 
 /**
- * Verify user owns the compose
+ * Verify compose exists and return it (no ownership check — caller handles access)
  */
-async function verifyComposeOwnership(
-  userId: string,
+async function loadCompose(
   composeId: string,
-): Promise<{
-  compose: typeof agentComposes.$inferSelect;
-  scopeSlug: string;
-}> {
+): Promise<typeof agentComposes.$inferSelect> {
   const [compose] = await globalThis.services.db
     .select()
     .from(agentComposes)
-    .where(
-      and(eq(agentComposes.id, composeId), eq(agentComposes.userId, userId)),
-    )
+    .where(eq(agentComposes.id, composeId))
     .limit(1);
 
   if (!compose) {
-    throw notFound("Agent compose not found or not owned by user");
+    throw notFound("Agent compose not found");
   }
 
-  // Get scope slug for response
+  return compose;
+}
+
+/**
+ * Load scope slug by ID
+ */
+async function getScopeSlug(scopeId: string): Promise<string> {
   const [scope] = await globalThis.services.db
-    .select()
+    .select({ slug: scopes.slug })
     .from(scopes)
-    .where(eq(scopes.id, compose.scopeId))
+    .where(eq(scopes.id, scopeId))
+    .limit(1);
+  if (!scope) {
+    throw notFound(`Scope '${scopeId}' not found`);
+  }
+  return scope.slug;
+}
+
+/**
+ * Verify the user owns this schedule (by composeId + name + scopeId + userId)
+ */
+async function verifyScheduleOwnership(
+  userId: string,
+  scopeId: string,
+  composeId: string,
+  name: string,
+): Promise<{
+  schedule: typeof agentSchedules.$inferSelect;
+  compose: typeof agentComposes.$inferSelect;
+  scopeSlug: string;
+}> {
+  const [schedule] = await globalThis.services.db
+    .select()
+    .from(agentSchedules)
+    .where(
+      and(
+        eq(agentSchedules.composeId, composeId),
+        eq(agentSchedules.name, name),
+        eq(agentSchedules.scopeId, scopeId),
+        eq(agentSchedules.userId, userId),
+      ),
+    )
     .limit(1);
 
-  return {
-    compose,
-    scopeSlug: scope?.slug ?? "default",
-  };
+  if (!schedule) {
+    throw notFound(`Schedule '${name}' not found`);
+  }
+
+  const compose = await loadCompose(composeId);
+  const scopeSlug = await getScopeSlug(scopeId);
+
+  return { schedule, compose, scopeSlug };
 }
 
 /**
  * Validate that all required secrets/vars are available in platform tables.
+ * Uses the schedule's scopeId + userId (not compose's) for cross-scope support.
  */
 async function validateRequiredConfig(
   compose: typeof agentComposes.$inferSelect,
+  scopeId: string,
+  userId: string,
 ): Promise<void> {
   if (!compose.headVersionId) return;
 
@@ -255,18 +295,14 @@ async function validateRequiredConfig(
 
   const required = extractRequiredConfiguration(version.content);
 
-  // Fetch platform-managed secrets and vars from compose's scope
-  const platformSecrets = await getSecretValues(
-    compose.scopeId,
-    compose.userId,
-    "user",
-  );
+  // Fetch platform-managed secrets and vars from schedule's scope + user
+  const platformSecrets = await getSecretValues(scopeId, userId, "user");
   const platformSecretNames = Object.keys(platformSecrets);
   log.debug(
     `Fetched ${platformSecretNames.length} platform secret(s) for validation`,
   );
 
-  const platformVars = await getVariableValues(compose.scopeId, compose.userId);
+  const platformVars = await getVariableValues(scopeId, userId);
   const platformVarNames = Object.keys(platformVars);
   log.debug(
     `Fetched ${platformVarNames.length} platform variable(s) for validation`,
@@ -276,12 +312,7 @@ async function validateRequiredConfig(
   const userConnectors = await globalThis.services.db
     .select({ type: connectors.type })
     .from(connectors)
-    .where(
-      and(
-        eq(connectors.scopeId, compose.scopeId),
-        eq(connectors.userId, compose.userId),
-      ),
-    );
+    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.userId, userId)));
   const connectorProvidedNames = getConnectorProvidedSecretNames(
     userConnectors.map((c) => c.type),
   );
@@ -331,24 +362,23 @@ function resolveTrigger(request: DeployScheduleRequest): {
  */
 export async function deploySchedule(
   userId: string,
+  scopeId: string,
   request: DeployScheduleRequest,
 ): Promise<{ schedule: ScheduleResponse; created: boolean }> {
   log.debug(
     `Deploying schedule ${request.name} for compose ${request.composeId}`,
   );
 
-  // Verify user owns the compose
-  const { compose, scopeSlug } = await verifyComposeOwnership(
-    userId,
-    request.composeId,
-  );
+  // Load compose (access control is handled by the caller/route layer)
+  const compose = await loadCompose(request.composeId);
+  const scopeSlug = await getScopeSlug(scopeId);
 
   // Validate timezone
   if (!isValidTimezone(request.timezone)) {
     throw badRequest(`Invalid timezone: ${request.timezone}`);
   }
 
-  // Check for existing schedule with same name on this compose (needed for validation)
+  // Check for existing schedule with same name for this user on this compose
   const [existing] = await globalThis.services.db
     .select()
     .from(agentSchedules)
@@ -356,12 +386,14 @@ export async function deploySchedule(
       and(
         eq(agentSchedules.composeId, request.composeId),
         eq(agentSchedules.name, request.name),
+        eq(agentSchedules.scopeId, scopeId),
+        eq(agentSchedules.userId, userId),
       ),
     )
     .limit(1);
 
-  // Validate required secrets/vars against platform tables
-  await validateRequiredConfig(compose);
+  // Validate required secrets/vars against schedule's scope + user
+  await validateRequiredConfig(compose, scopeId, userId);
 
   const { triggerType, nextRunAt } = resolveTrigger(request);
 
@@ -406,6 +438,8 @@ export async function deploySchedule(
       .insert(agentSchedules)
       .values({
         composeId: request.composeId,
+        scopeId,
+        userId,
         name: request.name,
         triggerType,
         cronExpression: request.cronExpression ?? null,
@@ -447,76 +481,64 @@ export async function listSchedules(
 ): Promise<ScheduleResponse[]> {
   log.debug(`Listing schedules for user ${userId}`);
 
-  // Get all composes owned by user
-  const composesQuery = globalThis.services.db
+  // Query schedules directly by userId (schedule owner)
+  const userSchedules = await globalThis.services.db
     .select()
-    .from(agentComposes)
-    .where(eq(agentComposes.userId, userId));
+    .from(agentSchedules)
+    .where(eq(agentSchedules.userId, userId));
 
-  const userComposes = await composesQuery;
-
-  if (userComposes.length === 0) {
+  if (userSchedules.length === 0) {
     return [];
   }
 
-  // Get scopes for all composes
-  const scopeIds = [...new Set(userComposes.map((c) => c.scopeId))];
+  // Load compose data for all schedules
+  const composeIds = [...new Set(userSchedules.map((s) => s.composeId))];
+  const composeRows = await globalThis.services.db
+    .select()
+    .from(agentComposes)
+    .where(inArray(agentComposes.id, composeIds));
+  const composeMap = new Map(composeRows.map((c) => [c.id, c]));
+
+  // Load scope slugs for all schedules (from schedule.scopeId, not compose.scopeId)
+  const scopeIds = [...new Set(userSchedules.map((s) => s.scopeId))];
   const scopeRows = await globalThis.services.db
     .select()
     .from(scopes)
     .where(inArray(scopes.id, scopeIds));
-
   const scopeMap = new Map(scopeRows.map((s) => [s.id, s.slug]));
 
-  // Get schedules for user's composes
-  const composeIds = userComposes.map((c) => c.id);
-  const schedules = await globalThis.services.db
-    .select()
-    .from(agentSchedules)
-    .where(inArray(agentSchedules.composeId, composeIds));
-
-  // Build response with compose names
-  const composeMap = new Map(userComposes.map((c) => [c.id, c]));
-  return schedules.map((schedule) => {
-    const compose = composeMap.get(schedule.composeId);
-    return toResponse(
-      schedule,
-      compose?.name ?? "unknown",
-      scopeMap.get(compose?.scopeId ?? "") ?? "default",
-    );
-  });
+  return userSchedules
+    .filter((schedule) => {
+      // FK constraints with CASCADE should guarantee these exist.
+      // Skip orphaned rows rather than masking with fallback values.
+      return (
+        composeMap.has(schedule.composeId) && scopeMap.has(schedule.scopeId)
+      );
+    })
+    .map((schedule) => {
+      const compose = composeMap.get(schedule.composeId)!;
+      const scopeSlug = scopeMap.get(schedule.scopeId)!;
+      return toResponse(schedule, compose.name, scopeSlug);
+    });
 }
 
 /**
- * Get schedule by name and compose ID
+ * Get schedule by name, compose ID, and scope+user
  */
 export async function getScheduleByName(
   userId: string,
+  scopeId: string,
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
   log.debug(`Getting schedule ${name} for compose ${composeId}`);
 
-  // Verify user owns the compose
-  const { compose, scopeSlug } = await verifyComposeOwnership(
+  const { schedule, compose, scopeSlug } = await verifyScheduleOwnership(
     userId,
+    scopeId,
     composeId,
+    name,
   );
-
-  const [schedule] = await globalThis.services.db
-    .select()
-    .from(agentSchedules)
-    .where(
-      and(
-        eq(agentSchedules.composeId, composeId),
-        eq(agentSchedules.name, name),
-      ),
-    )
-    .limit(1);
-
-  if (!schedule) {
-    throw notFound(`Schedule '${name}' not found`);
-  }
 
   return toResponse(schedule, compose.name, scopeSlug);
 }
@@ -526,6 +548,7 @@ export async function getScheduleByName(
  */
 export async function getScheduleRecentRuns(
   userId: string,
+  scopeId: string,
   composeId: string,
   scheduleName: string,
   limit: number,
@@ -534,24 +557,12 @@ export async function getScheduleRecentRuns(
     `Getting recent runs for schedule ${scheduleName} (limit: ${limit})`,
   );
 
-  // Verify ownership
-  await verifyComposeOwnership(userId, composeId);
-
-  // Get schedule
-  const [schedule] = await globalThis.services.db
-    .select()
-    .from(agentSchedules)
-    .where(
-      and(
-        eq(agentSchedules.composeId, composeId),
-        eq(agentSchedules.name, scheduleName),
-      ),
-    )
-    .limit(1);
-
-  if (!schedule) {
-    throw notFound(`Schedule '${scheduleName}' not found`);
-  }
+  const { schedule } = await verifyScheduleOwnership(
+    userId,
+    scopeId,
+    composeId,
+    scheduleName,
+  );
 
   // Query runs for this schedule
   const runs = await globalThis.services.db
@@ -577,31 +588,26 @@ export async function getScheduleRecentRuns(
 }
 
 /**
- * Delete schedule by name and compose ID
+ * Delete schedule by name, compose ID, and scope+user
  */
 export async function deleteSchedule(
   userId: string,
+  scopeId: string,
   composeId: string,
   name: string,
 ): Promise<void> {
   log.debug(`Deleting schedule ${name} for compose ${composeId}`);
 
-  // Verify user owns the compose
-  await verifyComposeOwnership(userId, composeId);
+  const { schedule } = await verifyScheduleOwnership(
+    userId,
+    scopeId,
+    composeId,
+    name,
+  );
 
-  const result = await globalThis.services.db
+  await globalThis.services.db
     .delete(agentSchedules)
-    .where(
-      and(
-        eq(agentSchedules.composeId, composeId),
-        eq(agentSchedules.name, name),
-      ),
-    )
-    .returning();
-
-  if (result.length === 0) {
-    throw notFound(`Schedule '${name}' not found`);
-  }
+    .where(eq(agentSchedules.id, schedule.id));
 
   log.debug(`Deleted schedule ${name}`);
 }
@@ -611,30 +617,18 @@ export async function deleteSchedule(
  */
 export async function enableSchedule(
   userId: string,
+  scopeId: string,
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
   log.debug(`Enabling schedule ${name} for compose ${composeId}`);
 
-  const { compose, scopeSlug } = await verifyComposeOwnership(
+  const { schedule, compose, scopeSlug } = await verifyScheduleOwnership(
     userId,
+    scopeId,
     composeId,
+    name,
   );
-
-  const [schedule] = await globalThis.services.db
-    .select()
-    .from(agentSchedules)
-    .where(
-      and(
-        eq(agentSchedules.composeId, composeId),
-        eq(agentSchedules.name, name),
-      ),
-    )
-    .limit(1);
-
-  if (!schedule) {
-    throw notFound(`Schedule '${name}' not found`);
-  }
 
   // Recalculate next run time
   let nextRunAt: Date | null = null;
@@ -681,14 +675,17 @@ export async function enableSchedule(
  */
 export async function disableSchedule(
   userId: string,
+  scopeId: string,
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
   log.debug(`Disabling schedule ${name} for compose ${composeId}`);
 
-  const { compose, scopeSlug } = await verifyComposeOwnership(
+  const { schedule, compose, scopeSlug } = await verifyScheduleOwnership(
     userId,
+    scopeId,
     composeId,
+    name,
   );
 
   const [updated] = await globalThis.services.db
@@ -698,12 +695,7 @@ export async function disableSchedule(
       retryStartedAt: null, // Clear retry state
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(agentSchedules.composeId, composeId),
-        eq(agentSchedules.name, name),
-      ),
-    )
+    .where(eq(agentSchedules.id, schedule.id))
     .returning();
 
   if (!updated) {
@@ -856,11 +848,11 @@ async function executeSchedule(
     return;
   }
 
-  // Load scope tier and slug for concurrency limit and storage resolution
+  // Load scope tier and slug from schedule's scope (not compose's scope)
   const [scopeRecord] = await globalThis.services.db
     .select({ tier: scopes.tier, slug: scopes.slug })
     .from(scopes)
-    .where(eq(scopes.id, compose.scopeId))
+    .where(eq(scopes.id, schedule.scopeId))
     .limit(1);
 
   // Build callbacks for run completion notifications
@@ -870,10 +862,10 @@ async function executeSchedule(
     scheduleId: schedule.id,
     composeId: schedule.composeId,
     composeName: compose.name,
-    userId: compose.userId,
+    userId: schedule.userId,
   };
 
-  const prefs = await getUserPreferences(compose.userId);
+  const prefs = await getUserPreferences(schedule.userId);
 
   // Email schedule notification callback (only if Resend is configured AND user opted in)
   if (globalThis.services.env.RESEND_API_KEY && prefs.notifyEmail) {
@@ -909,7 +901,7 @@ async function executeSchedule(
   let runId: string;
   try {
     const result = await createRun({
-      userId: compose.userId,
+      userId: schedule.userId,
       agentComposeVersionId: compose.headVersionId,
       prompt: schedule.prompt,
       composeId: compose.id,
@@ -919,7 +911,7 @@ async function executeSchedule(
       volumeVersions: schedule.volumeVersions ?? undefined,
       agentName: compose.name,
       callbacks,
-      scopeId: compose.scopeId,
+      scopeId: schedule.scopeId,
       scopeSlug: scopeRecord?.slug,
       scopeTier: scopeRecord
         ? scopeTierSchema.parse(scopeRecord.tier)

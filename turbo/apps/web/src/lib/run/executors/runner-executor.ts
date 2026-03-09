@@ -59,6 +59,7 @@ export async function executeRunnerJob(
     encryptedSecrets,
     cliAgentType: context.cliAgentType,
     experimentalFirewall: context.experimentalFirewall ?? undefined,
+    experimentalConnectors: context.experimentalConnectors ?? undefined,
     debugNoMockClaude: context.debugNoMockClaude || undefined,
     apiStartTime: context.apiStartTime ?? undefined,
     userTimezone: context.userTimezone ?? undefined,

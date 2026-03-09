@@ -1,5 +1,5 @@
 import type { ArtifactSnapshot } from "../checkpoint/types";
-import type { ExperimentalFirewall } from "@vm0/core";
+import type { ExperimentalFirewall, ExperimentalConnectors } from "@vm0/core";
 
 /**
  * Run status values
@@ -79,6 +79,9 @@ export interface ExecutionContext {
 
   // Experimental firewall configuration for network egress control
   experimentalFirewall?: ExperimentalFirewall;
+
+  // Experimental connectors for proxy-side token replacement
+  experimentalConnectors?: ExperimentalConnectors;
 
   // Resume-specific (optional)
   resumeSession?: ResumeSession;

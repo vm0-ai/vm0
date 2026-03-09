@@ -122,6 +122,9 @@ function initEnv() {
       // Strava OAuth (for connector)
       STRAVA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       STRAVA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Stripe OAuth (for connector)
+      STRIPE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      STRIPE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Garmin Connect OAuth (for connector)
       GARMIN_CONNECT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       GARMIN_CONNECT_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -132,6 +135,9 @@ function initEnv() {
       VERCEL_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       VERCEL_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       VERCEL_INTEGRATION_SLUG: z.string().min(1).optional(),
+      // Asana OAuth (for connector)
+      ASANA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      ASANA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Sentry OAuth (for connector)
       SENTRY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       SENTRY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -148,6 +154,9 @@ function initEnv() {
       MONDAY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       MONDAY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       MONDAY_OAUTH_APP_ID: z.string().min(1).optional(),
+      // Meta Ads OAuth (for connector)
+      META_ADS_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      META_ADS_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Canva OAuth (for connector)
       CANVA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       CANVA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -272,6 +281,8 @@ function initEnv() {
       REDDIT_OAUTH_CLIENT_SECRET: process.env.REDDIT_OAUTH_CLIENT_SECRET,
       STRAVA_OAUTH_CLIENT_ID: process.env.STRAVA_OAUTH_CLIENT_ID,
       STRAVA_OAUTH_CLIENT_SECRET: process.env.STRAVA_OAUTH_CLIENT_SECRET,
+      STRIPE_OAUTH_CLIENT_ID: process.env.STRIPE_OAUTH_CLIENT_ID,
+      STRIPE_OAUTH_CLIENT_SECRET: process.env.STRIPE_OAUTH_CLIENT_SECRET,
       GARMIN_CONNECT_OAUTH_CLIENT_ID:
         process.env.GARMIN_CONNECT_OAUTH_CLIENT_ID,
       GARMIN_CONNECT_OAUTH_CLIENT_SECRET:
@@ -281,6 +292,8 @@ function initEnv() {
       VERCEL_OAUTH_CLIENT_ID: process.env.VERCEL_OAUTH_CLIENT_ID,
       VERCEL_OAUTH_CLIENT_SECRET: process.env.VERCEL_OAUTH_CLIENT_SECRET,
       VERCEL_INTEGRATION_SLUG: process.env.VERCEL_INTEGRATION_SLUG,
+      ASANA_OAUTH_CLIENT_ID: process.env.ASANA_OAUTH_CLIENT_ID,
+      ASANA_OAUTH_CLIENT_SECRET: process.env.ASANA_OAUTH_CLIENT_SECRET,
       SENTRY_OAUTH_CLIENT_ID: process.env.SENTRY_OAUTH_CLIENT_ID,
       SENTRY_OAUTH_CLIENT_SECRET: process.env.SENTRY_OAUTH_CLIENT_SECRET,
       INTERVALS_ICU_OAUTH_CLIENT_ID: process.env.INTERVALS_ICU_OAUTH_CLIENT_ID,
@@ -291,6 +304,8 @@ function initEnv() {
       MONDAY_OAUTH_CLIENT_ID: process.env.MONDAY_OAUTH_CLIENT_ID,
       MONDAY_OAUTH_CLIENT_SECRET: process.env.MONDAY_OAUTH_CLIENT_SECRET,
       MONDAY_OAUTH_APP_ID: process.env.MONDAY_OAUTH_APP_ID,
+      META_ADS_OAUTH_CLIENT_ID: process.env.META_ADS_OAUTH_CLIENT_ID,
+      META_ADS_OAUTH_CLIENT_SECRET: process.env.META_ADS_OAUTH_CLIENT_SECRET,
       CANVA_OAUTH_CLIENT_ID: process.env.CANVA_OAUTH_CLIENT_ID,
       CANVA_OAUTH_CLIENT_SECRET: process.env.CANVA_OAUTH_CLIENT_SECRET,
       SUPABASE_OAUTH_CLIENT_ID: process.env.SUPABASE_OAUTH_CLIENT_ID,

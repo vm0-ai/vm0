@@ -311,7 +311,7 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
       expect(data.error.message).toContain("compose");
     });
 
-    it("should reject request for non-owned compose", async () => {
+    it("should allow scheduling another user's compose (cross-scope sharing)", async () => {
       // Create another user and their compose
       await context.setupUser({ prefix: "other" });
       const { composeId: otherComposeId } = await createTestCompose(
@@ -328,10 +328,10 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             composeId: otherComposeId,
-            name: "not-my-compose-schedule",
+            name: "cross-scope-schedule",
             cronExpression: "0 9 * * *",
             timezone: "UTC",
-            prompt: "Test",
+            prompt: "Test cross-scope",
           }),
         },
       );
@@ -339,8 +339,11 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(404);
-      expect(data.error.code).toBe("NOT_FOUND");
+      // Cross-scope sharing: user can schedule another user's agent
+      // The schedule is associated with the caller's scopeId + userId
+      expect(response.status).toBe(201);
+      expect(data.created).toBe(true);
+      expect(data.schedule.userId).toBe(user.userId);
     });
   });
 
