@@ -75,4 +75,43 @@ describe("runAgentForTelegram", () => {
     );
     expect(callArgs.prompt).toContain("help me");
   });
+
+  it("should return queued status when createRun returns queued", async () => {
+    const userId = uniqueId("test-user");
+    mockClerk({ userId });
+    await createTestScope(uniqueId("scope"));
+    const { composeId } = await createTestCompose("test-agent");
+
+    vi.spyOn(runModule, "createRun").mockResolvedValue({
+      runId: "mock-run-id",
+      status: "queued",
+      createdAt: new Date(),
+    });
+
+    const callbackContext: TelegramCallbackContext = {
+      installationId: uniqueId("install"),
+      chatId: uniqueId("chat"),
+      messageId: uniqueId("msg"),
+      rootMessageId: null,
+      userLinkId: uniqueId("link"),
+      agentName: "test-agent",
+      composeId,
+      existingSessionId: null,
+      isDM: true,
+      thinkingMessageId: null,
+    };
+
+    const result = await runAgentForTelegram({
+      composeId,
+      agentName: "test-agent",
+      sessionId: undefined,
+      prompt: "help me",
+      threadContext: "",
+      userId,
+      callbackContext,
+    });
+
+    expect(result.status).toBe("queued");
+    expect(result.runId).toBe("mock-run-id");
+  });
 });

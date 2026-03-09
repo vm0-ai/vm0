@@ -125,6 +125,21 @@ export async function runAgentForSlack(
       ],
     });
 
+    if (result.status === "failed") {
+      log.error("Run dispatch failed", {
+        runId: result.runId,
+        composeId: compose.id,
+        agentName,
+        userId,
+      });
+      return {
+        status: "failed",
+        response:
+          "Something went wrong while starting the agent. Please try again later.",
+        runId: result.runId,
+      };
+    }
+
     const status = result.status === "queued" ? "queued" : "dispatched";
     log.debug(`Run ${result.runId} ${status} for Slack agent ${agentName}`);
 
@@ -134,10 +149,10 @@ export async function runAgentForSlack(
     };
   } catch (error) {
     log.error("Error running agent for Slack:", error);
-    const message = error instanceof Error ? error.message : "Unknown error";
     return {
       status: "failed",
-      response: `Error executing agent: ${message}`,
+      response:
+        "Something went wrong while starting the agent. Please try again later.",
       runId: undefined,
     };
   }

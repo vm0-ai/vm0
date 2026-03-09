@@ -15,6 +15,7 @@ import {
 import {
   splitMessage,
   buildTelegramResponse,
+  buildTelegramErrorResponse,
 } from "../../../../../src/lib/telegram/format";
 import { detectDeepLinks } from "../../../../../src/lib/deep-links";
 import { getPlatformUrl } from "../../../../../src/lib/url";
@@ -134,25 +135,37 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   await sendChatAction(client, chatId, "typing");
 
   // Query Axiom for the agent's output
+  if (status === "failed") {
+    log.error("Agent run failed", {
+      runId,
+      agentName,
+      chatId,
+      error,
+    });
+  }
   const output = status === "completed" ? await getRunOutput(runId) : undefined;
 
   // Build response text
   const logsUrl = buildLogsUrl(runId, agentName);
-  const responseText =
-    status === "completed"
-      ? (output ?? "Task completed successfully.")
-      : `Error: ${error ?? "Agent execution failed."}`;
-
-  // Detect deep links for configuration hints
-  const deepLinks = detectDeepLinks(responseText, getPlatformUrl(), agentName);
-
-  // Build structured response with bot header and footer
-  const htmlOutput = buildTelegramResponse(
-    responseText,
-    agentName,
-    logsUrl,
-    deepLinks,
-  );
+  let htmlOutput: string;
+  if (status === "completed") {
+    const responseText = output ?? "Task completed successfully.";
+    const deepLinks = detectDeepLinks(
+      responseText,
+      getPlatformUrl(),
+      agentName,
+    );
+    htmlOutput = buildTelegramResponse(
+      responseText,
+      agentName,
+      logsUrl,
+      deepLinks,
+    );
+  } else {
+    const errorDetail =
+      error ?? "The agent encountered an error during execution.";
+    htmlOutput = buildTelegramErrorResponse(errorDetail, logsUrl);
+  }
   const chunks = splitMessage(htmlOutput);
 
   // In DMs, don't reply-to (no quote noise); in groups, reply for threading

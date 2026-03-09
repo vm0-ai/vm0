@@ -17,6 +17,8 @@ import {
   getWorkspaceAgent,
   resolveSessionCompose,
   resolveUserLink,
+  buildAgentLogsUrl,
+  buildLogsUrl,
 } from "./shared";
 import { escapeHtml } from "../format";
 import { logger } from "../../logger";
@@ -142,7 +144,7 @@ export async function handleTelegramMention(
     client,
     String(message.message_id),
   );
-  const { status, response } = await runAgentForTelegram({
+  const { status, response, runId } = await runAgentForTelegram({
     composeId,
     agentName,
     sessionId: existingSessionId,
@@ -165,15 +167,33 @@ export async function handleTelegramMention(
     },
   });
 
-  if (status === "failed") {
-    log.error("Failed to dispatch agent run", { response });
-    if (thinkingMessage) {
-      await deleteMessage(client, chatId, thinkingMessage.message_id);
-    }
+  if (status === "queued") {
     await sendMessage(
       client,
       chatId,
-      response ?? "Sorry, an error occurred. Please try again.",
+      "⏳ Run queued — concurrency limit reached. Will start automatically when a slot is available.",
+      { replyToMessageId: message.message_id },
+    );
+  } else if (status === "failed") {
+    log.error("Failed to dispatch agent run (mention)", {
+      chatId,
+      agentName,
+      composeId,
+      runId,
+      response,
+    });
+    if (thinkingMessage) {
+      await deleteMessage(client, chatId, thinkingMessage.message_id);
+    }
+    const errorDetail =
+      response ?? "An unexpected error occurred. Please try again later.";
+    const linkUrl = runId
+      ? buildLogsUrl(runId, agentName)
+      : buildAgentLogsUrl(agentName);
+    await sendMessage(
+      client,
+      chatId,
+      `❌ <b>Agent Execution Error</b>\n\n${escapeHtml(errorDetail)}\n\n<a href="${escapeHtml(linkUrl)}">📋 View logs</a>`,
       { replyToMessageId: message.message_id },
     );
   }

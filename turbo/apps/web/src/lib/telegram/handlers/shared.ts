@@ -175,6 +175,13 @@ export function buildLogsUrl(runId: string, agentName: string): string {
 }
 
 /**
+ * Build the agent logs page URL (no specific run).
+ */
+export function buildAgentLogsUrl(agentName: string): string {
+  return `${getPlatformUrl()}/agents/${encodeURIComponent(agentName)}/logs`;
+}
+
+/**
  * Look up a user link by telegramUserId and installationId.
  * If no direct match, try to auto-complete a pending link.
  * Returns the user link row or null.

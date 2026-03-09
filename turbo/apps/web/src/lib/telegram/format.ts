@@ -127,6 +127,26 @@ export function buildTelegramResponse(
 }
 
 /**
+ * Build a structured error response for Telegram.
+ *
+ * Format:
+ *   ❌ Agent Execution Error
+ *
+ *   <error detail>
+ *
+ *   📋 View logs
+ */
+export function buildTelegramErrorResponse(
+  errorDetail: string,
+  logsUrl: string,
+): string {
+  const header = `❌ <b>Agent Execution Error</b>`;
+  const content = escapeHtml(errorDetail);
+  const footer = `<a href="${escapeHtml(logsUrl)}">📋 View logs</a>`;
+  return `${header}\n\n${content}\n\n${footer}`;
+}
+
+/**
  * Split a message into chunks that fit within Telegram's message length limit.
  *
  * Splitting priority:
