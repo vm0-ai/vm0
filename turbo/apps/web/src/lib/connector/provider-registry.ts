@@ -6,6 +6,7 @@ import {
   type ProviderHandler,
 } from "./provider-types";
 import { airtableHandler } from "./providers/airtable-handler";
+import { asanaHandler } from "./providers/asana-handler";
 import { canvaHandler } from "./providers/canva-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { docusignHandler } from "./providers/docusign-handler";
@@ -35,6 +36,7 @@ import { xHandler } from "./providers/x-handler";
 import { supabaseHandler } from "./providers/supabase-handler";
 import { todoistHandler } from "./providers/todoist-handler";
 import { webflowHandler } from "./providers/webflow-handler";
+import { metaAdsHandler } from "./providers/meta-ads-handler";
 import { xeroHandler } from "./providers/xero-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
@@ -44,6 +46,7 @@ export const PROVIDER_HANDLERS: Record<
   ProviderHandler
 > = {
   airtable: airtableHandler,
+  asana: asanaHandler,
   canva: canvaHandler,
   deel: deelHandler,
   docusign: docusignHandler,
@@ -72,6 +75,7 @@ export const PROVIDER_HANDLERS: Record<
   vercel: vercelHandler,
   webflow: webflowHandler,
   supabase: supabaseHandler,
+  "meta-ads": metaAdsHandler,
   x: xHandler,
   xero: xeroHandler,
 };

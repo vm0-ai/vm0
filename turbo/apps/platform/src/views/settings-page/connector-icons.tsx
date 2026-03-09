@@ -1,6 +1,7 @@
 import type { ConnectorType } from "@vm0/core";
 
 import airtableIcon from "./icons/airtable.svg";
+import asanaIcon from "./icons/asana.svg";
 import canvaIcon from "./icons/canva.svg";
 import computerIcon from "./icons/computer.svg";
 import deelIcon from "./icons/deel.svg";
@@ -18,6 +19,7 @@ import googleDriveIcon from "./icons/google-drive.svg";
 import googleSheetsIcon from "./icons/google-sheets.svg";
 import linearIcon from "./icons/linear.svg";
 import mercuryIcon from "./icons/mercury.svg";
+import metaAdsIcon from "./icons/meta-ads.svg";
 import mondayIcon from "./icons/monday.svg";
 import neonIcon from "./icons/neon.svg";
 import notionIcon from "./icons/notion.svg";
@@ -35,6 +37,7 @@ import xeroIcon from "./icons/xero.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   airtable: airtableIcon,
+  asana: asanaIcon,
   canva: canvaIcon,
   computer: computerIcon,
   deel: deelIcon,
@@ -52,6 +55,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   "intervals-icu": intervalsIcuIcon,
   linear: linearIcon,
   mercury: mercuryIcon,
+  "meta-ads": metaAdsIcon,
   monday: mondayIcon,
   neon: neonIcon,
   notion: notionIcon,

@@ -103,6 +103,10 @@ VERCEL_OAUTH_CLIENT_ID=op://Development/vercel/VERCEL_OAUTH_CLIENT_ID
 VERCEL_OAUTH_CLIENT_SECRET=op://Development/vercel/VERCEL_OAUTH_CLIENT_SECRET
 VERCEL_INTEGRATION_SLUG=op://Development/vercel/VERCEL_INTEGRATION_SLUG
 
+# Optional: Asana OAuth Connector
+ASANA_OAUTH_CLIENT_ID=op://Development/asana/ASANA_OAUTH_CLIENT_ID
+ASANA_OAUTH_CLIENT_SECRET=op://Development/asana/ASANA_OAUTH_CLIENT_SECRET
+
 # Optional: Sentry OAuth Connector
 SENTRY_OAUTH_CLIENT_ID=op://Development/sentry/SENTRY_OAUTH_CLIENT_ID
 SENTRY_OAUTH_CLIENT_SECRET=op://Development/sentry/SENTRY_OAUTH_CLIENT_SECRET
@@ -127,6 +131,10 @@ MONDAY_OAUTH_APP_ID=op://Development/monday/MONDAY_OAUTH_APP_ID
 # Optional: Wix OAuth Connector
 WIX_OAUTH_CLIENT_ID=op://Development/wix/WIX_OAUTH_CLIENT_ID
 WIX_OAUTH_CLIENT_SECRET=op://Development/wix/WIX_OAUTH_CLIENT_SECRET
+
+# Optional: Meta Ads OAuth Connector
+META_ADS_OAUTH_CLIENT_ID=op://Development/meta-ads/META_ADS_OAUTH_CLIENT_ID
+META_ADS_OAUTH_CLIENT_SECRET=op://Development/meta-ads/META_ADS_OAUTH_CLIENT_SECRET
 
 # Optional: Canva OAuth Connector
 CANVA_OAUTH_CLIENT_ID=op://Development/canva/CANVA_OAUTH_CLIENT_ID

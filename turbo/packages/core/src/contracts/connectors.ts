@@ -1195,6 +1195,62 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  asana: {
+    label: "Asana",
+    helpText:
+      "Connect your Asana account to manage tasks, projects, portfolios, goals, and team workflows",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Asana to grant access.",
+        secrets: {
+          ASANA_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          ASANA_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://app.asana.com/-/oauth_authorize",
+      tokenUrl: "https://app.asana.com/-/oauth_token",
+      scopes: [],
+    } as ConnectorOAuthConfig,
+  },
+  "meta-ads": {
+    label: "Meta Ads",
+    helpText:
+      "Connect your Meta Ads Manager account to manage ad campaigns, audiences, and insights",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Facebook to grant access to Ads Manager.",
+        secrets: {
+          META_ADS_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://www.facebook.com/v22.0/dialog/oauth",
+      tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
+      scopes: ["ads_management", "ads_read", "business_management"],
+    } as ConnectorOAuthConfig,
+  },
   stripe: {
     label: "Stripe",
     helpText:
@@ -1376,6 +1432,14 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
     targets: ["https://api.webflow.com/v2"],
     auth: BEARER_AUTH,
   },
+  asana: {
+    targets: ["https://app.asana.com/api/1.0"],
+    auth: BEARER_AUTH,
+  },
+  "meta-ads": {
+    targets: ["https://graph.facebook.com"],
+    auth: BEARER_AUTH,
+  },
   stripe: {
     targets: ["https://api.stripe.com"],
     auth: BEARER_AUTH,
@@ -1384,6 +1448,7 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
 
 export const connectorTypeSchema = z.enum([
   "airtable",
+  "asana",
   "canva",
   "github",
   "gmail",
@@ -1414,6 +1479,7 @@ export const connectorTypeSchema = z.enum([
   "supabase",
   "todoist",
   "webflow",
+  "meta-ads",
   "stripe",
 ]);
 
