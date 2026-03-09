@@ -35,9 +35,9 @@ export function Navbar({ breadcrumb }: NavbarProps) {
   };
 
   return (
-    <header className="h-[49px] flex items-center border-b border-divider bg-background">
+    <header className="h-[49px] flex items-center border-b border-divider bg-background overflow-hidden">
       {/* Left section: Sidebar toggle + Divider + Breadcrumb */}
-      <div className="flex flex-1 items-center gap-3 px-4">
+      <div className="flex flex-1 items-center gap-3 px-4 min-w-0">
         <div className="flex items-center gap-1">
           {/* Sidebar toggle button */}
           <TooltipProvider delayDuration={100}>
@@ -80,7 +80,7 @@ export function Navbar({ breadcrumb }: NavbarProps) {
                   <Link
                     pathname={item.path}
                     options={{ pathParams: item.pathParams }}
-                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
+                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors truncate"
                   >
                     {item.label}
                   </Link>
