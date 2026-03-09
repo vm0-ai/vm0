@@ -165,7 +165,7 @@ export async function POST(request: Request) {
     if (
       event.type === "message" &&
       event.channel_type === "im" &&
-      !event.subtype &&
+      (!event.subtype || event.subtype === "file_share") &&
       !event.bot_id
     ) {
       initServices();
