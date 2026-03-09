@@ -17,6 +17,7 @@ import {
   type TelegramSentMessage,
 } from "../client";
 import { escapeHtml } from "../format";
+import { signConnectParams } from "../connect-token";
 import { logger } from "../../logger";
 
 const log = logger("telegram:shared");
@@ -265,6 +266,23 @@ export async function resolveSessionCompose(
     };
   }
   return undefined;
+}
+
+/**
+ * Build a signed connect URL for unlinked Telegram users.
+ * Includes HMAC signature so the platform can verify the link and
+ * create the user link with the correct Telegram user ID.
+ */
+export function buildConnectUrl(
+  installationId: string,
+  telegramBotId: string,
+  telegramUserId: string,
+  botToken: string,
+): string {
+  const platformUrl = getPlatformUrl();
+  const ts = Math.floor(Date.now() / 1000);
+  const sig = signConnectParams(installationId, telegramUserId, ts, botToken);
+  return `${platformUrl}/telegram/connect?bot=${telegramBotId}&tgUser=${telegramUserId}&ts=${ts}&sig=${sig}`;
 }
 
 /**

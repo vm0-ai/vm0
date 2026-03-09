@@ -12,9 +12,9 @@ import {
   getWorkspaceAgent,
   resolveSessionCompose,
   resolveUserLink,
+  buildConnectUrl,
 } from "./shared";
 import { escapeHtml } from "../format";
-import { getPlatformUrl } from "../../url";
 import { logger } from "../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -58,8 +58,12 @@ export async function handleTelegramDirectMessage(
   const userLink = await resolveUserLink(installationId, fromUserId);
 
   if (!userLink) {
-    const platformUrl = getPlatformUrl();
-    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}`;
+    const connectUrl = buildConnectUrl(
+      installationId,
+      installation.telegramBotId,
+      fromUserId,
+      botToken,
+    );
     await sendMessage(
       client,
       chatId,

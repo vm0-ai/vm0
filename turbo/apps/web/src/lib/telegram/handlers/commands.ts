@@ -4,12 +4,11 @@ import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createTelegramClient, sendMessage } from "../client";
-import { resolveUserLink, getWorkspaceAgent } from "./shared";
+import { resolveUserLink, getWorkspaceAgent, buildConnectUrl } from "./shared";
 import { escapeHtml } from "../format";
 import { getPlatformUrl } from "../../url";
 import { getUserEmail } from "../../auth/get-user-email";
 import { removePermission } from "../../agent/permission-service";
-import { signConnectParams } from "../connect-token";
 import { logger } from "../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -65,10 +64,12 @@ export async function handleConnectCommand(
     return;
   }
 
-  const platformUrl = getPlatformUrl();
-  const ts = Math.floor(Date.now() / 1000);
-  const sig = signConnectParams(installationId, fromUserId, ts, botToken);
-  const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}&tgUser=${fromUserId}&ts=${ts}&sig=${sig}`;
+  const connectUrl = buildConnectUrl(
+    installationId,
+    installation.telegramBotId,
+    fromUserId,
+    botToken,
+  );
   await sendMessage(
     client,
     chatId,
@@ -182,10 +183,12 @@ export async function handleSettingsCommand(
       : undefined;
 
   if (!userLink) {
-    const platformUrl = getPlatformUrl();
-    const ts = Math.floor(Date.now() / 1000);
-    const sig = signConnectParams(installationId, fromUserId, ts, botToken);
-    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}&tgUser=${fromUserId}&ts=${ts}&sig=${sig}`;
+    const connectUrl = buildConnectUrl(
+      installationId,
+      installation.telegramBotId,
+      fromUserId,
+      botToken,
+    );
     await sendMessage(
       client,
       chatId,
