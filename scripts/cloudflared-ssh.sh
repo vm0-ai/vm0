@@ -40,14 +40,15 @@ require_cloudflared() {
 
 # --- Derive names from host ---
 parse_host() {
-  local host="$1"
-  if ! [[ "$host" =~ ^[a-z0-9-]+\.aws\.vm3\.ai$ ]]; then
-    err "Host '${host}' does not match expected pattern (e.g. abc.aws.vm3.ai)"
+  local host="$1" domain="$2"
+  if ! [[ "$host" =~ ^([a-z0-9-]+\.)+${domain//./\\.}$ ]]; then
+    err "Host '${host}' does not match expected pattern (e.g. dev-1.aws.${domain})"
     exit 1
   fi
-  PREFIX="${host%%.*}"
-  TUNNEL_NAME="${PREFIX}-ssh"
-  TUNNEL_FQDN="${TUNNEL_NAME}.${2}"
+  # dev-1.aws.vm3.ai -> dev-1-aws-ssh.vm3.ai
+  local subdomain="${host%.${domain}}"
+  TUNNEL_NAME="${subdomain//./-}-ssh"
+  TUNNEL_FQDN="${TUNNEL_NAME}.${domain}"
 }
 
 # ==========================================
