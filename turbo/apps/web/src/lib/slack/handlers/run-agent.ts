@@ -3,7 +3,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
-import { createRun, type RunDispatchError } from "../../run";
+import { createRun, isRunDispatchError } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
 import { queryAxiom, getDatasetName, DATASETS } from "../../axiom";
 import { logger } from "../../logger";
@@ -133,7 +133,7 @@ export async function runAgentForSlack(
       runId: result.runId,
     };
   } catch (error) {
-    const runId = (error as RunDispatchError).runId;
+    const runId = isRunDispatchError(error) ? error.runId : undefined;
     log.error("Error running agent for Slack:", error);
     return {
       status: "failed",

@@ -7,5 +7,6 @@ export {
   validateCheckpoint,
   validateAgentSession,
   createRun,
+  isRunDispatchError,
   type RunDispatchError,
 } from "./run-service";
