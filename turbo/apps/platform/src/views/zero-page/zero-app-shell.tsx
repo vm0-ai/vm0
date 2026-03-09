@@ -6,6 +6,7 @@ import {
   type ZeroAccountSubId,
 } from "./zero-sidebar.tsx";
 import { ZeroContent } from "./zero-content.tsx";
+import { ZeroOnboarding } from "./zero-onboarding.tsx";
 
 const ZERO_AVATARS = [
   "/zero-avatar.png",
@@ -16,6 +17,7 @@ const ZERO_AVATARS = [
 ];
 
 const RECENT_LABELS: Record<string, string> = {
+  hello: "Hello from Zero",
   "1": "Daily digest workflow",
   "2": "Set up Slack integration",
   "3": "Weekly report automation",
@@ -60,6 +62,10 @@ export function ZeroAppShell() {
 
   return (
     <div className="zero-app flex h-dvh w-full bg-background">
+      <ZeroOnboarding
+        zeroAvatarSrc={zeroAvatarSrc}
+        onAvatarClick={cycleAvatar}
+      />
       <ZeroSidebar
         activeId={activeId}
         onSelect={handleNavSelect}

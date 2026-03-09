@@ -95,7 +95,7 @@ export function ZeroMeetPage({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroMeetPageProps) {
-  const [activeTab, setActiveTab] = useState("settings");
+  const [activeTab, setActiveTab] = useState("connections");
   const [agentName, setAgentName] = useState("Zero");
   const [tone, setTone] = useState<string>("Professional");
   const [skills, setSkills] = useState<string[]>([...AVAILABLE_SKILLS]);
@@ -156,6 +156,20 @@ export function ZeroMeetPage({
             >
               <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1">
                 <TabsTrigger
+                  value="connections"
+                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                >
+                  <IconPlug size={14} stroke={1.5} />
+                  Connections
+                </TabsTrigger>
+                <TabsTrigger
+                  value="schedule"
+                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                >
+                  <IconCalendar size={14} stroke={1.5} />
+                  Schedule
+                </TabsTrigger>
+                <TabsTrigger
                   value="settings"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
@@ -168,20 +182,6 @@ export function ZeroMeetPage({
                 >
                   <IconFileText size={14} stroke={1.5} />
                   Instructions
-                </TabsTrigger>
-                <TabsTrigger
-                  value="schedule"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                >
-                  <IconCalendar size={14} stroke={1.5} />
-                  Schedule
-                </TabsTrigger>
-                <TabsTrigger
-                  value="connections"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                >
-                  <IconPlug size={14} stroke={1.5} />
-                  Connections
                 </TabsTrigger>
               </TabsList>
             </Tabs>

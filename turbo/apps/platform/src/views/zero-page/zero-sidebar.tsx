@@ -13,6 +13,7 @@ import {
   IconUsers,
   IconLogout,
 } from "@tabler/icons-react";
+import slackIcon from "../settings-page/icons/slack.svg";
 
 export type ZeroNavId =
   | "chat"
@@ -39,6 +40,7 @@ const MAIN_NAV: {
 ];
 
 const RECENT_ITEMS: { id: string; label: string }[] = [
+  { id: "hello", label: "Hello from Zero" },
   { id: "1", label: "Daily digest workflow" },
   { id: "2", label: "Set up Slack integration" },
   { id: "3", label: "Weekly report automation" },
@@ -49,8 +51,14 @@ const FOOTER_NAV: {
   id: ZeroNavId;
   label: string;
   icon: ComponentType<{ size?: number; className?: string }>;
+  iconImg?: string;
 }[] = [
-  { id: "works", label: "Where Zero works", icon: IconLayoutGrid },
+  {
+    id: "works",
+    label: "Where Zero works",
+    icon: IconLayoutGrid,
+    iconImg: slackIcon,
+  },
   { id: "team", label: "Workspace settings", icon: IconSettings },
 ];
 
@@ -161,13 +169,19 @@ export function ZeroSidebar({
                 key={id}
                 type="button"
                 onClick={() => onRecentSelect?.(id)}
-                className={`flex h-8 items-center rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
+                className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
                   selectedRecentId === id
                     ? "bg-sidebar-active text-sidebar-primary"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
               >
-                <span className="truncate">{label}</span>
+                <span className="truncate min-w-0 flex-1">{label}</span>
+                {id === "hello" && (
+                  <span
+                    className="shrink-0 w-1.5 h-1.5 rounded-full bg-red-500"
+                    aria-hidden
+                  />
+                )}
               </button>
             ))}
           </div>
@@ -177,7 +191,7 @@ export function ZeroSidebar({
       {/* Footer nav */}
       <div className="p-2">
         <div className="flex flex-col gap-1">
-          {FOOTER_NAV.map(({ id, label, icon: Icon }) => (
+          {FOOTER_NAV.map(({ id, label, icon: Icon, iconImg }) => (
             <button
               key={id}
               type="button"
@@ -188,7 +202,17 @@ export function ZeroSidebar({
                   : "text-sidebar-foreground hover:bg-sidebar-accent"
               }`}
             >
-              <Icon size={16} className="shrink-0" />
+              {iconImg ? (
+                <img
+                  src={iconImg}
+                  alt=""
+                  className="h-4 w-4 shrink-0"
+                  width={16}
+                  height={16}
+                />
+              ) : (
+                <Icon size={16} className="shrink-0" />
+              )}
               <span className="truncate">{label}</span>
             </button>
           ))}
