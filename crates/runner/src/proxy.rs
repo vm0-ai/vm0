@@ -756,4 +756,65 @@ mod tests {
         assert_eq!(vm_json["sealSecretsEnabled"], true);
         assert_eq!(vm_json["mitmEnabled"], true);
     }
+
+    #[tokio::test]
+    async fn registry_with_connectors() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let lock_path = dir.path().join("proxy-registry.json.lock");
+        let empty = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 0,
+        };
+        write_registry(&registry_path, &empty).await.unwrap();
+
+        let handle = ProxyRegistryHandle {
+            registry_path: registry_path.clone(),
+            lock_path,
+        };
+
+        let connectors = crate::types::ExperimentalConnectors {
+            connectors: vec![crate::types::ConnectorEntry {
+                name: "gmail".to_string(),
+                targets: vec!["https://gmail.googleapis.com/gmail/v1/users/me".to_string()],
+                placeholder: "vm0_conn_gmail".to_string(),
+                auth: crate::types::ConnectorAuth {
+                    headers: [("Authorization".to_string(), "Bearer ${token}".to_string())]
+                        .into_iter()
+                        .collect(),
+                },
+            }],
+        };
+
+        let registration = VmRegistration {
+            run_id: "run-conn",
+            sandbox_token: "tok",
+            firewall_rules: &[],
+            mitm_enabled: true,
+            seal_secrets_enabled: false,
+            network_log_path: std::path::Path::new("/tmp/network-run-conn.jsonl"),
+            connectors: Some(&connectors),
+        };
+        handle
+            .register_vm("10.200.0.5", &registration)
+            .await
+            .unwrap();
+
+        // Verify connectors are stored in registry.
+        let loaded = read_registry(&registry_path).await.unwrap();
+        let vm = loaded.vms.get("10.200.0.5").unwrap();
+        let stored = vm.connectors.as_ref().unwrap();
+        assert_eq!(stored.connectors.len(), 1);
+        assert_eq!(stored.connectors[0].name, "gmail");
+        assert_eq!(stored.connectors[0].placeholder, "vm0_conn_gmail");
+
+        // Verify JSON shape matches what the Python addon expects.
+        let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
+        let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let vm_json = &value["vms"]["10.200.0.5"];
+        let conn = &vm_json["connectors"]["connectors"][0];
+        assert_eq!(conn["name"], "gmail");
+        assert_eq!(conn["placeholder"], "vm0_conn_gmail");
+        assert_eq!(conn["auth"]["headers"]["Authorization"], "Bearer ${token}");
+    }
 }

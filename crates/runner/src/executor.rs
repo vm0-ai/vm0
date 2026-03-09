@@ -987,6 +987,71 @@ mod tests {
     }
 
     #[test]
+    fn build_env_json_connectors_enable_ca_certs() {
+        let mut ctx = minimal_context();
+        ctx.experimental_connectors = Some(crate::types::ExperimentalConnectors {
+            connectors: vec![crate::types::ConnectorEntry {
+                name: "gmail".into(),
+                targets: vec!["https://gmail.googleapis.com/gmail/v1/users/me".into()],
+                placeholder: "vm0_conn_gmail".into(),
+                auth: crate::types::ConnectorAuth {
+                    headers: [("Authorization".into(), "Bearer ${token}".into())]
+                        .into_iter()
+                        .collect(),
+                },
+            }],
+        });
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("NODE_EXTRA_CA_CERTS").unwrap(), VM_PROXY_CA_PATH);
+    }
+
+    #[test]
+    fn build_env_json_empty_connectors_no_ca_certs() {
+        let mut ctx = minimal_context();
+        ctx.experimental_connectors =
+            Some(crate::types::ExperimentalConnectors { connectors: vec![] });
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
+    }
+
+    #[test]
+    fn execution_context_deserializes_with_connectors() {
+        let json = serde_json::json!({
+            "runId": "00000000-0000-0000-0000-000000000001",
+            "prompt": "test",
+            "sandboxToken": "tok",
+            "workingDir": "/workspace",
+            "cliAgentType": "claude-code",
+            "experimentalConnectors": {
+                "connectors": [{
+                    "name": "github",
+                    "targets": ["https://api.github.com"],
+                    "placeholder": "vm0_conn_github",
+                    "auth": { "headers": { "Authorization": "Bearer ${token}" } }
+                }]
+            }
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        let conns = ctx.experimental_connectors.unwrap();
+        assert_eq!(conns.connectors.len(), 1);
+        assert_eq!(conns.connectors[0].name, "github");
+        assert_eq!(conns.connectors[0].placeholder, "vm0_conn_github");
+    }
+
+    #[test]
+    fn execution_context_deserializes_without_connectors() {
+        let json = serde_json::json!({
+            "runId": "00000000-0000-0000-0000-000000000001",
+            "prompt": "test",
+            "sandboxToken": "tok",
+            "workingDir": "/workspace",
+            "cliAgentType": "claude-code"
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        assert!(ctx.experimental_connectors.is_none());
+    }
+
+    #[test]
     fn dmesg_oom_positive() {
         assert!(dmesg_indicates_oom(
             "[  12.345] Out of memory: Killed process 1234 (claude)"
