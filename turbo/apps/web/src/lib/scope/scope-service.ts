@@ -116,7 +116,7 @@ export async function getScopeByClerkOrgId(clerkOrgId: string) {
 /**
  * Create a scope for a user with an admin membership.
  *
- * Merges the former createUserScope() and createOrganization() functions.
+ * Merges the former scope creation and organization setup functions.
  * Handles Clerk org creation, slug validation,
  * one-admin-per-user constraint, and atomic scope + membership creation.
  *

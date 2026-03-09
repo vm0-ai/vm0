@@ -234,7 +234,7 @@ const router = tsr.router(composesMainContract, {
     const versionId = computeComposeVersionId(resolvedContent);
 
     // Get user's scope (required for compose creation)
-    const { scope: runtimeScope } = await resolveScope(userId);
+    const { scope } = await resolveScope(userId);
 
     // Check compose and version existence in parallel
     const [existingComposes, existingVersions] = await Promise.all([
@@ -243,7 +243,7 @@ const router = tsr.router(composesMainContract, {
         .from(agentComposes)
         .where(
           and(
-            eq(agentComposes.scopeId, runtimeScope.id),
+            eq(agentComposes.scopeId, scope.id),
             eq(agentComposes.name, normalizedAgentName),
           ),
         )
@@ -269,7 +269,7 @@ const router = tsr.router(composesMainContract, {
         .insert(agentComposes)
         .values({
           userId,
-          scopeId: runtimeScope.id,
+          scopeId: scope.id,
           name: normalizedAgentName,
         })
         .returning({ id: agentComposes.id });
