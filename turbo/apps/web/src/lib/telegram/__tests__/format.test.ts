@@ -82,7 +82,7 @@ describe("buildTelegramResponse", () => {
     expect(result).toContain("🤖 <b>TestBot</b>");
     expect(result).toContain("Hello world");
     expect(result).toContain(
-      '<a href="https://example.com/logs/123">📋 View logs</a>',
+      '<a href="https://example.com/logs/123">📋 Audit</a>',
     );
   });
 
@@ -134,7 +134,7 @@ describe("buildTelegramResponse", () => {
     expect(result).toContain(
       '🔑 <a href="https://example.com/settings">Configure model providers</a>',
     );
-    expect(result).toContain("📋 View logs</a>");
+    expect(result).toContain("📋 Audit</a>");
   });
 
   it("should not include deep links section when empty", () => {
@@ -146,7 +146,7 @@ describe("buildTelegramResponse", () => {
     );
 
     expect(result).not.toContain("🔑");
-    expect(result).toContain("📋 View logs</a>");
+    expect(result).toContain("📋 Audit</a>");
   });
 });
 

@@ -121,7 +121,7 @@ export function buildTelegramResponse(
       .join("  ·  ");
     footerParts.push(linkText);
   }
-  footerParts.push(`<a href="${escapeHtml(logsUrl)}">📋 View logs</a>`);
+  footerParts.push(`<a href="${escapeHtml(logsUrl)}">📋 Audit</a>`);
 
   return `${header}\n\n${content}\n\n${footerParts.join("\n")}`;
 }

@@ -501,7 +501,7 @@ export function buildAgentResponseMessage(
       elements: [
         {
           type: "mrkdwn",
-          text: `:clipboard: <${logsUrl}|View logs>`,
+          text: `:clipboard: <${logsUrl}|Audit>`,
         },
       ],
     });

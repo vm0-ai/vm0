@@ -148,7 +148,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             elements: [
               {
                 type: "mrkdwn",
-                text: `<${logsUrl}|View logs> · Reply in this thread to continue the conversation`,
+                text: `<${logsUrl}|Audit> · Reply in this thread to continue the conversation`,
               },
             ],
           },
@@ -197,7 +197,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             elements: [
               {
                 type: "mrkdwn",
-                text: `<${logsUrl}|View logs>`,
+                text: `<${logsUrl}|Audit>`,
               },
             ],
           },
