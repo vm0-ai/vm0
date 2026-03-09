@@ -30,6 +30,11 @@ export const ARTIFACT_MOUNT_PATH = process.env.VM0_ARTIFACT_MOUNT_PATH ?? "";
 export const ARTIFACT_VOLUME_NAME = process.env.VM0_ARTIFACT_VOLUME_NAME ?? "";
 export const ARTIFACT_VERSION_ID = process.env.VM0_ARTIFACT_VERSION_ID ?? "";
 
+// Memory configuration
+export const MEMORY_DRIVER = process.env.VM0_MEMORY_DRIVER ?? "";
+export const MEMORY_MOUNT_PATH = process.env.VM0_MEMORY_MOUNT_PATH ?? "";
+export const MEMORY_NAME = process.env.VM0_MEMORY_NAME ?? "";
+
 // Construct webhook endpoint URLs
 export const WEBHOOK_URL = `${API_URL}/api/webhooks/agent/events`;
 export const CHECKPOINT_URL = `${API_URL}/api/webhooks/agent/checkpoints`;
@@ -78,6 +83,18 @@ export const SANDBOX_OPS_LOG_FILE = `/tmp/vm0-sandbox-ops-${RUN_ID}.jsonl`;
 
 // Metrics collection configuration
 export const METRICS_INTERVAL = 5; // seconds
+
+/**
+ * Compute Claude Code's project directory name from a working directory path.
+ * Encoding: strip leading "/", replace remaining "/" with "-", prepend "-".
+ * Example: "/home/user/workspace" → "-home-user-workspace"
+ *
+ * This encoding matches Claude Code's internal project path derivation,
+ * also used for session history paths.
+ */
+export function encodeProjectName(workingDir: string): string {
+  return `-${workingDir.replace(/^\//, "").replace(/\//g, "-")}`;
+}
 
 /**
  * Validate required configuration.

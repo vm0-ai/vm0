@@ -160,6 +160,7 @@ async fn create_checkpoint_impl(start: std::time::Instant) -> Result<(), AgentEr
             let snapshot = artifact::create_snapshot(
                 env::artifact_mount_path(),
                 env::artifact_volume_name(),
+                "artifact",
                 env::run_id(),
                 &format!("Checkpoint from run {}", env::run_id()),
             )
@@ -184,6 +185,57 @@ async fn create_checkpoint_impl(start: std::time::Instant) -> Result<(), AgentEr
             None
         };
 
+    // Memory snapshot (VAS only, optional — same pattern as artifact)
+    let memory_snapshot = if !env::memory_driver().is_empty() && !env::memory_name().is_empty() {
+        let driver = env::memory_driver();
+        log_info!(LOG_TAG, "Processing memory with driver: {driver}");
+
+        if driver != "vas" {
+            return Err(AgentError::Checkpoint(format!(
+                "Unknown memory driver: {driver} (only 'vas' is supported)"
+            )));
+        }
+
+        // Only create snapshot if memory directory exists
+        if Path::new(env::memory_mount_path()).exists() {
+            log_info!(
+                LOG_TAG,
+                "Creating VAS snapshot for memory '{}' at {}",
+                env::memory_name(),
+                env::memory_mount_path()
+            );
+
+            let snapshot = artifact::create_snapshot(
+                env::memory_mount_path(),
+                env::memory_name(),
+                "memory",
+                env::run_id(),
+                &format!("Memory checkpoint from run {}", env::run_id()),
+            )
+            .await?;
+
+            log_info!(
+                LOG_TAG,
+                "VAS memory snapshot created: {}@{}",
+                env::memory_name(),
+                snapshot.version_id
+            );
+
+            Some(json!({
+                "memoryName": env::memory_name(),
+                "memoryVersion": snapshot.version_id,
+            }))
+        } else {
+            log_info!(
+                LOG_TAG,
+                "Memory directory does not exist, skipping memory snapshot"
+            );
+            None
+        }
+    } else {
+        None
+    };
+
     // Build and send checkpoint payload
     let mut payload = json!({
         "runId": env::run_id(),
@@ -196,6 +248,12 @@ async fn create_checkpoint_impl(start: std::time::Instant) -> Result<(), AgentEr
         && let Some(obj) = payload.as_object_mut()
     {
         obj.insert("artifactSnapshot".to_string(), snap);
+    }
+
+    if let Some(snap) = memory_snapshot
+        && let Some(obj) = payload.as_object_mut()
+    {
+        obj.insert("memorySnapshot".to_string(), snap);
     }
 
     log_info!(LOG_TAG, "Calling checkpoint API...");

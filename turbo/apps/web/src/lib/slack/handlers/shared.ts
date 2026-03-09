@@ -1,21 +1,23 @@
 import { eq, and } from "drizzle-orm";
-import { createSlackClient } from "../client";
+import { createSlackClient, fetchSlackUserInfo } from "../client";
 import {
   fetchThreadContext,
   fetchChannelContext,
   formatContextForAgent,
   formatContextForAgentWithImages,
+  formatCurrentMessageFiles,
+  type SlackFile,
 } from "../context";
 import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { getPlatformUrl } from "../../url";
 import {
   getUserScopeByClerkId,
-  createUserScope,
+  createScope,
   generateDefaultScopeSlug,
 } from "../../scope/scope-service";
 import { validateAgentSession } from "../../run";
-import { ensureArtifactExists } from "../../storage/storage-service";
+import { ensureStorageExists } from "../../storage/storage-service";
 import { logger } from "../../logger";
 
 const log = logger("slack:shared");
@@ -222,17 +224,20 @@ export function buildLogsUrl(runId: string, agentName: string): string {
 export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
   let scope = await getUserScopeByClerkId(vm0UserId);
   if (!scope) {
-    scope = await createUserScope(
-      vm0UserId,
-      generateDefaultScopeSlug(vm0UserId),
-    );
+    scope = await createScope(vm0UserId, generateDefaultScopeSlug(vm0UserId));
     log.info("Auto-created scope for Slack user", { userId: vm0UserId });
   }
 
   // Preserve original Slack behavior: log but don't throw on artifact creation failure.
   // Slack callers (server actions, OAuth callback) don't have error handling for this.
   try {
-    await ensureArtifactExists(scope.id, vm0UserId, "artifact", scope.slug);
+    await ensureStorageExists(
+      scope.id,
+      vm0UserId,
+      "artifact",
+      scope.slug,
+      "artifact",
+    );
   } catch (err) {
     log.error("Failed to ensure artifact exists for Slack user", {
       userId: vm0UserId,
@@ -280,4 +285,47 @@ export async function resolveSessionCompose(
     });
   }
   return undefined;
+}
+
+/**
+ * Enrich message content with file attachments and Slack user info.
+ * Shared between direct-message and mention handlers.
+ */
+export async function enrichMessageContent(opts: {
+  messageContent: string;
+  files: SlackFile[] | undefined;
+  botToken: string;
+  channelId: string;
+  threadTs: string;
+  client: SlackClient;
+  userId: string;
+}): Promise<string> {
+  let content = opts.messageContent;
+
+  // Include files attached to the current message in the prompt
+  if (opts.files && opts.files.length > 0) {
+    const imageSessionId = `${opts.channelId}-${opts.threadTs}`;
+    const filesText = await formatCurrentMessageFiles(
+      opts.files,
+      opts.botToken,
+      imageSessionId,
+    );
+    content = `${content}\n\n${filesText}`;
+  }
+
+  // Prepend Slack user info to the prompt
+  const userInfo = await fetchSlackUserInfo(opts.client, opts.userId).catch(
+    (err) => {
+      log.warn("Failed to fetch Slack user info", {
+        userId: opts.userId,
+        error: err,
+      });
+      return undefined;
+    },
+  );
+  if (userInfo) {
+    content = `[Slack User]\n${userInfo}\n\n${content}`;
+  }
+
+  return content;
 }

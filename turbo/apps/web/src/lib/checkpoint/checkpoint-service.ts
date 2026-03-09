@@ -12,6 +12,7 @@ import type {
   CheckpointResponse,
   AgentComposeSnapshot,
   ArtifactSnapshot,
+  MemorySnapshot,
   VolumeVersionsSnapshot,
 } from "./types";
 
@@ -139,6 +140,9 @@ export async function createCheckpoint(
         artifactSnapshot: request.artifactSnapshot
           ? (request.artifactSnapshot as unknown as Record<string, unknown>)
           : null,
+        memorySnapshot: request.memorySnapshot
+          ? (request.memorySnapshot as unknown as Record<string, unknown>)
+          : null,
         volumeVersionsSnapshot: request.volumeVersionsSnapshot
           ? (request.volumeVersionsSnapshot as unknown as Record<
               string,
@@ -163,6 +167,9 @@ export async function createCheckpoint(
         artifactSnapshot: request.artifactSnapshot
           ? (request.artifactSnapshot as unknown as Record<string, unknown>)
           : null,
+        memorySnapshot: request.memorySnapshot
+          ? (request.memorySnapshot as unknown as Record<string, unknown>)
+          : null,
         volumeVersionsSnapshot: request.volumeVersionsSnapshot
           ? (request.volumeVersionsSnapshot as unknown as Record<
               string,
@@ -186,6 +193,7 @@ export async function createCheckpoint(
   const artifactSnapshot = request.artifactSnapshot as
     | ArtifactSnapshot
     | undefined;
+  const memorySnapshot = request.memorySnapshot as MemorySnapshot | undefined;
   const volumeSnapshot = request.volumeVersionsSnapshot as
     | VolumeVersionsSnapshot
     | undefined;
@@ -198,11 +206,12 @@ export async function createCheckpoint(
       conversation.id,
     );
   } else {
-    // New run: always create a new session (with artifact name if present)
+    // New run: always create a new session (with artifact/memory name if present)
     agentSession = await createAgentSession({
       userId: run.userId,
       agentComposeId: version.composeId,
       artifactName: artifactSnapshot?.artifactName,
+      memoryName: memorySnapshot?.memoryName,
       conversationId: conversation.id,
     });
   }

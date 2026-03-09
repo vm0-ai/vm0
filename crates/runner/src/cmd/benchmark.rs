@@ -34,6 +34,9 @@ pub struct BenchmarkArgs {
     /// Environment variables to pass (KEY=VALUE), can be repeated
     #[arg(long, short)]
     env: Vec<String>,
+    /// Run the command as root (sudo)
+    #[arg(long)]
+    sudo: bool,
 }
 
 pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
@@ -242,7 +245,7 @@ async fn run_in_sandbox(
             cmd: &args.command,
             timeout: Duration::from_secs(args.timeout_secs),
             env: &env_refs,
-            sudo: false,
+            sudo: args.sudo,
         })
         .await
         .map_err(Into::into);

@@ -1,5 +1,6 @@
 //! Runtime health diagnostics for all runners on the host.
 
+use std::fmt;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -24,6 +25,155 @@ pub struct DoctorArgs {
 }
 
 // ---------------------------------------------------------------------------
+// Warning type — structured anomalies with targeted recheck
+// ---------------------------------------------------------------------------
+
+/// How long to wait before each recheck of detected anomalies.
+const RECHECK_DELAY: Duration = Duration::from_secs(3);
+
+/// Maximum number of recheck attempts before reporting persistent anomalies.
+///
+/// Worst-case latency: `RECHECK_MAX_ATTEMPTS × RECHECK_DELAY` = 9 s (only
+/// when anomalies persist across all attempts; zero overhead when healthy).
+const RECHECK_MAX_ATTEMPTS: u32 = 3;
+
+/// A detected anomaly that carries enough context to recheck itself.
+enum Warning {
+    /// API server not responding to HEAD request.
+    ApiUnreachable {
+        server_url: String,
+        server_token: String,
+    },
+    /// status.json lists a proxy port but no mitmdump process found on it.
+    NoMitmproxy { port: u16 },
+    /// status.json lists a run_id but no firecracker process found for it.
+    NoFirecrackerForRun { run_id: String, base_dir: PathBuf },
+    /// A firecracker process exists but its run_id is not in status.json.
+    FirecrackerNotInStatus {
+        pid: u32,
+        run_id: String,
+        base_dir: PathBuf,
+    },
+    /// A firecracker process whose ppid chain doesn't lead to any runner.
+    OrphanFirecracker {
+        pid: u32,
+        run_id: String,
+        ppid: Option<u32>,
+    },
+    /// A mitmdump process on an unclaimed port whose ppid chain is orphaned.
+    OrphanMitmdump {
+        pid: u32,
+        port: u16,
+        ppid: Option<u32>,
+    },
+    /// A network namespace whose pool lock is not held by any process.
+    OrphanNamespace { ns_name: String, pool_idx: u32 },
+}
+
+impl fmt::Display for Warning {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ApiUnreachable { .. } => write!(f, "API unreachable"),
+            Self::NoMitmproxy { port } => {
+                write!(f, "no mitmproxy process on port {port}")
+            }
+            Self::NoFirecrackerForRun { run_id, .. } => {
+                write!(f, "no firecracker process for run {run_id}")
+            }
+            Self::FirecrackerNotInStatus { pid, run_id, .. } => {
+                write!(f, "firecracker PID {pid} (run {run_id}) not in status.json")
+            }
+            Self::OrphanFirecracker { pid, run_id, ppid } => {
+                let ppid_str = ppid.map_or("?".into(), |p| p.to_string());
+                write!(
+                    f,
+                    "orphan firecracker PID {pid} (run {run_id}, ppid={ppid_str})"
+                )
+            }
+            Self::OrphanMitmdump { pid, port, ppid } => {
+                let ppid_str = ppid.map_or("?".into(), |p| p.to_string());
+                write!(
+                    f,
+                    "orphan mitmdump PID {pid} (port {port}, ppid={ppid_str})"
+                )
+            }
+            Self::OrphanNamespace { ns_name, .. } => {
+                write!(f, "orphan namespace {ns_name} (pool lock not held)")
+            }
+        }
+    }
+}
+
+impl Warning {
+    /// Targeted recheck: returns `true` if the anomaly still persists.
+    ///
+    /// Process-related checks use the pre-scanned `fresh` data (a single
+    /// `/proc` scan shared across all warnings). Other checks do their own
+    /// minimal I/O (status.json read, HTTP HEAD, flock).
+    async fn persists(&self, fresh: &process::DiscoveredProcesses) -> bool {
+        match self {
+            Self::ApiUnreachable {
+                server_url,
+                server_token,
+            } => {
+                let client = match reqeast::builder().timeout(Duration::from_secs(5)).build() {
+                    Ok(c) => c,
+                    Err(_) => return true,
+                };
+                client
+                    .head(server_url)
+                    .bearer_auth(server_token)
+                    .send()
+                    .await
+                    .is_err()
+            }
+            Self::NoMitmproxy { port } => !fresh.mitmdumps.iter().any(|m| m.port == *port),
+            Self::NoFirecrackerForRun { run_id, base_dir } => {
+                // Resolved if firecracker process now exists (startup completed)
+                let fc_found = fresh.firecrackers.iter().any(|f| {
+                    f.run_id == *run_id && f.base_dir.as_deref() == Some(base_dir.as_path())
+                });
+                if fc_found {
+                    return false;
+                }
+                // Resolved if run_id removed from status.json (cleanup completed)
+                match read_status(base_dir).await {
+                    Some(st) => st.active_run_ids.contains(run_id),
+                    None => false,
+                }
+            }
+            Self::FirecrackerNotInStatus {
+                pid,
+                run_id,
+                base_dir,
+            } => {
+                // Resolved if process exited or now tracked in status.json.
+                if !pid_exists(*pid) {
+                    return false;
+                }
+                match read_status(base_dir).await {
+                    Some(st) => !st.active_run_ids.iter().any(|id| id == run_id),
+                    None => true,
+                }
+            }
+            Self::OrphanFirecracker { pid, .. } | Self::OrphanMitmdump { pid, .. } => {
+                // Resolved if process has exited.
+                pid_exists(*pid)
+            }
+            Self::OrphanNamespace { pool_idx, .. } => {
+                let lock_path = format!("/var/lock/vm0-netns-pool-{pool_idx}.lock");
+                is_lock_free(&lock_path).await
+            }
+        }
+    }
+}
+
+/// Check if a process is still alive via `/proc/{pid}`.
+fn pid_exists(pid: u32) -> bool {
+    Path::new(&format!("/proc/{pid}")).exists()
+}
+
+// ---------------------------------------------------------------------------
 // Report structs
 // ---------------------------------------------------------------------------
 
@@ -37,7 +187,7 @@ struct RunnerReport {
     api_ok: Option<bool>,
     proxy_pid: Option<u32>,
     jobs: Vec<JobReport>,
-    warnings: Vec<String>,
+    warnings: Vec<Warning>,
 }
 
 enum ServiceType {
@@ -69,6 +219,11 @@ enum JobStatus {
     NotInStatus,
 }
 
+struct StoppedInfo {
+    unit_name: String,
+    config_info: String,
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -94,7 +249,7 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     }
 
     // Filter by name if specified
-    let reports = if let Some(ref name_filter) = args.name {
+    let mut reports = if let Some(ref name_filter) = args.name {
         reports
             .into_iter()
             .filter(|r| r.name.as_deref() == Some(name_filter.as_str()))
@@ -113,13 +268,48 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
 
     // Phase 5: Global orphan detection
     // Skip when filtering by name — other runners' orphans are not this runner's concern
-    let global_warnings = if args.name.is_none() {
+    let mut global_warnings: Vec<Warning> = if args.name.is_none() {
         detect_global_orphans(&reports, &discovered.firecrackers, &discovered.mitmdumps).await
     } else {
         vec![]
     };
 
-    // Phase 6: Output
+    // Phase 6: Targeted recheck of anomalies
+    // When warnings are found, wait briefly and recheck only the failing items.
+    // This filters transient false-positives (e.g. NO PROCESS during run cleanup)
+    // without redoing the entire scan. Up to 3 attempts, 3s apart.
+    for _ in 0..RECHECK_MAX_ATTEMPTS {
+        let has_warnings =
+            reports.iter().any(|r| !r.warnings.is_empty()) || !global_warnings.is_empty();
+        if !has_warnings {
+            break;
+        }
+
+        tokio::time::sleep(RECHECK_DELAY).await;
+
+        // Single /proc scan shared across all warning rechecks.
+        let fresh = process::discover_all().await;
+
+        for report in &mut reports {
+            let mut rechecked = Vec::new();
+            for warning in report.warnings.drain(..) {
+                if warning.persists(&fresh).await {
+                    rechecked.push(warning);
+                }
+            }
+            report.warnings = rechecked;
+        }
+
+        let mut rechecked_global = Vec::new();
+        for warning in global_warnings.drain(..) {
+            if warning.persists(&fresh).await {
+                rechecked_global.push(warning);
+            }
+        }
+        global_warnings = rechecked_global;
+    }
+
+    // Phase 7: Output
     let total_warnings = print_report(&reports, &stopped, &global_warnings);
 
     if total_warnings > 0 {
@@ -160,8 +350,14 @@ async fn build_runner_report(
         Some(cfg) => check_api(cfg).await,
         None => None,
     };
-    if api_ok == Some(false) {
-        warnings.push("API unreachable".into());
+    if api_ok == Some(false)
+        && let Some(cfg) = &config
+        && let Some(server) = &cfg.server
+    {
+        warnings.push(Warning::ApiUnreachable {
+            server_url: server.url.clone(),
+            server_token: server.token.clone(),
+        });
     }
 
     // Base dir for job correlation
@@ -173,7 +369,7 @@ async fn build_runner_report(
     {
         let pid = mitm_procs.iter().find(|m| m.port == port).map(|m| m.pid);
         if pid.is_none() {
-            warnings.push(format!("no mitmproxy process on port {port}"));
+            warnings.push(Warning::NoMitmproxy { port });
         }
         pid
     } else {
@@ -289,10 +485,10 @@ async fn parse_unit_config_path(unit_path: &Path) -> Option<PathBuf> {
 }
 
 /// Find installed services that have no matching running runner.
-fn find_stopped_services<'a>(
-    installed: &'a [InstalledService],
+fn find_stopped_services(
+    installed: &[InstalledService],
     reports: &[RunnerReport],
-) -> Vec<&'a InstalledService> {
+) -> Vec<StoppedInfo> {
     installed
         .iter()
         .filter(|svc| {
@@ -300,6 +496,13 @@ fn find_stopped_services<'a>(
                 ServiceType::Installed(name) => name == &svc.unit_name,
                 _ => false,
             })
+        })
+        .map(|svc| StoppedInfo {
+            unit_name: svc.unit_name.clone(),
+            config_info: svc
+                .config_path
+                .as_ref()
+                .map_or("unknown config".into(), |p| p.display().to_string()),
         })
         .collect()
 }
@@ -363,7 +566,7 @@ fn correlate_jobs(
     status: &StatusInfo,
     base_dir: &Path,
     fc_procs: &[process::FirecrackerProcessInfo],
-) -> (Vec<JobReport>, Vec<String>) {
+) -> (Vec<JobReport>, Vec<Warning>) {
     let mut jobs = Vec::new();
     let mut warnings = Vec::new();
 
@@ -379,7 +582,10 @@ fn correlate_jobs(
         let job_status = match fc {
             Some(p) => JobStatus::Running(p.pid),
             None => {
-                warnings.push(format!("no firecracker process for run {run_id}"));
+                warnings.push(Warning::NoFirecrackerForRun {
+                    run_id: run_id.clone(),
+                    base_dir: base_dir.to_path_buf(),
+                });
                 JobStatus::NoProcess
             }
         };
@@ -392,10 +598,11 @@ fn correlate_jobs(
     // Firecracker processes not in status.json
     for fc in &my_fcs {
         if !status.active_run_ids.contains(&fc.run_id) {
-            warnings.push(format!(
-                "firecracker PID {} (run {}) not in status.json",
-                fc.pid, fc.run_id
-            ));
+            warnings.push(Warning::FirecrackerNotInStatus {
+                pid: fc.pid,
+                run_id: fc.run_id.clone(),
+                base_dir: base_dir.to_path_buf(),
+            });
             jobs.push(JobReport {
                 run_id: fc.run_id.clone(),
                 status: JobStatus::NotInStatus,
@@ -414,7 +621,7 @@ async fn detect_global_orphans(
     reports: &[RunnerReport],
     fc_procs: &[process::FirecrackerProcessInfo],
     mitm_procs: &[process::MitmproxyProcessInfo],
-) -> Vec<String> {
+) -> Vec<Warning> {
     let mut warnings = Vec::new();
 
     let runner_pids: Vec<u32> = reports.iter().map(|r| r.pid).collect();
@@ -422,12 +629,11 @@ async fn detect_global_orphans(
     // Orphan firecracker processes
     for fc in fc_procs {
         if process::is_orphan(fc.pid, &runner_pids).await {
-            warnings.push(format!(
-                "orphan firecracker PID {} (run {}, ppid={})",
-                fc.pid,
-                fc.run_id,
-                fc.ppid.map_or("?".into(), |p| p.to_string()),
-            ));
+            warnings.push(Warning::OrphanFirecracker {
+                pid: fc.pid,
+                run_id: fc.run_id.clone(),
+                ppid: fc.ppid,
+            });
         }
     }
 
@@ -444,12 +650,11 @@ async fn detect_global_orphans(
             continue;
         }
         if process::is_orphan(mitm.pid, &runner_pids).await {
-            warnings.push(format!(
-                "orphan mitmdump PID {} (port {}, ppid={})",
-                mitm.pid,
-                mitm.port,
-                mitm.ppid.map_or("?".into(), |p| p.to_string()),
-            ));
+            warnings.push(Warning::OrphanMitmdump {
+                pid: mitm.pid,
+                port: mitm.port,
+                ppid: mitm.ppid,
+            });
         }
     }
 
@@ -460,7 +665,7 @@ async fn detect_global_orphans(
 }
 
 /// List `vm0-ns-*` namespaces and check if their pool locks are held.
-async fn detect_orphan_namespaces() -> Vec<String> {
+async fn detect_orphan_namespaces() -> Vec<Warning> {
     let mut warnings = Vec::new();
 
     let output = match tokio::process::Command::new("ip")
@@ -483,7 +688,10 @@ async fn detect_orphan_namespaces() -> Vec<String> {
         if let Some(pool_idx) = parse_pool_index(ns_name) {
             let lock_path = format!("/var/lock/vm0-netns-pool-{pool_idx}.lock");
             if is_lock_free(&lock_path).await {
-                warnings.push(format!("orphan namespace {ns_name} (pool lock not held)"));
+                warnings.push(Warning::OrphanNamespace {
+                    ns_name: ns_name.to_string(),
+                    pool_idx,
+                });
             }
         }
     }
@@ -523,8 +731,8 @@ async fn is_lock_free(lock_path: &str) -> bool {
 
 fn print_report(
     reports: &[RunnerReport],
-    stopped: &[&InstalledService],
-    global_warnings: &[String],
+    stopped: &[StoppedInfo],
+    global_warnings: &[Warning],
 ) -> usize {
     let running = reports.len();
     let stopped_count = stopped.len();
@@ -605,11 +813,7 @@ fn print_report(
     if !stopped.is_empty() {
         println!("Stopped services:");
         for svc in stopped {
-            let config_info = svc
-                .config_path
-                .as_ref()
-                .map_or("unknown config".into(), |p| p.display().to_string());
-            println!("  {} ({config_info}) -- not running", svc.unit_name);
+            println!("  {} ({}) -- not running", svc.unit_name, svc.config_info);
         }
         println!();
     }
@@ -747,7 +951,7 @@ mod tests {
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
         assert_eq!(jobs.len(), 1);
         assert_eq!(warnings.len(), 1);
-        assert!(warnings.first().unwrap().contains("no firecracker process"));
+        assert!(warnings[0].to_string().contains("no firecracker process"));
     }
 
     #[test]
@@ -767,7 +971,7 @@ mod tests {
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
         assert_eq!(jobs.len(), 1);
         assert_eq!(warnings.len(), 1);
-        assert!(warnings.first().unwrap().contains("not in status.json"));
+        assert!(warnings[0].to_string().contains("not in status.json"));
     }
 
     #[test]
@@ -788,7 +992,7 @@ mod tests {
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
         assert_eq!(jobs.len(), 1);
         assert_eq!(warnings.len(), 1);
-        assert!(warnings.first().unwrap().contains("no firecracker process"));
+        assert!(warnings[0].to_string().contains("no firecracker process"));
     }
 
     #[test]
@@ -817,7 +1021,8 @@ mod tests {
         }];
         let stopped = find_stopped_services(&installed, &reports);
         assert_eq!(stopped.len(), 1);
-        assert_eq!(stopped.first().unwrap().unit_name, "vm0-runner-stopped");
+        assert_eq!(stopped[0].unit_name, "vm0-runner-stopped");
+        assert_eq!(stopped[0].config_info, "/data/stopped.yaml");
     }
 
     fn make_report(name: Option<&str>) -> RunnerReport {
@@ -860,5 +1065,37 @@ mod tests {
             .filter(|r| r.name.as_deref() == Some(name_filter))
             .collect();
         assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn warning_display() {
+        let w = Warning::NoFirecrackerForRun {
+            run_id: "abc-123".into(),
+            base_dir: PathBuf::from("/data/r1"),
+        };
+        assert_eq!(w.to_string(), "no firecracker process for run abc-123");
+
+        let w = Warning::ApiUnreachable {
+            server_url: "https://example.com".into(),
+            server_token: "tok".into(),
+        };
+        assert_eq!(w.to_string(), "API unreachable");
+
+        let w = Warning::OrphanFirecracker {
+            pid: 42,
+            run_id: "xyz".into(),
+            ppid: Some(10),
+        };
+        assert_eq!(
+            w.to_string(),
+            "orphan firecracker PID 42 (run xyz, ppid=10)"
+        );
+
+        let w = Warning::OrphanFirecracker {
+            pid: 42,
+            run_id: "xyz".into(),
+            ppid: None,
+        };
+        assert_eq!(w.to_string(), "orphan firecracker PID 42 (run xyz, ppid=?)");
     }
 }

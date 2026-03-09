@@ -109,7 +109,7 @@ const STREAM_DELAY_MS = 1400;
 const LANDING_TAGLINES = [
   "I'm Zero. Customize me and assign tasks anytime.",
   "Your intelligent teammate, tuned to you.",
-  "Automate workflows, run automations, get things done.",
+  "Create workflows, run automations, get things done.",
   "Ask me anything, I'll route it to the right minions.",
   "200+ connectors, ready when you are.",
 ];

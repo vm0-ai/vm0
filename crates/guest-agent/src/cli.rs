@@ -211,15 +211,11 @@ pub async fn execute_cli(
 
     // Stream stdout JSONL, racing against heartbeat and process exit.
     //
-    // We must race `child.wait()` alongside the stdout reader because the
-    // CLI may spawn child processes that inherit the stdout pipe fd.  If
-    // the CLI main process is killed (e.g. OOM) while children survive,
-    // the pipe stays open and `reader.next_line()` blocks forever.
-    //
-    // When `child.wait()` fires we do NOT break — we keep processing events
-    // so buffered lines (including the final `result` event) are not lost.
-    // Instead we arm a 5-second drain deadline; if the pipe is still open
-    // after that we kill the process group and exit.
+    // Event sending is decoupled from stdout reading via an mpsc channel
+    // to prevent a deadlock: Bun (Claude CLI runtime) uses blocking stdout
+    // writes, so if the agent's HTTP POSTs are slow and the pipe buffer
+    // fills, the CLI's entire event loop blocks — including TCP I/O.
+    // See: https://github.com/vm0-ai/vm0/issues/3645
     let mut reader = tokio::io::BufReader::new(stdout).lines();
     let mut seq = 0u32;
 
@@ -228,10 +224,18 @@ pub async fn execute_cli(
     let pgid = child.id().map(|pid| pid as i32);
 
     let mut cli_status: Option<std::process::ExitStatus> = None;
-    // Drain deadline: armed when the CLI process exits, fires after 5s.
-    let drain_deadline = tokio::time::sleep(std::time::Duration::from_secs(0));
-    tokio::pin!(drain_deadline);
-    let mut drain_active = false;
+
+    // Background event sender: HTTP POSTs happen here, never in the
+    // stdout reading loop.  Unbounded channel because events are small
+    // and CLI lifetime is bounded by JOB_TIMEOUT.
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
+    let event_sender = tokio::spawn(async move {
+        while let Some(payload) = event_rx.recv().await {
+            if let Err(e) = events::post_event(&payload).await {
+                log_warn!(LOG_TAG, "Event send failed: {e}");
+            }
+        }
+    });
 
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
@@ -258,8 +262,12 @@ pub async fn execute_cli(
                             {
                                 println!("{result}");
                             }
-                            if let Err(e) = events::send_event(&mut event, seq, masker).await {
-                                log_warn!(LOG_TAG, "Event send failed: {e}");
+                            // Prepare event (fast: mask secrets, add seq) and enqueue
+                            // for background sending.  Never blocks the reading loop.
+                            if let Some(payload) = events::prepare_event(&mut event, seq, masker)
+                                && event_tx.send(payload).is_err()
+                            {
+                                log_warn!(LOG_TAG, "Event channel closed, dropping event seq={seq}");
                             }
                             seq += 1;
                         }
@@ -269,32 +277,13 @@ pub async fn execute_cli(
                 }
             }
             status = child.wait(), if cli_status.is_none() => {
-                // CLI main process exited.  Arm a drain deadline but keep
-                // the loop running so remaining buffered events are processed.
                 match status {
                     Ok(s) => {
                         log_info!(LOG_TAG, "CLI process exited (status: {s}), draining stdout");
                         cli_status = Some(s);
-                        drain_active = true;
-                        drain_deadline.as_mut().reset(
-                            tokio::time::Instant::now() + std::time::Duration::from_secs(5),
-                        );
                     }
                     Err(e) => break Err(AgentError::Io(e)),
                 }
-            }
-            () = &mut drain_deadline, if drain_active => {
-                // Stdout is still open 5s after the CLI process exited —
-                // orphaned child processes are holding the pipe.  Kill
-                // the entire process group so we don't hang forever.
-                log_warn!(
-                    LOG_TAG,
-                    "CLI process exited but stdout still open after 5s, killing process group"
-                );
-                if let Some(pid) = pgid {
-                    unsafe { libc::kill(-pid, libc::SIGKILL); }
-                }
-                break Ok(());
             }
             hb_result = &mut heartbeat_handle => {
                 match hb_result {
@@ -316,6 +305,18 @@ pub async fn execute_cli(
             }
         }
     };
+
+    // Close the channel so the background sender can finish.
+    // On error (e.g. heartbeat failure) the server is likely unreachable,
+    // so we drop unsent events to avoid stalling on retries.
+    drop(event_tx);
+    if event_result.is_ok() {
+        if let Err(e) = event_sender.await {
+            log_warn!(LOG_TAG, "Event sender task failed: {e}");
+        }
+    } else {
+        event_sender.abort();
+    }
 
     let status = match cli_status {
         Some(s) => s,

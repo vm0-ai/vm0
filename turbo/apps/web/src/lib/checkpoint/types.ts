@@ -24,6 +24,14 @@ export interface ArtifactSnapshot {
 }
 
 /**
+ * Memory snapshot for VAS managed memory
+ */
+export interface MemorySnapshot {
+  memoryName: string;
+  memoryVersion: string;
+}
+
+/**
  * Volume versions snapshot for checkpoint
  * Stores resolved volume versions at checkpoint time for exact reproducibility
  */
@@ -41,6 +49,7 @@ export interface CheckpointRequest {
   cliAgentSessionId: string;
   cliAgentSessionHistory: string;
   artifactSnapshot?: ArtifactSnapshot;
+  memorySnapshot?: MemorySnapshot;
   volumeVersionsSnapshot?: VolumeVersionsSnapshot;
 }
 

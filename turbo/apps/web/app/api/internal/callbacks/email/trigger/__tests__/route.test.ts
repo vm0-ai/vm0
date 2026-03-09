@@ -39,7 +39,7 @@ interface TriggerCallbackPayload {
 function createCallbackRequest(
   body: {
     runId: string;
-    status: "completed" | "failed";
+    status: "completed" | "failed" | "progress";
     error?: string;
     payload: TriggerCallbackPayload;
   },
@@ -360,6 +360,44 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
         to: string;
       };
       expect(sendArgs.to).toBe(senderEmail);
+    });
+  });
+
+  describe("Progress Callback", () => {
+    it("should no-op on progress and not send any email", async () => {
+      const user = await context.setupUser({ prefix: "trigger-progress" });
+      mockClerk({ userId: user.userId });
+      const agentName = uniqueId("progress-agent");
+      const { composeId } = await createTestCompose(agentName);
+      const { runId } = await createTestRun(composeId, "Test prompt");
+
+      const replyToken = generateReplyToken(crypto.randomUUID());
+      const payload: TriggerCallbackPayload = {
+        senderEmail: "sender@example.com",
+        composeId,
+        userId: user.userId,
+        inboundEmailId: "email-progress",
+        replyToken,
+      };
+
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/email/trigger",
+        payload: { ...payload },
+      });
+
+      const request = createCallbackRequest(
+        { runId, status: "progress", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      // No email should be sent for progress notifications
+      expect(mockResend.emails.send).not.toHaveBeenCalled();
     });
   });
 

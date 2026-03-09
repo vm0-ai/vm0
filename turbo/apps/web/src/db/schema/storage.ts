@@ -13,13 +13,6 @@ import {
 import { scopes } from "./scope";
 
 /**
- * Storage type:
- * - "volume": Static storage that doesn't auto-version after runs
- * - "artifact": Work products that auto-version after runs
- */
-export type StorageTypeEnum = "volume" | "artifact";
-
-/**
  * Storages table
  * Main table for scope-level storage with HEAD pointer to current version
  */
@@ -30,7 +23,7 @@ export const storages = pgTable(
     userId: text("user_id").notNull(), // Creator (who uploaded)
     scopeId: uuid("scope_id")
       .notNull()
-      .references(() => scopes.id), // Namespace (who owns)
+      .references(() => scopes.id, { onDelete: "cascade" }), // Namespace (who owns)
     name: varchar("name", { length: 256 }).notNull(),
     type: varchar("type", { length: 16 }).notNull().default("volume"),
     s3Prefix: text("s3_prefix").notNull(),

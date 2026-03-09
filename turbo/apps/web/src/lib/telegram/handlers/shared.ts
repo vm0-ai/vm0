@@ -6,25 +6,28 @@ import { agentComposes } from "../../../db/schema/agent-compose";
 import { getPlatformUrl } from "../../url";
 import {
   getUserScopeByClerkId,
-  createUserScope,
+  createScope,
   generateDefaultScopeSlug,
 } from "../../scope/scope-service";
 import { validateAgentSession } from "../../run";
-import { ensureArtifactExists } from "../../storage/storage-service";
+import { ensureStorageExists } from "../../storage/storage-service";
 import {
   sendMessage,
   type TelegramClient,
   type TelegramSentMessage,
 } from "../client";
 import { escapeHtml } from "../format";
+import { signConnectParams } from "../connect-token";
+import { pickBestPhoto } from "../images";
 import { logger } from "../../logger";
+import type { TelegramHandlerUpdate } from "./types";
 
 const log = logger("telegram:shared");
 
 /**
  * Sentinel value for a pending user link that hasn't been claimed yet.
- * Set as telegramUserId at registration time, replaced with the real
- * Telegram user ID when the admin sends their first message.
+ * Set as telegramUserId at link time, replaced with the real
+ * Telegram user ID when the user sends their first message.
  */
 export const PENDING_TELEGRAM_USER_ID = "pending";
 
@@ -125,6 +128,7 @@ export async function saveTelegramThreadSession(opts: {
 
 /**
  * Store an incoming Telegram message for context retrieval.
+ * For photo messages, stores the caption as text and the best photo's file_id.
  */
 export async function storeTelegramMessage(
   installationId: string,
@@ -133,8 +137,17 @@ export async function storeTelegramMessage(
     message_id: number;
     from?: { id: number; username?: string; is_bot?: boolean };
     text?: string;
+    caption?: string;
+    photo?: Array<{
+      file_id: string;
+      width: number;
+      height: number;
+      file_size?: number;
+    }>;
   },
 ): Promise<void> {
+  const bestPhoto = message.photo ? pickBestPhoto(message.photo) : undefined;
+
   await globalThis.services.db
     .insert(telegramMessages)
     .values({
@@ -143,7 +156,8 @@ export async function storeTelegramMessage(
       messageId: String(message.message_id),
       fromUserId: String(message.from?.id ?? 0),
       fromUsername: message.from?.username ?? null,
-      text: message.text ?? null,
+      text: message.text ?? message.caption ?? null,
+      fileId: bestPhoto?.file_id ?? null,
       isBot: message.from?.is_bot ?? false,
     })
     .onConflictDoNothing();
@@ -222,14 +236,17 @@ async function completePendingLink(
 export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
   let scope = await getUserScopeByClerkId(vm0UserId);
   if (!scope) {
-    scope = await createUserScope(
-      vm0UserId,
-      generateDefaultScopeSlug(vm0UserId),
-    );
+    scope = await createScope(vm0UserId, generateDefaultScopeSlug(vm0UserId));
     log.info("Auto-created scope for Telegram user", { userId: vm0UserId });
   }
 
-  await ensureArtifactExists(scope.id, vm0UserId, "artifact", scope.slug);
+  await ensureStorageExists(
+    scope.id,
+    vm0UserId,
+    "artifact",
+    scope.slug,
+    "artifact",
+  );
 }
 
 /**
@@ -265,6 +282,23 @@ export async function resolveSessionCompose(
 }
 
 /**
+ * Build a signed connect URL for unlinked Telegram users.
+ * Includes HMAC signature so the platform can verify the link and
+ * create the user link with the correct Telegram user ID.
+ */
+export function buildConnectUrl(
+  installationId: string,
+  telegramBotId: string,
+  telegramUserId: string,
+  botToken: string,
+): string {
+  const platformUrl = getPlatformUrl();
+  const ts = Math.floor(Date.now() / 1000);
+  const sig = signConnectParams(installationId, telegramUserId, ts, botToken);
+  return `${platformUrl}/telegram/connect?bot=${telegramBotId}&tgUser=${telegramUserId}&ts=${ts}&sig=${sig}`;
+}
+
+/**
  * Send a thinking placeholder message that persists until the agent responds.
  * Returns the sent message so its ID can be passed to the callback for deletion.
  */
@@ -281,4 +315,37 @@ export async function sendThinkingMessage(
     log.warn("Failed to send thinking message", { chatId, error: err });
     return undefined;
   }
+}
+
+/**
+ * Enrich a Telegram message prompt with user info, matching Slack's
+ * `enrichMessageContent` pattern that prepends `[Slack User]\n...`.
+ *
+ * Telegram provides user info directly in the webhook payload (no API call needed).
+ */
+export function enrichTelegramPrompt(
+  prompt: string,
+  from: TelegramHandlerUpdate["message"]["from"],
+): string {
+  if (!from) {
+    return prompt;
+  }
+
+  const parts: string[] = [];
+  parts.push(`Telegram User ID: ${from.id}`);
+
+  const displayName = [from.first_name, from.last_name]
+    .filter(Boolean)
+    .join(" ");
+  if (displayName) {
+    parts.push(`Name: ${displayName}`);
+  }
+  if (from.username) {
+    parts.push(`Username: @${from.username}`);
+  }
+  if (from.language_code) {
+    parts.push(`Language: ${from.language_code}`);
+  }
+
+  return `[Telegram User]\n${parts.join("\n")}\n\n${prompt}`;
 }

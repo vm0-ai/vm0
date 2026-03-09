@@ -22,15 +22,16 @@ describe("hasRequiredScopes", () => {
   it("returns false when required scope is missing", () => {
     expect(hasRequiredScopes("github", [])).toBe(false);
     expect(hasRequiredScopes("github", ["read:org"])).toBe(false);
+    expect(hasRequiredScopes("github", ["repo"])).toBe(false);
   });
 
   it("returns true when all required scopes are present", () => {
-    expect(hasRequiredScopes("github", ["repo"])).toBe(true);
+    expect(hasRequiredScopes("github", ["repo", "project"])).toBe(true);
   });
 
   it("returns true when stored scopes are a superset of required", () => {
-    expect(hasRequiredScopes("github", ["repo", "read:org", "user"])).toBe(
-      true,
-    );
+    expect(
+      hasRequiredScopes("github", ["repo", "project", "read:org", "user"]),
+    ).toBe(true);
   });
 });

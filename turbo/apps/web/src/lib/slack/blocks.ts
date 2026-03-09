@@ -494,13 +494,14 @@ export function buildAgentResponseMessage(
   }
 
   // Add logs link at the end if provided
+  // Emoji must be outside the link — Slack mobile doesn't render emoji inside <url|text>
   if (logsUrl) {
     blocks.push({
       type: "context",
       elements: [
         {
           type: "mrkdwn",
-          text: `<${logsUrl}|:clipboard: View logs>`,
+          text: `:clipboard: <${logsUrl}|View logs>`,
         },
       ],
     });

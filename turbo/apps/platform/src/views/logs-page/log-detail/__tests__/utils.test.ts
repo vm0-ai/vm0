@@ -718,6 +718,125 @@ describe("log-detail utils", () => {
       expect(result[1].toolOperations).toBeUndefined();
     });
 
+    it("should not create unknown block when duplicate tool_result events arrive from consecutive log deliveries", () => {
+      // Simulates two consecutive API responses that overlap on the boundary event.
+      // First delivery:  seq 6 (thinking), seq 7 (tool_use Bash_1), seq 8 (tool_result Bash_1)
+      // Second delivery: seq 8 (duplicate!), seq 9 (thinking), seq 10 (text), seq 11 (tool_use Bash_2)
+      // The duplicate seq 8 must NOT produce an "Unknown" orphan block.
+      const events: AgentEvent[] = [
+        {
+          sequenceNumber: 6,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [{ type: "thinking" as "text", text: "Thinking..." }],
+            },
+          },
+          createdAt: "2024-01-01T00:00:01Z",
+        },
+        {
+          sequenceNumber: 7,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "Bash_1",
+                  name: "Bash",
+                  input: { command: "echo hello" },
+                },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:02Z",
+        },
+        // Event 8 appears in both deliveries
+        {
+          sequenceNumber: 8,
+          eventType: "user",
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "Bash_1",
+                  content: "hello",
+                  is_error: false,
+                },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:03Z",
+        },
+        // Duplicate of event 8 from the second delivery
+        {
+          sequenceNumber: 8,
+          eventType: "user",
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "Bash_1",
+                  content: "hello",
+                  is_error: false,
+                },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:03Z",
+        },
+        {
+          sequenceNumber: 9,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [
+                { type: "thinking" as "text", text: "More thinking..." },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:04Z",
+        },
+        {
+          sequenceNumber: 10,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [{ type: "text", text: "Here is my response" }],
+            },
+          },
+          createdAt: "2024-01-01T00:00:05Z",
+        },
+        {
+          sequenceNumber: 11,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "Bash_2",
+                  name: "Bash",
+                  input: { command: "ls" },
+                },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:06Z",
+        },
+      ];
+
+      const result = groupEventsIntoMessages(events);
+
+      // Must not produce any "Unknown" orphan block from the duplicate tool_result
+      const unknownOps = result
+        .flatMap((m) => m.toolOperations ?? [])
+        .filter((op) => op.toolName === "Unknown");
+      expect(unknownOps).toHaveLength(0);
+    });
+
     it("should create standalone todo card for TodoWrite", () => {
       const events: AgentEvent[] = [
         {

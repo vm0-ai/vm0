@@ -16,7 +16,7 @@ describe("runAgentForSlack", () => {
     context.setupMocks();
   });
 
-  it("should pass artifactName 'artifact' to createRun", async () => {
+  it("should pass artifactName and memoryName conventions to createRun", async () => {
     // Given a user with an agent compose (created via API so it has a version)
     const userId = uniqueId("test-user");
     mockClerk({ userId });
@@ -58,6 +58,7 @@ describe("runAgentForSlack", () => {
     expect(createRunSpy).toHaveBeenCalledTimes(1);
     expect(createRunSpy.mock.calls[0]![0]).toMatchObject({
       artifactName: "artifact",
+      memoryName: "memory",
     });
   });
 });

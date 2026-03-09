@@ -65,6 +65,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },
+  [FeatureSwitchKey.CanvaConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
   [FeatureSwitchKey.ComputerConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
@@ -146,6 +151,21 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
+  [FeatureSwitchKey.SupabaseConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
+  [FeatureSwitchKey.TodoistConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
+  [FeatureSwitchKey.WebflowConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
   [FeatureSwitchKey.GitHubIntegration]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
@@ -165,6 +185,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
 export const CONNECTOR_FEATURE_FLAGS: Partial<
   Record<ConnectorType, FeatureSwitchKey>
 > = {
+  canva: FeatureSwitchKey.CanvaConnector,
   computer: FeatureSwitchKey.ComputerConnector,
   deel: FeatureSwitchKey.DeelConnector,
   docusign: FeatureSwitchKey.DocuSignConnector,
@@ -182,6 +203,9 @@ export const CONNECTOR_FEATURE_FLAGS: Partial<
 
   reddit: FeatureSwitchKey.RedditConnector,
   "intervals-icu": FeatureSwitchKey.IntervalsIcuConnector,
+  supabase: FeatureSwitchKey.SupabaseConnector,
+  todoist: FeatureSwitchKey.TodoistConnector,
+  webflow: FeatureSwitchKey.WebflowConnector,
 };
 
 /**

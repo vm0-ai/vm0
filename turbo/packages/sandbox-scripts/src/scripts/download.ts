@@ -25,6 +25,7 @@ interface Artifact {
 interface Manifest {
   storages?: Storage[];
   artifact?: Artifact;
+  memory?: Artifact;
 }
 
 /**
@@ -111,11 +112,15 @@ async function main(): Promise<void> {
   // Count total storages
   const storages = manifest.storages ?? [];
   const artifact = manifest.artifact;
+  const memory = manifest.memory;
 
   const storageCount = storages.length;
   const hasArtifact = artifact !== undefined;
+  const hasMemory = memory !== undefined;
 
-  logInfo(`Found ${storageCount} storages, artifact: ${hasArtifact}`);
+  logInfo(
+    `Found ${storageCount} storages, artifact: ${hasArtifact}, memory: ${hasMemory}`,
+  );
 
   // Track total download time
   const downloadTotalStart = Date.now();
@@ -147,6 +152,22 @@ async function main(): Promise<void> {
       recordSandboxOp("artifact_download", Date.now() - artifactStart, success);
       if (!success) {
         downloadSuccess = false;
+      }
+    }
+  }
+
+  // Process memory (same pattern as artifact, 404 is non-fatal)
+  if (memory) {
+    const memoryMount = memory.mountPath;
+    const memoryUrl = memory.archiveUrl;
+
+    if (memoryUrl && memoryUrl !== "null") {
+      const memoryStart = Date.now();
+      const success = await downloadStorage(memoryMount, memoryUrl);
+      recordSandboxOp("memory_download", Date.now() - memoryStart, success);
+      if (!success) {
+        // Memory download failure is non-fatal (first run)
+        logInfo("Memory download failed, continuing (may be first run)");
       }
     }
   }

@@ -5,9 +5,10 @@ import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createSlackClient, postMessage, setThreadStatus } from "../client";
 import { buildLoginPromptMessage } from "../blocks";
-import { extractMessageContent } from "../context";
+import { extractMessageContent, type SlackFile } from "../context";
 import { runAgentForSlack } from "./run-agent";
 import {
+  enrichMessageContent,
   fetchConversationContexts,
   lookupThreadSession,
   buildLoginUrl,
@@ -25,6 +26,7 @@ interface MentionContext {
   messageText: string;
   messageTs: string;
   threadTs?: string;
+  files?: SlackFile[];
 }
 
 /**
@@ -116,8 +118,16 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
   // 5. Show assistant thinking status
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
 
-  // Extract message content (remove bot mention)
-  const messageContent = extractMessageContent(context.messageText, botUserId);
+  // Extract message content (remove bot mention) and enrich with files/user info
+  const messageContent = await enrichMessageContent({
+    messageContent: extractMessageContent(context.messageText, botUserId),
+    files: context.files,
+    botToken,
+    channelId: context.channelId,
+    threadTs,
+    client,
+    userId: context.userId,
+  });
 
   // 6. Look up existing thread session for deduplication
   let existingSessionId: string | undefined;

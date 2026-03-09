@@ -201,6 +201,43 @@ describe("logs page", () => {
     expect(within(dataRow!).getAllByText("-")).toHaveLength(2);
   });
 
+  it("should not crash when API returns a queued status", async () => {
+    // "queued" was missing from the frontend LogStatus type and statusConfig,
+    // causing StatusBadge to crash with TypeError when a run was in queued state.
+    server.use(
+      http.get("*/api/platform/logs", () => {
+        return HttpResponse.json({
+          data: [
+            {
+              id: "run_queued_status",
+              sessionId: null,
+              agentName: "Test Agent",
+              framework: null,
+              status: "queued",
+              createdAt: "2024-01-01T00:00:00Z",
+            },
+          ],
+          pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/logs",
+    });
+
+    // Wait for data to load
+    await waitFor(() => {
+      expect(screen.getByText("Test Agent")).toBeInTheDocument();
+    });
+
+    // The page must NOT show the error boundary fallback
+    expect(
+      screen.queryByText("Oops! Something went sideways"),
+    ).not.toBeInTheDocument();
+  });
+
   it("should handle API error gracefully", async () => {
     server.use(
       http.get("*/api/platform/logs", () => {

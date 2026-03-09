@@ -1,5 +1,169 @@
 # Changelog
 
+## [12.85.1](https://github.com/vm0-ai/vm0/compare/web-v12.85.0...web-v12.85.1) (2026-03-09)
+
+
+### Bug Fixes
+
+* **email:** add missing progress status guard to trigger and schedule callbacks ([#3971](https://github.com/vm0-ai/vm0/issues/3971)) ([3c6e38d](https://github.com/vm0-ai/vm0/commit/3c6e38df3cdd7acb6c39d6b03469851d1e95ebe1)), closes [#3970](https://github.com/vm0-ai/vm0/issues/3970)
+* **web:** disable sentry error reporting in preview deployments ([#3975](https://github.com/vm0-ai/vm0/issues/3975)) ([f27c79d](https://github.com/vm0-ai/vm0/commit/f27c79d73ecd99c240037f53eb40281e69725ba9))
+
+
+### CI
+
+* remove e2e 02-parallel test suite and ci job ([#3977](https://github.com/vm0-ai/vm0/issues/3977)) ([16feb8b](https://github.com/vm0-ai/vm0/commit/16feb8bd5d7f22093c6b2573b59d3ee57af7d7d7))
+
+## [12.85.0](https://github.com/vm0-ai/vm0/compare/web-v12.84.0...web-v12.85.0) (2026-03-09)
+
+
+### Features
+
+* **cli:** add vm0 logs search subcommand ([#3845](https://github.com/vm0-ai/vm0/issues/3845)) ([b3e0b4d](https://github.com/vm0-ai/vm0/commit/b3e0b4deda133396223b1e1b5b3d043454451144))
+* **slack:** support file attachments and inject user info into prompts ([#3948](https://github.com/vm0-ai/vm0/issues/3948)) ([f7e1ddd](https://github.com/vm0-ai/vm0/commit/f7e1ddd31d77a5aab354456b30f38c702d1f65d4))
+
+
+### Bug Fixes
+
+* **storage:** unify memory storage auto-creation with artifact pattern ([#3944](https://github.com/vm0-ai/vm0/issues/3944)) ([e2af883](https://github.com/vm0-ai/vm0/commit/e2af88330c3bf305c1586ffd4315dff19a4e7504))
+* use upsert for storage prepare to prevent race condition ([#3946](https://github.com/vm0-ai/vm0/issues/3946)) ([1cba856](https://github.com/vm0-ai/vm0/commit/1cba85668aeb351fb4445f3f5764c959055a83ec))
+* **web:** filter browser extension errors in sentry config ([#3963](https://github.com/vm0-ai/vm0/issues/3963)) ([d556bf2](https://github.com/vm0-ai/vm0/commit/d556bf269dcba631315009cb410f97f31fc608b2))
+
+
+### Refactoring
+
+* **scope:** eliminate org layer and consolidate into scope ([#3901](https://github.com/vm0-ai/vm0/issues/3901)) ([622fc9d](https://github.com/vm0-ai/vm0/commit/622fc9db32ded7ad82da013550c9c5c9cbc0f283))
+* **telegram:** deduplicate connect url construction into shared helper ([#3958](https://github.com/vm0-ai/vm0/issues/3958)) ([90416d0](https://github.com/vm0-ai/vm0/commit/90416d00a2864823d1d1087321d16f84d09147a4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.46.0
+
+## [12.84.0](https://github.com/vm0-ai/vm0/compare/web-v12.83.0...web-v12.84.0) (2026-03-07)
+
+
+### Features
+
+* hardcode memory name convention in slack, telegram, and email handlers ([#3899](https://github.com/vm0-ai/vm0/issues/3899)) ([5d543f1](https://github.com/vm0-ai/vm0/commit/5d543f1c1f7e1ae5a6b7f9f5f2bd293948cfd23b))
+
+## [12.83.0](https://github.com/vm0-ai/vm0/compare/web-v12.82.2...web-v12.83.0) (2026-03-07)
+
+
+### Features
+
+* add --memory flag for agent long-term memory ([#3424](https://github.com/vm0-ai/vm0/issues/3424)) ([9e0279f](https://github.com/vm0-ai/vm0/commit/9e0279f618efe5396dda9e1aaac43a72bba70bfe))
+* add webflow oauth connector ([#3883](https://github.com/vm0-ai/vm0/issues/3883)) ([2024d3e](https://github.com/vm0-ai/vm0/commit/2024d3e0f570980a48685851dc1f20e93dada88c))
+
+
+### Bug Fixes
+
+* **connectors:** fix wix token exchange to use form-encoded body ([#3887](https://github.com/vm0-ai/vm0/issues/3887)) ([d324ed2](https://github.com/vm0-ai/vm0/commit/d324ed214bb01c3f1fba6f5339fdec95a59e363b))
+
+
+### Refactoring
+
+* replace scope role type assertions with runtime validation ([#3885](https://github.com/vm0-ai/vm0/issues/3885)) ([63277f3](https://github.com/vm0-ai/vm0/commit/63277f3c1cb5ab457bb0032cddf805af59416f27))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.45.0
+
+## [12.82.2](https://github.com/vm0-ai/vm0/compare/web-v12.82.1...web-v12.82.2) (2026-03-07)
+
+
+### Bug Fixes
+
+* add cascade foreign keys to enable scope deletion ([#3846](https://github.com/vm0-ai/vm0/issues/3846)) ([9cb668c](https://github.com/vm0-ai/vm0/commit/9cb668c7a2e5a871259e2e60c06b4b385ef5f6d6))
+* use server-computed connector-provided secret names in compose warning ([#3843](https://github.com/vm0-ai/vm0/issues/3843)) ([b66c877](https://github.com/vm0-ai/vm0/commit/b66c87774aa6fd21c73878026f3d0f2e7420928b))
+
+
+### Refactoring
+
+* unify scope creation and migrate org endpoints ([#3847](https://github.com/vm0-ai/vm0/issues/3847)) ([df5317c](https://github.com/vm0-ai/vm0/commit/df5317cd3eb171eaaf1f19148db58a754a68bf5e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.44.1
+
+## [12.82.1](https://github.com/vm0-ai/vm0/compare/web-v12.82.0...web-v12.82.1) (2026-03-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.44.0
+
+## [12.82.0](https://github.com/vm0-ai/vm0/compare/web-v12.81.0...web-v12.82.0) (2026-03-07)
+
+
+### Features
+
+* **connectors:** add canva oauth connector ([#3837](https://github.com/vm0-ai/vm0/issues/3837)) ([522fe59](https://github.com/vm0-ai/vm0/commit/522fe59a0dc16478ee97907c8f143e98579635c4))
+* **connectors:** add hubspot oauth connector ([#3835](https://github.com/vm0-ai/vm0/issues/3835)) ([1cc3e37](https://github.com/vm0-ai/vm0/commit/1cc3e3795879b7a3988ec999ef16bca0cecd5ee9))
+* **connectors:** add supabase oauth connector ([#3836](https://github.com/vm0-ai/vm0/issues/3836)) ([b7c2d2e](https://github.com/vm0-ai/vm0/commit/b7c2d2e5146de7c429113c07291886afbd1ec7b5))
+* **connectors:** add todoist oauth connector ([#3850](https://github.com/vm0-ai/vm0/issues/3850)) ([7cce2b8](https://github.com/vm0-ai/vm0/commit/7cce2b89cfd5dc051d9fb0001be329ab5e17a46d))
+* **connectors:** add wix oauth connector ([#3851](https://github.com/vm0-ai/vm0/issues/3851)) ([faa337d](https://github.com/vm0-ai/vm0/commit/faa337d1e4513851024cb57c3e2d1f0de09cd11a))
+
+
+### Bug Fixes
+
+* **connectors:** add missing redirect_uri to todoist oauth flow ([#3857](https://github.com/vm0-ai/vm0/issues/3857)) ([cb25f4e](https://github.com/vm0-ai/vm0/commit/cb25f4e0e63c691e7bfde0e9ac855f915debc4b0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.43.0
+
+## [12.81.0](https://github.com/vm0-ai/vm0/compare/web-v12.80.1...web-v12.81.0) (2026-03-06)
+
+
+### Features
+
+* add airtable oauth connector with pkce support ([#3833](https://github.com/vm0-ai/vm0/issues/3833)) ([2e64f13](https://github.com/vm0-ai/vm0/commit/2e64f1363058e9d258073c140f9a669047321438))
+
+
+### Bug Fixes
+
+* allow github app reinstall on different organization ([#3832](https://github.com/vm0-ai/vm0/issues/3832)) ([ee56499](https://github.com/vm0-ai/vm0/commit/ee56499cc872a43ef4e292456bf248c2483bcc14))
+
+
+### Refactoring
+
+* **web:** extract shared auth layout from sign-in and sign-up pages ([#3827](https://github.com/vm0-ai/vm0/issues/3827)) ([d4bee10](https://github.com/vm0-ai/vm0/commit/d4bee10a55ed79357f8191cd9f419caa805c0afd)), closes [#3826](https://github.com/vm0-ai/vm0/issues/3826)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.42.0
+
+## [12.80.1](https://github.com/vm0-ai/vm0/compare/web-v12.80.0...web-v12.80.1) (2026-03-06)
+
+
+### Bug Fixes
+
+* skip progress callbacks for completed or failed runs ([#3818](https://github.com/vm0-ai/vm0/issues/3818)) ([074d1fa](https://github.com/vm0-ai/vm0/commit/074d1fa3bc97f156336be8e207a9d15241bd8cb3))
+* **web:** add missing otp input styles to sign-in page ([#3817](https://github.com/vm0-ai/vm0/issues/3817)) ([6dd8d08](https://github.com/vm0-ai/vm0/commit/6dd8d08dee99ce5e4a7ab9c7013c1aac6c5b59ff)), closes [#3814](https://github.com/vm0-ai/vm0/issues/3814)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.41.0
+
 ## [12.80.0](https://github.com/vm0-ai/vm0/compare/web-v12.79.0...web-v12.80.0) (2026-03-06)
 
 

@@ -1,5 +1,77 @@
 # Changelog
 
+## [8.46.0](https://github.com/vm0-ai/vm0/compare/core-v8.45.0...core-v8.46.0) (2026-03-09)
+
+
+### Features
+
+* **cli:** add vm0 logs search subcommand ([#3845](https://github.com/vm0-ai/vm0/issues/3845)) ([b3e0b4d](https://github.com/vm0-ai/vm0/commit/b3e0b4deda133396223b1e1b5b3d043454451144))
+
+
+### Refactoring
+
+* **scope:** eliminate org layer and consolidate into scope ([#3901](https://github.com/vm0-ai/vm0/issues/3901)) ([622fc9d](https://github.com/vm0-ai/vm0/commit/622fc9db32ded7ad82da013550c9c5c9cbc0f283))
+
+## [8.45.0](https://github.com/vm0-ai/vm0/compare/core-v8.44.1...core-v8.45.0) (2026-03-07)
+
+
+### Features
+
+* add --memory flag for agent long-term memory ([#3424](https://github.com/vm0-ai/vm0/issues/3424)) ([9e0279f](https://github.com/vm0-ai/vm0/commit/9e0279f618efe5396dda9e1aaac43a72bba70bfe))
+* add webflow oauth connector ([#3883](https://github.com/vm0-ai/vm0/issues/3883)) ([2024d3e](https://github.com/vm0-ai/vm0/commit/2024d3e0f570980a48685851dc1f20e93dada88c))
+* remove airtable connector feature switch ([#3886](https://github.com/vm0-ai/vm0/issues/3886)) ([98dafdc](https://github.com/vm0-ai/vm0/commit/98dafdcc1057633e33973b92152ace10401c46ef))
+
+
+### Bug Fixes
+
+* remove defensive try-catch in skill-frontmatter ([#3875](https://github.com/vm0-ai/vm0/issues/3875)) ([d8df142](https://github.com/vm0-ai/vm0/commit/d8df14284a507a6f52e5a9e4b377b860bb3830ee))
+
+## [8.44.1](https://github.com/vm0-ai/vm0/compare/core-v8.44.0...core-v8.44.1) (2026-03-07)
+
+
+### Bug Fixes
+
+* use server-computed connector-provided secret names in compose warning ([#3843](https://github.com/vm0-ai/vm0/issues/3843)) ([b66c877](https://github.com/vm0-ai/vm0/commit/b66c87774aa6fd21c73878026f3d0f2e7420928b))
+
+
+### Refactoring
+
+* unify scope creation and migrate org endpoints ([#3847](https://github.com/vm0-ai/vm0/issues/3847)) ([df5317c](https://github.com/vm0-ai/vm0/commit/df5317cd3eb171eaaf1f19148db58a754a68bf5e))
+
+## [8.44.0](https://github.com/vm0-ai/vm0/compare/core-v8.43.0...core-v8.44.0) (2026-03-07)
+
+
+### Features
+
+* **connectors:** gate airtable connector behind internal feature switch ([#3864](https://github.com/vm0-ai/vm0/issues/3864)) ([5250661](https://github.com/vm0-ai/vm0/commit/5250661e5a48673b9f843a9d03385f7e825a163d))
+
+## [8.43.0](https://github.com/vm0-ai/vm0/compare/core-v8.42.0...core-v8.43.0) (2026-03-07)
+
+
+### Features
+
+* **connector:** add airtable oauth connector ([#3852](https://github.com/vm0-ai/vm0/issues/3852)) ([1ce19d3](https://github.com/vm0-ai/vm0/commit/1ce19d337819c07ae9fda94e44e1f04fa8146511))
+* **connector:** make airtable connector public ([#3856](https://github.com/vm0-ai/vm0/issues/3856)) ([7484935](https://github.com/vm0-ai/vm0/commit/7484935441e18ce10661f47b37eafc7d6bfc9b85))
+* **connectors:** add canva oauth connector ([#3837](https://github.com/vm0-ai/vm0/issues/3837)) ([522fe59](https://github.com/vm0-ai/vm0/commit/522fe59a0dc16478ee97907c8f143e98579635c4))
+* **connectors:** add hubspot oauth connector ([#3835](https://github.com/vm0-ai/vm0/issues/3835)) ([1cc3e37](https://github.com/vm0-ai/vm0/commit/1cc3e3795879b7a3988ec999ef16bca0cecd5ee9))
+* **connectors:** add supabase oauth connector ([#3836](https://github.com/vm0-ai/vm0/issues/3836)) ([b7c2d2e](https://github.com/vm0-ai/vm0/commit/b7c2d2e5146de7c429113c07291886afbd1ec7b5))
+* **connectors:** add todoist oauth connector ([#3850](https://github.com/vm0-ai/vm0/issues/3850)) ([7cce2b8](https://github.com/vm0-ai/vm0/commit/7cce2b89cfd5dc051d9fb0001be329ab5e17a46d))
+* **connectors:** add wix oauth connector ([#3851](https://github.com/vm0-ai/vm0/issues/3851)) ([faa337d](https://github.com/vm0-ai/vm0/commit/faa337d1e4513851024cb57c3e2d1f0de09cd11a))
+
+## [8.42.0](https://github.com/vm0-ai/vm0/compare/core-v8.41.0...core-v8.42.0) (2026-03-06)
+
+
+### Features
+
+* add airtable oauth connector with pkce support ([#3833](https://github.com/vm0-ai/vm0/issues/3833)) ([2e64f13](https://github.com/vm0-ai/vm0/commit/2e64f1363058e9d258073c140f9a669047321438))
+
+## [8.41.0](https://github.com/vm0-ai/vm0/compare/core-v8.40.0...core-v8.41.0) (2026-03-06)
+
+
+### Features
+
+* **connectors:** add project oauth scope to github connector ([#3828](https://github.com/vm0-ai/vm0/issues/3828)) ([e30136f](https://github.com/vm0-ai/vm0/commit/e30136f650e587c226d91f86d96b088d97aa7464)), closes [#3761](https://github.com/vm0-ai/vm0/issues/3761)
+
 ## [8.40.0](https://github.com/vm0-ai/vm0/compare/core-v8.39.0...core-v8.40.0) (2026-03-06)
 
 

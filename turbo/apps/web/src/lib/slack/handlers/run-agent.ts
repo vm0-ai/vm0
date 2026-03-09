@@ -113,6 +113,7 @@ export async function runAgentForSlack(
       sessionId,
       agentName,
       artifactName: "artifact",
+      memoryName: "memory",
       callbacks: [
         {
           url: callbackUrl,

@@ -24,6 +24,7 @@ export async function createRun(body: {
   conversationId?: string;
   artifactName?: string;
   artifactVersion?: string;
+  memoryName?: string;
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   volumeVersions?: Record<string, string>;

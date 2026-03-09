@@ -41,6 +41,18 @@ describe("markdownToTelegramHtml", () => {
     );
   });
 
+  it("should convert images to clickable links", () => {
+    expect(
+      markdownToTelegramHtml("![screenshot](https://example.com/img.png)"),
+    ).toBe('<a href="https://example.com/img.png">🖼 screenshot</a>');
+  });
+
+  it("should use default alt text for images without alt", () => {
+    expect(markdownToTelegramHtml("![](https://example.com/img.png)")).toBe(
+      '<a href="https://example.com/img.png">🖼 image</a>',
+    );
+  });
+
   it("should handle mixed formatting", () => {
     const input = "Hello **bold** and *italic* with `code`";
     const expected =

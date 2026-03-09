@@ -49,6 +49,7 @@ export {
   runMetricsContract,
   runAgentEventsContract,
   runNetworkLogsContract,
+  logsSearchContract,
   ALL_RUN_STATUSES,
   runStatusSchema,
   unifiedRunRequestSchema,
@@ -68,6 +69,8 @@ export {
   agentEventsResponseSchema,
   networkLogEntrySchema,
   networkLogsResponseSchema,
+  searchResultSchema,
+  logsSearchResponseSchema,
   type RunsMainContract,
   type RunsByIdContract,
   type RunsCancelContract,
@@ -77,6 +80,7 @@ export {
   type RunMetricsContract,
   type RunAgentEventsContract,
   type RunNetworkLogsContract,
+  type LogsSearchContract,
   // Inferred types
   type RunStatus,
   type RunResult,
@@ -95,6 +99,8 @@ export {
   type AgentEventsResponse,
   type NetworkLogEntry,
   type NetworkLogsResponse,
+  type SearchResult,
+  type LogsSearchResponse,
 } from "./runs";
 export {
   storagesContract,
@@ -437,24 +443,6 @@ export {
   type UpdateUserPreferencesRequest,
 } from "./user-preferences";
 export {
-  orgContract,
-  orgRoleSchema,
-  orgMemberSchema,
-  orgStatusResponseSchema,
-  createOrgRequestSchema,
-  inviteRequestSchema,
-  removeMemberRequestSchema,
-  messageResponseSchema,
-  type OrgContract,
-  type OrgRole,
-  type OrgMember,
-  type OrgStatusResponse,
-  type CreateOrgRequest,
-  type InviteRequest,
-  type RemoveMemberRequest,
-  type MessageResponse,
-} from "./org";
-export {
   scopeListContract,
   scopeListItemSchema,
   scopeListResponseSchema,
@@ -462,6 +450,22 @@ export {
   type ScopeListItem,
   type ScopeListResponse,
 } from "./scope-list";
+export {
+  scopeMembersContract,
+  scopeRoleSchema,
+  scopeMemberSchema,
+  scopeMembersResponseSchema,
+  inviteScopeMemberRequestSchema,
+  removeScopeMemberRequestSchema,
+  scopeMessageResponseSchema,
+  type ScopeMembersContract,
+  type ScopeRole,
+  type ScopeMember,
+  type ScopeMembersResponse,
+  type InviteScopeMemberRequest,
+  type RemoveScopeMemberRequest,
+  type ScopeMessageResponse,
+} from "./scope-members";
 export {
   adminScopeTierContract,
   scopeTierSchema,

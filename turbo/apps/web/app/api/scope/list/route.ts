@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import { getUserAccessibleScopes } from "../../../../src/lib/org/org-service";
+import { getUserAccessibleScopes } from "../../../../src/lib/scope/scope-member-service";
 
 export async function GET(request: Request) {
   initServices();

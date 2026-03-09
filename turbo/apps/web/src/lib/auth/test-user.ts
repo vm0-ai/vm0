@@ -4,7 +4,6 @@ import { SELF_HOSTED_USER_ID } from "./constants";
 
 const TEST_USER_EMAILS = {
   serial: "e2e+clerk_test@vm0.ai",
-  parallel: "e2e_01+clerk_test@vm0.ai",
   runner: "e2e_02+clerk_test@vm0.ai",
 } as const;
 
@@ -20,7 +19,7 @@ export function isTestVariant(value: string): value is TestVariant {
  * - Self-hosted: uses the well-known default user ID (no external service needed)
  * - SaaS: queries Clerk Backend API for the e2e test user
  *
- * @param variant - which test user to resolve ("serial", "parallel", or "runner")
+ * @param variant - which test user to resolve ("serial" or "runner")
  */
 export async function resolveTestUserId(
   variant: TestVariant = "serial",

@@ -4,7 +4,10 @@ import { e2bConfig } from "../../e2b/config";
 import { badRequest } from "../../errors";
 import { resolveSystemImageToE2b } from "@vm0/core";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
-import type { PreparedArtifact, StorageManifest } from "../../storage/types";
+import {
+  type PreparedArtifact,
+  type StorageManifest,
+} from "../../storage/types";
 import {
   RUN_AGENT_SCRIPT,
   DOWNLOAD_SCRIPT,
@@ -248,6 +251,30 @@ function resolveApiUrl(): string {
 }
 
 /**
+ * Add artifact and memory storage env vars to sandbox environment
+ */
+function addStorageEnvVars(
+  envVars: Record<string, string>,
+  context: PreparedContext,
+  artifactForCommand: PreparedArtifact | null,
+): void {
+  if (artifactForCommand) {
+    envVars.VM0_ARTIFACT_DRIVER = "vas";
+    envVars.VM0_ARTIFACT_MOUNT_PATH = artifactForCommand.mountPath;
+    envVars.VM0_ARTIFACT_VOLUME_NAME = artifactForCommand.vasStorageName;
+    envVars.VM0_ARTIFACT_VERSION_ID = artifactForCommand.vasVersionId;
+  }
+
+  if (context.storageManifest?.memory) {
+    const memory = context.storageManifest.memory;
+    envVars.VM0_MEMORY_DRIVER = "vas";
+    envVars.VM0_MEMORY_MOUNT_PATH = memory.mountPath;
+    envVars.VM0_MEMORY_NAME = memory.vasStorageName;
+    envVars.VM0_MEMORY_VERSION_ID = memory.vasVersionId;
+  }
+}
+
+/**
  * Build environment variables for sandbox
  */
 function buildSandboxEnvVars(
@@ -289,13 +316,8 @@ function buildSandboxEnvVars(
     sandboxEnvVars.USE_MOCK_CLAUDE = "true";
   }
 
-  // Add artifact information for checkpoint
-  if (artifactForCommand) {
-    sandboxEnvVars.VM0_ARTIFACT_DRIVER = "vas";
-    sandboxEnvVars.VM0_ARTIFACT_MOUNT_PATH = artifactForCommand.mountPath;
-    sandboxEnvVars.VM0_ARTIFACT_VOLUME_NAME = artifactForCommand.vasStorageName;
-    sandboxEnvVars.VM0_ARTIFACT_VERSION_ID = artifactForCommand.vasVersionId;
-  }
+  // Add storage env vars (artifact + memory)
+  addStorageEnvVars(sandboxEnvVars, context, artifactForCommand);
 
   // Inject user timezone as TZ environment variable (if not already set in environment)
   if (context.userTimezone && !context.environment?.["TZ"]) {

@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 
 use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory};
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 /// Maximum wall-clock time for a single job (2 hours).
 const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
@@ -288,12 +289,48 @@ async fn run_in_sandbox(
 
     let error_msg = if exit.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
-        Some(stderr).filter(|s| !s.is_empty())
+        if !stderr.is_empty() {
+            Some(stderr)
+        } else {
+            // Stderr is empty (redirected to log file). Check for a structured
+            // error file written by the guest-agent (e.g. checkpoint failures).
+            read_guest_error_file(sandbox, context.run_id).await
+        }
     } else {
         None
     };
 
     Ok((exit.exit_code, error_msg))
+}
+
+/// Read a structured error file from the guest filesystem.
+///
+/// The guest-agent writes checkpoint errors to `/tmp/vm0-checkpoint-error-{run_id}`
+/// so the runner can surface them even though stdout/stderr are redirected to the
+/// system log file.
+///
+/// NOTE: This path must match the convention in `crates/guest-agent/src/paths.rs`
+/// (`checkpoint_error_file()`). The runner and guest-agent are separate binaries
+/// running in different processes, so the path is duplicated by design.
+async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: Uuid) -> Option<String> {
+    // Mirror of guest-agent paths::checkpoint_error_file()
+    let error_path = format!("/tmp/vm0-checkpoint-error-{run_id}");
+    let cat_cmd = format!("cat {error_path} 2>/dev/null");
+    match sandbox
+        .exec(&ExecRequest {
+            cmd: &cat_cmd,
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+        })
+        .await
+    {
+        Ok(result) if result.exit_code == 0 && !result.stdout.is_empty() => {
+            let msg = String::from_utf8_lossy(&result.stdout).trim().to_string();
+            Some(msg).filter(|s| !s.is_empty())
+        }
+        _ => None,
+    }
 }
 
 /// Returns true if dmesg output indicates an OOM kill.
@@ -322,7 +359,7 @@ async fn copy_guest_logs(sandbox: &dyn Sandbox, context: &ExecutionContext, log_
     ];
 
     for (guest_path, host_path) in &files {
-        let cat_cmd = format!("cat {guest_path}");
+        let cat_cmd = format!("cat '{guest_path}'");
         let result = sandbox
             .exec(&ExecRequest {
                 cmd: &cat_cmd,
@@ -424,9 +461,17 @@ async fn restore_session(
         .trim_start_matches('/')
         .replace('/', "-");
     let session_dir = format!("/home/user/.claude/projects/-{project_name}");
+
+    // Validate session_id to prevent path traversal (only allow alnum, dash, underscore)
+    if !is_valid_session_id(&session.session_id) {
+        return Err(crate::error::RunnerError::Internal(format!(
+            "invalid session_id: {}",
+            session.session_id
+        )));
+    }
     let session_path = format!("{session_dir}/{}.jsonl", session.session_id);
 
-    let mkdir_cmd = format!("mkdir -p \"{session_dir}\"");
+    let mkdir_cmd = format!("mkdir -p '{}'", session_dir.replace('\'', "'\\''"));
     sandbox
         .exec(&ExecRequest {
             cmd: &mkdir_cmd,
@@ -444,6 +489,14 @@ async fn restore_session(
 
 /// Proxy CA certificate path inside the guest rootfs (pre-baked at build time).
 const VM_PROXY_CA_PATH: &str = "/usr/local/share/ca-certificates/vm0-proxy-ca.crt";
+
+/// Returns true if the session ID contains only safe characters (alphanumeric, dash, underscore).
+fn is_valid_session_id(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
 
 /// Build the environment variables JSON, matching the TS `buildEnvironmentVariables`.
 fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, String> {
@@ -508,6 +561,19 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         env.insert(
             "VM0_ARTIFACT_VERSION_ID".into(),
             artifact.vas_version_id.clone(),
+        );
+    }
+
+    // Memory config
+    if let Some(manifest) = &context.storage_manifest
+        && let Some(memory) = &manifest.memory
+    {
+        env.insert("VM0_MEMORY_DRIVER".into(), "vas".into());
+        env.insert("VM0_MEMORY_MOUNT_PATH".into(), memory.mount_path.clone());
+        env.insert("VM0_MEMORY_NAME".into(), memory.vas_storage_name.clone());
+        env.insert(
+            "VM0_MEMORY_VERSION_ID".into(),
+            memory.vas_version_id.clone(),
         );
     }
 
@@ -625,6 +691,7 @@ mod tests {
                 vas_storage_name: "my-vol".into(),
                 vas_version_id: "v1".into(),
             }),
+            memory: None,
         });
 
         let env = build_env_json(&ctx, "http://localhost");
@@ -881,5 +948,33 @@ mod tests {
         assert!(dmesg_indicates_oom("Out Of Memory: killed process 99"));
         assert!(dmesg_indicates_oom("Killed process 99 (agent)"));
         assert!(dmesg_indicates_oom("OOM-kill: constraint=MEMCG"));
+    }
+
+    #[test]
+    fn session_id_validation_rejects_path_traversal() {
+        let invalid_ids = [
+            "../../etc/passwd",
+            "foo/bar",
+            "a b",
+            "id;rm -rf /",
+            "a\nb",
+            "",
+        ];
+        for id in invalid_ids {
+            assert!(!is_valid_session_id(id), "expected rejection for: {id:?}");
+        }
+    }
+
+    #[test]
+    fn session_id_validation_accepts_valid_ids() {
+        let valid_ids = [
+            "abc-123",
+            "sess_456",
+            "a1b2c3",
+            "01961d3a-c0ab-7891-a6d3-9b52cd28716c",
+        ];
+        for id in valid_ids {
+            assert!(is_valid_session_id(id), "expected acceptance for: {id:?}");
+        }
     }
 }

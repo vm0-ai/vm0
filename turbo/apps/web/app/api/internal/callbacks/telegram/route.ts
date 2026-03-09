@@ -95,19 +95,16 @@ async function findNewSessionId(
   return newSession?.id;
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
-  initServices();
+interface CompletionContext {
+  client: ReturnType<typeof createTelegramClient>;
+  runId: string;
+  status: "completed" | "failed";
+  error: string | undefined;
+  payload: CallbackPayload;
+}
 
-  const result = await verifyCallback<CallbackPayload>(request, log);
-  if (!result.ok) return result.response;
-
-  const { runId, status, error } = result.data;
-
-  const payload = parsePayload(result.data.payload);
-  if (!payload) {
-    return errorResponse("Invalid or missing payload", 400);
-  }
-
+async function handleCompletion(ctx: CompletionContext): Promise<void> {
+  const { client, runId, status, error, payload } = ctx;
   const {
     installationId,
     chatId,
@@ -120,31 +117,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     isDM,
     thinkingMessageId,
   } = payload;
-
-  log.debug("Processing Telegram callback", { runId, status, chatId });
-
-  const { SECRETS_ENCRYPTION_KEY } = env();
-
-  // Get Telegram installation for bot token
-  const [installation] = await globalThis.services.db
-    .select({
-      id: telegramInstallations.id,
-      encryptedBotToken: telegramInstallations.encryptedBotToken,
-    })
-    .from(telegramInstallations)
-    .where(eq(telegramInstallations.id, installationId))
-    .limit(1);
-
-  if (!installation) {
-    log.warn("Telegram installation not found", { installationId });
-    return NextResponse.json({ success: true });
-  }
-
-  const botToken = decryptCredentialValue(
-    installation.encryptedBotToken,
-    SECRETS_ENCRYPTION_KEY,
-  );
-  const client = createTelegramClient(botToken);
 
   // Delete thinking placeholder message
   if (thinkingMessageId) {
@@ -192,7 +164,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   let botReplyMessageId: number | undefined;
   for (const chunk of chunks) {
     const sent = await sendMessage(client, chatId, chunk, replyOptions);
-    // Capture first reply message_id as thread anchor
     if (botReplyMessageId === undefined) {
       botReplyMessageId = sent.message_id;
     }
@@ -220,8 +191,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? await findNewSessionId(run.userId, composeId, run.createdAt)
       : undefined;
 
-    // Use bot's latest reply as rootMessageId so the user can continue
-    // the session by replying to any bot response.
     const newRootMessageId = isDM ? "dm" : String(botReplyMessageId);
 
     await saveTelegramThreadSession({
@@ -235,8 +204,64 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       runStatus: status,
     });
   }
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  initServices();
+
+  const result = await verifyCallback<CallbackPayload>(request, log);
+  if (!result.ok) return result.response;
+
+  const { runId, status, error } = result.data;
+
+  const payload = parsePayload(result.data.payload);
+  if (!payload) {
+    return errorResponse("Invalid or missing payload", 400);
+  }
+
+  log.debug("Processing Telegram callback", {
+    runId,
+    status,
+    chatId: payload.chatId,
+  });
+
+  const { SECRETS_ENCRYPTION_KEY } = env();
+
+  // Get Telegram installation for bot token
+  const [installation] = await globalThis.services.db
+    .select({
+      id: telegramInstallations.id,
+      encryptedBotToken: telegramInstallations.encryptedBotToken,
+    })
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.id, payload.installationId))
+    .limit(1);
+
+  if (!installation) {
+    log.warn("Telegram installation not found", {
+      installationId: payload.installationId,
+    });
+    return NextResponse.json({ success: true });
+  }
+
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createTelegramClient(botToken);
+
+  // Handle progress notifications: refresh the typing indicator
+  if (status === "progress") {
+    try {
+      await sendChatAction(client, payload.chatId, "typing");
+    } catch (err) {
+      log.debug("Failed to refresh typing indicator", { runId, error: err });
+    }
+    return NextResponse.json({ success: true });
+  }
+
+  await handleCompletion({ client, runId, status, error, payload });
 
   log.debug("Telegram callback processed successfully", { runId });
-
   return NextResponse.json({ success: true });
 }

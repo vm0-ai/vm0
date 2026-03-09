@@ -4,7 +4,12 @@ import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createTelegramClient, sendMessage } from "../client";
-import { ensureScopeAndArtifact } from "./shared";
+import {
+  ensureScopeAndArtifact,
+  resolveUserLink,
+  buildConnectUrl,
+} from "./shared";
+import { escapeHtml } from "../format";
 import { logger } from "../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 import crypto from "crypto";
@@ -66,6 +71,31 @@ export async function handleStartCommand(
       client,
       chatId,
       "Welcome! Visit the platform to connect your account and start chatting with the agent.",
+    );
+    return;
+  }
+
+  // Deep link from group chat: /start connect → treat as /connect in DM
+  if (token === "connect") {
+    const userLink = await resolveUserLink(installationId, fromUserId);
+    if (userLink) {
+      await sendMessage(
+        client,
+        chatId,
+        "You are already connected! Send me a message to get started.",
+      );
+      return;
+    }
+    const connectUrl = buildConnectUrl(
+      installationId,
+      installation.telegramBotId,
+      fromUserId,
+      botToken,
+    );
+    await sendMessage(
+      client,
+      chatId,
+      `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
     );
     return;
   }

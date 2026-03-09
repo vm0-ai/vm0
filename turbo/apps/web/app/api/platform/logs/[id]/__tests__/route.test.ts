@@ -139,10 +139,13 @@ describe("GET /api/platform/logs/[id]", () => {
   });
 
   it("should handle failed run with error message", async () => {
-    // Make sandbox creation fail to create a failed run
-    vi.mocked(
-      (await import("@e2b/code-interpreter")).Sandbox.create,
-    ).mockRejectedValueOnce(new Error("Sandbox creation failed"));
+    // Make runner dispatch fail to create a failed run
+    const { executeRunnerJob } = await import(
+      "../../../../../../src/lib/run/executors/runner-executor"
+    );
+    vi.mocked(executeRunnerJob).mockRejectedValueOnce(
+      new Error("Runner dispatch failed"),
+    );
 
     const { runId, status } = await createTestRun(testComposeId, "Test prompt");
 

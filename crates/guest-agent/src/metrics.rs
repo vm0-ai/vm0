@@ -21,35 +21,59 @@ struct MetricsEntry {
     disk_total: u64,
 }
 
-/// Parse `/proc/stat` to get overall CPU usage percentage.
-fn get_cpu_percent() -> f64 {
-    let content = match std::fs::read_to_string("/proc/stat") {
-        Ok(c) => c,
-        Err(_) => return 0.0,
-    };
-    let first_line = match content.lines().next() {
-        Some(l) => l,
-        None => return 0.0,
-    };
-    if !first_line.starts_with("cpu ") {
-        return 0.0;
+/// Tracks previous `/proc/stat` counters for delta-based CPU measurement.
+struct CpuTracker {
+    prev_idle: u64,
+    prev_total: u64,
+}
+
+impl CpuTracker {
+    fn new() -> Self {
+        Self {
+            prev_idle: 0,
+            prev_total: 0,
+        }
     }
-    let values: Vec<u64> = first_line
-        .split_whitespace()
-        .skip(1)
-        .filter_map(|v| v.parse().ok())
-        .collect();
-    if values.len() < 5 {
-        return 0.0;
+
+    /// Read `/proc/stat` and compute CPU usage over the interval since the
+    /// last call. The first call returns the cumulative average since boot
+    /// (acceptable); subsequent calls return the delta-based percentage.
+    fn get_cpu_percent(&mut self) -> f64 {
+        let content = match std::fs::read_to_string("/proc/stat") {
+            Ok(c) => c,
+            Err(_) => return 0.0,
+        };
+        let first_line = match content.lines().next() {
+            Some(l) => l,
+            None => return 0.0,
+        };
+        if !first_line.starts_with("cpu ") {
+            return 0.0;
+        }
+        let values: Vec<u64> = first_line
+            .split_whitespace()
+            .skip(1)
+            .filter_map(|v| v.parse().ok())
+            .collect();
+        if values.len() < 5 {
+            return 0.0;
+        }
+        // idle = values[3], iowait = values[4]
+        let idle = values.get(3).copied().unwrap_or(0) + values.get(4).copied().unwrap_or(0);
+        let total: u64 = values.iter().sum();
+
+        let delta_idle = idle.saturating_sub(self.prev_idle);
+        let delta_total = total.saturating_sub(self.prev_total);
+
+        self.prev_idle = idle;
+        self.prev_total = total;
+
+        if delta_total == 0 {
+            return 0.0;
+        }
+        let pct = 100.0 * (1.0 - delta_idle as f64 / delta_total as f64);
+        (pct * 100.0).round() / 100.0
     }
-    // idle = values[3], iowait = values[4]
-    let idle = values.get(3).copied().unwrap_or(0) + values.get(4).copied().unwrap_or(0);
-    let total: u64 = values.iter().sum();
-    if total == 0 {
-        return 0.0;
-    }
-    let pct = 100.0 * (1.0 - idle as f64 / total as f64);
-    (pct * 100.0).round() / 100.0
 }
 
 /// Parse `/proc/meminfo` to get (used, total) in bytes.
@@ -96,8 +120,8 @@ fn get_disk_info() -> (u64, u64) {
 }
 
 /// Collect one snapshot of system metrics.
-fn collect_metrics() -> MetricsEntry {
-    let cpu = get_cpu_percent();
+fn collect_metrics(cpu_tracker: &mut CpuTracker) -> MetricsEntry {
+    let cpu = cpu_tracker.get_cpu_percent();
     let (mem_used, mem_total) = get_memory_info();
     let (disk_used, disk_total) = get_disk_info();
     MetricsEntry {
@@ -113,11 +137,12 @@ fn collect_metrics() -> MetricsEntry {
 /// Background loop writing metrics JSONL every `METRICS_INTERVAL_SECS`.
 pub async fn metrics_loop(shutdown: CancellationToken) {
     let mut interval = tokio::time::interval(Duration::from_secs(constants::METRICS_INTERVAL_SECS));
+    let mut cpu_tracker = CpuTracker::new();
     loop {
         tokio::select! {
             _ = shutdown.cancelled() => break,
             _ = interval.tick() => {
-                let entry = collect_metrics();
+                let entry = collect_metrics(&mut cpu_tracker);
                 if let Ok(json) = serde_json::to_string(&entry) {
                     let path = paths::metrics_log_file();
                     if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
@@ -134,10 +159,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_cpu_percent_handles_empty() {
-        // get_cpu_percent reads /proc/stat which may or may not exist in CI
-        let pct = get_cpu_percent();
-        assert!((0.0..=100.0).contains(&pct));
+    fn cpu_tracker_returns_valid_range() {
+        // First call returns cumulative average, subsequent calls return delta
+        let mut tracker = CpuTracker::new();
+        let pct1 = tracker.get_cpu_percent();
+        assert!((0.0..=100.0).contains(&pct1));
+        let pct2 = tracker.get_cpu_percent();
+        assert!((0.0..=100.0).contains(&pct2));
     }
 
     #[test]

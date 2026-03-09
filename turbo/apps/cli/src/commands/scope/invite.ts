@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { inviteMember } from "../../lib/api";
+import { inviteScopeMember } from "../../lib/api";
 
 export const inviteCommand = new Command()
   .name("invite")
@@ -8,7 +8,7 @@ export const inviteCommand = new Command()
   .requiredOption("--email <email>", "Email address of the member to invite")
   .action(async (options: { email: string }) => {
     try {
-      await inviteMember(options.email);
+      await inviteScopeMember(options.email);
       console.log(chalk.green(`✓ Invitation sent to ${options.email}`));
     } catch (error) {
       if (error instanceof Error) {

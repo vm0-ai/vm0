@@ -3,8 +3,8 @@ import * as Sentry from "@sentry/nextjs";
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
-  // Only enable in production
-  enabled: process.env.NODE_ENV === "production",
+  // Only enable in production (VERCEL_ENV distinguishes preview from production)
+  enabled: process.env.NEXT_PUBLIC_VERCEL_ENV === "production",
 
   // Set environment (Vercel provides NEXT_PUBLIC_VERCEL_ENV)
   environment: process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.NODE_ENV,
@@ -43,5 +43,10 @@ Sentry.init({
     "AbortError",
     // Browser extensions
     "ResizeObserver loop",
+    "func sseError not found",
+    "Failed to connect to MetaMask",
   ],
+
+  // Filter out errors from browser extension scripts
+  denyUrls: [/inpage\.js/, /chrome-extension:\/\//, /moz-extension:\/\//],
 });

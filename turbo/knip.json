@@ -116,7 +116,8 @@
     "apps/web/src/lib/telegram/**",
     "apps/web/src/lib/auth/sandbox-token.ts",
     "scripts/rebuild-snapshots.ts",
-    "scripts/rebuild-snapshots-from-db.ts"
+    "scripts/rebuild-snapshots-from-db.ts",
+    "apps/web/src/lib/run/executors/e2b-executor.ts"
   ],
   "ignoreDependencies": ["@commitlint/cli"],
   "ignoreWorkspaces": [],

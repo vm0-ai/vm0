@@ -8,7 +8,7 @@ import type { ExecutionContext } from "../types";
 import type { PreparedContext } from "../executors/types";
 import {
   prepareStorageManifest,
-  ensureArtifactExists,
+  ensureStorageExists,
 } from "../../storage/storage-service";
 import type { StorageManifest } from "../../storage/types";
 import { badRequest } from "../../errors";
@@ -171,9 +171,20 @@ function resolveRunnerGroup(agentCompose: unknown): string | null {
  * @param context ExecutionContext built by run-service
  * @returns PreparedContext ready for executor dispatch
  */
+interface PrepareTimings {
+  resolveScopes: number;
+  ensureStorage: number;
+  storageManifest: number;
+}
+
+interface PrepareResult {
+  context: PreparedContext;
+  timings: PrepareTimings;
+}
+
 export async function prepareForExecution(
   context: ExecutionContext,
-): Promise<PreparedContext> {
+): Promise<PrepareResult> {
   log.debug(`Preparing execution context for run ${context.runId}...`);
 
   // Extract configuration from agent compose
@@ -190,6 +201,7 @@ export async function prepareForExecution(
 
   // Resolve runner's scope and owner's scope in parallel (independent DB queries)
   const userId = context.userId || "";
+  const scopeStart = Date.now();
   const [runnerScope, [composeInfo]] = await Promise.all([
     getUserScopeByClerkId(userId),
     globalThis.services.db
@@ -206,6 +218,7 @@ export async function prepareForExecution(
       .where(eq(agentComposeVersions.id, context.agentComposeVersionId))
       .limit(1),
   ]);
+  const scopeEnd = Date.now();
 
   if (!runnerScope) {
     throw badRequest("Runner scope not found");
@@ -214,19 +227,34 @@ export async function prepareForExecution(
     throw badRequest("Agent compose not found");
   }
 
-  // Auto-create artifact if it doesn't exist yet
-  if (context.artifactName) {
-    await ensureArtifactExists(
-      runnerScope.id,
-      userId,
-      context.artifactName,
-      runnerScope.slug,
-    );
-  }
+  // Auto-create artifact and memory storages if they don't exist yet
+  const ensureStart = Date.now();
+  await Promise.all([
+    context.artifactName
+      ? ensureStorageExists(
+          runnerScope.id,
+          userId,
+          context.artifactName,
+          runnerScope.slug,
+          "artifact",
+        )
+      : null,
+    context.memoryName
+      ? ensureStorageExists(
+          runnerScope.id,
+          userId,
+          context.memoryName,
+          runnerScope.slug,
+          "memory",
+        )
+      : null,
+  ]);
+  const ensureEnd = Date.now();
 
   // Prepare storage manifest with dual scopes
   // - Volumes: resolved from agent owner's scope
   // - Artifacts: resolved from runner's scope
+  const storageStart = Date.now();
   const storageManifest = await prepareStorageManifest(
     context.agentCompose as AgentComposeYaml,
     context.vars || {},
@@ -237,7 +265,9 @@ export async function prepareForExecution(
     context.volumeVersions,
     context.resumeArtifact,
     workingDir,
+    context.memoryName,
   );
+  const storageEnd = Date.now();
 
   log.debug(
     `Storage manifest prepared with dual scopes: owner=${composeInfo.scopeId}, runner=${runnerScope.id}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
@@ -254,9 +284,17 @@ export async function prepareForExecution(
     composeInfo.scopeSlug,
   );
 
-  log.debug(`PreparedContext built for run ${context.runId}`);
+  const timings: PrepareTimings = {
+    resolveScopes: scopeEnd - scopeStart,
+    ensureStorage: ensureEnd - ensureStart,
+    storageManifest: storageEnd - storageStart,
+  };
 
-  return preparedContext;
+  log.debug(
+    `PreparedContext built for run ${context.runId} (scopes=${timings.resolveScopes}ms, ensure=${timings.ensureStorage}ms, storage=${timings.storageManifest}ms)`,
+  );
+
+  return { context: preparedContext, timings };
 }
 
 /**
@@ -299,6 +337,9 @@ function buildPreparedContext(
     // Artifact settings
     artifactName: context.artifactName || null,
     artifactVersion: context.artifactVersion || null,
+
+    // Memory storage name
+    memoryName: context.memoryName || null,
 
     // Experimental firewall configuration (processed with auto-injected rules)
     experimentalFirewall,

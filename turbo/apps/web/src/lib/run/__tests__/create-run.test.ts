@@ -9,11 +9,14 @@ import {
   createTestVolume,
   createTestArtifact,
   createTestRequest,
+  createTestSandboxToken,
+  createTestRun,
   insertStalePendingRun,
   findTestRunRecord,
   findTestRunCallbacks,
   findTestRunsByUserAndPrompt,
 } from "../../../__tests__/api-test-helpers";
+import { POST as checkpointWebhook } from "../../../../app/api/webhooks/agent/checkpoints/route";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
 import { addPermission } from "../../agent/permission-service";
 import { reloadEnv } from "../../../env";
@@ -23,9 +26,7 @@ import {
   type CreateRunResult,
 } from "../run-service";
 import { isForbidden, isBadRequest } from "../../errors";
-import { Sandbox } from "@e2b/code-interpreter";
 import { POST as createComposeRoute } from "../../../../app/api/agent/composes/route";
-import { mockClerk } from "../../../__tests__/clerk-mock";
 
 const context = testContext();
 
@@ -57,7 +58,6 @@ describe("createRun()", () => {
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("running");
-      expect(result.sandboxId).toBeDefined();
       expect(result.createdAt).toBeInstanceOf(Date);
 
       // Verify run record in DB
@@ -263,12 +263,15 @@ describe("createRun()", () => {
 
   describe("Dispatch Failure", () => {
     it("should mark run as failed when dispatch throws", async () => {
-      vi.mocked(Sandbox.create).mockRejectedValueOnce(
-        new Error("Sandbox creation failed"),
+      const { executeRunnerJob } = await import(
+        "../../run/executors/runner-executor"
+      );
+      vi.mocked(executeRunnerJob).mockRejectedValueOnce(
+        new Error("Runner dispatch failed"),
       );
 
       await expect(createRun(baseParams())).rejects.toThrow(
-        "Sandbox creation failed",
+        "Runner dispatch failed",
       );
 
       // Verify run is marked as failed in DB
@@ -279,7 +282,7 @@ describe("createRun()", () => {
       const run = runs.find((r) => r.status === "failed");
 
       expect(run).toBeDefined();
-      expect(run!.error).toContain("Sandbox creation failed");
+      expect(run!.error).toContain("Runner dispatch failed");
       expect(run!.completedAt).toBeDefined();
     });
   });
@@ -306,6 +309,97 @@ describe("createRun()", () => {
         channel: "C123",
         threadTs: "1234.5678",
       });
+    });
+  });
+
+  describe("Memory", () => {
+    it("should auto-create memory storage on first run", async () => {
+      const memoryName = uniqueId("new-mem");
+      const result = await createRun(baseParams({ memoryName }));
+
+      expect(result.runId).toBeDefined();
+      expect(result.status).toBe("running");
+    });
+
+    it("should succeed when memory already exists (idempotent)", async () => {
+      // Allow concurrent runs for this test
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      reloadEnv();
+
+      const memoryName = uniqueId("existing-mem");
+      // First run creates the memory
+      await createRun(baseParams({ memoryName }));
+
+      // Second run should also succeed (idempotent)
+      const result = await createRun(
+        baseParams({ memoryName, prompt: "second run" }),
+      );
+      expect(result.runId).toBeDefined();
+      expect(result.status).toBe("running");
+    });
+
+    it("should accept memoryName and dispatch successfully", async () => {
+      const result = await createRun(baseParams({ memoryName: "my-memory" }));
+
+      expect(result.runId).toBeDefined();
+      expect(result.status).toBe("running");
+    });
+
+    it("should restore memoryName from session in continue flow", async () => {
+      // Allow concurrent runs for this test
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      reloadEnv();
+
+      // Step 1: Create a run and checkpoint with memorySnapshot
+      const { runId } = await createTestRun(composeId, "Initial run");
+      const sandboxToken = await createTestSandboxToken(user.userId, runId);
+
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sandboxToken}`,
+          },
+          body: JSON.stringify({
+            runId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-for-continue",
+            cliAgentSessionHistory: JSON.stringify([]),
+            memorySnapshot: {
+              memoryName: "restored-memory",
+              memoryVersion: "v1",
+            },
+          }),
+        },
+      );
+      const checkpointResponse = await checkpointWebhook(checkpointRequest);
+      expect(checkpointResponse.status).toBe(200);
+
+      const { agentSessionId } = (await checkpointResponse.json()) as {
+        agentSessionId: string;
+      };
+
+      // Step 2: Continue from session WITHOUT specifying memoryName
+      const { executeRunnerJob } = await import(
+        "../../run/executors/runner-executor"
+      );
+      vi.mocked(executeRunnerJob).mockClear();
+      const continueResult = await createRun(
+        baseParams({
+          sessionId: agentSessionId,
+          prompt: "Continue prompt",
+        }),
+      );
+
+      expect(continueResult.runId).toBeDefined();
+      expect(continueResult.status).toBe("running");
+
+      // Step 3: Verify runner was called with memory name in context
+      const runnerCall = vi.mocked(executeRunnerJob).mock.calls[0];
+      expect(runnerCall).toBeDefined();
+      expect(runnerCall![0].memoryName).toBe("restored-memory");
     });
   });
 
@@ -529,39 +623,6 @@ describe("createRun()", () => {
       const result = await createRun(
         baseParams({ agentComposeVersionId: compose.versionId }),
       );
-
-      expect(result.status).toBe("running");
-    });
-  });
-
-  describe("Domain-based Runner Rollout", () => {
-    it("should route @vm0.ai users to runner when RUNNER_DEFAULT_GROUP is set", async () => {
-      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
-      reloadEnv();
-
-      mockClerk({ userId: user.userId, email: "team@vm0.ai" });
-
-      const result = await createRun(baseParams());
-
-      expect(result.status).toBe("pending");
-    });
-
-    it("should route non-vm0.ai users to E2B when RUNNER_DEFAULT_GROUP is set", async () => {
-      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
-      reloadEnv();
-
-      mockClerk({ userId: user.userId, email: "user@example.com" });
-
-      const result = await createRun(baseParams());
-
-      expect(result.status).toBe("running");
-    });
-
-    it("should skip domain check when RUNNER_DEFAULT_GROUP is not set", async () => {
-      // RUNNER_DEFAULT_GROUP is not set by default in test env
-      mockClerk({ userId: user.userId, email: "team@vm0.ai" });
-
-      const result = await createRun(baseParams());
 
       expect(result.status).toBe("running");
     });

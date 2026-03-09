@@ -13,6 +13,9 @@ import {
   ARTIFACT_DRIVER,
   ARTIFACT_MOUNT_PATH,
   ARTIFACT_VOLUME_NAME,
+  MEMORY_DRIVER,
+  MEMORY_MOUNT_PATH,
+  MEMORY_NAME,
   CLI_AGENT_TYPE,
   recordSandboxOp,
 } from "./common.js";
@@ -102,6 +105,154 @@ interface CheckpointResponse {
   checkpointId?: string;
 }
 
+interface StorageSnapshot {
+  name: string;
+  version: string;
+}
+
+/**
+ * Create a VAS storage snapshot using direct S3 upload.
+ *
+ * @returns snapshot with name and version, or null on failure
+ */
+async function createVasSnapshot(
+  driver: string,
+  volumeName: string,
+  mountPath: string,
+  label: string,
+  storageType: "artifact" | "memory",
+): Promise<StorageSnapshot | null> {
+  logInfo(`Processing ${label} with driver: ${driver}`);
+
+  if (driver !== "vas") {
+    logError(`Unknown ${label} driver: ${driver} (only 'vas' is supported)`);
+    return null;
+  }
+
+  if (!fs.existsSync(mountPath)) {
+    logInfo(`${label} directory does not exist at ${mountPath}, skipping`);
+    return null;
+  }
+
+  logInfo(`Creating VAS snapshot for ${label} '${volumeName}' at ${mountPath}`);
+
+  const snapshot = await createDirectUploadSnapshot(
+    mountPath,
+    volumeName,
+    storageType,
+    RUN_ID,
+    `${label} checkpoint from run ${RUN_ID}`,
+  );
+
+  if (!snapshot?.versionId) {
+    logInfo(`Failed to create ${label} snapshot, continuing without it`);
+    return null;
+  }
+
+  logInfo(`VAS ${label} snapshot created: ${volumeName}@${snapshot.versionId}`);
+  return { name: volumeName, version: snapshot.versionId };
+}
+
+/**
+ * Read session history from file system, handling Codex search markers.
+ *
+ * @returns session history string, or null on failure
+ */
+function readSessionHistory(): string | null {
+  const start = Date.now();
+
+  if (!fs.existsSync(SESSION_HISTORY_PATH_FILE)) {
+    logError("No session history path found, checkpoint creation failed");
+    recordSandboxOp(
+      "session_history_read",
+      Date.now() - start,
+      false,
+      "Session history path file not found",
+    );
+    return null;
+  }
+
+  const raw = fs.readFileSync(SESSION_HISTORY_PATH_FILE, "utf-8").trim();
+
+  // Handle Codex session search marker format: CODEX_SEARCH:{sessions_dir}:{session_id}
+  let sessionHistoryPath: string;
+  if (raw.startsWith("CODEX_SEARCH:")) {
+    const parts = raw.split(":");
+    if (parts.length !== 3) {
+      logError(`Invalid Codex search marker format: ${raw}`);
+      recordSandboxOp(
+        "session_history_read",
+        Date.now() - start,
+        false,
+        "Invalid Codex search marker",
+      );
+      return null;
+    }
+    const sessionsDir = parts[1] ?? "";
+    const codexSessionId = parts[2] ?? "";
+    logInfo(`Searching for Codex session in ${sessionsDir}`);
+    const foundPath = findCodexSessionFile(sessionsDir, codexSessionId);
+    if (!foundPath) {
+      logError(
+        `Could not find Codex session file for ${codexSessionId} in ${sessionsDir}`,
+      );
+      recordSandboxOp(
+        "session_history_read",
+        Date.now() - start,
+        false,
+        "Codex session file not found",
+      );
+      return null;
+    }
+    sessionHistoryPath = foundPath;
+  } else {
+    sessionHistoryPath = raw;
+  }
+
+  if (!fs.existsSync(sessionHistoryPath)) {
+    logError(
+      `Session history file not found at ${sessionHistoryPath}, checkpoint creation failed`,
+    );
+    recordSandboxOp(
+      "session_history_read",
+      Date.now() - start,
+      false,
+      "Session history file not found",
+    );
+    return null;
+  }
+
+  let content: string;
+  try {
+    content = fs.readFileSync(sessionHistoryPath, "utf-8");
+  } catch (error) {
+    logError(`Failed to read session history: ${error}`);
+    recordSandboxOp(
+      "session_history_read",
+      Date.now() - start,
+      false,
+      String(error),
+    );
+    return null;
+  }
+
+  if (!content.trim()) {
+    logError("Session history is empty, checkpoint creation failed");
+    recordSandboxOp(
+      "session_history_read",
+      Date.now() - start,
+      false,
+      "Session history empty",
+    );
+    return null;
+  }
+
+  const lineCount = content.trim().split("\n").length;
+  logInfo(`Session history loaded (${lineCount} lines)`);
+  recordSandboxOp("session_history_read", Date.now() - start, true);
+  return content;
+}
+
 /**
  * Create checkpoint after successful run.
  *
@@ -128,176 +279,61 @@ export async function createCheckpoint(): Promise<boolean> {
   const cliAgentSessionId = fs.readFileSync(SESSION_ID_FILE, "utf-8").trim();
   recordSandboxOp("session_id_read", Date.now() - sessionIdStart, true);
 
-  // Read session history path from temp file
-  const sessionHistoryStart = Date.now();
-  if (!fs.existsSync(SESSION_HISTORY_PATH_FILE)) {
-    logError("No session history path found, checkpoint creation failed");
-    recordSandboxOp(
-      "session_history_read",
-      Date.now() - sessionHistoryStart,
-      false,
-      "Session history path file not found",
-    );
-    recordSandboxOp("checkpoint_total", Date.now() - checkpointStart, false);
-    return false;
-  }
-
-  const sessionHistoryPathRaw = fs
-    .readFileSync(SESSION_HISTORY_PATH_FILE, "utf-8")
-    .trim();
-
-  // Handle Codex session search marker format: CODEX_SEARCH:{sessions_dir}:{session_id}
-  let sessionHistoryPath: string;
-  if (sessionHistoryPathRaw.startsWith("CODEX_SEARCH:")) {
-    const parts = sessionHistoryPathRaw.split(":");
-    if (parts.length !== 3) {
-      logError(`Invalid Codex search marker format: ${sessionHistoryPathRaw}`);
-      recordSandboxOp(
-        "session_history_read",
-        Date.now() - sessionHistoryStart,
-        false,
-        "Invalid Codex search marker",
-      );
-      recordSandboxOp("checkpoint_total", Date.now() - checkpointStart, false);
-      return false;
-    }
-    const sessionsDir = parts[1] ?? "";
-    const codexSessionId = parts[2] ?? "";
-    logInfo(`Searching for Codex session in ${sessionsDir}`);
-    const foundPath = findCodexSessionFile(sessionsDir, codexSessionId);
-    if (!foundPath) {
-      logError(
-        `Could not find Codex session file for ${codexSessionId} in ${sessionsDir}`,
-      );
-      recordSandboxOp(
-        "session_history_read",
-        Date.now() - sessionHistoryStart,
-        false,
-        "Codex session file not found",
-      );
-      recordSandboxOp("checkpoint_total", Date.now() - checkpointStart, false);
-      return false;
-    }
-    sessionHistoryPath = foundPath;
-  } else {
-    sessionHistoryPath = sessionHistoryPathRaw;
-  }
-
-  // Check if session history file exists
-  if (!fs.existsSync(sessionHistoryPath)) {
-    logError(
-      `Session history file not found at ${sessionHistoryPath}, checkpoint creation failed`,
-    );
-    recordSandboxOp(
-      "session_history_read",
-      Date.now() - sessionHistoryStart,
-      false,
-      "Session history file not found",
-    );
-    recordSandboxOp("checkpoint_total", Date.now() - checkpointStart, false);
-    return false;
-  }
-
   // Read session history
-  let cliAgentSessionHistory: string;
-  try {
-    cliAgentSessionHistory = fs.readFileSync(sessionHistoryPath, "utf-8");
-  } catch (error) {
-    logError(`Failed to read session history: ${error}`);
-    recordSandboxOp(
-      "session_history_read",
-      Date.now() - sessionHistoryStart,
-      false,
-      String(error),
-    );
+  const cliAgentSessionHistory = readSessionHistory();
+  if (!cliAgentSessionHistory) {
     recordSandboxOp("checkpoint_total", Date.now() - checkpointStart, false);
     return false;
   }
-
-  if (!cliAgentSessionHistory.trim()) {
-    logError("Session history is empty, checkpoint creation failed");
-    recordSandboxOp(
-      "session_history_read",
-      Date.now() - sessionHistoryStart,
-      false,
-      "Session history empty",
-    );
-    recordSandboxOp("checkpoint_total", Date.now() - checkpointStart, false);
-    return false;
-  }
-
-  const lineCount = cliAgentSessionHistory.trim().split("\n").length;
-  logInfo(`Session history loaded (${lineCount} lines)`);
-  recordSandboxOp(
-    "session_history_read",
-    Date.now() - sessionHistoryStart,
-    true,
-  );
 
   // Create artifact snapshot (VAS only, optional)
-  // If artifact is not configured, checkpoint is created without artifact snapshot
   let artifactSnapshot: {
     artifactName: string;
     artifactVersion: string;
   } | null = null;
-
   if (ARTIFACT_DRIVER && ARTIFACT_VOLUME_NAME) {
-    logInfo(`Processing artifact with driver: ${ARTIFACT_DRIVER}`);
-
-    if (ARTIFACT_DRIVER !== "vas") {
-      logError(
-        `Unknown artifact driver: ${ARTIFACT_DRIVER} (only 'vas' is supported)`,
-      );
-      recordSandboxOp("checkpoint_total", Date.now() - checkpointStart, false);
-      return false;
-    }
-
-    // VAS artifact: create snapshot using direct S3 upload (bypasses Vercel 4.5MB limit)
-    logInfo(
-      `Creating VAS snapshot for artifact '${ARTIFACT_VOLUME_NAME}' at ${ARTIFACT_MOUNT_PATH}`,
-    );
-    logInfo("Using direct S3 upload...");
-
-    const snapshot = await createDirectUploadSnapshot(
-      ARTIFACT_MOUNT_PATH,
+    const snap = await createVasSnapshot(
+      ARTIFACT_DRIVER,
       ARTIFACT_VOLUME_NAME,
+      ARTIFACT_MOUNT_PATH,
       "artifact",
-      RUN_ID,
-      `Checkpoint from run ${RUN_ID}`,
+      "artifact",
     );
-
-    if (!snapshot) {
-      logError("Failed to create VAS snapshot for artifact");
+    if (snap) {
+      artifactSnapshot = {
+        artifactName: snap.name,
+        artifactVersion: snap.version,
+      };
+    } else if (ARTIFACT_DRIVER !== "vas") {
+      // Unknown driver is a hard error for artifacts
       recordSandboxOp("checkpoint_total", Date.now() - checkpointStart, false);
       return false;
     }
-
-    // Extract versionId from snapshot response
-    const artifactVersion = snapshot.versionId;
-    if (!artifactVersion) {
-      logError("Failed to extract versionId from snapshot");
-      recordSandboxOp("checkpoint_total", Date.now() - checkpointStart, false);
-      return false;
-    }
-
-    // Build artifact snapshot JSON with new format (artifactName + artifactVersion)
-    artifactSnapshot = {
-      artifactName: ARTIFACT_VOLUME_NAME,
-      artifactVersion,
-    };
-
-    logInfo(
-      `VAS artifact snapshot created: ${ARTIFACT_VOLUME_NAME}@${artifactVersion}`,
-    );
   } else {
     logInfo(
       "No artifact configured, creating checkpoint without artifact snapshot",
     );
   }
 
+  // Create memory snapshot (VAS only, optional — same pattern as artifact)
+  let memorySnapshot: { memoryName: string; memoryVersion: string } | null =
+    null;
+  if (MEMORY_DRIVER && MEMORY_NAME) {
+    const snap = await createVasSnapshot(
+      MEMORY_DRIVER,
+      MEMORY_NAME,
+      MEMORY_MOUNT_PATH,
+      "memory",
+      "memory",
+    );
+    if (snap) {
+      memorySnapshot = { memoryName: snap.name, memoryVersion: snap.version };
+    }
+  }
+
   logInfo("Calling checkpoint API...");
 
-  // Build checkpoint payload with new schema
+  // Build checkpoint payload
   const checkpointPayload: Record<string, unknown> = {
     runId: RUN_ID,
     cliAgentType: CLI_AGENT_TYPE,
@@ -305,9 +341,11 @@ export async function createCheckpoint(): Promise<boolean> {
     cliAgentSessionHistory,
   };
 
-  // Only add artifact snapshot if present
   if (artifactSnapshot) {
     checkpointPayload.artifactSnapshot = artifactSnapshot;
+  }
+  if (memorySnapshot) {
+    checkpointPayload.memorySnapshot = memorySnapshot;
   }
 
   // Call checkpoint API

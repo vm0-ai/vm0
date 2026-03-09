@@ -41,6 +41,44 @@ export interface ConnectorOAuthConfig {
  * - Other values are passed through as literals
  */
 export const CONNECTOR_TYPES = {
+  airtable: {
+    label: "Airtable",
+    helpText:
+      "Connect your Airtable account to access bases, tables, and records",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Airtable to grant access.",
+        secrets: {
+          AIRTABLE_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          AIRTABLE_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://airtable.com/oauth2/v1/authorize",
+      tokenUrl: "https://airtable.com/oauth2/v1/token",
+      scopes: [
+        "data.records:read",
+        "data.records:write",
+        "data.recordComments:read",
+        "data.recordComments:write",
+        "schema.bases:read",
+        "schema.bases:write",
+        "user.email:read",
+      ],
+    } as ConnectorOAuthConfig,
+  },
   github: {
     label: "GitHub",
     helpText:
@@ -65,7 +103,7 @@ export const CONNECTOR_TYPES = {
     oauth: {
       authorizationUrl: "https://github.com/login/oauth/authorize",
       tokenUrl: "https://github.com/login/oauth/access_token",
-      scopes: ["repo"],
+      scopes: ["repo", "project"],
     } as ConnectorOAuthConfig,
   },
   notion: {
@@ -252,6 +290,49 @@ export const CONNECTOR_TYPES = {
       scopes: [
         "https://www.googleapis.com/auth/calendar",
         "https://www.googleapis.com/auth/userinfo.email",
+      ],
+    } as ConnectorOAuthConfig,
+  },
+  hubspot: {
+    label: "HubSpot",
+    helpText:
+      "Connect your HubSpot account to manage contacts, companies, deals, and tickets",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with HubSpot to grant access.",
+        secrets: {
+          HUBSPOT_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          HUBSPOT_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      HUBSPOT_TOKEN: "$secrets.HUBSPOT_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://app.hubspot.com/oauth/authorize",
+      tokenUrl: "https://api.hubapi.com/oauth/v1/token",
+      scopes: [
+        "crm.objects.contacts.read",
+        "crm.objects.contacts.write",
+        "crm.objects.companies.read",
+        "crm.objects.companies.write",
+        "crm.objects.deals.read",
+        "crm.objects.deals.write",
+        "tickets",
+        "crm.objects.line_items.read",
+        "crm.objects.quotes.read",
+        "crm.lists.read",
+        "crm.schemas.contacts.read",
+        "settings.users.read",
       ],
     } as ConnectorOAuthConfig,
   },
@@ -813,6 +894,49 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  canva: {
+    label: "Canva",
+    helpText:
+      "Connect your Canva account to access designs, assets, and projects",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Canva to grant access.",
+        secrets: {
+          CANVA_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          CANVA_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://www.canva.com/api/oauth/authorize",
+      tokenUrl: "https://api.canva.com/rest/v1/oauth/token",
+      scopes: [
+        "asset:read",
+        "asset:write",
+        "brandtemplate:content:read",
+        "brandtemplate:meta:read",
+        "comment:read",
+        "comment:write",
+        "design:content:read",
+        "design:content:write",
+        "design:meta:read",
+        "folder:read",
+        "folder:write",
+        "profile:read",
+      ],
+    } as ConnectorOAuthConfig,
+  },
   xero: {
     label: "Xero",
     helpText:
@@ -866,14 +990,129 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  supabase: {
+    label: "Supabase",
+    helpText:
+      "Connect your Supabase account to manage projects, databases, and APIs",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Supabase to grant access.",
+        secrets: {
+          SUPABASE_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          SUPABASE_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://api.supabase.com/v1/oauth/authorize",
+      tokenUrl: "https://api.supabase.com/v1/oauth/token",
+      scopes: [
+        "organizations:read",
+        "projects:read",
+        "projects:write",
+        "database:read",
+        "database:write",
+        "secrets:read",
+        "rest:read",
+        "rest:write",
+        "auth:read",
+        "analytics:read",
+        "environment:read",
+        "domains:read",
+      ],
+    } as ConnectorOAuthConfig,
+  },
+  todoist: {
+    label: "Todoist",
+    helpText:
+      "Connect your Todoist account to manage tasks, projects, labels, and comments",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Todoist to grant access.",
+        secrets: {
+          TODOIST_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      TODOIST_TOKEN: "$secrets.TODOIST_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://todoist.com/oauth/authorize",
+      tokenUrl: "https://todoist.com/oauth/access_token",
+      scopes: ["data:read_write", "data:delete", "project:delete"],
+    } as ConnectorOAuthConfig,
+  },
+  webflow: {
+    label: "Webflow",
+    helpText:
+      "Connect your Webflow account to manage sites, pages, CMS collections, and ecommerce",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Webflow to grant access.",
+        secrets: {
+          WEBFLOW_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      WEBFLOW_TOKEN: "$secrets.WEBFLOW_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://webflow.com/oauth/authorize",
+      tokenUrl: "https://api.webflow.com/oauth/access_token",
+      scopes: [
+        "authorized_user:read",
+        "sites:read",
+        "sites:write",
+        "pages:read",
+        "pages:write",
+        "cms:read",
+        "cms:write",
+        "assets:read",
+        "assets:write",
+        "forms:read",
+        "ecommerce:read",
+        "ecommerce:write",
+        "users:read",
+        "workspace:read",
+        "custom_code:read",
+        "custom_code:write",
+      ],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
 
 export const connectorTypeSchema = z.enum([
+  "airtable",
+  "canva",
   "github",
   "gmail",
   "google-sheets",
+  "hubspot",
   "google-docs",
   "google-drive",
   "google-calendar",
@@ -896,6 +1135,9 @@ export const connectorTypeSchema = z.enum([
   "intervals-icu",
   "xero",
   "monday",
+  "supabase",
+  "todoist",
+  "webflow",
 ]);
 
 /**
@@ -1068,6 +1310,7 @@ export type ConnectorResponse = z.infer<typeof connectorResponseSchema>;
 export const connectorListResponseSchema = z.object({
   connectors: z.array(connectorResponseSchema),
   configuredTypes: z.array(connectorTypeSchema),
+  connectorProvidedSecretNames: z.array(z.string()),
 });
 
 export type ConnectorListResponse = z.infer<typeof connectorListResponseSchema>;

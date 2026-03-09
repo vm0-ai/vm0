@@ -29,12 +29,7 @@ export function parseSkillFrontmatter(content: string): SkillFrontmatter {
     return {};
   }
 
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(yamlContent);
-  } catch {
-    return {};
-  }
+  const parsed: unknown = parseYaml(yamlContent);
 
   if (!parsed || typeof parsed !== "object") {
     return {};
@@ -133,12 +128,7 @@ async function collectSkillDeclaredVars(
  * Accepts bare skill names (e.g. "slack") or full GitHub tree URLs.
  */
 function buildSkillMdUrl(url: string): string | null {
-  let resolved: string;
-  try {
-    resolved = resolveSkillRef(url);
-  } catch {
-    return null;
-  }
+  const resolved = resolveSkillRef(url);
 
   const parsed = parseGitHubTreeUrl(resolved);
   if (!parsed) {

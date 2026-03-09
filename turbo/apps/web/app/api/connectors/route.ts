@@ -1,5 +1,9 @@
 import { createHandler, tsr } from "../../../src/lib/ts-rest-handler";
-import { connectorsMainContract, createErrorResponse } from "@vm0/core";
+import {
+  connectorsMainContract,
+  createErrorResponse,
+  getConnectorProvidedSecretNames,
+} from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
 import { resolveScope } from "../../../src/lib/scope/resolve-scope";
@@ -24,12 +28,16 @@ const router = tsr.router(connectorsMainContract, {
     const configuredTypes = getConfiguredConnectorTypes(
       globalThis.services.env,
     );
+    const connectorProvidedSecretNames = [
+      ...getConnectorProvidedSecretNames(connectorList.map((c) => c.type)),
+    ];
 
     return {
       status: 200 as const,
       body: {
         connectors: connectorList,
         configuredTypes,
+        connectorProvidedSecretNames,
       },
     };
   },

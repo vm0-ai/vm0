@@ -3,8 +3,13 @@ import { telegramInstallations } from "../../../db/schema/telegram-installation"
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createTelegramClient, sendMessage, deleteMessage } from "../client";
-import { sendThinkingMessage } from "./shared";
+import { sendThinkingMessage, enrichTelegramPrompt } from "./shared";
 import { fetchTelegramContext } from "../context";
+import {
+  pickBestPhoto,
+  downloadAndUploadTelegramPhoto,
+  formatPhotoForContext,
+} from "../images";
 import { runAgentForTelegram } from "./run-agent";
 import {
   lookupTelegramThreadSession,
@@ -12,9 +17,9 @@ import {
   getWorkspaceAgent,
   resolveSessionCompose,
   resolveUserLink,
+  buildConnectUrl,
 } from "./shared";
 import { escapeHtml } from "../format";
-import { getPlatformUrl } from "../../url";
 import { logger } from "../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -58,8 +63,12 @@ export async function handleTelegramDirectMessage(
   const userLink = await resolveUserLink(installationId, fromUserId);
 
   if (!userLink) {
-    const platformUrl = getPlatformUrl();
-    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}`;
+    const connectUrl = buildConnectUrl(
+      installationId,
+      installation.telegramBotId,
+      fromUserId,
+      botToken,
+    );
     await sendMessage(
       client,
       chatId,
@@ -121,16 +130,35 @@ export async function handleTelegramDirectMessage(
       installationId,
       chatId,
       lastProcessedMessageId,
+      client,
+      String(message.message_id),
     );
     executionContext = ctx.executionContext;
   }
 
-  // 9. Dispatch agent run
+  // 9. Enrich prompt with user info and current message's photo
+  let enrichedPrompt = enrichTelegramPrompt(
+    message.text ?? message.caption ?? "",
+    message.from,
+  );
+  if (message.photo) {
+    const bestPhoto = pickBestPhoto(message.photo);
+    if (bestPhoto) {
+      const presignedUrl = await downloadAndUploadTelegramPhoto(
+        client,
+        bestPhoto.file_id,
+        `${installationId}-${chatId}`,
+      );
+      if (presignedUrl) {
+        enrichedPrompt += `\n\n${formatPhotoForContext(presignedUrl, bestPhoto)}`;
+      }
+    }
+  }
   const { status, response } = await runAgentForTelegram({
     composeId,
     agentName,
     sessionId: existingSessionId,
-    prompt: message.text ?? "",
+    prompt: enrichedPrompt,
     threadContext: executionContext,
     userId: userLink.vm0UserId,
     callbackContext: {

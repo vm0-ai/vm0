@@ -1,5 +1,115 @@
 # Changelog
 
+## [9.51.1](https://github.com/vm0-ai/vm0/compare/cli-v9.51.0...cli-v9.51.1) (2026-03-09)
+
+
+### CI
+
+* remove e2e 02-parallel test suite and ci job ([#3977](https://github.com/vm0-ai/vm0/issues/3977)) ([16feb8b](https://github.com/vm0-ai/vm0/commit/16feb8bd5d7f22093c6b2573b59d3ee57af7d7d7))
+
+## [9.51.0](https://github.com/vm0-ai/vm0/compare/cli-v9.50.0...cli-v9.51.0) (2026-03-09)
+
+
+### Features
+
+* **cli:** add vm0 logs search subcommand ([#3845](https://github.com/vm0-ai/vm0/issues/3845)) ([b3e0b4d](https://github.com/vm0-ai/vm0/commit/b3e0b4deda133396223b1e1b5b3d043454451144))
+
+
+### Bug Fixes
+
+* **cli:** remove noisy sentry environment warning from user output ([#3959](https://github.com/vm0-ai/vm0/issues/3959)) ([ca62336](https://github.com/vm0-ai/vm0/commit/ca6233651a653d28c58d813d71a737ea2eacbe2d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.46.0
+
+## [9.50.0](https://github.com/vm0-ai/vm0/compare/cli-v9.49.5...cli-v9.50.0) (2026-03-07)
+
+
+### Features
+
+* add --memory flag for agent long-term memory ([#3424](https://github.com/vm0-ai/vm0/issues/3424)) ([9e0279f](https://github.com/vm0-ai/vm0/commit/9e0279f618efe5396dda9e1aaac43a72bba70bfe))
+
+
+### Bug Fixes
+
+* **cli:** add warning for missing sentry environment config ([#3876](https://github.com/vm0-ai/vm0/issues/3876)) ([5b3c0c3](https://github.com/vm0-ai/vm0/commit/5b3c0c363d0318d8ff27418faff784ffd4a35bd2))
+
+
+### Refactoring
+
+* **cli:** improve scope create and scope set commands ([#3880](https://github.com/vm0-ai/vm0/issues/3880)) ([f200f13](https://github.com/vm0-ai/vm0/commit/f200f13e0e1956b47e31aa94fb762b14de47b458))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.45.0
+
+## [9.49.5](https://github.com/vm0-ai/vm0/compare/cli-v9.49.4...cli-v9.49.5) (2026-03-07)
+
+
+### Bug Fixes
+
+* use server-computed connector-provided secret names in compose warning ([#3843](https://github.com/vm0-ai/vm0/issues/3843)) ([b66c877](https://github.com/vm0-ai/vm0/commit/b66c87774aa6fd21c73878026f3d0f2e7420928b))
+
+
+### Refactoring
+
+* unify scope creation and migrate org endpoints ([#3847](https://github.com/vm0-ai/vm0/issues/3847)) ([df5317c](https://github.com/vm0-ai/vm0/commit/df5317cd3eb171eaaf1f19148db58a754a68bf5e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.44.1
+
+## [9.49.4](https://github.com/vm0-ai/vm0/compare/cli-v9.49.3...cli-v9.49.4) (2026-03-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.44.0
+
+## [9.49.3](https://github.com/vm0-ai/vm0/compare/cli-v9.49.2...cli-v9.49.3) (2026-03-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.43.0
+
+## [9.49.2](https://github.com/vm0-ai/vm0/compare/cli-v9.49.1...cli-v9.49.2) (2026-03-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.42.0
+
+## [9.49.1](https://github.com/vm0-ai/vm0/compare/cli-v9.49.0...cli-v9.49.1) (2026-03-06)
+
+
+### Refactoring
+
+* **cli:** remove dev-tool compose subcommand ([#3824](https://github.com/vm0-ai/vm0/issues/3824)) ([43865f9](https://github.com/vm0-ai/vm0/commit/43865f9f91b4f243cb47f655adc0e97a59d01776))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.41.0
+
 ## [9.49.0](https://github.com/vm0-ai/vm0/compare/cli-v9.48.0...cli-v9.49.0) (2026-03-06)
 
 

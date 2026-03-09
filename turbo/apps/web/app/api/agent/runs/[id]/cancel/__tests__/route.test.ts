@@ -48,10 +48,8 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       expect(data.message).toBe("Run cancelled successfully");
     });
 
-    it("should kill E2B sandbox when cancelling", async () => {
-      const run = await createTestRun(testComposeId, "Run with sandbox");
-
-      context.mocks.e2b.sandbox.kill.mockClear();
+    it("should cancel a running run", async () => {
+      const run = await createTestRun(testComposeId, "Run to cancel");
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${run.runId}/cancel`,
@@ -63,7 +61,6 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
 
       expect(response.status).toBe(200);
       expect(data.status).toBe("cancelled");
-      expect(context.mocks.e2b.sandbox.kill).toHaveBeenCalled();
     });
   });
 

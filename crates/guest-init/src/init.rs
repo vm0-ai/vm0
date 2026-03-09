@@ -13,6 +13,8 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
+const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+
 /// Initialize filesystem and perform pivot_root.
 ///
 /// This uses direct syscalls for filesystem initialization.
@@ -173,20 +175,39 @@ pub fn init_filesystem() -> Result<(), InitError> {
     })?;
     eprintln!("[guest-init] Virtual filesystems mounted");
 
-    // 10. Set environment variables
+    // 10. Set environment variables for the init process (root).
+    // User commands run via `su - user` which resets env from /etc/passwd,
+    // so these only affect root/sudo commands (e.g. clock fix).
     // SAFETY: We are the init process, no other threads are running yet
     unsafe {
-        std::env::set_var(
-            "PATH",
-            "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-        );
-        std::env::set_var("HOME", "/home/user");
-        std::env::set_var("USER", "user");
+        std::env::set_var("PATH", DEFAULT_PATH);
+        std::env::set_var("HOME", "/root");
+        std::env::set_var("USER", "root");
         std::env::set_var("SHELL", "/bin/bash");
+        std::env::set_var("LANG", "C.UTF-8");
     }
 
-    // 11. Change to home directory
-    let _ = std::env::set_current_dir("/home/user");
+    // Write environment for `su - user` (login shell). Docker ENV is lost
+    // during `docker export`, and `std::env::set_var` only affects the
+    // current process — `su -` resets the environment.
+    //
+    // LANG goes in /etc/environment (read by PAM, not overridden later).
+    // PATH goes in /etc/profile.d/ because Debian's /etc/profile overrides
+    // PATH from /etc/environment, omitting sbin dirs for non-root users.
+    // Scripts in /etc/profile.d/ run after /etc/profile, so our PATH wins.
+    if let Err(e) = fs::write("/etc/environment", "LANG=C.UTF-8\n") {
+        eprintln!("[guest-init] Warning: failed to write /etc/environment: {e}");
+    }
+    if let Err(e) = fs::write(
+        "/etc/profile.d/vm0-path.sh",
+        format!("export PATH={DEFAULT_PATH}\n"),
+    ) {
+        eprintln!("[guest-init] Warning: failed to write /etc/profile.d/vm0-path.sh: {e}");
+    }
+
+    // 11. Change to root home directory (init runs as root;
+    // `su - user` will cd to /home/user automatically)
+    let _ = std::env::set_current_dir("/root");
 
     eprintln!("[guest-init] Filesystem initialization complete");
     Ok(())

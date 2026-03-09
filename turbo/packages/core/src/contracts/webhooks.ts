@@ -32,6 +32,14 @@ const artifactSnapshotSchema = z.object({
 });
 
 /**
+ * Memory snapshot schema
+ */
+const memorySnapshotSchema = z.object({
+  memoryName: z.string(),
+  memoryVersion: z.string(),
+});
+
+/**
  * Volume versions snapshot schema
  */
 const volumeVersionsSnapshotSchema = z.object({
@@ -120,6 +128,7 @@ export const webhookCheckpointsContract = c.router({
         .string()
         .min(1, "cliAgentSessionHistory is required"),
       artifactSnapshot: artifactSnapshotSchema.optional(),
+      memorySnapshot: memorySnapshotSchema.optional(),
       volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
     }),
     responses: {
@@ -128,6 +137,7 @@ export const webhookCheckpointsContract = c.router({
         agentSessionId: z.string(),
         conversationId: z.string(),
         artifact: artifactSnapshotSchema.optional(),
+        memory: memorySnapshotSchema.optional(),
         volumes: z.record(z.string(), z.string()).optional(),
       }),
       400: apiErrorSchema,

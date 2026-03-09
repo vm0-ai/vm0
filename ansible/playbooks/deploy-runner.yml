@@ -84,16 +84,13 @@
         {{ bin_dir }}/runner service install
         --name {{ runner_name }}
         --config {{ runner_dir }}/runner.yaml
+        --balloon-reclaim
 
     # ========================================
     # Phase 4: Health check
     # ========================================
     - name: Verify runner health
       command: "{{ bin_dir }}/runner doctor"
-      retries: 5
-      delay: 5
-      register: health
-      until: health.rc == 0
 
     # ========================================
     # Phase 5: Drain old runners + Cleanup
@@ -121,7 +118,3 @@
     # ========================================
     - name: Verify runner health after cleanup
       command: "{{ bin_dir }}/runner doctor"
-      retries: 5
-      delay: 5
-      register: health_final
-      until: health_final.rc == 0

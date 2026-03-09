@@ -182,10 +182,9 @@ async function resolveModelProviderCredential(
   userId: string,
   framework: string,
   hasExplicitModelProviderConfig: boolean,
-  existingCredentials: Record<string, string> | undefined,
   explicitModelProvider?: string,
 ): Promise<ModelProviderCredentialResult> {
-  let credentials = existingCredentials;
+  let credentials: Record<string, string> | undefined;
 
   // Skip if explicit model provider config exists or framework doesn't use model providers
   if (
@@ -403,9 +402,8 @@ interface ConnectorCredentialResult {
 async function resolveConnectorCredentials(
   scopeId: string,
   userId: string,
-  existingCredentials: Record<string, string> | undefined,
 ): Promise<ConnectorCredentialResult> {
-  let credentials = existingCredentials;
+  let credentials: Record<string, string> | undefined;
 
   // Query connected connectors directly (only need the type for environmentMapping)
   const userConnectors = await globalThis.services.db
@@ -644,6 +642,7 @@ interface BuildContextParams {
   conversationId?: string;
   artifactName?: string;
   artifactVersion?: string;
+  memoryName?: string;
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   volumeVersions?: Record<string, string>;
@@ -746,57 +745,47 @@ async function resolveCredentialsAndEnvironment(
   );
   const framework = firstAgent?.framework || "claude-code";
 
-  // Run credential resolution chain and variable fetching in parallel
-  const [credentialChainResult, mergedVars] = await Promise.all([
-    (async () => {
-      // Fetch secrets/credentials referenced in environment
-      const dbSecrets = await fetchReferencedCredentials(
-        scopeId,
-        userId,
-        firstAgent?.environment,
-      );
-
-      // Merge DB secrets with CLI secrets (CLI takes priority)
-      let secrets = mergeSecrets(dbSecrets, cliSecrets);
-
-      // credentials is used for backwards compatibility with credentials.* syntax
-      let credentials: Record<string, string> | undefined = dbSecrets;
-
-      const modelProviderResult = await resolveModelProviderCredential(
+  // Run all credential resolution and variable fetching in parallel.
+  // The three resolve functions have independent DB queries (different secret types),
+  // so there is no data dependency between them.
+  const [dbSecrets, modelProviderResult, connectorResult, mergedVars] =
+    await Promise.all([
+      fetchReferencedCredentials(scopeId, userId, firstAgent?.environment),
+      resolveModelProviderCredential(
         scopeId,
         userId,
         framework,
         hasExplicitModelProviderConfig,
-        credentials,
         modelProvider,
-      );
-      credentials = modelProviderResult.credentials;
-      const modelProviderEnvVars = modelProviderResult.injectedEnvVars;
+      ),
+      resolveConnectorCredentials(scopeId, userId),
+      fetchAndMergeVariables(scopeId, userId, vars),
+    ]);
 
-      // Resolve connector credentials (GH_TOKEN, GITHUB_TOKEN, etc.)
-      const connectorResult = await resolveConnectorCredentials(
-        scopeId,
-        userId,
-        credentials,
-      );
-      credentials = connectorResult.credentials;
-      const connectorEnvVars = connectorResult.injectedEnvVars;
+  // Merge credentials from all sources (connector > model-provider > user).
+  // Return undefined when no source contributed credentials (preserves original behavior).
+  const hasCredentials =
+    dbSecrets || modelProviderResult.credentials || connectorResult.credentials;
+  const credentials: Record<string, string> | undefined = hasCredentials
+    ? {
+        ...dbSecrets,
+        ...modelProviderResult.credentials,
+        ...connectorResult.credentials,
+      }
+    : undefined;
 
-      // Merge connector secrets into secrets pool for explicit ${{ secrets.* }} references only.
-      // Connector secrets only fill gaps — user/CLI secrets take precedence.
-      secrets = mergeConnectorSecretsForReferences(
-        firstAgent?.environment,
-        secrets,
-        connectorEnvVars,
-      );
+  // Merge secrets: DB user secrets + CLI secrets (CLI takes priority)
+  let secrets = mergeSecrets(dbSecrets, cliSecrets);
 
-      return { secrets, credentials, modelProviderEnvVars };
-    })(),
-    fetchAndMergeVariables(scopeId, userId, vars),
-  ]);
+  // Merge connector secrets into secrets pool for explicit ${{ secrets.* }} references only.
+  // Connector secrets only fill gaps — user/CLI secrets take precedence.
+  secrets = mergeConnectorSecretsForReferences(
+    firstAgent?.environment,
+    secrets,
+    connectorResult.injectedEnvVars,
+  );
 
-  const { secrets, credentials } = credentialChainResult;
-  const { modelProviderEnvVars } = credentialChainResult;
+  const modelProviderEnvVars = modelProviderResult.injectedEnvVars;
 
   // Expand environment variables from compose config
   const { environment: expandedEnvironment } = expandEnvironmentFromCompose(
@@ -820,6 +809,56 @@ async function resolveCredentialsAndEnvironment(
 }
 
 /**
+ * Apply resolution defaults to context variables.
+ * Params override resolution values (explicit CLI args win).
+ */
+function applyResolutionDefaults(
+  params: BuildContextParams,
+  resolution: ConversationResolution,
+): {
+  agentComposeVersionId: string;
+  agentCompose: unknown;
+  artifactName: string | undefined;
+  artifactVersion: string | undefined;
+  memoryName: string | undefined;
+  vars: Record<string, string> | undefined;
+  secretNames: string[] | undefined;
+  volumeVersions: Record<string, string> | undefined;
+  resumeSession: ResumeSession;
+  resumeArtifact: ArtifactSnapshot | undefined;
+} {
+  const artifactName = params.artifactName || resolution.artifactName;
+  const artifactVersion = params.artifactVersion || resolution.artifactVersion;
+
+  // Build resumeArtifact if applicable
+  let resumeArtifact: ArtifactSnapshot | undefined;
+  if (resolution.buildResumeArtifact && artifactName) {
+    resumeArtifact = {
+      artifactName,
+      artifactVersion: artifactVersion || "latest",
+    };
+  }
+
+  return {
+    agentComposeVersionId:
+      params.agentComposeVersionId || resolution.agentComposeVersionId,
+    agentCompose: resolution.agentCompose,
+    artifactName,
+    artifactVersion,
+    memoryName: params.memoryName || resolution.memoryName,
+    vars: params.vars || resolution.vars,
+    secretNames: resolution.secretNames,
+    volumeVersions: params.volumeVersions || resolution.volumeVersions,
+    resumeSession: {
+      sessionId: resolution.conversationData.cliAgentSessionId,
+      sessionHistory: resolution.conversationData.cliAgentSessionHistory,
+      workingDir: resolution.workingDir,
+    },
+    resumeArtifact,
+  };
+}
+
+/**
  * Build unified execution context from various parameter sources
  * Supports: new run, checkpoint resume, session continue
  *
@@ -836,9 +875,20 @@ async function resolveScopeId(params: BuildContextParams): Promise<string> {
   return (await getDefaultScope(params.userId)).scope.id;
 }
 
+interface BuildContextTimings {
+  resolveSource: number;
+  resolveScope: number;
+  resolveCredentials: number;
+}
+
+interface BuildContextResult {
+  context: ExecutionContext;
+  timings: BuildContextTimings;
+}
+
 export async function buildExecutionContext(
   params: BuildContextParams,
-): Promise<ExecutionContext> {
+): Promise<BuildContextResult> {
   log.debug(`Building execution context for ${params.runId}`);
   log.debug(`params.volumeVersions=${JSON.stringify(params.volumeVersions)}`);
 
@@ -850,43 +900,31 @@ export async function buildExecutionContext(
   let vars: Record<string, string> | undefined = params.vars;
   let secrets: Record<string, string> | undefined = params.secrets;
   let secretNames: string[] | undefined;
+  let memoryName: string | undefined = params.memoryName;
   let volumeVersions: Record<string, string> | undefined =
     params.volumeVersions;
   let resumeSession: ResumeSession | undefined;
   let resumeArtifact: ArtifactSnapshot | undefined;
 
   // Step 1: Resolve to conversation (unified path for checkpoint/session/direct)
+  const resolveSourceStart = Date.now();
   const resolution = await resolveSource(params);
+  const resolveSourceEnd = Date.now();
 
   // Step 2: Apply resolution defaults and build resumeSession (unified path)
   // Note: secrets are NEVER stored - caller must always provide fresh secrets via params
   if (resolution) {
-    // Apply defaults (params override resolution values)
-    agentComposeVersionId =
-      agentComposeVersionId || resolution.agentComposeVersionId;
-    agentCompose = resolution.agentCompose;
-    artifactName = artifactName || resolution.artifactName;
-    artifactVersion = artifactVersion || resolution.artifactVersion;
-    vars = vars || resolution.vars;
-    // secrets from params only - resolution only has secretNames for validation
-    // Get secretNames from resolution (stored for validation/error messages)
-    secretNames = resolution.secretNames;
-    volumeVersions = volumeVersions || resolution.volumeVersions;
-
-    // Build resumeSession from resolution (single place!)
-    resumeSession = {
-      sessionId: resolution.conversationData.cliAgentSessionId,
-      sessionHistory: resolution.conversationData.cliAgentSessionHistory,
-      workingDir: resolution.workingDir,
-    };
-
-    // Build resumeArtifact if applicable
-    if (resolution.buildResumeArtifact && artifactName) {
-      resumeArtifact = {
-        artifactName,
-        artifactVersion: artifactVersion || "latest",
-      };
-    }
+    const defaults = applyResolutionDefaults(params, resolution);
+    agentComposeVersionId = defaults.agentComposeVersionId;
+    agentCompose = defaults.agentCompose;
+    artifactName = defaults.artifactName;
+    artifactVersion = defaults.artifactVersion;
+    memoryName = defaults.memoryName;
+    vars = defaults.vars;
+    secretNames = defaults.secretNames;
+    volumeVersions = defaults.volumeVersions;
+    resumeSession = defaults.resumeSession;
+    resumeArtifact = defaults.resumeArtifact;
 
     log.debug(
       `Resolution applied: artifact=${artifactName}@${artifactVersion}`,
@@ -916,9 +954,10 @@ export async function buildExecutionContext(
   }
 
   // Resolve scope ID once for all credential/variable resolution
+  const resolveScopeStart = Date.now();
   const scopeId = await resolveScopeId(params);
+  const resolveScopeEnd = Date.now();
 
-  // Step 4: Fetch secrets/credentials from user's scope and merge with CLI secrets
   // Extract compose structure
   const compose = agentCompose as {
     agents?: Record<
@@ -930,23 +969,33 @@ export async function buildExecutionContext(
     ? Object.values(compose.agents)[0]
     : undefined;
 
-  // Step 4: Resolve all credentials and secrets, then expand environment
+  // Step 4: Resolve credentials and user preferences in parallel
+  // getUserPreferences only needs userId (no scopeId dependency),
+  // so it can run concurrently with credential resolution.
+  const resolveCredentialsStart = Date.now();
+  const [credentialsResult, userPrefs] = await Promise.all([
+    resolveCredentialsAndEnvironment(
+      scopeId,
+      agentCompose,
+      firstAgent,
+      vars,
+      params.secrets,
+      params.modelProvider,
+      params.runId,
+      params.checkEnv,
+      params.userId,
+    ),
+    params.userId ? getUserPreferences(params.userId) : Promise.resolve(null),
+  ]);
+  const resolveCredentialsEnd = Date.now();
+
   const {
     secrets: resolvedSecrets,
     credentials: resolvedCredentials,
     environment,
-  } = await resolveCredentialsAndEnvironment(
-    scopeId,
-    agentCompose,
-    firstAgent,
-    vars,
-    params.secrets,
-    params.modelProvider,
-    params.runId,
-    params.checkEnv,
-    params.userId,
-  );
+  } = credentialsResult;
   secrets = resolvedSecrets;
+  const userTimezone = userPrefs?.timezone ?? undefined;
 
   // Step 5: Merge credentials into secrets for client-side log masking
   // Credentials are server-stored user-level secrets and must be masked like CLI secrets
@@ -955,38 +1004,39 @@ export async function buildExecutionContext(
     ? { ...resolvedCredentials, ...secrets }
     : secrets;
 
-  // Fetch user timezone preference
-  let userTimezone: string | undefined;
-  if (params.userId) {
-    const userPrefs = await getUserPreferences(params.userId);
-    userTimezone = userPrefs.timezone ?? undefined;
-  }
-
   // Build final execution context
   return {
-    runId: params.runId,
-    userId: params.userId,
-    agentComposeVersionId,
-    agentCompose,
-    prompt: params.prompt,
-    vars,
-    secrets: mergedSecrets,
-    secretNames,
-    sandboxToken: params.sandboxToken,
-    artifactName,
-    artifactVersion,
-    volumeVersions,
-    environment,
-    userTimezone,
-    resumeSession,
-    resumeArtifact,
-    // Metadata for vm0_start event
-    agentName: params.agentName,
-    resumedFromCheckpointId: params.resumedFromCheckpointId,
-    continuedFromSessionId: params.continuedFromSessionId,
-    // Debug flag
-    debugNoMockClaude: params.debugNoMockClaude,
-    // API start time for E2E timing metrics
-    apiStartTime: params.apiStartTime,
+    context: {
+      runId: params.runId,
+      userId: params.userId,
+      agentComposeVersionId,
+      agentCompose,
+      prompt: params.prompt,
+      vars,
+      secrets: mergedSecrets,
+      secretNames,
+      sandboxToken: params.sandboxToken,
+      artifactName,
+      artifactVersion,
+      memoryName,
+      volumeVersions,
+      environment,
+      userTimezone,
+      resumeSession,
+      resumeArtifact,
+      // Metadata for vm0_start event
+      agentName: params.agentName,
+      resumedFromCheckpointId: params.resumedFromCheckpointId,
+      continuedFromSessionId: params.continuedFromSessionId,
+      // Debug flag
+      debugNoMockClaude: params.debugNoMockClaude,
+      // API start time for E2E timing metrics
+      apiStartTime: params.apiStartTime,
+    },
+    timings: {
+      resolveSource: resolveSourceEnd - resolveSourceStart,
+      resolveScope: resolveScopeEnd - resolveScopeStart,
+      resolveCredentials: resolveCredentialsEnd - resolveCredentialsStart,
+    },
   };
 }

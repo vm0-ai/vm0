@@ -1,4 +1,18 @@
 {
+    "changelog-sections": [
+        {"type": "feat", "section": "Features"},
+        {"type": "fix", "section": "Bug Fixes"},
+        {"type": "deps", "section": "Dependencies"},
+        {"type": "ci", "section": "CI"},
+        {"type": "chore", "hidden": true},
+        {"type": "docs", "section": "Documentation"},
+        {"type": "style", "hidden": true},
+        {"type": "refactor", "section": "Refactoring"},
+        {"type": "perf", "hidden": true},
+        {"type": "test", "hidden": true},
+        {"type": "build", "hidden": true},
+        {"type": "revert", "hidden": true}
+    ],
     "packages": {
         "turbo/packages/core": {
             "release-type": "node"

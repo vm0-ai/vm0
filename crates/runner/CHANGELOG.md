@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.20.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.20.2...runner-rs-v0.20.3) (2026-03-09)
+
+
+### Bug Fixes
+
+* **storage:** unify memory storage auto-creation with artifact pattern ([#3944](https://github.com/vm0-ai/vm0/issues/3944)) ([e2af883](https://github.com/vm0-ai/vm0/commit/e2af88330c3bf305c1586ffd4315dff19a4e7504))
+
+
+### Refactoring
+
+* **runner:** make runner doctor tolerant of transient states ([#3943](https://github.com/vm0-ai/vm0/issues/3943)) ([f0c0dbf](https://github.com/vm0-ai/vm0/commit/f0c0dbfbcc3581ba8f1e157b871358dfe5632fab))
+
+## [0.20.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.20.1...runner-rs-v0.20.2) (2026-03-08)
+
+## [0.20.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.20.0...runner-rs-v0.20.1) (2026-03-07)
+
+
+### Bug Fixes
+
+* **runner:** use proper shell escaping in executor guest commands ([#3902](https://github.com/vm0-ai/vm0/issues/3902)) ([f5b5031](https://github.com/vm0-ai/vm0/commit/f5b5031be43a8fe814da676c472d586fb25ce29e))
+* use correct storage type in memory dedup path and propagate checkpoint errors ([#3906](https://github.com/vm0-ai/vm0/issues/3906)) ([9abe586](https://github.com/vm0-ai/vm0/commit/9abe586d92126cef4fc9f7c2fa4319c7448e86dd))
+
+## [0.20.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.19.4...runner-rs-v0.20.0) (2026-03-07)
+
+
+### Features
+
+* add --memory flag for agent long-term memory ([#3424](https://github.com/vm0-ai/vm0/issues/3424)) ([9e0279f](https://github.com/vm0-ai/vm0/commit/9e0279f618efe5396dda9e1aaac43a72bba70bfe))
+
+
+### Bug Fixes
+
+* **guest-init:** set correct env vars for sudo and user sessions ([#3892](https://github.com/vm0-ai/vm0/issues/3892)) ([a1f46e3](https://github.com/vm0-ai/vm0/commit/a1f46e3204f6f897f793118f97a3731d2b370bb3))
+
+## [0.19.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.19.3...runner-rs-v0.19.4) (2026-03-07)
+
+## [0.19.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.19.2...runner-rs-v0.19.3) (2026-03-06)
+
 ## [0.19.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.19.1...runner-rs-v0.19.2) (2026-03-06)
 
 ## [0.19.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.19.0...runner-rs-v0.19.1) (2026-03-06)

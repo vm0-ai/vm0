@@ -11,6 +11,7 @@ import {
   handleAppHomeOpened,
   handleMessagesTabOpened,
 } from "../../../../src/lib/slack/handlers/app-home-opened";
+import type { SlackFile } from "../../../../src/lib/slack/context";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("slack:events");
@@ -44,6 +45,7 @@ interface SlackAppMentionEvent {
   channel: string;
   event_ts: string;
   thread_ts?: string;
+  files?: SlackFile[];
 }
 
 interface SlackDirectMessageEvent {
@@ -57,6 +59,7 @@ interface SlackDirectMessageEvent {
   thread_ts?: string;
   subtype?: string;
   bot_id?: string;
+  files?: SlackFile[];
 }
 
 interface SlackAppHomeOpenedEvent {
@@ -155,6 +158,7 @@ export async function POST(request: Request) {
           messageText: event.text,
           messageTs: event.ts,
           threadTs: event.thread_ts,
+          files: event.files,
         }).catch((error) => {
           log.error("Error handling app_mention", { error });
         }),
@@ -165,7 +169,7 @@ export async function POST(request: Request) {
     if (
       event.type === "message" &&
       event.channel_type === "im" &&
-      !event.subtype &&
+      (!event.subtype || event.subtype === "file_share") &&
       !event.bot_id
     ) {
       initServices();
@@ -176,6 +180,7 @@ export async function POST(request: Request) {
           channelId: event.channel,
           userId: event.user,
           messageText: event.text,
+          files: event.files,
           messageTs: event.ts,
           threadTs: event.thread_ts,
         }).catch((error) => {

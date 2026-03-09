@@ -59,7 +59,6 @@ const FOOTER_NAV: {
     icon: IconLayoutGrid,
     iconImg: slackIcon,
   },
-  { id: "team", label: "Workspace settings", icon: IconSettings },
 ];
 
 export type ZeroAccountAction = "preferences" | "manage" | "signout";

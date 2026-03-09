@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.14.0...guest-download-v0.15.0) (2026-03-07)
+
+
+### Features
+
+* add --memory flag for agent long-term memory ([#3424](https://github.com/vm0-ai/vm0/issues/3424)) ([9e0279f](https://github.com/vm0-ai/vm0/commit/9e0279f618efe5396dda9e1aaac43a72bba70bfe))
+
 ## [0.14.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.13.0...guest-download-v0.14.0) (2026-03-04)
 
 

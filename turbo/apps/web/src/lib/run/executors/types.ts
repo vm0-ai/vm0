@@ -39,6 +39,9 @@ export interface PreparedContext {
   artifactName: string | null;
   artifactVersion: string | null;
 
+  // Memory storage name
+  memoryName: string | null;
+
   // Experimental firewall configuration
   experimentalFirewall: ExperimentalFirewall | null;
 

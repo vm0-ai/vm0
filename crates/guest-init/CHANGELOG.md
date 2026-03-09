@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.4](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.3...guest-init-v0.14.4) (2026-03-07)
+
+
+### Bug Fixes
+
+* **guest-init:** set correct env vars for sudo and user sessions ([#3892](https://github.com/vm0-ai/vm0/issues/3892)) ([a1f46e3](https://github.com/vm0-ai/vm0/commit/a1f46e3204f6f897f793118f97a3731d2b370bb3))
+
 ## [0.14.3](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.2...guest-init-v0.14.3) (2026-03-06)
 
 ## [0.14.2](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.1...guest-init-v0.14.2) (2026-03-05)

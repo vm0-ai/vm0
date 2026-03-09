@@ -46,6 +46,16 @@ export function markdownToTelegramHtml(markdown: string): string {
       continue;
     }
 
+    // Images: ![alt](url) → clickable link (Telegram doesn't support inline images)
+    const imageMatch = remaining.match(/^!\[([^\]]*)\]\(([^)]+)\)/);
+    if (imageMatch) {
+      const altText = (imageMatch[1] as string) || "image";
+      const imageUrl = imageMatch[2] as string;
+      result += `<a href="${escapeHtml(imageUrl)}">🖼 ${escapeHtml(altText)}</a>`;
+      remaining = remaining.slice(imageMatch[0].length);
+      continue;
+    }
+
     // Links: [text](url)
     const linkMatch = remaining.match(/^\[([^\]]+)\]\(([^)]+)\)/);
     if (linkMatch) {

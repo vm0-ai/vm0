@@ -22,7 +22,6 @@ import type { AgentComposeSnapshot } from "../checkpoint/types";
 import type { AgentComposeYaml } from "../../types/agent-compose";
 import { getAgentSessionWithConversation } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
-import { executeE2bRun } from "./executors/e2b-executor";
 import { executeRunnerJob } from "./executors/runner-executor";
 import { executeDockerRun } from "./executors/docker-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
@@ -136,33 +135,35 @@ export async function validateCheckpoint(
 }> {
   log.debug(`Validating checkpoint ${checkpointId} for user ${userId}`);
 
-  // Load checkpoint from database
-  const [checkpoint] = await globalThis.services.db
-    .select()
+  // Load checkpoint with associated run in a single query
+  const [result] = await globalThis.services.db
+    .select({
+      agentComposeSnapshot: checkpoints.agentComposeSnapshot,
+      runUserId: agentRuns.userId,
+      runVars: agentRuns.vars,
+      runSecretNames: agentRuns.secretNames,
+    })
     .from(checkpoints)
+    .leftJoin(agentRuns, eq(checkpoints.runId, agentRuns.id))
     .where(eq(checkpoints.id, checkpointId))
     .limit(1);
 
-  if (!checkpoint) {
+  if (!result) {
     throw notFound("Checkpoint not found");
   }
 
-  // Verify checkpoint belongs to user by checking the associated run
-  const [originalRun] = await globalThis.services.db
-    .select()
-    .from(agentRuns)
-    .where(
-      and(eq(agentRuns.id, checkpoint.runId), eq(agentRuns.userId, userId)),
-    )
-    .limit(1);
+  // Verify the associated run exists and belongs to user
+  if (!result.runUserId) {
+    throw notFound("Associated run not found");
+  }
 
-  if (!originalRun) {
+  if (result.runUserId !== userId) {
     throw unauthorized("Checkpoint does not belong to authenticated user");
   }
 
   // Get version ID from snapshot
   const agentComposeSnapshot =
-    checkpoint.agentComposeSnapshot as unknown as AgentComposeSnapshot;
+    result.agentComposeSnapshot as unknown as AgentComposeSnapshot;
 
   const agentComposeVersionId = agentComposeSnapshot.agentComposeVersionId;
   if (!agentComposeVersionId) {
@@ -174,8 +175,8 @@ export async function validateCheckpoint(
   );
 
   // Get vars from original run, secretNames from run (values are NEVER stored)
-  const vars = (originalRun.vars as Record<string, string>) ?? null;
-  const secretNames = (originalRun.secretNames as string[]) ?? null;
+  const vars = (result.runVars as Record<string, string>) ?? null;
+  const secretNames = (result.runSecretNames as string[]) ?? null;
 
   return {
     agentComposeVersionId,
@@ -233,15 +234,11 @@ export async function validateAgentSession(
  * Dispatch prepared context to appropriate executor.
  *
  * Routing:
- * - Runner Group: explicit runner config in compose
- * - E2B: cloud mode, requires E2B_API_KEY
- * - Docker: local mode, requires DOCKER_SANDBOX_IMAGE
+ * - Runner Group: explicit runner config in compose, or default group
+ * - Docker: local dev mode, requires DOCKER_SANDBOX_IMAGE
  *
  */
-async function dispatchRun(
-  context: PreparedContext,
-  userEmail: string,
-): Promise<ExecutorResult> {
+async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
   if (context.runnerGroup) {
     log.debug(
       `Dispatching run ${context.runId} to runner group: ${context.runnerGroup}`,
@@ -249,29 +246,19 @@ async function dispatchRun(
     return await executeRunnerJob(context);
   }
 
-  // Domain-based rollout: route @vm0.ai users to runner.
-  // Note: CI test accounts (e2e+clerk_test@vm0.ai) also match, but preview
-  // deploys don't set RUNNER_DEFAULT_GROUP so they still use E2B.
-  const defaultGroup = env().RUNNER_DEFAULT_GROUP;
-  if (defaultGroup) {
-    if (userEmail.endsWith("@vm0.ai")) {
-      log.debug(
-        `Dispatching run ${context.runId} to runner (domain rollout: ${userEmail})`,
-      );
-      return await executeRunnerJob({ ...context, runnerGroup: defaultGroup });
-    }
-  }
-
-  if (env().E2B_API_KEY) {
-    log.debug(`Dispatching run ${context.runId} to E2B executor`);
-    return await executeE2bRun(context);
-  } else if (env().DOCKER_SANDBOX_IMAGE) {
+  if (env().DOCKER_SANDBOX_IMAGE) {
     log.debug(`Dispatching run ${context.runId} to Docker executor`);
     return await executeDockerRun(context);
   }
 
+  const defaultGroup = env().RUNNER_DEFAULT_GROUP;
+  if (defaultGroup) {
+    log.debug(`Dispatching run ${context.runId} to runner (default group)`);
+    return await executeRunnerJob({ ...context, runnerGroup: defaultGroup });
+  }
+
   throw new Error(
-    "No executor configured: set E2B_API_KEY for cloud mode or DOCKER_SANDBOX_IMAGE for Docker mode",
+    "No executor configured: set RUNNER_DEFAULT_GROUP or DOCKER_SANDBOX_IMAGE",
   );
 }
 
@@ -310,6 +297,7 @@ export interface CreateRunParams {
   secrets?: Record<string, string>;
   artifactName?: string;
   artifactVersion?: string;
+  memoryName?: string;
   volumeVersions?: Record<string, string>;
   scheduleId?: string;
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
@@ -333,61 +321,94 @@ export interface CreateRunResult {
 }
 
 /**
- * Load compose version and compose metadata, then verify access.
+ * Load compose version and compose metadata.
  *
  * @returns composeContent and compose record
  * @throws NotFoundError - version or compose not found
- * @throws ForbiddenError - user cannot access compose
  */
-async function loadAndAuthorizeCompose(
-  userId: string,
-  userEmail: string,
+async function loadCompose(
   agentComposeVersionId: string,
   callerComposeId?: string,
 ): Promise<{
   composeContent: AgentComposeYaml;
-  compose: { id: string; userId: string; scopeId: string | null };
+  compose: { id: string; userId: string; scopeId: string };
 }> {
-  const [version] = await globalThis.services.db
+  if (callerComposeId) {
+    // When caller provides composeId, both queries are independent — run in parallel
+    const [versionResult, composeResult] = await Promise.all([
+      globalThis.services.db
+        .select({ content: agentComposeVersions.content })
+        .from(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, agentComposeVersionId))
+        .limit(1),
+      globalThis.services.db
+        .select({
+          id: agentComposes.id,
+          userId: agentComposes.userId,
+          scopeId: agentComposes.scopeId,
+        })
+        .from(agentComposes)
+        .where(eq(agentComposes.id, callerComposeId))
+        .limit(1),
+    ]);
+
+    if (!versionResult[0]) {
+      throw notFound("Agent compose version not found");
+    }
+    if (!composeResult[0]) {
+      throw notFound("Agent compose not found");
+    }
+
+    return {
+      composeContent: versionResult[0].content as AgentComposeYaml,
+      compose: composeResult[0],
+    };
+  }
+
+  // No caller composeId — fetch version with compose via LEFT JOIN
+  // Use LEFT JOIN so we can distinguish "version missing" from "compose missing"
+  const [result] = await globalThis.services.db
     .select({
-      id: agentComposeVersions.id,
       content: agentComposeVersions.content,
-      composeId: agentComposeVersions.composeId,
+      composeId: agentComposes.id,
+      composeUserId: agentComposes.userId,
+      composeScopeId: agentComposes.scopeId,
     })
     .from(agentComposeVersions)
+    .leftJoin(
+      agentComposes,
+      eq(agentComposeVersions.composeId, agentComposes.id),
+    )
     .where(eq(agentComposeVersions.id, agentComposeVersionId))
     .limit(1);
 
-  if (!version) {
+  if (!result) {
     throw notFound("Agent compose version not found");
   }
 
-  const composeContent = version.content as AgentComposeYaml;
-
-  // Use caller-provided composeId when available to avoid content-addressed
-  // version collisions (version.composeId may point to a different user's compose)
-  const resolvedComposeId = callerComposeId ?? version.composeId;
-
-  const [compose] = await globalThis.services.db
-    .select({
-      id: agentComposes.id,
-      userId: agentComposes.userId,
-      scopeId: agentComposes.scopeId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, resolvedComposeId))
-    .limit(1);
-
-  if (!compose) {
+  if (!result.composeId || !result.composeUserId || !result.composeScopeId) {
     throw notFound("Agent compose not found");
   }
 
+  return {
+    composeContent: result.content as AgentComposeYaml,
+    compose: {
+      id: result.composeId,
+      userId: result.composeUserId,
+      scopeId: result.composeScopeId,
+    },
+  };
+}
+
+async function authorizeCompose(
+  userId: string,
+  userEmail: string,
+  compose: { id: string; userId: string; scopeId: string },
+): Promise<void> {
   const hasAccess = await canAccessCompose(userId, userEmail, compose);
   if (!hasAccess) {
     throw forbidden("You do not have permission to access this agent");
   }
-
-  return { composeContent, compose };
 }
 
 /**
@@ -494,7 +515,6 @@ async function buildAndDispatchRun(opts: {
   scopeId: string | undefined;
   authorizeTime: number;
   transactionTime: number;
-  userEmail: string;
 }): Promise<{ status: string; sandboxId?: string }> {
   const {
     runId,
@@ -505,7 +525,6 @@ async function buildAndDispatchRun(opts: {
     scopeId,
     authorizeTime,
     transactionTime,
-    userEmail,
   } = opts;
   const { userId, agentComposeVersionId, prompt } = params;
 
@@ -520,13 +539,14 @@ async function buildAndDispatchRun(opts: {
     const tokenTime = Date.now();
 
     // Build execution context
-    const context = await buildContext({
+    const { context, timings: buildContextTimings } = await buildContext({
       checkpointId: params.checkpointId,
       sessionId: params.sessionId,
       conversationId: params.conversationId,
       agentComposeVersionId,
       artifactName: params.artifactName,
       artifactVersion: params.artifactVersion,
+      memoryName: params.memoryName,
       vars: params.vars,
       secrets: params.secrets,
       volumeVersions: params.volumeVersions,
@@ -547,11 +567,11 @@ async function buildAndDispatchRun(opts: {
     const buildContextTime = Date.now();
 
     // Prepare execution context (storage manifest, working dir, etc.)
-    const preparedContext = await prepareForExecution(context);
+    const prepareResult = await prepareForExecution(context);
     const prepareTime = Date.now();
 
     // Dispatch to executor
-    const result = await dispatchRun(preparedContext, userEmail);
+    const result = await dispatchRun(prepareResult.context);
     const dispatchTime = Date.now();
 
     // Record per-step timing metrics for latency diagnosis
@@ -565,6 +585,32 @@ async function buildAndDispatchRun(opts: {
       { op: "api_step_build_context", ms: buildContextTime - tokenTime },
       { op: "api_step_prepare", ms: prepareTime - buildContextTime },
       { op: "api_step_dispatch", ms: dispatchTime - prepareTime },
+      // Sub-step timings within buildExecutionContext
+      {
+        op: "api_build_resolve_source",
+        ms: buildContextTimings.resolveSource,
+      },
+      {
+        op: "api_build_resolve_scope",
+        ms: buildContextTimings.resolveScope,
+      },
+      {
+        op: "api_build_resolve_credentials",
+        ms: buildContextTimings.resolveCredentials,
+      },
+      // Sub-step timings within prepareForExecution
+      {
+        op: "api_prepare_resolve_scopes",
+        ms: prepareResult.timings.resolveScopes,
+      },
+      {
+        op: "api_prepare_ensure_storage",
+        ms: prepareResult.timings.ensureStorage,
+      },
+      {
+        op: "api_prepare_storage_manifest",
+        ms: prepareResult.timings.storageManifest,
+      },
     ];
     for (const step of steps) {
       recordSandboxOperation({
@@ -611,16 +657,12 @@ export async function createRun(
   const apiStartTime = Date.now();
   const { userId, agentComposeVersionId, prompt } = params;
 
-  // Fetch user email once, reused for authorization and dispatch routing
-  const userEmail = await getUserEmail(userId);
-
-  // Steps 1-2: Load compose version/metadata and verify access
-  const { composeContent } = await loadAndAuthorizeCompose(
-    userId,
-    userEmail,
-    agentComposeVersionId,
-    params.composeId,
-  );
+  // Steps 1-2: Load compose and fetch user email in parallel, then authorize
+  const [{ composeContent, compose }, userEmail] = await Promise.all([
+    loadCompose(agentComposeVersionId, params.composeId),
+    getUserEmail(userId),
+  ]);
+  await authorizeCompose(userId, userEmail, compose);
   const authorizeTime = Date.now();
 
   // Step 3: Validate template vars and image access (for new runs only)
@@ -700,7 +742,6 @@ export async function createRun(
     scopeId,
     authorizeTime,
     transactionTime,
-    userEmail,
   });
 
   return {
@@ -753,16 +794,13 @@ export async function executeQueuedRun(
 
   log.debug(`Executing queued run ${runId} for user ${userId}`);
 
-  // Fetch user email once, reused for authorization and dispatch routing
-  const userEmail = await getUserEmail(userId);
-
-  // Steps 2-3: Load compose version/metadata and verify access
-  const { composeContent } = await loadAndAuthorizeCompose(
-    userId,
-    userEmail,
-    agentComposeVersionId,
-    params.composeId,
-  );
+  // Steps 2-3: Load compose and fetch user email in parallel, then authorize
+  const [{ composeContent, compose: queuedCompose }, userEmail] =
+    await Promise.all([
+      loadCompose(agentComposeVersionId, params.composeId),
+      getUserEmail(userId),
+    ]);
+  await authorizeCompose(userId, userEmail, queuedCompose);
   const authorizeTime = Date.now();
 
   // Step 4: Validate template vars and image access (for new runs only)
@@ -787,6 +825,5 @@ export async function executeQueuedRun(
     scopeId: params.scopeId,
     authorizeTime,
     transactionTime,
-    userEmail,
   });
 }

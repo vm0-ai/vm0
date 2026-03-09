@@ -1,5 +1,116 @@
 # Changelog
 
+## [0.93.2](https://github.com/vm0-ai/vm0/compare/platform-v0.93.1...platform-v0.93.2) (2026-03-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.46.0
+
+## [0.93.1](https://github.com/vm0-ai/vm0/compare/platform-v0.93.0...platform-v0.93.1) (2026-03-07)
+
+
+### Bug Fixes
+
+* use correct storage type in memory dedup path and propagate checkpoint errors ([#3906](https://github.com/vm0-ai/vm0/issues/3906)) ([9abe586](https://github.com/vm0-ai/vm0/commit/9abe586d92126cef4fc9f7c2fa4319c7448e86dd))
+
+## [0.93.0](https://github.com/vm0-ai/vm0/compare/platform-v0.92.1...platform-v0.93.0) (2026-03-07)
+
+
+### Features
+
+* add webflow oauth connector ([#3883](https://github.com/vm0-ai/vm0/issues/3883)) ([2024d3e](https://github.com/vm0-ai/vm0/commit/2024d3e0f570980a48685851dc1f20e93dada88c))
+* remove airtable connector feature switch ([#3886](https://github.com/vm0-ai/vm0/issues/3886)) ([98dafdc](https://github.com/vm0-ai/vm0/commit/98dafdcc1057633e33973b92152ace10401c46ef))
+
+
+### Bug Fixes
+
+* **platform:** deduplicate events by sequence number to prevent unknown blocks in log detail ([#3890](https://github.com/vm0-ai/vm0/issues/3890)) ([9359771](https://github.com/vm0-ai/vm0/commit/93597717ebb0608827cd98fd90c97e53e7863a40))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.45.0
+
+## [0.92.1](https://github.com/vm0-ai/vm0/compare/platform-v0.92.0...platform-v0.92.1) (2026-03-07)
+
+
+### Bug Fixes
+
+* use server-computed connector-provided secret names in compose warning ([#3843](https://github.com/vm0-ai/vm0/issues/3843)) ([b66c877](https://github.com/vm0-ai/vm0/commit/b66c87774aa6fd21c73878026f3d0f2e7420928b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.44.1
+
+## [0.92.0](https://github.com/vm0-ai/vm0/compare/platform-v0.91.0...platform-v0.92.0) (2026-03-07)
+
+
+### Features
+
+* **connectors:** gate airtable connector behind internal feature switch ([#3864](https://github.com/vm0-ai/vm0/issues/3864)) ([5250661](https://github.com/vm0-ai/vm0/commit/5250661e5a48673b9f843a9d03385f7e825a163d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.44.0
+
+## [0.91.0](https://github.com/vm0-ai/vm0/compare/platform-v0.90.0...platform-v0.91.0) (2026-03-07)
+
+
+### Features
+
+* **connector:** make airtable connector public ([#3856](https://github.com/vm0-ai/vm0/issues/3856)) ([7484935](https://github.com/vm0-ai/vm0/commit/7484935441e18ce10661f47b37eafc7d6bfc9b85))
+* **connectors:** add canva oauth connector ([#3837](https://github.com/vm0-ai/vm0/issues/3837)) ([522fe59](https://github.com/vm0-ai/vm0/commit/522fe59a0dc16478ee97907c8f143e98579635c4))
+* **connectors:** add hubspot oauth connector ([#3835](https://github.com/vm0-ai/vm0/issues/3835)) ([1cc3e37](https://github.com/vm0-ai/vm0/commit/1cc3e3795879b7a3988ec999ef16bca0cecd5ee9))
+* **connectors:** add supabase oauth connector ([#3836](https://github.com/vm0-ai/vm0/issues/3836)) ([b7c2d2e](https://github.com/vm0-ai/vm0/commit/b7c2d2e5146de7c429113c07291886afbd1ec7b5))
+* **connectors:** add todoist oauth connector ([#3850](https://github.com/vm0-ai/vm0/issues/3850)) ([7cce2b8](https://github.com/vm0-ai/vm0/commit/7cce2b89cfd5dc051d9fb0001be329ab5e17a46d))
+* **connectors:** add wix oauth connector ([#3851](https://github.com/vm0-ai/vm0/issues/3851)) ([faa337d](https://github.com/vm0-ai/vm0/commit/faa337d1e4513851024cb57c3e2d1f0de09cd11a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.43.0
+
+## [0.90.0](https://github.com/vm0-ai/vm0/compare/platform-v0.89.0...platform-v0.90.0) (2026-03-06)
+
+
+### Features
+
+* add airtable oauth connector with pkce support ([#3833](https://github.com/vm0-ai/vm0/issues/3833)) ([2e64f13](https://github.com/vm0-ai/vm0/commit/2e64f1363058e9d258073c140f9a669047321438))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.42.0
+
+## [0.89.0](https://github.com/vm0-ai/vm0/compare/platform-v0.88.2...platform-v0.89.0) (2026-03-06)
+
+
+### Features
+
+* **platform:** add zero app with shell, schedule, and polish ([#3825](https://github.com/vm0-ai/vm0/issues/3825)) ([456337d](https://github.com/vm0-ai/vm0/commit/456337def2a40bea8dcd2b86f3a662389c968389))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.41.0
+
 ## [0.88.2](https://github.com/vm0-ai/vm0/compare/platform-v0.88.1...platform-v0.88.2) (2026-03-06)
 
 

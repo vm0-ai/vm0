@@ -22,6 +22,7 @@ export interface RunResult {
   conversationId: string;
   artifact?: Record<string, string>; // { artifactName: version } - optional when run has no artifact
   volumes?: Record<string, string>; // { volumeName: version }
+  memory?: Record<string, string>; // { memoryName: version }
 }
 
 /**
@@ -61,6 +62,9 @@ export interface ExecutionContext {
   // Artifact settings (new runs only)
   artifactName?: string;
   artifactVersion?: string;
+
+  // Memory storage name
+  memoryName?: string;
 
   // Volume version overrides (volume name -> version)
   volumeVersions?: Record<string, string>;

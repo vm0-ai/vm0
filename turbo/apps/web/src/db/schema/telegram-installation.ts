@@ -17,7 +17,7 @@ export const telegramInstallations = pgTable("telegram_installations", {
   // Bot default agent — always set at registration time
   defaultComposeId: uuid("default_compose_id")
     .notNull()
-    .references(() => agentComposes.id, { onDelete: "restrict" }),
+    .references(() => agentComposes.id, { onDelete: "cascade" }),
   // Admin: the VM0 user who registered the bot (Clerk user ID)
   adminUserId: text("admin_user_id").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -10,6 +10,7 @@ export enum FeatureSwitchKey {
   PlatformSecrets = "platformSecrets",
   PlatformArtifacts = "platformArtifacts",
   PlatformApiKeys = "platformApiKeys",
+  CanvaConnector = "canvaConnector",
   ComputerConnector = "computerConnector",
   DeelConnector = "deelConnector",
   DocuSignConnector = "docusignConnector",
@@ -26,6 +27,9 @@ export enum FeatureSwitchKey {
   GarminConnectConnector = "garminConnectConnector",
   RedditConnector = "redditConnector",
   IntervalsIcuConnector = "intervalsIcuConnector",
+  SupabaseConnector = "supabaseConnector",
+  TodoistConnector = "todoistConnector",
+  WebflowConnector = "webflowConnector",
   GitHubIntegration = "githubIntegration",
   TelegramIntegration = "telegramIntegration",
 }

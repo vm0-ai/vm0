@@ -4,9 +4,8 @@ import { telegramThreadSessions } from "../../../db/schema/telegram-thread-sessi
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createTelegramClient, sendMessage } from "../client";
-import { resolveUserLink, getWorkspaceAgent } from "./shared";
+import { resolveUserLink, getWorkspaceAgent, buildConnectUrl } from "./shared";
 import { escapeHtml } from "../format";
-import { getPlatformUrl } from "../../url";
 import { logger } from "../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -50,8 +49,12 @@ export async function handleNewSessionCommand(
 
   const userLink = await resolveUserLink(installationId, fromUserId);
   if (!userLink) {
-    const platformUrl = getPlatformUrl();
-    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}`;
+    const connectUrl = buildConnectUrl(
+      installationId,
+      installation.telegramBotId,
+      fromUserId,
+      botToken,
+    );
     await sendMessage(
       client,
       chatId,

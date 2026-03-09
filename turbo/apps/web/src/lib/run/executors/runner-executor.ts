@@ -64,6 +64,7 @@ export async function executeRunnerJob(
     userTimezone: context.userTimezone ?? undefined,
     agentName: context.agentName ?? undefined,
     agentScopeSlug: context.agentScopeSlug ?? undefined,
+    memoryName: context.memoryName ?? undefined,
   };
 
   // Insert into runner job queue

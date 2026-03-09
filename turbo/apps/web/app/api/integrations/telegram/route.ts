@@ -26,6 +26,7 @@ import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import { isNotFound } from "../../../../src/lib/errors";
 import { logger } from "../../../../src/lib/logger";
+import { checkTelegramDomain } from "../../../../src/lib/telegram/check-domain";
 
 const patchBodySchema = z.object({
   agentName: z.string().min(1),
@@ -62,19 +63,21 @@ export async function GET(request: Request) {
     .orderBy(desc(telegramUserLinks.createdAt))
     .limit(1);
 
-  if (!userLink) {
-    return NextResponse.json(
-      { error: { message: "No linked Telegram bot", code: "NOT_FOUND" } },
-      { status: 404 },
-    );
+  // Find installation via user link or admin ownership
+  let installation;
+  if (userLink) {
+    [installation] = await db
+      .select()
+      .from(telegramInstallations)
+      .where(eq(telegramInstallations.id, userLink.installationId))
+      .limit(1);
+  } else {
+    [installation] = await db
+      .select()
+      .from(telegramInstallations)
+      .where(eq(telegramInstallations.adminUserId, userId))
+      .limit(1);
   }
-
-  // Get bot installation via user link
-  const [installation] = await db
-    .select()
-    .from(telegramInstallations)
-    .where(eq(telegramInstallations.id, userLink.installationId))
-    .limit(1);
 
   if (!installation) {
     return NextResponse.json(
@@ -144,8 +147,16 @@ export async function GET(request: Request) {
   );
 
   const isAdmin = installation.adminUserId === userId;
+  const isConnected = !!userLink;
+
+  const { NEXT_PUBLIC_PLATFORM_URL } = env();
+  const domainConfigured = await checkTelegramDomain(
+    installation.telegramBotId,
+    NEXT_PUBLIC_PLATFORM_URL,
+  );
 
   return NextResponse.json({
+    installationId: installation.id,
     bot: {
       id: installation.telegramBotId,
       username: installation.botUsername,
@@ -154,6 +165,8 @@ export async function GET(request: Request) {
       ? { id: compose.id, name: compose.name, scopeSlug: compose.scopeSlug }
       : null,
     isAdmin,
+    isConnected,
+    domainConfigured,
     environment: {
       requiredSecrets,
       requiredVars,

@@ -184,12 +184,27 @@ async function generateSnapshotFromDb(
 
     // Update _journal.json to ensure this migration entry exists
     const journalPath = path.join(META_DIR, "_journal.json");
-    const journal = JSON.parse(fs.readFileSync(journalPath, "utf-8"));
+
+    interface MigrationJournalEntry {
+      idx: number;
+      version: string;
+      when: number;
+      tag: string;
+      breakpoints: boolean;
+    }
+
+    interface MigrationJournal {
+      version: string;
+      dialect: string;
+      entries: MigrationJournalEntry[];
+    }
+
+    const journal = JSON.parse(
+      fs.readFileSync(journalPath, "utf-8"),
+    ) as MigrationJournal;
 
     // Check if entry already exists
-    const existingEntry = journal.entries.find(
-      (e: any) => e.idx === migration.idx,
-    );
+    const existingEntry = journal.entries.find((e) => e.idx === migration.idx);
     if (!existingEntry) {
       console.log(
         `⚠️  Migration ${migration.idx} not in journal - this shouldn't happen`,

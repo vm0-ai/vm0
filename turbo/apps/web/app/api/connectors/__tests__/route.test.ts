@@ -38,6 +38,7 @@ describe("GET /api/connectors - List Connectors", () => {
 
     expect(response.status).toBe(200);
     expect(data.connectors).toEqual([]);
+    expect(data.connectorProvidedSecretNames).toEqual([]);
   });
 
   it("should list all connectors for user", async () => {
@@ -53,6 +54,21 @@ describe("GET /api/connectors - List Connectors", () => {
     expect(data.connectors[0].type).toBe("github");
     expect(data.connectors[0].authMethod).toBe("oauth");
     expect(data.connectors[0].externalUsername).toBe("testuser");
+  });
+
+  it("should return connector-provided secret names", async () => {
+    const user = await context.setupUser();
+    await createTestConnector(user.scopeId, { type: "github" });
+
+    const request = createTestRequest("http://localhost:3000/api/connectors");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.connectorProvidedSecretNames).toEqual(
+      expect.arrayContaining(["GH_TOKEN", "GITHUB_TOKEN"]),
+    );
+    expect(data.connectorProvidedSecretNames).toHaveLength(2);
   });
 
   it("should not return connectors from other users", async () => {

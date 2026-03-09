@@ -5,8 +5,10 @@ import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createSlackClient, postMessage, setThreadStatus } from "../client";
 import { buildLoginPromptMessage } from "../blocks";
+import type { SlackFile } from "../context";
 import { runAgentForSlack } from "./run-agent";
 import {
+  enrichMessageContent,
   fetchConversationContexts,
   lookupThreadSession,
   buildLoginUrl,
@@ -24,6 +26,7 @@ interface DirectMessageContext {
   messageText: string;
   messageTs: string;
   threadTs?: string;
+  files?: SlackFile[];
 }
 
 /**
@@ -111,7 +114,15 @@ export async function handleDirectMessage(
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
 
   // Use message text directly (no mention prefix to strip in DMs)
-  const messageContent = context.messageText;
+  const messageContent = await enrichMessageContent({
+    messageContent: context.messageText,
+    files: context.files,
+    botToken,
+    channelId: context.channelId,
+    threadTs,
+    client,
+    userId: context.userId,
+  });
 
   // 6. Look up existing thread session for deduplication
   let existingSessionId: string | undefined;

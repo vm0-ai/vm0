@@ -150,6 +150,7 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
+        memoryName: undefined,
         vars: undefined,
         secrets: undefined,
         volumeVersions: undefined,
@@ -203,6 +204,7 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
+        memoryName: undefined,
         vars: undefined,
         secrets: undefined,
         volumeVersions: undefined,
@@ -596,6 +598,7 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
+        memoryName: undefined,
         vars: { KEY1: "value1" },
         secrets: undefined,
         volumeVersions: undefined,
@@ -633,6 +636,7 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
+        memoryName: undefined,
         vars: { KEY1: "value1", KEY2: "value2" },
         secrets: undefined,
         volumeVersions: undefined,
@@ -668,6 +672,7 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
+        memoryName: undefined,
         vars: { URL: "https://example.com?foo=bar" },
         secrets: undefined,
         volumeVersions: undefined,
@@ -746,10 +751,41 @@ describe("run command", () => {
         prompt: "test prompt",
         artifactName: "test-artifact",
         artifactVersion: undefined,
+        memoryName: undefined,
         vars: undefined,
         secrets: undefined,
         volumeVersions: undefined,
         conversationId: undefined,
+      });
+    });
+  });
+
+  describe("--memory flag", () => {
+    it("should pass custom memory name", async () => {
+      let capturedBody: unknown;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--artifact-name",
+        "test-artifact",
+        "--memory",
+        "my-custom-memory",
+      ]);
+
+      expect(capturedBody).toMatchObject({
+        memoryName: "my-custom-memory",
       });
     });
   });

@@ -29,7 +29,7 @@ export const githubInstallations = pgTable(
     adminGithubUserId: varchar("admin_github_user_id", { length: 255 }),
     defaultComposeId: uuid("default_compose_id")
       .notNull()
-      .references(() => agentComposes.id, { onDelete: "restrict" }),
+      .references(() => agentComposes.id, { onDelete: "cascade" }),
     repoConfigs: jsonb("repo_configs"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

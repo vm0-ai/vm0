@@ -7,9 +7,11 @@ import { scopeContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
 import {
-  createUserScope,
+  createScope,
   updateScopeSlug,
+  isVm0Admin,
 } from "../../../src/lib/scope/scope-service";
+import { getUserEmail } from "../../../src/lib/auth/get-user-email";
 import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
@@ -71,7 +73,20 @@ const router = tsr.router(scopeContract, {
     log.debug("creating user scope", { userId, slug });
 
     try {
-      const scope = await createUserScope(userId, slug);
+      // vm0-admin slug policy: allow vm0-prefixed slugs for admin users only
+      let skipSlugValidation = false;
+      if (slug.startsWith("vm0")) {
+        const email = await getUserEmail(userId);
+        if (!isVm0Admin(email)) {
+          return createErrorResponse(
+            "BAD_REQUEST",
+            `Scope slug "${slug}" is reserved`,
+          );
+        }
+        skipSlugValidation = true;
+      }
+
+      const scope = await createScope(userId, slug, { skipSlugValidation });
 
       return {
         status: 201 as const,

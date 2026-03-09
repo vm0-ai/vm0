@@ -78,8 +78,8 @@ export async function POST(
   }
 
   const message = update.message;
-  if (!message || !message.text) {
-    // No text message — nothing to process
+  if (!message || (!message.text && !message.photo)) {
+    // No text or photo — nothing to process
     return new Response("OK", { status: 200 });
   }
 
@@ -88,38 +88,35 @@ export async function POST(
   // Route to appropriate handler
   after(
     (async () => {
-      // /start command
-      if (message.text?.startsWith("/start")) {
+      const messageText = message.text ?? message.caption;
+      const command = parseBotCommand(messageText, installation.botUsername);
+
+      if (command === "start") {
         await handleStartCommand({ message }, installationId);
         return;
       }
 
-      // /new_session command
-      if (message.text?.startsWith("/new_session")) {
+      if (command === "new_session") {
         await handleNewSessionCommand({ message }, installationId);
         return;
       }
 
-      // /connect command
-      if (message.text?.startsWith("/connect")) {
+      if (command === "connect") {
         await handleConnectCommand({ message }, installationId);
         return;
       }
 
-      // /disconnect command
-      if (message.text?.startsWith("/disconnect")) {
+      if (command === "disconnect") {
         await handleDisconnectCommand({ message }, installationId);
         return;
       }
 
-      // /settings command
-      if (message.text?.startsWith("/settings")) {
+      if (command === "settings") {
         await handleSettingsCommand({ message }, installationId);
         return;
       }
 
-      // /help command
-      if (message.text?.startsWith("/help")) {
+      if (command === "help") {
         await handleHelpCommand({ message }, installationId);
         return;
       }
@@ -130,13 +127,18 @@ export async function POST(
         return;
       }
 
-      // Check for bot @mention in entities
+      // Check for bot @mention in entities or caption_entities
+      const mentionSource = message.text ?? message.caption ?? "";
+      const allEntities = [
+        ...(message.entities ?? []),
+        ...(message.caption_entities ?? []),
+      ];
       const hasBotMention =
         installation.botUsername &&
-        message.entities?.some(
+        allEntities.some(
           (e) =>
             e.type === "mention" &&
-            message.text?.slice(e.offset, e.offset + e.length).toLowerCase() ===
+            mentionSource.slice(e.offset, e.offset + e.length).toLowerCase() ===
               `@${installation.botUsername?.toLowerCase()}`,
         );
 
@@ -157,4 +159,46 @@ export async function POST(
 
   // Return 200 immediately
   return new Response("OK", { status: 200 });
+}
+
+/**
+ * Parse a bot command from message text, respecting @username targeting.
+ *
+ * In groups, Telegram commands can be targeted: `/connect@BotA`.
+ * If the command targets a different bot, returns undefined so this
+ * bot ignores it. In private chats, the @suffix is optional.
+ *
+ * Returns the command name (without slash or @suffix), or undefined.
+ */
+function parseBotCommand(
+  text: string | undefined,
+  botUsername: string | null,
+): string | undefined {
+  if (!text || !text.startsWith("/")) {
+    return undefined;
+  }
+
+  // Extract command part (first word, e.g. "/connect@BotA")
+  const firstWord = text.split(/\s/)[0];
+  if (!firstWord) {
+    return undefined;
+  }
+
+  const atIndex = firstWord.indexOf("@");
+  if (atIndex === -1) {
+    // No @suffix — command applies to all bots (or is in DM)
+    return firstWord.slice(1).toLowerCase();
+  }
+
+  // Has @suffix — only respond if it matches this bot
+  const targetUsername = firstWord.slice(atIndex + 1);
+  if (
+    botUsername &&
+    targetUsername.toLowerCase() === botUsername.toLowerCase()
+  ) {
+    return firstWord.slice(1, atIndex).toLowerCase();
+  }
+
+  // Targeted at a different bot
+  return undefined;
 }

@@ -4,7 +4,7 @@ import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createTelegramClient, sendMessage } from "../client";
-import { resolveUserLink, getWorkspaceAgent } from "./shared";
+import { resolveUserLink, getWorkspaceAgent, buildConnectUrl } from "./shared";
 import { escapeHtml } from "../format";
 import { getPlatformUrl } from "../../url";
 import { getUserEmail } from "../../auth/get-user-email";
@@ -64,13 +64,28 @@ export async function handleConnectCommand(
     return;
   }
 
-  const platformUrl = getPlatformUrl();
-  const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}`;
+  // In group chats, don't expose the connect URL publicly to prevent
+  // other users from hijacking the link. Direct users to DM instead.
+  if (message.chat.type !== "private") {
+    await sendMessage(
+      client,
+      chatId,
+      `🔗 Please <a href="https://t.me/${escapeHtml(installation.botUsername ?? "")}?start=connect">send me /connect</a> in a private message to connect your account.`,
+      replyOptions,
+    );
+    return;
+  }
+
+  const connectUrl = buildConnectUrl(
+    installationId,
+    installation.telegramBotId,
+    fromUserId,
+    botToken,
+  );
   await sendMessage(
     client,
     chatId,
     `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
-    replyOptions,
   );
 }
 
@@ -179,14 +194,26 @@ export async function handleSettingsCommand(
       : undefined;
 
   if (!userLink) {
-    const platformUrl = getPlatformUrl();
-    const connectUrl = `${platformUrl}/telegram/connect?bot=${installation.telegramBotId}`;
-    await sendMessage(
-      client,
-      chatId,
-      `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
-      replyOptions,
-    );
+    if (message.chat.type !== "private") {
+      await sendMessage(
+        client,
+        chatId,
+        `🔗 Please <a href="https://t.me/${escapeHtml(installation.botUsername ?? "")}?start=connect">send me /connect</a> in a private message to connect your account.`,
+        replyOptions,
+      );
+    } else {
+      const connectUrl = buildConnectUrl(
+        installationId,
+        installation.telegramBotId,
+        fromUserId,
+        botToken,
+      );
+      await sendMessage(
+        client,
+        chatId,
+        `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
+      );
+    }
     return;
   }
 

@@ -8,7 +8,6 @@ import {
   getLegacySystemTemplateWarning,
   extractVariableReferences,
   groupVariablesBySource,
-  getConnectorProvidedSecretNames,
   resolveSkillRef,
 } from "@vm0/core";
 import {
@@ -435,8 +434,9 @@ async function checkAndPromptMissingItems(
   );
 
   // Connector-provided secrets (e.g., GH_TOKEN from GitHub connector)
-  const connectorProvided = getConnectorProvidedSecretNames(
-    connectorsResponse.connectors.map((c) => c.type),
+  // Use server-computed list to avoid CLI/server version skew issues
+  const connectorProvided = new Set(
+    connectorsResponse.connectorProvidedSecretNames,
   );
 
   const missingSecrets = [...requiredSecrets].filter(

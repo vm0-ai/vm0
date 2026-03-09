@@ -30,6 +30,7 @@ export const apiConnectorsHandlers = [
     const response: ConnectorListResponse = {
       connectors: mockConnectors,
       configuredTypes: ALL_CONNECTOR_TYPES,
+      connectorProvidedSecretNames: [],
     };
     return HttpResponse.json(response);
   }),

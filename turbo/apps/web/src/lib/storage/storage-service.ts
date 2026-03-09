@@ -1,16 +1,14 @@
+import { gzipSync } from "node:zlib";
 import { resolveVolumes } from "./storage-resolver";
-import {
-  generatePresignedUrl,
-  listS3Objects,
-  putS3Object,
-} from "../s3/s3-client";
+import { generatePresignedUrl, putS3Object } from "../s3/s3-client";
 import { logger } from "../logger";
 import { badRequest } from "../errors";
-import type {
-  AgentVolumeConfig,
-  StorageManifest,
-  ManifestStorage,
-  ManifestArtifact,
+import {
+  DEFAULT_MEMORY_MOUNT_PATH,
+  type AgentVolumeConfig,
+  type StorageManifest,
+  type ManifestStorage,
+  type ManifestArtifact,
 } from "./types";
 import { storages, storageVersions } from "../../db/schema/storage";
 import { eq, and, isNull } from "drizzle-orm";
@@ -20,22 +18,30 @@ import { computeContentHashFromHashes } from "./content-hash";
 
 const log = logger("storage");
 
+/** Create a minimal valid empty tar.gz (two 512-byte null end-of-archive blocks, gzipped) */
+function createEmptyTarGz(): Buffer {
+  return gzipSync(Buffer.alloc(1024, 0));
+}
+
 /**
- * Ensure an artifact storage exists with at least one version.
+ * Ensure a storage exists with at least one version.
  * If the storage record doesn't exist, creates it.
- * If it exists but has no HEAD version, creates an empty initial version.
+ * If it exists but has no HEAD version, creates an empty initial version
+ * (both manifest.json and archive.tar.gz so download.ts can create the mount directory).
  * If it already has a HEAD version, this is a no-op.
  *
  * @param scopeId - Scope ID for storage access
  * @param userId - User ID for storage record ownership
- * @param artifactName - Artifact storage name
+ * @param storageName - Storage name
  * @param scopeSlug - Scope slug for S3 prefix construction
+ * @param storageType - Storage type ("artifact" or "memory")
  */
-export async function ensureArtifactExists(
+export async function ensureStorageExists(
   scopeId: string,
   userId: string,
-  artifactName: string,
+  storageName: string,
   scopeSlug: string,
+  storageType: "artifact" | "memory",
 ): Promise<void> {
   // Find or create storage record
   let [storage] = await globalThis.services.db
@@ -44,8 +50,8 @@ export async function ensureArtifactExists(
     .where(
       and(
         eq(storages.scopeId, scopeId),
-        eq(storages.name, artifactName),
-        eq(storages.type, "artifact"),
+        eq(storages.name, storageName),
+        eq(storages.type, storageType),
       ),
     )
     .limit(1);
@@ -55,10 +61,10 @@ export async function ensureArtifactExists(
       .insert(storages)
       .values({
         scopeId,
-        name: artifactName,
-        type: "artifact",
+        name: storageName,
+        type: storageType,
         userId,
-        s3Prefix: `${scopeSlug}/artifact/${artifactName}`,
+        s3Prefix: `${scopeSlug}/${storageType}/${storageName}`,
         size: 0,
         fileCount: 0,
       })
@@ -73,8 +79,8 @@ export async function ensureArtifactExists(
         .where(
           and(
             eq(storages.scopeId, scopeId),
-            eq(storages.name, artifactName),
-            eq(storages.type, "artifact"),
+            eq(storages.name, storageName),
+            eq(storages.type, storageType),
           ),
         )
         .limit(1);
@@ -82,12 +88,12 @@ export async function ensureArtifactExists(
     } else {
       storage = newStorage;
     }
-    log.info("Auto-created artifact storage", { artifactName, scopeId });
+    log.info("Auto-created storage", { storageName, storageType, scopeId });
   }
 
   if (!storage) {
     throw new Error(
-      `Failed to create or fetch artifact storage "${artifactName}"`,
+      `Failed to create or fetch ${storageType} storage "${storageName}"`,
     );
   }
 
@@ -100,14 +106,23 @@ export async function ensureArtifactExists(
     const versionId = computeContentHashFromHashes(storageId, []);
     const s3Key = `${storage.s3Prefix}/${versionId}`;
     const manifestKey = `${s3Key}/manifest.json`;
+    const archiveKey = `${s3Key}/archive.tar.gz`;
     const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
 
-    await putS3Object(
-      bucketName,
-      manifestKey,
-      JSON.stringify({ files: [] }),
-      "application/json",
-    );
+    await Promise.all([
+      putS3Object(
+        bucketName,
+        manifestKey,
+        JSON.stringify({ files: [] }),
+        "application/json",
+      ),
+      putS3Object(
+        bucketName,
+        archiveKey,
+        createEmptyTarGz(),
+        "application/gzip",
+      ),
+    ]);
 
     await globalThis.services.db.transaction(async (tx) => {
       await tx
@@ -118,7 +133,7 @@ export async function ensureArtifactExists(
           s3Key,
           size: 0,
           fileCount: 0,
-          message: "Initial empty artifact (auto-created)",
+          message: `Initial empty ${storageType} (auto-created)`,
           createdBy: "user",
         })
         .onConflictDoNothing();
@@ -134,12 +149,17 @@ export async function ensureArtifactExists(
         .where(eq(storages.id, storageId));
     });
 
-    log.info("Auto-created initial artifact version", {
-      artifactName,
+    log.info("Auto-created initial storage version", {
+      storageName,
+      storageType,
       versionId,
     });
   } catch (err) {
-    log.error("Failed to create initial artifact version", { err });
+    log.error("Failed to create initial storage version", {
+      storageName,
+      storageType,
+      err,
+    });
     // Clean up the headless storage so the next call can retry
     await globalThis.services.db
       .delete(storages)
@@ -162,13 +182,46 @@ export async function ensureArtifactExists(
 async function resolveVersion(
   scopeId: string,
   storageName: string,
-  storageType: "volume" | "artifact",
+  storageType: "volume" | "artifact" | "memory",
   version: string,
 ): Promise<{ versionId: string; s3Key: string }> {
-  // Query database for storage
-  // Must include type in query since same name can exist for different types
+  if (version === "latest") {
+    // Fetch storage + HEAD version in a single JOIN query
+    const [result] = await globalThis.services.db
+      .select({
+        headVersionId: storages.headVersionId,
+        versionId: storageVersions.id,
+        s3Key: storageVersions.s3Key,
+      })
+      .from(storages)
+      .leftJoin(storageVersions, eq(storages.headVersionId, storageVersions.id))
+      .where(
+        and(
+          eq(storages.scopeId, scopeId),
+          eq(storages.name, storageName),
+          eq(storages.type, storageType),
+        ),
+      )
+      .limit(1);
+
+    if (!result) {
+      throw new Error(`Storage "${storageName}" not found in database`);
+    }
+
+    if (!result.headVersionId) {
+      throw new Error(`Storage "${storageName}" has no HEAD version`);
+    }
+
+    if (!result.versionId || !result.s3Key) {
+      throw new Error(`Storage "${storageName}" HEAD version not found`);
+    }
+
+    return { versionId: result.versionId, s3Key: result.s3Key };
+  }
+
+  // For non-latest versions, need storage ID first for prefix resolution
   const [dbStorage] = await globalThis.services.db
-    .select()
+    .select({ id: storages.id })
     .from(storages)
     .where(
       and(
@@ -181,25 +234,6 @@ async function resolveVersion(
 
   if (!dbStorage) {
     throw new Error(`Storage "${storageName}" not found in database`);
-  }
-
-  if (version === "latest") {
-    // Get HEAD version
-    if (!dbStorage.headVersionId) {
-      throw new Error(`Storage "${storageName}" has no HEAD version`);
-    }
-
-    const [headVersion] = await globalThis.services.db
-      .select()
-      .from(storageVersions)
-      .where(eq(storageVersions.id, dbStorage.headVersionId))
-      .limit(1);
-
-    if (!headVersion) {
-      throw new Error(`Storage "${storageName}" HEAD version not found`);
-    }
-
-    return { versionId: headVersion.id, s3Key: headVersion.s3Key };
   }
 
   // Use shared version resolver for exact match and prefix match
@@ -236,6 +270,7 @@ async function resolveVersion(
  * @param volumeVersionOverrides - Optional volume version overrides
  * @param resumeArtifact - Optional artifact snapshot for resume (overrides artifactName/artifactVersion)
  * @param resumeArtifactMountPath - Mount path for resume artifact
+ * @param memoryName - Optional memory storage name (mounted at DEFAULT_MEMORY_MOUNT_PATH)
  * @returns Storage manifest with presigned URLs
  */
 export async function prepareStorageManifest(
@@ -248,6 +283,7 @@ export async function prepareStorageManifest(
   volumeVersionOverrides?: Record<string, string>,
   resumeArtifact?: { artifactName: string; artifactVersion: string },
   resumeArtifactMountPath?: string,
+  memoryName?: string,
 ): Promise<StorageManifest> {
   log.debug("Preparing storage manifest with presigned URLs...");
 
@@ -260,9 +296,9 @@ export async function prepareStorageManifest(
   // Skip artifact in resolveVolumes if we're using resumeArtifact (we'll handle it separately)
   const skipArtifact = !!resumeArtifact;
 
-  // If no agent config and no resume artifact, return empty manifest
-  if (!agentConfig && !resumeArtifact) {
-    return { storages: [], artifact: null };
+  // If no agent config and no resume artifact and no memory, return empty manifest
+  if (!agentConfig && !resumeArtifact && !memoryName) {
+    return { storages: [], artifact: null, memory: null };
   }
 
   // Resolve volumes from agent config
@@ -308,17 +344,12 @@ export async function prepareStorageManifest(
         const archiveKey = `${s3Key}/archive.tar.gz`;
         const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
 
-        // Get archive size from S3
-        const archiveObjects = await listS3Objects(bucketName, archiveKey);
-        const archiveSize = archiveObjects[0]?.size ?? 0;
-
         const manifestStorage: ManifestStorage = {
           name: volume.name,
           mountPath: volume.mountPath,
           vasStorageName: volume.vasStorageName,
           vasVersionId: versionId,
           archiveUrl,
-          archiveSize,
         };
 
         log.debug(`Generated archive URL for volume "${volume.name}"`);
@@ -373,16 +404,11 @@ export async function prepareStorageManifest(
         const manifestKey = `${s3Key}/manifest.json`;
         const manifestUrl = await generatePresignedUrl(bucketName, manifestKey);
 
-        // Get archive size from S3
-        const archiveObjects = await listS3Objects(bucketName, archiveKey);
-        const archiveSize = archiveObjects[0]?.size ?? 0;
-
         const manifestArtifact: ManifestArtifact = {
           mountPath: artifactSource.mountPath,
           vasStorageName: artifactSource.vasStorageName,
           vasVersionId: versionId,
           archiveUrl,
-          archiveSize,
           manifestUrl,
         };
 
@@ -394,10 +420,37 @@ export async function prepareStorageManifest(
       })()
     : Promise.resolve(null);
 
+  // Resolve memory (uses runner's scope, same as artifact)
+  // Memory storage is guaranteed to exist after ensureStorageExists() in prepareForExecution()
+  const memoryPromise = memoryName
+    ? (async (): Promise<ManifestArtifact | null> => {
+        const { versionId, s3Key } = await resolveVersion(
+          artifactScopeId,
+          memoryName,
+          "memory",
+          "latest",
+        );
+
+        const archiveKey = `${s3Key}/archive.tar.gz`;
+        const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
+
+        const memoryArtifact: ManifestArtifact = {
+          mountPath: DEFAULT_MEMORY_MOUNT_PATH,
+          vasStorageName: memoryName,
+          vasVersionId: versionId,
+          archiveUrl,
+        };
+
+        log.debug(`Generated archive URL for memory "${memoryName}"`);
+        return memoryArtifact;
+      })()
+    : Promise.resolve(null);
+
   // Wait for all URL generation to complete in parallel
-  const [storageResults, artifact] = await Promise.all([
+  const [storageResults, artifact, memory] = await Promise.all([
     Promise.all(volumePromises),
     artifactPromise,
+    memoryPromise,
   ]);
 
   // Filter out null results (skipped optional volumes)
@@ -406,11 +459,12 @@ export async function prepareStorageManifest(
   );
 
   log.debug(
-    `Storage manifest prepared: ${filteredStorages.length} storages, ${artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared: ${filteredStorages.length} storages, ${artifact ? "1 artifact" : "no artifact"}, ${memory ? "1 memory" : "no memory"}`,
   );
 
   return {
     storages: filteredStorages,
     artifact,
+    memory,
   };
 }

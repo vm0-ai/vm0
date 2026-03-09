@@ -4,4 +4,4 @@
  */
 
 export { createCheckpoint } from "./checkpoint-service";
-export type { ArtifactSnapshot } from "./types";
+export type { ArtifactSnapshot, MemorySnapshot } from "./types";

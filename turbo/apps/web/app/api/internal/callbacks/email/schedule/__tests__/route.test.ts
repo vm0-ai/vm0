@@ -31,7 +31,7 @@ interface ScheduleCallbackPayload {
 function createCallbackRequest(
   body: {
     runId: string;
-    status: "completed" | "failed";
+    status: "completed" | "failed" | "progress";
     error?: string;
     payload: ScheduleCallbackPayload;
   },
@@ -128,6 +128,43 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(401);
+    });
+  });
+
+  describe("Progress Callback", () => {
+    it("should no-op on progress and not send any email", async () => {
+      const user = await context.setupUser({ prefix: "email-sched-prog" });
+      mockClerk({ userId: user.userId });
+      const { composeId } = await createTestCompose(uniqueId("sched-agent"));
+      const schedule = await createTestSchedule(composeId, uniqueId("sched"));
+      const { runId } = await createTestRun(composeId, "Test prompt");
+      await linkRunToSchedule(runId, schedule.id);
+
+      const payload: ScheduleCallbackPayload = {
+        scheduleId: schedule.id,
+        composeId,
+        composeName: "test-agent",
+        userId: user.userId,
+      };
+
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/email/schedule",
+        payload: { ...payload },
+      });
+
+      const request = createCallbackRequest(
+        { runId, status: "progress", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      // No email should be sent for progress notifications
+      expect(mockResend.emails.send).not.toHaveBeenCalled();
     });
   });
 

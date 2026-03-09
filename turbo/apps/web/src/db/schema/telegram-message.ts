@@ -28,6 +28,8 @@ export const telegramMessages = pgTable(
     fromUserId: varchar("from_user_id", { length: 255 }).notNull(),
     fromUsername: varchar("from_username", { length: 255 }),
     text: text("text"),
+    /** Telegram file_id for photos — used to download images for context */
+    fileId: varchar("file_id", { length: 255 }),
     isBot: boolean("is_bot").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

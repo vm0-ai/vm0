@@ -5,7 +5,10 @@ import {
 import { env } from "../../../env";
 import type { SandboxLike } from "../../docker/docker-sandbox";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
-import type { PreparedArtifact, StorageManifest } from "../../storage/types";
+import {
+  type PreparedArtifact,
+  type StorageManifest,
+} from "../../storage/types";
 import {
   RUN_AGENT_SCRIPT,
   DOWNLOAD_SCRIPT,
@@ -270,6 +273,15 @@ async function buildSandboxEnvVars(
     sandboxEnvVars.VM0_ARTIFACT_MOUNT_PATH = artifactForCommand.mountPath;
     sandboxEnvVars.VM0_ARTIFACT_VOLUME_NAME = artifactForCommand.vasStorageName;
     sandboxEnvVars.VM0_ARTIFACT_VERSION_ID = artifactForCommand.vasVersionId;
+  }
+
+  // Add memory information for checkpoint
+  if (context.storageManifest?.memory) {
+    const memory = context.storageManifest.memory;
+    sandboxEnvVars.VM0_MEMORY_DRIVER = "vas";
+    sandboxEnvVars.VM0_MEMORY_MOUNT_PATH = memory.mountPath;
+    sandboxEnvVars.VM0_MEMORY_NAME = memory.vasStorageName;
+    sandboxEnvVars.VM0_MEMORY_VERSION_ID = memory.vasVersionId;
   }
 
   // Inject user timezone as TZ environment variable (if not already set in environment)

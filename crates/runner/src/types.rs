@@ -83,6 +83,8 @@ pub struct StorageManifest {
     pub storages: Vec<StorageEntry>,
     #[serde(default)]
     pub artifact: Option<ArtifactEntry>,
+    #[serde(default)]
+    pub memory: Option<ArtifactEntry>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

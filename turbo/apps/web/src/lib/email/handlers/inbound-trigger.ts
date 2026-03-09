@@ -273,6 +273,7 @@ export async function handleInboundEmailTrigger(
     composeId: compose.composeId,
     agentName: triggerAddress.agent,
     artifactName: "artifact",
+    memoryName: "memory",
     callbacks,
   });
 

@@ -100,11 +100,20 @@ export async function getScopeBySlug(slug: string) {
 }
 
 /**
- * Create a personal scope for a user and link it to their user record
- * This is the main entry point for setting up a user's scope
+ * Create a scope for a user with an admin membership.
+ *
+ * Merges the former createUserScope() and createOrganization() functions.
+ * Handles Clerk org creation (or self-hosted fallback), slug validation,
+ * one-admin-per-user constraint, and atomic scope + membership creation.
+ *
+ * @param options.skipSlugValidation - Skip reserved-slug checks (for vm0-admin bypass)
  */
-export async function createUserScope(clerkUserId: string, slug: string) {
-  // Check if user already has a scope via scope_members (admin role)
+export async function createScope(
+  clerkUserId: string,
+  slug: string,
+  options?: { skipSlugValidation?: boolean },
+) {
+  // Check one-admin-per-user constraint
   const existingAdmin = await getPrimaryAdminMembership(clerkUserId);
   if (existingAdmin) {
     const [existingScope] = await globalThis.services.db
@@ -117,7 +126,16 @@ export async function createUserScope(clerkUserId: string, slug: string) {
     );
   }
 
-  validateScopeSlug(slug);
+  // Validate slug (unless explicitly skipped for vm0-admin)
+  if (!options?.skipSlugValidation) {
+    validateScopeSlug(slug);
+  }
+
+  // Pre-check slug availability for clear error before Clerk API call
+  const existingScope = await getScopeBySlug(slug);
+  if (existingScope) {
+    throw badRequest(`Scope "${slug}" already exists`);
+  }
 
   // Create Clerk Organization so every scope is backed by one.
   // If Clerk auth is configured, org creation is required (fail-fast).
@@ -158,7 +176,7 @@ export async function createUserScope(clerkUserId: string, slug: string) {
     return newScope;
   });
 
-  log.debug("user scope created", {
+  log.debug("scope created", {
     clerkUserId,
     scopeId: scope.id,
     slug,

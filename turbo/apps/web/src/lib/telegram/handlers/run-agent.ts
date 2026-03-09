@@ -110,6 +110,7 @@ export async function runAgentForTelegram(
       sessionId,
       agentName,
       artifactName: "artifact",
+      memoryName: "memory",
       callbacks: [
         {
           url: callbackUrl,
@@ -126,6 +127,7 @@ export async function runAgentForTelegram(
       runId: result.runId,
     };
   } catch (error) {
+    log.error("Error running agent for Telegram:", error);
     if (isConcurrentRunLimit(error)) {
       return {
         status: "failed",
@@ -134,6 +136,11 @@ export async function runAgentForTelegram(
         runId: undefined,
       };
     }
-    throw error;
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return {
+      status: "failed",
+      response: `Error executing agent: ${message}`,
+      runId: undefined,
+    };
   }
 }

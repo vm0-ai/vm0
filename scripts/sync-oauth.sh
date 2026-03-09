@@ -17,9 +17,7 @@ set -euo pipefail
 # Usage: ./scripts/sync-oauth.sh [PROVIDER_NAME]
 
 DEV_VAULT="Development"
-DEV_ITEM="vm0-env-local"
 PROD_VAULT="Production"
-PROD_ITEM="vm0-env-production"
 
 # --- Helpers ---
 
@@ -37,7 +35,10 @@ op_safe_edit() {
   if err=$(op item edit "$item" --vault "$vault" "$@" 2>&1 >/dev/null); then
     return 0
   fi
-  if [[ "$err" == *"Password item requires ps value"* ]]; then
+  if [[ "$err" == *"isn't an item in"* ]] || [[ "$err" == *"not found"* ]]; then
+    # Item doesn't exist — create it
+    op item create --vault "$vault" --title "$item" --category Login "$@" >/dev/null
+  elif [[ "$err" == *"Password item requires ps value"* ]]; then
     op item edit "$item" --vault "$vault" "password[password]=placeholder" "$@" >/dev/null
   else
     echo "$err" >&2
@@ -63,6 +64,16 @@ if [[ -z "$PROVIDER" ]]; then
   exit 1
 fi
 
+# Derive 1Password item name: lowercase + underscores → hyphens
+# Special cases where the provider prefix differs from the item name:
+#   GH → github  (GitHub OAuth connector lives alongside GitHub App creds)
+ITEM_NAME="$(echo "$PROVIDER" | tr '[:upper:]' '[:lower:]' | tr '_' '-')"
+case "$PROVIDER" in
+  GH) ITEM_NAME="github" ;;
+esac
+DEV_ITEM="$ITEM_NAME"
+PROD_ITEM="$ITEM_NAME"
+
 CREDS_FILE="/tmp/oauth-credentials/${PROVIDER}"
 VAR_SLUG="${PROVIDER}_OAUTH_SLUG"
 VAR_ID="${PROVIDER}_OAUTH_CLIENT_ID"
@@ -73,6 +84,7 @@ VAR_SECRET_PROD="${PROVIDER}_OAUTH_CLIENT_SECRET_PROD"
 
 echo ""
 echo "Provider:      ${PROVIDER}"
+echo "1P item:       ${ITEM_NAME}"
 echo "Creds file:    ${CREDS_FILE}"
 echo ""
 

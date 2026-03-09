@@ -495,7 +495,7 @@ pub fn connect_vsock() -> io::Result<UnixStream> {
     use std::os::unix::io::FromRawFd;
 
     // SAFETY: Creating a vsock socket with valid constants. fd is checked for errors below.
-    let fd = unsafe { libc::socket(libc::AF_VSOCK, libc::SOCK_STREAM, 0) };
+    let fd = unsafe { libc::socket(libc::AF_VSOCK, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0) };
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }

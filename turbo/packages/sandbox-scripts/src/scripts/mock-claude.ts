@@ -11,6 +11,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
+import { encodeProjectName } from "./lib/common.js";
 
 export interface ParsedArgs {
   outputFormat: string;
@@ -78,9 +79,8 @@ export function parseArgs(args: string[]): ParsedArgs {
  * Exported for testing.
  */
 export function createSessionHistory(sessionId: string, cwd: string): string {
-  const projectName = cwd.replace(/^\//, "").replace(/\//g, "-");
   const homeDir = process.env.HOME ?? "/home/user";
-  const sessionDir = `${homeDir}/.claude/projects/-${projectName}`;
+  const sessionDir = `${homeDir}/.claude/projects/${encodeProjectName(cwd)}`;
   fs.mkdirSync(sessionDir, { recursive: true });
   return path.join(sessionDir, `${sessionId}.jsonl`);
 }

@@ -3,6 +3,7 @@ import { HttpResponse } from "msw";
 import {
   formatContextForAgent,
   formatContextForAgentWithImages,
+  formatCurrentMessageFiles,
   extractMessageContent,
   extractTextFromBlocks,
 } from "../context";
@@ -243,7 +244,9 @@ describe("Feature: Format Context For Agent", () => {
       expect(result).toContain("Check this article");
       expect(result).toContain("[image]: Article Preview");
       expect(result).toContain("Dimensions: 800x600");
-      expect(result).toContain("URL: https://example.com/preview.jpg");
+      expect(result).toContain(
+        'View: curl -sS -o /tmp/attachment_image.jpg "https://example.com/preview.jpg"',
+      );
     });
 
     it("should use fallback for attachment title", () => {
@@ -264,7 +267,9 @@ describe("Feature: Format Context For Agent", () => {
       const result = formatContextForAgent(messages);
 
       expect(result).toContain("[image]: Preview image");
-      expect(result).toContain("URL: https://example.com/thumb.jpg");
+      expect(result).toContain(
+        'View: curl -sS -o /tmp/attachment_image.jpg "https://example.com/thumb.jpg"',
+      );
     });
 
     it("should skip attachments without images", () => {
@@ -487,7 +492,9 @@ describe("Feature: Format Context With Image Upload", () => {
       expect(context.mocks.s3.generatePresignedUrl).toHaveBeenCalled();
       expect(result).toContain("[file]: screenshot.png (image/png)");
       expect(result).toContain("Dimensions: 1920x1080");
-      expect(result).toContain("Image URL: https://mock-presigned-url");
+      expect(result).toContain(
+        'View: curl -sS -o /tmp/F123.png "https://mock-presigned-url"',
+      );
       expect(result).toContain("- SENDER_ID: U123");
       expect(result).toContain("- MSG_ID: 1234567890.001");
     });
@@ -533,7 +540,9 @@ describe("Feature: Format Context With Image Upload", () => {
         "test-session-123",
       );
 
-      expect(result).toContain("Image URL: https://mock-presigned-url");
+      expect(result).toContain(
+        'View: curl -sS -o /tmp/F456.png "https://mock-presigned-url"',
+      );
       expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalledWith(
         "test-bucket",
         expect.stringContaining("slack-images/test-session-123/"),
@@ -850,7 +859,7 @@ describe("Feature: Format Context With Image Upload", () => {
       expect(result).toContain("[file]: img1.png");
       expect(result).toContain("[file]: img2.png");
       // Both should have presigned URLs
-      expect((result.match(/Image URL:/g) || []).length).toBe(2);
+      expect((result.match(/View: curl/g) || []).length).toBe(2);
     });
   });
 
@@ -1427,5 +1436,64 @@ describe("Feature: Extract Text From Rich Text Blocks", () => {
 
       expect(result).toContain("Plain text message");
     });
+  });
+});
+
+describe("Feature: Format Current Message Files", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should format multiple files with image upload", async () => {
+    const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    const imageBuffer = Buffer.concat([pngMagic, Buffer.from("fake-content")]);
+
+    const downloadHandler = http.get(
+      "https://files.slack.com/files-pri/T123-F001/download/photo.png",
+      () => {
+        return new HttpResponse(imageBuffer, {
+          headers: { "content-type": "image/png" },
+        });
+      },
+    );
+    server.use(downloadHandler.handler);
+
+    const files = [
+      {
+        id: "F001",
+        name: "photo.png",
+        mimetype: "image/png",
+        url_private_download:
+          "https://files.slack.com/files-pri/T123-F001/download/photo.png",
+      },
+      {
+        id: "F002",
+        name: "readme.txt",
+        mimetype: "text/plain",
+        permalink: "https://slack.com/files/readme.txt",
+      },
+    ];
+
+    const result = await formatCurrentMessageFiles(
+      files,
+      "xoxb-test-token",
+      "test-session-456",
+    );
+
+    expect(result).toContain("[file]: photo.png (image/png)");
+    expect(result).toContain("[file]: readme.txt (text/plain)");
+    expect(result).toContain("View: curl");
+    expect(result).toContain("URL: https://slack.com/files/readme.txt");
+    expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalledTimes(1);
+  });
+
+  it("should return empty string for empty files array", async () => {
+    const result = await formatCurrentMessageFiles(
+      [],
+      "xoxb-test-token",
+      "test-session-456",
+    );
+
+    expect(result).toBe("");
   });
 });

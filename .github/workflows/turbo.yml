@@ -38,7 +38,6 @@ jobs:
       crates-changed: ${{ steps.detect-crates.outputs.crates-changed }}
       ci-changed: ${{ steps.detect-ci.outputs.ci-changed }}
       e2e-changed: ${{ steps.detect-e2e.outputs.e2e-changed }}
-      cli-e2e-parallel-matrix: ${{ steps.cli-e2e-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -201,7 +200,7 @@ jobs:
             BASE_REF="HEAD^"
           fi
 
-          if git diff --name-only "$BASE_REF" HEAD | grep -q "^\.github/workflows/turbo\.yml$"; then
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^\.github/workflows/turbo\.yml$|^ansible/"; then
             echo "CI workflow changes detected"
             echo "ci-changed=true" >> $GITHUB_OUTPUT
           else
@@ -258,84 +257,6 @@ jobs:
             echo "Preview URL not set (PREVIEW_DOMAIN or job-ref is empty)"
           fi
 
-      - name: Generate CLI E2E parallel test matrix
-        id: cli-e2e-matrix
-        shell: bash
-        run: |
-          # Scan test files and distribute them across chunks using load balancing
-          # Dynamic chunk count: ~15 tests per chunk, max 10 chunks
-          TESTS_PER_CHUNK=15
-          MAX_CHUNKS=10
-
-          # Count tests per file
-          declare -A FILE_TESTS
-          TOTAL_TESTS=0
-          for f in e2e/tests/02-parallel/*.bats; do
-            count=$(grep -c "^@test" "$f" 2>/dev/null || echo 0)
-            FILE_TESTS["$f"]=$count
-            TOTAL_TESTS=$((TOTAL_TESTS + count))
-          done
-
-          # Calculate number of chunks (min 1, max MAX_CHUNKS)
-          NUM_CHUNKS=$(( (TOTAL_TESTS + TESTS_PER_CHUNK - 1) / TESTS_PER_CHUNK ))
-          NUM_CHUNKS=$(( NUM_CHUNKS < 1 ? 1 : NUM_CHUNKS ))
-          NUM_CHUNKS=$(( NUM_CHUNKS > MAX_CHUNKS ? MAX_CHUNKS : NUM_CHUNKS ))
-
-          # Sort files by test count descending for better distribution
-          mapfile -t SORTED_FILES < <(
-            for f in "${!FILE_TESTS[@]}"; do
-              echo "${FILE_TESTS[$f]} $f"
-            done | sort -rn | cut -d' ' -f2
-          )
-
-          echo "Found ${#SORTED_FILES[@]} files with $TOTAL_TESTS total tests"
-          echo "Creating $NUM_CHUNKS chunks (~$TESTS_PER_CHUNK tests each)"
-
-          # Initialize chunk arrays and test counts
-          declare -a CHUNK_FILES
-          declare -a CHUNK_COUNTS
-          for ((i=0; i<NUM_CHUNKS; i++)); do
-            CHUNK_FILES[$i]=""
-            CHUNK_COUNTS[$i]=0
-          done
-
-          # Distribute files using greedy load balancing (assign to least loaded chunk)
-          for f in "${SORTED_FILES[@]}"; do
-            tests=${FILE_TESTS[$f]}
-
-            # Find chunk with minimum tests
-            min_chunk=0
-            min_count=${CHUNK_COUNTS[0]}
-            for ((i=1; i<NUM_CHUNKS; i++)); do
-              if [ ${CHUNK_COUNTS[$i]} -lt $min_count ]; then
-                min_chunk=$i
-                min_count=${CHUNK_COUNTS[$i]}
-              fi
-            done
-
-            # Add file to that chunk
-            if [ -n "${CHUNK_FILES[$min_chunk]}" ]; then
-              CHUNK_FILES[$min_chunk]="${CHUNK_FILES[$min_chunk]} $f"
-            else
-              CHUNK_FILES[$min_chunk]="$f"
-            fi
-            CHUNK_COUNTS[$min_chunk]=$((CHUNK_COUNTS[$min_chunk] + tests))
-          done
-
-          # Build JSON array
-          CHUNKS="["
-          for ((i=0; i<NUM_CHUNKS; i++)); do
-            if [ $i -gt 0 ]; then
-              CHUNKS="$CHUNKS,"
-            fi
-            files="${CHUNK_FILES[$i]}"
-            file_count=$(echo $files | wc -w)
-            CHUNKS="$CHUNKS{\"index\":$((i+1)),\"files\":\"$files\"}"
-            echo "Chunk $((i+1)): $file_count files, ${CHUNK_COUNTS[$i]} tests"
-          done
-          CHUNKS="$CHUNKS]"
-
-          echo "matrix=$CHUNKS" >> $GITHUB_OUTPUT
 
   file-size-check:
     runs-on: ubuntu-latest
@@ -621,6 +542,8 @@ jobs:
           DEEL_OAUTH_CLIENT_SECRET: ${{ secrets.DEEL_OAUTH_CLIENT_SECRET }}
           DOCUSIGN_OAUTH_CLIENT_ID: ${{ vars.DOCUSIGN_OAUTH_CLIENT_ID }}
           DOCUSIGN_OAUTH_CLIENT_SECRET: ${{ secrets.DOCUSIGN_OAUTH_CLIENT_SECRET }}
+          DROPBOX_OAUTH_CLIENT_ID: ${{ vars.DROPBOX_OAUTH_CLIENT_ID }}
+          DROPBOX_OAUTH_CLIENT_SECRET: ${{ secrets.DROPBOX_OAUTH_CLIENT_SECRET }}
           NEON_OAUTH_CLIENT_ID: ${{ vars.NEON_OAUTH_CLIENT_ID }}
           NEON_OAUTH_CLIENT_SECRET: ${{ secrets.NEON_OAUTH_CLIENT_SECRET }}
           REDDIT_OAUTH_CLIENT_ID: ${{ vars.REDDIT_OAUTH_CLIENT_ID }}
@@ -639,6 +562,18 @@ jobs:
           MONDAY_OAUTH_APP_ID: ${{ vars.MONDAY_OAUTH_APP_ID }}
           XERO_OAUTH_CLIENT_SECRET: ${{ secrets.XERO_OAUTH_CLIENT_SECRET }}
           MONDAY_OAUTH_CLIENT_SECRET: ${{ secrets.MONDAY_OAUTH_CLIENT_SECRET }}
+          WEBFLOW_OAUTH_CLIENT_ID: ${{ vars.WEBFLOW_OAUTH_CLIENT_ID }}
+          WEBFLOW_OAUTH_CLIENT_SECRET: ${{ secrets.WEBFLOW_OAUTH_CLIENT_SECRET }}
+          CANVA_OAUTH_CLIENT_ID: ${{ vars.CANVA_OAUTH_CLIENT_ID }}
+          CANVA_OAUTH_CLIENT_SECRET: ${{ secrets.CANVA_OAUTH_CLIENT_SECRET }}
+          SUPABASE_OAUTH_CLIENT_ID: ${{ vars.SUPABASE_OAUTH_CLIENT_ID }}
+          SUPABASE_OAUTH_CLIENT_SECRET: ${{ secrets.SUPABASE_OAUTH_CLIENT_SECRET }}
+          HUBSPOT_OAUTH_CLIENT_ID: ${{ vars.HUBSPOT_OAUTH_CLIENT_ID }}
+          HUBSPOT_OAUTH_CLIENT_SECRET: ${{ secrets.HUBSPOT_OAUTH_CLIENT_SECRET }}
+          AIRTABLE_OAUTH_CLIENT_ID: ${{ vars.AIRTABLE_OAUTH_CLIENT_ID }}
+          AIRTABLE_OAUTH_CLIENT_SECRET: ${{ secrets.AIRTABLE_OAUTH_CLIENT_SECRET }}
+          TODOIST_OAUTH_CLIENT_ID: ${{ vars.TODOIST_OAUTH_CLIENT_ID }}
+          TODOIST_OAUTH_CLIENT_SECRET: ${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
           NGROK_API_KEY: ${{ secrets.NGROK_API_KEY }}
           NGROK_COMPUTER_CONNECTOR_DOMAIN: ${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
           PLATFORM_URL: ${{ needs.prepare.outputs.platform-preview-url }}
@@ -759,6 +694,7 @@ jobs:
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
             CONCURRENT_RUN_LIMIT=0
+            RUNNER_DEFAULT_GROUP=vm0/development-${{ needs.prepare.outputs.job-ref }}
             VM0_DEBUG=*
             CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}
             SLACK_CLIENT_ID=${{ vars.SLACK_CLIENT_ID }}
@@ -784,6 +720,8 @@ jobs:
             DEEL_OAUTH_CLIENT_SECRET=${{ secrets.DEEL_OAUTH_CLIENT_SECRET }}
             DOCUSIGN_OAUTH_CLIENT_ID=${{ vars.DOCUSIGN_OAUTH_CLIENT_ID }}
             DOCUSIGN_OAUTH_CLIENT_SECRET=${{ secrets.DOCUSIGN_OAUTH_CLIENT_SECRET }}
+            DROPBOX_OAUTH_CLIENT_ID=${{ vars.DROPBOX_OAUTH_CLIENT_ID }}
+            DROPBOX_OAUTH_CLIENT_SECRET=${{ secrets.DROPBOX_OAUTH_CLIENT_SECRET }}
             NEON_OAUTH_CLIENT_ID=${{ vars.NEON_OAUTH_CLIENT_ID }}
             NEON_OAUTH_CLIENT_SECRET=${{ secrets.NEON_OAUTH_CLIENT_SECRET }}
             REDDIT_OAUTH_CLIENT_ID=${{ vars.REDDIT_OAUTH_CLIENT_ID }}
@@ -797,11 +735,23 @@ jobs:
             SENTRY_OAUTH_CLIENT_SECRET=${{ secrets.SENTRY_OAUTH_CLIENT_SECRET }}
             INTERVALS_ICU_OAUTH_CLIENT_ID=${{ vars.INTERVALS_ICU_OAUTH_CLIENT_ID }}
             INTERVALS_ICU_OAUTH_CLIENT_SECRET=${{ secrets.INTERVALS_ICU_OAUTH_CLIENT_SECRET }}
+            SUPABASE_OAUTH_CLIENT_ID=${{ vars.SUPABASE_OAUTH_CLIENT_ID }}
+            SUPABASE_OAUTH_CLIENT_SECRET=${{ secrets.SUPABASE_OAUTH_CLIENT_SECRET }}
             XERO_OAUTH_CLIENT_ID=${{ vars.XERO_OAUTH_CLIENT_ID }}
             MONDAY_OAUTH_CLIENT_ID=${{ vars.MONDAY_OAUTH_CLIENT_ID }}
             MONDAY_OAUTH_APP_ID=${{ vars.MONDAY_OAUTH_APP_ID }}
             XERO_OAUTH_CLIENT_SECRET=${{ secrets.XERO_OAUTH_CLIENT_SECRET }}
             MONDAY_OAUTH_CLIENT_SECRET=${{ secrets.MONDAY_OAUTH_CLIENT_SECRET }}
+            WEBFLOW_OAUTH_CLIENT_ID=${{ vars.WEBFLOW_OAUTH_CLIENT_ID }}
+            WEBFLOW_OAUTH_CLIENT_SECRET=${{ secrets.WEBFLOW_OAUTH_CLIENT_SECRET }}
+            CANVA_OAUTH_CLIENT_ID=${{ vars.CANVA_OAUTH_CLIENT_ID }}
+            CANVA_OAUTH_CLIENT_SECRET=${{ secrets.CANVA_OAUTH_CLIENT_SECRET }}
+            HUBSPOT_OAUTH_CLIENT_ID=${{ vars.HUBSPOT_OAUTH_CLIENT_ID }}
+            HUBSPOT_OAUTH_CLIENT_SECRET=${{ secrets.HUBSPOT_OAUTH_CLIENT_SECRET }}
+            AIRTABLE_OAUTH_CLIENT_ID=${{ vars.AIRTABLE_OAUTH_CLIENT_ID }}
+            AIRTABLE_OAUTH_CLIENT_SECRET=${{ secrets.AIRTABLE_OAUTH_CLIENT_SECRET }}
+            TODOIST_OAUTH_CLIENT_ID=${{ vars.TODOIST_OAUTH_CLIENT_ID }}
+            TODOIST_OAUTH_CLIENT_SECRET=${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
             NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
             PLATFORM_URL=${{ needs.prepare.outputs.platform-preview-url }}
@@ -847,7 +797,7 @@ jobs:
       # Step 6: Generate test tokens for E2E tests (one per test user)
       - name: Generate E2E test tokens
         run: |
-          for variant in serial parallel runner; do
+          for variant in serial runner; do
             e2e/scripts/generate-test-token.sh "$variant"
             cp ~/.vm0/config.json "/tmp/e2e-token-${variant}.json"
           done
@@ -862,12 +812,6 @@ jobs:
           path: ~/.vm0
           key: e2e-token-serial-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - run: cp /tmp/e2e-token-parallel.json ~/.vm0/config.json
-      - name: Save parallel token to cache
-        uses: actions/cache/save@v5
-        with:
-          path: ~/.vm0
-          key: e2e-token-parallel-${{ github.run_id }}-${{ github.run_attempt }}
 
       - run: cp /tmp/e2e-token-runner.json ~/.vm0/config.json
       - name: Save runner token to cache
@@ -1117,96 +1061,6 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
-  # Run CLI E2E tests - Phase 2: Parallel tests (does NOT need runner)
-  # Uses dynamic matrix to split test files into chunks for parallel execution
-  cli-e2e-02-parallel:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
-    needs: [prepare, deploy-web]
-    if: |
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
-      needs.prepare.outputs.job-ref != '' && (
-        needs.prepare.outputs.web-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.ci-changed == 'true' ||
-        needs.prepare.outputs.e2e-changed == 'true'
-      )
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.prepare.outputs.cli-e2e-parallel-matrix) }}
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: recursive
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Setup pnpm global directory
-        run: |
-          mkdir -p $HOME/.local/share/pnpm
-          pnpm config set global-bin-dir $HOME/.local/share/pnpm
-          echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
-
-      - name: Build Sandbox Scripts
-        run: cd turbo && pnpm turbo run build --filter=@vm0/sandbox-scripts
-
-      - name: Build CLI
-        run: cd turbo && pnpm --filter @vm0/cli build
-
-      - name: Setup CLI globally
-        run: cd turbo/apps/cli && pnpm link --global
-
-      - name: Install GNU parallel for bats
-        run: apt-get update && apt-get install -y parallel
-
-      - name: Restore test token from cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ~/.vm0
-          key: e2e-token-parallel-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            e2e-token-parallel-${{ github.run_id }}-
-          fail-on-cache-miss: true
-
-      - name: Bootstrap test account
-        run: |
-          vm0 scope set "e2e-parallel" --force
-          vm0 model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
-        env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-
-      - name: Start Cron Simulator
-        run: |
-          chmod +x ./e2e/scripts/cron-simulator.sh
-          ./e2e/scripts/cron-simulator.sh "$VM0_API_URL" 60 &
-          echo "CRON_SIMULATOR_PID=$!" >> $GITHUB_ENV
-        env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-
-      - name: Run Parallel E2E Tests (Chunk ${{ matrix.index }})
-        run: |
-          echo "=== Running Parallel E2E Tests (Chunk ${{ matrix.index }}) ==="
-          echo "Files: ${{ matrix.files }}"
-          BATS_TEST_TIMEOUT=60 ./e2e/test/libs/bats/bin/bats -T -j 5 --no-parallelize-within-files ${{ matrix.files }}
-          echo "✅ Chunk ${{ matrix.index }} tests passed"
-        env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          USE_MOCK_CLAUDE: "true"
-          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
-
-      - name: Stop Cron Simulator
-        if: always()
-        run: |
-          if [ -n "$CRON_SIMULATOR_PID" ]; then
-            kill "$CRON_SIMULATOR_PID" 2>/dev/null || true
-            echo "Cron simulator stopped"
-          fi
 
   # Deploy runner prepare: cross-compile, deploy to all metal hosts, build rootfs/snapshot with mock URL
   # Runs in parallel with deploy-web since rootfs/snapshot don't need the preview URL
@@ -1332,6 +1186,9 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           BIN_DIR: ${{ steps.host.outputs.bin-dir }}
           RUNNER_DIR: ${{ steps.host.outputs.runner-dir }}
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           TARGET_DIR="crates/target/${TARGET_TRIPLE}/${CARGO_PROFILE}"
@@ -1347,6 +1204,18 @@ jobs:
             --private-key $HOME/.ssh/runner.pem \
             -e "ansible_user=${METAL_USER}" \
             -v
+          if [ -n "${GRAFANA_CLOUD_API_KEY}" ]; then
+            ansible-playbook \
+              -i "${METAL_HOSTS}," \
+              playbooks/provision-monitoring.yml \
+              --private-key $HOME/.ssh/runner.pem \
+              -e "ansible_user=${METAL_USER}" \
+              -e "grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL}" \
+              -e "grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER}" \
+              -e "grafana_cloud_api_key=${GRAFANA_CLOUD_API_KEY}" \
+              -e "env_label=dev" \
+              -v
+          fi
           cd ..
 
           deploy_to_host() {
@@ -1486,7 +1355,7 @@ jobs:
               --env USE_MOCK_CLAUDE=true \
               --balloon-reclaim"
 
-            # Health check — filter by name so other PR runners don't cause false positives
+            # Health check — wait for runner startup, then verify
             sleep 5
             ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
             echo "=== Runner started on ${HOST} ==="
@@ -1858,10 +1727,10 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build web image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile.web
@@ -1881,10 +1750,10 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build platform image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile.platform
@@ -1904,10 +1773,10 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build sandbox image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile.sandbox
