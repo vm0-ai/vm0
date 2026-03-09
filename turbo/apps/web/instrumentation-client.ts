@@ -43,5 +43,10 @@ Sentry.init({
     "AbortError",
     // Browser extensions
     "ResizeObserver loop",
+    "func sseError not found",
+    "Failed to connect to MetaMask",
   ],
+
+  // Filter out errors from browser extension scripts
+  denyUrls: [/inpage\.js/, /chrome-extension:\/\//, /moz-extension:\/\//],
 });
