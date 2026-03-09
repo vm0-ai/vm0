@@ -414,6 +414,60 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       mockClerk({ userId: ownerUser.userId });
     });
 
+    it("should resolve model provider from runner's scope for shared agent", async () => {
+      // User A (owner) creates an agent without explicit API key
+      const ownerUser = user;
+      const { composeId: sharedComposeId } = await createTestCompose(
+        uniqueId("shared-mp"),
+        { noEnvironmentBlock: true },
+      );
+      await createTestPermission(sharedComposeId, "public");
+      // Owner has a model provider, but runner should use their own
+      await createTestModelProvider("anthropic-api-key", "owner-key");
+
+      // Switch to User B (runner) and configure their own model provider
+      await context.setupUser({ prefix: "runner-mp" });
+      await createTestModelProvider("anthropic-api-key", "runner-key");
+
+      // User B runs the shared agent — should succeed using runner's model provider
+      const data = await createTestRun(
+        sharedComposeId,
+        "Run with runner model provider",
+      );
+      expect(data.status).toBe("running");
+
+      // Switch back to owner for cleanup
+      mockClerk({ userId: ownerUser.userId });
+    });
+
+    it("should fail shared agent run when runner has no model provider", async () => {
+      // User A (owner) creates an agent without explicit API key
+      const ownerUser = user;
+      const { composeId: sharedComposeId } = await createTestCompose(
+        uniqueId("shared-no-mp"),
+        { noEnvironmentBlock: true },
+      );
+      await createTestPermission(sharedComposeId, "public");
+      // Owner has a model provider configured
+      await createTestModelProvider("anthropic-api-key", "owner-key");
+
+      // Switch to User B (runner) — no model provider configured
+      await context.setupUser({ prefix: "runner-no-mp" });
+
+      // User B runs the shared agent — should fail because runner has no model provider
+      const data = await createTestRun(
+        sharedComposeId,
+        "Run without model provider",
+      );
+      expect(data.status).toBe("failed");
+
+      const run = await getTestRun(data.runId);
+      expect(run.error).toMatch(/model provider/i);
+
+      // Switch back to owner for cleanup
+      mockClerk({ userId: ownerUser.userId });
+    });
+
     it("should deny running agent when email does not match", async () => {
       // User A creates an agent and shares with different email
       const ownerUser = user;

@@ -68,10 +68,6 @@ EOF
 }
 
 @test "sni-firewall: allowed domain passes through and logs captured" {
-    if [[ -n "$SKIP_NETWORK_SECURITY_TEST" ]]; then
-        skip "Network security test skipped"
-    fi
-
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -127,10 +123,6 @@ EOF
 }
 
 @test "sni-firewall: blocked domain is denied" {
-    if [[ -n "$SKIP_NETWORK_SECURITY_TEST" ]]; then
-        skip "Network security test skipped"
-    fi
-
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 

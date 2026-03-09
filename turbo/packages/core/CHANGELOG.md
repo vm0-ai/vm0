@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.49.0](https://github.com/vm0-ai/vm0/compare/core-v8.48.0...core-v8.49.0) (2026-03-09)
+
+
+### Features
+
+* add asana oauth connector integration ([#4066](https://github.com/vm0-ai/vm0/issues/4066)) ([488c35d](https://github.com/vm0-ai/vm0/commit/488c35d1bf8ff0fdf60730f5989c39c8433d1ba2))
+* add meta ads oauth connector integration ([#4058](https://github.com/vm0-ai/vm0/issues/4058)) ([f887225](https://github.com/vm0-ai/vm0/commit/f88722560ef6cc5a06259a783f3cad7cc3b65861))
+* add stripe oauth connector integration ([#4054](https://github.com/vm0-ai/vm0/issues/4054)) ([c9927fc](https://github.com/vm0-ai/vm0/commit/c9927fc1ec08bd4a46f3a10770610ed4979caf2d))
+
 ## [8.48.0](https://github.com/vm0-ai/vm0/compare/core-v8.47.0...core-v8.48.0) (2026-03-09)
 
 

@@ -68,10 +68,6 @@ EOF
 }
 
 @test "mitm-firewall: allowed domain passes through and logs captured" {
-    if [[ -n "$SKIP_NETWORK_SECURITY_TEST" ]]; then
-        skip "Network security test skipped"
-    fi
-
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -127,10 +123,6 @@ EOF
 }
 
 @test "mitm-firewall: blocked domain returns 403" {
-    if [[ -n "$SKIP_NETWORK_SECURITY_TEST" ]]; then
-        skip "Network security test skipped"
-    fi
-
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -168,10 +160,6 @@ EOF
 }
 
 @test "mitm-firewall: seal_secrets encrypts environment secrets" {
-    if [[ -n "$SKIP_NETWORK_SECURITY_TEST" ]]; then
-        skip "Network security test skipped"
-    fi
-
     export TEST_SECRET="secret-$(date +%s%3N)-$RANDOM"
 
     cat > "$TEST_DIR/vm0.yaml" <<EOF
@@ -221,10 +209,6 @@ EOF
 }
 
 @test "mitm-firewall: secrets not encrypted without seal_secrets" {
-    if [[ -n "$SKIP_NETWORK_SECURITY_TEST" ]]; then
-        skip "Network security test skipped"
-    fi
-
     export TEST_SECRET="plain-$(date +%s%3N)-$RANDOM"
 
     cat > "$TEST_DIR/vm0.yaml" <<EOF

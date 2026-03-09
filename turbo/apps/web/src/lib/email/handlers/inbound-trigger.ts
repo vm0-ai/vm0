@@ -277,8 +277,6 @@ export async function handleInboundEmailTrigger(
     artifactName: "artifact",
     memoryName: "memory",
     callbacks,
-    scopeId: compose.scopeId,
-    scopeSlug: compose.scopeSlug,
   });
 
   log.info("Dispatched agent run from email trigger", {

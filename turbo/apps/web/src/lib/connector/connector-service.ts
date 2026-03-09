@@ -1,5 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import {
+  CONNECTOR_TYPES,
   type ConnectorType,
   type ConnectorResponse,
   connectorTypeSchema,
@@ -261,6 +262,144 @@ export async function upsertOAuthConnector(
 }
 
 /**
+ * Create or update a connector with API token
+ * Stores secrets directly without OAuth flow
+ */
+export async function upsertApiTokenConnector(
+  scopeId: string,
+  userId: string,
+  type: ConnectorType,
+  inputSecrets: Record<string, string>,
+): Promise<{ connector: ConnectorResponse; created: boolean }> {
+  const config = CONNECTOR_TYPES[type];
+  const apiTokenConfig = config.authMethods["api-token"];
+  if (!apiTokenConfig) {
+    throw badRequest(
+      `Connector ${type} does not support api-token auth method`,
+    );
+  }
+
+  // Validate all required secrets are provided
+  for (const [name, secretConfig] of Object.entries(apiTokenConfig.secrets)) {
+    if (secretConfig.required && !inputSecrets[name]) {
+      throw badRequest(`Missing required secret: ${name}`);
+    }
+  }
+
+  const db = globalThis.services.db;
+
+  // Store each secret
+  for (const [name, value] of Object.entries(inputSecrets)) {
+    if (name in apiTokenConfig.secrets) {
+      await upsertSecretByScope(
+        scopeId,
+        userId,
+        name,
+        value,
+        "connector",
+        `API token for ${type} connector`,
+      );
+    }
+  }
+
+  // Check if connector exists
+  const existingConnector = await db
+    .select({ id: connectors.id })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.scopeId, scopeId),
+        eq(connectors.userId, userId),
+        eq(connectors.type, type),
+      ),
+    )
+    .limit(1);
+
+  const isUpdate = existingConnector.length > 0;
+
+  let connectorRow: {
+    id: string;
+    type: string;
+    authMethod: string;
+    externalId: string | null;
+    externalUsername: string | null;
+    externalEmail: string | null;
+    oauthScopes: string | null;
+    tokenExpiresAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+
+  if (isUpdate) {
+    const existingId = existingConnector[0]?.id;
+    if (!existingId) {
+      throw new Error("Existing connector not found during update");
+    }
+    const [updated] = await db
+      .update(connectors)
+      .set({
+        authMethod: "api-token",
+        externalId: null,
+        externalUsername: null,
+        externalEmail: null,
+        oauthScopes: null,
+        tokenExpiresAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(connectors.id, existingId))
+      .returning();
+    if (!updated) {
+      throw new Error("Failed to update connector");
+    }
+    connectorRow = updated;
+    log.debug("connector updated via api-token", {
+      connectorId: connectorRow.id,
+      type,
+    });
+  } else {
+    const [created] = await db
+      .insert(connectors)
+      .values({
+        scopeId,
+        userId,
+        type,
+        authMethod: "api-token",
+        externalId: null,
+        externalUsername: null,
+        externalEmail: null,
+        oauthScopes: null,
+        tokenExpiresAt: null,
+      })
+      .returning();
+    if (!created) {
+      throw new Error("Failed to create connector");
+    }
+    connectorRow = created;
+    log.debug("connector created via api-token", {
+      connectorId: connectorRow.id,
+      type,
+    });
+  }
+
+  return {
+    connector: {
+      id: connectorRow.id,
+      type: parseConnectorType(connectorRow.type),
+      authMethod: connectorRow.authMethod,
+      externalId: connectorRow.externalId,
+      externalUsername: connectorRow.externalUsername,
+      externalEmail: connectorRow.externalEmail,
+      oauthScopes: connectorRow.oauthScopes
+        ? JSON.parse(connectorRow.oauthScopes)
+        : null,
+      createdAt: connectorRow.createdAt.toISOString(),
+      updatedAt: connectorRow.updatedAt.toISOString(),
+    },
+    created: !isUpdate,
+  };
+}
+
+/**
  * Delete a connector and its associated secret
  */
 export async function deleteConnector(
@@ -268,12 +407,11 @@ export async function deleteConnector(
   userId: string,
   type: ConnectorType,
 ): Promise<void> {
-  const secretName = getSecretNameForConnector(type);
   const db = globalThis.services.db;
 
-  // Check if connector exists
+  // Check if connector exists and get its auth method
   const [existing] = await db
-    .select({ id: connectors.id })
+    .select({ id: connectors.id, authMethod: connectors.authMethod })
     .from(connectors)
     .where(
       and(
@@ -291,17 +429,37 @@ export async function deleteConnector(
   // Delete connector from database
   await db.delete(connectors).where(eq(connectors.id, existing.id));
 
-  // Delete associated secret
-  await db
-    .delete(secrets)
-    .where(
-      and(
-        eq(secrets.scopeId, scopeId),
-        eq(secrets.userId, userId),
-        eq(secrets.name, secretName),
-        eq(secrets.type, "connector"),
-      ),
-    );
+  // Collect all secret names to delete
+  const secretNames: string[] = [];
+  const config = CONNECTOR_TYPES[type];
+  const authMethodConfig = config.authMethods[existing.authMethod];
+  if (authMethodConfig) {
+    secretNames.push(...Object.keys(authMethodConfig.secrets));
+  }
+
+  // Also delete refresh token secret for OAuth connectors
+  if (existing.authMethod === "oauth" && type !== "computer") {
+    const handler =
+      PROVIDER_HANDLERS[type as Exclude<ConnectorType, "computer">];
+    const refreshSecretName = handler.getRefreshSecretName?.();
+    if (refreshSecretName) {
+      secretNames.push(refreshSecretName);
+    }
+  }
+
+  // Delete all associated secrets
+  for (const name of secretNames) {
+    await db
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.scopeId, scopeId),
+          eq(secrets.userId, userId),
+          eq(secrets.name, name),
+          eq(secrets.type, "connector"),
+        ),
+      );
+  }
 
   log.debug("connector deleted", { scopeId, type });
 }
