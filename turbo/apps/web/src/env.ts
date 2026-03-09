@@ -119,6 +119,9 @@ function initEnv() {
       // Strava OAuth (for connector)
       STRAVA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       STRAVA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Stripe OAuth (for connector)
+      STRIPE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      STRIPE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Garmin Connect OAuth (for connector)
       GARMIN_CONNECT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       GARMIN_CONNECT_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -267,6 +270,8 @@ function initEnv() {
       REDDIT_OAUTH_CLIENT_SECRET: process.env.REDDIT_OAUTH_CLIENT_SECRET,
       STRAVA_OAUTH_CLIENT_ID: process.env.STRAVA_OAUTH_CLIENT_ID,
       STRAVA_OAUTH_CLIENT_SECRET: process.env.STRAVA_OAUTH_CLIENT_SECRET,
+      STRIPE_OAUTH_CLIENT_ID: process.env.STRIPE_OAUTH_CLIENT_ID,
+      STRIPE_OAUTH_CLIENT_SECRET: process.env.STRIPE_OAUTH_CLIENT_SECRET,
       GARMIN_CONNECT_OAUTH_CLIENT_ID:
         process.env.GARMIN_CONNECT_OAUTH_CLIENT_ID,
       GARMIN_CONNECT_OAUTH_CLIENT_SECRET:

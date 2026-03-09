@@ -27,6 +27,7 @@ import { notionHandler } from "./providers/notion-handler";
 import { redditHandler } from "./providers/reddit-handler";
 import { slackHandler } from "./providers/slack-handler";
 import { stravaHandler } from "./providers/strava-handler";
+import { stripeHandler } from "./providers/stripe-handler";
 import { intervalsIcuHandler } from "./providers/intervals-icu-handler";
 import { sentryHandler } from "./providers/sentry-handler";
 import { vercelHandler } from "./providers/vercel-handler";
@@ -66,6 +67,7 @@ export const PROVIDER_HANDLERS: Record<
   sentry: sentryHandler,
   slack: slackHandler,
   strava: stravaHandler,
+  stripe: stripeHandler,
   todoist: todoistHandler,
   vercel: vercelHandler,
   webflow: webflowHandler,

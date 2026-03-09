@@ -71,6 +71,7 @@ const CONNECTOR_OAUTH_FEATURE_FLAGS = Object.freeze<
   "intervals-icu": FeatureSwitchKey.IntervalsIcuConnectorOAuth,
   supabase: FeatureSwitchKey.SupabaseConnectorOAuth,
   webflow: FeatureSwitchKey.WebflowConnectorOAuth,
+  stripe: FeatureSwitchKey.StripeConnectorOAuth,
 });
 
 export const allConnectorTypes$ = computed(async (get) => {
