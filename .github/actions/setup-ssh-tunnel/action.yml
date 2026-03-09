@@ -39,12 +39,12 @@ runs:
         mkdir -p "$HOME/.ssh"
         echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
         chmod 600 "$HOME/.ssh/runner.pem"
-        cat > "$HOME/.ssh/config" << EOF
-        Host *
-          StrictHostKeyChecking no
-          UserKnownHostsFile /dev/null
-          ConnectTimeout 10
-          IdentityFile $HOME/.ssh/runner.pem
-          ProxyCommand cloudflared access ssh --hostname %h --id ${CF_ACCESS_CLIENT_ID} --secret ${CF_ACCESS_CLIENT_SECRET}
-        EOF
+        {
+          echo "Host *.vm3.ai"
+          echo "  StrictHostKeyChecking no"
+          echo "  UserKnownHostsFile /dev/null"
+          echo "  ConnectTimeout 10"
+          echo "  IdentityFile $HOME/.ssh/runner.pem"
+          echo "  ProxyCommand cloudflared access ssh --hostname %h --id ${CF_ACCESS_CLIENT_ID} --secret ${CF_ACCESS_CLIENT_SECRET}"
+        } > "$HOME/.ssh/config"
         chmod 600 "$HOME/.ssh/config"
