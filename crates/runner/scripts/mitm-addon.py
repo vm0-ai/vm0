@@ -59,7 +59,7 @@ _registry_cache = {}
 _registry_cache_key = (0, 0)
 
 # Track request start times for latency calculation
-request_start_times = {}
+_request_start_times = {}
 
 
 def load_registry() -> dict:
@@ -306,7 +306,7 @@ def request(flow: http.HTTPFlow) -> None:
     For MITM mode, rewrites allowed requests to VM0 Proxy.
     """
     # Track request start time
-    request_start_times[flow.id] = time.time()
+    _request_start_times[flow.id] = time.time()
 
     # Get client IP (source VM)
     client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
@@ -441,7 +441,7 @@ def response(flow: http.HTTPFlow) -> None:
     Handle response and log network activity.
     """
     # Calculate latency
-    start_time = request_start_times.pop(flow.id, None)
+    start_time = _request_start_times.pop(flow.id, None)
     latency_ms = int((time.time() - start_time) * 1000) if start_time else 0
 
     # Get stored info
@@ -500,10 +500,10 @@ def response(flow: http.HTTPFlow) -> None:
 
 def error(flow: http.HTTPFlow) -> None:
     """
-    Clean up request_start_times on flow error (timeout, connection reset, etc.)
+    Clean up _request_start_times on flow error (timeout, connection reset, etc.)
     to prevent unbounded dict growth over the runner's lifetime.
     """
-    request_start_times.pop(flow.id, None)
+    _request_start_times.pop(flow.id, None)
 
 
 # mitmproxy addon registration
