@@ -17,7 +17,7 @@ function persistOrgId(orgId: string | undefined) {
 function OrgSwitcherInner() {
   const clerkLoadable = useLoadable(clerk$);
   const prevOrgRef = useRef<string | undefined>(
-    sessionStorage.getItem(ORG_ID_KEY) || undefined,
+    sessionStorage.getItem(ORG_ID_KEY) ?? undefined,
   );
 
   useEffect(() => {
