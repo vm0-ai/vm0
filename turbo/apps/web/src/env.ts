@@ -328,14 +328,7 @@ function initEnv() {
   // Only run on server-side where all env vars are accessible
   const isServer = typeof window === "undefined";
 
-  const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
-
   if (isServer) {
-    // DATABASE_URL is optional at build time but required at runtime
-    if (!isBuildPhase && !env.DATABASE_URL) {
-      throw new Error("DATABASE_URL is required at runtime");
-    }
-
     // Slack integration validation
     const slackEnabled = env.SLACK_INTEGRATION_ENABLED === "true";
     if (slackEnabled) {
