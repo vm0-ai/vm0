@@ -1,6 +1,5 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { scopeMembers } from "../../db/schema/scope-member";
-import { hasClerkAuth } from "../../env";
 import { isForbidden, badRequest, notFound } from "../errors";
 import { logger } from "../logger";
 import { scopeRoleSchema } from "@vm0/core";
@@ -20,18 +19,12 @@ type Scope = typeof scopes.$inferSelect;
 /**
  * Verify a user's Clerk org membership and lazily create a scope_members record.
  *
- * Only attempts sync when:
- * - Clerk auth is configured
- * - The scope has a real Clerk org ID (not a sentinel like "pending_*" or "org_self_hosted")
+ * Only attempts sync when the scope has a real Clerk org ID (not a sentinel like "pending_*").
  *
  * Returns the new scope member record, or null if the user is not a Clerk member.
  */
 async function syncClerkMembership(scope: Scope, userId: string) {
-  if (
-    !hasClerkAuth() ||
-    scope.clerkOrgId.startsWith("pending_") ||
-    scope.clerkOrgId === "org_self_hosted"
-  ) {
+  if (scope.clerkOrgId.startsWith("pending_")) {
     return null;
   }
 

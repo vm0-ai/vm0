@@ -1,10 +1,4 @@
 {
   "title": "Usage",
-  "pages": [
-    "run-agent",
-    "schedule-agent",
-    "using-skills",
-    "debugging",
-    "self-hosting"
-  ]
+  "pages": ["run-agent", "schedule-agent", "using-skills", "debugging"]
 }

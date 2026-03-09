@@ -1,12 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
-import { NextRequest } from "next/server";
-import { POST as TelemetryWebhook } from "../../../../../../../../app/api/webhooks/agent/telemetry/route";
 import {
   createTestRequest,
   createTestCompose,
   createTestRun,
-  createTestSandboxToken,
 } from "../../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -244,50 +241,6 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
       expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledWith(
         expect.stringContaining("where _time >"),
       );
-    });
-  });
-
-  describe("DB fallback (Axiom not configured)", () => {
-    it("should return system log from DB when Axiom is not configured", async () => {
-      // 1. Send telemetry via webhook with Axiom disabled
-      context.mocks.axiom.ingestToAxiom.mockResolvedValue(false);
-      mockClerk({ userId: user.userId });
-
-      const testToken = await createTestSandboxToken(user.userId, testRunId);
-      mockClerk({ userId: null });
-
-      const webhookRequest = new NextRequest(
-        "http://localhost:3000/api/webhooks/agent/telemetry",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            systemLog: "[INFO] DB fallback round-trip test\n",
-          }),
-        },
-      );
-
-      const webhookResponse = await TelemetryWebhook(webhookRequest);
-      expect(webhookResponse.status).toBe(200);
-
-      // 2. Query system-log with Axiom returning null (triggers DB fallback)
-      context.mocks.axiom.queryAxiom.mockResolvedValue(null);
-      mockClerk({ userId: user.userId });
-
-      const getRequest = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/system-log`,
-      );
-
-      const getResponse = await GET(getRequest);
-
-      expect(getResponse.status).toBe(200);
-      const data = await getResponse.json();
-      expect(data.systemLog).toContain("[INFO] DB fallback round-trip test");
-      expect(data.hasMore).toBe(false);
     });
   });
 });

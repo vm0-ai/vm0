@@ -24,7 +24,6 @@ import { getAgentSessionWithConversation } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
 import { executeE2bRun } from "./executors/e2b-executor";
 import { executeRunnerJob } from "./executors/runner-executor";
-import { executeDockerRun } from "./executors/docker-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
 import { buildExecutionContext as buildContext } from "./build-context";
 import { generateSandboxToken } from "../auth/sandbox-token";
@@ -261,13 +260,10 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
   if (env().E2B_API_KEY) {
     log.debug(`Dispatching run ${context.runId} to E2B executor`);
     return await executeE2bRun(context);
-  } else if (env().DOCKER_SANDBOX_IMAGE) {
-    log.debug(`Dispatching run ${context.runId} to Docker executor`);
-    return await executeDockerRun(context);
   }
 
   throw new Error(
-    "No executor configured: set E2B_API_KEY for cloud mode or DOCKER_SANDBOX_IMAGE for Docker mode",
+    "No executor configured: set E2B_API_KEY or RUNNER_DEFAULT_GROUP",
   );
 }
 

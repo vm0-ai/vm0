@@ -1,6 +1,4 @@
 import { clerkClient } from "@clerk/nextjs/server";
-import { env } from "../../env";
-import { SELF_HOSTED_USER_ID } from "./constants";
 
 const TEST_USER_EMAILS = {
   serial: "e2e+clerk_test@vm0.ai",
@@ -14,22 +12,13 @@ export function isTestVariant(value: string): value is TestVariant {
 }
 
 /**
- * Resolve the test user ID based on the deployment mode.
- *
- * - Self-hosted: uses the well-known default user ID (no external service needed)
- * - SaaS: queries Clerk Backend API for the e2e test user
+ * Resolve the test user ID by querying Clerk Backend API for the e2e test user.
  *
  * @param variant - which test user to resolve ("serial" or "runner")
  */
 export async function resolveTestUserId(
   variant: TestVariant = "serial",
 ): Promise<string | null> {
-  const useLocalAuth = !env().NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-
-  if (useLocalAuth) {
-    return SELF_HOSTED_USER_ID;
-  }
-
   const email = TEST_USER_EMAILS[variant];
   const clerk = await clerkClient();
   const { data: users } = await clerk.users.getUserList({

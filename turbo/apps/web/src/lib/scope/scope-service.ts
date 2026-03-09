@@ -12,8 +12,7 @@ import {
   isBadRequest,
 } from "../errors";
 import { logger } from "../logger";
-import { env, hasClerkAuth } from "../../env";
-import { SELF_HOSTED_CLERK_ORG_ID } from "../auth/constants";
+import { env } from "../../env";
 
 const log = logger("service:scope");
 
@@ -118,8 +117,8 @@ export async function getScopeByClerkOrgId(clerkOrgId: string) {
  * Create a scope for a user with an admin membership.
  *
  * Merges the former createUserScope() and createOrganization() functions.
- * Handles Clerk org creation (or self-hosted fallback), slug validation,
- * and atomic scope + membership creation.
+ * Handles Clerk org creation, slug validation,
+ * one-admin-per-user constraint, and atomic scope + membership creation.
  *
  * @param options.skipSlugValidation - Skip reserved-slug checks (for vm0-admin bypass)
  * @param options.clerkOrgId - Use existing Clerk org instead of creating one (JIT discovery path)
@@ -140,23 +139,13 @@ export async function createScope(
     throw badRequest(`Scope "${slug}" already exists`);
   }
 
-  // Determine Clerk Organization ID:
-  // 1. Use provided clerkOrgId (JIT discovery — Clerk org already exists)
-  // 2. Create new Clerk org (explicit scope creation via POST /api/scope)
-  // 3. Use sentinel ID (self-hosted mode, no Clerk)
-  let clerkOrgId: string;
-  if (options?.clerkOrgId) {
-    clerkOrgId = options.clerkOrgId;
-  } else if (hasClerkAuth()) {
-    const client = await clerkClient();
-    const clerkOrg = await client.organizations.createOrganization({
-      name: slug,
-      createdBy: clerkUserId,
-    });
-    clerkOrgId = clerkOrg.id;
-  } else {
-    clerkOrgId = SELF_HOSTED_CLERK_ORG_ID;
-  }
+  // Create Clerk Organization so every scope is backed by one.
+  const client = await clerkClient();
+  const clerkOrg = await client.organizations.createOrganization({
+    name: slug,
+    createdBy: clerkUserId,
+  });
+  const clerkOrgId = clerkOrg.id;
 
   // Create scope + admin membership atomically
   const scope = await globalThis.services.db.transaction(async (tx) => {
@@ -222,14 +211,7 @@ export async function ensureDefaultScope(clerkUserId: string) {
   const existing = await getUserScopeByClerkId(clerkUserId);
   if (existing) return existing;
 
-  // JIT Clerk org discovery (SaaS mode)
-  if (hasClerkAuth()) {
-    return await discoverAndCreateScope(clerkUserId);
-  }
-
-  // Self-hosted fallback
-  const defaultSlug = generateDefaultScopeSlug(clerkUserId);
-  return await createScope(clerkUserId, defaultSlug);
+  return await discoverAndCreateScope(clerkUserId);
 }
 
 /**

@@ -14,8 +14,6 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../../../../src/lib/axiom";
-import { queryAgentEventsByTime } from "../../../../../../../src/lib/telemetry/local-store";
-
 interface AxiomAgentEvent {
   _time: string;
   runId: string;
@@ -85,31 +83,13 @@ ${sinceFilter}
     // Query Axiom for agent events
     const events = await queryAxiom<AxiomAgentEvent>(apl);
 
-    // If Axiom is not configured or query failed, try DB fallback
-    if (events === null) {
-      const dbResult = await queryAgentEventsByTime(params.id, {
-        since,
-        limit,
-        order,
-      });
-      return {
-        status: 200 as const,
-        body: {
-          events: dbResult.events.map((e) => ({
-            sequenceNumber: e.sequenceNumber,
-            eventType: e.eventType,
-            eventData: e.eventData,
-            createdAt: e.createdAt,
-          })),
-          hasMore: dbResult.hasMore,
-          framework,
-        },
-      };
-    }
+    const resolvedEvents = events ?? [];
 
     // Check if there are more events
-    const hasMore = events.length > limit;
-    const resultEvents = hasMore ? events.slice(0, limit) : events;
+    const hasMore = resolvedEvents.length > limit;
+    const resultEvents = hasMore
+      ? resolvedEvents.slice(0, limit)
+      : resolvedEvents;
 
     return {
       status: 200 as const,

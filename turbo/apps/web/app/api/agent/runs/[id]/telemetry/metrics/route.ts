@@ -13,8 +13,6 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../../../../src/lib/axiom";
-import { queryMetrics } from "../../../../../../../src/lib/telemetry/local-store";
-
 interface AxiomMetricEvent {
   _time: string;
   runId: string;
@@ -72,22 +70,11 @@ ${sinceFilter}
     // Query Axiom for metrics
     const events = await queryAxiom<AxiomMetricEvent>(apl);
 
-    // If Axiom is not configured or query failed, try DB fallback
-    if (events === null) {
-      const dbResult = await queryMetrics(params.id, {
-        since,
-        limit,
-        order,
-      });
-      return {
-        status: 200 as const,
-        body: dbResult,
-      };
-    }
+    const resolvedEvents = events ?? [];
 
     // Check if there are more records
-    const hasMore = events.length > limit;
-    const records = hasMore ? events.slice(0, limit) : events;
+    const hasMore = resolvedEvents.length > limit;
+    const records = hasMore ? resolvedEvents.slice(0, limit) : resolvedEvents;
 
     // Transform to API response format
     const metrics = records.map((e) => ({

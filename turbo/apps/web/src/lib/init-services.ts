@@ -42,6 +42,9 @@ export function initServices(): void {
     },
     get pool() {
       if (!_pool) {
+        if (!this.env.DATABASE_URL) {
+          throw new Error("DATABASE_URL is required at runtime");
+        }
         if (useNeon) {
           // Use Neon serverless driver (default)
           // Optimized for Neon's connection pooler and serverless environments
