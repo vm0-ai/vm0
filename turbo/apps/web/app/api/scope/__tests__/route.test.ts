@@ -588,7 +588,9 @@ describe("/api/scope", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.slug).toMatch(/^user-[a-f0-9]{8}$/);
+      // In SaaS mode (Clerk configured), JIT discovery uses the mock Clerk org slug.
+      // In self-hosted mode (no Clerk), it would produce a user-{hash} slug.
+      expect(data.slug).toMatch(/^org-no-org-\d+$/);
     });
   });
 });
