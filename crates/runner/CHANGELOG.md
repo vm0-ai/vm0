@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.20.3...runner-rs-v0.20.4) (2026-03-09)
+
+
+### Bug Fixes
+
+* ensure system env vars take precedence over user-provided variables ([#3921](https://github.com/vm0-ai/vm0/issues/3921)) ([fcfa1f2](https://github.com/vm0-ai/vm0/commit/fcfa1f2ac77f31648dd655c61cc3030518400df1))
+
 ## [0.20.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.20.2...runner-rs-v0.20.3) (2026-03-09)
 
 

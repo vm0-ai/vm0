@@ -620,7 +620,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.15.0"
+version = "0.15.1"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1470,7 +1470,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.20.3"
+version = "0.20.4"
 dependencies = [
  "ably-subscriber",
  "async-trait",

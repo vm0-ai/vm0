@@ -1,5 +1,34 @@
 # Changelog
 
+## [12.86.0](https://github.com/vm0-ai/vm0/compare/web-v12.85.2...web-v12.86.0) (2026-03-09)
+
+
+### Features
+
+* **scope:** add max tier to three-tier concurrency system ([#3981](https://github.com/vm0-ai/vm0/issues/3981)) ([573d124](https://github.com/vm0-ai/vm0/commit/573d12423cff1d56c81b79c5c01b2866dfee3c99))
+* **storage:** add user-scope isolation for artifacts and memory ([#3996](https://github.com/vm0-ai/vm0/issues/3996)) ([94525c0](https://github.com/vm0-ai/vm0/commit/94525c00b5f14694a8f83ad48e92632ede7756d3))
+
+
+### Bug Fixes
+
+* auto-create scope for new web users and consolidate scope init logic ([#4005](https://github.com/vm0-ai/vm0/issues/4005)) ([9ae59f5](https://github.com/vm0-ai/vm0/commit/9ae59f501d31f15bcb89c4f405061d83e3166ac7))
+* **telegram:** include reply context in bot mentions and DMs ([#4014](https://github.com/vm0-ai/vm0/issues/4014)) ([6b88d63](https://github.com/vm0-ai/vm0/commit/6b88d636dcdb3849335d3673c0befb13094ff688))
+* **web:** reject invalid locale segments in middleware ([#4016](https://github.com/vm0-ai/vm0/issues/4016)) ([7730571](https://github.com/vm0-ai/vm0/commit/773057121d902534d488b991e1b183ec0d9c7f6f))
+
+
+### Refactoring
+
+* extract integration context builder into shared helper and add tests ([#4008](https://github.com/vm0-ai/vm0/issues/4008)) ([102c372](https://github.com/vm0-ai/vm0/commit/102c37278f659b3595553985ea08019b675189b8))
+* rename "View logs" to "Audit" across notification channels ([#4020](https://github.com/vm0-ai/vm0/issues/4020)) ([1af2023](https://github.com/vm0-ai/vm0/commit/1af20239aa490b75f163c19a1e71bb4a5d497e70))
+* **run:** remove domain-based rollout gate from runner dispatch ([#4013](https://github.com/vm0-ai/vm0/issues/4013)) ([ec9da91](https://github.com/vm0-ai/vm0/commit/ec9da916d76061e03918ab0d4da7962c0efa54cb)), closes [#4012](https://github.com/vm0-ai/vm0/issues/4012)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.47.0
+
 ## [12.85.2](https://github.com/vm0-ai/vm0/compare/web-v12.85.1...web-v12.85.2) (2026-03-09)
 
 

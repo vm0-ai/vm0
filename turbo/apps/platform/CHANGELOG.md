@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.94.1](https://github.com/vm0-ai/vm0/compare/platform-v0.94.0...platform-v0.94.1) (2026-03-09)
+
+
+### Bug Fixes
+
+* auto-create scope for new web users and consolidate scope init logic ([#4005](https://github.com/vm0-ai/vm0/issues/4005)) ([9ae59f5](https://github.com/vm0-ai/vm0/commit/9ae59f501d31f15bcb89c4f405061d83e3166ac7))
+* **platform:** strip heading anchor links with escaped svg text in markdown ([#4018](https://github.com/vm0-ai/vm0/issues/4018)) ([330de10](https://github.com/vm0-ai/vm0/commit/330de1088933579260cd52ceec4a17e8d2d0edc1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.47.0
+
 ## [0.94.0](https://github.com/vm0-ai/vm0/compare/platform-v0.93.2...platform-v0.94.0) (2026-03-09)
 
 
