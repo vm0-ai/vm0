@@ -378,7 +378,8 @@ async function loadCompose(
     };
   }
 
-  // No caller composeId — must fetch version first to get composeId via JOIN
+  // No caller composeId — fetch version with compose via LEFT JOIN
+  // Use LEFT JOIN so we can distinguish "version missing" from "compose missing"
   const [result] = await globalThis.services.db
     .select({
       content: agentComposeVersions.content,
@@ -387,7 +388,7 @@ async function loadCompose(
       composeScopeId: agentComposes.scopeId,
     })
     .from(agentComposeVersions)
-    .innerJoin(
+    .leftJoin(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
@@ -396,6 +397,10 @@ async function loadCompose(
 
   if (!result) {
     throw notFound("Agent compose version not found");
+  }
+
+  if (!result.composeId || !result.composeUserId || !result.composeScopeId) {
+    throw notFound("Agent compose not found");
   }
 
   return {
