@@ -37,6 +37,14 @@ export interface HeartbeatConfig {
    * Injected for testing to avoid fake timers.
    */
   scheduleNext?: (callback: () => void, delayMs: number) => void;
+  /**
+   * Optional HTTP POST function. Defaults to httpPostJson.
+   * Injected for testing to avoid mocking internal modules.
+   */
+  postJson?: (
+    url: string,
+    data: Record<string, unknown>,
+  ) => Promise<Record<string, unknown> | null>;
 }
 
 /**
@@ -50,8 +58,10 @@ export interface HeartbeatConfig {
  * @returns Promise that rejects if first heartbeat fails (never resolves otherwise)
  */
 export function startHeartbeat(config: HeartbeatConfig): Promise<never> {
-  const { heartbeatUrl, runId, intervalSeconds, scheduleNext } = config;
+  const { heartbeatUrl, runId, intervalSeconds, scheduleNext, postJson } =
+    config;
   const scheduler = scheduleNext ?? setTimeout;
+  const post = postJson ?? httpPostJson;
 
   let isFirstHeartbeat = true;
   let rejectFirstHeartbeat: ((error: Error) => void) | null = null;
@@ -67,7 +77,7 @@ export function startHeartbeat(config: HeartbeatConfig): Promise<never> {
     }
 
     try {
-      const result = await httpPostJson(heartbeatUrl, { runId });
+      const result = await post(heartbeatUrl, { runId });
 
       if (result !== null) {
         logInfo(

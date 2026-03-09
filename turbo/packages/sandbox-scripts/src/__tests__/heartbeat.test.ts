@@ -1,26 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock http-client before importing heartbeat
-vi.mock("../scripts/lib/http-client.js", () => ({
-  httpPostJson: vi.fn(),
-}));
-
-// Mock log to suppress output during tests
-vi.mock("../scripts/lib/log.js", () => ({
-  logInfo: vi.fn(),
-  logWarn: vi.fn(),
-  logError: vi.fn(),
-}));
-
 import { startHeartbeat, resetShutdown } from "../scripts/lib/heartbeat.js";
-import { httpPostJson } from "../scripts/lib/http-client.js";
 
-const mockHttpPostJson = vi.mocked(httpPostJson);
+// Suppress log output by mocking console.error (used by log.ts)
+vi.spyOn(console, "error").mockImplementation(() => {});
 
 describe("heartbeat", () => {
+  const mockPostJson =
+    vi.fn<
+      (
+        url: string,
+        data: Record<string, unknown>,
+      ) => Promise<Record<string, unknown> | null>
+    >();
+
   beforeEach(() => {
     resetShutdown();
-    mockHttpPostJson.mockReset();
+    mockPostJson.mockReset();
   });
 
   describe("startHeartbeat", () => {
@@ -30,12 +26,18 @@ describe("heartbeat", () => {
       intervalSeconds: 60,
     };
 
+    function configWith(
+      overrides: Partial<Parameters<typeof startHeartbeat>[0]> = {},
+    ) {
+      return { ...baseConfig, postJson: mockPostJson, ...overrides };
+    }
+
     it("should reject when first heartbeat returns null", async () => {
-      mockHttpPostJson.mockResolvedValue(null);
+      mockPostJson.mockResolvedValue(null);
 
       // Use scheduler that never fires (we only care about first heartbeat)
       const scheduleNext = vi.fn();
-      const heartbeatPromise = startHeartbeat({ ...baseConfig, scheduleNext });
+      const heartbeatPromise = startHeartbeat(configWith({ scheduleNext }));
 
       await expect(heartbeatPromise).rejects.toThrow(
         "Network connectivity check failed",
@@ -44,10 +46,10 @@ describe("heartbeat", () => {
     });
 
     it("should reject when first heartbeat throws error", async () => {
-      mockHttpPostJson.mockRejectedValue(new Error("Network error"));
+      mockPostJson.mockRejectedValue(new Error("Network error"));
 
       const scheduleNext = vi.fn();
-      const heartbeatPromise = startHeartbeat({ ...baseConfig, scheduleNext });
+      const heartbeatPromise = startHeartbeat(configWith({ scheduleNext }));
 
       await expect(heartbeatPromise).rejects.toThrow(
         "Network connectivity check failed",
@@ -56,17 +58,17 @@ describe("heartbeat", () => {
     });
 
     it("should schedule next heartbeat when first succeeds", async () => {
-      mockHttpPostJson.mockResolvedValue({});
+      mockPostJson.mockResolvedValue({});
 
       const scheduleNext = vi.fn();
-      const heartbeatPromise = startHeartbeat({ ...baseConfig, scheduleNext });
+      const heartbeatPromise = startHeartbeat(configWith({ scheduleNext }));
 
       // Prevent unhandled rejection
       heartbeatPromise.catch(() => {});
 
       // Wait for first heartbeat to complete
       await vi.waitFor(() => {
-        expect(mockHttpPostJson).toHaveBeenCalledTimes(1);
+        expect(mockPostJson).toHaveBeenCalledTimes(1);
       });
 
       // Verify next heartbeat was scheduled
@@ -78,7 +80,7 @@ describe("heartbeat", () => {
     });
 
     it("should continue sending heartbeats after first success", async () => {
-      mockHttpPostJson.mockResolvedValue({});
+      mockPostJson.mockResolvedValue({});
 
       // Capture scheduled callbacks
       const scheduledCallbacks: Array<() => void> = [];
@@ -86,30 +88,30 @@ describe("heartbeat", () => {
         scheduledCallbacks.push(callback);
       });
 
-      const heartbeatPromise = startHeartbeat({ ...baseConfig, scheduleNext });
+      const heartbeatPromise = startHeartbeat(configWith({ scheduleNext }));
       heartbeatPromise.catch(() => {});
 
       // Wait for first heartbeat
       await vi.waitFor(() => {
-        expect(mockHttpPostJson).toHaveBeenCalledTimes(1);
+        expect(mockPostJson).toHaveBeenCalledTimes(1);
       });
 
       // Trigger second heartbeat
       scheduledCallbacks[0]?.();
       await vi.waitFor(() => {
-        expect(mockHttpPostJson).toHaveBeenCalledTimes(2);
+        expect(mockPostJson).toHaveBeenCalledTimes(2);
       });
 
       // Trigger third heartbeat
       scheduledCallbacks[1]?.();
       await vi.waitFor(() => {
-        expect(mockHttpPostJson).toHaveBeenCalledTimes(3);
+        expect(mockPostJson).toHaveBeenCalledTimes(3);
       });
     });
 
     it("should not reject when subsequent heartbeat fails", async () => {
       // First heartbeat succeeds, subsequent ones fail
-      mockHttpPostJson
+      mockPostJson
         .mockResolvedValueOnce({})
         .mockResolvedValueOnce(null)
         .mockResolvedValue({});
@@ -119,7 +121,7 @@ describe("heartbeat", () => {
         scheduledCallbacks.push(callback);
       });
 
-      const heartbeatPromise = startHeartbeat({ ...baseConfig, scheduleNext });
+      const heartbeatPromise = startHeartbeat(configWith({ scheduleNext }));
 
       // Track if promise rejects
       let rejected = false;
@@ -129,19 +131,19 @@ describe("heartbeat", () => {
 
       // Wait for first heartbeat (success)
       await vi.waitFor(() => {
-        expect(mockHttpPostJson).toHaveBeenCalledTimes(1);
+        expect(mockPostJson).toHaveBeenCalledTimes(1);
       });
 
       // Trigger second heartbeat (fails - should just warn)
       scheduledCallbacks[0]?.();
       await vi.waitFor(() => {
-        expect(mockHttpPostJson).toHaveBeenCalledTimes(2);
+        expect(mockPostJson).toHaveBeenCalledTimes(2);
       });
 
       // Trigger third heartbeat (succeeds)
       scheduledCallbacks[1]?.();
       await vi.waitFor(() => {
-        expect(mockHttpPostJson).toHaveBeenCalledTimes(3);
+        expect(mockPostJson).toHaveBeenCalledTimes(3);
       });
 
       // Promise should not reject
@@ -149,15 +151,15 @@ describe("heartbeat", () => {
     });
 
     it("should stop heartbeat loop when first heartbeat fails", async () => {
-      mockHttpPostJson.mockResolvedValue(null);
+      mockPostJson.mockResolvedValue(null);
 
       const scheduleNext = vi.fn();
-      const heartbeatPromise = startHeartbeat({ ...baseConfig, scheduleNext });
+      const heartbeatPromise = startHeartbeat(configWith({ scheduleNext }));
 
       await expect(heartbeatPromise).rejects.toThrow();
 
       // Verify only one call was made (loop stopped)
-      expect(mockHttpPostJson).toHaveBeenCalledTimes(1);
+      expect(mockPostJson).toHaveBeenCalledTimes(1);
 
       // Verify no next heartbeat was scheduled
       expect(scheduleNext).not.toHaveBeenCalled();
