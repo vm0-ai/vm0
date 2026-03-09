@@ -56,9 +56,16 @@ const router = tsr.router(scopeContract, {
       return { status: 200 as const, body: scopeToResponseBody(scope) };
     } catch (error) {
       if (isNotFound(error)) {
-        // Auto-create default scope for new users
-        const scope = await ensureDefaultScope(userId);
-        return { status: 200 as const, body: scopeToResponseBody(scope) };
+        // Auto-create default scope for new users via JIT Clerk org discovery
+        try {
+          const scope = await ensureDefaultScope(userId);
+          return { status: 200 as const, body: scopeToResponseBody(scope) };
+        } catch (ensureError) {
+          if (isNotFound(ensureError)) {
+            return createErrorResponse("NOT_FOUND", ensureError.message);
+          }
+          throw ensureError;
+        }
       }
       throw error;
     }

@@ -178,10 +178,10 @@ describe("/api/scope", () => {
 
       const request = createTestRequest("http://localhost:3000/api/scope");
       const response = await GET(request);
+      const data = await response.json();
 
-      // ensureDefaultScope throws NotFound, which propagates as 500
-      // because the route handler's catch already consumed its NotFound
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(404);
+      expect(data.error.message).toContain("No organization found");
     });
   });
 
