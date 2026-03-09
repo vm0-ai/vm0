@@ -22,6 +22,7 @@ import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
@@ -40,9 +41,27 @@ const router = tsr.router(composesMainContract, {
       };
     }
 
-    // Resolve scope: use ?scope= query param or default scope
-    const { scope: resolvedScope } = await resolveScope(userId, query.scope);
-    const scopeId = resolvedScope.id;
+    // Resolve scope: for cross-scope lookups (shared agents), skip membership
+    // check and rely on canAccessCompose for authorization instead.
+    let scopeId: string;
+    if (query.scope) {
+      const scope = await getScopeBySlug(query.scope);
+      if (!scope) {
+        return {
+          status: 404 as const,
+          body: {
+            error: {
+              message: `Agent compose not found: ${query.name}`,
+              code: "NOT_FOUND",
+            },
+          },
+        };
+      }
+      scopeId = scope.id;
+    } else {
+      const { scope: resolvedScope } = await resolveScope(userId);
+      scopeId = resolvedScope.id;
+    }
 
     // JOIN compose + version in a single query
     const [result] = await globalThis.services.db
