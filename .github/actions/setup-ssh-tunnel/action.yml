@@ -40,16 +40,24 @@ runs:
         echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
         chmod 600 "$HOME/.ssh/runner.pem"
 
+        # Store credentials in a restricted file sourced by the proxy script,
+        # so they don't appear in SSH config or process listings.
+        printf 'export CF_ACCESS_CLIENT_ID="%s"\nexport CF_ACCESS_CLIENT_SECRET="%s"\n' \
+          "$CF_ACCESS_CLIENT_ID" "$CF_ACCESS_CLIENT_SECRET" \
+          > "$HOME/.ssh/cf-access.env"
+        chmod 600 "$HOME/.ssh/cf-access.env"
+
         # Proxy script that converts host to tunnel hostname.
         # Must match parse_host() naming in scripts/cloudflared-ssh.sh:
         #   subdomain dots -> hyphens, append -ssh
         #   e.g. dev-1.aws.vm3.ai -> dev-1-aws-ssh.vm3.ai
         printf '%s\n' \
           '#!/bin/bash' \
-          'HOST="$1"; ID="$2"; SECRET="$3"; DOMAIN="vm3.ai"' \
+          "source $HOME/.ssh/cf-access.env" \
+          'HOST="$1"; DOMAIN="vm3.ai"' \
           'SUB="${HOST%.${DOMAIN}}"' \
           'TUNNEL_HOST="${SUB//./-}-ssh.${DOMAIN}"' \
-          'exec cloudflared access ssh --hostname "$TUNNEL_HOST" --id "$ID" --secret "$SECRET"' \
+          'exec cloudflared access ssh --hostname "$TUNNEL_HOST" --id "$CF_ACCESS_CLIENT_ID" --secret "$CF_ACCESS_CLIENT_SECRET"' \
           > "$HOME/.ssh/cf-proxy.sh"
         chmod 755 "$HOME/.ssh/cf-proxy.sh"
 
@@ -59,7 +67,7 @@ runs:
           "  UserKnownHostsFile /dev/null" \
           "  ConnectTimeout 10" \
           "  IdentityFile $HOME/.ssh/runner.pem" \
-          "  ProxyCommand $HOME/.ssh/cf-proxy.sh %h ${CF_ACCESS_CLIENT_ID} ${CF_ACCESS_CLIENT_SECRET}")"
+          "  ProxyCommand $HOME/.ssh/cf-proxy.sh %h")"
 
         # Write to system config so all SSH clients (ssh, scp, ansible) read it
         if command -v sudo &>/dev/null; then

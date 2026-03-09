@@ -21,6 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Uses direct SSH (not setup-ssh-tunnel) because this workflow
+      # bootstraps the tunnel itself — the tunnel doesn't exist yet.
       - name: Setup SSH
         env:
           SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
