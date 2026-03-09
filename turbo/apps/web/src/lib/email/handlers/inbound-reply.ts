@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { agentComposes } from "../../../db/schema/agent-compose";
+import { scopes } from "../../../db/schema/scope";
 import { getReceivedEmail } from "../client";
 import { processEmailAttachments } from "../attachment";
 import { extractEmailBody } from "../content-extract";
@@ -161,13 +162,16 @@ export async function handleInboundEmailReply(
     replyContent = `${replyContent}\n\n${attachmentText}`;
   }
 
-  // 10. Get compose to find agent name and version
+  // 10. Get compose to find agent name, version, and scope
   const [compose] = await globalThis.services.db
     .select({
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
+      scopeId: agentComposes.scopeId,
+      scopeSlug: scopes.slug,
     })
     .from(agentComposes)
+    .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
     .where(eq(agentComposes.id, session.composeId))
     .limit(1);
 
@@ -207,6 +211,8 @@ export async function handleInboundEmailReply(
     sessionId: session.agentSessionId,
     agentName: compose.name,
     callbacks,
+    scopeId: compose.scopeId,
+    scopeSlug: compose.scopeSlug,
   });
 
   log.info("Dispatched agent run from email reply", {

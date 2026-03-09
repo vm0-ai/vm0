@@ -170,3 +170,7 @@ GITHUB_APP_ID=op://Development/github/GITHUB_APP_ID
 GITHUB_APP_PRIVATE_KEY=op://Development/github/GITHUB_APP_PRIVATE_KEY
 GITHUB_APP_SLUG=op://Development/github/GITHUB_APP_SLUG
 GITHUB_APP_WEBHOOK_SECRET=op://Development/github/GITHUB_APP_WEBHOOK_SECRET
+
+# Optional: Self-hosted Runner (for local development with runner on dev-1)
+# RUNNER_DEFAULT_GROUP is auto-configured by sync-env.sh — do not add here
+OFFICIAL_RUNNER_SECRET=op://Development/vm0/OFFICIAL_RUNNER_SECRET

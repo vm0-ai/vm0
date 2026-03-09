@@ -25,14 +25,16 @@ sync_with_1password() {
 
   echo "Syncing all environment templates..."
 
-  find "$PROJECT_ROOT" -name ".env.local.tpl" -type f | while IFS= read -r tpl_file; do
+  while IFS= read -r tpl_file; do
     output_file="${tpl_file%.tpl}"
     echo ""
     echo "Syncing: $tpl_file"
     echo "Output:  $output_file"
+    save_runner_group "$output_file"
     op inject --force -i "$tpl_file" -o "$output_file"
+    restore_runner_group "$output_file"
     echo "✓ Synced successfully"
-  done
+  done < <(find "$PROJECT_ROOT" -name ".env.local.tpl" -type f)
 
   echo ""
   echo "✓ All environment variables synced successfully"
@@ -135,12 +137,79 @@ sync_with_manual_input() {
   echo "Press Enter to skip optional variables or use auto-generated defaults."
   echo ""
 
-  find "$PROJECT_ROOT" -name ".env.local.tpl" -type f | while IFS= read -r tpl_file; do
+  while IFS= read -r tpl_file; do
+    save_runner_group "${tpl_file%.tpl}"
     process_tpl_manually "$tpl_file"
-  done
+    restore_runner_group "${tpl_file%.tpl}"
+  done < <(find "$PROJECT_ROOT" -name ".env.local.tpl" -type f)
 
   echo ""
   echo "✓ All environment variables synced successfully"
+}
+
+# --- Computed variables ---
+# RUNNER_DEFAULT_GROUP is derived from user input rather than stored in 1Password.
+# It must survive template overwrites (both op inject and manual flow).
+_SAVED_RUNNER_GROUP=""
+WEB_ENV_LOCAL="$PROJECT_ROOT/turbo/apps/web/.env.local"
+
+# Save RUNNER_DEFAULT_GROUP from an env file before it gets overwritten.
+save_runner_group() {
+  local env_file="$1"
+  _SAVED_RUNNER_GROUP=""
+  [[ -f "$env_file" ]] || return 0
+  _SAVED_RUNNER_GROUP=$(grep "^RUNNER_DEFAULT_GROUP=" "$env_file" 2>/dev/null | head -1 | cut -d= -f2-) || true
+}
+
+# Restore saved RUNNER_DEFAULT_GROUP back into the env file.
+restore_runner_group() {
+  local env_file="$1"
+  [[ -f "$env_file" ]] || return 0
+  [[ -z "$_SAVED_RUNNER_GROUP" ]] && return 0
+  if ! grep -q "^RUNNER_DEFAULT_GROUP=" "$env_file" 2>/dev/null; then
+    echo "" >> "$env_file"
+    echo "# Self-hosted Runner" >> "$env_file"
+    echo "RUNNER_DEFAULT_GROUP=${_SAVED_RUNNER_GROUP}" >> "$env_file"
+  fi
+}
+
+configure_runner_group() {
+  [[ -f "$WEB_ENV_LOCAL" ]] || return 0
+
+  local existing
+  existing=$(grep "^RUNNER_DEFAULT_GROUP=" "$WEB_ENV_LOCAL" 2>/dev/null | head -1 | cut -d= -f2-) || true
+
+  if [[ -n "$existing" ]]; then
+    echo "  ✓ RUNNER_DEFAULT_GROUP=$existing (already set)"
+    return 0
+  fi
+
+  echo ""
+  echo "Enter your name for the runner group (e.g. alice)."
+  echo "This sets RUNNER_DEFAULT_GROUP=vm0/local-<name> to route sandbox runs to your runner."
+
+  while true; do
+    printf "  Your name: "
+    read -r dev_name </dev/tty
+
+    if [[ -z "$dev_name" ]]; then
+      echo "  ✗ Name is required"
+      continue
+    fi
+
+    # Validate: only lowercase letters, digits, and hyphens, must start/end with alphanumeric
+    if [[ ! "$dev_name" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]{1,2}$ ]]; then
+      echo "  ✗ Only lowercase letters, digits, and hyphens allowed, must start/end with alphanumeric"
+      continue
+    fi
+
+    break
+  done
+
+  echo "" >> "$WEB_ENV_LOCAL"
+  echo "# Self-hosted Runner" >> "$WEB_ENV_LOCAL"
+  echo "RUNNER_DEFAULT_GROUP=vm0/local-${dev_name}" >> "$WEB_ENV_LOCAL"
+  echo "  ✓ RUNNER_DEFAULT_GROUP=vm0/local-${dev_name}"
 }
 
 # --- Main ---
@@ -152,3 +221,5 @@ if [[ "$use_1password" =~ ^[Yy] ]]; then
 else
   sync_with_manual_input
 fi
+
+configure_runner_group

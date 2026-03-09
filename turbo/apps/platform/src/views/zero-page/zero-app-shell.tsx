@@ -5,6 +5,8 @@ import {
   type ZeroAccountAction,
   type ZeroAccountSubId,
 } from "./zero-sidebar.tsx";
+import { Button } from "@vm0/ui";
+import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { ZeroContent } from "./zero-content.tsx";
 import { ZeroOnboarding } from "./zero-onboarding.tsx";
 
@@ -24,11 +26,14 @@ const RECENT_LABELS: Record<string, string> = {
   "4": "Code review reminders",
 };
 
+const showOnboarding = false;
+
 export function ZeroAppShell() {
   const [activeId, setActiveId] = useState<ZeroNavId>("chat");
   const [recentId, setRecentId] = useState<string | null>(null);
   const [accountSubId, setAccountSubId] = useState<ZeroAccountSubId>(null);
   const [avatarIndex, setAvatarIndex] = useState(0);
+  const [showAboutPage, setShowAboutPage] = useState(false);
   const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
   const cycleAvatar = useCallback(() => {
     setAvatarIndex((i) => (i + 1) % ZERO_AVATARS.length);
@@ -42,16 +47,15 @@ export function ZeroAppShell() {
   const handleNavSelect = useCallback((id: ZeroNavId) => {
     setActiveId(id);
     setRecentId(null);
+    setShowAboutPage(false);
   }, []);
 
   const handleAccountAction = useCallback((action: ZeroAccountAction) => {
-    if (action === "signout") {
-      setAccountSubId(null);
-      setActiveId("chat");
-    } else {
-      setActiveId("account");
-      setAccountSubId(action);
+    if (action === "signout" || action === "manage") {
+      return;
     }
+    setActiveId("account");
+    setAccountSubId(action);
   }, []);
 
   const handleClearRecent = useCallback(() => {
@@ -62,10 +66,13 @@ export function ZeroAppShell() {
 
   return (
     <div className="zero-app flex h-dvh w-full bg-background">
-      <ZeroOnboarding
-        zeroAvatarSrc={zeroAvatarSrc}
-        onAvatarClick={cycleAvatar}
-      />
+      {/* TODO: re-enable onboarding when ready */}
+      {showOnboarding && (
+        <ZeroOnboarding
+          zeroAvatarSrc={zeroAvatarSrc}
+          onAvatarClick={cycleAvatar}
+        />
+      )}
       <ZeroSidebar
         activeId={activeId}
         onSelect={handleNavSelect}
@@ -76,19 +83,53 @@ export function ZeroAppShell() {
         onAccountAction={handleAccountAction}
       />
       <div className="flex flex-1 flex-col min-w-0 zero-workspace-bg">
-        <ZeroContent
-          sectionId={activeId}
-          accountSubId={accountSubId}
-          recentLabel={recentLabel}
-          recentId={recentId}
-          onClearRecent={handleClearRecent}
-          onNavigateToActivity={() => setActiveId("activity")}
-          onNavigateToSchedule={() => setActiveId("schedule")}
-          onNavigateToJob={() => setActiveId("job")}
-          onNavigateToChat={() => setActiveId("chat")}
-          zeroAvatarSrc={zeroAvatarSrc}
-          onAvatarClick={cycleAvatar}
-        />
+        <nav
+          className="pointer-events-none absolute right-6 top-6 z-10"
+          aria-label="Site links"
+        >
+          <div className="zero-float-card pointer-events-auto flex items-center gap-4 rounded-xl border border-border bg-card/95 px-4 py-2.5 backdrop-blur-sm">
+            <button
+              type="button"
+              onClick={() => setShowAboutPage(true)}
+              className="text-sm tracking-wide text-foreground hover:text-primary transition-colors duration-200"
+            >
+              About VM0
+            </button>
+            <a
+              href="https://vm0.ai/pricing"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm tracking-wide text-foreground hover:text-primary transition-colors duration-200"
+            >
+              Pricing
+            </a>
+            <a href="/sign-in">
+              <Button
+                size="sm"
+                className="h-9 rounded-lg px-4 text-sm font-medium"
+              >
+                Sign in
+              </Button>
+            </a>
+          </div>
+        </nav>
+        {showAboutPage ? (
+          <ZeroAboutPage onBack={() => setShowAboutPage(false)} />
+        ) : (
+          <ZeroContent
+            sectionId={activeId}
+            accountSubId={accountSubId}
+            recentLabel={recentLabel}
+            recentId={recentId}
+            onClearRecent={handleClearRecent}
+            onNavigateToActivity={() => setActiveId("activity")}
+            onNavigateToSchedule={() => setActiveId("schedule")}
+            onNavigateToJob={() => setActiveId("job")}
+            onNavigateToChat={() => setActiveId("chat")}
+            zeroAvatarSrc={zeroAvatarSrc}
+            onAvatarClick={cycleAvatar}
+          />
+        )}
       </div>
     </div>
   );

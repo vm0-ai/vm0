@@ -4,15 +4,12 @@ import { telegramMessages } from "../../../db/schema/telegram-message";
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { getPlatformUrl } from "../../url";
-import {
-  getUserScopeByClerkId,
-  createScope,
-  generateDefaultScopeSlug,
-} from "../../scope/scope-service";
+import { ensureDefaultScope } from "../../scope/scope-service";
 import { validateAgentSession } from "../../run";
 import { ensureStorageExists } from "../../storage/storage-service";
 import {
   sendMessage,
+  editMessageText,
   type TelegramClient,
   type TelegramSentMessage,
 } from "../client";
@@ -245,11 +242,7 @@ async function completePendingLink(
  * Ensure scope and artifact storage exist for a user.
  */
 export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
-  let scope = await getUserScopeByClerkId(vm0UserId);
-  if (!scope) {
-    scope = await createScope(vm0UserId, generateDefaultScopeSlug(vm0UserId));
-    log.info("Auto-created scope for Telegram user", { userId: vm0UserId });
-  }
+  const scope = await ensureDefaultScope(vm0UserId);
 
   await ensureStorageExists(
     scope.id,
@@ -325,6 +318,31 @@ export async function sendThinkingMessage(
   } catch (err) {
     log.warn("Failed to send thinking message", { chatId, error: err });
     return undefined;
+  }
+}
+
+const QUEUED_MESSAGE =
+  "⏳ Run queued — concurrency limit reached. Will start automatically when a slot is available.";
+
+/**
+ * Update the thinking message to show queued status, or send a new message if
+ * no thinking message exists.
+ */
+export async function sendQueuedNotification(
+  client: TelegramClient,
+  chatId: string | number,
+  thinkingMessage: TelegramSentMessage | undefined,
+  options?: { replyToMessageId?: number },
+): Promise<void> {
+  if (thinkingMessage) {
+    await editMessageText(
+      client,
+      chatId,
+      thinkingMessage.message_id,
+      QUEUED_MESSAGE,
+    );
+  } else {
+    await sendMessage(client, chatId, QUEUED_MESSAGE, options);
   }
 }
 

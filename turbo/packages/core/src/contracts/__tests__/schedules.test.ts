@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   scheduleYamlSchema,
   scheduleTriggerSchema,
@@ -405,6 +405,7 @@ describe("schedules contracts", () => {
         composeId: "123e4567-e89b-12d3-a456-426614174001",
         composeName: "my-agent",
         scopeSlug: "user-abc123",
+        userId: "user_abc123",
         name: "daily-task",
         triggerType: "cron",
         cronExpression: "0 9 * * *",
@@ -435,6 +436,7 @@ describe("schedules contracts", () => {
         composeId: "123e4567-e89b-12d3-a456-426614174001",
         composeName: "my-agent",
         scopeSlug: "user-abc123",
+        userId: "user_abc123",
         name: "loop-task",
         triggerType: "loop",
         cronExpression: null,
@@ -470,6 +472,7 @@ describe("schedules contracts", () => {
         composeId: "123e4567-e89b-12d3-a456-426614174001",
         composeName: "my-agent",
         scopeSlug: "user-abc123",
+        userId: "user_abc123",
         name: "task",
         triggerType: "once",
         cronExpression: null,

@@ -11,9 +11,6 @@ export function ZeroAccountPage({ accountSubId }: ZeroAccountPageProps) {
   if (accountSubId === "preferences") {
     return <ZeroPreferencesSubPage />;
   }
-  if (accountSubId === "manage") {
-    return <ZeroManageAccountSubPage />;
-  }
   return <ZeroAccountOverview />;
 }
 
@@ -97,46 +94,6 @@ function ZeroPreferencesSubPage() {
               </Card>
             )}
           </Tabs>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-function ZeroManageAccountSubPage() {
-  return (
-    <div className="flex flex-1 flex-col min-h-0">
-      <header className="shrink-0 border-b border-divider bg-transparent px-4 sm:px-6 pt-6 sm:pt-6 pb-4 sm:pb-5">
-        <h1 className="text-lg font-semibold tracking-tight text-foreground">
-          Manage account
-        </h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Update your profile and account settings
-        </p>
-      </header>
-      <main className="flex-1 overflow-auto px-4 sm:px-6 pb-8">
-        <div className="mx-auto max-w-[900px]">
-          <Card className="zero-card-rectangle">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="h-12 w-12 rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 text-lg font-medium shrink-0">
-                  M
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-foreground">
-                    Ming Li
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    ming@vm0.ai
-                  </div>
-                </div>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Account management is handled by your platform identity. Sign in
-                through the main app to update your profile or password.
-              </p>
-            </CardContent>
-          </Card>
         </div>
       </main>
     </div>

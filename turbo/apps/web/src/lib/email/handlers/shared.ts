@@ -172,6 +172,7 @@ interface ResolvedAgent {
   composeId: string;
   userId: string;
   scopeId: string;
+  scopeSlug: string;
   headVersionId: string;
 }
 
@@ -218,6 +219,7 @@ export async function resolveAgentByAddress(
     composeId: compose.id,
     userId: compose.userId,
     scopeId: compose.scopeId,
+    scopeSlug,
     headVersionId: compose.headVersionId,
   };
 }

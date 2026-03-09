@@ -15,6 +15,7 @@ import {
   findTestRunRecord,
   findTestRunCallbacks,
   findTestRunsByUserAndPrompt,
+  findTestStorage,
 } from "../../../__tests__/api-test-helpers";
 import { POST as checkpointWebhook } from "../../../../app/api/webhooks/agent/checkpoints/route";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
@@ -683,6 +684,74 @@ describe("createRun()", () => {
       const result = await createRun(baseParams());
 
       expect(result.status).toBe("running");
+    });
+  });
+
+  describe("Scope Resolution for Storage", () => {
+    it("should use runtime scopeId for artifact/memory storage when scopeId is provided", async () => {
+      // Create a second scope (org scope) and make the user a member
+      const orgCompose = await context.createAgentCompose(user.userId, {
+        name: uniqueId("org-agent"),
+      });
+      const orgScopeId = orgCompose.scopeId;
+
+      // Use the default compose but pass org scope for storage resolution
+      const result = await createRun(
+        baseParams({
+          artifactName: "artifact",
+          memoryName: "memory",
+          scopeId: orgScopeId,
+          scopeSlug: uniqueId("org"), // slug used for S3 prefix (mocked in tests)
+        }),
+      );
+
+      expect(result.status).toBe("running");
+
+      // Verify the run record uses the org scope
+      const run = await findTestRunRecord(result.runId);
+      expect(run!.scopeId).toBe(orgScopeId);
+
+      // Verify artifact storage was created in the org scope (not user's default scope)
+      const artifact = await findTestStorage(
+        orgScopeId,
+        "artifact",
+        "artifact",
+      );
+      expect(artifact).toBeDefined();
+      expect(artifact!.userId).toBe(user.userId);
+
+      // Verify memory storage was created in the org scope
+      const memory = await findTestStorage(orgScopeId, "memory", "memory");
+      expect(memory).toBeDefined();
+      expect(memory!.userId).toBe(user.userId);
+    });
+
+    it("should use default scope for storage when scopeId is not provided", async () => {
+      const compose = await createTestCompose(uniqueId("agent"));
+
+      const result = await createRun(
+        baseParams({
+          agentComposeVersionId: compose.versionId,
+          artifactName: "artifact",
+          memoryName: "memory",
+        }),
+      );
+
+      expect(result.status).toBe("running");
+
+      // Verify artifact storage was created in user's default scope
+      const artifact = await findTestStorage(
+        user.scopeId,
+        "artifact",
+        "artifact",
+      );
+      expect(artifact).toBeDefined();
+      expect(artifact!.userId).toBe(user.userId);
+
+      // Verify memory storage was created in user's default scope
+      const memory = await findTestStorage(user.scopeId, "memory", "memory");
+      expect(memory).toBeDefined();
+      expect(memory!.userId).toBe(user.userId);
     });
   });
 });

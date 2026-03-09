@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { hasRequiredScopes } from "../connectors";
+import {
+  hasRequiredScopes,
+  getConnectorProxyConfig,
+  CONNECTOR_TYPES,
+} from "../connectors";
+import type { ConnectorType } from "../connectors";
 
 describe("hasRequiredScopes", () => {
   it("returns true for non-OAuth connector type", () => {
@@ -33,5 +38,57 @@ describe("hasRequiredScopes", () => {
     expect(
       hasRequiredScopes("github", ["repo", "project", "read:org", "user"]),
     ).toBe(true);
+  });
+});
+
+describe("getConnectorProxyConfig", () => {
+  it("returns proxy config for known connector types", () => {
+    const config = getConnectorProxyConfig("github");
+    expect(config).toBeDefined();
+    expect(config!.targets).toEqual(["https://api.github.com"]);
+    expect(config!.auth.headers.Authorization).toBe("Bearer ${token}");
+  });
+
+  it("returns config with multiple targets for slack", () => {
+    const config = getConnectorProxyConfig("slack");
+    expect(config).toBeDefined();
+    expect(config!.targets).toEqual([
+      "https://slack.com/api",
+      "https://files.slack.com",
+    ]);
+  });
+
+  it("returns config with custom headers for notion", () => {
+    const config = getConnectorProxyConfig("notion");
+    expect(config).toBeDefined();
+    expect(config!.auth.headers["Notion-Version"]).toBe("2022-06-28");
+  });
+
+  it("returns undefined for computer connector (no proxy support)", () => {
+    const config = getConnectorProxyConfig("computer");
+    expect(config).toBeUndefined();
+  });
+
+  it("all proxy configs have valid targets and auth headers", () => {
+    const allTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+
+    for (const type of allTypes) {
+      const config = getConnectorProxyConfig(type);
+      if (!config) continue;
+
+      expect(
+        config.targets.length,
+        `${type} should have at least one target`,
+      ).toBeGreaterThan(0);
+      for (const target of config.targets) {
+        expect(target, `${type} targets should be https URLs`).toMatch(
+          /^https:\/\//,
+        );
+      }
+      expect(
+        Object.keys(config.auth.headers).length,
+        `${type} should have at least one auth header`,
+      ).toBeGreaterThan(0);
+    }
   });
 });

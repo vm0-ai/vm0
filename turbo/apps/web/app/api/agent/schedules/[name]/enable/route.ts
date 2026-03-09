@@ -4,6 +4,7 @@ import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { enableSchedule } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
 import { isNotFound, isSchedulePast } from "../../../../../../src/lib/errors";
+import { resolveScopeId } from "../../../../../../src/lib/scope/scope-member-service";
 
 const log = logger("api:schedules:enable");
 
@@ -25,7 +26,7 @@ export async function POST(
 
   const { name } = await params;
 
-  let body: { composeId: string };
+  let body: { composeId: string; scopeId?: string };
   try {
     body = await request.json();
   } catch {
@@ -42,10 +43,17 @@ export async function POST(
     );
   }
 
+  const scopeId = await resolveScopeId(userId, body.scopeId);
+
   log.debug(`Enabling schedule ${name} for compose ${body.composeId}`);
 
   try {
-    const schedule = await enableSchedule(userId, body.composeId, name);
+    const schedule = await enableSchedule(
+      userId,
+      scopeId,
+      body.composeId,
+      name,
+    );
 
     return NextResponse.json(schedule, { status: 200 });
   } catch (error) {

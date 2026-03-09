@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.95.0](https://github.com/vm0-ai/vm0/compare/platform-v0.94.1...platform-v0.95.0) (2026-03-09)
+
+
+### Features
+
+* **platform:** zero app about page, floating nav card, and UI tweaks ([#4050](https://github.com/vm0-ai/vm0/issues/4050)) ([298d772](https://github.com/vm0-ai/vm0/commit/298d7725022513564d1a9efe4d4fc2ec887e36b1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.48.0
+
 ## [0.94.1](https://github.com/vm0-ai/vm0/compare/platform-v0.94.0...platform-v0.94.1) (2026-03-09)
 
 

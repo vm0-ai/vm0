@@ -476,6 +476,7 @@ const router = tsr.router(runsMainContract, {
         modelProvider: body.modelProvider,
         checkEnv: body.checkEnv,
         scopeId: scope.id,
+        scopeSlug: scope.slug,
         scopeTier: scopeTierSchema.parse(scope.tier),
       });
 

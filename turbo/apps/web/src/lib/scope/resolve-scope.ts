@@ -4,7 +4,7 @@ import { hasClerkAuth } from "../../env";
 import { isForbidden, badRequest, notFound } from "../errors";
 import { logger } from "../logger";
 import { scopeRoleSchema } from "@vm0/core";
-import { getScopeBySlug } from "./scope-service";
+import { getScopeBySlug, getScopeByClerkOrgId } from "./scope-service";
 import {
   requireScopeMember,
   getDefaultScope,
@@ -98,14 +98,20 @@ async function requireMemberWithClerkSync(scope: Scope, userId: string) {
  * Resolve scope from request context using scope_members.
  *
  * Resolution order:
- * 1. ?scope=<slug> query param -> look up scope, verify membership
+ * 1. scopeSlug (?scope=<slug> query param) -> look up scope, verify membership
  *    - If not in scope_members, try to sync from Clerk org membership
- * 2. Fallback -> user's default scope (first owned scope from scope_members)
+ * 2. clerkOrgId (from Clerk session token) -> look up scope by org ID
+ *    - Falls through to default if no matching scope exists yet
+ * 3. Fallback -> user's default scope (first owned scope from scope_members)
  *
  * Returns { scope, member } for the resolved scope.
  */
-export async function resolveScope(userId: string, scopeSlug?: string | null) {
-  // 1. Explicit scope selection via ?scope= query param
+export async function resolveScope(
+  userId: string,
+  scopeSlug?: string | null,
+  clerkOrgId?: string | null,
+) {
+  // 1. Explicit scope selection via ?scope= query param (highest priority)
   if (scopeSlug) {
     const scope = await getScopeBySlug(scopeSlug);
     if (!scope) throw notFound("Scope not found");
@@ -114,7 +120,18 @@ export async function resolveScope(userId: string, scopeSlug?: string | null) {
     return { scope, member };
   }
 
-  // 2. Default scope fallback
+  // 2. Clerk org ID from session token
+  if (clerkOrgId) {
+    const scope = await getScopeByClerkOrgId(clerkOrgId);
+    if (scope) {
+      const member = await requireMemberWithClerkSync(scope, userId);
+      return { scope, member };
+    }
+    // Scope not found for this clerkOrgId — fall through to default
+    // (scope may not be created yet in the migration period)
+  }
+
+  // 3. Default scope fallback
   return getDefaultScope(userId);
 }
 

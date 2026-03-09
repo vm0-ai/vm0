@@ -1,5 +1,53 @@
 # Changelog
 
+## [12.88.0](https://github.com/vm0-ai/vm0/compare/web-v12.87.0...web-v12.88.0) (2026-03-09)
+
+
+### Features
+
+* **connectors:** add experimental connectors data pipeline ([#4048](https://github.com/vm0-ai/vm0/issues/4048)) ([f3ad976](https://github.com/vm0-ai/vm0/commit/f3ad976c82d86300636b545aa8b5b23c6ebfc744))
+* **schedule:** associate schedules with scope and user identity for cross-scope sharing ([#4011](https://github.com/vm0-ai/vm0/issues/4011)) ([ac3e58b](https://github.com/vm0-ai/vm0/commit/ac3e58b100d7b272b54abc2e1ec962b40652f0d2))
+* **scope:** extend resolve-scope to support clerk org id resolution ([#4047](https://github.com/vm0-ai/vm0/issues/4047)) ([9933100](https://github.com/vm0-ai/vm0/commit/993310046b13d62571dd4cba6d4ba342e11452eb))
+
+
+### Bug Fixes
+
+* **blog:** handle empty and invalid json responses from strapi api ([#4045](https://github.com/vm0-ai/vm0/issues/4045)) ([f481ed7](https://github.com/vm0-ai/vm0/commit/f481ed76eddd87d0bfbb3df13da3b35f652d466c))
+* **blog:** handle truncated json responses from strapi cms ([#4044](https://github.com/vm0-ai/vm0/issues/4044)) ([cbb66a6](https://github.com/vm0-ai/vm0/commit/cbb66a6e64ff47f1c6f80e7e9e4daa888eda46fc))
+
+
+### Refactoring
+
+* **scope:** discover existing clerk orgs via jit api instead of creating new ones ([#4049](https://github.com/vm0-ai/vm0/issues/4049)) ([fdfb9c7](https://github.com/vm0-ai/vm0/commit/fdfb9c7bc14fb90c67215cd42042cb5e065bda8d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.48.0
+
+## [12.87.0](https://github.com/vm0-ai/vm0/compare/web-v12.86.0...web-v12.87.0) (2026-03-09)
+
+
+### Features
+
+* add scope lookup by clerk organization id ([#4038](https://github.com/vm0-ai/vm0/issues/4038)) ([ff30ea5](https://github.com/vm0-ai/vm0/commit/ff30ea554c6b819dc16dcba5db42139debfd351d)), closes [#4033](https://github.com/vm0-ai/vm0/issues/4033)
+* **auth:** extract org id and org slug from clerk auth session ([#4037](https://github.com/vm0-ai/vm0/issues/4037)) ([9db9814](https://github.com/vm0-ai/vm0/commit/9db981402347408663276c52b70f479e6bc7692f)), closes [#4034](https://github.com/vm0-ai/vm0/issues/4034)
+* **env:** auto-configure runner group in sync-env.sh ([#4039](https://github.com/vm0-ai/vm0/issues/4039)) ([6300d32](https://github.com/vm0-ai/vm0/commit/6300d326323660ad183e882479c90024ae9691ef))
+* **telegram:** manage queued message lifecycle via thinking message ([#4029](https://github.com/vm0-ai/vm0/issues/4029)) ([dff5984](https://github.com/vm0-ai/vm0/commit/dff598453b71ed98e12b8e5b6e3eee062b07026f))
+
+
+### Bug Fixes
+
+* add database-backed email outbox queue for rate limit resilience ([#3964](https://github.com/vm0-ai/vm0/issues/3964)) ([fc14d62](https://github.com/vm0-ai/vm0/commit/fc14d62cd9941b36ef6e42fe41cacacee9758b81))
+* **run:** use runtime scope for artifact/memory storage instead of user default ([#4030](https://github.com/vm0-ai/vm0/issues/4030)) ([40f8a98](https://github.com/vm0-ai/vm0/commit/40f8a981ff9eee7bce2a69ee61f3147dcd0d2928)), closes [#4026](https://github.com/vm0-ai/vm0/issues/4026)
+
+
+### Refactoring
+
+* remove one-admin-per-user constraint from scope creation ([#4036](https://github.com/vm0-ai/vm0/issues/4036)) ([e7e8c95](https://github.com/vm0-ai/vm0/commit/e7e8c959e194b3d6915df93bcc20921606b9ab77)), closes [#4032](https://github.com/vm0-ai/vm0/issues/4032)
+
 ## [12.86.0](https://github.com/vm0-ai/vm0/compare/web-v12.85.2...web-v12.86.0) (2026-03-09)
 
 

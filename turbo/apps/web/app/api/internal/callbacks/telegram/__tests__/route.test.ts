@@ -53,6 +53,17 @@ function telegramSendChatAction() {
   );
 }
 
+function telegramEditMessageText() {
+  return http.post(
+    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/editMessageText`,
+    () =>
+      HttpResponse.json({
+        ok: true,
+        result: { message_id: 100, chat: { id: 123 }, text: "edited" },
+      }),
+  );
+}
+
 function telegramDeleteMessage() {
   return http.post(
     `https://api.telegram.org/bot${TEST_BOT_TOKEN}/deleteMessage`,
@@ -279,8 +290,13 @@ describe("POST /api/internal/callbacks/telegram", () => {
       const { runId, payload, secret } = await setupTelegramCallback();
 
       const chatActionHandler = telegramSendChatAction();
+      const editHandler = telegramEditMessageText();
       const sendMessageHandler = telegramSendMessage();
-      server.use(chatActionHandler.handler, sendMessageHandler.handler);
+      server.use(
+        chatActionHandler.handler,
+        editHandler.handler,
+        sendMessageHandler.handler,
+      );
 
       const request = createCallbackRequest(
         { runId, status: "progress", payload },
@@ -294,8 +310,32 @@ describe("POST /api/internal/callbacks/telegram", () => {
 
       // Should refresh typing indicator
       expect(chatActionHandler.mocked).toHaveBeenCalledTimes(1);
-      // Should NOT send a message (no error, no completion text)
+      // Should edit thinking message back to thinking state
+      expect(editHandler.mocked).toHaveBeenCalledTimes(1);
+      // Should NOT send a new message
       expect(sendMessageHandler.mocked).not.toHaveBeenCalled();
+    });
+
+    it("should skip editing when no thinkingMessageId is set", async () => {
+      const { runId, payload, secret } = await setupTelegramCallback();
+
+      const chatActionHandler = telegramSendChatAction();
+      const editHandler = telegramEditMessageText();
+      server.use(chatActionHandler.handler, editHandler.handler);
+
+      const request = createCallbackRequest(
+        {
+          runId,
+          status: "progress",
+          payload: { ...payload, thinkingMessageId: null },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(chatActionHandler.mocked).toHaveBeenCalledTimes(1);
+      expect(editHandler.mocked).not.toHaveBeenCalled();
     });
   });
 
