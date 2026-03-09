@@ -65,7 +65,7 @@ const FOOTER_NAV: {
 
 export type ZeroAccountAction = "preferences" | "manage" | "signout";
 
-export type ZeroAccountSubId = "preferences" | "manage" | null;
+export type ZeroAccountSubId = "preferences" | null;
 
 interface ZeroSidebarProps {
   activeId: ZeroNavId;
