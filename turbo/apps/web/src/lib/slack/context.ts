@@ -623,14 +623,6 @@ export async function formatContextForAgentWithImages(
 }
 
 /**
- * Extract the actual message content from a Slack @mention
- * Removes the bot mention from the beginning of the message
- *
- * @param text - Raw message text
- * @param botUserId - Bot user ID
- * @returns Message without the mention
- */
-/**
  * Format files attached to the current message for inclusion in the prompt.
  * Uploads supported images to R2 and returns formatted file descriptions.
  */
@@ -647,6 +639,14 @@ export async function formatCurrentMessageFiles(
   return parts.join("\n");
 }
 
+/**
+ * Extract the actual message content from a Slack @mention
+ * Removes the bot mention from the beginning of the message
+ *
+ * @param text - Raw message text
+ * @param botUserId - Bot user ID
+ * @returns Message without the mention
+ */
 export function extractMessageContent(text: string, botUserId: string): string {
   // Slack mentions look like: <@U12345678> message
   const mentionPattern = new RegExp(`^<@${botUserId}>\\s*`, "i");

@@ -142,7 +142,13 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
 
   // Prepend Slack user info to the prompt
   const userInfo = await fetchSlackUserInfo(client, context.userId).catch(
-    () => undefined,
+    (err) => {
+      log.warn("Failed to fetch Slack user info", {
+        userId: context.userId,
+        error: err,
+      });
+      return undefined;
+    },
   );
   if (userInfo) {
     messageContent = `[Slack User]\n${userInfo}\n\n${messageContent}`;
