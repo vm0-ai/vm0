@@ -806,6 +806,41 @@ mod tests {
         assert_eq!(env.get("TZ").unwrap(), "America/New_York");
     }
 
+    #[test]
+    fn build_env_json_environment_cannot_override_system() {
+        let mut ctx = minimal_context();
+        ctx.environment = Some(HashMap::from([
+            ("VM0_PROMPT".into(), "hacked".into()),
+            ("VM0_API_TOKEN".into(), "stolen".into()),
+            ("CUSTOM_ENV".into(), "kept".into()),
+        ]));
+
+        let env = build_env_json(&ctx, "http://localhost");
+        // System variables take precedence over user environment
+        assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
+        assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
+        assert_eq!(env.get("CUSTOM_ENV").unwrap(), "kept");
+    }
+
+    #[test]
+    fn build_env_json_environment_overrides_vars() {
+        let mut ctx = minimal_context();
+        ctx.vars = Some(HashMap::from([
+            ("SHARED_KEY".into(), "from-vars".into()),
+            ("ONLY_VARS".into(), "vars-value".into()),
+        ]));
+        ctx.environment = Some(HashMap::from([
+            ("SHARED_KEY".into(), "from-env".into()),
+            ("ONLY_ENV".into(), "env-value".into()),
+        ]));
+
+        let env = build_env_json(&ctx, "http://localhost");
+        // environment overrides vars for the same key
+        assert_eq!(env.get("SHARED_KEY").unwrap(), "from-env");
+        assert_eq!(env.get("ONLY_VARS").unwrap(), "vars-value");
+        assert_eq!(env.get("ONLY_ENV").unwrap(), "env-value");
+    }
+
     /// Verify ExecutionContext deserializes from JSON matching the TS schema,
     /// including the snake_case `experimentalFirewall` inner fields.
     #[test]
