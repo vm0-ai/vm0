@@ -958,7 +958,6 @@ export async function buildExecutionContext(
   const scopeId = await resolveScopeId(params);
   const resolveScopeEnd = Date.now();
 
-  // Step 4: Fetch secrets/credentials from user's scope and merge with CLI secrets
   // Extract compose structure
   const compose = agentCompose as {
     agents?: Record<
