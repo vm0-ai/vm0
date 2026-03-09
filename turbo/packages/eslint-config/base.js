@@ -33,6 +33,40 @@ const vm0Plugin = {
         };
       },
     },
+    "no-relative-vi-mock": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "Disallow vi.mock() with relative paths — mock at external boundaries instead",
+        },
+        messages: {
+          noRelativeMock:
+            "Do not use vi.mock() with relative paths. Mock at external boundaries (globalThis.fetch, console, etc.) instead of internal modules.",
+        },
+        schema: [],
+      },
+      create(context) {
+        return {
+          CallExpression(node) {
+            if (
+              node.callee.type === "MemberExpression" &&
+              node.callee.object.type === "Identifier" &&
+              node.callee.object.name === "vi" &&
+              node.callee.property.type === "Identifier" &&
+              node.callee.property.name === "mock" &&
+              node.arguments.length > 0 &&
+              node.arguments[0].type === "Literal" &&
+              typeof node.arguments[0].value === "string" &&
+              (node.arguments[0].value.startsWith("./") ||
+                node.arguments[0].value.startsWith("../"))
+            ) {
+              context.report({ node, messageId: "noRelativeMock" });
+            }
+          },
+        };
+      },
+    },
   },
 };
 
