@@ -99,11 +99,21 @@ gh pr checks "$pr_id"
 - **Retry delay**: 60 seconds
 - **Total timeout**: ~30 minutes
 
+### Fail-Fast Strategy
+
+**Do NOT wait for all checks to complete before acting.** After each poll:
+
+1. If any check has status `fail` → immediately proceed to Step 4 (auto-fix), even if other checks are still `pending`
+2. If no failures and no `pending` checks remain → all done, proceed to Step 5
+3. If no failures but some checks are still `pending` → wait 60 seconds and poll again
+
+This means fixes start as soon as a failure is detected, without waiting for the rest of the pipeline.
+
 ### Outcomes
 
-- **All passing**: Proceed to Step 5 (completion check)
-- **Still running**: Wait 60 seconds and retry
-- **Failures detected**: Proceed to Step 4 (auto-fix)
+- **Any failure detected**: Proceed immediately to Step 4 (auto-fix), regardless of pending checks
+- **All passing (no pending)**: Proceed to Step 5 (completion check)
+- **No failures, some still running**: Wait 60 seconds and retry
 
 ---
 
@@ -181,8 +191,8 @@ Exit and wait for user to fix.
 ### After Auto-Fix
 
 If auto-fix was successful (lint/format):
-1. Wait 60 seconds for new pipeline to start
-2. Return to Step 3 (Monitor Pipeline)
+1. Wait 60 seconds for the new pipeline triggered by the push to start
+2. Return to Step 3 (Monitor Pipeline), applying the same fail-fast strategy
 
 ---
 
