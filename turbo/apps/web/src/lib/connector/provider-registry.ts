@@ -7,6 +7,7 @@ import {
 } from "./provider-types";
 import { airtableHandler } from "./providers/airtable-handler";
 import { canvaHandler } from "./providers/canva-handler";
+import { closeHandler } from "./providers/close-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
@@ -44,6 +45,7 @@ export const PROVIDER_HANDLERS: Record<
 > = {
   airtable: airtableHandler,
   canva: canvaHandler,
+  close: closeHandler,
   deel: deelHandler,
   docusign: docusignHandler,
   dropbox: dropboxHandler,

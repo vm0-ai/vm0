@@ -92,6 +92,9 @@ function initEnv() {
       // HubSpot OAuth (for connector)
       HUBSPOT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       HUBSPOT_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Close OAuth (for connector)
+      CLOSE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      CLOSE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Deel OAuth (for connector)
       DEEL_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       DEEL_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -249,6 +252,8 @@ function initEnv() {
       GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
       HUBSPOT_OAUTH_CLIENT_ID: process.env.HUBSPOT_OAUTH_CLIENT_ID,
       HUBSPOT_OAUTH_CLIENT_SECRET: process.env.HUBSPOT_OAUTH_CLIENT_SECRET,
+      CLOSE_OAUTH_CLIENT_ID: process.env.CLOSE_OAUTH_CLIENT_ID,
+      CLOSE_OAUTH_CLIENT_SECRET: process.env.CLOSE_OAUTH_CLIENT_SECRET,
       DEEL_OAUTH_CLIENT_ID: process.env.DEEL_OAUTH_CLIENT_ID,
       DEEL_OAUTH_CLIENT_SECRET: process.env.DEEL_OAUTH_CLIENT_SECRET,
       DOCUSIGN_OAUTH_CLIENT_ID: process.env.DOCUSIGN_OAUTH_CLIENT_ID,

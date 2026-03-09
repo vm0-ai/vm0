@@ -293,6 +293,36 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  close: {
+    label: "Close",
+    helpText:
+      "Connect your Close account to manage leads, contacts, and opportunities",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Close to grant access.",
+        secrets: {
+          CLOSE_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          CLOSE_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      CLOSE_TOKEN: "$secrets.CLOSE_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://app.close.com/oauth2/authorize/",
+      tokenUrl: "https://api.close.com/oauth2/token/",
+      scopes: ["all.full_access", "offline_access"],
+    } as ConnectorOAuthConfig,
+  },
   hubspot: {
     label: "HubSpot",
     helpText:
@@ -1109,6 +1139,7 @@ export type ConnectorType = keyof typeof CONNECTOR_TYPES;
 export const connectorTypeSchema = z.enum([
   "airtable",
   "canva",
+  "close",
   "github",
   "gmail",
   "google-sheets",
