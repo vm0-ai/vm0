@@ -556,7 +556,11 @@ async function buildAndDispatchRun(opts: {
     const tokenTime = Date.now();
 
     // Build execution context
-    const { context, timings: buildContextTimings } = await buildContext({
+    const {
+      context,
+      userScope,
+      timings: buildContextTimings,
+    } = await buildContext({
       checkpointId: params.checkpointId,
       sessionId: params.sessionId,
       conversationId: params.conversationId,
@@ -584,7 +588,7 @@ async function buildAndDispatchRun(opts: {
     const buildContextTime = Date.now();
 
     // Prepare execution context (storage manifest, working dir, etc.)
-    const prepareResult = await prepareForExecution(context);
+    const prepareResult = await prepareForExecution(context, userScope);
     const prepareTime = Date.now();
 
     // Dispatch to executor

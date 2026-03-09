@@ -4,7 +4,7 @@ import type {
   ExperimentalFirewall,
   FirewallRule,
 } from "../../../types/agent-compose";
-import type { ExecutionContext } from "../types";
+import type { ExecutionContext, UserScope } from "../types";
 import type { PreparedContext } from "../executors/types";
 import {
   prepareStorageManifest,
@@ -13,7 +13,6 @@ import {
 import type { StorageManifest } from "../../storage/types";
 import { badRequest } from "../../errors";
 import { logger } from "../../logger";
-import { getUserScopeByClerkId } from "../../scope/scope-service";
 import {
   agentComposes,
   agentComposeVersions,
@@ -184,6 +183,7 @@ interface PrepareResult {
 
 export async function prepareForExecution(
   context: ExecutionContext,
+  userScope: UserScope,
 ): Promise<PrepareResult> {
   log.debug(`Preparing execution context for run ${context.runId}...`);
 
@@ -199,30 +199,25 @@ export async function prepareForExecution(
     `Extracted config: workingDir=${workingDir}, cliAgentType=${cliAgentType}, runnerGroup=${runnerGroup}, firewall=${experimentalFirewall ? "enabled" : "disabled"}`,
   );
 
-  // Resolve runner's scope and owner's scope in parallel (independent DB queries)
+  // Resolve agent owner's scope for volume resolution.
+  // User scope (for storage) is pre-resolved by buildExecutionContext.
   const userId = context.userId || "";
   const scopeStart = Date.now();
-  const [runnerScope, [composeInfo]] = await Promise.all([
-    getUserScopeByClerkId(userId),
-    globalThis.services.db
-      .select({
-        scopeId: agentComposes.scopeId,
-        scopeSlug: scopes.slug,
-      })
-      .from(agentComposeVersions)
-      .innerJoin(
-        agentComposes,
-        eq(agentComposeVersions.composeId, agentComposes.id),
-      )
-      .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
-      .where(eq(agentComposeVersions.id, context.agentComposeVersionId))
-      .limit(1),
-  ]);
+  const [composeInfo] = await globalThis.services.db
+    .select({
+      scopeId: agentComposes.scopeId,
+      scopeSlug: scopes.slug,
+    })
+    .from(agentComposeVersions)
+    .innerJoin(
+      agentComposes,
+      eq(agentComposeVersions.composeId, agentComposes.id),
+    )
+    .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
+    .where(eq(agentComposeVersions.id, context.agentComposeVersionId))
+    .limit(1);
   const scopeEnd = Date.now();
 
-  if (!runnerScope) {
-    throw badRequest("Runner scope not found");
-  }
   if (!composeInfo) {
     throw badRequest("Agent compose not found");
   }
@@ -232,19 +227,19 @@ export async function prepareForExecution(
   await Promise.all([
     context.artifactName
       ? ensureStorageExists(
-          runnerScope.id,
+          userScope.id,
           userId,
           context.artifactName,
-          runnerScope.slug,
+          userScope.slug,
           "artifact",
         )
       : null,
     context.memoryName
       ? ensureStorageExists(
-          runnerScope.id,
+          userScope.id,
           userId,
           context.memoryName,
-          runnerScope.slug,
+          userScope.slug,
           "memory",
         )
       : null,
@@ -259,7 +254,7 @@ export async function prepareForExecution(
     context.agentCompose as AgentComposeYaml,
     context.vars || {},
     composeInfo.scopeId,
-    runnerScope.id,
+    userScope.id,
     context.artifactName,
     context.artifactVersion,
     context.volumeVersions,
@@ -270,7 +265,7 @@ export async function prepareForExecution(
   const storageEnd = Date.now();
 
   log.debug(
-    `Storage manifest prepared with dual scopes: owner=${composeInfo.scopeId}, runner=${runnerScope.id}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared with dual scopes: owner=${composeInfo.scopeId}, runner=${userScope.id}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
   );
 
   // Build PreparedContext
