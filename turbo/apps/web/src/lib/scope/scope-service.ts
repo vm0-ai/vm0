@@ -3,11 +3,7 @@ import { eq } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { scopes } from "../../db/schema/scope";
 import { scopeMembers } from "../../db/schema/scope-member";
-import {
-  requireScopeMember,
-  getPrimaryAdminMembership,
-  getDefaultScope,
-} from "./scope-member-service";
+import { requireScopeMember, getDefaultScope } from "./scope-member-service";
 import {
   badRequest,
   notFound,
@@ -110,7 +106,7 @@ export async function getScopeBySlug(slug: string) {
  *
  * Merges the former createUserScope() and createOrganization() functions.
  * Handles Clerk org creation (or self-hosted fallback), slug validation,
- * one-admin-per-user constraint, and atomic scope + membership creation.
+ * and atomic scope + membership creation.
  *
  * @param options.skipSlugValidation - Skip reserved-slug checks (for vm0-admin bypass)
  */
@@ -119,19 +115,6 @@ export async function createScope(
   slug: string,
   options?: { skipSlugValidation?: boolean },
 ) {
-  // Check one-admin-per-user constraint
-  const existingAdmin = await getPrimaryAdminMembership(clerkUserId);
-  if (existingAdmin) {
-    const [existingScope] = await globalThis.services.db
-      .select({ slug: scopes.slug })
-      .from(scopes)
-      .where(eq(scopes.id, existingAdmin.scopeId))
-      .limit(1);
-    throw badRequest(
-      `You already have a scope: ${existingScope?.slug ?? existingAdmin.scopeId}. Use --force to change it.`,
-    );
-  }
-
   // Validate slug (unless explicitly skipped for vm0-admin)
   if (!options?.skipSlugValidation) {
     validateScopeSlug(slug);
