@@ -113,6 +113,33 @@ export async function updateModal(
 }
 
 /**
+ * Fetch basic Slack user info (display name, real name, timezone)
+ *
+ * @param client - Slack WebClient
+ * @param userId - Slack user ID
+ * @returns User info string for prompt context, or undefined if lookup fails
+ */
+export async function fetchSlackUserInfo(
+  client: WebClient,
+  userId: string,
+): Promise<string | undefined> {
+  const result = await client.users.info({ user: userId });
+  if (!result.ok || !result.user) return undefined;
+
+  const u = result.user;
+  const displayName =
+    u.profile?.display_name || u.profile?.real_name || u.real_name || u.name;
+  const tz = u.tz_label || u.tz;
+
+  const parts: string[] = [];
+  parts.push(`Slack User ID: ${userId}`);
+  if (displayName) parts.push(`Name: ${displayName}`);
+  if (tz) parts.push(`Timezone: ${tz}`);
+
+  return parts.join("\n");
+}
+
+/**
  * Exchange OAuth code for access token
  *
  * @param clientId - Slack app client ID

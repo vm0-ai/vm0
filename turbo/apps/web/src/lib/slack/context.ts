@@ -17,7 +17,7 @@ const SUPPORTED_IMAGE_TYPES = [
   "image/webp",
 ];
 
-interface SlackFile {
+export interface SlackFile {
   id?: string;
   name?: string;
   title?: string;
@@ -410,9 +410,9 @@ async function formatFileInfoWithImage(
       sessionId,
     );
     if (presignedUrl) {
-      parts.push(`   Image URL: ${presignedUrl}`);
+      const filename = `${file.id || "image"}.${file.filetype || "png"}`;
       parts.push(
-        `   To view this image, download it with: curl -sS -o /tmp/${file.id || "image"}.${file.filetype || "png"} "${presignedUrl}" && read the downloaded file`,
+        `   View: curl -sS -o /tmp/${filename} "${presignedUrl}" && read /tmp/${filename}`,
       );
       return parts.join("\n");
     }
@@ -448,9 +448,8 @@ function formatAttachmentImage(attachment: SlackAttachment): string | null {
 
   const url = attachment.image_url || attachment.thumb_url;
   if (url) {
-    parts.push(`   URL: ${url}`);
     parts.push(
-      `   To view this image, download it with: curl -sS -o /tmp/attachment_image.jpg "${url}" && read the downloaded file`,
+      `   View: curl -sS -o /tmp/attachment_image.jpg "${url}" && read /tmp/attachment_image.jpg`,
     );
   }
 
@@ -631,6 +630,23 @@ export async function formatContextForAgentWithImages(
  * @param botUserId - Bot user ID
  * @returns Message without the mention
  */
+/**
+ * Format files attached to the current message for inclusion in the prompt.
+ * Uploads supported images to R2 and returns formatted file descriptions.
+ */
+export async function formatCurrentMessageFiles(
+  files: SlackFile[],
+  botToken: string,
+  sessionId: string,
+): Promise<string> {
+  const parts: string[] = [];
+  for (const file of files) {
+    const fileInfo = await formatFileInfoWithImage(file, botToken, sessionId);
+    parts.push(fileInfo);
+  }
+  return parts.join("\n");
+}
+
 export function extractMessageContent(text: string, botUserId: string): string {
   // Slack mentions look like: <@U12345678> message
   const mentionPattern = new RegExp(`^<@${botUserId}>\\s*`, "i");

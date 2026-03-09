@@ -3,8 +3,14 @@ import { slackInstallations } from "../../../db/schema/slack-installation";
 import { slackUserLinks } from "../../../db/schema/slack-user-link";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
-import { createSlackClient, postMessage, setThreadStatus } from "../client";
+import {
+  createSlackClient,
+  fetchSlackUserInfo,
+  postMessage,
+  setThreadStatus,
+} from "../client";
 import { buildLoginPromptMessage } from "../blocks";
+import { formatCurrentMessageFiles, type SlackFile } from "../context";
 import { runAgentForSlack } from "./run-agent";
 import {
   fetchConversationContexts,
@@ -24,6 +30,7 @@ interface DirectMessageContext {
   messageText: string;
   messageTs: string;
   threadTs?: string;
+  files?: SlackFile[];
 }
 
 /**
@@ -111,7 +118,26 @@ export async function handleDirectMessage(
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
 
   // Use message text directly (no mention prefix to strip in DMs)
-  const messageContent = context.messageText;
+  let messageContent = context.messageText;
+
+  // Include files attached to the current message in the prompt
+  if (context.files && context.files.length > 0) {
+    const imageSessionId = `${context.channelId}-${threadTs}`;
+    const filesText = await formatCurrentMessageFiles(
+      context.files,
+      botToken,
+      imageSessionId,
+    );
+    messageContent = `${messageContent}\n\n${filesText}`;
+  }
+
+  // Prepend Slack user info to the prompt
+  const userInfo = await fetchSlackUserInfo(client, context.userId).catch(
+    () => undefined,
+  );
+  if (userInfo) {
+    messageContent = `[Slack User]\n${userInfo}\n\n${messageContent}`;
+  }
 
   // 6. Look up existing thread session for deduplication
   let existingSessionId: string | undefined;

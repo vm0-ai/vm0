@@ -36,6 +36,23 @@ interface SlackUrlVerificationEvent {
   token: string;
 }
 
+interface SlackEventFile {
+  id?: string;
+  name?: string;
+  title?: string;
+  mimetype?: string;
+  filetype?: string;
+  pretty_type?: string;
+  size?: number;
+  original_w?: string;
+  original_h?: string;
+  thumb_360?: string;
+  thumb_480?: string;
+  permalink?: string;
+  permalink_public?: string;
+  url_private_download?: string;
+}
+
 interface SlackAppMentionEvent {
   type: "app_mention";
   user: string;
@@ -44,6 +61,7 @@ interface SlackAppMentionEvent {
   channel: string;
   event_ts: string;
   thread_ts?: string;
+  files?: SlackEventFile[];
 }
 
 interface SlackDirectMessageEvent {
@@ -57,6 +75,7 @@ interface SlackDirectMessageEvent {
   thread_ts?: string;
   subtype?: string;
   bot_id?: string;
+  files?: SlackEventFile[];
 }
 
 interface SlackAppHomeOpenedEvent {
@@ -155,6 +174,7 @@ export async function POST(request: Request) {
           messageText: event.text,
           messageTs: event.ts,
           threadTs: event.thread_ts,
+          files: event.files,
         }).catch((error) => {
           log.error("Error handling app_mention", { error });
         }),
@@ -176,6 +196,7 @@ export async function POST(request: Request) {
           channelId: event.channel,
           userId: event.user,
           messageText: event.text,
+          files: event.files,
           messageTs: event.ts,
           threadTs: event.thread_ts,
         }).catch((error) => {
