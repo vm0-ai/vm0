@@ -1179,7 +1179,6 @@ jobs:
             ansible-playbook \
               -i "${METAL_HOSTS}," \
               playbooks/provision-monitoring.yml \
-              --private-key $HOME/.ssh/runner.pem \
               -e "ansible_user=${METAL_USER}" \
               -e "grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL}" \
               -e "grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER}" \
@@ -1300,7 +1299,7 @@ jobs:
             echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
 
             # Guard: ensure binary exists (fails fast on "Re-run failed jobs" without prepare)
-            if ! ssh $SSH_OPTS "$REMOTE" "test -x ${BIN_DIR}/runner"; then
+            if ! ssh "$REMOTE" "test -x ${BIN_DIR}/runner"; then
               echo "::error::Runner binary not found on ${HOST}. Use 'Re-run all jobs' to redeploy the runner first."
               return 1
             fi

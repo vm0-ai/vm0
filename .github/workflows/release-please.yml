@@ -735,7 +735,6 @@ jobs:
             ansible-playbook \
               -i "${AWS_METAL_RUNNER_HOSTS}," \
               playbooks/provision-monitoring.yml \
-              --private-key ~/.ssh/prod-runner.pem \
               -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
               -e "grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL}" \
               -e "grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER}" \

@@ -218,7 +218,6 @@ jobs:
             ansible-playbook \
               -i "${HOST}," \
               playbooks/provision-monitoring.yml \
-              --private-key $HOME/.ssh/runner.pem \
               -e "ansible_user=${METAL_USER}" \
               -e "grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL}" \
               -e "grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER}" \
@@ -404,13 +403,14 @@ jobs:
     needs: [runner-build]
     timeout-minutes: 8
     steps:
-      - name: Setup SSH
-        env:
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       - name: Test balloon memory reclaim
         env:
@@ -421,12 +421,11 @@ jobs:
           ROOTFS_HASH: ${{ needs.runner-build.outputs.rootfs-hash }}
           SNAPSHOT_HASH: ${{ needs.runner-build.outputs.snapshot-hash }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
 
           echo "=== Generating config ==="
-          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+          ssh $REMOTE "${BIN_DIR}/runner config \
             --rootfs-hash ${ROOTFS_HASH} \
             --snapshot-hash ${SNAPSHOT_HASH} \
             --name ${JOB_REF}-balloon \
@@ -437,7 +436,7 @@ jobs:
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
           echo "=== Running balloon test ==="
-          ssh $SSH_OPTS $REMOTE bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          ssh $REMOTE bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
           BIN_DIR=$1; JOB_REF=$2
           RUNNER_DIR="$HOME/.vm0-runner/runners/${JOB_REF}-balloon"
           SVC="${JOB_REF}-balloon"
