@@ -664,19 +664,8 @@ describe("createRun()", () => {
     });
   });
 
-  describe("Domain-based Runner Rollout", () => {
-    it("should route @vm0.ai users to runner when RUNNER_DEFAULT_GROUP is set", async () => {
-      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
-      reloadEnv();
-
-      mockClerk({ userId: user.userId, email: "team@vm0.ai" });
-
-      const result = await createRun(baseParams());
-
-      expect(result.status).toBe("pending");
-    });
-
-    it("should route non-vm0.ai users to E2B when RUNNER_DEFAULT_GROUP is set", async () => {
+  describe("Runner Default Group Routing", () => {
+    it("should route all users to runner when RUNNER_DEFAULT_GROUP is set", async () => {
       vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
       reloadEnv();
 
@@ -684,10 +673,10 @@ describe("createRun()", () => {
 
       const result = await createRun(baseParams());
 
-      expect(result.status).toBe("running");
+      expect(result.status).toBe("pending");
     });
 
-    it("should skip domain check when RUNNER_DEFAULT_GROUP is not set", async () => {
+    it("should fall back to E2B when RUNNER_DEFAULT_GROUP is not set", async () => {
       // RUNNER_DEFAULT_GROUP is not set by default in test env
       mockClerk({ userId: user.userId, email: "team@vm0.ai" });
 

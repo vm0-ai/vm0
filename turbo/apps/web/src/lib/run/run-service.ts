@@ -241,10 +241,7 @@ export async function validateAgentSession(
  * - Docker: local mode, requires DOCKER_SANDBOX_IMAGE
  *
  */
-async function dispatchRun(
-  context: PreparedContext,
-  userEmail: string,
-): Promise<ExecutorResult> {
+async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
   if (context.runnerGroup) {
     log.debug(
       `Dispatching run ${context.runId} to runner group: ${context.runnerGroup}`,
@@ -252,17 +249,13 @@ async function dispatchRun(
     return await executeRunnerJob(context);
   }
 
-  // Domain-based rollout: route @vm0.ai users to runner.
-  // Note: CI test accounts (e2e+clerk_test@vm0.ai) also match, but preview
-  // deploys don't set RUNNER_DEFAULT_GROUP so they still use E2B.
+  // Route to runner when RUNNER_DEFAULT_GROUP is configured.
   const defaultGroup = env().RUNNER_DEFAULT_GROUP;
   if (defaultGroup) {
-    if (userEmail.endsWith("@vm0.ai")) {
-      log.debug(
-        `Dispatching run ${context.runId} to runner (domain rollout: ${userEmail})`,
-      );
-      return await executeRunnerJob({ ...context, runnerGroup: defaultGroup });
-    }
+    log.debug(
+      `Dispatching run ${context.runId} to runner (default group: ${defaultGroup})`,
+    );
+    return await executeRunnerJob({ ...context, runnerGroup: defaultGroup });
   }
 
   if (env().E2B_API_KEY) {
@@ -530,7 +523,6 @@ async function buildAndDispatchRun(opts: {
   scopeId: string | undefined;
   authorizeTime: number;
   transactionTime: number;
-  userEmail: string;
 }): Promise<{ status: string; sandboxId?: string }> {
   const {
     runId,
@@ -541,7 +533,6 @@ async function buildAndDispatchRun(opts: {
     scopeId,
     authorizeTime,
     transactionTime,
-    userEmail,
   } = opts;
   const { userId, agentComposeVersionId, prompt } = params;
 
@@ -588,7 +579,7 @@ async function buildAndDispatchRun(opts: {
     const prepareTime = Date.now();
 
     // Dispatch to executor
-    const result = await dispatchRun(prepareResult.context, userEmail);
+    const result = await dispatchRun(prepareResult.context);
     const dispatchTime = Date.now();
 
     // Record per-step timing metrics for latency diagnosis
@@ -759,7 +750,6 @@ export async function createRun(
     scopeId,
     authorizeTime,
     transactionTime,
-    userEmail,
   });
 
   return {
@@ -843,6 +833,5 @@ export async function executeQueuedRun(
     scopeId: params.scopeId,
     authorizeTime,
     transactionTime,
-    userEmail,
   });
 }
