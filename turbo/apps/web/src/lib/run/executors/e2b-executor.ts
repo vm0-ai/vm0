@@ -5,7 +5,6 @@ import { badRequest } from "../../errors";
 import { resolveSystemImageToE2b } from "@vm0/core";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
 import {
-  DEFAULT_MEMORY_MOUNT_PATH,
   type PreparedArtifact,
   type StorageManifest,
 } from "../../storage/types";
@@ -272,11 +271,6 @@ function addStorageEnvVars(
     envVars.VM0_MEMORY_MOUNT_PATH = memory.mountPath;
     envVars.VM0_MEMORY_NAME = memory.vasStorageName;
     envVars.VM0_MEMORY_VERSION_ID = memory.vasVersionId;
-  } else if (context.memoryName) {
-    // First run: memory doesn't exist yet, but we still need env vars for upload
-    envVars.VM0_MEMORY_DRIVER = "vas";
-    envVars.VM0_MEMORY_MOUNT_PATH = DEFAULT_MEMORY_MOUNT_PATH;
-    envVars.VM0_MEMORY_NAME = context.memoryName;
   }
 }
 

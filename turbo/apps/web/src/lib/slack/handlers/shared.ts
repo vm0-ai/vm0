@@ -15,7 +15,7 @@ import {
   generateDefaultScopeSlug,
 } from "../../scope/scope-service";
 import { validateAgentSession } from "../../run";
-import { ensureArtifactExists } from "../../storage/storage-service";
+import { ensureStorageExists } from "../../storage/storage-service";
 import { logger } from "../../logger";
 
 const log = logger("slack:shared");
@@ -229,7 +229,13 @@ export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
   // Preserve original Slack behavior: log but don't throw on artifact creation failure.
   // Slack callers (server actions, OAuth callback) don't have error handling for this.
   try {
-    await ensureArtifactExists(scope.id, vm0UserId, "artifact", scope.slug);
+    await ensureStorageExists(
+      scope.id,
+      vm0UserId,
+      "artifact",
+      scope.slug,
+      "artifact",
+    );
   } catch (err) {
     log.error("Failed to ensure artifact exists for Slack user", {
       userId: vm0UserId,

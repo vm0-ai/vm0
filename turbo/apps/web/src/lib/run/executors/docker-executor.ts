@@ -6,7 +6,6 @@ import { env } from "../../../env";
 import type { SandboxLike } from "../../docker/docker-sandbox";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
 import {
-  DEFAULT_MEMORY_MOUNT_PATH,
   type PreparedArtifact,
   type StorageManifest,
 } from "../../storage/types";
@@ -283,11 +282,6 @@ async function buildSandboxEnvVars(
     sandboxEnvVars.VM0_MEMORY_MOUNT_PATH = memory.mountPath;
     sandboxEnvVars.VM0_MEMORY_NAME = memory.vasStorageName;
     sandboxEnvVars.VM0_MEMORY_VERSION_ID = memory.vasVersionId;
-  } else if (context.memoryName) {
-    // First run: memory doesn't exist yet, but we still need env vars for upload
-    sandboxEnvVars.VM0_MEMORY_DRIVER = "vas";
-    sandboxEnvVars.VM0_MEMORY_MOUNT_PATH = DEFAULT_MEMORY_MOUNT_PATH;
-    sandboxEnvVars.VM0_MEMORY_NAME = context.memoryName;
   }
 
   // Inject user timezone as TZ environment variable (if not already set in environment)

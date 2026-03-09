@@ -10,7 +10,7 @@ import {
   generateDefaultScopeSlug,
 } from "../../scope/scope-service";
 import { validateAgentSession } from "../../run";
-import { ensureArtifactExists } from "../../storage/storage-service";
+import { ensureStorageExists } from "../../storage/storage-service";
 import {
   sendMessage,
   type TelegramClient,
@@ -226,7 +226,13 @@ export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
     log.info("Auto-created scope for Telegram user", { userId: vm0UserId });
   }
 
-  await ensureArtifactExists(scope.id, vm0UserId, "artifact", scope.slug);
+  await ensureStorageExists(
+    scope.id,
+    vm0UserId,
+    "artifact",
+    scope.slug,
+    "artifact",
+  );
 }
 
 /**

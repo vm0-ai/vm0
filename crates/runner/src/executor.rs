@@ -575,14 +575,6 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
             "VM0_MEMORY_VERSION_ID".into(),
             memory.vas_version_id.clone(),
         );
-    } else if let Some(name) = &context.memory_name {
-        // First run: memory doesn't exist yet, but we still need env vars for upload
-        env.insert("VM0_MEMORY_DRIVER".into(), "vas".into());
-        env.insert(
-            "VM0_MEMORY_MOUNT_PATH".into(),
-            "/home/user/.vm0/memory".into(),
-        );
-        env.insert("VM0_MEMORY_NAME".into(), name.clone());
     }
 
     // Resume session ID
@@ -646,7 +638,6 @@ mod tests {
             checkpoint_id: None,
             sandbox_token: "tok".into(),
             working_dir: "/workspace".into(),
-            memory_name: None,
             storage_manifest: None,
             environment: None,
             resume_session: None,

@@ -313,6 +313,41 @@ describe("createRun()", () => {
   });
 
   describe("Memory", () => {
+    it("should auto-create memory storage on first run", async () => {
+      const memoryName = uniqueId("new-mem");
+      const result = await createRun(baseParams({ memoryName }));
+
+      expect(result.runId).toBeDefined();
+      expect(result.status).toBe("running");
+
+      // Verify sandbox was called with full memory env vars including VERSION_ID
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      expect(createCall).toBeDefined();
+      const sandboxOptions = createCall![1] as {
+        envs?: Record<string, string>;
+      };
+      expect(sandboxOptions.envs?.VM0_MEMORY_NAME).toBe(memoryName);
+      expect(sandboxOptions.envs?.VM0_MEMORY_VERSION_ID).toBeDefined();
+      expect(sandboxOptions.envs?.VM0_MEMORY_DRIVER).toBe("vas");
+    });
+
+    it("should succeed when memory already exists (idempotent)", async () => {
+      // Allow concurrent runs for this test
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      reloadEnv();
+
+      const memoryName = uniqueId("existing-mem");
+      // First run creates the memory
+      await createRun(baseParams({ memoryName }));
+
+      // Second run should also succeed (idempotent)
+      const result = await createRun(
+        baseParams({ memoryName, prompt: "second run" }),
+      );
+      expect(result.runId).toBeDefined();
+      expect(result.status).toBe("running");
+    });
+
     it("should accept memoryName and dispatch successfully", async () => {
       const result = await createRun(baseParams({ memoryName: "my-memory" }));
 

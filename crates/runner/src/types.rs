@@ -61,8 +61,6 @@ pub struct ExecutionContext {
     pub api_start_time: Option<f64>,
     #[serde(default)]
     pub user_timezone: Option<String>,
-    #[serde(default)]
-    pub memory_name: Option<String>,
 }
 
 /// Firewall and proxy configuration attached to each execution.

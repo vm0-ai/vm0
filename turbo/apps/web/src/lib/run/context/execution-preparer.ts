@@ -8,7 +8,7 @@ import type { ExecutionContext } from "../types";
 import type { PreparedContext } from "../executors/types";
 import {
   prepareStorageManifest,
-  ensureArtifactExists,
+  ensureStorageExists,
 } from "../../storage/storage-service";
 import type { StorageManifest } from "../../storage/types";
 import { badRequest } from "../../errors";
@@ -173,7 +173,7 @@ function resolveRunnerGroup(agentCompose: unknown): string | null {
  */
 interface PrepareTimings {
   resolveScopes: number;
-  ensureArtifact: number;
+  ensureStorage: number;
   storageManifest: number;
 }
 
@@ -227,17 +227,29 @@ export async function prepareForExecution(
     throw badRequest("Agent compose not found");
   }
 
-  // Auto-create artifact if it doesn't exist yet
-  const artifactStart = Date.now();
-  if (context.artifactName) {
-    await ensureArtifactExists(
-      runnerScope.id,
-      userId,
-      context.artifactName,
-      runnerScope.slug,
-    );
-  }
-  const artifactEnd = Date.now();
+  // Auto-create artifact and memory storages if they don't exist yet
+  const ensureStart = Date.now();
+  await Promise.all([
+    context.artifactName
+      ? ensureStorageExists(
+          runnerScope.id,
+          userId,
+          context.artifactName,
+          runnerScope.slug,
+          "artifact",
+        )
+      : null,
+    context.memoryName
+      ? ensureStorageExists(
+          runnerScope.id,
+          userId,
+          context.memoryName,
+          runnerScope.slug,
+          "memory",
+        )
+      : null,
+  ]);
+  const ensureEnd = Date.now();
 
   // Prepare storage manifest with dual scopes
   // - Volumes: resolved from agent owner's scope
@@ -274,12 +286,12 @@ export async function prepareForExecution(
 
   const timings: PrepareTimings = {
     resolveScopes: scopeEnd - scopeStart,
-    ensureArtifact: artifactEnd - artifactStart,
+    ensureStorage: ensureEnd - ensureStart,
     storageManifest: storageEnd - storageStart,
   };
 
   log.debug(
-    `PreparedContext built for run ${context.runId} (scopes=${timings.resolveScopes}ms, artifact=${timings.ensureArtifact}ms, storage=${timings.storageManifest}ms)`,
+    `PreparedContext built for run ${context.runId} (scopes=${timings.resolveScopes}ms, ensure=${timings.ensureStorage}ms, storage=${timings.storageManifest}ms)`,
   );
 
   return { context: preparedContext, timings };
