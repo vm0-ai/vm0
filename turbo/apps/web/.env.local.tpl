@@ -82,25 +82,9 @@ LINEAR_OAUTH_CLIENT_SECRET=op://Development/linear/LINEAR_OAUTH_CLIENT_SECRET
 FIGMA_OAUTH_CLIENT_ID=op://Development/figma/FIGMA_OAUTH_CLIENT_ID
 FIGMA_OAUTH_CLIENT_SECRET=op://Development/figma/FIGMA_OAUTH_CLIENT_SECRET
 
-# Optional: Mercury OAuth Connector
-MERCURY_OAUTH_CLIENT_ID=op://Development/mercury/MERCURY_OAUTH_CLIENT_ID
-MERCURY_OAUTH_CLIENT_SECRET=op://Development/mercury/MERCURY_OAUTH_CLIENT_SECRET
-
-# Optional: Neon OAuth Connector
-NEON_OAUTH_CLIENT_ID=op://Development/neon/NEON_OAUTH_CLIENT_ID
-NEON_OAUTH_CLIENT_SECRET=op://Development/neon/NEON_OAUTH_CLIENT_SECRET
-
 # Optional: Strava OAuth Connector
 STRAVA_OAUTH_CLIENT_ID=op://Development/strava/STRAVA_OAUTH_CLIENT_ID
 STRAVA_OAUTH_CLIENT_SECRET=op://Development/strava/STRAVA_OAUTH_CLIENT_SECRET
-
-# Optional: Garmin Connect OAuth Connector
-GARMIN_CONNECT_OAUTH_CLIENT_ID=op://Development/garmin-connect/GARMIN_CONNECT_OAUTH_CLIENT_ID
-GARMIN_CONNECT_OAUTH_CLIENT_SECRET=op://Development/garmin-connect/GARMIN_CONNECT_OAUTH_CLIENT_SECRET
-
-# Optional: Reddit OAuth Connector
-REDDIT_OAUTH_CLIENT_ID=op://Development/reddit/REDDIT_OAUTH_CLIENT_ID
-REDDIT_OAUTH_CLIENT_SECRET=op://Development/reddit/REDDIT_OAUTH_CLIENT_SECRET
 
 # Optional: X OAuth Connector
 X_OAUTH_CLIENT_ID=op://Development/x/X_OAUTH_CLIENT_ID
@@ -155,10 +139,6 @@ WEBFLOW_OAUTH_CLIENT_SECRET=op://Development/webflow/WEBFLOW_OAUTH_CLIENT_SECRET
 # Optional: Stripe OAuth Connector
 STRIPE_OAUTH_CLIENT_ID=op://Development/stripe/STRIPE_OAUTH_CLIENT_ID
 STRIPE_OAUTH_CLIENT_SECRET=op://Development/stripe/STRIPE_OAUTH_CLIENT_SECRET
-
-# Optional: Supabase OAuth Connector
-SUPABASE_OAUTH_CLIENT_ID=op://Development/supabase/SUPABASE_OAUTH_CLIENT_ID
-SUPABASE_OAUTH_CLIENT_SECRET=op://Development/supabase/SUPABASE_OAUTH_CLIENT_SECRET
 
 # Optional: ngrok (Computer Connector)
 NGROK_API_KEY=op://Development/ngrok/NGROK_API_KEY
