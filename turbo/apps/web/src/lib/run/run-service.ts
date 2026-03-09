@@ -136,33 +136,31 @@ export async function validateCheckpoint(
 }> {
   log.debug(`Validating checkpoint ${checkpointId} for user ${userId}`);
 
-  // Load checkpoint from database
-  const [checkpoint] = await globalThis.services.db
-    .select()
+  // Load checkpoint with associated run in a single query
+  const [result] = await globalThis.services.db
+    .select({
+      agentComposeSnapshot: checkpoints.agentComposeSnapshot,
+      runUserId: agentRuns.userId,
+      runVars: agentRuns.vars,
+      runSecretNames: agentRuns.secretNames,
+    })
     .from(checkpoints)
+    .innerJoin(agentRuns, eq(checkpoints.runId, agentRuns.id))
     .where(eq(checkpoints.id, checkpointId))
     .limit(1);
 
-  if (!checkpoint) {
+  if (!result) {
     throw notFound("Checkpoint not found");
   }
 
-  // Verify checkpoint belongs to user by checking the associated run
-  const [originalRun] = await globalThis.services.db
-    .select()
-    .from(agentRuns)
-    .where(
-      and(eq(agentRuns.id, checkpoint.runId), eq(agentRuns.userId, userId)),
-    )
-    .limit(1);
-
-  if (!originalRun) {
+  // Verify checkpoint belongs to user
+  if (result.runUserId !== userId) {
     throw unauthorized("Checkpoint does not belong to authenticated user");
   }
 
   // Get version ID from snapshot
   const agentComposeSnapshot =
-    checkpoint.agentComposeSnapshot as unknown as AgentComposeSnapshot;
+    result.agentComposeSnapshot as unknown as AgentComposeSnapshot;
 
   const agentComposeVersionId = agentComposeSnapshot.agentComposeVersionId;
   if (!agentComposeVersionId) {
@@ -174,8 +172,8 @@ export async function validateCheckpoint(
   );
 
   // Get vars from original run, secretNames from run (values are NEVER stored)
-  const vars = (originalRun.vars as Record<string, string>) ?? null;
-  const secretNames = (originalRun.secretNames as string[]) ?? null;
+  const vars = (result.runVars as Record<string, string>) ?? null;
+  const secretNames = (result.runSecretNames as string[]) ?? null;
 
   return {
     agentComposeVersionId,
