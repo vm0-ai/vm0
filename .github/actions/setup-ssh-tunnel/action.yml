@@ -53,12 +53,13 @@ runs:
           > "$HOME/.ssh/cf-proxy.sh"
         chmod 755 "$HOME/.ssh/cf-proxy.sh"
 
-        SSH_CONFIG="Host *.vm3.ai
-          StrictHostKeyChecking no
-          UserKnownHostsFile /dev/null
-          ConnectTimeout 10
-          IdentityFile $HOME/.ssh/runner.pem
-          ProxyCommand $HOME/.ssh/cf-proxy.sh %h ${CF_ACCESS_CLIENT_ID} ${CF_ACCESS_CLIENT_SECRET}"
+        SSH_CONFIG="$(printf '%s\n' \
+          "Host *.vm3.ai" \
+          "  StrictHostKeyChecking no" \
+          "  UserKnownHostsFile /dev/null" \
+          "  ConnectTimeout 10" \
+          "  IdentityFile $HOME/.ssh/runner.pem" \
+          "  ProxyCommand $HOME/.ssh/cf-proxy.sh %h ${CF_ACCESS_CLIENT_ID} ${CF_ACCESS_CLIENT_SECRET}")"
 
         # Write to user config
         echo "$SSH_CONFIG" > "$HOME/.ssh/config"
