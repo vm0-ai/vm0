@@ -106,6 +106,19 @@ export async function getScopeBySlug(slug: string) {
 }
 
 /**
+ * Get a scope by its Clerk organization ID
+ */
+export async function getScopeByClerkOrgId(clerkOrgId: string) {
+  const result = await globalThis.services.db
+    .select()
+    .from(scopes)
+    .where(eq(scopes.clerkOrgId, clerkOrgId))
+    .limit(1);
+
+  return result[0] ?? null;
+}
+
+/**
  * Create a scope for a user with an admin membership.
  *
  * Merges the former createUserScope() and createOrganization() functions.
