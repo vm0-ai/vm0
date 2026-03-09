@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.54.0](https://github.com/vm0-ai/vm0/compare/cli-v9.53.1...cli-v9.54.0) (2026-03-09)
+
+
+### Features
+
+* add multi-auth method support for connectors ([#4053](https://github.com/vm0-ai/vm0/issues/4053)) ([b89cbdc](https://github.com/vm0-ai/vm0/commit/b89cbdcac841824b20feb93c50afdfb216a1d9ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.50.0
+
 ## [9.53.1](https://github.com/vm0-ai/vm0/compare/cli-v9.53.0...cli-v9.53.1) (2026-03-09)
 
 

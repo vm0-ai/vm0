@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.50.0](https://github.com/vm0-ai/vm0/compare/core-v8.49.0...core-v8.50.0) (2026-03-09)
+
+
+### Features
+
+* add close crm connector integration ([#4056](https://github.com/vm0-ai/vm0/issues/4056)) ([08134ea](https://github.com/vm0-ai/vm0/commit/08134ea6a8e90139eb55ed776e75b0ce3d97869f))
+* add multi-auth method support for connectors ([#4053](https://github.com/vm0-ai/vm0/issues/4053)) ([b89cbdc](https://github.com/vm0-ai/vm0/commit/b89cbdcac841824b20feb93c50afdfb216a1d9ff))
+* add outlook calendar connector with microsoft oauth ([#4059](https://github.com/vm0-ai/vm0/issues/4059)) ([5a6572d](https://github.com/vm0-ai/vm0/commit/5a6572d01028177e22215646eb9c32ab28464343))
+
 ## [8.49.0](https://github.com/vm0-ai/vm0/compare/core-v8.48.0...core-v8.49.0) (2026-03-09)
 
 

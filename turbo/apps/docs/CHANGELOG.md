@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.15.1](https://github.com/vm0-ai/vm0/compare/docs-v2.15.0...docs-v2.15.1) (2026-03-09)
+
+
+### Refactoring
+
+* remove self-hosting feature and restore saas-only mode ([#4051](https://github.com/vm0-ai/vm0/issues/4051)) ([5dcac9d](https://github.com/vm0-ai/vm0/commit/5dcac9d3374e78eb263d180faef9ee2909e34dcb))
+
 ## [2.15.0](https://github.com/vm0-ai/vm0/compare/docs-v2.14.0...docs-v2.15.0) (2026-03-05)
 
 

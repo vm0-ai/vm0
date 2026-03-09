@@ -1,5 +1,28 @@
 # Changelog
 
+## [12.90.0](https://github.com/vm0-ai/vm0/compare/web-v12.89.0...web-v12.90.0) (2026-03-09)
+
+
+### Features
+
+* add close crm connector integration ([#4056](https://github.com/vm0-ai/vm0/issues/4056)) ([08134ea](https://github.com/vm0-ai/vm0/commit/08134ea6a8e90139eb55ed776e75b0ce3d97869f))
+* add multi-auth method support for connectors ([#4053](https://github.com/vm0-ai/vm0/issues/4053)) ([b89cbdc](https://github.com/vm0-ai/vm0/commit/b89cbdcac841824b20feb93c50afdfb216a1d9ff))
+* add outlook calendar connector with microsoft oauth ([#4059](https://github.com/vm0-ai/vm0/issues/4059)) ([5a6572d](https://github.com/vm0-ai/vm0/commit/5a6572d01028177e22215646eb9c32ab28464343))
+* **scope:** auto-detect clerk org id in resolve-scope for platform requests ([#4083](https://github.com/vm0-ai/vm0/issues/4083)) ([0100f91](https://github.com/vm0-ai/vm0/commit/0100f917696a62d66c3e599f6ae1921c544efb31)), closes [#4076](https://github.com/vm0-ai/vm0/issues/4076)
+
+
+### Refactoring
+
+* align scope naming with resource model terminology ([#4088](https://github.com/vm0-ai/vm0/issues/4088)) ([cdc7738](https://github.com/vm0-ai/vm0/commit/cdc77383757a4a32d2acd8af08f3b090be06d322))
+* remove self-hosting feature and restore saas-only mode ([#4051](https://github.com/vm0-ai/vm0/issues/4051)) ([5dcac9d](https://github.com/vm0-ai/vm0/commit/5dcac9d3374e78eb263d180faef9ee2909e34dcb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.50.0
+
 ## [12.89.0](https://github.com/vm0-ai/vm0/compare/web-v12.88.0...web-v12.89.0) (2026-03-09)
 
 
