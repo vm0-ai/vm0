@@ -98,6 +98,136 @@ describe("Telegram bot commands", () => {
     mockClerk({ userId: user.userId });
   });
 
+  describe("command routing with @username targeting", () => {
+    it("should route command with matching @botUsername", async () => {
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: TELEGRAM_USER_ID, type: "private" },
+          from: { id: TELEGRAM_USER_ID, username: "testuser" },
+          text: "/help@test_bot",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ installationId }),
+      });
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      expect(sendMsg.mocked).toHaveBeenCalled();
+      expect(sendMsg.calls[0]?.text).toContain("/help");
+    });
+
+    it("should ignore command targeted at a different bot", async () => {
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: TELEGRAM_USER_ID, type: "group" },
+          from: { id: TELEGRAM_USER_ID, username: "testuser" },
+          text: "/help@other_bot",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ installationId }),
+      });
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // No message sent — command was for a different bot
+      expect(sendMsg.mocked).not.toHaveBeenCalled();
+    });
+
+    it("should route command without @suffix in group chat", async () => {
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: TELEGRAM_USER_ID, type: "group" },
+          from: { id: TELEGRAM_USER_ID, username: "testuser" },
+          text: "/help",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ installationId }),
+      });
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      expect(sendMsg.mocked).toHaveBeenCalled();
+      expect(sendMsg.calls[0]?.text).toContain("/help");
+    });
+
+    it("should handle case-insensitive @botUsername matching", async () => {
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: TELEGRAM_USER_ID, type: "private" },
+          from: { id: TELEGRAM_USER_ID, username: "testuser" },
+          text: "/help@TEST_BOT",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ installationId }),
+      });
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      expect(sendMsg.mocked).toHaveBeenCalled();
+      expect(sendMsg.calls[0]?.text).toContain("/help");
+    });
+  });
+
+  describe("/connect command - group chat security", () => {
+    it("should not expose connect URL in group chats", async () => {
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      // Unconnected user sends /connect in a group
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: -100123456, type: "group" },
+          from: { id: 99999, username: "unknown_user" },
+          text: "/connect",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ installationId }),
+      });
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      expect(sendMsg.mocked).toHaveBeenCalled();
+      const text = sendMsg.calls[0]?.text ?? "";
+      // Should redirect to DM instead of exposing the connect URL
+      expect(text).toContain("private message");
+      expect(text).toContain("?start=connect");
+      // Should NOT contain the actual connect URL with telegramUserId
+      expect(text).not.toContain("/telegram/connect?bot=");
+    });
+  });
+
   describe("/connect command", () => {
     it("should confirm when user is already connected", async () => {
       const sendMsg = telegramSendMessage();
