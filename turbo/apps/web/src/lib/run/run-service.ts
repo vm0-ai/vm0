@@ -460,18 +460,17 @@ async function registerCallbacks(
   callbacks: Array<{ url: string; secret: string; payload: unknown }>,
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
-  for (const callback of callbacks) {
-    const encryptedSecret = encryptCredentialValue(
-      callback.secret,
-      SECRETS_ENCRYPTION_KEY,
-    );
-    await globalThis.services.db.insert(agentRunCallbacks).values({
+  await globalThis.services.db.insert(agentRunCallbacks).values(
+    callbacks.map((callback) => ({
       runId,
       url: callback.url,
-      encryptedSecret,
+      encryptedSecret: encryptCredentialValue(
+        callback.secret,
+        SECRETS_ENCRYPTION_KEY,
+      ),
       payload: callback.payload,
-    });
-  }
+    })),
+  );
   log.debug(`Registered ${callbacks.length} callback(s) for run ${runId}`);
 }
 
