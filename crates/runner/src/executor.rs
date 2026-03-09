@@ -500,28 +500,32 @@ fn is_valid_session_id(id: &str) -> bool {
 
 /// Build the environment variables JSON, matching the TS `buildEnvironmentVariables`.
 ///
-/// User-provided `environment` and `vars` are inserted first so that
-/// system variables (VM0_*, secrets, etc.) always take precedence.
+/// Priority (lowest → highest):
+///   1. `vars` (compose config variables)
+///   2. `environment` (user-provided env)
+///   3. `user_timezone` TZ (unless `environment` already sets TZ)
+///   4. System variables (VM0_*, secrets, etc.) — always win
 fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, String> {
     let mut env = HashMap::new();
 
-    // --- User-provided variables first (lowest priority) ---
+    // --- User-provided variables (lowest priority first) ---
 
-    if let Some(user_env) = &context.environment {
-        for (k, v) in user_env {
-            env.insert(k.clone(), v.clone());
-        }
-    }
-
+    // 1. Compose config vars (lowest)
     if let Some(vars) = &context.vars {
         for (k, v) in vars {
             env.insert(k.clone(), v.clone());
         }
     }
 
-    // --- System variables below (override user values) ---
+    // 2. User environment (overrides vars)
+    if let Some(user_env) = &context.environment {
+        for (k, v) in user_env {
+            env.insert(k.clone(), v.clone());
+        }
+    }
 
-    // User timezone as TZ env var (if not already set in user environment)
+    // --- User timezone (between user vars and system vars) ---
+    // Overrides vars TZ but respects explicit TZ in user environment.
     if let Some(tz) = &context.user_timezone {
         let has_tz = context
             .environment
@@ -531,6 +535,8 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
             env.insert("TZ".into(), tz.clone());
         }
     }
+
+    // --- System variables below (override user values) ---
 
     env.insert("VM0_API_URL".into(), api_url.into());
     env.insert("VM0_RUN_ID".into(), context.run_id.to_string());
