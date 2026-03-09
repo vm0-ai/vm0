@@ -4,6 +4,14 @@
  */
 
 /**
+ * Sentinel userId for scope-level storages (volumes).
+ * Volumes are shared resources within a scope — they use this constant
+ * instead of a real userId so the (scopeId, userId, name, type)
+ * constraint keeps them unique per scope, not per user.
+ */
+export const VOLUME_SCOPE_USER_ID = "__scope__";
+
+/**
  * Generate the storage name for agent instructions.
  * Format: agent-instructions@{agentName}
  *

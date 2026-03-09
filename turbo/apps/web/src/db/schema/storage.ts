@@ -14,13 +14,16 @@ import { scopes } from "./scope";
 
 /**
  * Storages table
- * Main table for scope-level storage with HEAD pointer to current version
+ * Main table for storage with HEAD pointer to current version.
+ * Unique constraint: (scopeId, userId, name, type)
+ * - Volumes use VOLUME_SCOPE_USER_ID ("__scope__") as userId (scope-level shared)
+ * - Artifacts and Memory use real userId (per-user isolated)
  */
 export const storages = pgTable(
   "storages",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: text("user_id").notNull(), // Creator (who uploaded)
+    userId: text("user_id").notNull(), // Real userId for artifact/memory; VOLUME_SCOPE_USER_ID for volumes
     scopeId: uuid("scope_id")
       .notNull()
       .references(() => scopes.id, { onDelete: "cascade" }), // Namespace (who owns)
@@ -36,8 +39,9 @@ export const storages = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    scopeNameTypeIdx: uniqueIndex("idx_storages_scope_name_type").on(
+    scopeUserNameTypeIdx: uniqueIndex("idx_storages_scope_user_name_type").on(
       table.scopeId,
+      table.userId,
       table.name,
       table.type,
     ),

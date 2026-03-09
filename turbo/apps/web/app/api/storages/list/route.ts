@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { storagesListContract } from "@vm0/core";
+import { storagesListContract, VOLUME_SCOPE_USER_ID } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { storages } from "../../../../src/db/schema/storage";
 import { eq, and, desc } from "drizzle-orm";
@@ -34,9 +34,13 @@ const router = tsr.router(storagesListContract, {
     const scopeSlug = new URL(request.url).searchParams.get("scope");
     const { scope: userScope } = await resolveScope(userId, scopeSlug);
 
+    // Volumes use sentinel userId (scope-shared); artifacts/memory use real userId
+    const storageUserId =
+      storageType === "volume" ? VOLUME_SCOPE_USER_ID : userId;
+
     log.debug(`Listing ${storageType}s for scope ${userScope.slug}`);
 
-    // Query storages filtered by scope and type
+    // Query storages filtered by scope, userId, and type
     const results = await globalThis.services.db
       .select({
         name: storages.name,
@@ -46,7 +50,11 @@ const router = tsr.router(storagesListContract, {
       })
       .from(storages)
       .where(
-        and(eq(storages.scopeId, userScope.id), eq(storages.type, storageType)),
+        and(
+          eq(storages.scopeId, userScope.id),
+          eq(storages.userId, storageUserId),
+          eq(storages.type, storageType),
+        ),
       )
       .orderBy(desc(storages.updatedAt));
 

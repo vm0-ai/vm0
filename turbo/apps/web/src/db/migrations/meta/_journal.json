@@ -792,6 +792,13 @@
       "when": 1773244800000,
       "tag": "0112_add_scope_tier_max",
       "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1773300000000,
+      "tag": "0113_storage_user_scope_isolation",
+      "breakpoints": true
     }
   ]
 }

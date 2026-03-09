@@ -255,6 +255,7 @@ export async function prepareForExecution(
     context.vars || {},
     composeInfo.scopeId,
     userScope.id,
+    userId,
     context.artifactName,
     context.artifactVersion,
     context.volumeVersions,
