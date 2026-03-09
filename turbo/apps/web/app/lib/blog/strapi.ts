@@ -57,6 +57,20 @@ interface StrapiArticle {
   blocks?: StrapiBlock[];
 }
 
+async function safeJsonParse<T>(
+  res: Response,
+  context: string,
+): Promise<T | null> {
+  try {
+    return (await res.json()) as T;
+  } catch (error) {
+    console.warn(
+      `[blog] Failed to parse JSON response from Strapi (${context}): ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return null;
+  }
+}
+
 function transformArticle(article: StrapiArticle): BlogPost {
   let coverUrl = "/covers/default.png";
   if (article.cover?.url) {
@@ -116,14 +130,21 @@ export async function getPostsFromStrapi(
   const url = `${getStrapiUrl()}/api/articles?locale=${locale}&populate[0]=cover&populate[1]=blocks&populate[2]=category&populate[3]=author.avatar&sort=publishedAt:desc`;
 
   const res = await fetch(url, {
-    next: { revalidate: 60 },
+    next: { revalidate: 3600 },
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {
     throw new Error(`Failed to fetch posts: ${res.status} ${res.statusText}`);
   }
 
-  const data: StrapiResponse<StrapiArticle[]> = await res.json();
+  const data = await safeJsonParse<StrapiResponse<StrapiArticle[]>>(
+    res,
+    "getPostsFromStrapi",
+  );
+  if (!data) {
+    return [];
+  }
   return data.data.map(transformArticle);
 }
 
@@ -134,7 +155,8 @@ export async function getPostBySlugFromStrapi(
   const url = `${getStrapiUrl()}/api/articles?locale=${locale}&filters[slug][$eq]=${slug}&populate[0]=cover&populate[1]=blocks&populate[2]=category&populate[3]=author.avatar`;
 
   const res = await fetch(url, {
-    next: { revalidate: 60 },
+    next: { revalidate: 3600 },
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {
@@ -143,9 +165,11 @@ export async function getPostBySlugFromStrapi(
     );
   }
 
-  const data: StrapiResponse<StrapiArticle[]> = await res.json();
-
-  if (data.data.length === 0) {
+  const data = await safeJsonParse<StrapiResponse<StrapiArticle[]>>(
+    res,
+    "getPostBySlugFromStrapi",
+  );
+  if (!data || data.data.length === 0) {
     return null;
   }
 
@@ -158,7 +182,8 @@ export async function getFeaturedPostFromStrapi(
   const url = `${getStrapiUrl()}/api/articles?locale=${locale}&populate[0]=cover&populate[1]=blocks&populate[2]=category&populate[3]=author.avatar&sort=publishedAt:desc&pagination[limit]=1`;
 
   const res = await fetch(url, {
-    next: { revalidate: 60 },
+    next: { revalidate: 3600 },
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {
@@ -167,9 +192,11 @@ export async function getFeaturedPostFromStrapi(
     );
   }
 
-  const data: StrapiResponse<StrapiArticle[]> = await res.json();
-
-  if (data.data.length === 0) {
+  const data = await safeJsonParse<StrapiResponse<StrapiArticle[]>>(
+    res,
+    "getFeaturedPostFromStrapi",
+  );
+  if (!data || data.data.length === 0) {
     return null;
   }
 
@@ -182,7 +209,8 @@ export async function getAllCategoriesFromStrapi(
   locale: string = "en",
 ): Promise<string[]> {
   const res = await fetch(`${getStrapiUrl()}/api/categories?locale=${locale}`, {
-    next: { revalidate: 60 },
+    next: { revalidate: 3600 },
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {
@@ -197,6 +225,12 @@ export async function getAllCategoriesFromStrapi(
     slug: string;
   }
 
-  const data: StrapiResponse<StrapiCategory[]> = await res.json();
+  const data = await safeJsonParse<StrapiResponse<StrapiCategory[]>>(
+    res,
+    "getAllCategoriesFromStrapi",
+  );
+  if (!data) {
+    return [];
+  }
   return data.data.map((cat) => cat.name);
 }
