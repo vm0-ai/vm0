@@ -583,10 +583,6 @@ async function buildAndDispatchRun(opts: {
         op: "api_build_resolve_credentials",
         ms: buildContextTimings.resolveCredentials,
       },
-      {
-        op: "api_build_user_preferences",
-        ms: buildContextTimings.userPreferences,
-      },
       // Sub-step timings within prepareForExecution
       {
         op: "api_prepare_resolve_scopes",

@@ -879,7 +879,6 @@ interface BuildContextTimings {
   resolveSource: number;
   resolveScope: number;
   resolveCredentials: number;
-  userPreferences: number;
 }
 
 interface BuildContextResult {
@@ -975,7 +974,6 @@ export async function buildExecutionContext(
   // getUserPreferences only needs userId (no scopeId dependency),
   // so it can run concurrently with credential resolution.
   const resolveCredentialsStart = Date.now();
-  const userPreferencesStart = resolveCredentialsStart;
   const [credentialsResult, userPrefs] = await Promise.all([
     resolveCredentialsAndEnvironment(
       scopeId,
@@ -991,7 +989,6 @@ export async function buildExecutionContext(
     params.userId ? getUserPreferences(params.userId) : Promise.resolve(null),
   ]);
   const resolveCredentialsEnd = Date.now();
-  const userPreferencesEnd = resolveCredentialsEnd;
 
   const {
     secrets: resolvedSecrets,
@@ -1041,7 +1038,6 @@ export async function buildExecutionContext(
       resolveSource: resolveSourceEnd - resolveSourceStart,
       resolveScope: resolveScopeEnd - resolveScopeStart,
       resolveCredentials: resolveCredentialsEnd - resolveCredentialsStart,
-      userPreferences: userPreferencesEnd - userPreferencesStart,
     },
   };
 }
