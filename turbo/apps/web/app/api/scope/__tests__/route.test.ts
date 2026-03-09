@@ -37,6 +37,44 @@ describe("/api/scope", () => {
       expect(data.slug).toMatch(/^user-[a-f0-9]{8}$/);
     });
 
+    it("should auto-create scope with fallback slug on collision", async () => {
+      // First, create a scope that will collide with the deterministic slug
+      // by pre-occupying the slug that ensureDefaultScope would generate
+      const collidingUserId = `collision-test-${Date.now()}`;
+
+      // Import to compute the expected slug
+      const { generateDefaultScopeSlug } = await import(
+        "../../../../src/lib/scope/scope-service"
+      );
+      const expectedSlug = generateDefaultScopeSlug(collidingUserId);
+
+      // Pre-occupy the deterministic slug with a different user
+      const occupierUserId = `occupier-${Date.now()}`;
+      mockClerk({ userId: occupierUserId });
+      const occupyRequest = createTestRequest(
+        "http://localhost:3000/api/scope",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: expectedSlug }),
+        },
+      );
+      const occupyResponse = await POST(occupyRequest);
+      expect(occupyResponse.status).toBe(201);
+
+      // Now the colliding user triggers auto-creation via GET
+      mockClerk({ userId: collidingUserId });
+      const request = createTestRequest("http://localhost:3000/api/scope");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.id).toBeDefined();
+      // Should have fallen back to a random slug, not the colliding one
+      expect(data.slug).not.toBe(expectedSlug);
+      expect(data.slug).toMatch(/^user-[a-f0-9]{8}$/);
+    });
+
     it("should return same scope on repeated GET (idempotent auto-creation)", async () => {
       const userId = `idempotent-scope-${Date.now()}`;
       mockClerk({ userId });

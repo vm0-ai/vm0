@@ -19,6 +19,22 @@ import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
 
 const log = logger("api:scope");
 
+function scopeToResponseBody(scope: {
+  id: string;
+  slug: string;
+  tier: string;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: scope.id,
+    slug: scope.slug,
+    tier: scope.tier,
+    createdAt: scope.createdAt.toISOString(),
+    updatedAt: scope.updatedAt.toISOString(),
+  };
+}
+
 const router = tsr.router(scopeContract, {
   /**
    * GET /api/scope - Get current user's scope
@@ -37,30 +53,12 @@ const router = tsr.router(scopeContract, {
     try {
       const { scope } = await resolveScope(userId);
 
-      return {
-        status: 200 as const,
-        body: {
-          id: scope.id,
-          slug: scope.slug,
-          tier: scope.tier,
-          createdAt: scope.createdAt.toISOString(),
-          updatedAt: scope.updatedAt.toISOString(),
-        },
-      };
+      return { status: 200 as const, body: scopeToResponseBody(scope) };
     } catch (error) {
       if (isNotFound(error)) {
         // Auto-create default scope for new users
         const scope = await ensureDefaultScope(userId);
-        return {
-          status: 200 as const,
-          body: {
-            id: scope.id,
-            slug: scope.slug,
-            tier: scope.tier,
-            createdAt: scope.createdAt.toISOString(),
-            updatedAt: scope.updatedAt.toISOString(),
-          },
-        };
+        return { status: 200 as const, body: scopeToResponseBody(scope) };
       }
       throw error;
     }
@@ -97,16 +95,7 @@ const router = tsr.router(scopeContract, {
 
       const scope = await createScope(userId, slug, { skipSlugValidation });
 
-      return {
-        status: 201 as const,
-        body: {
-          id: scope.id,
-          slug: scope.slug,
-          tier: scope.tier,
-          createdAt: scope.createdAt.toISOString(),
-          updatedAt: scope.updatedAt.toISOString(),
-        },
-      };
+      return { status: 201 as const, body: scopeToResponseBody(scope) };
     } catch (error) {
       if (isBadRequest(error)) {
         // Check if it's a conflict error (user already has scope)
@@ -163,16 +152,7 @@ const router = tsr.router(scopeContract, {
         force,
       );
 
-      return {
-        status: 200 as const,
-        body: {
-          id: scope.id,
-          slug: scope.slug,
-          tier: scope.tier,
-          createdAt: scope.createdAt.toISOString(),
-          updatedAt: scope.updatedAt.toISOString(),
-        },
-      };
+      return { status: 200 as const, body: scopeToResponseBody(scope) };
     } catch (error) {
       if (isBadRequest(error)) {
         // Check if it's a conflict error (slug already exists)
