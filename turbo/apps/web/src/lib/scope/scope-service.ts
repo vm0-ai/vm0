@@ -1,4 +1,4 @@
-import { createHash } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { eq } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { scopes } from "../../db/schema/scope";
@@ -8,7 +8,13 @@ import {
   getPrimaryAdminMembership,
   getDefaultScope,
 } from "./scope-member-service";
-import { badRequest, notFound, forbidden, isNotFound } from "../errors";
+import {
+  badRequest,
+  notFound,
+  forbidden,
+  isNotFound,
+  isBadRequest,
+} from "../errors";
 import { logger } from "../logger";
 import { env, hasClerkAuth } from "../../env";
 import { SELF_HOSTED_CLERK_ORG_ID } from "../auth/constants";
@@ -197,6 +203,30 @@ export async function getUserScopeByClerkId(clerkUserId: string) {
     return scope;
   } catch (error) {
     if (isNotFound(error)) return null;
+    throw error;
+  }
+}
+
+/**
+ * Ensure a user has a default scope, creating one if it doesn't exist.
+ * Consolidates the auto-creation pattern used by CLI token exchange,
+ * Slack OAuth, and the scope API.
+ *
+ * @returns The existing or newly created scope
+ */
+export async function ensureDefaultScope(clerkUserId: string) {
+  const existing = await getUserScopeByClerkId(clerkUserId);
+  if (existing) return existing;
+
+  const defaultSlug = generateDefaultScopeSlug(clerkUserId);
+  try {
+    return await createScope(clerkUserId, defaultSlug);
+  } catch (error) {
+    // Handle rare slug collision — retry with random suffix
+    if (isBadRequest(error) && error.message.includes("already exists")) {
+      const fallbackSlug = `user-${randomBytes(4).toString("hex")}`;
+      return await createScope(clerkUserId, fallbackSlug);
+    }
     throw error;
   }
 }

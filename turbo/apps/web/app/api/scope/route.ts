@@ -10,6 +10,7 @@ import {
   createScope,
   updateScopeSlug,
   isVm0Admin,
+  ensureDefaultScope,
 } from "../../../src/lib/scope/scope-service";
 import { getUserEmail } from "../../../src/lib/auth/get-user-email";
 import { resolveScope } from "../../../src/lib/scope/resolve-scope";
@@ -48,10 +49,18 @@ const router = tsr.router(scopeContract, {
       };
     } catch (error) {
       if (isNotFound(error)) {
-        return createErrorResponse(
-          "NOT_FOUND",
-          "No scope configured. Set your scope with: vm0 scope set <slug>",
-        );
+        // Auto-create default scope for new users
+        const scope = await ensureDefaultScope(userId);
+        return {
+          status: 200 as const,
+          body: {
+            id: scope.id,
+            slug: scope.slug,
+            tier: scope.tier,
+            createdAt: scope.createdAt.toISOString(),
+            updatedAt: scope.updatedAt.toISOString(),
+          },
+        };
       }
       throw error;
     }

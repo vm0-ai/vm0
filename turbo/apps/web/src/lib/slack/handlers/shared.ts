@@ -11,11 +11,7 @@ import {
 import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { getPlatformUrl } from "../../url";
-import {
-  getUserScopeByClerkId,
-  createScope,
-  generateDefaultScopeSlug,
-} from "../../scope/scope-service";
+import { ensureDefaultScope } from "../../scope/scope-service";
 import { validateAgentSession } from "../../run";
 import { ensureStorageExists } from "../../storage/storage-service";
 import { logger } from "../../logger";
@@ -222,11 +218,7 @@ export function buildLogsUrl(runId: string, agentName: string): string {
  * 2. If no HEAD version, create an empty initial version (upload manifest to S3 + commit)
  */
 export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
-  let scope = await getUserScopeByClerkId(vm0UserId);
-  if (!scope) {
-    scope = await createScope(vm0UserId, generateDefaultScopeSlug(vm0UserId));
-    log.info("Auto-created scope for Slack user", { userId: vm0UserId });
-  }
+  const scope = await ensureDefaultScope(vm0UserId);
 
   // Preserve original Slack behavior: log but don't throw on artifact creation failure.
   // Slack callers (server actions, OAuth callback) don't have error handling for this.

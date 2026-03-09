@@ -9,15 +9,7 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "../../../../../src/db/schema/device-codes";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
-import {
-  getUserScopeByClerkId,
-  createScope,
-  generateDefaultScopeSlug,
-} from "../../../../../src/lib/scope/scope-service";
-import { isBadRequest } from "../../../../../src/lib/errors";
-import { logger } from "../../../../../src/lib/logger";
-
-const log = logger("api:cli:auth:token");
+import { ensureDefaultScope } from "../../../../../src/lib/scope/scope-service";
 
 const router = tsr.router(cliAuthTokenContract, {
   exchange: async ({ body }) => {
@@ -82,33 +74,8 @@ const router = tsr.router(cliAuthTokenContract, {
       case "authenticated": {
         const userId = session.userId as string;
 
-        // Auto-create scope if user doesn't have one
-        const existingScope = await getUserScopeByClerkId(userId);
-        if (!existingScope) {
-          const defaultSlug = generateDefaultScopeSlug(userId);
-          try {
-            await createScope(userId, defaultSlug);
-            log.debug("auto-created default scope for user", {
-              userId,
-              slug: defaultSlug,
-            });
-          } catch (error) {
-            // Handle rare slug collision - retry with random suffix
-            if (
-              isBadRequest(error) &&
-              error.message.includes("already exists")
-            ) {
-              const fallbackSlug = `user-${crypto.randomBytes(4).toString("hex")}`;
-              await createScope(userId, fallbackSlug);
-              log.debug("auto-created fallback scope for user", {
-                userId,
-                slug: fallbackSlug,
-              });
-            } else {
-              throw error;
-            }
-          }
-        }
+        // Ensure user has a default scope
+        await ensureDefaultScope(userId);
 
         // Generate CLI token
         const randomBytes = crypto.randomBytes(32);
