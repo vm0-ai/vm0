@@ -49,7 +49,7 @@ export interface ConnectorTypeWithStatus {
  * Controls whether the OAuth auth method is available for each connector.
  * Connectors not listed here have OAuth always available.
  */
-const CONNECTOR_OAUTH_FEATURE_FLAGS = Object.freeze<
+const CONNECTOR_FEATURE_FLAGS = Object.freeze<
   Partial<Record<ConnectorType, FeatureSwitchKey>>
 >({
   asana: FeatureSwitchKey.AsanaConnector,
@@ -83,7 +83,7 @@ export const allConnectorTypes$ = computed(async (get) => {
 
   return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
-      const flag = CONNECTOR_OAUTH_FEATURE_FLAGS[type];
+      const flag = CONNECTOR_FEATURE_FLAGS[type];
       const oauthEnabled = !flag || !!features?.[flag];
       const hasApiToken = "api-token" in CONNECTOR_TYPES[type].authMethods;
       // Connector visible if OAuth is enabled OR it has an api-token method
@@ -92,7 +92,7 @@ export const allConnectorTypes$ = computed(async (get) => {
     .map((type) => {
       const config = CONNECTOR_TYPES[type];
       const connector = connectorMap.get(type) ?? null;
-      const flag = CONNECTOR_OAUTH_FEATURE_FLAGS[type];
+      const flag = CONNECTOR_FEATURE_FLAGS[type];
       const oauthEnabled = !flag || !!features?.[flag];
       const hasApiToken = "api-token" in config.authMethods;
       const availableAuthMethods: string[] = [];

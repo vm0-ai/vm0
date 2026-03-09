@@ -3,7 +3,7 @@ import chalk from "chalk";
 import { initClient } from "@ts-rest/core";
 import {
   CONNECTOR_TYPES,
-  CONNECTOR_OAUTH_FEATURE_FLAGS,
+  CONNECTOR_FEATURE_FLAGS,
   connectorSessionsContract,
   connectorSessionByIdContract,
   connectorTypeSchema,
@@ -157,7 +157,7 @@ async function resolveAuthMethod(
   tokenFlag?: string,
 ): Promise<"oauth" | "api-token"> {
   const config = CONNECTOR_TYPES[connectorType];
-  const oauthFlag = CONNECTOR_OAUTH_FEATURE_FLAGS[connectorType];
+  const oauthFlag = CONNECTOR_FEATURE_FLAGS[connectorType];
   const oauthAvailable =
     "oauth" in config.authMethods &&
     (!oauthFlag || (await isFeatureEnabled(oauthFlag)));

@@ -83,7 +83,7 @@ describe("allConnectorTypes$", () => {
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { docusignConnectorOAuth: false },
+      featureSwitches: { docusignConnector: false },
     });
 
     const types = await store.get(allConnectorTypes$);
@@ -99,7 +99,7 @@ describe("allConnectorTypes$", () => {
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { dropboxConnectorOAuth: false },
+      featureSwitches: { dropboxConnector: false },
     });
 
     const types = await store.get(allConnectorTypes$);
@@ -116,7 +116,7 @@ describe("allConnectorTypes$", () => {
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { deelConnectorOAuth: false },
+      featureSwitches: { deelConnector: false },
     });
 
     const types = await store.get(allConnectorTypes$);
@@ -133,7 +133,7 @@ describe("allConnectorTypes$", () => {
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { figmaConnectorOAuth: false },
+      featureSwitches: { figmaConnector: false },
     });
 
     const types = await store.get(allConnectorTypes$);
@@ -150,7 +150,7 @@ describe("allConnectorTypes$", () => {
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { googleSheetsConnectorOAuth: false },
+      featureSwitches: { googleSheetsConnector: false },
     });
 
     const types = await store.get(allConnectorTypes$);
@@ -166,7 +166,7 @@ describe("allConnectorTypes$", () => {
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { googleDocsConnectorOAuth: false },
+      featureSwitches: { googleDocsConnector: false },
     });
 
     const types = await store.get(allConnectorTypes$);
@@ -182,7 +182,7 @@ describe("allConnectorTypes$", () => {
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { googleDriveConnectorOAuth: false },
+      featureSwitches: { googleDriveConnector: false },
     });
 
     const types = await store.get(allConnectorTypes$);
@@ -198,7 +198,7 @@ describe("allConnectorTypes$", () => {
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { mercuryConnectorOAuth: false },
+      featureSwitches: { mercuryConnector: false },
     });
 
     const types = await store.get(allConnectorTypes$);
@@ -215,7 +215,7 @@ describe("allConnectorTypes$", () => {
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { stravaConnectorOAuth: false },
+      featureSwitches: { stravaConnector: false },
     });
 
     const types = await store.get(allConnectorTypes$);
@@ -231,7 +231,7 @@ describe("allConnectorTypes$", () => {
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { garminConnectConnectorOAuth: false },
+      featureSwitches: { garminConnectConnector: false },
     });
 
     const types = await store.get(allConnectorTypes$);
