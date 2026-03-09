@@ -166,6 +166,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
+  [FeatureSwitchKey.MetaAdsConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
+  [FeatureSwitchKey.StripeConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
   [FeatureSwitchKey.GitHubIntegration]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
@@ -206,6 +216,8 @@ export const CONNECTOR_FEATURE_FLAGS: Partial<
   "intervals-icu": FeatureSwitchKey.IntervalsIcuConnector,
   supabase: FeatureSwitchKey.SupabaseConnector,
   webflow: FeatureSwitchKey.WebflowConnector,
+  "meta-ads": FeatureSwitchKey.MetaAdsConnector,
+  stripe: FeatureSwitchKey.StripeConnector,
 };
 
 /**

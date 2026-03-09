@@ -28,6 +28,7 @@ import { notionHandler } from "./providers/notion-handler";
 import { redditHandler } from "./providers/reddit-handler";
 import { slackHandler } from "./providers/slack-handler";
 import { stravaHandler } from "./providers/strava-handler";
+import { stripeHandler } from "./providers/stripe-handler";
 import { intervalsIcuHandler } from "./providers/intervals-icu-handler";
 import { sentryHandler } from "./providers/sentry-handler";
 import { vercelHandler } from "./providers/vercel-handler";
@@ -35,6 +36,7 @@ import { xHandler } from "./providers/x-handler";
 import { supabaseHandler } from "./providers/supabase-handler";
 import { todoistHandler } from "./providers/todoist-handler";
 import { webflowHandler } from "./providers/webflow-handler";
+import { metaAdsHandler } from "./providers/meta-ads-handler";
 import { xeroHandler } from "./providers/xero-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
@@ -68,10 +70,12 @@ export const PROVIDER_HANDLERS: Record<
   sentry: sentryHandler,
   slack: slackHandler,
   strava: stravaHandler,
+  stripe: stripeHandler,
   todoist: todoistHandler,
   vercel: vercelHandler,
   webflow: webflowHandler,
   supabase: supabaseHandler,
+  "meta-ads": metaAdsHandler,
   x: xHandler,
   xero: xeroHandler,
 };

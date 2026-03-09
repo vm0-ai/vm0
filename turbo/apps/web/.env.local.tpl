@@ -132,6 +132,10 @@ MONDAY_OAUTH_APP_ID=op://Development/monday/MONDAY_OAUTH_APP_ID
 WIX_OAUTH_CLIENT_ID=op://Development/wix/WIX_OAUTH_CLIENT_ID
 WIX_OAUTH_CLIENT_SECRET=op://Development/wix/WIX_OAUTH_CLIENT_SECRET
 
+# Optional: Meta Ads OAuth Connector
+META_ADS_OAUTH_CLIENT_ID=op://Development/meta-ads/META_ADS_OAUTH_CLIENT_ID
+META_ADS_OAUTH_CLIENT_SECRET=op://Development/meta-ads/META_ADS_OAUTH_CLIENT_SECRET
+
 # Optional: Canva OAuth Connector
 CANVA_OAUTH_CLIENT_ID=op://Development/canva/CANVA_OAUTH_CLIENT_ID
 CANVA_OAUTH_CLIENT_SECRET=op://Development/canva/CANVA_OAUTH_CLIENT_SECRET
@@ -139,6 +143,10 @@ CANVA_OAUTH_CLIENT_SECRET=op://Development/canva/CANVA_OAUTH_CLIENT_SECRET
 # Optional: Webflow OAuth Connector
 WEBFLOW_OAUTH_CLIENT_ID=op://Development/webflow/WEBFLOW_OAUTH_CLIENT_ID
 WEBFLOW_OAUTH_CLIENT_SECRET=op://Development/webflow/WEBFLOW_OAUTH_CLIENT_SECRET
+
+# Optional: Stripe OAuth Connector
+STRIPE_OAUTH_CLIENT_ID=op://Development/stripe/STRIPE_OAUTH_CLIENT_ID
+STRIPE_OAUTH_CLIENT_SECRET=op://Development/stripe/STRIPE_OAUTH_CLIENT_SECRET
 
 # Optional: Supabase OAuth Connector
 SUPABASE_OAUTH_CLIENT_ID=op://Development/supabase/SUPABASE_OAUTH_CLIENT_ID

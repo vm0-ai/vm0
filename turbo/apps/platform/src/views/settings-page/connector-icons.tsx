@@ -19,6 +19,7 @@ import googleDriveIcon from "./icons/google-drive.svg";
 import googleSheetsIcon from "./icons/google-sheets.svg";
 import linearIcon from "./icons/linear.svg";
 import mercuryIcon from "./icons/mercury.svg";
+import metaAdsIcon from "./icons/meta-ads.svg";
 import mondayIcon from "./icons/monday.svg";
 import neonIcon from "./icons/neon.svg";
 import notionIcon from "./icons/notion.svg";
@@ -26,6 +27,7 @@ import redditIcon from "./icons/reddit.svg";
 import sentryIcon from "./icons/sentry.svg";
 import slackIcon from "./icons/slack.svg";
 import stravaIcon from "./icons/strava.svg";
+import stripeIcon from "./icons/stripe.svg";
 import supabaseIcon from "./icons/supabase.svg";
 import todoistIcon from "./icons/todoist.svg";
 import vercelIcon from "./icons/vercel.svg";
@@ -53,6 +55,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   "intervals-icu": intervalsIcuIcon,
   linear: linearIcon,
   mercury: mercuryIcon,
+  "meta-ads": metaAdsIcon,
   monday: mondayIcon,
   neon: neonIcon,
   notion: notionIcon,
@@ -60,6 +63,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   sentry: sentryIcon,
   slack: slackIcon,
   strava: stravaIcon,
+  stripe: stripeIcon,
   supabase: supabaseIcon,
   todoist: todoistIcon,
   vercel: vercelIcon,
