@@ -29,6 +29,7 @@ export enum FeatureSwitchKey {
   IntervalsIcuConnector = "intervalsIcuConnector",
   SupabaseConnector = "supabaseConnector",
   WebflowConnector = "webflowConnector",
+  OutlookCalendarConnector = "outlookCalendarConnector",
   MetaAdsConnector = "metaAdsConnector",
   StripeConnector = "stripeConnector",
   GitHubIntegration = "githubIntegration",

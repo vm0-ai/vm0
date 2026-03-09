@@ -22,6 +22,7 @@ import metaAdsIcon from "./icons/meta-ads.svg";
 import mondayIcon from "./icons/monday.svg";
 import neonIcon from "./icons/neon.svg";
 import notionIcon from "./icons/notion.svg";
+import outlookCalendarIcon from "./icons/outlook-calendar.svg";
 import redditIcon from "./icons/reddit.svg";
 import sentryIcon from "./icons/sentry.svg";
 import slackIcon from "./icons/slack.svg";
@@ -57,6 +58,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   monday: mondayIcon,
   neon: neonIcon,
   notion: notionIcon,
+  "outlook-calendar": outlookCalendarIcon,
   reddit: redditIcon,
   sentry: sentryIcon,
   slack: slackIcon,
