@@ -40,8 +40,10 @@ runs:
         echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
         chmod 600 "$HOME/.ssh/runner.pem"
 
-        # Proxy script that converts host to tunnel hostname
-        # dev-1.aws.vm3.ai -> dev-1-aws-ssh.vm3.ai
+        # Proxy script that converts host to tunnel hostname.
+        # Must match parse_host() naming in scripts/cloudflared-ssh.sh:
+        #   subdomain dots -> hyphens, append -ssh
+        #   e.g. dev-1.aws.vm3.ai -> dev-1-aws-ssh.vm3.ai
         printf '%s\n' \
           '#!/bin/bash' \
           'HOST="$1"; ID="$2"; SECRET="$3"; DOMAIN="vm3.ai"' \
