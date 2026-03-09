@@ -267,8 +267,9 @@ export default function RootLayout({
       publishableKey={getClerkPublishableKey()}
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
-      afterSignInUrl={getPlatformUrl()}
-      afterSignUpUrl={getPlatformUrl()}
+      signInFallbackRedirectUrl={getPlatformUrl()}
+      signUpFallbackRedirectUrl={getPlatformUrl()}
+      allowedRedirectOrigins={[getPlatformUrl(), `${getPlatformUrl()}/`]}
     >
       {content}
     </ClerkProvider>

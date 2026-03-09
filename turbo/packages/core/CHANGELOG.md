@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.48.0](https://github.com/vm0-ai/vm0/compare/core-v8.47.0...core-v8.48.0) (2026-03-09)
+
+
+### Features
+
+* **connectors:** add experimental connectors data pipeline ([#4048](https://github.com/vm0-ai/vm0/issues/4048)) ([f3ad976](https://github.com/vm0-ai/vm0/commit/f3ad976c82d86300636b545aa8b5b23c6ebfc744))
+* **schedule:** associate schedules with scope and user identity for cross-scope sharing ([#4011](https://github.com/vm0-ai/vm0/issues/4011)) ([ac3e58b](https://github.com/vm0-ai/vm0/commit/ac3e58b100d7b272b54abc2e1ec962b40652f0d2))
+
 ## [8.47.0](https://github.com/vm0-ai/vm0/compare/core-v8.46.0...core-v8.47.0) (2026-03-09)
 
 

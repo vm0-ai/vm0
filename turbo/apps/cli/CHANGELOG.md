@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.53.0](https://github.com/vm0-ai/vm0/compare/cli-v9.52.0...cli-v9.53.0) (2026-03-09)
+
+
+### Features
+
+* **schedule:** associate schedules with scope and user identity for cross-scope sharing ([#4011](https://github.com/vm0-ai/vm0/issues/4011)) ([ac3e58b](https://github.com/vm0-ai/vm0/commit/ac3e58b100d7b272b54abc2e1ec962b40652f0d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.48.0
+
 ## [9.52.0](https://github.com/vm0-ai/vm0/compare/cli-v9.51.1...cli-v9.52.0) (2026-03-09)
 
 

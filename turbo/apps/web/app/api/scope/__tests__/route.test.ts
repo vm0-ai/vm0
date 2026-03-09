@@ -587,9 +587,9 @@ describe("/api/scope", () => {
       const response = await GET(request);
       const data = await response.json();
 
+      // With Clerk configured, the user's default org is discovered via JIT
+      // and its slug is used (mockClerk defaults to org-{userId} slug)
       expect(response.status).toBe(200);
-      // In SaaS mode (Clerk configured), JIT discovery uses the mock Clerk org slug.
-      // In self-hosted mode (no Clerk), it would produce a user-{hash} slug.
       expect(data.slug).toMatch(/^org-no-org-\d+$/);
     });
   });

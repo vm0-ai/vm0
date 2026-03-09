@@ -26,6 +26,8 @@ const RECENT_LABELS: Record<string, string> = {
   "4": "Code review reminders",
 };
 
+const showOnboarding = false;
+
 export function ZeroAppShell() {
   const [activeId, setActiveId] = useState<ZeroNavId>("chat");
   const [recentId, setRecentId] = useState<string | null>(null);
@@ -49,13 +51,11 @@ export function ZeroAppShell() {
   }, []);
 
   const handleAccountAction = useCallback((action: ZeroAccountAction) => {
-    if (action === "signout") {
-      setAccountSubId(null);
-      setActiveId("chat");
-    } else {
-      setActiveId("account");
-      setAccountSubId(action);
+    if (action === "signout" || action === "manage") {
+      return;
     }
+    setActiveId("account");
+    setAccountSubId(action);
   }, []);
 
   const handleClearRecent = useCallback(() => {
@@ -66,10 +66,13 @@ export function ZeroAppShell() {
 
   return (
     <div className="zero-app flex h-dvh w-full bg-background">
-      <ZeroOnboarding
-        zeroAvatarSrc={zeroAvatarSrc}
-        onAvatarClick={cycleAvatar}
-      />
+      {/* TODO: re-enable onboarding when ready */}
+      {showOnboarding && (
+        <ZeroOnboarding
+          zeroAvatarSrc={zeroAvatarSrc}
+          onAvatarClick={cycleAvatar}
+        />
+      )}
       <ZeroSidebar
         activeId={activeId}
         onSelect={handleNavSelect}

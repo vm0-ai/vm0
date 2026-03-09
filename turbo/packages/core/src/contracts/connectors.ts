@@ -1128,6 +1128,36 @@ export const CONNECTOR_TYPES = {
       scopes: ["ads_management", "ads_read", "business_management"],
     } as ConnectorOAuthConfig,
   },
+  stripe: {
+    label: "Stripe",
+    helpText:
+      "Connect your Stripe account to manage payments, customers, and subscriptions",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Stripe to grant access.",
+        secrets: {
+          STRIPE_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          STRIPE_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: false,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      STRIPE_API_KEY: "$secrets.STRIPE_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://connect.stripe.com/oauth/authorize",
+      tokenUrl: "https://connect.stripe.com/oauth/token",
+      scopes: ["read_write"],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -1283,6 +1313,10 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
     targets: ["https://graph.facebook.com"],
     auth: BEARER_AUTH,
   },
+  stripe: {
+    targets: ["https://api.stripe.com"],
+    auth: BEARER_AUTH,
+  },
 };
 
 export const connectorTypeSchema = z.enum([
@@ -1318,6 +1352,7 @@ export const connectorTypeSchema = z.enum([
   "todoist",
   "webflow",
   "meta-ads",
+  "stripe",
 ]);
 
 /**

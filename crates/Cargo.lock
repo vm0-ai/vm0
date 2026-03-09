@@ -1470,7 +1470,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.20.4"
+version = "0.21.0"
 dependencies = [
  "ably-subscriber",
  "async-trait",

@@ -32,7 +32,16 @@ Loop control is handled by a **bash driver script**, not by your memory. You MUS
 
 ### 1a: Identify PR
 
+Parse the `args` parameter to extract a PR number. The args can be:
+- A PR number: `4062`
+- A GitHub PR URL: `https://github.com/owner/repo/pull/4062`
+- A GitHub issue URL: `https://github.com/owner/repo/issues/4062` (treat as PR number)
+- Empty: detect from current branch
+
 ```bash
+# Parse PR_ID from args — extract number from URL if needed
+PR_ID=$(echo "$ARGS" | grep -oP '(?:pull|issues)/\K[0-9]+' || echo "$ARGS" | grep -oP '^[0-9]+$' || echo "")
+
 if [ -n "$PR_ID" ]; then
     PR_NUMBER="$PR_ID"
 else
@@ -40,6 +49,8 @@ else
     PR_NUMBER=$(gh pr list --head "$CURRENT_BRANCH" --json number --jq '.[0].number')
 fi
 ```
+
+**Important:** `$ARGS` is a placeholder — you (the LLM) must extract the PR number from the skill's `args` string yourself before running any bash commands. If args contains a URL, extract the number from the path. If args is a plain number, use it directly. If args is empty, fall back to detecting from the current branch.
 
 ### 1b: Create Driver Script
 
