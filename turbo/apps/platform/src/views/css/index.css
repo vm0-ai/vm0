@@ -69,8 +69,7 @@
   --zero-card-radius: 1rem;
   --zero-card-border: hsl(220 5% 92%);
   --zero-card-shadow:
-    0 1px 1px hsl(220 12% 20% / 0.02),
-    0 2px 8px hsl(220 12% 20% / 0.025),
+    0 1px 1px hsl(220 12% 20% / 0.02), 0 2px 8px hsl(220 12% 20% / 0.025),
     0 8px 24px hsl(220 12% 20% / 0.02);
 }
 
