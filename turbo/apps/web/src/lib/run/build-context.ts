@@ -15,6 +15,7 @@ import {
   type ModelProviderFramework,
 } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
+import { scopes } from "../../db/schema/scope";
 import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
 import type { ExecutionContext, ResumeSession, UserScope } from "./types";
@@ -665,9 +666,11 @@ interface BuildContextParams {
   checkEnv?: boolean;
   // API start time for E2E timing metrics
   apiStartTime?: number;
-  // Caller-resolved scope ID for credential/variable resolution.
+  // Caller-resolved scope ID and slug for credential/variable/storage resolution.
+  // When provided, used for both credentials and storage (artifacts/memory).
   // When not provided, resolved via getDefaultScope fallback.
   scopeId?: string;
+  scopeSlug?: string;
 }
 
 /**
@@ -859,14 +862,13 @@ function applyResolutionDefaults(
 }
 
 /**
- * Resolve credential scope ID and user's default scope.
+ * Resolve credential scope ID and user scope for storage.
  *
  * The credential scope is used for secrets/variables/connectors.
  * The user scope is used for storage (artifacts, memory) in prepareForExecution.
- * They may differ when an org scope is explicitly selected via ?scope= param.
+ * Both use the same runtime scope when params.scopeId is provided.
  *
  * When params.scopeId is not provided, getDefaultScope serves both purposes.
- * When provided, the user scope is resolved in parallel with credential resolution.
  */
 async function resolveScopes(params: BuildContextParams): Promise<{
   credentialScopeId: string;
@@ -875,14 +877,26 @@ async function resolveScopes(params: BuildContextParams): Promise<{
     | { id: string; slug: string };
 }> {
   if (params.scopeId) {
-    // Credential scope is explicit (may be org scope).
-    // User's default scope (for storage) resolved later in parallel.
+    // Both credential scope and user scope use the explicit runtime scope.
+    // This ensures artifacts/memory are created in the same scope as credentials.
+    if (params.scopeSlug) {
+      return {
+        credentialScopeId: params.scopeId,
+        pendingUserScope: { id: params.scopeId, slug: params.scopeSlug },
+      };
+    }
+    // Fallback: query slug from DB when caller didn't provide it
     return {
       credentialScopeId: params.scopeId,
-      pendingUserScope: getDefaultScope(params.userId).then((r) => ({
-        id: r.scope.id,
-        slug: r.scope.slug,
-      })),
+      pendingUserScope: globalThis.services.db
+        .select({ slug: scopes.slug })
+        .from(scopes)
+        .where(eq(scopes.id, params.scopeId))
+        .limit(1)
+        .then(([result]) => ({
+          id: params.scopeId as string,
+          slug: result?.slug ?? "",
+        })),
     };
   }
   // No explicit scope — default scope serves both purposes

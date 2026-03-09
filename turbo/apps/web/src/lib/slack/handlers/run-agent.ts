@@ -3,6 +3,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
+import { scopes } from "../../../db/schema/scope";
 import { createRun, isRunDispatchError } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
 import { queryAxiom, getDatasetName, DATASETS } from "../../axiom";
@@ -61,10 +62,16 @@ export async function runAgentForSlack(
   } = params;
 
   try {
-    // Get compose and latest version
+    // Get compose and latest version (with scope slug for storage resolution)
     const [compose] = await globalThis.services.db
-      .select()
+      .select({
+        id: agentComposes.id,
+        scopeId: agentComposes.scopeId,
+        scopeSlug: scopes.slug,
+        headVersionId: agentComposes.headVersionId,
+      })
       .from(agentComposes)
+      .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
       .where(eq(agentComposes.id, composeId))
       .limit(1);
 
@@ -123,6 +130,8 @@ export async function runAgentForSlack(
           payload: callbackContext,
         },
       ],
+      scopeId: compose.scopeId,
+      scopeSlug: compose.scopeSlug,
     });
 
     const status = result.status === "queued" ? "queued" : "dispatched";

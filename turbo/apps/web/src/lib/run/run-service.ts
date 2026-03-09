@@ -319,9 +319,10 @@ export interface CreateRunParams {
   modelProvider?: string;
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
-  // Caller-resolved scope ID for variable resolution (org-aware).
-  // When provided, used instead of getUserScopeByClerkId fallback.
+  // Caller-resolved scope ID and slug for variable/storage resolution (org-aware).
+  // When provided, used instead of getDefaultScope fallback.
   scopeId?: string;
+  scopeSlug?: string;
   // Caller-resolved scope tier for concurrency limit derivation.
   scopeTier?: ScopeTier;
 }
@@ -525,6 +526,7 @@ async function buildAndDispatchRun(opts: {
   composeContent: AgentComposeYaml;
   apiStartTime: number;
   scopeId: string | undefined;
+  scopeSlug: string | undefined;
   authorizeTime: number;
   transactionTime: number;
 }): Promise<{ status: string; sandboxId?: string }> {
@@ -535,6 +537,7 @@ async function buildAndDispatchRun(opts: {
     composeContent,
     apiStartTime,
     scopeId,
+    scopeSlug,
     authorizeTime,
     transactionTime,
   } = opts;
@@ -579,6 +582,7 @@ async function buildAndDispatchRun(opts: {
       checkEnv: params.checkEnv,
       apiStartTime,
       scopeId,
+      scopeSlug,
     });
     const buildContextTime = Date.now();
 
@@ -695,8 +699,17 @@ export async function createRun(
     );
   }
 
-  // Resolve scope ID for the run record
-  const scopeId = params.scopeId ?? (await getDefaultScope(userId)).scope.id;
+  // Resolve scope ID and slug for the run record and storage
+  let scopeId: string;
+  let scopeSlug: string | undefined;
+  if (params.scopeId) {
+    scopeId = params.scopeId;
+    scopeSlug = params.scopeSlug;
+  } else {
+    const { scope } = await getDefaultScope(userId);
+    scopeId = scope.id;
+    scopeSlug = scope.slug;
+  }
 
   // Step 5: Concurrency check + INSERT in a transaction with advisory lock
   // to prevent TOCTOU race where two concurrent requests both pass the
@@ -737,7 +750,7 @@ export async function createRun(
     });
   } catch (error) {
     if (isConcurrentRunLimit(error)) {
-      return enqueueRun({ ...params, scopeId });
+      return enqueueRun({ ...params, scopeId, scopeSlug });
     }
     throw error;
   }
@@ -752,6 +765,7 @@ export async function createRun(
     composeContent,
     apiStartTime,
     scopeId,
+    scopeSlug,
     authorizeTime,
     transactionTime,
   });
@@ -835,6 +849,7 @@ export async function executeQueuedRun(
     composeContent,
     apiStartTime,
     scopeId: params.scopeId,
+    scopeSlug: params.scopeSlug,
     authorizeTime,
     transactionTime,
   });
