@@ -30,7 +30,7 @@ interface LinkTokenPayload {
  *
  * Flow:
  * 1. Parse deep link payload from /start {token}
- * 2. No token → send generic welcome
+ * 2. No token or "connect" → check link status and prompt login
  * 3. Token present → validate, create user link, send confirmation
  */
 export async function handleStartCommand(
