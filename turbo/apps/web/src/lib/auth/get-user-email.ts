@@ -9,5 +9,8 @@ export async function getUserEmail(userId: string): Promise<string> {
   const email = user.emailAddresses.find(
     (e) => e.id === user.primaryEmailAddressId,
   )?.emailAddress;
-  return email || "";
+  if (!email) {
+    throw new Error(`No primary email found for user ${userId}`);
+  }
+  return email;
 }

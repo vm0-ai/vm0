@@ -31,7 +31,7 @@ const STATIC_FILE_RE = /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/i;
  */
 type RouteKind = "api" | "skip" | "page";
 
-function classifyRoute(pathname: string): RouteKind {
+export function classifyRoute(pathname: string): RouteKind {
   if (pathname.startsWith("/api/")) {
     return "api";
   }
@@ -84,7 +84,7 @@ type MiddlewareContext = {
  * Returning a `NextResponse` short-circuits the chain. Returning `null`
  * passes control to the next layer (onion model).
  */
-export type MiddlewareLayer = (
+type MiddlewareLayer = (
   ctx: MiddlewareContext,
 ) => Promise<NextResponse | null | undefined> | NextResponse | null | undefined;
 

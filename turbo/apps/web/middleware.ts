@@ -1,8 +1,4 @@
-import {
-  clerkMiddleware,
-  createRouteMatcher,
-  type ClerkMiddlewareAuth,
-} from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextRequest } from "next/server";
 import {
   runLayers,
@@ -10,8 +6,8 @@ import {
   authRedirectLayer,
   localeGuardLayer,
   i18nLayer,
-  MiddlewareLayer,
   isProtectedSkipRoute,
+  classifyRoute,
 } from "./middleware.layers";
 
 // ---------------------------------------------------------------------------
@@ -41,45 +37,27 @@ const isPublicRoute = createRouteMatcher([
 ]);
 
 // ---------------------------------------------------------------------------
-// Clerk auth layer
-// ---------------------------------------------------------------------------
-
-/**
- * Captured Clerk `auth` handle. Set by the clerkMiddleware wrapper before
- * `runLayers` is invoked, so authLayer can call `auth.protect()`.
- */
-let _clerkAuth: ClerkMiddlewareAuth;
-
-const clerkAuthLayer: MiddlewareLayer = async (ctx) => {
-  if (ctx.routeKind === "skip") {
-    if (isProtectedSkipRoute(ctx.request.nextUrl.pathname)) {
-      await _clerkAuth.protect();
-    }
-    return null;
-  }
-
-  // Page routes: protect non-public routes
-  if (ctx.routeKind === "page") {
-    if (!isPublicRoute(ctx.request)) {
-      await _clerkAuth.protect();
-    }
-  }
-
-  return null;
-};
-
-// ---------------------------------------------------------------------------
 // Middleware
 // ---------------------------------------------------------------------------
 
 export default clerkMiddleware(async (auth, request: NextRequest) => {
-  _clerkAuth = auth;
+  const routeKind = classifyRoute(request.nextUrl.pathname);
+
+  // Clerk auth: protect non-public routes (official inline pattern)
+  if (routeKind === "skip") {
+    if (isProtectedSkipRoute(request.nextUrl.pathname)) {
+      await auth.protect();
+    }
+  } else if (routeKind === "page") {
+    if (!isPublicRoute(request)) {
+      await auth.protect();
+    }
+  }
 
   return runLayers(request, [
     corsLayer,
     authRedirectLayer,
     localeGuardLayer,
-    clerkAuthLayer,
     i18nLayer,
   ]);
 });
