@@ -150,7 +150,7 @@ export const localeGuardLayer: MiddlewareLayer = (ctx) => {
     !locales.includes(firstSegment as (typeof locales)[number]) &&
     firstSegment.includes(".")
   ) {
-    return NextResponse.json(null, { status: 404 });
+    return new NextResponse(null, { status: 404 });
   }
   return null;
 };
