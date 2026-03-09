@@ -13,9 +13,7 @@ const reload$ = state(0);
 function resolveWebOrigin(): string {
   const origin = location.origin;
   if (!origin || origin === "null") {
-    throw new Error(
-      "Cannot resolve web origin: location.origin is unavailable",
-    );
+    return "";
   }
   const url = new URL(origin);
   url.hostname = url.hostname.replace("platform", "www");
