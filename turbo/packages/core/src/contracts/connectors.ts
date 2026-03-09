@@ -1125,14 +1125,7 @@ export const CONNECTOR_TYPES = {
     oauth: {
       authorizationUrl: "https://www.facebook.com/v22.0/dialog/oauth",
       tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
-      scopes: [
-        "ads_management",
-        "ads_read",
-        "business_management",
-        "pages_read_engagement",
-        "read_insights",
-        "email",
-      ],
+      scopes: ["ads_management", "ads_read", "business_management"],
     } as ConnectorOAuthConfig,
   },
 } as const;
