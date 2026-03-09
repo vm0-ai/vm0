@@ -91,6 +91,20 @@ export async function getDefaultScope(userId: string) {
 }
 
 /**
+ * Resolve scope ID: use the provided value or fall back to the user's default scope.
+ */
+export async function resolveScopeId(
+  userId: string,
+  scopeId: string | undefined,
+): Promise<string> {
+  if (scopeId) {
+    return scopeId;
+  }
+  const { scope } = await getDefaultScope(userId);
+  return scope.id;
+}
+
+/**
  * Map Clerk's internal role string to our ScopeRole type.
  */
 function mapClerkRole(clerkRole: string): ScopeRole {

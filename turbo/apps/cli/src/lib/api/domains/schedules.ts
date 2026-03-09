@@ -29,6 +29,7 @@ export async function deploySchedule(body: {
   artifactVersion?: string;
   volumeVersions?: Record<string, string>;
   composeId: string;
+  scopeId?: string;
 }): Promise<DeployScheduleResponse> {
   const config = await getClientConfig();
   const client = initClient(schedulesMainContract, config);
@@ -64,13 +65,14 @@ export async function listSchedules(): Promise<ScheduleListResponse> {
 export async function getScheduleByName(params: {
   name: string;
   composeId: string;
+  scopeId?: string;
 }): Promise<ScheduleResponse> {
   const config = await getClientConfig();
   const client = initClient(schedulesByNameContract, config);
 
   const result = await client.getByName({
     params: { name: params.name },
-    query: { composeId: params.composeId },
+    query: { composeId: params.composeId, scopeId: params.scopeId },
   });
 
   if (result.status === 200) {
@@ -86,13 +88,14 @@ export async function getScheduleByName(params: {
 export async function deleteSchedule(params: {
   name: string;
   composeId: string;
+  scopeId?: string;
 }): Promise<void> {
   const config = await getClientConfig();
   const client = initClient(schedulesByNameContract, config);
 
   const result = await client.delete({
     params: { name: params.name },
-    query: { composeId: params.composeId },
+    query: { composeId: params.composeId, scopeId: params.scopeId },
   });
 
   if (result.status === 204) {
@@ -108,13 +111,14 @@ export async function deleteSchedule(params: {
 export async function enableSchedule(params: {
   name: string;
   composeId: string;
+  scopeId?: string;
 }): Promise<ScheduleResponse> {
   const config = await getClientConfig();
   const client = initClient(schedulesEnableContract, config);
 
   const result = await client.enable({
     params: { name: params.name },
-    body: { composeId: params.composeId },
+    body: { composeId: params.composeId, scopeId: params.scopeId },
   });
 
   if (result.status === 200) {
@@ -130,13 +134,14 @@ export async function enableSchedule(params: {
 export async function disableSchedule(params: {
   name: string;
   composeId: string;
+  scopeId?: string;
 }): Promise<ScheduleResponse> {
   const config = await getClientConfig();
   const client = initClient(schedulesEnableContract, config);
 
   const result = await client.disable({
     params: { name: params.name },
-    body: { composeId: params.composeId },
+    body: { composeId: params.composeId, scopeId: params.scopeId },
   });
 
   if (result.status === 200) {
@@ -152,6 +157,7 @@ export async function disableSchedule(params: {
 export async function listScheduleRuns(params: {
   name: string;
   composeId: string;
+  scopeId?: string;
   limit?: number;
 }): Promise<ScheduleRunsResponse> {
   const config = await getClientConfig();
@@ -161,6 +167,7 @@ export async function listScheduleRuns(params: {
     params: { name: params.name },
     query: {
       composeId: params.composeId,
+      scopeId: params.scopeId,
       limit: params.limit ?? 5,
     },
   });

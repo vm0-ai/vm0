@@ -1,6 +1,6 @@
 {
-  "id": "8d83a475-1391-488c-88e5-05a0c4456b89",
-  "prevId": "e96e5ce3-b4c4-4f51-9844-8145684e3f16",
+  "id": "373d306f-8c9e-4423-bb77-c997bee7bad6",
+  "prevId": "55e1aa0c-ada2-486a-9001-0657c3220ec0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -916,6 +916,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "scope_id": {
+          "name": "scope_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "name": {
           "name": "name",
           "type": "varchar(64)",
@@ -1044,8 +1056,8 @@
         }
       },
       "indexes": {
-        "idx_agent_schedules_compose_name": {
-          "name": "idx_agent_schedules_compose_name",
+        "idx_agent_schedules_compose_name_scope_user": {
+          "name": "idx_agent_schedules_compose_name_scope_user",
           "columns": [
             {
               "expression": "compose_id",
@@ -1055,6 +1067,18 @@
             },
             {
               "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scope_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1070,6 +1094,27 @@
           "columns": [
             {
               "expression": "compose_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_agent_schedules_scope_user": {
+          "name": "idx_agent_schedules_scope_user",
+          "columns": [
+            {
+              "expression": "scope_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1103,6 +1148,15 @@
           "tableFrom": "agent_schedules",
           "tableTo": "agent_composes",
           "columnsFrom": ["compose_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "agent_schedules_scope_id_scopes_id_fk": {
+          "name": "agent_schedules_scope_id_scopes_id_fk",
+          "tableFrom": "agent_schedules",
+          "tableTo": "scopes",
+          "columnsFrom": ["scope_id"],
           "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -1969,156 +2023,6 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.email_outbox": {
-      "name": "email_outbox",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "from_address": {
-          "name": "from_address",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "to_addresses": {
-          "name": "to_addresses",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "cc_addresses": {
-          "name": "cc_addresses",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "subject": {
-          "name": "subject",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reply_to": {
-          "name": "reply_to",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "headers": {
-          "name": "headers",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "template": {
-          "name": "template",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "post_send_action": {
-          "name": "post_send_action",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "last_error": {
-          "name": "last_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "next_retry_at": {
-          "name": "next_retry_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resend_id": {
-          "name": "resend_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "email_outbox_drain_idx": {
-          "name": "email_outbox_drain_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "next_retry_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "email_outbox_created_at_idx": {
-          "name": "email_outbox_created_at_idx",
-          "columns": [
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -3176,7 +3080,7 @@
       "checkConstraints": {
         "scopes_tier_check": {
           "name": "scopes_tier_check",
-          "value": "\"scopes\".\"tier\" IN ('free', 'pro', 'max')"
+          "value": "\"scopes\".\"tier\" IN ('free', 'pro')"
         }
       },
       "isRLSEnabled": false
@@ -3956,17 +3860,11 @@
         }
       },
       "indexes": {
-        "idx_storages_scope_user_name_type": {
-          "name": "idx_storages_scope_user_name_type",
+        "idx_storages_scope_name_type": {
+          "name": "idx_storages_scope_name_type",
           "columns": [
             {
               "expression": "scope_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4161,12 +4059,6 @@
         "text": {
           "name": "text",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "file_id": {
-          "name": "file_id",
-          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
         },

@@ -21,6 +21,7 @@ export const disableCommand = new Command()
       await disableSchedule({
         name: resolved.name,
         composeId: resolved.composeId,
+        scopeId: resolved.scopeId,
       });
 
       console.log(

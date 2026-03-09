@@ -806,6 +806,13 @@
       "when": 1773044797469,
       "tag": "0114_absurd_thundra",
       "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1773038454691,
+      "tag": "0115_wealthy_malice",
+      "breakpoints": true
     }
   ]
 }

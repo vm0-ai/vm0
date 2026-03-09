@@ -12,6 +12,7 @@ import {
 } from "../../../../../src/lib/schedule";
 import { logger } from "../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../src/lib/errors";
+import { resolveScopeId } from "../../../../../src/lib/scope/scope-member-service";
 
 const log = logger("api:schedules:name");
 
@@ -32,8 +33,11 @@ const router = tsr.router(schedulesByNameContract, {
     log.debug(`Getting schedule ${params.name} for compose ${query.composeId}`);
 
     try {
+      const scopeId = await resolveScopeId(userId, query.scopeId);
+
       const schedule = await getScheduleByName(
         userId,
+        scopeId,
         query.composeId,
         params.name,
       );
@@ -73,7 +77,9 @@ const router = tsr.router(schedulesByNameContract, {
     );
 
     try {
-      await deleteSchedule(userId, query.composeId, params.name);
+      const scopeId = await resolveScopeId(userId, query.scopeId);
+
+      await deleteSchedule(userId, scopeId, query.composeId, params.name);
 
       return {
         status: 204 as const,
