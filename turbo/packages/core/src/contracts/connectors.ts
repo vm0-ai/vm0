@@ -1283,6 +1283,10 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
     targets: ["https://api.webflow.com/v2"],
     auth: BEARER_AUTH,
   },
+  stripe: {
+    targets: ["https://api.stripe.com"],
+    auth: BEARER_AUTH,
+  },
 };
 
 export const connectorTypeSchema = z.enum([
