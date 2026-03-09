@@ -34,21 +34,15 @@ describe("/api/scope", () => {
 
       expect(response.status).toBe(200);
       expect(data.id).toBeDefined();
-      expect(data.slug).toMatch(/^user-[a-f0-9]{8}$/);
+      // JIT discovery uses Clerk org slug, which starts with "org-"
+      expect(data.slug).toBeDefined();
     });
 
     it("should auto-create scope with fallback slug on collision", async () => {
-      // First, create a scope that will collide with the deterministic slug
-      // by pre-occupying the slug that ensureDefaultScope would generate
-      const collidingUserId = `collision-test-${Date.now()}`;
+      // JIT discovery uses Clerk org slug. Pre-occupy it to trigger fallback.
+      const clerkOrgSlug = `collision-slug-${Date.now()}`;
 
-      // Import to compute the expected slug
-      const { generateDefaultScopeSlug } = await import(
-        "../../../../src/lib/scope/scope-service"
-      );
-      const expectedSlug = generateDefaultScopeSlug(collidingUserId);
-
-      // Pre-occupy the deterministic slug with a different user
+      // Pre-occupy the Clerk org slug with a different user
       const occupierUserId = `occupier-${Date.now()}`;
       mockClerk({ userId: occupierUserId });
       const occupyRequest = createTestRequest(
@@ -56,22 +50,32 @@ describe("/api/scope", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slug: expectedSlug }),
+          body: JSON.stringify({ slug: clerkOrgSlug }),
         },
       );
       const occupyResponse = await POST(occupyRequest);
       expect(occupyResponse.status).toBe(201);
 
-      // Now the colliding user triggers auto-creation via GET
-      mockClerk({ userId: collidingUserId });
+      // Now a user whose Clerk org has the colliding slug triggers auto-creation
+      const collidingUserId = `collision-test-${Date.now()}`;
+      mockClerk({
+        userId: collidingUserId,
+        clerkOrgs: [
+          {
+            id: `org_collision_${Date.now()}`,
+            slug: clerkOrgSlug,
+            name: "Collision Org",
+          },
+        ],
+      });
       const request = createTestRequest("http://localhost:3000/api/scope");
       const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
       expect(data.id).toBeDefined();
-      // Should have fallen back to a random slug, not the colliding one
-      expect(data.slug).not.toBe(expectedSlug);
+      // Should have fallen back to user-{hash}, not the colliding slug
+      expect(data.slug).not.toBe(clerkOrgSlug);
       expect(data.slug).toMatch(/^user-[a-f0-9]{8}$/);
     });
 
@@ -91,6 +95,93 @@ describe("/api/scope", () => {
       expect(response2.status).toBe(200);
       expect(data1.id).toBe(data2.id);
       expect(data1.slug).toBe(data2.slug);
+    });
+  });
+
+  describe("JIT Clerk org discovery", () => {
+    it("should create scope from discovered Clerk org with its slug", async () => {
+      const ts = Date.now();
+      const userId = `jit-discovery-${ts}`;
+      const clerkOrgId = `org_jit_${ts}`;
+      const orgSlug = `team-${ts}`;
+      mockClerk({
+        userId,
+        clerkOrgs: [{ id: clerkOrgId, slug: orgSlug, name: "My Team" }],
+      });
+
+      const request = createTestRequest("http://localhost:3000/api/scope");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.slug).toBe(orgSlug);
+    });
+
+    it("should skip Clerk org that already has a local scope", async () => {
+      const ts = Date.now();
+      // Create a scope bound to the first org
+      const setupUserId = `jit-skip-setup-${ts}`;
+      const existingOrgId = `org_existing_${ts}`;
+      const newOrgId = `org_new_${ts}`;
+      const existingSlug = `existing-${ts}`;
+      const newSlug = `new-team-${ts}`;
+      mockClerk({
+        userId: setupUserId,
+        clerkOrgs: [
+          { id: existingOrgId, slug: existingSlug, name: "Existing" },
+        ],
+      });
+      const setupRequest = createTestRequest("http://localhost:3000/api/scope");
+      const setupResponse = await GET(setupRequest);
+      expect(setupResponse.status).toBe(200);
+
+      // Now a different user has both orgs — should skip existing, use new
+      const userId = `jit-skip-${ts}`;
+      mockClerk({
+        userId,
+        clerkOrgs: [
+          { id: existingOrgId, slug: existingSlug, name: "Existing" },
+          { id: newOrgId, slug: newSlug, name: "New Team" },
+        ],
+      });
+      const request = createTestRequest("http://localhost:3000/api/scope");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.slug).toBe(newSlug);
+    });
+
+    it("should fall back to user-hash when Clerk slug is invalid", async () => {
+      const userId = `jit-invalid-slug-${Date.now()}`;
+      mockClerk({
+        userId,
+        clerkOrgs: [
+          { id: `org_bad_${Date.now()}`, slug: "My-Team!", name: "Bad Slug" },
+        ],
+      });
+
+      const request = createTestRequest("http://localhost:3000/api/scope");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.slug).toMatch(/^user-[a-f0-9]{8}$/);
+    });
+
+    it("should return error when user has no Clerk orgs", async () => {
+      const userId = `jit-no-orgs-${Date.now()}`;
+      mockClerk({
+        userId,
+        clerkOrgs: [],
+      });
+
+      const request = createTestRequest("http://localhost:3000/api/scope");
+      const response = await GET(request);
+
+      // ensureDefaultScope throws NotFound, which propagates as 500
+      // because the route handler's catch already consumed its NotFound
+      expect(response.status).toBe(500);
     });
   });
 
