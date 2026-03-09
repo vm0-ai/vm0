@@ -585,6 +585,33 @@ describe("POST /api/slack/events", () => {
     });
   });
 
+  describe("Scenario: DM with file_share subtype", () => {
+    it("should dispatch agent run for file_share messages", async () => {
+      // Given I am a linked Slack user with one agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      await givenUserHasAgent(userLink, {
+        agentName: "my-helper",
+      });
+
+      // When I send a DM with an image (subtype: file_share)
+      const request = createSlackDmEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "D123",
+        userId: userLink.slackUserId,
+        text: "check this image",
+        ts: "1234567890.123456",
+        subtype: "file_share",
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then the agent should be dispatched (file_share is allowed through)
+      expect(mockClient.assistant.threads.setStatus).toHaveBeenCalledTimes(1);
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
+    });
+  });
+
   describe("Scenario: DM with subtype (e.g. message_changed)", () => {
     it("should silently ignore messages with subtype", async () => {
       const { installation } = await givenSlackWorkspaceInstalled();
