@@ -5,14 +5,12 @@ import { verifyCallback } from "../../../../../../src/lib/callback";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
 import { getRunOutput } from "../../../../../../src/lib/slack/handlers/run-agent";
-import { sendEmail } from "../../../../../../src/lib/email/client";
+import { enqueueEmail } from "../../../../../../src/lib/email/outbox-service";
 import {
-  saveEmailThreadSession,
   buildReplyToAddress,
   buildFromAddress,
   buildLogsUrl,
 } from "../../../../../../src/lib/email/handlers/shared";
-import { AgentReplyEmail } from "../../../../../../src/lib/email/templates/agent-reply";
 import { env } from "../../../../../../src/env";
 import { logger } from "../../../../../../src/lib/logger";
 
@@ -182,30 +180,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? payload.replyRecipientCc
       : undefined;
 
-  const { messageId } = await sendEmail({
+  await enqueueEmail({
     from: buildFromAddress(payload.triggerLocalPart ?? compose.name),
     to: emailTo,
     subject: buildSubject(payload.subject, compose.name),
-    react: AgentReplyEmail({
-      agentName: compose.name,
-      output,
-      logsUrl,
-    }),
+    template: {
+      template: "agent-reply",
+      props: { agentName: compose.name, output, logsUrl },
+    },
     cc: emailCc,
     replyTo: replyToAddress,
     headers,
+    threadAction: agentSessionId
+      ? {
+          action: "save_thread_session",
+          userId,
+          composeId,
+          agentSessionId,
+          replyToToken: replyToken,
+        }
+      : undefined,
   });
-
-  // Save email thread session for reply continuity
-  if (agentSessionId) {
-    await saveEmailThreadSession({
-      userId,
-      composeId,
-      agentSessionId,
-      lastEmailMessageId: messageId,
-      replyToToken: replyToken,
-    });
-  }
 
   log.info("Sent email trigger response", {
     runId,

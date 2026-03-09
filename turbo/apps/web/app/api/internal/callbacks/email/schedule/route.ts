@@ -5,16 +5,13 @@ import { verifyCallback } from "../../../../../../src/lib/callback";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { getUserEmail } from "../../../../../../src/lib/auth/get-user-email";
 import { getRunOutput } from "../../../../../../src/lib/slack/handlers/run-agent";
-import { sendEmail } from "../../../../../../src/lib/email/client";
+import { enqueueEmail } from "../../../../../../src/lib/email/outbox-service";
 import {
   generateReplyToken,
   buildReplyToAddress,
   buildFromAddress,
   buildLogsUrl,
-  saveEmailThreadSession,
 } from "../../../../../../src/lib/email/handlers/shared";
-import { ScheduleCompletedEmail } from "../../../../../../src/lib/email/templates/schedule-completed";
-import { ScheduleFailedEmail } from "../../../../../../src/lib/email/templates/schedule-failed";
 import { env } from "../../../../../../src/env";
 import { logger } from "../../../../../../src/lib/logger";
 
@@ -111,39 +108,39 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const replyToken = generateReplyToken(sessionPlaceholderId);
     const replyToAddress = buildReplyToAddress(replyToken);
 
-    const { messageId } = await sendEmail({
+    await enqueueEmail({
       from: buildFromAddress(composeName),
       to: userEmail,
       subject: `VM0 - Scheduled run for "${composeName}" completed`,
-      react: ScheduleCompletedEmail({
-        agentName: composeName,
-        output: truncatedOutput,
-        logsUrl,
-      }),
+      template: {
+        template: "schedule-completed",
+        props: { agentName: composeName, output: truncatedOutput, logsUrl },
+      },
       replyTo: replyToAddress,
+      threadAction: agentSessionId
+        ? {
+            action: "save_thread_session",
+            userId,
+            composeId,
+            agentSessionId,
+            replyToToken: replyToken,
+          }
+        : undefined,
     });
-
-    // Save email thread session for reply-to-continue
-    if (agentSessionId) {
-      await saveEmailThreadSession({
-        userId,
-        composeId,
-        agentSessionId,
-        lastEmailMessageId: messageId,
-        replyToToken: replyToken,
-      });
-    }
   } else {
     // Failed run
-    await sendEmail({
+    await enqueueEmail({
       from: buildFromAddress(composeName),
       to: userEmail,
       subject: `VM0 - Scheduled run for "${composeName}" failed`,
-      react: ScheduleFailedEmail({
-        agentName: composeName,
-        errorMessage: error ?? "Unknown error",
-        logsUrl,
-      }),
+      template: {
+        template: "schedule-failed",
+        props: {
+          agentName: composeName,
+          errorMessage: error ?? "Unknown error",
+          logsUrl,
+        },
+      },
     });
   }
 

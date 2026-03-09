@@ -7,14 +7,12 @@ import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
 import { emailThreadSessions } from "../../../../../../src/db/schema/email-thread-session";
 import { getUserEmail } from "../../../../../../src/lib/auth/get-user-email";
 import { getRunOutput } from "../../../../../../src/lib/slack/handlers/run-agent";
-import { sendEmail } from "../../../../../../src/lib/email/client";
+import { enqueueEmail } from "../../../../../../src/lib/email/outbox-service";
 import {
-  updateEmailThreadSession,
   buildReplyToAddress,
   buildFromAddress,
   buildLogsUrl,
 } from "../../../../../../src/lib/email/handlers/shared";
-import { AgentReplyEmail } from "../../../../../../src/lib/email/templates/agent-reply";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("callback:email:reply");
@@ -68,19 +66,13 @@ function formatOutput(
   return error ?? "The agent run failed.";
 }
 
-async function sendReplyEmail(
-  session: { replyToToken: string; lastEmailMessageId: string | null },
+function buildThreadingHeaders(
   payload: CallbackPayload,
-  composeName: string,
-  userEmail: string | string[],
-  output: string,
-  logsUrl: string,
-): ReturnType<typeof sendEmail> {
-  const replyToAddress = buildReplyToAddress(session.replyToToken);
+  lastEmailMessageId: string | null,
+): Record<string, string> {
   const headers: Record<string, string> = {};
 
-  const replyToMessageId =
-    payload.inboundMessageId ?? session.lastEmailMessageId;
+  const replyToMessageId = payload.inboundMessageId ?? lastEmailMessageId;
   if (replyToMessageId) {
     headers["In-Reply-To"] = replyToMessageId;
   }
@@ -88,8 +80,8 @@ async function sendReplyEmail(
   const referencesParts: string[] = [];
   if (payload.inboundReferences) {
     referencesParts.push(payload.inboundReferences);
-  } else if (session.lastEmailMessageId) {
-    referencesParts.push(session.lastEmailMessageId);
+  } else if (lastEmailMessageId) {
+    referencesParts.push(lastEmailMessageId);
   }
   if (payload.inboundMessageId) {
     referencesParts.push(payload.inboundMessageId);
@@ -98,28 +90,7 @@ async function sendReplyEmail(
     headers["References"] = referencesParts.join(" ");
   }
 
-  const emailTo =
-    payload.replyRecipientTo && payload.replyRecipientTo.length > 0
-      ? payload.replyRecipientTo
-      : userEmail;
-  const emailCc =
-    payload.replyRecipientCc && payload.replyRecipientCc.length > 0
-      ? payload.replyRecipientCc
-      : undefined;
-
-  return sendEmail({
-    from: buildFromAddress(composeName),
-    to: emailTo,
-    subject: `Re: VM0 - Scheduled run for "${composeName}" completed`,
-    react: AgentReplyEmail({
-      agentName: composeName,
-      output,
-      logsUrl,
-    }),
-    cc: emailCc,
-    replyTo: replyToAddress,
-    headers,
-  });
+  return headers;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -190,20 +161,35 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const newAgentSessionId = extractAgentSessionId(run?.result);
 
-  // Send response email with threading headers
-  const { messageId } = await sendReplyEmail(
-    session,
-    payload,
-    compose.name,
-    userEmail,
-    output,
-    logsUrl,
-  );
+  // Build threading headers and recipients
+  const headers = buildThreadingHeaders(payload, session.lastEmailMessageId);
 
-  // Update email thread session with new message ID and session
-  await updateEmailThreadSession(session.id, {
-    ...(newAgentSessionId ? { agentSessionId: newAgentSessionId } : {}),
-    lastEmailMessageId: messageId,
+  const emailTo =
+    payload.replyRecipientTo && payload.replyRecipientTo.length > 0
+      ? payload.replyRecipientTo
+      : userEmail;
+  const emailCc =
+    payload.replyRecipientCc && payload.replyRecipientCc.length > 0
+      ? payload.replyRecipientCc
+      : undefined;
+
+  // Send response email via outbox queue
+  await enqueueEmail({
+    from: buildFromAddress(compose.name),
+    to: emailTo,
+    subject: `Re: VM0 - Scheduled run for "${compose.name}" completed`,
+    template: {
+      template: "agent-reply",
+      props: { agentName: compose.name, output, logsUrl },
+    },
+    cc: emailCc,
+    replyTo: buildReplyToAddress(session.replyToToken),
+    headers,
+    threadAction: {
+      action: "update_thread_session",
+      sessionId: session.id,
+      ...(newAgentSessionId ? { agentSessionId: newAgentSessionId } : {}),
+    },
   });
 
   log.info("Sent email reply", {

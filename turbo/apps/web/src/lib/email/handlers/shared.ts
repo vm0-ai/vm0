@@ -5,8 +5,7 @@ import { agentComposes } from "../../../db/schema/agent-compose";
 import { scopes } from "../../../db/schema/scope";
 import { env } from "../../../env";
 import { getPlatformUrl } from "../../url";
-import { sendEmail } from "../client";
-import { InboundErrorEmail } from "../templates/inbound-error";
+import { enqueueEmail } from "../outbox-service";
 
 // ============================================================================
 // Handler Result Type
@@ -318,11 +317,14 @@ export async function sendInboundErrorReply(opts: {
     ? `Re: ${opts.subject.replace(/^Re:\s*/i, "")}`
     : "Email delivery failed";
 
-  await sendEmail({
+  await enqueueEmail({
     from: buildFromAddress("vm0"),
     to: opts.to,
     subject: reSubject,
-    react: InboundErrorEmail({ errorMessage: opts.errorMessage }),
+    template: {
+      template: "inbound-error",
+      props: { errorMessage: opts.errorMessage },
+    },
   });
 }
 

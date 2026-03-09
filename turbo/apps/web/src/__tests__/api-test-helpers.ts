@@ -28,6 +28,7 @@ import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
 import { agentRunQueue } from "../db/schema/agent-run-queue";
 import { agentSchedules } from "../db/schema/agent-schedule";
+import { emailOutbox } from "../db/schema/email-outbox";
 import { telegramInstallations } from "../db/schema/telegram-installation";
 import { telegramMessages } from "../db/schema/telegram-message";
 import { telegramUserLinks } from "../db/schema/telegram-user-link";
@@ -2751,4 +2752,72 @@ export async function insertTestTelegramInstallationRecord(
     })
     .returning();
   return row!;
+}
+
+// ============================================================================
+// Email Outbox Helpers
+// ============================================================================
+
+/**
+ * Clear all rows from the email_outbox table. Use in beforeEach for test isolation.
+ */
+export async function clearEmailOutbox() {
+  initServices();
+  await globalThis.services.db.delete(emailOutbox);
+}
+
+/**
+ * Insert a raw email outbox item (bypasses enqueueEmail for direct state testing).
+ */
+export async function insertTestOutboxItem(values: {
+  fromAddress: string;
+  toAddresses: string | string[];
+  subject: string;
+  template: unknown;
+  status?: string;
+  attempts?: number;
+  postSendAction?: unknown;
+  createdAt?: Date;
+  resendId?: string;
+}) {
+  const [row] = await globalThis.services.db
+    .insert(emailOutbox)
+    .values({
+      fromAddress: values.fromAddress,
+      toAddresses: values.toAddresses,
+      subject: values.subject,
+      template: values.template,
+      status: values.status ?? "pending",
+      attempts: values.attempts ?? 0,
+      postSendAction: values.postSendAction ?? null,
+      createdAt: values.createdAt,
+      resendId: values.resendId,
+    })
+    .returning({ id: emailOutbox.id });
+  return row!;
+}
+
+/**
+ * Find email outbox items by status.
+ */
+export async function findTestOutboxItems(status?: string) {
+  if (status) {
+    return globalThis.services.db
+      .select()
+      .from(emailOutbox)
+      .where(eq(emailOutbox.status, status));
+  }
+  return globalThis.services.db.select().from(emailOutbox);
+}
+
+/**
+ * Find a single email outbox item by ID.
+ */
+export async function findTestOutboxItemById(id: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(emailOutbox)
+    .where(eq(emailOutbox.id, id))
+    .limit(1);
+  return row ?? null;
 }

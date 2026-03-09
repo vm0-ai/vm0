@@ -1,0 +1,300 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { Resend } from "resend";
+import { testContext } from "../../../__tests__/test-helpers";
+import {
+  clearEmailOutbox,
+  insertTestOutboxItem,
+  findTestOutboxItems,
+  findTestOutboxItemById,
+} from "../../../__tests__/api-test-helpers";
+import {
+  enqueueEmail,
+  drainNext,
+  drainBatch,
+  cleanupExpiredOutbox,
+} from "../outbox-service";
+import type { EnqueueEmailOptions } from "../types";
+
+const context = testContext();
+const mockResend = vi.mocked(new Resend(""), true);
+
+function baseEmail(
+  overrides?: Partial<EnqueueEmailOptions>,
+): EnqueueEmailOptions {
+  return {
+    from: "test-agent from VM0 <test-agent@vm7.bot>",
+    to: "user@example.com",
+    subject: "Test email",
+    template: {
+      template: "agent-reply",
+      props: {
+        agentName: "test-agent",
+        output: "Hello!",
+        logsUrl: "https://example.com/logs",
+      },
+    },
+    ...overrides,
+  };
+}
+
+describe("outbox-service", () => {
+  beforeEach(async () => {
+    context.setupMocks();
+    await context.setupUser();
+    mockResend.emails.send.mockClear();
+    mockResend.emails.get.mockClear();
+    // Default: send succeeds
+    mockResend.emails.send.mockResolvedValue({
+      data: { id: `resend-${Date.now()}` },
+      error: null,
+    } as never);
+    mockResend.emails.get.mockResolvedValue({
+      data: {
+        id: "mock-email-id",
+        message_id: "<mock-message-id@vm7.bot>",
+      },
+      error: null,
+    } as never);
+    // Clean outbox table for test isolation
+    await clearEmailOutbox();
+  });
+
+  describe("enqueueEmail", () => {
+    it("should insert a row and drain inline on success", async () => {
+      const uniqueSubject = `Enqueue test ${Date.now()}`;
+      await enqueueEmail(baseEmail({ subject: uniqueSubject }));
+
+      // After inline drain, our item should be sent
+      const sent = await findTestOutboxItems("sent");
+      const ours = sent.find((i) => i.subject === uniqueSubject);
+      expect(ours).toBeDefined();
+      expect(ours!.resendId).toBeTruthy();
+
+      // Resend was called with our email
+      expect(mockResend.emails.send).toHaveBeenCalled();
+    });
+
+    it("should keep item as pending when inline drain fails", async () => {
+      mockResend.emails.send.mockResolvedValueOnce({
+        data: null,
+        error: {
+          message: "Too many requests",
+          name: "rate_limit_exceeded",
+          statusCode: 429,
+        },
+      } as never);
+
+      await enqueueEmail(baseEmail());
+
+      // Item should be pending (retryable) since inline drain failed
+      const pending = await findTestOutboxItems("pending");
+      expect(pending.length).toBe(1);
+      expect(pending[0]!.attempts).toBe(1);
+      expect(pending[0]!.lastError).toContain("Too many requests");
+      expect(pending[0]!.nextRetryAt).not.toBeNull();
+    });
+  });
+
+  describe("drainNext", () => {
+    it("should return false on empty queue", async () => {
+      const result = await drainNext();
+      expect(result).toBe(false);
+    });
+
+    it("should send email and mark as sent", async () => {
+      await insertTestOutboxItem({
+        fromAddress: "agent@vm7.bot",
+        toAddresses: "user@example.com",
+        subject: "Direct insert",
+        template: {
+          template: "schedule-failed",
+          props: {
+            agentName: "test",
+            errorMessage: "err",
+            logsUrl: "https://x.com",
+          },
+        },
+      });
+
+      const drained = await drainNext();
+      expect(drained).toBe(true);
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+    });
+
+    it("should retry on failure with exponential backoff", async () => {
+      mockResend.emails.send.mockResolvedValue({
+        data: null,
+        error: {
+          message: "rate limited",
+          name: "rate_limit_exceeded",
+          statusCode: 429,
+        },
+      } as never);
+
+      const { id } = await insertTestOutboxItem({
+        fromAddress: "agent@vm7.bot",
+        toAddresses: "user@example.com",
+        subject: "Retry test",
+        template: {
+          template: "inbound-error",
+          props: { errorMessage: "err" },
+        },
+      });
+
+      await drainNext();
+
+      // Should be back to pending with retry scheduled
+      const item = await findTestOutboxItemById(id);
+      expect(item).not.toBeNull();
+      expect(item!.status).toBe("pending");
+      expect(item!.attempts).toBe(1);
+      expect(item!.nextRetryAt).not.toBeNull();
+      // First backoff: 1s
+      const backoffMs = item!.nextRetryAt!.getTime() - Date.now();
+      expect(backoffMs).toBeLessThan(2000);
+      expect(backoffMs).toBeGreaterThan(-500);
+    });
+
+    it("should mark as permanently failed after max attempts", async () => {
+      mockResend.emails.send.mockResolvedValue({
+        data: null,
+        error: {
+          message: "permanent failure",
+          name: "validation_error",
+          statusCode: 422,
+        },
+      } as never);
+
+      const { id } = await insertTestOutboxItem({
+        fromAddress: "agent@vm7.bot",
+        toAddresses: "user@example.com",
+        subject: "Perm fail test",
+        template: {
+          template: "inbound-error",
+          props: { errorMessage: "err" },
+        },
+        attempts: 2, // Already tried twice, next will be 3rd = max
+      });
+
+      await drainNext();
+
+      const item = await findTestOutboxItemById(id);
+      expect(item).not.toBeNull();
+      expect(item!.status).toBe("failed");
+      expect(item!.attempts).toBe(3);
+      expect(item!.lastError).toBe("permanent failure");
+    });
+  });
+
+  describe("drainBatch", () => {
+    it("should process multiple pending items", async () => {
+      const ids: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        const { id } = await insertTestOutboxItem({
+          fromAddress: "agent@vm7.bot",
+          toAddresses: `batch-user${i}@example.com`,
+          subject: `Batch item ${i}`,
+          template: {
+            template: "inbound-error",
+            props: { errorMessage: "err" },
+          },
+        });
+        ids.push(id);
+      }
+
+      await drainBatch();
+
+      // Verify all our specific items are sent (regardless of other concurrent items)
+      for (const id of ids) {
+        const item = await findTestOutboxItemById(id);
+        expect(item).not.toBeNull();
+        expect(item!.status).toBe("sent");
+        expect(item!.resendId).toBeTruthy();
+      }
+    });
+  });
+
+  describe("cleanupExpiredOutbox", () => {
+    it("should remove items older than TTL", async () => {
+      // Insert an old pending item (20 min ago)
+      const oldDate = new Date(Date.now() - 20 * 60 * 1000);
+      const { id: oldId } = await insertTestOutboxItem({
+        fromAddress: "agent@vm7.bot",
+        toAddresses: "user@example.com",
+        subject: "Old expired",
+        template: {
+          template: "inbound-error",
+          props: { errorMessage: "err" },
+        },
+        attempts: 3,
+        createdAt: oldDate,
+      });
+
+      // Insert a recent pending item (should NOT be cleaned)
+      const { id: recentId } = await insertTestOutboxItem({
+        fromAddress: "agent@vm7.bot",
+        toAddresses: "user@example.com",
+        subject: "Recent pending",
+        template: {
+          template: "inbound-error",
+          props: { errorMessage: "err" },
+        },
+      });
+
+      await cleanupExpiredOutbox();
+
+      // Old item should be deleted
+      const oldItem = await findTestOutboxItemById(oldId);
+      expect(oldItem).toBeNull();
+
+      // Recent item should still exist
+      const recentItem = await findTestOutboxItemById(recentId);
+      expect(recentItem).not.toBeNull();
+      expect(recentItem!.subject).toBe("Recent pending");
+    });
+
+    it("should not remove sent items", async () => {
+      const oldDate = new Date(Date.now() - 20 * 60 * 1000);
+      const { id } = await insertTestOutboxItem({
+        fromAddress: "agent@vm7.bot",
+        toAddresses: "user@example.com",
+        subject: "Old sent",
+        template: {
+          template: "inbound-error",
+          props: { errorMessage: "err" },
+        },
+        status: "sent",
+        attempts: 1,
+        resendId: "re_123",
+        createdAt: oldDate,
+      });
+
+      await cleanupExpiredOutbox();
+
+      // Sent item should still exist
+      const item = await findTestOutboxItemById(id);
+      expect(item).not.toBeNull();
+      expect(item!.subject).toBe("Old sent");
+    });
+  });
+
+  describe("post-send actions", () => {
+    it("should not call getMessageId when no threadAction", async () => {
+      await insertTestOutboxItem({
+        fromAddress: "agent@vm7.bot",
+        toAddresses: "user@example.com",
+        subject: "No action",
+        template: {
+          template: "inbound-error",
+          props: { errorMessage: "err" },
+        },
+      });
+
+      await drainNext();
+
+      // emails.send called, but emails.get should NOT be called (no threading needed)
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      expect(mockResend.emails.get).not.toHaveBeenCalled();
+    });
+  });
+});
