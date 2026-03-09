@@ -39,12 +39,24 @@ runs:
         mkdir -p "$HOME/.ssh"
         echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
         chmod 600 "$HOME/.ssh/runner.pem"
+
+        # Proxy script that converts host to tunnel hostname
+        # dev-1.aws.vm3.ai -> dev-1-aws-ssh.vm3.ai
+        printf '%s\n' \
+          '#!/bin/bash' \
+          'HOST="$1"; ID="$2"; SECRET="$3"; DOMAIN="vm3.ai"' \
+          'SUB="${HOST%.${DOMAIN}}"' \
+          'TUNNEL_HOST="${SUB//./-}-ssh.${DOMAIN}"' \
+          'exec cloudflared access ssh --hostname "$TUNNEL_HOST" --id "$ID" --secret "$SECRET"' \
+          > "$HOME/.ssh/cf-proxy.sh"
+        chmod 755 "$HOME/.ssh/cf-proxy.sh"
+
         {
           echo "Host *.vm3.ai"
           echo "  StrictHostKeyChecking no"
           echo "  UserKnownHostsFile /dev/null"
           echo "  ConnectTimeout 10"
           echo "  IdentityFile $HOME/.ssh/runner.pem"
-          echo "  ProxyCommand cloudflared access ssh --hostname %h --id ${CF_ACCESS_CLIENT_ID} --secret ${CF_ACCESS_CLIENT_SECRET}"
+          echo "  ProxyCommand $HOME/.ssh/cf-proxy.sh %h ${CF_ACCESS_CLIENT_ID} ${CF_ACCESS_CLIENT_SECRET}"
         } > "$HOME/.ssh/config"
         chmod 600 "$HOME/.ssh/config"
