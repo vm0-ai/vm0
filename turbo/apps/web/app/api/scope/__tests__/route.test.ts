@@ -579,7 +579,7 @@ describe("/api/scope", () => {
       expect(data.slug).toBe(slug);
     });
 
-    it("should work without orgId (CLI / self-hosted compatibility)", async () => {
+    it("should work without orgId (CLI compatibility)", async () => {
       const userId = `no-org-${Date.now()}`;
       mockClerk({ userId });
 
