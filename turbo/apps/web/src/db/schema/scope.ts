@@ -28,7 +28,7 @@ export const scopes = pgTable(
     clerkOrgIdx: index("idx_scopes_clerk_org").on(table.clerkOrgId),
     tierCheck: check(
       "scopes_tier_check",
-      sql`${table.tier} IN ('free', 'pro')`,
+      sql`${table.tier} IN ('free', 'pro', 'max')`,
     ),
   }),
 );

@@ -56,9 +56,20 @@ describe("runAgentForSlack", () => {
 
     // And createRun should receive artifactName: "artifact"
     expect(createRunSpy).toHaveBeenCalledTimes(1);
-    expect(createRunSpy.mock.calls[0]![0]).toMatchObject({
+    const callArgs = createRunSpy.mock.calls[0]![0] as {
+      prompt: string;
+      artifactName: string;
+      memoryName: string;
+    };
+    expect(callArgs).toMatchObject({
       artifactName: "artifact",
       memoryName: "memory",
     });
+
+    // And the prompt should contain integration context
+    expect(callArgs.prompt).toContain(
+      "You are currently running inside: Slack",
+    );
+    expect(callArgs.prompt).toContain("help me");
   });
 });

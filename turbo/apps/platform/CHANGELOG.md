@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.94.1](https://github.com/vm0-ai/vm0/compare/platform-v0.94.0...platform-v0.94.1) (2026-03-09)
+
+
+### Bug Fixes
+
+* auto-create scope for new web users and consolidate scope init logic ([#4005](https://github.com/vm0-ai/vm0/issues/4005)) ([9ae59f5](https://github.com/vm0-ai/vm0/commit/9ae59f501d31f15bcb89c4f405061d83e3166ac7))
+* **platform:** strip heading anchor links with escaped svg text in markdown ([#4018](https://github.com/vm0-ai/vm0/issues/4018)) ([330de10](https://github.com/vm0-ai/vm0/commit/330de1088933579260cd52ceec4a17e8d2d0edc1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.47.0
+
+## [0.94.0](https://github.com/vm0-ai/vm0/compare/platform-v0.93.2...platform-v0.94.0) (2026-03-09)
+
+
+### Features
+
+* **platform:** zero app onboarding, Slack config dialog, and UI polish ([#3993](https://github.com/vm0-ai/vm0/issues/3993)) ([a4262f3](https://github.com/vm0-ai/vm0/commit/a4262f399bdfa21b1fd5121ac7883314a38a0ac3))
+
+
+### Bug Fixes
+
+* prevent horizontal scrollbar on logs page mobile ([#3979](https://github.com/vm0-ai/vm0/issues/3979)) ([d030ba9](https://github.com/vm0-ai/vm0/commit/d030ba9afd78c199051e56ffadd9f139394e3786))
+
 ## [0.93.2](https://github.com/vm0-ai/vm0/compare/platform-v0.93.1...platform-v0.93.2) (2026-03-09)
 
 

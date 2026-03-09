@@ -5,6 +5,7 @@ import {
   createTelegramClient,
   sendMessage,
   sendChatAction,
+  editMessageText,
   deleteMessage,
   getMe,
   setWebhook,
@@ -239,6 +240,38 @@ describe("sendChatAction", () => {
     expect(capturedBody).toEqual({
       chat_id: 42,
       action: "typing",
+    });
+  });
+});
+
+describe("editMessageText", () => {
+  it("should edit a message with HTML parse mode", async () => {
+    let capturedBody: unknown;
+    const handler = http.post(
+      `https://api.telegram.org/bot${TEST_TOKEN}/editMessageText`,
+      async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({
+          ok: true,
+          result: { message_id: 99, chat: { id: 42 }, text: "edited" },
+        });
+      },
+    );
+    server.use(handler.handler);
+
+    const client = createTelegramClient(TEST_TOKEN);
+    const result = await editMessageText(client, 42, 99, "edited");
+
+    expect(result).toEqual({
+      message_id: 99,
+      chat: { id: 42 },
+      text: "edited",
+    });
+    expect(capturedBody).toEqual({
+      chat_id: 42,
+      message_id: 99,
+      text: "edited",
+      parse_mode: "HTML",
     });
   });
 });

@@ -13,12 +13,17 @@ import { validateAgentSession } from "../../run";
 import { ensureStorageExists } from "../../storage/storage-service";
 import {
   sendMessage,
+  editMessageText,
   type TelegramClient,
   type TelegramSentMessage,
 } from "../client";
 import { escapeHtml } from "../format";
 import { signConnectParams } from "../connect-token";
-import { pickBestPhoto } from "../images";
+import {
+  pickBestPhoto,
+  downloadAndUploadTelegramPhoto,
+  formatPhotoForContext,
+} from "../images";
 import { logger } from "../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -171,6 +176,13 @@ export function buildLogsUrl(runId: string, agentName: string): string {
 }
 
 /**
+ * Build the agent logs page URL (no specific run).
+ */
+export function buildAgentLogsUrl(agentName: string): string {
+  return `${getPlatformUrl()}/agents/${encodeURIComponent(agentName)}/logs`;
+}
+
+/**
  * Look up a user link by telegramUserId and installationId.
  * If no direct match, try to auto-complete a pending link.
  * Returns the user link row or null.
@@ -315,6 +327,83 @@ export async function sendThinkingMessage(
     log.warn("Failed to send thinking message", { chatId, error: err });
     return undefined;
   }
+}
+
+const QUEUED_MESSAGE =
+  "⏳ Run queued — concurrency limit reached. Will start automatically when a slot is available.";
+
+/**
+ * Update the thinking message to show queued status, or send a new message if
+ * no thinking message exists.
+ */
+export async function sendQueuedNotification(
+  client: TelegramClient,
+  chatId: string | number,
+  thinkingMessage: TelegramSentMessage | undefined,
+  options?: { replyToMessageId?: number },
+): Promise<void> {
+  if (thinkingMessage) {
+    await editMessageText(
+      client,
+      chatId,
+      thinkingMessage.message_id,
+      QUEUED_MESSAGE,
+    );
+  } else {
+    await sendMessage(client, chatId, QUEUED_MESSAGE, options);
+  }
+}
+
+/**
+ * Format the replied-to message as a quote block to prepend to the prompt.
+ * Returns undefined if there's no meaningful reply content.
+ */
+export function formatReplyQuote(
+  replyMessage: TelegramHandlerUpdate["message"]["reply_to_message"],
+): string | undefined {
+  if (!replyMessage) {
+    return undefined;
+  }
+
+  const replyText = replyMessage.text ?? replyMessage.caption;
+  if (!replyText) {
+    return undefined;
+  }
+
+  const sender = replyMessage.from?.username
+    ? `@${replyMessage.from.username}`
+    : (replyMessage.from?.first_name ?? "Unknown");
+
+  return `[Replying to ${sender}]\n> ${replyText}`;
+}
+
+/**
+ * Append photo context to the prompt if the message contains a photo.
+ * Handles picking the best resolution, downloading, uploading, and formatting.
+ */
+export async function appendPhotoContext(
+  prompt: string,
+  message: TelegramHandlerUpdate["message"],
+  client: TelegramClient,
+  installationId: string,
+  chatId: string,
+): Promise<string> {
+  if (!message.photo) {
+    return prompt;
+  }
+  const bestPhoto = pickBestPhoto(message.photo);
+  if (!bestPhoto) {
+    return prompt;
+  }
+  const presignedUrl = await downloadAndUploadTelegramPhoto(
+    client,
+    bestPhoto.file_id,
+    `${installationId}-${chatId}`,
+  );
+  if (!presignedUrl) {
+    return prompt;
+  }
+  return `${prompt}\n\n${formatPhotoForContext(presignedUrl, bestPhoto)}`;
 }
 
 /**

@@ -34,12 +34,21 @@ const mockClerkClient = vi.mocked(clerkClient);
  * @param options - Auth configuration
  * @param options.userId - User ID to return, or null for unauthenticated
  * @param options.email - Email address for the user (default: "test@example.com")
+ * @param options.orgId - Organization ID from active org session (optional)
+ * @param options.orgSlug - Organization slug from active org session (optional)
  */
-export function mockClerk(options: { userId: string | null; email?: string }) {
+export function mockClerk(options: {
+  userId: string | null;
+  email?: string;
+  orgId?: string | null;
+  orgSlug?: string | null;
+}) {
   const email = options.email ?? "test@example.com";
 
   mockAuth.mockResolvedValue({
     userId: options.userId,
+    orgId: options.orgId,
+    orgSlug: options.orgSlug,
   } as Awaited<ReturnType<typeof auth>>);
 
   // Also set up clerkClient mock to return user data with email

@@ -1,14 +1,16 @@
-import { createHash } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { eq } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { scopes } from "../../db/schema/scope";
 import { scopeMembers } from "../../db/schema/scope-member";
+import { requireScopeMember, getDefaultScope } from "./scope-member-service";
 import {
-  requireScopeMember,
-  getPrimaryAdminMembership,
-  getDefaultScope,
-} from "./scope-member-service";
-import { badRequest, notFound, forbidden, isNotFound } from "../errors";
+  badRequest,
+  notFound,
+  forbidden,
+  isNotFound,
+  isBadRequest,
+} from "../errors";
 import { logger } from "../logger";
 import { env, hasClerkAuth } from "../../env";
 import { SELF_HOSTED_CLERK_ORG_ID } from "../auth/constants";
@@ -100,11 +102,24 @@ export async function getScopeBySlug(slug: string) {
 }
 
 /**
+ * Get a scope by its Clerk organization ID
+ */
+export async function getScopeByClerkOrgId(clerkOrgId: string) {
+  const result = await globalThis.services.db
+    .select()
+    .from(scopes)
+    .where(eq(scopes.clerkOrgId, clerkOrgId))
+    .limit(1);
+
+  return result[0] ?? null;
+}
+
+/**
  * Create a scope for a user with an admin membership.
  *
  * Merges the former createUserScope() and createOrganization() functions.
  * Handles Clerk org creation (or self-hosted fallback), slug validation,
- * one-admin-per-user constraint, and atomic scope + membership creation.
+ * and atomic scope + membership creation.
  *
  * @param options.skipSlugValidation - Skip reserved-slug checks (for vm0-admin bypass)
  */
@@ -113,19 +128,6 @@ export async function createScope(
   slug: string,
   options?: { skipSlugValidation?: boolean },
 ) {
-  // Check one-admin-per-user constraint
-  const existingAdmin = await getPrimaryAdminMembership(clerkUserId);
-  if (existingAdmin) {
-    const [existingScope] = await globalThis.services.db
-      .select({ slug: scopes.slug })
-      .from(scopes)
-      .where(eq(scopes.id, existingAdmin.scopeId))
-      .limit(1);
-    throw badRequest(
-      `You already have a scope: ${existingScope?.slug ?? existingAdmin.scopeId}. Use --force to change it.`,
-    );
-  }
-
   // Validate slug (unless explicitly skipped for vm0-admin)
   if (!options?.skipSlugValidation) {
     validateScopeSlug(slug);
@@ -197,6 +199,30 @@ export async function getUserScopeByClerkId(clerkUserId: string) {
     return scope;
   } catch (error) {
     if (isNotFound(error)) return null;
+    throw error;
+  }
+}
+
+/**
+ * Ensure a user has a default scope, creating one if it doesn't exist.
+ * Consolidates the auto-creation pattern used by CLI token exchange,
+ * Slack OAuth, and the scope API.
+ *
+ * @returns The existing or newly created scope
+ */
+export async function ensureDefaultScope(clerkUserId: string) {
+  const existing = await getUserScopeByClerkId(clerkUserId);
+  if (existing) return existing;
+
+  const defaultSlug = generateDefaultScopeSlug(clerkUserId);
+  try {
+    return await createScope(clerkUserId, defaultSlug);
+  } catch (error) {
+    // Handle rare slug collision — retry with random suffix
+    if (isBadRequest(error) && error.message.includes("already exists")) {
+      const fallbackSlug = `user-${randomBytes(4).toString("hex")}`;
+      return await createScope(clerkUserId, fallbackSlug);
+    }
     throw error;
   }
 }

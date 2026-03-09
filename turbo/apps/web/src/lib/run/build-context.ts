@@ -15,9 +15,10 @@ import {
   type ModelProviderFramework,
 } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
+import { scopes } from "../../db/schema/scope";
 import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
-import type { ExecutionContext, ResumeSession } from "./types";
+import type { ExecutionContext, ResumeSession, UserScope } from "./types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
 import {
   resolveCheckpoint,
@@ -665,9 +666,11 @@ interface BuildContextParams {
   checkEnv?: boolean;
   // API start time for E2E timing metrics
   apiStartTime?: number;
-  // Caller-resolved scope ID for credential/variable resolution.
+  // Caller-resolved scope ID and slug for credential/variable/storage resolution.
+  // When provided, used for both credentials and storage (artifacts/memory).
   // When not provided, resolved via getDefaultScope fallback.
   scopeId?: string;
+  scopeSlug?: string;
 }
 
 /**
@@ -859,33 +862,71 @@ function applyResolutionDefaults(
 }
 
 /**
- * Build unified execution context from various parameter sources
- * Supports: new run, checkpoint resume, session continue
+ * Resolve credential scope ID and user scope for storage.
  *
- * Parameter expansion:
- * - checkpointId: Expands to checkpoint snapshot (config, conversation, artifact, volumes)
- * - sessionId: Expands to session data (config, conversation, artifact=latest)
- * - Explicit parameters override expanded values
+ * The credential scope is used for secrets/variables/connectors.
+ * The user scope is used for storage (artifacts, memory) in prepareForExecution.
+ * Both use the same runtime scope when params.scopeId is provided.
  *
- * @param params Unified run parameters
- * @returns Execution context for executors
+ * When params.scopeId is not provided, getDefaultScope serves both purposes.
  */
-async function resolveScopeId(params: BuildContextParams): Promise<string> {
-  if (params.scopeId) return params.scopeId;
-  return (await getDefaultScope(params.userId)).scope.id;
+async function resolveScopes(params: BuildContextParams): Promise<{
+  credentialScopeId: string;
+  pendingUserScope:
+    | Promise<{ id: string; slug: string }>
+    | { id: string; slug: string };
+}> {
+  if (params.scopeId) {
+    // Both credential scope and user scope use the explicit runtime scope.
+    // This ensures artifacts/memory are created in the same scope as credentials.
+    if (params.scopeSlug) {
+      return {
+        credentialScopeId: params.scopeId,
+        pendingUserScope: { id: params.scopeId, slug: params.scopeSlug },
+      };
+    }
+    // Fallback: query slug from DB when caller didn't provide it
+    return {
+      credentialScopeId: params.scopeId,
+      pendingUserScope: globalThis.services.db
+        .select({ slug: scopes.slug })
+        .from(scopes)
+        .where(eq(scopes.id, params.scopeId))
+        .limit(1)
+        .then(([result]) => ({
+          id: params.scopeId as string,
+          slug: result?.slug ?? "",
+        })),
+    };
+  }
+  // No explicit scope — default scope serves both purposes
+  const { scope } = await getDefaultScope(params.userId);
+  return {
+    credentialScopeId: scope.id,
+    pendingUserScope: { id: scope.id, slug: scope.slug },
+  };
 }
 
 interface BuildContextTimings {
-  resolveSource: number;
-  resolveScope: number;
+  resolveSourceAndScope: number;
   resolveCredentials: number;
 }
 
 interface BuildContextResult {
   context: ExecutionContext;
+  userScope: UserScope;
   timings: BuildContextTimings;
 }
 
+/**
+ * Build unified execution context from various parameter sources.
+ * Supports: new run, checkpoint resume, session continue.
+ *
+ * Parameter expansion:
+ * - checkpointId: Expands to checkpoint snapshot (config, conversation, artifact, volumes)
+ * - sessionId: Expands to session data (config, conversation, artifact=latest)
+ * - Explicit parameters override expanded values
+ */
 export async function buildExecutionContext(
   params: BuildContextParams,
 ): Promise<BuildContextResult> {
@@ -906,10 +947,13 @@ export async function buildExecutionContext(
   let resumeSession: ResumeSession | undefined;
   let resumeArtifact: ArtifactSnapshot | undefined;
 
-  // Step 1: Resolve to conversation (unified path for checkpoint/session/direct)
-  const resolveSourceStart = Date.now();
-  const resolution = await resolveSource(params);
-  const resolveSourceEnd = Date.now();
+  // Step 1: Resolve source and scopes in parallel (independent operations).
+  // resolveSource loads checkpoint/session/conversation data.
+  // resolveScopes resolves credential scope and user's default scope (for storage).
+  const resolveStart = Date.now();
+  const [resolution, { credentialScopeId, pendingUserScope }] =
+    await Promise.all([resolveSource(params), resolveScopes(params)]);
+  const resolveEnd = Date.now();
 
   // Step 2: Apply resolution defaults and build resumeSession (unified path)
   // Note: secrets are NEVER stored - caller must always provide fresh secrets via params
@@ -953,11 +997,6 @@ export async function buildExecutionContext(
     throw notFound("Agent compose could not be loaded");
   }
 
-  // Resolve scope ID once for all credential/variable resolution
-  const resolveScopeStart = Date.now();
-  const scopeId = await resolveScopeId(params);
-  const resolveScopeEnd = Date.now();
-
   // Extract compose structure
   const compose = agentCompose as {
     agents?: Record<
@@ -969,13 +1008,12 @@ export async function buildExecutionContext(
     ? Object.values(compose.agents)[0]
     : undefined;
 
-  // Step 4: Resolve credentials and user preferences in parallel
-  // getUserPreferences only needs userId (no scopeId dependency),
-  // so it can run concurrently with credential resolution.
+  // Step 4: Resolve credentials, user preferences, and user scope in parallel.
+  // pendingUserScope may already be resolved (when scopeId was not explicit).
   const resolveCredentialsStart = Date.now();
-  const [credentialsResult, userPrefs] = await Promise.all([
+  const [credentialsResult, userPrefs, userScope] = await Promise.all([
     resolveCredentialsAndEnvironment(
-      scopeId,
+      credentialScopeId,
       agentCompose,
       firstAgent,
       vars,
@@ -986,6 +1024,7 @@ export async function buildExecutionContext(
       params.userId,
     ),
     params.userId ? getUserPreferences(params.userId) : Promise.resolve(null),
+    Promise.resolve(pendingUserScope),
   ]);
   const resolveCredentialsEnd = Date.now();
 
@@ -1006,6 +1045,7 @@ export async function buildExecutionContext(
 
   // Build final execution context
   return {
+    userScope,
     context: {
       runId: params.runId,
       userId: params.userId,
@@ -1034,8 +1074,7 @@ export async function buildExecutionContext(
       apiStartTime: params.apiStartTime,
     },
     timings: {
-      resolveSource: resolveSourceEnd - resolveSourceStart,
-      resolveScope: resolveScopeEnd - resolveScopeStart,
+      resolveSourceAndScope: resolveEnd - resolveStart,
       resolveCredentials: resolveCredentialsEnd - resolveCredentialsStart,
     },
   };

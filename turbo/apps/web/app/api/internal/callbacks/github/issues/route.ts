@@ -112,7 +112,7 @@ function formatGitHubComment(opts: {
     parts.push(`<sub>${linkText}</sub>`, "");
   }
 
-  parts.push(`<sub>📋 [View logs](${logsUrl})</sub>`);
+  parts.push(`<sub>📋 [Audit](${logsUrl})</sub>`);
 
   return parts.join("\n");
 }

@@ -48,7 +48,7 @@ export function AppShell({
       <div className="flex flex-1 flex-col min-w-0">
         <Navbar breadcrumb={normalizedBreadcrumb} />
         <main
-          className={`flex-1 overflow-auto ${gradientBackground ? "bg-background" : ""}`}
+          className={`flex-1 overflow-y-auto overflow-x-hidden ${gradientBackground ? "bg-background" : ""}`}
         >
           {contentClassName ? (
             <div className={contentClassName}>{mainContent}</div>

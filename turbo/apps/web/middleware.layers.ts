@@ -136,6 +136,25 @@ export const corsLayer: MiddlewareLayer = (ctx) => {
   return null;
 };
 
+/**
+ * Reject requests where the first path segment looks like a locale slot
+ * but is not a supported locale (e.g. `/favicon.ico/blog`).
+ * Returns 404 so crawlers and bots don't trigger i18n errors.
+ */
+export const localeGuardLayer: MiddlewareLayer = (ctx) => {
+  if (ctx.routeKind !== "page") return null;
+
+  const firstSegment = ctx.request.nextUrl.pathname.split("/")[1];
+  if (
+    firstSegment &&
+    !locales.includes(firstSegment as (typeof locales)[number]) &&
+    firstSegment.includes(".")
+  ) {
+    return new NextResponse(null, { status: 404 });
+  }
+  return null;
+};
+
 /** Apply i18n for page routes. */
 export const i18nLayer: MiddlewareLayer = (ctx) => {
   if (ctx.routeKind === "page") {

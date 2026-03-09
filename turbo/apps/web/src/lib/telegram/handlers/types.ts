@@ -37,7 +37,14 @@ export interface TelegramHandlerUpdate {
     /** Present when the user replies to another message */
     reply_to_message?: {
       message_id: number;
-      from?: { id: number; is_bot?: boolean };
+      from?: {
+        id: number;
+        is_bot?: boolean;
+        username?: string;
+        first_name?: string;
+      };
+      text?: string;
+      caption?: string;
     };
   };
 }

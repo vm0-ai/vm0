@@ -1,7 +1,7 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
 
-const TODOIST_SYNC_URL = "https://api.todoist.com/sync/v9/sync";
+const TODOIST_USER_URL = "https://api.todoist.com/api/v1/user";
 
 interface TodoistTokenResult {
   accessToken: string;
@@ -40,7 +40,7 @@ export function buildTodoistAuthorizationUrl(
 /**
  * Exchange authorization code for access token.
  * Todoist tokens are long-lived — no refresh token is returned.
- * User info is fetched separately via the Sync API.
+ * User info is fetched separately via the v1 User API.
  */
 export async function exchangeTodoistCode(
   clientId: string,
@@ -96,45 +96,37 @@ export async function exchangeTodoistCode(
 }
 
 /**
- * Fetch user info from Todoist Sync API.
+ * Fetch user info from Todoist v1 API.
  */
 async function fetchTodoistUserInfo(accessToken: string): Promise<{
   id: string;
   username: string | null;
   email: string | null;
 }> {
-  const response = await fetch(TODOIST_SYNC_URL, {
-    method: "POST",
+  const response = await fetch(TODOIST_USER_URL, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: new URLSearchParams({
-      sync_token: "*",
-      resource_types: '["user"]',
-    }),
   });
 
   if (!response.ok) {
-    throw new Error(`Todoist user info fetch failed: ${response.status}`);
+    throw new Error(
+      `Todoist user info fetch failed: ${response.status} ${await response.text()}`,
+    );
   }
 
   const data = z
     .object({
-      user: z
-        .object({
-          id: z.number().optional(),
-          full_name: z.string().nullable().optional(),
-          email: z.string().nullable().optional(),
-        })
-        .optional(),
+      id: z.string().optional(),
+      full_name: z.string().nullable().optional(),
+      email: z.string().nullable().optional(),
     })
     .parse(await response.json());
 
   return {
-    id: data.user?.id?.toString() ?? "",
-    username: data.user?.full_name ?? null,
-    email: data.user?.email ?? null,
+    id: data.id ?? "",
+    username: data.full_name ?? null,
+    email: data.email ?? null,
   };
 }
 

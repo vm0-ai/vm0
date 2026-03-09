@@ -15,6 +15,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { env } from "../../env";
 import { resolveVersionByPrefix, isResolutionError } from "./version-resolver";
 import { computeContentHashFromHashes } from "./content-hash";
+import { VOLUME_SCOPE_USER_ID } from "@vm0/core";
 
 const log = logger("storage");
 
@@ -43,13 +44,14 @@ export async function ensureStorageExists(
   scopeSlug: string,
   storageType: "artifact" | "memory",
 ): Promise<void> {
-  // Find or create storage record
+  // Find or create storage record (artifact/memory use real userId)
   let [storage] = await globalThis.services.db
     .select()
     .from(storages)
     .where(
       and(
         eq(storages.scopeId, scopeId),
+        eq(storages.userId, userId),
         eq(storages.name, storageName),
         eq(storages.type, storageType),
       ),
@@ -79,6 +81,7 @@ export async function ensureStorageExists(
         .where(
           and(
             eq(storages.scopeId, scopeId),
+            eq(storages.userId, userId),
             eq(storages.name, storageName),
             eq(storages.type, storageType),
           ),
@@ -175,8 +178,9 @@ export async function ensureStorageExists(
  * Resolve version ID from version string
  * @param scopeId - Scope ID for storage access
  * @param storageName - Storage name
- * @param storageType - Storage type ("volume" or "artifact")
+ * @param storageType - Storage type ("volume", "artifact", or "memory")
  * @param version - Version string ("latest" or specific hash)
+ * @param userId - User ID (real userId for artifact/memory, VOLUME_SCOPE_USER_ID for volumes)
  * @returns Version ID and S3 key
  */
 async function resolveVersion(
@@ -184,6 +188,7 @@ async function resolveVersion(
   storageName: string,
   storageType: "volume" | "artifact" | "memory",
   version: string,
+  userId: string,
 ): Promise<{ versionId: string; s3Key: string }> {
   if (version === "latest") {
     // Fetch storage + HEAD version in a single JOIN query
@@ -198,6 +203,7 @@ async function resolveVersion(
       .where(
         and(
           eq(storages.scopeId, scopeId),
+          eq(storages.userId, userId),
           eq(storages.name, storageName),
           eq(storages.type, storageType),
         ),
@@ -226,6 +232,7 @@ async function resolveVersion(
     .where(
       and(
         eq(storages.scopeId, scopeId),
+        eq(storages.userId, userId),
         eq(storages.name, storageName),
         eq(storages.type, storageType),
       ),
@@ -265,6 +272,7 @@ async function resolveVersion(
  * @param vars - Template variables for placeholder replacement
  * @param volumeScopeId - Scope ID for volume resolution (agent owner's scope)
  * @param artifactScopeId - Scope ID for artifact resolution (runner's scope)
+ * @param userId - Runner's user ID (for artifact/memory ownership)
  * @param artifactName - Artifact storage name
  * @param artifactVersion - Artifact version (defaults to "latest")
  * @param volumeVersionOverrides - Optional volume version overrides
@@ -278,6 +286,7 @@ export async function prepareStorageManifest(
   vars: Record<string, string>,
   volumeScopeId: string,
   artifactScopeId: string,
+  userId: string,
   artifactName?: string,
   artifactVersion?: string,
   volumeVersionOverrides?: Record<string, string>,
@@ -338,6 +347,7 @@ export async function prepareStorageManifest(
           volume.vasStorageName,
           "volume",
           volume.vasVersion,
+          VOLUME_SCOPE_USER_ID,
         );
 
         // Generate archive URL for tar.gz
@@ -394,6 +404,7 @@ export async function prepareStorageManifest(
           artifactSource.vasStorageName,
           "artifact",
           artifactSource.vasVersion,
+          userId,
         );
 
         // Generate archive URL for tar.gz
@@ -429,6 +440,7 @@ export async function prepareStorageManifest(
           memoryName,
           "memory",
           "latest",
+          userId,
         );
 
         const archiveKey = `${s3Key}/archive.tar.gz`;

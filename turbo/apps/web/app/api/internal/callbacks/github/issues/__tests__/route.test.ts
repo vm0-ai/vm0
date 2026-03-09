@@ -295,7 +295,7 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       expect(capturedComments[0]!.repo).toBe("test-repo");
       expect(capturedComments[0]!.issueNumber).toBe("42");
       // Verify the comment body includes the logs footer
-      expect(capturedComments[0]!.body).toContain("View logs");
+      expect(capturedComments[0]!.body).toContain("Audit");
     });
 
     it("should post error comment on failed run", async () => {

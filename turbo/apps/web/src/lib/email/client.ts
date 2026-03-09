@@ -1,6 +1,6 @@
 import { Resend } from "resend";
 import { env } from "../../env";
-import type { ReactElement } from "react";
+import type { SendEmailDirectOptions } from "./types";
 
 let resendInstance: Resend | undefined;
 
@@ -15,29 +15,18 @@ function getResendClient(): Resend {
   return resendInstance;
 }
 
-interface SendEmailOptions {
-  from: string;
-  to: string | string[];
-  subject: string;
-  react: ReactElement;
-  cc?: string | string[];
-  replyTo?: string;
-  headers?: Record<string, string>;
-}
-
-interface SendEmailResult {
-  id: string;
-  messageId: string | null;
-}
+type SendDirectResult =
+  | { ok: true; resendId: string }
+  | { ok: false; error: string };
 
 /**
- * Send an email via Resend and retrieve the RFC Message-ID.
- * Resend's send() returns only its internal ID; we call get() to obtain the
- * RFC-compliant message_id needed for In-Reply-To / References threading.
+ * Send an email directly via Resend. Used only by the outbox drain worker.
+ * Does NOT retrieve the RFC Message-ID — the drain worker handles that
+ * separately via getMessageId() when a post-send action requires it.
  */
-export async function sendEmail(
-  options: SendEmailOptions,
-): Promise<SendEmailResult> {
+export async function sendEmailDirect(
+  options: SendEmailDirectOptions,
+): Promise<SendDirectResult> {
   const resend = getResendClient();
 
   const { data, error } = await resend.emails.send({
@@ -51,23 +40,29 @@ export async function sendEmail(
   });
 
   if (error || !data) {
-    throw new Error(`Failed to send email: ${error?.message ?? "unknown"}`);
+    return { ok: false, error: error?.message ?? "unknown" };
   }
 
-  // Retrieve message_id via get() — send() only returns Resend's internal id
-  const { data: emailData, error: getError } = await resend.emails.get(data.id);
+  return { ok: true, resendId: data.id };
+}
 
-  if (getError || !emailData) {
-    // Email was sent but we couldn't retrieve the message_id
-    return { id: data.id, messageId: null };
+/**
+ * Retrieve the RFC Message-ID for a sent email.
+ * Used by the outbox drain worker after sending, when email threading is needed.
+ * Returns null on failure (graceful degradation — threading is best-effort).
+ */
+export async function getMessageId(resendId: string): Promise<string | null> {
+  const resend = getResendClient();
+
+  const { data, error } = await resend.emails.get(resendId);
+
+  if (error || !data) {
+    return null;
   }
 
-  const messageId =
-    "message_id" in emailData && typeof emailData.message_id === "string"
-      ? emailData.message_id
-      : null;
-
-  return { id: data.id, messageId };
+  return "message_id" in data && typeof data.message_id === "string"
+    ? data.message_id
+    : null;
 }
 
 /**

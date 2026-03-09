@@ -106,8 +106,11 @@ export const canSaveOnboarding$ = computed((get) => {
  */
 export const needsOnboarding$ = computed(async (get) => {
   const scopeExists = await get(hasScope$);
+  if (!scopeExists) {
+    return true;
+  }
   const hasProvider = await get(hasAnyModelProvider$);
-  return !scopeExists || !hasProvider;
+  return !hasProvider;
 });
 
 // ---------------------------------------------------------------------------

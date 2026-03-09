@@ -95,3 +95,13 @@ export interface ExecutionContext {
   // API start time for E2E timing metrics
   apiStartTime?: number;
 }
+
+/**
+ * User's default scope for storage resolution in prepareForExecution.
+ * Resolved once in buildExecutionContext to avoid redundant DB lookups.
+ * May differ from the credential scope when an org scope is explicitly selected.
+ */
+export interface UserScope {
+  id: string;
+  slug: string;
+}

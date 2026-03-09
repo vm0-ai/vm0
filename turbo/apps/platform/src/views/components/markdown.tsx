@@ -2,6 +2,148 @@ import MarkdownPreview, {
   type MarkdownPreviewProps,
 } from "@uiw/react-markdown-preview";
 
+type RewriteArgs = Parameters<
+  NonNullable<MarkdownPreviewProps["rehypeRewrite"]>
+>;
+
+/**
+ * Rewrite callback that:
+ * 1. Converts unknown HTML tags to plain text (e.g. <OrganizationSwitcher>)
+ * 2. Strips auto-generated heading anchor links whose SVG icons get sanitized
+ *    into visible `<svg>` text by rehype-sanitize.
+ */
+const rehypeRewriteHandler = (() => {
+  const validHtmlTags: ReadonlySet<string> = new Set([
+    "a",
+    "abbr",
+    "address",
+    "area",
+    "article",
+    "aside",
+    "audio",
+    "b",
+    "bdi",
+    "bdo",
+    "blockquote",
+    "br",
+    "caption",
+    "cite",
+    "code",
+    "col",
+    "colgroup",
+    "data",
+    "dd",
+    "del",
+    "details",
+    "dfn",
+    "dialog",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "embed",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "header",
+    "hr",
+    "i",
+    "iframe",
+    "img",
+    "input",
+    "ins",
+    "kbd",
+    "label",
+    "legend",
+    "li",
+    "main",
+    "mark",
+    "menu",
+    "meter",
+    "nav",
+    "ol",
+    "optgroup",
+    "option",
+    "output",
+    "p",
+    "picture",
+    "pre",
+    "progress",
+    "q",
+    "rp",
+    "rt",
+    "ruby",
+    "s",
+    "samp",
+    "section",
+    "small",
+    "source",
+    "span",
+    "strong",
+    "sub",
+    "summary",
+    "sup",
+    "table",
+    "tbody",
+    "td",
+    "template",
+    "textarea",
+    "tfoot",
+    "th",
+    "thead",
+    "time",
+    "tr",
+    "u",
+    "ul",
+    "var",
+    "video",
+    "wbr",
+  ]);
+
+  return (...args: RewriteArgs) => {
+    const [node, , parent] = args;
+
+    // Convert unknown HTML tags to plain text
+    if (
+      node.type === "element" &&
+      !validHtmlTags.has(node.tagName) &&
+      parent?.type === "element"
+    ) {
+      const text = `<${node.tagName}>`;
+      Object.assign(node, {
+        type: "text",
+        value: text,
+        tagName: undefined,
+        properties: undefined,
+        children: undefined,
+      });
+      return;
+    }
+
+    // Strip heading anchor links (`.anchor` class) that contain escaped `<svg>` text.
+    if (
+      node.type === "element" &&
+      node.tagName === "a" &&
+      node.properties?.class === "anchor"
+    ) {
+      Object.assign(node, {
+        type: "text",
+        value: "",
+        tagName: undefined,
+        properties: undefined,
+        children: undefined,
+      });
+    }
+  };
+})();
+
 export function Markdown({ className, style, ...rest }: MarkdownPreviewProps) {
   return (
     <MarkdownPreview
@@ -13,6 +155,7 @@ export function Markdown({ className, style, ...rest }: MarkdownPreviewProps) {
         fontFamily: "var(--font-family-sans)",
         ...style,
       }}
+      rehypeRewrite={rehypeRewriteHandler}
       {...rest}
     />
   );

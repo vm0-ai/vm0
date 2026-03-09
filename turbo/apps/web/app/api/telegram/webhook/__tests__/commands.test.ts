@@ -18,6 +18,7 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[installationId]/route";
+import * as runModule from "../../../../../src/lib/run";
 
 // Mock Next.js after() to execute synchronously
 const afterPromises: Promise<unknown>[] = [];
@@ -66,6 +67,33 @@ function telegramSendMessage() {
       return HttpResponse.json({
         ok: true,
         result: { message_id: 999, chat: { id: TELEGRAM_USER_ID } },
+      });
+    },
+  );
+  return { ...handler, calls };
+}
+
+function telegramEditMessageText() {
+  const calls: Array<{
+    chat_id: string;
+    message_id: number;
+    text: string;
+  }> = [];
+  const handler = http.post(
+    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/editMessageText`,
+    async ({ request }) => {
+      const body = (await request.json()) as {
+        chat_id: string;
+        message_id: number;
+        text: string;
+      };
+      calls.push(body);
+      return HttpResponse.json({
+        ok: true,
+        result: {
+          message_id: body.message_id,
+          chat: { id: TELEGRAM_USER_ID },
+        },
       });
     },
   );
@@ -507,6 +535,79 @@ describe("Telegram bot commands", () => {
 
       // No message sent in group chat
       expect(sendMsg.mocked).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("queued run notification", () => {
+    it("should send queued message for DM when run is queued", async () => {
+      const sendMsg = telegramSendMessage();
+      const editMsg = telegramEditMessageText();
+      server.use(sendMsg.handler, editMsg.handler);
+
+      vi.spyOn(runModule, "createRun").mockResolvedValue({
+        runId: "mock-run-id",
+        status: "queued",
+        createdAt: new Date(),
+      });
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: TELEGRAM_USER_ID, type: "private" },
+          from: { id: TELEGRAM_USER_ID, username: "testuser" },
+          text: "hello bot",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ installationId }),
+      });
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Queued notification edits the thinking message (not a new sendMessage)
+      const queuedMsg = editMsg.calls.find((c) =>
+        c.text.includes("Run queued"),
+      );
+      expect(queuedMsg).toBeDefined();
+      expect(queuedMsg?.text).toContain("concurrency limit reached");
+    });
+
+    it("should send queued message for group mention when run is queued", async () => {
+      const sendMsg = telegramSendMessage();
+      const editMsg = telegramEditMessageText();
+      server.use(sendMsg.handler, editMsg.handler);
+
+      vi.spyOn(runModule, "createRun").mockResolvedValue({
+        runId: "mock-run-id",
+        status: "queued",
+        createdAt: new Date(),
+      });
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: TELEGRAM_USER_ID, type: "group" },
+          from: { id: TELEGRAM_USER_ID, username: "testuser" },
+          text: "hello @test_bot",
+          entities: [{ type: "mention", offset: 6, length: 9 }],
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ installationId }),
+      });
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Queued notification edits the thinking message (not a new sendMessage)
+      const queuedMsg = editMsg.calls.find((c) =>
+        c.text.includes("Run queued"),
+      );
+      expect(queuedMsg).toBeDefined();
+      expect(queuedMsg?.text).toContain("concurrency limit reached");
     });
   });
 });

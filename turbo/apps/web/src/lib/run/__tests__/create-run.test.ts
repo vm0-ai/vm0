@@ -15,6 +15,7 @@ import {
   findTestRunRecord,
   findTestRunCallbacks,
   findTestRunsByUserAndPrompt,
+  findTestStorage,
 } from "../../../__tests__/api-test-helpers";
 import { POST as checkpointWebhook } from "../../../../app/api/webhooks/agent/checkpoints/route";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
@@ -26,7 +27,9 @@ import {
   type CreateRunResult,
 } from "../run-service";
 import { isForbidden, isBadRequest } from "../../errors";
+import { Sandbox } from "@e2b/code-interpreter";
 import { POST as createComposeRoute } from "../../../../app/api/agent/composes/route";
+import { mockClerk } from "../../../__tests__/clerk-mock";
 
 const context = testContext();
 
@@ -58,6 +61,7 @@ describe("createRun()", () => {
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("running");
+      expect(result.sandboxId).toBeDefined();
       expect(result.createdAt).toBeInstanceOf(Date);
 
       // Verify run record in DB
@@ -123,8 +127,7 @@ describe("createRun()", () => {
       expect(run!.prompt).toBe("Second run");
     });
 
-    it("should allow multiple concurrent runs for pro tier", async () => {
-      // Pro tier allows up to 10 concurrent runs
+    it("should allow 2 concurrent runs for pro tier", async () => {
       const run1 = await createRun(
         baseParams({ prompt: "Pro run 1", scopeTier: "pro" }),
       );
@@ -134,6 +137,33 @@ describe("createRun()", () => {
 
       expect(run1.status).toBe("running");
       expect(run2.status).toBe("running");
+    });
+
+    it("should queue 3rd concurrent run for pro tier", async () => {
+      await createRun(baseParams({ prompt: "Pro run 1", scopeTier: "pro" }));
+      await createRun(baseParams({ prompt: "Pro run 2", scopeTier: "pro" }));
+
+      const run3 = await createRun(
+        baseParams({ prompt: "Pro run 3", scopeTier: "pro" }),
+      );
+      expect(run3.status).toBe("queued");
+    });
+
+    it("should allow multiple concurrent runs for max tier", async () => {
+      // Create 3 concurrent runs to verify max tier allows more than pro tier (which allows 2)
+      const run1 = await createRun(
+        baseParams({ prompt: "Max run 1", scopeTier: "max" }),
+      );
+      const run2 = await createRun(
+        baseParams({ prompt: "Max run 2", scopeTier: "max" }),
+      );
+      const run3 = await createRun(
+        baseParams({ prompt: "Max run 3", scopeTier: "max" }),
+      );
+
+      expect(run1.status).toBe("running");
+      expect(run2.status).toBe("running");
+      expect(run3.status).toBe("running");
     });
 
     it("should allow unlimited runs when CONCURRENT_RUN_LIMIT is 0", async () => {
@@ -263,15 +293,12 @@ describe("createRun()", () => {
 
   describe("Dispatch Failure", () => {
     it("should mark run as failed when dispatch throws", async () => {
-      const { executeRunnerJob } = await import(
-        "../../run/executors/runner-executor"
-      );
-      vi.mocked(executeRunnerJob).mockRejectedValueOnce(
-        new Error("Runner dispatch failed"),
+      vi.mocked(Sandbox.create).mockRejectedValueOnce(
+        new Error("Sandbox creation failed"),
       );
 
       await expect(createRun(baseParams())).rejects.toThrow(
-        "Runner dispatch failed",
+        "Sandbox creation failed",
       );
 
       // Verify run is marked as failed in DB
@@ -282,7 +309,7 @@ describe("createRun()", () => {
       const run = runs.find((r) => r.status === "failed");
 
       expect(run).toBeDefined();
-      expect(run!.error).toContain("Runner dispatch failed");
+      expect(run!.error).toContain("Sandbox creation failed");
       expect(run!.completedAt).toBeDefined();
     });
   });
@@ -319,6 +346,16 @@ describe("createRun()", () => {
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("running");
+
+      // Verify sandbox was called with full memory env vars including VERSION_ID
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      expect(createCall).toBeDefined();
+      const sandboxOptions = createCall![1] as {
+        envs?: Record<string, string>;
+      };
+      expect(sandboxOptions.envs?.VM0_MEMORY_NAME).toBe(memoryName);
+      expect(sandboxOptions.envs?.VM0_MEMORY_VERSION_ID).toBeDefined();
+      expect(sandboxOptions.envs?.VM0_MEMORY_DRIVER).toBe("vas");
     });
 
     it("should succeed when memory already exists (idempotent)", async () => {
@@ -382,10 +419,7 @@ describe("createRun()", () => {
       };
 
       // Step 2: Continue from session WITHOUT specifying memoryName
-      const { executeRunnerJob } = await import(
-        "../../run/executors/runner-executor"
-      );
-      vi.mocked(executeRunnerJob).mockClear();
+      vi.mocked(Sandbox.create).mockClear();
       const continueResult = await createRun(
         baseParams({
           sessionId: agentSessionId,
@@ -396,10 +430,13 @@ describe("createRun()", () => {
       expect(continueResult.runId).toBeDefined();
       expect(continueResult.status).toBe("running");
 
-      // Step 3: Verify runner was called with memory name in context
-      const runnerCall = vi.mocked(executeRunnerJob).mock.calls[0];
-      expect(runnerCall).toBeDefined();
-      expect(runnerCall![0].memoryName).toBe("restored-memory");
+      // Step 3: Verify Sandbox.create was called with VM0_MEMORY_NAME
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      expect(createCall).toBeDefined();
+      const sandboxOptions = createCall![1] as {
+        envs?: Record<string, string>;
+      };
+      expect(sandboxOptions.envs?.VM0_MEMORY_NAME).toBe("restored-memory");
     });
   });
 
@@ -625,6 +662,96 @@ describe("createRun()", () => {
       );
 
       expect(result.status).toBe("running");
+    });
+  });
+
+  describe("Runner Default Group Routing", () => {
+    it("should route all users to runner when RUNNER_DEFAULT_GROUP is set", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      mockClerk({ userId: user.userId, email: "user@example.com" });
+
+      const result = await createRun(baseParams());
+
+      expect(result.status).toBe("pending");
+    });
+
+    it("should fall back to E2B when RUNNER_DEFAULT_GROUP is not set", async () => {
+      // RUNNER_DEFAULT_GROUP is not set by default in test env
+      mockClerk({ userId: user.userId, email: "team@vm0.ai" });
+
+      const result = await createRun(baseParams());
+
+      expect(result.status).toBe("running");
+    });
+  });
+
+  describe("Scope Resolution for Storage", () => {
+    it("should use runtime scopeId for artifact/memory storage when scopeId is provided", async () => {
+      // Create a second scope (org scope) and make the user a member
+      const orgCompose = await context.createAgentCompose(user.userId, {
+        name: uniqueId("org-agent"),
+      });
+      const orgScopeId = orgCompose.scopeId;
+
+      // Use the default compose but pass org scope for storage resolution
+      const result = await createRun(
+        baseParams({
+          artifactName: "artifact",
+          memoryName: "memory",
+          scopeId: orgScopeId,
+          scopeSlug: uniqueId("org"), // slug used for S3 prefix (mocked in tests)
+        }),
+      );
+
+      expect(result.status).toBe("running");
+
+      // Verify the run record uses the org scope
+      const run = await findTestRunRecord(result.runId);
+      expect(run!.scopeId).toBe(orgScopeId);
+
+      // Verify artifact storage was created in the org scope (not user's default scope)
+      const artifact = await findTestStorage(
+        orgScopeId,
+        "artifact",
+        "artifact",
+      );
+      expect(artifact).toBeDefined();
+      expect(artifact!.userId).toBe(user.userId);
+
+      // Verify memory storage was created in the org scope
+      const memory = await findTestStorage(orgScopeId, "memory", "memory");
+      expect(memory).toBeDefined();
+      expect(memory!.userId).toBe(user.userId);
+    });
+
+    it("should use default scope for storage when scopeId is not provided", async () => {
+      const compose = await createTestCompose(uniqueId("agent"));
+
+      const result = await createRun(
+        baseParams({
+          agentComposeVersionId: compose.versionId,
+          artifactName: "artifact",
+          memoryName: "memory",
+        }),
+      );
+
+      expect(result.status).toBe("running");
+
+      // Verify artifact storage was created in user's default scope
+      const artifact = await findTestStorage(
+        user.scopeId,
+        "artifact",
+        "artifact",
+      );
+      expect(artifact).toBeDefined();
+      expect(artifact!.userId).toBe(user.userId);
+
+      // Verify memory storage was created in user's default scope
+      const memory = await findTestStorage(user.scopeId, "memory", "memory");
+      expect(memory).toBeDefined();
+      expect(memory!.userId).toBe(user.userId);
     });
   });
 });

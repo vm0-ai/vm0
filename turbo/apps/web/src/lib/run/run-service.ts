@@ -22,6 +22,7 @@ import type { AgentComposeSnapshot } from "../checkpoint/types";
 import type { AgentComposeYaml } from "../../types/agent-compose";
 import { getAgentSessionWithConversation } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
+import { executeE2bRun } from "./executors/e2b-executor";
 import { executeRunnerJob } from "./executors/runner-executor";
 import { executeDockerRun } from "./executors/docker-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
@@ -48,7 +49,8 @@ export const PENDING_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 /** Concurrent run limits by scope tier */
 const TIER_CONCURRENCY_LIMITS: Record<ScopeTier, number> = {
   free: 1,
-  pro: 10,
+  pro: 2,
+  max: 10,
 };
 
 function getConcurrencyLimitForTier(tier: ScopeTier): number {
@@ -234,8 +236,9 @@ export async function validateAgentSession(
  * Dispatch prepared context to appropriate executor.
  *
  * Routing:
- * - Runner Group: explicit runner config in compose, or default group
- * - Docker: local dev mode, requires DOCKER_SANDBOX_IMAGE
+ * - Runner Group: explicit runner config in compose
+ * - E2B: cloud mode, requires E2B_API_KEY
+ * - Docker: local mode, requires DOCKER_SANDBOX_IMAGE
  *
  */
 async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
@@ -246,19 +249,25 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
     return await executeRunnerJob(context);
   }
 
-  if (env().DOCKER_SANDBOX_IMAGE) {
+  // Route to runner when RUNNER_DEFAULT_GROUP is configured.
+  const defaultGroup = env().RUNNER_DEFAULT_GROUP;
+  if (defaultGroup) {
+    log.debug(
+      `Dispatching run ${context.runId} to runner (default group: ${defaultGroup})`,
+    );
+    return await executeRunnerJob({ ...context, runnerGroup: defaultGroup });
+  }
+
+  if (env().E2B_API_KEY) {
+    log.debug(`Dispatching run ${context.runId} to E2B executor`);
+    return await executeE2bRun(context);
+  } else if (env().DOCKER_SANDBOX_IMAGE) {
     log.debug(`Dispatching run ${context.runId} to Docker executor`);
     return await executeDockerRun(context);
   }
 
-  const defaultGroup = env().RUNNER_DEFAULT_GROUP;
-  if (defaultGroup) {
-    log.debug(`Dispatching run ${context.runId} to runner (default group)`);
-    return await executeRunnerJob({ ...context, runnerGroup: defaultGroup });
-  }
-
   throw new Error(
-    "No executor configured: set RUNNER_DEFAULT_GROUP or DOCKER_SANDBOX_IMAGE",
+    "No executor configured: set E2B_API_KEY for cloud mode or DOCKER_SANDBOX_IMAGE for Docker mode",
   );
 }
 
@@ -275,6 +284,10 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
 export interface RunDispatchError extends Error {
   runId?: string;
   createdAt?: Date;
+}
+
+export function isRunDispatchError(error: unknown): error is RunDispatchError {
+  return error instanceof Error && "runId" in error;
 }
 
 export interface CreateRunParams {
@@ -306,9 +319,10 @@ export interface CreateRunParams {
   modelProvider?: string;
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
-  // Caller-resolved scope ID for variable resolution (org-aware).
-  // When provided, used instead of getUserScopeByClerkId fallback.
+  // Caller-resolved scope ID and slug for variable/storage resolution (org-aware).
+  // When provided, used instead of getDefaultScope fallback.
   scopeId?: string;
+  scopeSlug?: string;
   // Caller-resolved scope tier for concurrency limit derivation.
   scopeTier?: ScopeTier;
 }
@@ -460,18 +474,17 @@ async function registerCallbacks(
   callbacks: Array<{ url: string; secret: string; payload: unknown }>,
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
-  for (const callback of callbacks) {
-    const encryptedSecret = encryptCredentialValue(
-      callback.secret,
-      SECRETS_ENCRYPTION_KEY,
-    );
-    await globalThis.services.db.insert(agentRunCallbacks).values({
+  await globalThis.services.db.insert(agentRunCallbacks).values(
+    callbacks.map((callback) => ({
       runId,
       url: callback.url,
-      encryptedSecret,
+      encryptedSecret: encryptCredentialValue(
+        callback.secret,
+        SECRETS_ENCRYPTION_KEY,
+      ),
       payload: callback.payload,
-    });
-  }
+    })),
+  );
   log.debug(`Registered ${callbacks.length} callback(s) for run ${runId}`);
 }
 
@@ -513,6 +526,7 @@ async function buildAndDispatchRun(opts: {
   composeContent: AgentComposeYaml;
   apiStartTime: number;
   scopeId: string | undefined;
+  scopeSlug: string | undefined;
   authorizeTime: number;
   transactionTime: number;
 }): Promise<{ status: string; sandboxId?: string }> {
@@ -523,23 +537,28 @@ async function buildAndDispatchRun(opts: {
     composeContent,
     apiStartTime,
     scopeId,
+    scopeSlug,
     authorizeTime,
     transactionTime,
   } = opts;
   const { userId, agentComposeVersionId, prompt } = params;
 
   try {
-    // Register callbacks (if any)
-    if (params.callbacks && params.callbacks.length > 0) {
-      await registerCallbacks(runId, params.callbacks);
-    }
-
-    // Generate sandbox token
-    const sandboxToken = await generateSandboxToken(userId, runId);
+    // Register callbacks and generate sandbox token in parallel (independent operations)
+    const [, sandboxToken] = await Promise.all([
+      params.callbacks && params.callbacks.length > 0
+        ? registerCallbacks(runId, params.callbacks)
+        : null,
+      generateSandboxToken(userId, runId),
+    ]);
     const tokenTime = Date.now();
 
     // Build execution context
-    const { context, timings: buildContextTimings } = await buildContext({
+    const {
+      context,
+      userScope,
+      timings: buildContextTimings,
+    } = await buildContext({
       checkpointId: params.checkpointId,
       sessionId: params.sessionId,
       conversationId: params.conversationId,
@@ -563,11 +582,12 @@ async function buildAndDispatchRun(opts: {
       checkEnv: params.checkEnv,
       apiStartTime,
       scopeId,
+      scopeSlug,
     });
     const buildContextTime = Date.now();
 
     // Prepare execution context (storage manifest, working dir, etc.)
-    const prepareResult = await prepareForExecution(context);
+    const prepareResult = await prepareForExecution(context, userScope);
     const prepareTime = Date.now();
 
     // Dispatch to executor
@@ -587,12 +607,8 @@ async function buildAndDispatchRun(opts: {
       { op: "api_step_dispatch", ms: dispatchTime - prepareTime },
       // Sub-step timings within buildExecutionContext
       {
-        op: "api_build_resolve_source",
-        ms: buildContextTimings.resolveSource,
-      },
-      {
-        op: "api_build_resolve_scope",
-        ms: buildContextTimings.resolveScope,
+        op: "api_build_resolve_source_and_scope",
+        ms: buildContextTimings.resolveSourceAndScope,
       },
       {
         op: "api_build_resolve_credentials",
@@ -683,8 +699,17 @@ export async function createRun(
     );
   }
 
-  // Resolve scope ID for the run record
-  const scopeId = params.scopeId ?? (await getDefaultScope(userId)).scope.id;
+  // Resolve scope ID and slug for the run record and storage
+  let scopeId: string;
+  let scopeSlug: string | undefined;
+  if (params.scopeId) {
+    scopeId = params.scopeId;
+    scopeSlug = params.scopeSlug;
+  } else {
+    const { scope } = await getDefaultScope(userId);
+    scopeId = scope.id;
+    scopeSlug = scope.slug;
+  }
 
   // Step 5: Concurrency check + INSERT in a transaction with advisory lock
   // to prevent TOCTOU race where two concurrent requests both pass the
@@ -725,7 +750,7 @@ export async function createRun(
     });
   } catch (error) {
     if (isConcurrentRunLimit(error)) {
-      return enqueueRun({ ...params, scopeId });
+      return enqueueRun({ ...params, scopeId, scopeSlug });
     }
     throw error;
   }
@@ -740,6 +765,7 @@ export async function createRun(
     composeContent,
     apiStartTime,
     scopeId,
+    scopeSlug,
     authorizeTime,
     transactionTime,
   });
@@ -823,6 +849,7 @@ export async function executeQueuedRun(
     composeContent,
     apiStartTime,
     scopeId: params.scopeId,
+    scopeSlug: params.scopeSlug,
     authorizeTime,
     transactionTime,
   });

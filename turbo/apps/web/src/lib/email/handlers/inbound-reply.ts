@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { agentComposes } from "../../../db/schema/agent-compose";
+import { scopes } from "../../../db/schema/scope";
 import { getReceivedEmail } from "../client";
 import { processEmailAttachments } from "../attachment";
 import { extractEmailBody } from "../content-extract";
@@ -12,6 +13,7 @@ import {
   type HandlerResult,
 } from "./shared";
 import { createRun } from "../../run";
+import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
 import { logger } from "../../logger";
@@ -160,13 +162,16 @@ export async function handleInboundEmailReply(
     replyContent = `${replyContent}\n\n${attachmentText}`;
   }
 
-  // 10. Get compose to find agent name and version
+  // 10. Get compose to find agent name, version, and scope
   const [compose] = await globalThis.services.db
     .select({
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
+      scopeId: agentComposes.scopeId,
+      scopeSlug: scopes.slug,
     })
     .from(agentComposes)
+    .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
     .where(eq(agentComposes.id, session.composeId))
     .limit(1);
 
@@ -196,15 +201,18 @@ export async function handleInboundEmailReply(
     },
   ];
 
-  // 12. Create and dispatch run via unified pipeline
+  // 12. Inject integration context and create run
+  const fullPrompt = `${buildIntegrationContext("Email")}\n\n# User Prompt\n\n${replyContent}`;
   const result = await createRun({
     userId: session.userId,
     agentComposeVersionId: compose.headVersionId ?? "",
-    prompt: replyContent,
+    prompt: fullPrompt,
     composeId: session.composeId,
     sessionId: session.agentSessionId,
     agentName: compose.name,
     callbacks,
+    scopeId: compose.scopeId,
+    scopeSlug: compose.scopeSlug,
   });
 
   log.info("Dispatched agent run from email reply", {

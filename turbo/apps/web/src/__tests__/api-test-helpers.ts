@@ -28,6 +28,8 @@ import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
 import { agentRunQueue } from "../db/schema/agent-run-queue";
 import { agentSchedules } from "../db/schema/agent-schedule";
+import { emailOutbox } from "../db/schema/email-outbox";
+import type { EmailTemplate, PostSendAction } from "../lib/email/types";
 import { telegramInstallations } from "../db/schema/telegram-installation";
 import { telegramMessages } from "../db/schema/telegram-message";
 import { telegramUserLinks } from "../db/schema/telegram-user-link";
@@ -35,7 +37,7 @@ import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
 import { encryptSecrets } from "../lib/crypto/secrets-encryption";
-import type { StoredExecutionContext } from "@vm0/core";
+import { VOLUME_SCOPE_USER_ID, type StoredExecutionContext } from "@vm0/core";
 
 // Route handlers - imported here so callers don't need to pass them
 import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
@@ -325,11 +327,11 @@ export async function createTestScope(
  * Set the tier for a scope directly in the database.
  *
  * @param scopeId - The scope ID to update
- * @param tier - The tier to set ("free" or "pro")
+ * @param tier - The tier to set ("free", "pro", or "max")
  */
 export async function setScopeTier(
   scopeId: string,
-  tier: "free" | "pro",
+  tier: "free" | "pro" | "max",
 ): Promise<void> {
   await globalThis.services.db
     .update(scopes)
@@ -1018,8 +1020,8 @@ interface TestFile {
 }
 
 interface CreateTestStorageOptions {
-  /** Storage type: "artifact" or "volume" */
-  type?: "artifact" | "volume";
+  /** Storage type: "artifact", "volume", or "memory" */
+  type?: "artifact" | "volume" | "memory";
   /** Files to include in the storage */
   files?: TestFile[];
   /** Skip the commit step (creates storage in prepare-only state) */
@@ -1166,6 +1168,26 @@ export async function createTestVolume(
   fileCount: number;
 }> {
   return createTestStorage(name, { ...options, type: "volume" });
+}
+
+/**
+ * Create a test memory storage via API route handlers.
+ * Convenience wrapper around createTestStorage with type="memory".
+ *
+ * @param name - Memory storage name
+ * @param options - Optional configuration
+ * @returns The created memory storage with versionId
+ */
+export async function createTestMemory(
+  name: string,
+  options?: Omit<CreateTestStorageOptions, "type">,
+): Promise<{
+  versionId: string;
+  name: string;
+  size: number;
+  fileCount: number;
+}> {
+  return createTestStorage(name, { ...options, type: "memory" });
 }
 
 /**
@@ -1788,6 +1810,7 @@ export async function findTestArtifactStorage(scopeId: string) {
 
 /**
  * Find a storage volume by scope and name.
+ * Volumes use the sentinel VOLUME_SCOPE_USER_ID for scope-level sharing.
  * Returns the storage id and name, or undefined if not found.
  */
 export async function findTestStorageByName(
@@ -1804,6 +1827,7 @@ export async function findTestStorageByName(
     .where(
       and(
         eq(storages.scopeId, scopeId),
+        eq(storages.userId, VOLUME_SCOPE_USER_ID),
         eq(storages.name, name),
         eq(storages.type, "volume"),
       ),
@@ -1811,6 +1835,36 @@ export async function findTestStorageByName(
     .limit(1);
   return result;
 }
+/**
+ * Find a storage record by scope, name, and type.
+ * Returns the storage userId and other details for verification.
+ */
+export async function findTestStorage(
+  scopeId: string,
+  name: string,
+  type: "volume" | "artifact" | "memory",
+): Promise<
+  { id: string; name: string; userId: string; s3Prefix: string } | undefined
+> {
+  const [result] = await globalThis.services.db
+    .select({
+      id: storages.id,
+      name: storages.name,
+      userId: storages.userId,
+      s3Prefix: storages.s3Prefix,
+    })
+    .from(storages)
+    .where(
+      and(
+        eq(storages.scopeId, scopeId),
+        eq(storages.name, name),
+        eq(storages.type, type),
+      ),
+    )
+    .limit(1);
+  return result;
+}
+
 export async function findTestSlackComposeRequest(composeJobId: string) {
   const [row] = await globalThis.services.db
     .select()
@@ -2699,4 +2753,64 @@ export async function insertTestTelegramInstallationRecord(
     })
     .returning();
   return row!;
+}
+
+// ============================================================================
+// Email Outbox Helpers
+// ============================================================================
+
+/**
+ * Insert a raw email outbox item (bypasses enqueueEmail for direct state testing).
+ */
+export async function insertTestOutboxItem(values: {
+  fromAddress: string;
+  toAddresses: string | string[];
+  subject: string;
+  template: EmailTemplate;
+  status?: string;
+  attempts?: number;
+  postSendAction?: PostSendAction;
+  createdAt?: Date;
+  resendId?: string;
+}) {
+  const [row] = await globalThis.services.db
+    .insert(emailOutbox)
+    .values({
+      fromAddress: values.fromAddress,
+      toAddresses: values.toAddresses,
+      subject: values.subject,
+      template: values.template,
+      status: values.status ?? "pending",
+      attempts: values.attempts ?? 0,
+      postSendAction: values.postSendAction ?? null,
+      createdAt: values.createdAt,
+      resendId: values.resendId,
+    })
+    .returning({ id: emailOutbox.id });
+  return row!;
+}
+
+/**
+ * Find email outbox items by status.
+ */
+export async function findTestOutboxItems(status?: string) {
+  if (status) {
+    return globalThis.services.db
+      .select()
+      .from(emailOutbox)
+      .where(eq(emailOutbox.status, status));
+  }
+  return globalThis.services.db.select().from(emailOutbox);
+}
+
+/**
+ * Find a single email outbox item by ID.
+ */
+export async function findTestOutboxItemById(id: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(emailOutbox)
+    .where(eq(emailOutbox.id, id))
+    .limit(1);
+  return row ?? null;
 }

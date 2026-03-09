@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.47.0](https://github.com/vm0-ai/vm0/compare/core-v8.46.0...core-v8.47.0) (2026-03-09)
+
+
+### Features
+
+* **scope:** add max tier to three-tier concurrency system ([#3981](https://github.com/vm0-ai/vm0/issues/3981)) ([573d124](https://github.com/vm0-ai/vm0/commit/573d12423cff1d56c81b79c5c01b2866dfee3c99))
+* **storage:** add user-scope isolation for artifacts and memory ([#3996](https://github.com/vm0-ai/vm0/issues/3996)) ([94525c0](https://github.com/vm0-ai/vm0/commit/94525c00b5f14694a8f83ad48e92632ede7756d3))
+
 ## [8.46.0](https://github.com/vm0-ai/vm0/compare/core-v8.45.0...core-v8.46.0) (2026-03-09)
 
 

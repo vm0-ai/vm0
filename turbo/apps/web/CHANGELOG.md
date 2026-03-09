@@ -1,5 +1,68 @@
 # Changelog
 
+## [12.87.0](https://github.com/vm0-ai/vm0/compare/web-v12.86.0...web-v12.87.0) (2026-03-09)
+
+
+### Features
+
+* add scope lookup by clerk organization id ([#4038](https://github.com/vm0-ai/vm0/issues/4038)) ([ff30ea5](https://github.com/vm0-ai/vm0/commit/ff30ea554c6b819dc16dcba5db42139debfd351d)), closes [#4033](https://github.com/vm0-ai/vm0/issues/4033)
+* **auth:** extract org id and org slug from clerk auth session ([#4037](https://github.com/vm0-ai/vm0/issues/4037)) ([9db9814](https://github.com/vm0-ai/vm0/commit/9db981402347408663276c52b70f479e6bc7692f)), closes [#4034](https://github.com/vm0-ai/vm0/issues/4034)
+* **env:** auto-configure runner group in sync-env.sh ([#4039](https://github.com/vm0-ai/vm0/issues/4039)) ([6300d32](https://github.com/vm0-ai/vm0/commit/6300d326323660ad183e882479c90024ae9691ef))
+* **telegram:** manage queued message lifecycle via thinking message ([#4029](https://github.com/vm0-ai/vm0/issues/4029)) ([dff5984](https://github.com/vm0-ai/vm0/commit/dff598453b71ed98e12b8e5b6e3eee062b07026f))
+
+
+### Bug Fixes
+
+* add database-backed email outbox queue for rate limit resilience ([#3964](https://github.com/vm0-ai/vm0/issues/3964)) ([fc14d62](https://github.com/vm0-ai/vm0/commit/fc14d62cd9941b36ef6e42fe41cacacee9758b81))
+* **run:** use runtime scope for artifact/memory storage instead of user default ([#4030](https://github.com/vm0-ai/vm0/issues/4030)) ([40f8a98](https://github.com/vm0-ai/vm0/commit/40f8a981ff9eee7bce2a69ee61f3147dcd0d2928)), closes [#4026](https://github.com/vm0-ai/vm0/issues/4026)
+
+
+### Refactoring
+
+* remove one-admin-per-user constraint from scope creation ([#4036](https://github.com/vm0-ai/vm0/issues/4036)) ([e7e8c95](https://github.com/vm0-ai/vm0/commit/e7e8c959e194b3d6915df93bcc20921606b9ab77)), closes [#4032](https://github.com/vm0-ai/vm0/issues/4032)
+
+## [12.86.0](https://github.com/vm0-ai/vm0/compare/web-v12.85.2...web-v12.86.0) (2026-03-09)
+
+
+### Features
+
+* **scope:** add max tier to three-tier concurrency system ([#3981](https://github.com/vm0-ai/vm0/issues/3981)) ([573d124](https://github.com/vm0-ai/vm0/commit/573d12423cff1d56c81b79c5c01b2866dfee3c99))
+* **storage:** add user-scope isolation for artifacts and memory ([#3996](https://github.com/vm0-ai/vm0/issues/3996)) ([94525c0](https://github.com/vm0-ai/vm0/commit/94525c00b5f14694a8f83ad48e92632ede7756d3))
+
+
+### Bug Fixes
+
+* auto-create scope for new web users and consolidate scope init logic ([#4005](https://github.com/vm0-ai/vm0/issues/4005)) ([9ae59f5](https://github.com/vm0-ai/vm0/commit/9ae59f501d31f15bcb89c4f405061d83e3166ac7))
+* **telegram:** include reply context in bot mentions and DMs ([#4014](https://github.com/vm0-ai/vm0/issues/4014)) ([6b88d63](https://github.com/vm0-ai/vm0/commit/6b88d636dcdb3849335d3673c0befb13094ff688))
+* **web:** reject invalid locale segments in middleware ([#4016](https://github.com/vm0-ai/vm0/issues/4016)) ([7730571](https://github.com/vm0-ai/vm0/commit/773057121d902534d488b991e1b183ec0d9c7f6f))
+
+
+### Refactoring
+
+* extract integration context builder into shared helper and add tests ([#4008](https://github.com/vm0-ai/vm0/issues/4008)) ([102c372](https://github.com/vm0-ai/vm0/commit/102c37278f659b3595553985ea08019b675189b8))
+* rename "View logs" to "Audit" across notification channels ([#4020](https://github.com/vm0-ai/vm0/issues/4020)) ([1af2023](https://github.com/vm0-ai/vm0/commit/1af20239aa490b75f163c19a1e71bb4a5d497e70))
+* **run:** remove domain-based rollout gate from runner dispatch ([#4013](https://github.com/vm0-ai/vm0/issues/4013)) ([ec9da91](https://github.com/vm0-ai/vm0/commit/ec9da916d76061e03918ab0d4da7962c0efa54cb)), closes [#4012](https://github.com/vm0-ai/vm0/issues/4012)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.47.0
+
+## [12.85.2](https://github.com/vm0-ai/vm0/compare/web-v12.85.1...web-v12.85.2) (2026-03-09)
+
+
+### Bug Fixes
+
+* **slack:** allow file_share subtype in dm event filter ([#3980](https://github.com/vm0-ai/vm0/issues/3980)) ([d4c4844](https://github.com/vm0-ai/vm0/commit/d4c4844427cf83e54b921da47f9bc8de73c32bc0))
+* **telegram:** improve reliability, security, and add image support ([#3949](https://github.com/vm0-ai/vm0/issues/3949)) ([8990fd9](https://github.com/vm0-ai/vm0/commit/8990fd915c2bb04cfcd9a568fe10f872da1503f6))
+
+
+### Refactoring
+
+* **run:** remove e2b executor from dispatch logic ([#3951](https://github.com/vm0-ai/vm0/issues/3951)) ([212b8da](https://github.com/vm0-ai/vm0/commit/212b8da09fc719310ce427856b16a07d69e6d1a8))
+
 ## [12.85.1](https://github.com/vm0-ai/vm0/compare/web-v12.85.0...web-v12.85.1) (2026-03-09)
 
 

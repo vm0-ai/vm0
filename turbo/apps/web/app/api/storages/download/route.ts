@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { storagesDownloadContract } from "@vm0/core";
+import { storagesDownloadContract, VOLUME_SCOPE_USER_ID } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
@@ -41,6 +41,10 @@ const router = tsr.router(storagesDownloadContract, {
       `Getting download URL for "${storageName}" (type: ${storageType})${versionId ? ` version ${versionId}` : ""} for scope ${userScope.slug}`,
     );
 
+    // Volumes use sentinel userId (scope-shared); artifacts/memory use real userId
+    const storageUserId =
+      storageType === "volume" ? VOLUME_SCOPE_USER_ID : userId;
+
     // Check if storage exists and belongs to user's scope
     const [storage] = await globalThis.services.db
       .select()
@@ -48,6 +52,7 @@ const router = tsr.router(storagesDownloadContract, {
       .where(
         and(
           eq(storages.scopeId, userScope.id),
+          eq(storages.userId, storageUserId),
           eq(storages.name, storageName),
           eq(storages.type, storageType),
         ),

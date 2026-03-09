@@ -180,7 +180,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     await context.mocks.flushAfter();
 
     // Verify: agent run was created with the email body as prompt
-    const runs = await findTestRunsByUserAndPrompt(
+    const runs = await findTestRunsByUserAndPromptContaining(
       user.userId,
       "Hello from email",
     );
@@ -556,7 +556,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       await context.mocks.flushAfter();
 
       // Verify: agent run was created with subject + body as prompt
-      const runs = await findTestRunsByUserAndPrompt(
+      const runs = await findTestRunsByUserAndPromptContaining(
         user.userId,
         "Test Subject\n\nHello from email",
       );
@@ -991,7 +991,7 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       // Verify agent run was created with HTML-derived content
       // Prompt = subject + "\n\n" + converted HTML body
-      const runs = await findTestRunsByUserAndPrompt(
+      const runs = await findTestRunsByUserAndPromptContaining(
         user.userId,
         "Newsletter\n\nRich content from newsletter",
       );
@@ -1050,7 +1050,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     await context.mocks.flushAfter();
 
     // Verify agent run was created with HTML-derived content
-    const runs = await findTestRunsByUserAndPrompt(
+    const runs = await findTestRunsByUserAndPromptContaining(
       user.userId,
       "This is my HTML reply",
     );
@@ -1675,7 +1675,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       await context.mocks.flushAfter();
 
       // Verify: agent run was created
-      const runs = await findTestRunsByUserAndPrompt(
+      const runs = await findTestRunsByUserAndPromptContaining(
         user.userId,
         "Auto Scope Test\n\nHello from email",
       );

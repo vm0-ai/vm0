@@ -856,9 +856,9 @@ async function executeSchedule(
     return;
   }
 
-  // Load scope tier for concurrency limit
+  // Load scope tier and slug for concurrency limit and storage resolution
   const [scopeRecord] = await globalThis.services.db
-    .select({ tier: scopes.tier })
+    .select({ tier: scopes.tier, slug: scopes.slug })
     .from(scopes)
     .where(eq(scopes.id, compose.scopeId))
     .limit(1);
@@ -920,6 +920,7 @@ async function executeSchedule(
       agentName: compose.name,
       callbacks,
       scopeId: compose.scopeId,
+      scopeSlug: scopeRecord?.slug,
       scopeTier: scopeRecord
         ? scopeTierSchema.parse(scopeRecord.tier)
         : undefined,

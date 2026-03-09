@@ -3,7 +3,10 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../../src/lib/ts-rest-handler";
-import { webhookStoragesPrepareContract } from "@vm0/core";
+import {
+  webhookStoragesPrepareContract,
+  VOLUME_SCOPE_USER_ID,
+} from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import {
@@ -88,11 +91,15 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       };
     }
 
+    // Volumes use sentinel userId (scope-level shared); artifacts/memory use real userId
+    const storageUserId =
+      storageType === "volume" ? VOLUME_SCOPE_USER_ID : userId;
+
     // Find or create storage (upsert to handle concurrent requests)
     const [storage] = await globalThis.services.db
       .insert(storages)
       .values({
-        userId,
+        userId: storageUserId,
         scopeId: userScope.id,
         name: storageName,
         type: storageType,
@@ -101,7 +108,12 @@ const router = tsr.router(webhookStoragesPrepareContract, {
         fileCount: 0,
       })
       .onConflictDoUpdate({
-        target: [storages.scopeId, storages.name, storages.type],
+        target: [
+          storages.scopeId,
+          storages.userId,
+          storages.name,
+          storages.type,
+        ],
         set: { updatedAt: new Date() },
       })
       .returning();

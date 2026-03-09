@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/vm0-ai/vm0/compare/guest-download-v0.15.0...guest-download-v0.15.1) (2026-03-09)
+
+
+### Bug Fixes
+
+* **guest-download:** record 404 with allow_404 as telemetry success ([#4024](https://github.com/vm0-ai/vm0/issues/4024)) ([56a7f33](https://github.com/vm0-ai/vm0/commit/56a7f333584e0e1ba2c77c634aec788d47125278)), closes [#3986](https://github.com/vm0-ai/vm0/issues/3986)
+
 ## [0.15.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.14.0...guest-download-v0.15.0) (2026-03-07)
 
 

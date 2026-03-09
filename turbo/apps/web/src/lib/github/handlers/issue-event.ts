@@ -7,7 +7,9 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
+import { scopes } from "../../../db/schema/scope";
 import { createRun, validateAgentSession } from "../../run";
+import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getInstallationAccessToken } from "../github-app";
 import {
@@ -341,12 +343,16 @@ function buildFullPrompt(
   issueContext: string,
   isCommentTrigger: boolean,
 ): string {
-  if (!issueContext) return prompt;
+  const integrationContext = buildIntegrationContext("GitHub");
+
+  if (!issueContext) {
+    return `${integrationContext}\n\n# User Prompt\n\n${prompt}`;
+  }
 
   if (isCommentTrigger) {
-    return `${issueContext}\n\n# User Prompt\n\n${prompt}`;
+    return `${integrationContext}\n\n${issueContext}\n\n# User Prompt\n\n${prompt}`;
   }
-  return `${issueContext}\n\nBased on the GitHub issue above and its discussion, analyze the request and decide on the appropriate action.`;
+  return `${integrationContext}\n\n${issueContext}\n\nBased on the GitHub issue above and its discussion, analyze the request and decide on the appropriate action.`;
 }
 
 /**
@@ -450,10 +456,17 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
 
   const vm0UserId = userLink.vm0UserId;
 
-  // 3. Resolve agent compose and version
+  // 3. Resolve agent compose and version (with scope slug for storage resolution)
   const [compose] = await globalThis.services.db
-    .select()
+    .select({
+      id: agentComposes.id,
+      name: agentComposes.name,
+      scopeId: agentComposes.scopeId,
+      scopeSlug: scopes.slug,
+      headVersionId: agentComposes.headVersionId,
+    })
     .from(agentComposes)
+    .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
 
@@ -528,6 +541,8 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
           payload: callbackContext,
         },
       ],
+      scopeId: compose.scopeId,
+      scopeSlug: compose.scopeSlug,
     });
 
     log.info("Agent run dispatched for GitHub issue", {

@@ -29,7 +29,7 @@ export function AgentReplyEmail({
           <Text style={signatureStyle}>{agentName} from VM0</Text>
           <Text style={footerStyle}>
             <Link href={logsUrl} style={linkStyle}>
-              View logs
+              Audit
             </Link>{" "}
             · Reply to continue
           </Text>

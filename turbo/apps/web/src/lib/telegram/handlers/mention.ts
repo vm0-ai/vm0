@@ -3,13 +3,14 @@ import { telegramInstallations } from "../../../db/schema/telegram-installation"
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createTelegramClient, sendMessage, deleteMessage } from "../client";
-import { sendThinkingMessage, enrichTelegramPrompt } from "./shared";
-import { fetchTelegramContext } from "../context";
 import {
-  pickBestPhoto,
-  downloadAndUploadTelegramPhoto,
-  formatPhotoForContext,
-} from "../images";
+  sendThinkingMessage,
+  sendQueuedNotification,
+  enrichTelegramPrompt,
+  formatReplyQuote,
+  appendPhotoContext,
+} from "./shared";
+import { fetchTelegramContext } from "../context";
 import { runAgentForTelegram } from "./run-agent";
 import {
   lookupTelegramThreadSession,
@@ -17,8 +18,10 @@ import {
   getWorkspaceAgent,
   resolveSessionCompose,
   resolveUserLink,
+  buildAgentLogsUrl,
+  buildLogsUrl,
 } from "./shared";
-import { escapeHtml } from "../format";
+import { buildTelegramErrorResponse, escapeHtml } from "../format";
 import { logger } from "../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -110,18 +113,18 @@ export async function handleTelegramMention(
 
   // 6b. Enrich prompt with user info and current message's photo
   let enrichedPrompt = enrichTelegramPrompt(messageText, message.from);
-  if (message.photo) {
-    const bestPhoto = pickBestPhoto(message.photo);
-    if (bestPhoto) {
-      const presignedUrl = await downloadAndUploadTelegramPhoto(
-        client,
-        bestPhoto.file_id,
-        `${installationId}-${chatId}`,
-      );
-      if (presignedUrl) {
-        enrichedPrompt += `\n\n${formatPhotoForContext(presignedUrl, bestPhoto)}`;
-      }
-    }
+  enrichedPrompt = await appendPhotoContext(
+    enrichedPrompt,
+    message,
+    client,
+    installationId,
+    chatId,
+  );
+
+  // 6c. Prepend reply context if this message is a reply to another message
+  const replyQuote = formatReplyQuote(message.reply_to_message);
+  if (replyQuote) {
+    enrichedPrompt = `${replyQuote}\n\n${enrichedPrompt}`;
   }
 
   // 7. Determine thread anchor and resolve session
@@ -142,7 +145,7 @@ export async function handleTelegramMention(
     client,
     String(message.message_id),
   );
-  const { status, response } = await runAgentForTelegram({
+  const { status, response, runId } = await runAgentForTelegram({
     composeId,
     agentName,
     sessionId: existingSessionId,
@@ -165,15 +168,30 @@ export async function handleTelegramMention(
     },
   });
 
-  if (status === "failed") {
-    log.error("Failed to dispatch agent run", { response });
+  if (status === "queued") {
+    await sendQueuedNotification(client, chatId, thinkingMessage, {
+      replyToMessageId: message.message_id,
+    });
+  } else if (status === "failed") {
+    log.error("Failed to dispatch agent run (mention)", {
+      chatId,
+      agentName,
+      composeId,
+      runId,
+      response,
+    });
     if (thinkingMessage) {
       await deleteMessage(client, chatId, thinkingMessage.message_id);
     }
+    const errorDetail =
+      response ?? "An unexpected error occurred. Please try again later.";
+    const linkUrl = runId
+      ? buildLogsUrl(runId, agentName)
+      : buildAgentLogsUrl(agentName);
     await sendMessage(
       client,
       chatId,
-      response ?? "Sorry, an error occurred. Please try again.",
+      buildTelegramErrorResponse(errorDetail, linkUrl),
       { replyToMessageId: message.message_id },
     );
   }

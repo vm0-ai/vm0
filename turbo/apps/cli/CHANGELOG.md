@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.52.0](https://github.com/vm0-ai/vm0/compare/cli-v9.51.1...cli-v9.52.0) (2026-03-09)
+
+
+### Features
+
+* **scope:** add max tier to three-tier concurrency system ([#3981](https://github.com/vm0-ai/vm0/issues/3981)) ([573d124](https://github.com/vm0-ai/vm0/commit/573d12423cff1d56c81b79c5c01b2866dfee3c99))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.47.0
+
 ## [9.51.1](https://github.com/vm0-ai/vm0/compare/cli-v9.51.0...cli-v9.51.1) (2026-03-09)
 
 
