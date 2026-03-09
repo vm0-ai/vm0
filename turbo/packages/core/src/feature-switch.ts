@@ -65,7 +65,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },
-  [FeatureSwitchKey.CanvaConnectorOAuth]: {
+  [FeatureSwitchKey.AsanaConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
+  [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
@@ -75,93 +80,98 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.DeelConnectorOAuth]: {
+  [FeatureSwitchKey.DeelConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.DocuSignConnectorOAuth]: {
+  [FeatureSwitchKey.DocuSignConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.DropboxConnectorOAuth]: {
+  [FeatureSwitchKey.DropboxConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.FigmaConnectorOAuth]: {
+  [FeatureSwitchKey.FigmaConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.GmailConnectorOAuth]: {
+  [FeatureSwitchKey.GmailConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.GoogleSheetsConnectorOAuth]: {
+  [FeatureSwitchKey.GoogleSheetsConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.GoogleDocsConnectorOAuth]: {
+  [FeatureSwitchKey.GoogleDocsConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.GoogleDriveConnectorOAuth]: {
+  [FeatureSwitchKey.GoogleDriveConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.GoogleCalendarConnectorOAuth]: {
+  [FeatureSwitchKey.GoogleCalendarConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.MercuryConnectorOAuth]: {
+  [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.StravaConnectorOAuth]: {
+  [FeatureSwitchKey.StravaConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.NeonConnectorOAuth]: {
+  [FeatureSwitchKey.NeonConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.GarminConnectConnectorOAuth]: {
+  [FeatureSwitchKey.GarminConnectConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
 
-  [FeatureSwitchKey.RedditConnectorOAuth]: {
+  [FeatureSwitchKey.RedditConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.IntervalsIcuConnectorOAuth]: {
+  [FeatureSwitchKey.IntervalsIcuConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.SupabaseConnectorOAuth]: {
+  [FeatureSwitchKey.SupabaseConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.WebflowConnectorOAuth]: {
+  [FeatureSwitchKey.WebflowConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.StripeConnectorOAuth]: {
+  [FeatureSwitchKey.MetaAdsConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
+  [FeatureSwitchKey.StripeConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
@@ -179,34 +189,35 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
 };
 
 /**
- * Maps connector types to their OAuth feature switch keys.
- * Controls whether the OAuth auth method is available for each connector.
- * Connectors not listed here have OAuth always available.
+ * Maps connector types to their feature switch keys.
+ * Connectors not listed here are always visible.
  */
-export const CONNECTOR_OAUTH_FEATURE_FLAGS: Partial<
+export const CONNECTOR_FEATURE_FLAGS: Partial<
   Record<ConnectorType, FeatureSwitchKey>
 > = {
-  canva: FeatureSwitchKey.CanvaConnectorOAuth,
+  asana: FeatureSwitchKey.AsanaConnector,
+  canva: FeatureSwitchKey.CanvaConnector,
   computer: FeatureSwitchKey.ComputerConnector,
-  deel: FeatureSwitchKey.DeelConnectorOAuth,
-  docusign: FeatureSwitchKey.DocuSignConnectorOAuth,
-  dropbox: FeatureSwitchKey.DropboxConnectorOAuth,
-  figma: FeatureSwitchKey.FigmaConnectorOAuth,
-  gmail: FeatureSwitchKey.GmailConnectorOAuth,
-  "google-sheets": FeatureSwitchKey.GoogleSheetsConnectorOAuth,
-  "google-docs": FeatureSwitchKey.GoogleDocsConnectorOAuth,
-  "google-drive": FeatureSwitchKey.GoogleDriveConnectorOAuth,
-  "google-calendar": FeatureSwitchKey.GoogleCalendarConnectorOAuth,
-  mercury: FeatureSwitchKey.MercuryConnectorOAuth,
-  neon: FeatureSwitchKey.NeonConnectorOAuth,
-  strava: FeatureSwitchKey.StravaConnectorOAuth,
-  "garmin-connect": FeatureSwitchKey.GarminConnectConnectorOAuth,
+  deel: FeatureSwitchKey.DeelConnector,
+  docusign: FeatureSwitchKey.DocuSignConnector,
+  dropbox: FeatureSwitchKey.DropboxConnector,
+  figma: FeatureSwitchKey.FigmaConnector,
+  gmail: FeatureSwitchKey.GmailConnector,
+  "google-sheets": FeatureSwitchKey.GoogleSheetsConnector,
+  "google-docs": FeatureSwitchKey.GoogleDocsConnector,
+  "google-drive": FeatureSwitchKey.GoogleDriveConnector,
+  "google-calendar": FeatureSwitchKey.GoogleCalendarConnector,
+  mercury: FeatureSwitchKey.MercuryConnector,
+  neon: FeatureSwitchKey.NeonConnector,
+  strava: FeatureSwitchKey.StravaConnector,
+  "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
 
-  reddit: FeatureSwitchKey.RedditConnectorOAuth,
-  "intervals-icu": FeatureSwitchKey.IntervalsIcuConnectorOAuth,
-  supabase: FeatureSwitchKey.SupabaseConnectorOAuth,
-  webflow: FeatureSwitchKey.WebflowConnectorOAuth,
-  stripe: FeatureSwitchKey.StripeConnectorOAuth,
+  reddit: FeatureSwitchKey.RedditConnector,
+  "intervals-icu": FeatureSwitchKey.IntervalsIcuConnector,
+  supabase: FeatureSwitchKey.SupabaseConnector,
+  webflow: FeatureSwitchKey.WebflowConnector,
+  "meta-ads": FeatureSwitchKey.MetaAdsConnector,
+  stripe: FeatureSwitchKey.StripeConnector,
 };
 
 /**
