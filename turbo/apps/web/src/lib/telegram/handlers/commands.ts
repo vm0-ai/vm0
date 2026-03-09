@@ -64,6 +64,18 @@ export async function handleConnectCommand(
     return;
   }
 
+  // In group chats, don't expose the connect URL publicly to prevent
+  // other users from hijacking the link. Direct users to DM instead.
+  if (message.chat.type !== "private") {
+    await sendMessage(
+      client,
+      chatId,
+      `🔗 Please <a href="https://t.me/${escapeHtml(installation.botUsername ?? "")}?start=connect">send me /connect</a> in a private message to connect your account.`,
+      replyOptions,
+    );
+    return;
+  }
+
   const connectUrl = buildConnectUrl(
     installationId,
     installation.telegramBotId,
@@ -74,7 +86,6 @@ export async function handleConnectCommand(
     client,
     chatId,
     `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
-    replyOptions,
   );
 }
 
@@ -183,18 +194,26 @@ export async function handleSettingsCommand(
       : undefined;
 
   if (!userLink) {
-    const connectUrl = buildConnectUrl(
-      installationId,
-      installation.telegramBotId,
-      fromUserId,
-      botToken,
-    );
-    await sendMessage(
-      client,
-      chatId,
-      `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
-      replyOptions,
-    );
+    if (message.chat.type !== "private") {
+      await sendMessage(
+        client,
+        chatId,
+        `🔗 Please <a href="https://t.me/${escapeHtml(installation.botUsername ?? "")}?start=connect">send me /connect</a> in a private message to connect your account.`,
+        replyOptions,
+      );
+    } else {
+      const connectUrl = buildConnectUrl(
+        installationId,
+        installation.telegramBotId,
+        fromUserId,
+        botToken,
+      );
+      await sendMessage(
+        client,
+        chatId,
+        `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
+      );
+    }
     return;
   }
 

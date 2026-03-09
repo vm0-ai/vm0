@@ -12,7 +12,6 @@ import {
   getWorkspaceAgent,
   resolveSessionCompose,
   resolveUserLink,
-  buildConnectUrl,
 } from "./shared";
 import { escapeHtml } from "../format";
 import { logger } from "../../logger";
@@ -66,16 +65,10 @@ export async function handleTelegramMention(
   const userLink = await resolveUserLink(installationId, fromUserId);
 
   if (!userLink) {
-    const connectUrl = buildConnectUrl(
-      installationId,
-      installation.telegramBotId,
-      fromUserId,
-      botToken,
-    );
     await sendMessage(
       client,
       chatId,
-      `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
+      `🔗 Please <a href="https://t.me/${escapeHtml(installation.botUsername ?? "")}?start=connect">send me /connect</a> in a private message to connect your account.`,
       { replyToMessageId: message.message_id },
     );
     return;
