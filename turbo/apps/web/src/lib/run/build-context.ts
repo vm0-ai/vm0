@@ -894,8 +894,7 @@ async function resolveScopes(params: BuildContextParams): Promise<{
 }
 
 interface BuildContextTimings {
-  resolveSource: number;
-  resolveScope: number;
+  resolveSourceAndScope: number;
   resolveCredentials: number;
 }
 
@@ -934,10 +933,13 @@ export async function buildExecutionContext(
   let resumeSession: ResumeSession | undefined;
   let resumeArtifact: ArtifactSnapshot | undefined;
 
-  // Step 1: Resolve to conversation (unified path for checkpoint/session/direct)
-  const resolveSourceStart = Date.now();
-  const resolution = await resolveSource(params);
-  const resolveSourceEnd = Date.now();
+  // Step 1: Resolve source and scopes in parallel (independent operations).
+  // resolveSource loads checkpoint/session/conversation data.
+  // resolveScopes resolves credential scope and user's default scope (for storage).
+  const resolveStart = Date.now();
+  const [resolution, { credentialScopeId, pendingUserScope }] =
+    await Promise.all([resolveSource(params), resolveScopes(params)]);
+  const resolveEnd = Date.now();
 
   // Step 2: Apply resolution defaults and build resumeSession (unified path)
   // Note: secrets are NEVER stored - caller must always provide fresh secrets via params
@@ -980,12 +982,6 @@ export async function buildExecutionContext(
   if (!agentCompose) {
     throw notFound("Agent compose could not be loaded");
   }
-
-  // Resolve credential scope and user's default scope (for storage).
-  // When params.scopeId is explicit, pendingUserScope is a promise resolved in parallel below.
-  const resolveScopeStart = Date.now();
-  const { credentialScopeId, pendingUserScope } = await resolveScopes(params);
-  const resolveScopeEnd = Date.now();
 
   // Extract compose structure
   const compose = agentCompose as {
@@ -1064,8 +1060,7 @@ export async function buildExecutionContext(
       apiStartTime: params.apiStartTime,
     },
     timings: {
-      resolveSource: resolveSourceEnd - resolveSourceStart,
-      resolveScope: resolveScopeEnd - resolveScopeStart,
+      resolveSourceAndScope: resolveEnd - resolveStart,
       resolveCredentials: resolveCredentialsEnd - resolveCredentialsStart,
     },
   };
