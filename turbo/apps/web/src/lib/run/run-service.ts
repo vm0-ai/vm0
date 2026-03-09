@@ -145,7 +145,7 @@ export async function validateCheckpoint(
       runSecretNames: agentRuns.secretNames,
     })
     .from(checkpoints)
-    .innerJoin(agentRuns, eq(checkpoints.runId, agentRuns.id))
+    .leftJoin(agentRuns, eq(checkpoints.runId, agentRuns.id))
     .where(eq(checkpoints.id, checkpointId))
     .limit(1);
 
@@ -153,7 +153,11 @@ export async function validateCheckpoint(
     throw notFound("Checkpoint not found");
   }
 
-  // Verify checkpoint belongs to user
+  // Verify the associated run exists and belongs to user
+  if (!result.runUserId) {
+    throw notFound("Associated run not found");
+  }
+
   if (result.runUserId !== userId) {
     throw unauthorized("Checkpoint does not belong to authenticated user");
   }
