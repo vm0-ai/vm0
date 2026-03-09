@@ -11,7 +11,11 @@ const reload$ = state(0);
  * redirects land on the web app where auth pages live.
  */
 function resolveWebOrigin(): string {
-  const url = new URL(location.origin);
+  const origin = location.origin;
+  if (!origin || origin === "null") {
+    return "";
+  }
+  const url = new URL(origin);
   url.hostname = url.hostname.replace("platform", "www");
   return url.origin;
 }
