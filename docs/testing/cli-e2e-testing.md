@@ -94,11 +94,7 @@ Each test case has a timeout: **30s for serial**, **60s for parallel/runner test
 ```
 e2e/tests/
 ├── 01-serial/              # Tests that MUST run serially (scope setup)
-├── 02-parallel/            # Tests that CAN run in parallel
-│   ├── t03-*.bats          # Independent tests (fast)
-│   ├── t06-session.bats    # State-sharing tests (slow, serial within)
-│   └── t07-checkpoint.bats # State-sharing tests (slow, serial within)
-└── 03-experimental-runner/ # Runner-specific tests
+└── 03-experimental-runner/ # All parallel tests (runs on runner)
 ```
 
 ### When to Create Separate Files

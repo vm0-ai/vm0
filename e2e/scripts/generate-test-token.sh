@@ -11,11 +11,11 @@
 #   - USE_MOCK_CLAUDE must be "true" on the server
 #
 # Usage: ./generate-test-token.sh [variant]
-#   variant: "serial" (default), "parallel", or "runner" — selects which test user
+#   variant: "serial" (default) or "runner" — selects which test user
 
 set -euo pipefail
 
-# Test user variant (serial, parallel, or runner)
+# Test user variant (serial or runner)
 VARIANT="${1:-serial}"
 
 # Retry configuration

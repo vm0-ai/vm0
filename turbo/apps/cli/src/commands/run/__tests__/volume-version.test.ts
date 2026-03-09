@@ -27,7 +27,7 @@ const mockSpawn = vi.mocked(spawn);
  * - resume command
  *
  * The actual volume version override behavior is tested via E2E tests
- * (see e2e/tests/02-parallel/t07-vm0-volume-version-override.bats).
+ * (see e2e/tests/03-experimental-runner/t07-vm0-volume-version-override.bats).
  */
 describe("--volume-version option", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
