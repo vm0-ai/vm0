@@ -325,11 +325,11 @@ export async function createTestScope(
  * Set the tier for a scope directly in the database.
  *
  * @param scopeId - The scope ID to update
- * @param tier - The tier to set ("free" or "pro")
+ * @param tier - The tier to set ("free", "pro", or "max")
  */
 export async function setScopeTier(
   scopeId: string,
-  tier: "free" | "pro",
+  tier: "free" | "pro" | "max",
 ): Promise<void> {
   await globalThis.services.db
     .update(scopes)

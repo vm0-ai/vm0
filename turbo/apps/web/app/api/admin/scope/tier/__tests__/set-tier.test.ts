@@ -54,6 +54,24 @@ describe("PUT /api/admin/scope/tier", () => {
     expect(body.updatedAt).toBeDefined();
   });
 
+  it("should set scope tier to max when called by admin", async () => {
+    const user = await context.setupUser();
+    setupAdmin(user.userId);
+
+    const scope = await getTestScope(user.scopeId);
+
+    const response = await callSetTier({
+      slug: scope.slug,
+      tier: "max",
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.slug).toBe(scope.slug);
+    expect(body.tier).toBe("max");
+    expect(body.updatedAt).toBeDefined();
+  });
+
   it("should reject non-admin users with 403", async () => {
     const user = await context.setupUser();
     mockClerk({ userId: user.userId, email: "user@example.com" });

@@ -7,12 +7,12 @@ export const setTierCommand = new Command()
   .name("set-tier")
   .description("Set scope tier (admin only)")
   .argument("<scope-slug>", "The scope slug to update")
-  .argument("<tier>", "The tier to set (free or pro)")
+  .argument("<tier>", "The tier to set (free, pro, or max)")
   .action(
     withErrorHandler(async (slug: string, tier: string) => {
-      if (tier !== "free" && tier !== "pro") {
+      if (tier !== "free" && tier !== "pro" && tier !== "max") {
         console.error(
-          chalk.red(`Invalid tier: ${tier}. Must be "free" or "pro"`),
+          chalk.red(`Invalid tier: ${tier}. Must be "free", "pro", or "max"`),
         );
         process.exit(1);
       }

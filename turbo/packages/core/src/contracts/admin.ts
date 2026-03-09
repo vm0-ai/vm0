@@ -4,7 +4,7 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const scopeTierSchema = z.enum(["free", "pro"]);
+export const scopeTierSchema = z.enum(["free", "pro", "max"]);
 export type ScopeTier = z.infer<typeof scopeTierSchema>;
 
 export const setScopeTierRequestSchema = z.object({

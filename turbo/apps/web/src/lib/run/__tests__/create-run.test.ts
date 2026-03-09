@@ -123,13 +123,34 @@ describe("createRun()", () => {
       expect(run!.prompt).toBe("Second run");
     });
 
-    it("should allow multiple concurrent runs for pro tier", async () => {
-      // Pro tier allows up to 10 concurrent runs
+    it("should allow 2 concurrent runs for pro tier", async () => {
       const run1 = await createRun(
         baseParams({ prompt: "Pro run 1", scopeTier: "pro" }),
       );
       const run2 = await createRun(
         baseParams({ prompt: "Pro run 2", scopeTier: "pro" }),
+      );
+
+      expect(run1.status).toBe("running");
+      expect(run2.status).toBe("running");
+    });
+
+    it("should queue 3rd concurrent run for pro tier", async () => {
+      await createRun(baseParams({ prompt: "Pro run 1", scopeTier: "pro" }));
+      await createRun(baseParams({ prompt: "Pro run 2", scopeTier: "pro" }));
+
+      const run3 = await createRun(
+        baseParams({ prompt: "Pro run 3", scopeTier: "pro" }),
+      );
+      expect(run3.status).toBe("queued");
+    });
+
+    it("should allow multiple concurrent runs for max tier", async () => {
+      const run1 = await createRun(
+        baseParams({ prompt: "Max run 1", scopeTier: "max" }),
+      );
+      const run2 = await createRun(
+        baseParams({ prompt: "Max run 2", scopeTier: "max" }),
       );
 
       expect(run1.status).toBe("running");

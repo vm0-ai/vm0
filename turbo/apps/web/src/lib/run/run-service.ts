@@ -48,7 +48,8 @@ export const PENDING_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 /** Concurrent run limits by scope tier */
 const TIER_CONCURRENCY_LIMITS: Record<ScopeTier, number> = {
   free: 1,
-  pro: 10,
+  pro: 2,
+  max: 10,
 };
 
 function getConcurrencyLimitForTier(tier: ScopeTier): number {
