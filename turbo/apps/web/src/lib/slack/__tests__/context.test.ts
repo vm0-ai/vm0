@@ -3,6 +3,7 @@ import { HttpResponse } from "msw";
 import {
   formatContextForAgent,
   formatContextForAgentWithImages,
+  formatCurrentMessageFiles,
   extractMessageContent,
   extractTextFromBlocks,
 } from "../context";
@@ -1435,5 +1436,64 @@ describe("Feature: Extract Text From Rich Text Blocks", () => {
 
       expect(result).toContain("Plain text message");
     });
+  });
+});
+
+describe("Feature: Format Current Message Files", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should format multiple files with image upload", async () => {
+    const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    const imageBuffer = Buffer.concat([pngMagic, Buffer.from("fake-content")]);
+
+    const downloadHandler = http.get(
+      "https://files.slack.com/files-pri/T123-F001/download/photo.png",
+      () => {
+        return new HttpResponse(imageBuffer, {
+          headers: { "content-type": "image/png" },
+        });
+      },
+    );
+    server.use(downloadHandler.handler);
+
+    const files = [
+      {
+        id: "F001",
+        name: "photo.png",
+        mimetype: "image/png",
+        url_private_download:
+          "https://files.slack.com/files-pri/T123-F001/download/photo.png",
+      },
+      {
+        id: "F002",
+        name: "readme.txt",
+        mimetype: "text/plain",
+        permalink: "https://slack.com/files/readme.txt",
+      },
+    ];
+
+    const result = await formatCurrentMessageFiles(
+      files,
+      "xoxb-test-token",
+      "test-session-456",
+    );
+
+    expect(result).toContain("[file]: photo.png (image/png)");
+    expect(result).toContain("[file]: readme.txt (text/plain)");
+    expect(result).toContain("View: curl");
+    expect(result).toContain("URL: https://slack.com/files/readme.txt");
+    expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalledTimes(1);
+  });
+
+  it("should return empty string for empty files array", async () => {
+    const result = await formatCurrentMessageFiles(
+      [],
+      "xoxb-test-token",
+      "test-session-456",
+    );
+
+    expect(result).toBe("");
   });
 });
