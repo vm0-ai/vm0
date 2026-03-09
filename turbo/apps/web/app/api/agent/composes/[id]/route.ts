@@ -10,6 +10,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
+import { scopes } from "../../../../../src/db/schema/scope";
 import { storages } from "../../../../../src/db/schema/storage";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
@@ -76,6 +77,13 @@ const router = tsr.router(composesByIdContract, {
       };
     }
 
+    // Look up scope's default agent to populate isDefault
+    const [scope] = await globalThis.services.db
+      .select({ defaultAgentComposeId: scopes.defaultAgentComposeId })
+      .from(scopes)
+      .where(eq(scopes.id, result.scopeId))
+      .limit(1);
+
     return {
       status: 200 as const,
       body: {
@@ -83,6 +91,7 @@ const router = tsr.router(composesByIdContract, {
         name: result.name,
         headVersionId: result.headVersionId,
         content: (result.content as AgentComposeYaml) ?? null,
+        isDefault: result.id === scope?.defaultAgentComposeId,
         createdAt: result.createdAt.toISOString(),
         updatedAt: result.updatedAt.toISOString(),
       },

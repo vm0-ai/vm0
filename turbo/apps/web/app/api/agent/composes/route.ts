@@ -124,6 +124,7 @@ const router = tsr.router(composesMainContract, {
         name: result.name,
         headVersionId: result.headVersionId,
         content: (result.content as AgentComposeYaml) ?? null,
+        isDefault: result.id === resolvedScope.defaultAgentComposeId,
         createdAt: result.createdAt.toISOString(),
         updatedAt: result.updatedAt.toISOString(),
       },
