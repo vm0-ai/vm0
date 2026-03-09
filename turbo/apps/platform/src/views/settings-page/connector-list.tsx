@@ -21,12 +21,14 @@ import {
   connectConnector$,
   openDisconnectDialog$,
   removeFromConnectionsList$,
+  selectedConnectorType$,
+  setSelectedConnectorType$,
   type ConnectorTypeWithStatus,
 } from "../../signals/settings-page/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import { AddConnectionDialog } from "./add-connection-dialog.tsx";
+import { AddConnectionDialog, ConnectModal } from "./add-connection-dialog.tsx";
 
 function ConnectorStatusBadge({
   item,
@@ -77,9 +79,19 @@ function ConnectorRow({
   const connect = useSet(connectConnector$);
   const openDisconnect = useSet(openDisconnectDialog$);
   const removeFromList = useSet(removeFromConnectionsList$);
+  const setSelected = useSet(setSelectedConnectorType$);
   const pageSignal = useGet(pageSignal$);
 
   const isPolling = pollingType === item.type;
+  const hasApiToken = item.availableAuthMethods.includes("api-token");
+
+  const handleConnect = () => {
+    if (hasApiToken) {
+      setSelected(item.type);
+    } else {
+      detach(connect(item.type, pageSignal), Reason.DomCallback);
+    }
+  };
 
   return (
     <div
@@ -120,9 +132,7 @@ function ConnectorRow({
         )}
         {!item.connected && !isPolling && (
           <button
-            onClick={() =>
-              detach(connect(item.type, pageSignal), Reason.DomCallback)
-            }
+            onClick={handleConnect}
             className="flex items-center shrink-0 rounded-lg border border-border bg-background overflow-hidden hover:bg-muted transition-colors"
           >
             <span className="px-4 py-2 text-sm font-medium text-foreground">
@@ -170,6 +180,8 @@ export function ConnectorList() {
   const setAddDialogOpen = useSet(setAddConnectionDialogOpen$);
   const listItems = useLastResolved(connectionsListItems$);
   const types = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+  const selectedType = useGet(selectedConnectorType$);
+  const setSelected = useSet(setSelectedConnectorType$);
 
   return (
     <div className="flex flex-col gap-4">
@@ -223,6 +235,8 @@ export function ConnectorList() {
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
       />
+
+      {selectedType && <ConnectModal onClose={() => setSelected(null)} />}
     </div>
   );
 }

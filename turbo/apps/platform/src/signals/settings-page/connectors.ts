@@ -288,24 +288,6 @@ export const setTokenFormSubmitting$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Active auth method tab state (used by add-connection dialog)
-// ---------------------------------------------------------------------------
-
-const internalActiveAuthMethods$ = state<Record<string, string>>({});
-export const activeAuthMethods$ = computed((get) =>
-  get(internalActiveAuthMethods$),
-);
-
-export const setActiveAuthMethod$ = command(
-  ({ get, set }, type: string, method: string) => {
-    set(internalActiveAuthMethods$, {
-      ...get(internalActiveAuthMethods$),
-      [type]: method,
-    });
-  },
-);
-
-// ---------------------------------------------------------------------------
 // Submit API token command
 // ---------------------------------------------------------------------------
 
@@ -377,7 +359,7 @@ export const connectConnector$ = command(
       }
 
       set(reloadConnectors$);
-      await get(connectors$);
+      const { connectors: freshConnectors } = await get(connectors$);
       signal.throwIfAborted();
 
       set(internalPollingType$, null);
@@ -385,6 +367,11 @@ export const connectConnector$ = command(
       const hidden = new Set(get(hiddenConnectorTypes$));
       hidden.delete(type);
       set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+      // Close connect modal on OAuth success
+      const isConnected = freshConnectors.some((c) => c.type === type);
+      if (isConnected) {
+        set(internalSelectedConnectorType$, null);
+      }
       break;
     }
   },

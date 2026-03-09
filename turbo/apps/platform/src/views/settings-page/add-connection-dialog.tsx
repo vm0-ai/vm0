@@ -20,8 +20,6 @@ import {
   clearTokenForm$,
   tokenFormValuesFor$,
   setTokenFormSubmitting$,
-  activeAuthMethods$,
-  setActiveAuthMethod$,
   selectedConnectorType$,
   setSelectedConnectorType$,
   type ConnectorTypeWithStatus,
@@ -155,10 +153,10 @@ function ApiTokenForm({
 }
 
 // ---------------------------------------------------------------------------
-// Auth method content inside connect modal
+// Connect modal content (OAuth button + token form, or just token form)
 // ---------------------------------------------------------------------------
 
-function ConnectModalAuth({
+function ConnectModalContent({
   item,
   onSuccess,
 }: {
@@ -167,51 +165,21 @@ function ConnectModalAuth({
 }) {
   const connect = useSet(connectConnector$);
   const pageSignal = useGet(pageSignal$);
-  const activeAuthMethodMap = useGet(activeAuthMethods$);
-  const setActiveAuthMethod = useSet(setActiveAuthMethod$);
+  const pollingType = useGet(pollingConnectorType$);
+  const isPolling = pollingType === item.type;
 
   const config = CONNECTOR_TYPES[item.type];
   const hasOAuth = item.availableAuthMethods.includes("oauth");
   const hasApiToken = item.availableAuthMethods.includes("api-token");
-  const hasMultipleMethods = hasOAuth && hasApiToken;
 
-  const defaultTab =
-    item.connector?.authMethod === "api-token" && hasApiToken
-      ? "api-token"
-      : hasOAuth
-        ? "oauth"
-        : "api-token";
-
-  const activeMethod = activeAuthMethodMap[item.type] ?? defaultTab;
+  // While OAuth is in progress, only show connecting state
+  if (isPolling) {
+    return <p className="text-sm text-muted-foreground">Connecting...</p>;
+  }
 
   return (
     <div className="flex flex-col gap-4">
-      {hasMultipleMethods && (
-        <div className="flex gap-1 rounded-md bg-muted p-0.5">
-          <button
-            onClick={() => setActiveAuthMethod(item.type, "oauth")}
-            className={`flex-1 rounded px-3 py-1.5 text-sm font-medium transition-colors ${
-              activeMethod === "oauth"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            OAuth
-          </button>
-          <button
-            onClick={() => setActiveAuthMethod(item.type, "api-token")}
-            className={`flex-1 rounded px-3 py-1.5 text-sm font-medium transition-colors ${
-              activeMethod === "api-token"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {config.authMethods["api-token"]?.label ?? "API Token"}
-          </button>
-        </div>
-      )}
-
-      {activeMethod === "oauth" && hasOAuth && (
+      {hasOAuth && (
         <button
           onClick={() =>
             detach(connect(item.type, pageSignal), Reason.DomCallback)
@@ -222,7 +190,18 @@ function ConnectModalAuth({
         </button>
       )}
 
-      {activeMethod === "api-token" && hasApiToken && (
+      {hasOAuth && hasApiToken && (
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t border-border" />
+          </div>
+          <div className="relative flex justify-center text-xs">
+            <span className="bg-background px-2 text-muted-foreground">or</span>
+          </div>
+        </div>
+      )}
+
+      {hasApiToken && (
         <ApiTokenForm type={item.type} item={item} onSuccess={onSuccess} />
       )}
     </div>
@@ -230,13 +209,12 @@ function ConnectModalAuth({
 }
 
 // ---------------------------------------------------------------------------
-// Connect modal (opened when clicking a connector card)
+// Connect modal (opened when clicking Connect on a connector with api-token)
 // ---------------------------------------------------------------------------
 
-function ConnectModal({ onClose }: { onClose: () => void }) {
+export function ConnectModal({ onClose }: { onClose: () => void }) {
   const selectedType = useGet(selectedConnectorType$);
   const connectorTypes = useLastResolved(allConnectorTypes$);
-  const pollingType = useGet(pollingConnectorType$);
 
   const item = connectorTypes?.find((c) => c.type === selectedType);
 
@@ -245,7 +223,6 @@ function ConnectModal({ onClose }: { onClose: () => void }) {
   }
 
   const config = CONNECTOR_TYPES[selectedType];
-  const isPolling = pollingType === selectedType;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -263,31 +240,35 @@ function ConnectModal({ onClose }: { onClose: () => void }) {
           </p>
         )}
 
-        {isPolling ? (
-          <p className="text-sm text-muted-foreground">Connecting...</p>
-        ) : (
-          <ConnectModalAuth item={item} onSuccess={onClose} />
-        )}
+        <ConnectModalContent item={item} onSuccess={onClose} />
       </DialogContent>
     </Dialog>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Connector card (simple, clickable)
+// Connector card (shows Connect button when not connected)
 // ---------------------------------------------------------------------------
 
 function ConnectorCard({ item }: { item: ConnectorTypeWithStatus }) {
   const setSelected = useSet(setSelectedConnectorType$);
+  const connect = useSet(connectConnector$);
+  const pageSignal = useGet(pageSignal$);
   const pollingType = useGet(pollingConnectorType$);
   const isPolling = pollingType === item.type;
 
+  const hasApiToken = item.availableAuthMethods.includes("api-token");
+
+  const handleConnect = () => {
+    if (hasApiToken) {
+      setSelected(item.type);
+    } else {
+      detach(connect(item.type, pageSignal), Reason.DomCallback);
+    }
+  };
+
   return (
-    <button
-      type="button"
-      onClick={() => setSelected(item.type)}
-      className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
-    >
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
       <div className="flex items-center gap-3">
         <div className="shrink-0">
           <ConnectorIcon type={item.type} size={28} />
@@ -302,15 +283,22 @@ function ConnectorCard({ item }: { item: ConnectorTypeWithStatus }) {
         {item.helpText}
       </div>
       <div className="mt-auto">
-        <span className="text-xs text-muted-foreground">
-          {item.connected
-            ? connectedStatusText(item)
-            : isPolling
-              ? "Connecting..."
-              : "Not connected"}
-        </span>
+        {item.connected ? (
+          <span className="text-xs text-muted-foreground">
+            {connectedStatusText(item)}
+          </span>
+        ) : isPolling ? (
+          <span className="text-xs text-muted-foreground">Connecting...</span>
+        ) : (
+          <button
+            onClick={handleConnect}
+            className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+          >
+            Connect
+          </button>
+        )}
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -371,7 +359,7 @@ function CustomAPITabContent({
 }
 
 // ---------------------------------------------------------------------------
-// Dialog
+// Add Connection Dialog
 // ---------------------------------------------------------------------------
 
 export function AddConnectionDialog({
@@ -387,8 +375,6 @@ export function AddConnectionDialog({
   const types = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
   const openAddSecret = useSet(openAddSecretDialog$);
   const openAddVariable = useSet(openAddVariableDialog$);
-  const selectedType = useGet(selectedConnectorType$);
-  const setSelected = useSet(setSelectedConnectorType$);
 
   const handleAddSecret = () => {
     openAddSecret();
@@ -401,65 +387,61 @@ export function AddConnectionDialog({
   };
 
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden pr-0 pb-0">
-          <DialogHeader>
-            <DialogTitle>Add connection</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            <div className="pt-4 pb-6 pr-6">
-              <Tabs
-                value={tab}
-                onValueChange={(v) => setTab(v as "connectors" | "custom-api")}
-                className="flex flex-col min-h-0"
-              >
-                <TabsList className="w-fit">
-                  <TabsTrigger value="connectors">Connectors</TabsTrigger>
-                  <TabsTrigger value="custom-api">Custom API</TabsTrigger>
-                </TabsList>
-                {tab === "connectors" && (
-                  <div className="flex flex-col gap-4 mt-4">
-                    <p className="text-sm text-muted-foreground">
-                      Connect third-party services to your agents.
-                    </p>
-                    <div className="grid grid-cols-2 gap-3">
-                      {connectorTypes
-                        ? connectorTypes.map((item) => (
-                            <ConnectorCard key={item.type} item={item} />
-                          ))
-                        : types.slice(0, 6).map((type) => (
-                            <div
-                              key={type}
-                              className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 animate-pulse"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="h-7 w-7 rounded bg-muted" />
-                                <div className="h-4 w-20 rounded bg-muted" />
-                              </div>
-                              <div className="h-3 w-full rounded bg-muted" />
-                              <div className="h-3 w-3/4 rounded bg-muted" />
-                              <div className="h-7 w-full rounded bg-muted" />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden pr-0 pb-0">
+        <DialogHeader>
+          <DialogTitle>Add connection</DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="pt-4 pb-6 pr-6">
+            <Tabs
+              value={tab}
+              onValueChange={(v) => setTab(v as "connectors" | "custom-api")}
+              className="flex flex-col min-h-0"
+            >
+              <TabsList className="w-fit">
+                <TabsTrigger value="connectors">Connectors</TabsTrigger>
+                <TabsTrigger value="custom-api">Custom API</TabsTrigger>
+              </TabsList>
+              {tab === "connectors" && (
+                <div className="flex flex-col gap-4 mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Connect third-party services to your agents.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {connectorTypes
+                      ? connectorTypes.map((item) => (
+                          <ConnectorCard key={item.type} item={item} />
+                        ))
+                      : types.slice(0, 6).map((type) => (
+                          <div
+                            key={type}
+                            className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 animate-pulse"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="h-7 w-7 rounded bg-muted" />
+                              <div className="h-4 w-20 rounded bg-muted" />
                             </div>
-                          ))}
-                    </div>
+                            <div className="h-3 w-full rounded bg-muted" />
+                            <div className="h-3 w-3/4 rounded bg-muted" />
+                            <div className="h-7 w-full rounded bg-muted" />
+                          </div>
+                        ))}
                   </div>
-                )}
-                {tab === "custom-api" && (
-                  <div className="mt-4">
-                    <CustomAPITabContent
-                      onAddSecret={handleAddSecret}
-                      onAddVariable={handleAddVariable}
-                    />
-                  </div>
-                )}
-              </Tabs>
-            </div>
+                </div>
+              )}
+              {tab === "custom-api" && (
+                <div className="mt-4">
+                  <CustomAPITabContent
+                    onAddSecret={handleAddSecret}
+                    onAddVariable={handleAddVariable}
+                  />
+                </div>
+              )}
+            </Tabs>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {selectedType && <ConnectModal onClose={() => setSelected(null)} />}
-    </>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
