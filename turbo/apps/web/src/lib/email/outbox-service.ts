@@ -65,8 +65,11 @@ export async function enqueueEmail(
   // Best-effort inline drain of the just-inserted item
   try {
     await drainById(row!.id);
-  } catch {
-    // Swallow errors — cron handles retries
+  } catch (error) {
+    log.debug("Inline drain failed, cron will retry", {
+      id: row!.id,
+      error,
+    });
   }
 }
 
