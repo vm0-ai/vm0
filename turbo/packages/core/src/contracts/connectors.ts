@@ -1225,6 +1225,67 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  "outlook-mail": {
+    label: "Outlook Mail",
+    helpText: "Connect your Microsoft Outlook account to send and read emails",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Microsoft to grant Outlook Mail access.",
+        secrets: {
+          OUTLOOK_MAIL_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          OUTLOOK_MAIL_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl:
+        "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      scopes: ["Mail.ReadWrite", "Mail.Send", "User.Read", "offline_access"],
+    } as ConnectorOAuthConfig,
+  },
+  "outlook-calendar": {
+    label: "Outlook Calendar",
+    helpText:
+      "Connect your Microsoft account to access and manage Outlook calendar events",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Microsoft to grant Outlook Calendar access.",
+        secrets: {
+          OUTLOOK_CALENDAR_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          OUTLOOK_CALENDAR_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl:
+        "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      scopes: ["Calendars.ReadWrite", "User.Read", "offline_access"],
+    } as ConnectorOAuthConfig,
+  },
   asana: {
     label: "Asana",
     helpText:
@@ -1510,6 +1571,8 @@ export const connectorTypeSchema = z.enum([
   "supabase",
   "todoist",
   "webflow",
+  "outlook-mail",
+  "outlook-calendar",
   "meta-ads",
   "stripe",
 ]);

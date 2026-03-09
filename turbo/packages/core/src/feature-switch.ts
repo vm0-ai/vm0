@@ -171,6 +171,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
+  [FeatureSwitchKey.OutlookMailConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
+  [FeatureSwitchKey.OutlookCalendarConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
   [FeatureSwitchKey.MetaAdsConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
@@ -222,6 +232,8 @@ export const CONNECTOR_FEATURE_FLAGS: Partial<
   "intervals-icu": FeatureSwitchKey.IntervalsIcuConnector,
   supabase: FeatureSwitchKey.SupabaseConnector,
   webflow: FeatureSwitchKey.WebflowConnector,
+  "outlook-mail": FeatureSwitchKey.OutlookMailConnector,
+  "outlook-calendar": FeatureSwitchKey.OutlookCalendarConnector,
   "meta-ads": FeatureSwitchKey.MetaAdsConnector,
   stripe: FeatureSwitchKey.StripeConnector,
 };
