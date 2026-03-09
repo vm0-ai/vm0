@@ -60,14 +60,9 @@ function isOperationalError(error: unknown): boolean {
 }
 
 if (DSN) {
-  const sentryEnvironment = process.env.SENTRY_ENVIRONMENT;
-  if (!sentryEnvironment) {
-    console.warn("SENTRY_ENVIRONMENT not set, defaulting to 'production'");
-  }
-
   Sentry.init({
     dsn: DSN,
-    environment: sentryEnvironment ?? "production",
+    environment: process.env.SENTRY_ENVIRONMENT ?? "production",
     release: __CLI_VERSION__,
     sendDefaultPii: false,
     tracesSampleRate: 0,
