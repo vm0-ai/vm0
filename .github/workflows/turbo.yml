@@ -1533,7 +1533,7 @@ jobs:
               --env USE_MOCK_CLAUDE=true \
               --balloon-reclaim"
 
-            # Health check — filter by name so other PR runners don't cause false positives
+            # Health check — wait for runner startup, then verify
             sleep 5
             ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
             echo "=== Runner started on ${HOST} ==="
