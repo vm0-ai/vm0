@@ -210,6 +210,14 @@ export function buildLogsUrl(runId: string, agentName: string): string {
 }
 
 /**
+ * Build the agent-level logs URL (no specific run).
+ * Used as fallback when runId is unavailable (e.g. dispatch failure).
+ */
+export function buildAgentLogsUrl(agentName: string): string {
+  return `${getPlatformUrl()}/agents/${encodeURIComponent(agentName)}/logs`;
+}
+
+/**
  * Ensure scope and artifact storage exist for a user.
  * Safety net for all agent link paths (App Home button, slash command, submission).
  *
