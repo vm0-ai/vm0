@@ -182,11 +182,11 @@ export async function createScope(
 }
 
 /**
- * Get a user's scope by their Clerk ID.
+ * Get a user's default scope by their Clerk ID.
  * Finds the first scope where the user is an admin member.
  * Returns the scope record or null if none found.
  */
-export async function getUserScopeByClerkId(clerkUserId: string) {
+export async function getDefaultScopeByClerkUserId(clerkUserId: string) {
   try {
     const { scope } = await getDefaultScope(clerkUserId);
     return scope;
@@ -208,7 +208,7 @@ export async function getUserScopeByClerkId(clerkUserId: string) {
  * @returns The existing or newly created scope
  */
 export async function ensureDefaultScope(clerkUserId: string) {
-  const existing = await getUserScopeByClerkId(clerkUserId);
+  const existing = await getDefaultScopeByClerkUserId(clerkUserId);
   if (existing) return existing;
 
   return await discoverAndCreateScope(clerkUserId);
@@ -365,17 +365,19 @@ export async function validateRunnerGroupScope(
     return;
   }
 
-  // For user runner groups, validate scope ownership
-  const userScope = await getUserScopeByClerkId(clerkUserId);
-  if (!userScope) {
+  // TODO: This checks against the user's default scope, but should check scope
+  // membership instead. A user who belongs to multiple scopes can only use runner
+  // groups from their default scope, which is incorrect.
+  const defaultScope = await getDefaultScopeByClerkUserId(clerkUserId);
+  if (!defaultScope) {
     throw forbidden(
       `Runner group scope "${scopeSlug}" requires you to have a scope configured`,
     );
   }
 
-  if (userScope.slug !== scopeSlug) {
+  if (defaultScope.slug !== scopeSlug) {
     throw forbidden(
-      `Runner group scope "${scopeSlug}" does not match your scope "${userScope.slug}"`,
+      `Runner group scope "${scopeSlug}" does not match your scope "${defaultScope.slug}"`,
     );
   }
 }

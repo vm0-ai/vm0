@@ -32,13 +32,13 @@ const router = tsr.router(storagesListContract, {
 
     // Resolve user's scope
     const scopeSlug = new URL(request.url).searchParams.get("scope");
-    const { scope: userScope } = await resolveScope(userId, scopeSlug);
+    const { scope: runtimeScope } = await resolveScope(userId, scopeSlug);
 
     // Volumes use sentinel userId (scope-shared); artifacts/memory use real userId
     const storageUserId =
       storageType === "volume" ? VOLUME_SCOPE_USER_ID : userId;
 
-    log.debug(`Listing ${storageType}s for scope ${userScope.slug}`);
+    log.debug(`Listing ${storageType}s for scope ${runtimeScope.slug}`);
 
     // Query storages filtered by scope, userId, and type
     const results = await globalThis.services.db
@@ -51,7 +51,7 @@ const router = tsr.router(storagesListContract, {
       .from(storages)
       .where(
         and(
-          eq(storages.scopeId, userScope.id),
+          eq(storages.scopeId, runtimeScope.id),
           eq(storages.userId, storageUserId),
           eq(storages.type, storageType),
         ),

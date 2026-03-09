@@ -121,13 +121,13 @@ export async function GET(request: Request) {
   }
 
   // Resolve user's scope for resource queries
-  const { scope: userScope } = await resolveScope(userId);
+  const { scope: runtimeScope } = await resolveScope(userId);
 
   // Get user's existing secrets, vars, connectors
   const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(userScope.id, userId),
-    listVariables(userScope.id, userId),
-    listConnectors(userScope.id, userId),
+    listSecrets(runtimeScope.id, userId),
+    listVariables(runtimeScope.id, userId),
+    listConnectors(runtimeScope.id, userId),
   ]);
 
   const connectorProvided = getConnectorProvidedSecretNames(

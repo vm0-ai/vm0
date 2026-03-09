@@ -270,9 +270,9 @@ async function resolveVersion(
  *
  * @param agentConfig - Agent configuration containing volume definitions
  * @param vars - Template variables for placeholder replacement
- * @param volumeScopeId - Scope ID for volume resolution (agent owner's scope)
- * @param artifactScopeId - Scope ID for artifact resolution (runner's scope)
- * @param userId - Runner's user ID (for artifact/memory ownership)
+ * @param agentScopeId - Agent Scope ID for volume resolution (where the agent is defined)
+ * @param runtimeScopeId - Runtime Scope ID for artifact/memory resolution (where the agent is executed)
+ * @param userId - User ID within the Runtime Scope (for artifact/memory ownership)
  * @param artifactName - Artifact storage name
  * @param artifactVersion - Artifact version (defaults to "latest")
  * @param volumeVersionOverrides - Optional volume version overrides
@@ -284,8 +284,8 @@ async function resolveVersion(
 export async function prepareStorageManifest(
   agentConfig: AgentVolumeConfig | undefined,
   vars: Record<string, string>,
-  volumeScopeId: string,
-  artifactScopeId: string,
+  agentScopeId: string,
+  runtimeScopeId: string,
   userId: string,
   artifactName?: string,
   artifactVersion?: string,
@@ -343,7 +343,7 @@ export async function prepareStorageManifest(
 
       try {
         const { versionId, s3Key } = await resolveVersion(
-          volumeScopeId,
+          agentScopeId,
           volume.vasStorageName,
           "volume",
           volume.vasVersion,
@@ -400,7 +400,7 @@ export async function prepareStorageManifest(
   const artifactPromise = artifactSource
     ? (async () => {
         const { versionId, s3Key } = await resolveVersion(
-          artifactScopeId,
+          runtimeScopeId,
           artifactSource.vasStorageName,
           "artifact",
           artifactSource.vasVersion,
@@ -431,12 +431,12 @@ export async function prepareStorageManifest(
       })()
     : Promise.resolve(null);
 
-  // Resolve memory (uses runner's scope, same as artifact)
+  // Resolve memory (uses Runtime Scope, same as artifact)
   // Memory storage is guaranteed to exist after ensureStorageExists() in prepareForExecution()
   const memoryPromise = memoryName
     ? (async (): Promise<ManifestArtifact | null> => {
         const { versionId, s3Key } = await resolveVersion(
-          artifactScopeId,
+          runtimeScopeId,
           memoryName,
           "memory",
           "latest",

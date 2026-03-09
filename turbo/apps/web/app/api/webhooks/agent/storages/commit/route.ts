@@ -12,7 +12,7 @@ import {
 } from "../../../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
-import { getUserScopeByClerkId } from "../../../../../../src/lib/scope/scope-service";
+import { getDefaultScopeByClerkUserId } from "../../../../../../src/lib/scope/scope-service";
 import {
   s3ObjectExists,
   verifyS3FilesExist,
@@ -66,8 +66,8 @@ const router = tsr.router(webhookStoragesCommitContract, {
     }
 
     // Resolve user's scope
-    const userScope = await getUserScopeByClerkId(userId);
-    if (!userScope) {
+    const runtimeScope = await getDefaultScopeByClerkUserId(userId);
+    if (!runtimeScope) {
       return {
         status: 400 as const,
         body: {
@@ -89,7 +89,7 @@ const router = tsr.router(webhookStoragesCommitContract, {
       .from(storages)
       .where(
         and(
-          eq(storages.scopeId, userScope.id),
+          eq(storages.scopeId, runtimeScope.id),
           eq(storages.userId, storageUserId),
           eq(storages.name, storageName),
           eq(storages.type, storageType),
@@ -214,7 +214,7 @@ const router = tsr.router(webhookStoragesCommitContract, {
     }
 
     // Verify required S3 objects exist (manifest and archive)
-    const s3Key = `${userScope.slug}/${storageType}/${storageName}/${versionId}`;
+    const s3Key = `${runtimeScope.slug}/${storageType}/${storageName}/${versionId}`;
     const manifestKey = `${s3Key}/manifest.json`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const fileCount = files.length;

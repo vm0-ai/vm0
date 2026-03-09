@@ -99,7 +99,7 @@ const router = tsr.router(storagesPrepareContract, {
 
     // Resolve user's scope
     const scopeSlug = new URL(request.url).searchParams.get("scope");
-    const { scope: userScope } = await resolveScope(userId, scopeSlug);
+    const { scope: runtimeScope } = await resolveScope(userId, scopeSlug);
 
     const {
       storageName,
@@ -142,10 +142,10 @@ const router = tsr.router(storagesPrepareContract, {
       .insert(storages)
       .values({
         userId: storageUserId,
-        scopeId: userScope.id,
+        scopeId: runtimeScope.id,
         name: storageName,
         type: storageType,
-        s3Prefix: `${userScope.slug}/${storageType}/${storageName}`,
+        s3Prefix: `${runtimeScope.slug}/${storageType}/${storageName}`,
         size: 0,
         fileCount: 0,
       })
@@ -257,7 +257,7 @@ const router = tsr.router(storagesPrepareContract, {
     }
 
     // Generate presigned URLs for archive and manifest
-    const s3Key = `${userScope.slug}/${storageType}/${storageName}/${versionId}`;
+    const s3Key = `${runtimeScope.slug}/${storageType}/${storageName}/${versionId}`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const manifestKey = `${s3Key}/manifest.json`;
 

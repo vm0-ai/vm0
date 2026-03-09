@@ -32,7 +32,7 @@ import { canAccessCompose } from "../agent/permission-service";
 import { getUserEmail } from "../auth/get-user-email";
 import { extractTemplateVars } from "../config-validator";
 
-import { getUserScopeByClerkId } from "../scope/scope-service";
+import { getDefaultScopeByClerkUserId } from "../scope/scope-service";
 import { getDefaultScope } from "../scope/scope-member-service";
 import { getVariableValues } from "../variable/variable-service";
 import { encryptCredentialValue } from "../crypto/secrets-encryption";
@@ -382,7 +382,7 @@ async function loadCompose(
       content: agentComposeVersions.content,
       composeId: agentComposes.id,
       composeUserId: agentComposes.userId,
-      composeScopeId: agentComposes.scopeId,
+      agentScopeId: agentComposes.scopeId,
     })
     .from(agentComposeVersions)
     .leftJoin(
@@ -396,7 +396,7 @@ async function loadCompose(
     throw notFound("Agent compose version not found");
   }
 
-  if (!result.composeId || !result.composeUserId || !result.composeScopeId) {
+  if (!result.composeId || !result.composeUserId || !result.agentScopeId) {
     throw notFound("Agent compose not found");
   }
 
@@ -405,7 +405,7 @@ async function loadCompose(
     compose: {
       id: result.composeId,
       userId: result.composeUserId,
-      scopeId: result.composeScopeId,
+      scopeId: result.agentScopeId,
     },
   };
 }
@@ -445,7 +445,7 @@ async function validateComposeRequirements(
     const requiredVars = extractTemplateVars(composeContent);
     if (requiredVars.length > 0) {
       const resolvedScopeId =
-        scopeId ?? (await getUserScopeByClerkId(userId))?.id;
+        scopeId ?? (await getDefaultScopeByClerkUserId(userId))?.id;
       const storedVars = resolvedScopeId
         ? await getVariableValues(resolvedScopeId, userId)
         : {};
@@ -552,7 +552,7 @@ async function buildAndDispatchRun(opts: {
     // Build execution context
     const {
       context,
-      userScope,
+      runtimeScope,
       timings: buildContextTimings,
     } = await buildContext({
       checkpointId: params.checkpointId,
@@ -583,7 +583,7 @@ async function buildAndDispatchRun(opts: {
     const buildContextTime = Date.now();
 
     // Prepare execution context (storage manifest, working dir, etc.)
-    const prepareResult = await prepareForExecution(context, userScope);
+    const prepareResult = await prepareForExecution(context, runtimeScope);
     const prepareTime = Date.now();
 
     // Dispatch to executor

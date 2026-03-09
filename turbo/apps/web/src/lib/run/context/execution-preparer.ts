@@ -4,7 +4,7 @@ import type {
   ExperimentalFirewall,
   FirewallRule,
 } from "../../../types/agent-compose";
-import type { ExecutionContext, UserScope } from "../types";
+import type { ExecutionContext, RuntimeScope } from "../types";
 import type { PreparedContext } from "../executors/types";
 import {
   prepareStorageManifest,
@@ -183,7 +183,7 @@ interface PrepareResult {
 
 export async function prepareForExecution(
   context: ExecutionContext,
-  userScope: UserScope,
+  runtimeScope: RuntimeScope,
 ): Promise<PrepareResult> {
   log.debug(`Preparing execution context for run ${context.runId}...`);
 
@@ -199,11 +199,11 @@ export async function prepareForExecution(
     `Extracted config: workingDir=${workingDir}, cliAgentType=${cliAgentType}, runnerGroup=${runnerGroup}, firewall=${experimentalFirewall ? "enabled" : "disabled"}`,
   );
 
-  // Resolve agent owner's scope for volume resolution.
-  // User scope (for storage) is pre-resolved by buildExecutionContext.
+  // Resolve the Agent Scope for volume resolution.
+  // Runtime Scope (for artifacts/memory) is pre-resolved by buildExecutionContext.
   const userId = context.userId || "";
   const scopeStart = Date.now();
-  const [composeInfo] = await globalThis.services.db
+  const [agentScopeInfo] = await globalThis.services.db
     .select({
       scopeId: agentComposes.scopeId,
       scopeSlug: scopes.slug,
@@ -218,7 +218,7 @@ export async function prepareForExecution(
     .limit(1);
   const scopeEnd = Date.now();
 
-  if (!composeInfo) {
+  if (!agentScopeInfo) {
     throw badRequest("Agent compose not found");
   }
 
@@ -227,34 +227,34 @@ export async function prepareForExecution(
   await Promise.all([
     context.artifactName
       ? ensureStorageExists(
-          userScope.id,
+          runtimeScope.id,
           userId,
           context.artifactName,
-          userScope.slug,
+          runtimeScope.slug,
           "artifact",
         )
       : null,
     context.memoryName
       ? ensureStorageExists(
-          userScope.id,
+          runtimeScope.id,
           userId,
           context.memoryName,
-          userScope.slug,
+          runtimeScope.slug,
           "memory",
         )
       : null,
   ]);
   const ensureEnd = Date.now();
 
-  // Prepare storage manifest with dual scopes
-  // - Volumes: resolved from agent owner's scope
-  // - Artifacts: resolved from runner's scope
+  // Prepare storage manifest with dual scopes (see docs/resource-model.md)
+  // - Volumes: resolved from Agent Scope
+  // - Artifacts/Memory: resolved from Runtime Scope
   const storageStart = Date.now();
   const storageManifest = await prepareStorageManifest(
     context.agentCompose as AgentComposeYaml,
     context.vars || {},
-    composeInfo.scopeId,
-    userScope.id,
+    agentScopeInfo.scopeId,
+    runtimeScope.id,
     userId,
     context.artifactName,
     context.artifactVersion,
@@ -266,7 +266,7 @@ export async function prepareForExecution(
   const storageEnd = Date.now();
 
   log.debug(
-    `Storage manifest prepared with dual scopes: owner=${composeInfo.scopeId}, runner=${userScope.id}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared with dual scopes: agentScope=${agentScopeInfo.scopeId}, runtimeScope=${runtimeScope.id}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
   );
 
   // Build PreparedContext
@@ -277,7 +277,7 @@ export async function prepareForExecution(
     runnerGroup,
     storageManifest,
     experimentalFirewall,
-    composeInfo.scopeSlug,
+    agentScopeInfo.scopeSlug,
   );
 
   const timings: PrepareTimings = {

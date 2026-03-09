@@ -37,7 +37,7 @@ const router = tsr.router(storagesCommitContract, {
 
     // Resolve user's scope
     const scopeSlug = new URL(request.url).searchParams.get("scope");
-    const { scope: userScope } = await resolveScope(userId, scopeSlug);
+    const { scope: runtimeScope } = await resolveScope(userId, scopeSlug);
 
     const { storageName, storageType, versionId, files, runId, message } = body;
 
@@ -73,7 +73,7 @@ const router = tsr.router(storagesCommitContract, {
       .from(storages)
       .where(
         and(
-          eq(storages.scopeId, userScope.id),
+          eq(storages.scopeId, runtimeScope.id),
           eq(storages.userId, storageUserId),
           eq(storages.name, storageName),
           eq(storages.type, storageType),
@@ -200,7 +200,7 @@ const router = tsr.router(storagesCommitContract, {
     // Verify required S3 objects exist
     // For empty artifacts (fileCount === 0), only manifest is required
     // since there's no archive to extract
-    const s3Key = `${userScope.slug}/${storageType}/${storageName}/${versionId}`;
+    const s3Key = `${runtimeScope.slug}/${storageType}/${storageName}/${versionId}`;
     const manifestKey = `${s3Key}/manifest.json`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const fileCount = files.length;

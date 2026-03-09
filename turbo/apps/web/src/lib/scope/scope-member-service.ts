@@ -52,7 +52,7 @@ export async function getPrimaryAdminMembership(userId: string) {
 
 /**
  * Get user's default scope (first owned scope from scope_members)
- * Falls back to legacy getUserScopeByClerkId behavior for backward compat
+ * Falls back to legacy getDefaultScopeByClerkUserId behavior for backward compat
  */
 export async function getDefaultScope(userId: string) {
   // Find first scope where user is admin (scope creator)
