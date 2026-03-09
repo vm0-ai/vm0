@@ -151,10 +151,12 @@ sync_with_manual_input() {
 # RUNNER_DEFAULT_GROUP is derived from user input rather than stored in 1Password.
 # It must survive template overwrites (both op inject and manual flow).
 _SAVED_RUNNER_GROUP=""
+WEB_ENV_LOCAL="$PROJECT_ROOT/turbo/apps/web/.env.local"
 
 # Save RUNNER_DEFAULT_GROUP from an env file before it gets overwritten.
 save_runner_group() {
   local env_file="$1"
+  _SAVED_RUNNER_GROUP=""
   [[ -f "$env_file" ]] || return 0
   _SAVED_RUNNER_GROUP=$(grep "^RUNNER_DEFAULT_GROUP=" "$env_file" 2>/dev/null | head -1 | cut -d= -f2-) || true
 }
@@ -172,11 +174,10 @@ restore_runner_group() {
 }
 
 configure_runner_group() {
-  local web_env="$PROJECT_ROOT/turbo/apps/web/.env.local"
-  [[ -f "$web_env" ]] || return 0
+  [[ -f "$WEB_ENV_LOCAL" ]] || return 0
 
   local existing
-  existing=$(grep "^RUNNER_DEFAULT_GROUP=" "$web_env" 2>/dev/null | head -1 | cut -d= -f2-) || true
+  existing=$(grep "^RUNNER_DEFAULT_GROUP=" "$WEB_ENV_LOCAL" 2>/dev/null | head -1 | cut -d= -f2-) || true
 
   if [[ -n "$existing" ]]; then
     echo "  ✓ RUNNER_DEFAULT_GROUP=$existing (already set)"
@@ -205,9 +206,9 @@ configure_runner_group() {
     break
   done
 
-  echo "" >> "$web_env"
-  echo "# Self-hosted Runner" >> "$web_env"
-  echo "RUNNER_DEFAULT_GROUP=vm0/local-${dev_name}" >> "$web_env"
+  echo "" >> "$WEB_ENV_LOCAL"
+  echo "# Self-hosted Runner" >> "$WEB_ENV_LOCAL"
+  echo "RUNNER_DEFAULT_GROUP=vm0/local-${dev_name}" >> "$WEB_ENV_LOCAL"
   echo "  ✓ RUNNER_DEFAULT_GROUP=vm0/local-${dev_name}"
 }
 
