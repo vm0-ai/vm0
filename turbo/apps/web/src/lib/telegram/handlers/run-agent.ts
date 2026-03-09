@@ -4,6 +4,7 @@ import {
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
 import { createRun } from "../../run";
+import { buildIntegrationContext } from "../../integration-context";
 import { isConcurrentRunLimit } from "../../errors";
 import { logger } from "../../logger";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
@@ -94,8 +95,7 @@ export async function runAgentForTelegram(
     versionId = latestVersion.id;
   }
 
-  const integrationContext =
-    "# Current Integration\nYou are currently running inside: Telegram";
+  const integrationContext = buildIntegrationContext("Telegram");
   const fullPrompt = threadContext
     ? `${integrationContext}\n\n${threadContext}\n\n# User Prompt\n\n${prompt}`
     : `${integrationContext}\n\n# User Prompt\n\n${prompt}`;

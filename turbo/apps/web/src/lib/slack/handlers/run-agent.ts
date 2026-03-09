@@ -4,6 +4,7 @@ import {
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
 import { createRun } from "../../run";
+import { buildIntegrationContext } from "../../integration-context";
 import { queryAxiom, getDatasetName, DATASETS } from "../../axiom";
 import { logger } from "../../logger";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
@@ -96,8 +97,7 @@ export async function runAgentForSlack(
     }
 
     // Build the full prompt with integration context and thread context
-    const integrationContext =
-      "# Current Integration\nYou are currently running inside: Slack";
+    const integrationContext = buildIntegrationContext("Slack");
     const fullPrompt = threadContext
       ? `${integrationContext}\n\n${threadContext}\n\n# User Prompt\n\n${prompt}`
       : `${integrationContext}\n\n# User Prompt\n\n${prompt}`;

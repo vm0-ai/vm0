@@ -267,6 +267,9 @@ describe("POST /api/webhooks/github", () => {
         callbacks: Array<{ payload: { issueNumber: number } }>;
       };
       expect(callArgs.prompt).toContain("This is a test issue body");
+      expect(callArgs.prompt).toContain(
+        "You are currently running inside: GitHub",
+      );
       expect(callArgs.callbacks[0]!.payload.issueNumber).toBe(42);
     });
 
@@ -386,6 +389,9 @@ describe("POST /api/webhooks/github", () => {
       const callArgs = createRunSpy.mock.calls[0]![0] as { prompt: string };
       // When body is null, falls back to issue title
       expect(callArgs.prompt).toContain("Test Issue");
+      expect(callArgs.prompt).toContain(
+        "You are currently running inside: GitHub",
+      );
     });
   });
 

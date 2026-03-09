@@ -8,6 +8,7 @@ import {
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
 import { createRun, validateAgentSession } from "../../run";
+import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getInstallationAccessToken } from "../github-app";
 import {
@@ -341,8 +342,7 @@ function buildFullPrompt(
   issueContext: string,
   isCommentTrigger: boolean,
 ): string {
-  const integrationContext =
-    "# Current Integration\nYou are currently running inside: GitHub";
+  const integrationContext = buildIntegrationContext("GitHub");
 
   if (!issueContext) {
     return `${integrationContext}\n\n# User Prompt\n\n${prompt}`;

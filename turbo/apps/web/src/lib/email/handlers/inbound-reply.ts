@@ -12,6 +12,7 @@ import {
   type HandlerResult,
 } from "./shared";
 import { createRun } from "../../run";
+import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
 import { logger } from "../../logger";
@@ -197,9 +198,7 @@ export async function handleInboundEmailReply(
   ];
 
   // 12. Inject integration context and create run
-  const integrationContext =
-    "# Current Integration\nYou are currently running inside: Email";
-  const fullPrompt = `${integrationContext}\n\n# User Prompt\n\n${replyContent}`;
+  const fullPrompt = `${buildIntegrationContext("Email")}\n\n# User Prompt\n\n${replyContent}`;
   const result = await createRun({
     userId: session.userId,
     agentComposeVersionId: compose.headVersionId ?? "",
