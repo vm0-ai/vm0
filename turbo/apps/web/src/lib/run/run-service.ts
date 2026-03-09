@@ -590,8 +590,8 @@ async function buildAndDispatchRun(opts: {
         ms: prepareResult.timings.resolveScopes,
       },
       {
-        op: "api_prepare_ensure_artifact",
-        ms: prepareResult.timings.ensureArtifact,
+        op: "api_prepare_ensure_storage",
+        ms: prepareResult.timings.ensureStorage,
       },
       {
         op: "api_prepare_storage_manifest",
