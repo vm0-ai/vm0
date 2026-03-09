@@ -850,5 +850,4 @@ describe("GET /api/agent/runs/:id/events", () => {
       await deleteTestCliToken(expiredToken);
     });
   });
-
 });
