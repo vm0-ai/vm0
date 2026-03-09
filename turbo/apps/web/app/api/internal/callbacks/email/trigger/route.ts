@@ -133,6 +133,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   log.debug("Processing email trigger callback", { runId, status });
 
+  // Progress notifications are not applicable for email — no-op.
+  if (status === "progress") {
+    return NextResponse.json({ success: true });
+  }
+
   // Get compose name
   const [compose] = await globalThis.services.db
     .select({ name: agentComposes.name })

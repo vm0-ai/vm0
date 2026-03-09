@@ -67,6 +67,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   log.debug("Processing email schedule callback", { runId, status });
 
+  // Progress notifications are not applicable for email — no-op.
+  if (status === "progress") {
+    return NextResponse.json({ success: true });
+  }
+
   // Get user email
   const userEmail = await getUserEmail(userId);
   if (!userEmail) {
