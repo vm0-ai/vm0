@@ -203,6 +203,7 @@ async function resolveVersion(
       .where(
         and(
           eq(storages.scopeId, scopeId),
+          eq(storages.userId, userId),
           eq(storages.name, storageName),
           eq(storages.type, storageType),
         ),
