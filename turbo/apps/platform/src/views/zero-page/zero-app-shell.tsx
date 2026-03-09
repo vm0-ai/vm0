@@ -5,10 +5,12 @@ import {
   type ZeroAccountAction,
   type ZeroAccountSubId,
 } from "./zero-sidebar.tsx";
+import { useLoadable } from "ccstate-react";
 import { Button } from "@vm0/ui";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { ZeroContent } from "./zero-content.tsx";
 import { ZeroOnboarding } from "./zero-onboarding.tsx";
+import { user$ } from "../../signals/auth.ts";
 
 const ZERO_AVATARS = [
   "/zero-avatar.png",
@@ -29,6 +31,9 @@ const RECENT_LABELS: Record<string, string> = {
 const showOnboarding = false;
 
 export function ZeroAppShell() {
+  const userLoadable = useLoadable(user$);
+  const isLoggedIn =
+    userLoadable.state === "hasData" && userLoadable.data != null;
   const [activeId, setActiveId] = useState<ZeroNavId>("chat");
   const [recentId, setRecentId] = useState<string | null>(null);
   const [accountSubId, setAccountSubId] = useState<ZeroAccountSubId>(null);
@@ -83,36 +88,38 @@ export function ZeroAppShell() {
         onAccountAction={handleAccountAction}
       />
       <div className="flex flex-1 flex-col min-w-0 zero-workspace-bg">
-        <nav
-          className="pointer-events-none absolute right-6 top-6 z-10"
-          aria-label="Site links"
-        >
-          <div className="zero-float-card pointer-events-auto flex items-center gap-4 rounded-xl border border-border bg-card/95 px-4 py-2.5 backdrop-blur-sm">
-            <button
-              type="button"
-              onClick={() => setShowAboutPage(true)}
-              className="text-sm tracking-wide text-foreground hover:text-primary transition-colors duration-200"
-            >
-              About VM0
-            </button>
-            <a
-              href="https://vm0.ai/pricing"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm tracking-wide text-foreground hover:text-primary transition-colors duration-200"
-            >
-              Pricing
-            </a>
-            <a href="/sign-in">
-              <Button
-                size="sm"
-                className="h-9 rounded-lg px-4 text-sm font-medium"
+        {!isLoggedIn && (
+          <nav
+            className="pointer-events-none absolute right-6 top-6 z-10"
+            aria-label="Site links"
+          >
+            <div className="zero-float-card pointer-events-auto flex items-center gap-4 rounded-xl border border-border bg-card/95 px-4 py-2.5 backdrop-blur-sm">
+              <button
+                type="button"
+                onClick={() => setShowAboutPage(true)}
+                className="text-sm tracking-wide text-foreground hover:text-primary transition-colors duration-200"
               >
-                Sign in
-              </Button>
-            </a>
-          </div>
-        </nav>
+                About VM0
+              </button>
+              <a
+                href="https://vm0.ai/pricing"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm tracking-wide text-foreground hover:text-primary transition-colors duration-200"
+              >
+                Pricing
+              </a>
+              <a href="/sign-in">
+                <Button
+                  size="sm"
+                  className="h-9 rounded-lg px-4 text-sm font-medium"
+                >
+                  Sign in
+                </Button>
+              </a>
+            </div>
+          </nav>
+        )}
         {showAboutPage ? (
           <ZeroAboutPage onBack={() => setShowAboutPage(false)} />
         ) : (
