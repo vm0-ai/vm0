@@ -91,7 +91,15 @@ do_provision() {
 
   # Step 2: Route DNS (creates CNAME: TUNNEL_FQDN -> tunnel_id.cfargotunnel.com)
   log "Configuring DNS: ${TUNNEL_FQDN}"
-  cloudflared tunnel route dns "$TUNNEL_NAME" "$TUNNEL_FQDN" || true
+  local dns_output
+  if ! dns_output=$(cloudflared tunnel route dns "$TUNNEL_NAME" "$TUNNEL_FQDN" 2>&1); then
+    if echo "$dns_output" | grep -qi "already exists"; then
+      log "DNS record already exists for ${TUNNEL_FQDN}"
+    else
+      err "Failed to route DNS: ${dns_output}"
+      exit 1
+    fi
+  fi
 
   # Step 3: Deploy to host via SSH
   local remote="${user}@${host}"
@@ -118,11 +126,11 @@ else
 fi
 INSTALL_SCRIPT
 
-  # Copy credentials file and config to host
+  # Copy credentials file to host (restrict permissions before writing content)
   log "Copying tunnel credentials to ${host}..."
-  ssh "$remote" "sudo mkdir -p /etc/cloudflared"
+  ssh "$remote" "sudo mkdir -p /etc/cloudflared && install -m 600 /dev/null /tmp/tunnel-cred.json"
   scp "$cred_file" "${remote}:/tmp/tunnel-cred.json"
-  ssh "$remote" "sudo mv /tmp/tunnel-cred.json /etc/cloudflared/${tunnel_id}.json && sudo chmod 600 /etc/cloudflared/${tunnel_id}.json"
+  ssh "$remote" "sudo mv /tmp/tunnel-cred.json /etc/cloudflared/${tunnel_id}.json"
 
   # Write config file on host
   ssh "$remote" bash -s -- "$tunnel_id" "$TUNNEL_FQDN" <<'CONFIG_SCRIPT'
