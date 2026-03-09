@@ -432,6 +432,9 @@ export {
   computerConnectorCreateResponseSchema,
   type ComputerConnectorContract,
   type ComputerConnectorCreateResponse,
+  // API token connector
+  connectorTokenContract,
+  type ConnectorTokenContract,
 } from "./connectors";
 
 export {

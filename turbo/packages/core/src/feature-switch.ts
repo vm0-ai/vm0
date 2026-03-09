@@ -65,7 +65,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },
-  [FeatureSwitchKey.CanvaConnector]: {
+  [FeatureSwitchKey.CanvaConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
@@ -75,88 +75,88 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.DeelConnector]: {
+  [FeatureSwitchKey.DeelConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.DocuSignConnector]: {
+  [FeatureSwitchKey.DocuSignConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.DropboxConnector]: {
+  [FeatureSwitchKey.DropboxConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.FigmaConnector]: {
+  [FeatureSwitchKey.FigmaConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.GmailConnector]: {
+  [FeatureSwitchKey.GmailConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.GoogleSheetsConnector]: {
+  [FeatureSwitchKey.GoogleSheetsConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.GoogleDocsConnector]: {
+  [FeatureSwitchKey.GoogleDocsConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.GoogleDriveConnector]: {
+  [FeatureSwitchKey.GoogleDriveConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.GoogleCalendarConnector]: {
+  [FeatureSwitchKey.GoogleCalendarConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.MercuryConnector]: {
+  [FeatureSwitchKey.MercuryConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.StravaConnector]: {
+  [FeatureSwitchKey.StravaConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.NeonConnector]: {
+  [FeatureSwitchKey.NeonConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.GarminConnectConnector]: {
+  [FeatureSwitchKey.GarminConnectConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
 
-  [FeatureSwitchKey.RedditConnector]: {
+  [FeatureSwitchKey.RedditConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.IntervalsIcuConnector]: {
+  [FeatureSwitchKey.IntervalsIcuConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.SupabaseConnector]: {
+  [FeatureSwitchKey.SupabaseConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.WebflowConnector]: {
+  [FeatureSwitchKey.WebflowConnectorOAuth]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
@@ -174,32 +174,33 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
 };
 
 /**
- * Maps connector types to their feature switch keys.
- * Connectors not listed here are always visible.
+ * Maps connector types to their OAuth feature switch keys.
+ * Controls whether the OAuth auth method is available for each connector.
+ * Connectors not listed here have OAuth always available.
  */
-export const CONNECTOR_FEATURE_FLAGS: Partial<
+export const CONNECTOR_OAUTH_FEATURE_FLAGS: Partial<
   Record<ConnectorType, FeatureSwitchKey>
 > = {
-  canva: FeatureSwitchKey.CanvaConnector,
+  canva: FeatureSwitchKey.CanvaConnectorOAuth,
   computer: FeatureSwitchKey.ComputerConnector,
-  deel: FeatureSwitchKey.DeelConnector,
-  docusign: FeatureSwitchKey.DocuSignConnector,
-  dropbox: FeatureSwitchKey.DropboxConnector,
-  figma: FeatureSwitchKey.FigmaConnector,
-  gmail: FeatureSwitchKey.GmailConnector,
-  "google-sheets": FeatureSwitchKey.GoogleSheetsConnector,
-  "google-docs": FeatureSwitchKey.GoogleDocsConnector,
-  "google-drive": FeatureSwitchKey.GoogleDriveConnector,
-  "google-calendar": FeatureSwitchKey.GoogleCalendarConnector,
-  mercury: FeatureSwitchKey.MercuryConnector,
-  neon: FeatureSwitchKey.NeonConnector,
-  strava: FeatureSwitchKey.StravaConnector,
-  "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
+  deel: FeatureSwitchKey.DeelConnectorOAuth,
+  docusign: FeatureSwitchKey.DocuSignConnectorOAuth,
+  dropbox: FeatureSwitchKey.DropboxConnectorOAuth,
+  figma: FeatureSwitchKey.FigmaConnectorOAuth,
+  gmail: FeatureSwitchKey.GmailConnectorOAuth,
+  "google-sheets": FeatureSwitchKey.GoogleSheetsConnectorOAuth,
+  "google-docs": FeatureSwitchKey.GoogleDocsConnectorOAuth,
+  "google-drive": FeatureSwitchKey.GoogleDriveConnectorOAuth,
+  "google-calendar": FeatureSwitchKey.GoogleCalendarConnectorOAuth,
+  mercury: FeatureSwitchKey.MercuryConnectorOAuth,
+  neon: FeatureSwitchKey.NeonConnectorOAuth,
+  strava: FeatureSwitchKey.StravaConnectorOAuth,
+  "garmin-connect": FeatureSwitchKey.GarminConnectConnectorOAuth,
 
-  reddit: FeatureSwitchKey.RedditConnector,
-  "intervals-icu": FeatureSwitchKey.IntervalsIcuConnector,
-  supabase: FeatureSwitchKey.SupabaseConnector,
-  webflow: FeatureSwitchKey.WebflowConnector,
+  reddit: FeatureSwitchKey.RedditConnectorOAuth,
+  "intervals-icu": FeatureSwitchKey.IntervalsIcuConnectorOAuth,
+  supabase: FeatureSwitchKey.SupabaseConnectorOAuth,
+  webflow: FeatureSwitchKey.WebflowConnectorOAuth,
 };
 
 /**

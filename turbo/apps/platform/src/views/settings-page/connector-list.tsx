@@ -28,6 +28,42 @@ import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AddConnectionDialog } from "./add-connection-dialog.tsx";
 
+function ConnectorStatusBadge({
+  item,
+  isPolling,
+}: {
+  item: ConnectorTypeWithStatus;
+  isPolling: boolean;
+}) {
+  if (item.connected && item.connector?.externalUsername) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+        <IconCircleCheck className="h-3 w-3 text-green-600" />
+        Connected as {item.connector.externalUsername}
+      </span>
+    );
+  }
+  if (item.connected && !item.connector?.externalUsername) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+        <IconCircleCheck className="h-3 w-3 text-green-600" />
+        {item.connector?.authMethod === "api-token"
+          ? "Connected via API Token"
+          : "Connected"}
+      </span>
+    );
+  }
+  if (!item.connected && isPolling) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+        <IconLoader className="h-3 w-3 text-yellow-600 animate-spin" />
+        Connecting...
+      </span>
+    );
+  }
+  return null;
+}
+
 function ConnectorRow({
   item,
   isFirst,
@@ -59,28 +95,11 @@ function ConnectorRow({
 
       {/* Status */}
       <div className="shrink-0">
-        {item.connected && item.connector?.externalUsername && (
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-            <IconCircleCheck className="h-3 w-3 text-green-600" />
-            Connected as {item.connector.externalUsername}
-          </span>
-        )}
-        {item.connected && !item.connector?.externalUsername && (
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-            <IconCircleCheck className="h-3 w-3 text-green-600" />
-            Connected
-          </span>
-        )}
+        <ConnectorStatusBadge item={item} isPolling={isPolling} />
         {item.connected && item.scopeMismatch && (
           <span className="inline-flex items-center gap-1.5 rounded-lg border border-yellow-300 bg-yellow-50 px-1.5 py-1 text-xs font-medium text-yellow-800 dark:border-yellow-700 dark:bg-yellow-950 dark:text-yellow-300">
             <IconAlertTriangle className="h-3 w-3" />
             Permissions outdated
-          </span>
-        )}
-        {!item.connected && isPolling && (
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-            <IconLoader className="h-3 w-3 text-yellow-600 animate-spin" />
-            Connecting...
           </span>
         )}
       </div>

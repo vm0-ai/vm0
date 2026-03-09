@@ -36,6 +36,8 @@ export interface ConnectorTypeWithStatus {
   helpText: string;
   connected: boolean;
   connector: ConnectorResponse | null;
+  /** Auth methods available for this connector (considering feature flags). */
+  availableAuthMethods: string[];
   /** True if at least one agent references this connector (env mapping). */
   usedByAgent?: boolean;
   /** True if stored OAuth scopes don't cover all currently required scopes. */
@@ -43,26 +45,32 @@ export interface ConnectorTypeWithStatus {
 }
 
 /**
- * Maps connector types that are gated behind a feature flag to their
- * corresponding feature switch key.  Connectors not listed here are
- * always visible.
+ * Maps connector types to their OAuth feature switch keys.
+ * Controls whether the OAuth auth method is available for each connector.
+ * Connectors not listed here have OAuth always available.
  */
-const CONNECTOR_FEATURE_FLAGS = Object.freeze<
+const CONNECTOR_OAUTH_FEATURE_FLAGS = Object.freeze<
   Partial<Record<ConnectorType, FeatureSwitchKey>>
 >({
+  canva: FeatureSwitchKey.CanvaConnectorOAuth,
   computer: FeatureSwitchKey.ComputerConnector,
-  deel: FeatureSwitchKey.DeelConnector,
-  docusign: FeatureSwitchKey.DocuSignConnector,
-  dropbox: FeatureSwitchKey.DropboxConnector,
-  figma: FeatureSwitchKey.FigmaConnector,
-  gmail: FeatureSwitchKey.GmailConnector,
-  "google-sheets": FeatureSwitchKey.GoogleSheetsConnector,
-  "google-docs": FeatureSwitchKey.GoogleDocsConnector,
-  "google-drive": FeatureSwitchKey.GoogleDriveConnector,
-  strava: FeatureSwitchKey.StravaConnector,
-  "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
-  supabase: FeatureSwitchKey.SupabaseConnector,
-  webflow: FeatureSwitchKey.WebflowConnector,
+  deel: FeatureSwitchKey.DeelConnectorOAuth,
+  docusign: FeatureSwitchKey.DocuSignConnectorOAuth,
+  dropbox: FeatureSwitchKey.DropboxConnectorOAuth,
+  figma: FeatureSwitchKey.FigmaConnectorOAuth,
+  gmail: FeatureSwitchKey.GmailConnectorOAuth,
+  "google-sheets": FeatureSwitchKey.GoogleSheetsConnectorOAuth,
+  "google-docs": FeatureSwitchKey.GoogleDocsConnectorOAuth,
+  "google-drive": FeatureSwitchKey.GoogleDriveConnectorOAuth,
+  "google-calendar": FeatureSwitchKey.GoogleCalendarConnectorOAuth,
+  mercury: FeatureSwitchKey.MercuryConnectorOAuth,
+  neon: FeatureSwitchKey.NeonConnectorOAuth,
+  strava: FeatureSwitchKey.StravaConnectorOAuth,
+  "garmin-connect": FeatureSwitchKey.GarminConnectConnectorOAuth,
+  reddit: FeatureSwitchKey.RedditConnectorOAuth,
+  "intervals-icu": FeatureSwitchKey.IntervalsIcuConnectorOAuth,
+  supabase: FeatureSwitchKey.SupabaseConnectorOAuth,
+  webflow: FeatureSwitchKey.WebflowConnectorOAuth,
 });
 
 export const allConnectorTypes$ = computed(async (get) => {
@@ -72,30 +80,36 @@ export const allConnectorTypes$ = computed(async (get) => {
 
   return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
-      const flag = CONNECTOR_FEATURE_FLAGS[type];
-      if (flag && !features?.[flag]) {
-        return false;
-      }
-      // Filter mercury connector based on feature flag
-      if (
-        type === "mercury" &&
-        !features?.[FeatureSwitchKey.MercuryConnector]
-      ) {
-        return false;
-      }
-      return true;
+      const flag = CONNECTOR_OAUTH_FEATURE_FLAGS[type];
+      const oauthEnabled = !flag || !!features?.[flag];
+      const hasApiToken = "api-token" in CONNECTOR_TYPES[type].authMethods;
+      // Connector visible if OAuth is enabled OR it has an api-token method
+      return oauthEnabled || hasApiToken;
     })
     .map((type) => {
       const config = CONNECTOR_TYPES[type];
       const connector = connectorMap.get(type) ?? null;
+      const flag = CONNECTOR_OAUTH_FEATURE_FLAGS[type];
+      const oauthEnabled = !flag || !!features?.[flag];
+      const hasApiToken = "api-token" in config.authMethods;
+      const availableAuthMethods: string[] = [];
+      if (oauthEnabled && "oauth" in config.authMethods) {
+        availableAuthMethods.push("oauth");
+      }
+      if (hasApiToken) {
+        availableAuthMethods.push("api-token");
+      }
       return {
         type,
         label: config.label,
         helpText: config.helpText,
         connected: connector !== null,
         connector,
+        availableAuthMethods,
         scopeMismatch:
-          connector !== null && !hasRequiredScopes(type, connector.oauthScopes),
+          connector !== null &&
+          connector.authMethod === "oauth" &&
+          !hasRequiredScopes(type, connector.oauthScopes),
       };
     });
 });
@@ -222,6 +236,94 @@ export const connectionsListItems$ = computed(async (get) => {
       usedByAgent: usedByAgents.has(item.type),
     }));
 });
+
+// ---------------------------------------------------------------------------
+// Token form state (used by add-connection dialog)
+// ---------------------------------------------------------------------------
+
+const tokenFormValues$ = state<Record<string, Record<string, string>>>({});
+export const tokenFormSubmitting$ = computed((get) =>
+  get(internalTokenFormSubmitting$),
+);
+const internalTokenFormSubmitting$ = state<string | null>(null);
+
+export const setTokenFormValue$ = command(
+  ({ get, set }, type: string, name: string, value: string) => {
+    const current = get(tokenFormValues$);
+    set(tokenFormValues$, {
+      ...current,
+      [type]: { ...current[type], [name]: value },
+    });
+  },
+);
+
+export const clearTokenForm$ = command(({ get, set }, type: string) => {
+  const current = get(tokenFormValues$);
+  const updated = { ...current };
+  delete updated[type];
+  set(tokenFormValues$, updated);
+});
+
+export const tokenFormValuesFor$ = (type: string) =>
+  computed((get) => get(tokenFormValues$)[type] ?? {});
+
+export const setTokenFormSubmitting$ = command(
+  ({ set }, value: string | null) => {
+    set(internalTokenFormSubmitting$, value);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Active auth method tab state (used by add-connection dialog)
+// ---------------------------------------------------------------------------
+
+const internalActiveAuthMethods$ = state<Record<string, string>>({});
+export const activeAuthMethods$ = computed((get) =>
+  get(internalActiveAuthMethods$),
+);
+
+export const setActiveAuthMethod$ = command(
+  ({ get, set }, type: string, method: string) => {
+    set(internalActiveAuthMethods$, {
+      ...get(internalActiveAuthMethods$),
+      [type]: method,
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Submit API token command
+// ---------------------------------------------------------------------------
+
+export const submitApiToken$ = command(
+  async (
+    { get, set },
+    type: ConnectorType,
+    inputSecrets: Record<string, string>,
+    signal: AbortSignal,
+  ) => {
+    const fetchFn = get(fetch$);
+    const resp = await fetchFn(`/api/connectors/${type}/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secrets: inputSecrets }),
+    });
+    signal.throwIfAborted();
+    if (!resp.ok) {
+      const data = (await resp.json()) as { error?: { message?: string } };
+      throw new Error(
+        data?.error?.message ?? `Failed to submit token (${resp.status})`,
+      );
+    }
+    signal.throwIfAborted();
+    set(reloadConnectors$);
+    // Show in connections list
+    const hidden = new Set(get(hiddenConnectorTypes$));
+    hidden.delete(type);
+    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+    toast.success(`${CONNECTOR_TYPES[type].label} connected successfully`);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Polling state (for connect flow)
