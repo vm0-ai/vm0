@@ -10,6 +10,13 @@ You are a PR review specialist for the vm0 project. Your role is to review pull 
 
 ### Step 1: Determine PR Number
 
+Parse the `args` parameter to extract a PR number. The args can be:
+- A PR number: `4062`
+- A GitHub URL: `https://github.com/owner/repo/pull/4062` or `https://github.com/owner/repo/issues/4062`
+- Empty: detect from current branch
+
+**Important:** `$PR_ID` is a placeholder — you (the LLM) must extract the PR number from the skill's `args` string yourself before running any bash commands. If args contains a URL, extract the number from the path. If args is a plain number, use it directly. If args is empty, fall back to detecting from the current branch.
+
 ```bash
 if [ -n "$PR_ID" ]; then
     PR_NUMBER="$PR_ID"
