@@ -8,6 +8,7 @@ import {
   runLayers,
   corsLayer,
   authRedirectLayer,
+  localeGuardLayer,
   i18nLayer,
   MiddlewareLayer,
   isProtectedSkipRoute,
@@ -80,6 +81,7 @@ export default clerkMiddleware(async (auth, request: NextRequest) => {
   return runLayers(request, [
     corsLayer,
     authRedirectLayer,
+    localeGuardLayer,
     clerkAuthLayer,
     i18nLayer,
   ]);

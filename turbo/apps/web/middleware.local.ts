@@ -3,6 +3,7 @@ import {
   runLayers,
   corsLayer,
   authRedirectLayer,
+  localeGuardLayer,
   i18nLayer,
   MiddlewareLayer,
 } from "./middleware.layers";
@@ -28,6 +29,7 @@ export default async function localMiddleware(request: NextRequest) {
     authRedirectLayer,
     localAuthRedirectLayer,
     corsLayer,
+    localeGuardLayer,
     i18nLayer,
   ]);
 }
