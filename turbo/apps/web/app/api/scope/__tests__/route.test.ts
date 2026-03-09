@@ -429,4 +429,75 @@ describe("/api/scope", () => {
       expect(data.slug).toBeDefined();
     });
   });
+
+  describe("GET /api/scope (clerkOrgId resolution)", () => {
+    it("should resolve scope by clerkOrgId from session", async () => {
+      const userId = `clerk-org-test-${Date.now()}`;
+      mockClerk({ userId });
+
+      // Create first scope (becomes default)
+      const slug1 = `first-org-${Date.now()}`;
+      const req1 = createTestRequest("http://localhost:3000/api/scope", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: slug1 }),
+      });
+      await POST(req1);
+
+      // Create second scope
+      const slug2 = `second-org-${Date.now()}`;
+      const req2 = createTestRequest("http://localhost:3000/api/scope", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: slug2 }),
+      });
+      await POST(req2);
+
+      // Set active org to second scope's clerkOrgId
+      mockClerk({ userId, orgId: `org_mock_${slug2}` });
+
+      const request = createTestRequest("http://localhost:3000/api/scope");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.slug).toBe(slug2);
+    });
+
+    it("should fall through to default when clerkOrgId has no matching scope", async () => {
+      const userId = `no-match-org-${Date.now()}`;
+      mockClerk({ userId });
+
+      // Create a default scope
+      const slug = `default-org-${Date.now()}`;
+      const reqCreate = createTestRequest("http://localhost:3000/api/scope", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug }),
+      });
+      await POST(reqCreate);
+
+      // Set an orgId that doesn't match any scope
+      mockClerk({ userId, orgId: "org_nonexistent_xyz" });
+
+      const request = createTestRequest("http://localhost:3000/api/scope");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.slug).toBe(slug);
+    });
+
+    it("should work without orgId (CLI / self-hosted compatibility)", async () => {
+      const userId = `no-org-${Date.now()}`;
+      mockClerk({ userId });
+
+      const request = createTestRequest("http://localhost:3000/api/scope");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.slug).toMatch(/^user-[a-f0-9]{8}$/);
+    });
+  });
 });

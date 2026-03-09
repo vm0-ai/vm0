@@ -13,6 +13,7 @@ import {
   ensureDefaultScope,
 } from "../../../src/lib/scope/scope-service";
 import { getUserEmail } from "../../../src/lib/auth/get-user-email";
+import { getAuthProvider } from "../../../src/lib/auth/auth-provider";
 import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
@@ -39,7 +40,7 @@ const router = tsr.router(scopeContract, {
   /**
    * GET /api/scope - Get current user's scope
    *
-   * Resolves the active scope via ?scope=<slug> query param,
+   * Resolves the active scope via clerkOrgId from Clerk session,
    * or falls back to the user's default scope (first admin membership).
    */
   get: async ({ headers }) => {
@@ -50,8 +51,10 @@ const router = tsr.router(scopeContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
+    const orgId = await getAuthProvider().getOrgId();
+
     try {
-      const { scope } = await resolveScope(userId);
+      const { scope } = await resolveScope(userId, undefined, orgId);
 
       return { status: 200 as const, body: scopeToResponseBody(scope) };
     } catch (error) {
