@@ -101,7 +101,10 @@ export function ZeroAppShell() {
               Pricing
             </a>
             <a href="/sign-in">
-              <Button size="sm" className="h-9 rounded-lg px-4 text-sm font-medium">
+              <Button
+                size="sm"
+                className="h-9 rounded-lg px-4 text-sm font-medium"
+              >
                 Sign in
               </Button>
             </a>
