@@ -990,36 +990,6 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
-  wix: {
-    label: "Wix",
-    helpText:
-      "Connect your Wix account to manage sites, content, and e-commerce data",
-    authMethods: {
-      oauth: {
-        label: "OAuth (Recommended)",
-        helpText: "Sign in with Wix to grant access.",
-        secrets: {
-          WIX_ACCESS_TOKEN: {
-            label: "Access Token",
-            required: true,
-          },
-          WIX_REFRESH_TOKEN: {
-            label: "Refresh Token",
-            required: true,
-          },
-        },
-      },
-    } as Record<string, ConnectorAuthMethodConfig>,
-    defaultAuthMethod: "oauth",
-    environmentMapping: {
-      WIX_TOKEN: "$secrets.WIX_ACCESS_TOKEN",
-    } as Record<string, string>,
-    oauth: {
-      authorizationUrl: "https://www.wix.com/installer/install",
-      tokenUrl: "https://www.wixapis.com/oauth/access",
-      scopes: [],
-    } as ConnectorOAuthConfig,
-  },
   supabase: {
     label: "Supabase",
     helpText:
@@ -1165,7 +1135,6 @@ export const connectorTypeSchema = z.enum([
   "intervals-icu",
   "xero",
   "monday",
-  "wix",
   "supabase",
   "todoist",
   "webflow",

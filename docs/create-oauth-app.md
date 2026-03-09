@@ -48,7 +48,6 @@ Replace `{provider}` with the lowercase provider name. Examples:
 | Gmail        | `https://www.vm0.ai/api/connectors/gmail/callback` | `https://www.vm7.ai:8443/api/connectors/gmail/callback` |
 | Google Sheet | `https://www.vm0.ai/api/connectors/google-sheet/callback` | `https://www.vm7.ai:8443/api/connectors/google-sheet/callback` |
 | Strava       | `https://www.vm0.ai/api/connectors/strava/callback` | `https://www.vm7.ai:8443/api/connectors/strava/callback` |
-| Wix          | `https://www.vm0.ai/api/connectors/wix/callback` | `https://www.vm7.ai:8443/api/connectors/wix/callback` |
 
 ### Webhook URIs
 
@@ -65,7 +64,6 @@ Examples:
 |----------|-------------------|-------------------|
 | Vercel   | `https://www.vm0.ai/api/webhooks/vercel` | `https://tunnel-vercel-dev.vm7.ai/api/webhooks/vercel` |
 | Neon     | `https://www.vm0.ai/api/webhooks/neon` | `https://tunnel-neon-dev.vm7.ai/api/webhooks/neon` |
-| Wix      | `https://www.vm0.ai/api/webhooks/wix` | `https://tunnel-wix-dev.vm7.ai/api/webhooks/wix` |
 
 ### Why Two Apps?
 

@@ -61,7 +61,6 @@ const CONNECTOR_FEATURE_FLAGS = Object.freeze<
   "google-drive": FeatureSwitchKey.GoogleDriveConnector,
   strava: FeatureSwitchKey.StravaConnector,
   "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
-  wix: FeatureSwitchKey.WixConnector,
   supabase: FeatureSwitchKey.SupabaseConnector,
   webflow: FeatureSwitchKey.WebflowConnector,
 });

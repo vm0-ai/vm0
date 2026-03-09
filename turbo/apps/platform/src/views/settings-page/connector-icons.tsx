@@ -30,7 +30,6 @@ import todoistIcon from "./icons/todoist.svg";
 import vercelIcon from "./icons/vercel.svg";
 import webflowIcon from "./icons/webflow.svg";
 import xIcon from "./icons/x.svg";
-import wixIcon from "./icons/wix.svg";
 import xeroIcon from "./icons/xero.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
@@ -63,7 +62,6 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   todoist: todoistIcon,
   vercel: vercelIcon,
   webflow: webflowIcon,
-  wix: wixIcon,
   x: xIcon,
   xero: xeroIcon,
 });
