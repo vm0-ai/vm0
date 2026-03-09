@@ -3,8 +3,13 @@ import { telegramInstallations } from "../../../db/schema/telegram-installation"
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createTelegramClient, sendMessage, deleteMessage } from "../client";
-import { sendThinkingMessage } from "./shared";
+import { sendThinkingMessage, enrichTelegramPrompt } from "./shared";
 import { fetchTelegramContext } from "../context";
+import {
+  pickBestPhoto,
+  downloadAndUploadTelegramPhoto,
+  formatPhotoForContext,
+} from "../images";
 import { runAgentForTelegram } from "./run-agent";
 import {
   lookupTelegramThreadSession,
@@ -96,12 +101,28 @@ export async function handleTelegramMention(
   // 5. Store incoming message
   await storeTelegramMessage(installationId, chatId, message);
 
-  // 6. Strip @botusername from message text
+  // 6. Strip @botusername from message text (entities for text, caption_entities for photos)
   const messageText = stripBotMention(
-    message.text ?? "",
+    message.text ?? message.caption ?? "",
     installation.botUsername,
-    message.entities,
+    message.entities ?? message.caption_entities,
   );
+
+  // 6b. Enrich prompt with user info and current message's photo
+  let enrichedPrompt = enrichTelegramPrompt(messageText, message.from);
+  if (message.photo) {
+    const bestPhoto = pickBestPhoto(message.photo);
+    if (bestPhoto) {
+      const presignedUrl = await downloadAndUploadTelegramPhoto(
+        client,
+        bestPhoto.file_id,
+        `${installationId}-${chatId}`,
+      );
+      if (presignedUrl) {
+        enrichedPrompt += `\n\n${formatPhotoForContext(presignedUrl, bestPhoto)}`;
+      }
+    }
+  }
 
   // 7. Determine thread anchor and resolve session
   const { rootMessageId, existingSessionId, lastProcessedMessageId } =
@@ -113,19 +134,19 @@ export async function handleTelegramMention(
       composeId,
     );
 
-  // 9. Fetch context
+  // 9. Fetch context (exclude current message to avoid duplication with prompt)
   const { executionContext } = await fetchTelegramContext(
     installationId,
     chatId,
     lastProcessedMessageId,
+    client,
+    String(message.message_id),
   );
-
-  // 10. Dispatch agent run
   const { status, response } = await runAgentForTelegram({
     composeId,
     agentName,
     sessionId: existingSessionId,
-    prompt: messageText,
+    prompt: enrichedPrompt,
     threadContext: executionContext,
     userId: userLink.vm0UserId,
     callbackContext: {

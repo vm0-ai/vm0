@@ -18,7 +18,9 @@ import {
 } from "../client";
 import { escapeHtml } from "../format";
 import { signConnectParams } from "../connect-token";
+import { pickBestPhoto } from "../images";
 import { logger } from "../../logger";
+import type { TelegramHandlerUpdate } from "./types";
 
 const log = logger("telegram:shared");
 
@@ -126,6 +128,7 @@ export async function saveTelegramThreadSession(opts: {
 
 /**
  * Store an incoming Telegram message for context retrieval.
+ * For photo messages, stores the caption as text and the best photo's file_id.
  */
 export async function storeTelegramMessage(
   installationId: string,
@@ -134,8 +137,17 @@ export async function storeTelegramMessage(
     message_id: number;
     from?: { id: number; username?: string; is_bot?: boolean };
     text?: string;
+    caption?: string;
+    photo?: Array<{
+      file_id: string;
+      width: number;
+      height: number;
+      file_size?: number;
+    }>;
   },
 ): Promise<void> {
+  const bestPhoto = message.photo ? pickBestPhoto(message.photo) : undefined;
+
   await globalThis.services.db
     .insert(telegramMessages)
     .values({
@@ -144,7 +156,8 @@ export async function storeTelegramMessage(
       messageId: String(message.message_id),
       fromUserId: String(message.from?.id ?? 0),
       fromUsername: message.from?.username ?? null,
-      text: message.text ?? null,
+      text: message.text ?? message.caption ?? null,
+      fileId: bestPhoto?.file_id ?? null,
       isBot: message.from?.is_bot ?? false,
     })
     .onConflictDoNothing();
@@ -302,4 +315,37 @@ export async function sendThinkingMessage(
     log.warn("Failed to send thinking message", { chatId, error: err });
     return undefined;
   }
+}
+
+/**
+ * Enrich a Telegram message prompt with user info, matching Slack's
+ * `enrichMessageContent` pattern that prepends `[Slack User]\n...`.
+ *
+ * Telegram provides user info directly in the webhook payload (no API call needed).
+ */
+export function enrichTelegramPrompt(
+  prompt: string,
+  from: TelegramHandlerUpdate["message"]["from"],
+): string {
+  if (!from) {
+    return prompt;
+  }
+
+  const parts: string[] = [];
+  parts.push(`Telegram User ID: ${from.id}`);
+
+  const displayName = [from.first_name, from.last_name]
+    .filter(Boolean)
+    .join(" ");
+  if (displayName) {
+    parts.push(`Name: ${displayName}`);
+  }
+  if (from.username) {
+    parts.push(`Username: @${from.username}`);
+  }
+  if (from.language_code) {
+    parts.push(`Language: ${from.language_code}`);
+  }
+
+  return `[Telegram User]\n${parts.join("\n")}\n\n${prompt}`;
 }

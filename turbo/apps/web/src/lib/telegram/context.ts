@@ -1,5 +1,10 @@
 import { eq, and, desc } from "drizzle-orm";
 import { telegramMessages } from "../../db/schema/telegram-message";
+import {
+  downloadAndUploadTelegramPhoto,
+  formatPhotoForContext,
+} from "./images";
+import type { TelegramClient } from "./client";
 import { logger } from "../logger";
 
 const log = logger("telegram:context");
@@ -18,6 +23,7 @@ interface TelegramContextMessage {
   fromUsername: string | null;
   fromUserId: string;
   text: string | null;
+  fileId: string | null;
   isBot: boolean;
   messageId: string;
 }
@@ -28,18 +34,23 @@ interface TelegramContextMessage {
  * @param installationId - Telegram installation ID
  * @param chatId - Telegram chat ID
  * @param lastProcessedMessageId - Only include messages after this ID for execution context
- * @returns routingContext (all recent text) and executionContext (only new messages)
+ * @param client - Telegram client (needed to download images for execution context)
+ * @param currentMessageId - The message being processed; excluded from context to avoid duplication with prompt
+ * @returns routingContext (all recent text) and executionContext (only new messages, with images)
  */
 export async function fetchTelegramContext(
   installationId: string,
   chatId: string,
   lastProcessedMessageId?: string,
+  client?: TelegramClient,
+  currentMessageId?: string,
 ): Promise<{ routingContext: string; executionContext: string }> {
   const messages = await globalThis.services.db
     .select({
       fromUsername: telegramMessages.fromUsername,
       fromUserId: telegramMessages.fromUserId,
       text: telegramMessages.text,
+      fileId: telegramMessages.fileId,
       isBot: telegramMessages.isBot,
       messageId: telegramMessages.messageId,
     })
@@ -54,13 +65,17 @@ export async function fetchTelegramContext(
     .limit(MAX_CONTEXT_MESSAGES);
 
   // Reverse to chronological order (oldest first)
-  const chronological = messages.reverse();
+  // Exclude the current message to avoid duplication with the user prompt
+  const chronological = messages
+    .reverse()
+    .filter((m) => !currentMessageId || m.messageId !== currentMessageId);
 
   log.debug("Fetched telegram context messages", {
     chatId,
     count: chronological.length,
   });
 
+  // Routing context: text only, no image downloads
   const routingContext = formatContextForAgent(chronological);
 
   // For execution context, only include messages after lastProcessedMessageId
@@ -70,16 +85,61 @@ export async function fetchTelegramContext(
       )
     : chronological;
 
+  // Execution context: include images (download + upload to R2)
   const executionContext =
     executionMessages.length > 0
-      ? formatContextForAgent(executionMessages)
+      ? await formatContextForAgentWithImages(
+          executionMessages,
+          client,
+          `${installationId}-${chatId}`,
+        )
       : "";
 
   return { routingContext, executionContext };
 }
 
 /**
- * Format message array into agent-readable text
+ * Format a single message with structured metadata.
+ *
+ * Mirrors the Slack context format so the agent sees a consistent
+ * structure across integrations:
+ *
+ * ---
+ *
+ * - RELATIVE_INDEX: -n
+ * - MSG_ID: 12345
+ * - SENDER_ID: username | user:id | BOT
+ *
+ * message text
+ */
+function formatMessageWithMetadata(
+  msg: TelegramContextMessage,
+  relativeIndex: number,
+  imageParts?: string[],
+): string {
+  const senderId = msg.isBot
+    ? "BOT"
+    : (msg.fromUsername ?? `user:${msg.fromUserId}`);
+
+  const parts: string[] = [
+    "---",
+    "",
+    `- RELATIVE_INDEX: ${relativeIndex}`,
+    `- MSG_ID: ${msg.messageId}`,
+    `- SENDER_ID: ${senderId}`,
+    "",
+    msg.text ?? "",
+  ];
+
+  if (imageParts && imageParts.length > 0) {
+    parts.push(...imageParts);
+  }
+
+  return parts.join("\n");
+}
+
+/**
+ * Format message array into agent-readable text (text only, no image downloads)
  */
 export function formatContextForAgent(
   messages: TelegramContextMessage[],
@@ -88,15 +148,78 @@ export function formatContextForAgent(
     return "";
   }
 
-  const formatted = messages
-    .filter((m) => m.text)
-    .map((m) => {
-      const sender = m.isBot
-        ? "BOT"
-        : (m.fromUsername ?? `user:${m.fromUserId}`);
-      return `[${sender}]: ${m.text}`;
-    })
-    .join("\n");
+  const totalMessages = messages.length;
 
-  return `# Telegram Chat Context\n\n${CONTEXT_PREAMBLE}\n\n${formatted}`;
+  const formattedMessages = messages
+    .filter((m) => m.text || m.fileId)
+    .map((msg, index) => {
+      const relativeIndex = index - totalMessages;
+      const imageParts: string[] = [];
+      if (msg.fileId) {
+        imageParts.push("[image]: photo (not downloaded for routing context)");
+      }
+      return formatMessageWithMetadata(msg, relativeIndex, imageParts);
+    });
+
+  const result = `# Telegram Chat Context\n\n${CONTEXT_PREAMBLE}\n\n${formattedMessages.join("\n\n")}\n\n---`;
+  log.debug("Formatted messages for context", {
+    messageCount: formattedMessages.length,
+    resultLength: result.length,
+  });
+  return result;
+}
+
+/**
+ * Format message array with image downloads (for execution context).
+ * Downloads photos via Telegram API and uploads to R2 for agent access.
+ */
+async function formatContextForAgentWithImages(
+  messages: TelegramContextMessage[],
+  client: TelegramClient | undefined,
+  sessionId: string,
+): Promise<string> {
+  if (messages.length === 0) {
+    return "";
+  }
+
+  const totalMessages = messages.length;
+
+  const formattedMessages = await Promise.all(
+    messages
+      .filter((m) => m.text || m.fileId)
+      .map(async (msg, index) => {
+        const relativeIndex = index - totalMessages;
+        const imageParts: string[] = [];
+
+        if (msg.fileId && client) {
+          const presignedUrl = await downloadAndUploadTelegramPhoto(
+            client,
+            msg.fileId,
+            sessionId,
+          );
+          if (presignedUrl) {
+            imageParts.push(
+              formatPhotoForContext(presignedUrl, {
+                file_id: msg.fileId,
+                width: 0,
+                height: 0,
+              }),
+            );
+          } else {
+            imageParts.push("[image]: photo (failed to download)");
+          }
+        } else if (msg.fileId) {
+          imageParts.push("[image]: photo (no client available)");
+        }
+
+        return formatMessageWithMetadata(msg, relativeIndex, imageParts);
+      }),
+  );
+
+  const result = `# Telegram Chat Context\n\n${CONTEXT_PREAMBLE}\n\n${formattedMessages.join("\n\n")}\n\n---`;
+  log.debug("Formatted messages for context with images", {
+    messageCount: formattedMessages.length,
+    resultLength: result.length,
+  });
+  return result;
 }

@@ -16,13 +16,15 @@ describe("formatContextForAgent", () => {
         text: "Hello",
         isBot: false,
         messageId: "1",
+        fileId: null,
       },
     ];
 
     const result = formatContextForAgent(messages);
 
     expect(result).toContain("# Telegram Chat Context");
-    expect(result).toContain("[alice]: Hello");
+    expect(result).toContain("SENDER_ID: alice");
+    expect(result).toContain("Hello");
   });
 
   it("should fall back to user ID when username is null", () => {
@@ -33,12 +35,14 @@ describe("formatContextForAgent", () => {
         text: "Hi there",
         isBot: false,
         messageId: "2",
+        fileId: null,
       },
     ];
 
     const result = formatContextForAgent(messages);
 
-    expect(result).toContain("[user:222]: Hi there");
+    expect(result).toContain("SENDER_ID: user:222");
+    expect(result).toContain("Hi there");
   });
 
   it("should label bot messages as BOT", () => {
@@ -49,15 +53,17 @@ describe("formatContextForAgent", () => {
         text: "I am a bot",
         isBot: true,
         messageId: "3",
+        fileId: null,
       },
     ];
 
     const result = formatContextForAgent(messages);
 
-    expect(result).toContain("[BOT]: I am a bot");
+    expect(result).toContain("SENDER_ID: BOT");
+    expect(result).toContain("I am a bot");
   });
 
-  it("should filter out messages with null text", () => {
+  it("should filter out messages with null text and no file", () => {
     const messages = [
       {
         fromUsername: "alice",
@@ -65,6 +71,7 @@ describe("formatContextForAgent", () => {
         text: null,
         isBot: false,
         messageId: "1",
+        fileId: null,
       },
       {
         fromUsername: "bob",
@@ -72,13 +79,14 @@ describe("formatContextForAgent", () => {
         text: "Visible",
         isBot: false,
         messageId: "2",
+        fileId: null,
       },
     ];
 
     const result = formatContextForAgent(messages);
 
-    expect(result).not.toContain("[alice]");
-    expect(result).toContain("[bob]: Visible");
+    expect(result).not.toContain("alice");
+    expect(result).toContain("Visible");
   });
 
   it("should include context preamble", () => {
@@ -89,6 +97,7 @@ describe("formatContextForAgent", () => {
         text: "Hello",
         isBot: false,
         messageId: "1",
+        fileId: null,
       },
     ];
 
@@ -111,6 +120,7 @@ describe("formatContextForAgent", () => {
         text: "First",
         isBot: false,
         messageId: "1",
+        fileId: null,
       },
       {
         fromUsername: null,
@@ -118,6 +128,7 @@ describe("formatContextForAgent", () => {
         text: "Second",
         isBot: false,
         messageId: "2",
+        fileId: null,
       },
       {
         fromUsername: "bot",
@@ -125,18 +136,18 @@ describe("formatContextForAgent", () => {
         text: "Third",
         isBot: true,
         messageId: "3",
+        fileId: null,
       },
     ];
 
     const result = formatContextForAgent(messages);
 
-    const lines = result.split("\n");
-    const aliceLine = lines.findIndex((l) => l.includes("[alice]: First"));
-    const userLine = lines.findIndex((l) => l.includes("[user:222]: Second"));
-    const botLine = lines.findIndex((l) => l.includes("[BOT]: Third"));
+    const aliceIdx = result.indexOf("First");
+    const userIdx = result.indexOf("Second");
+    const botIdx = result.indexOf("Third");
 
-    expect(aliceLine).toBeLessThan(userLine);
-    expect(userLine).toBeLessThan(botLine);
+    expect(aliceIdx).toBeLessThan(userIdx);
+    expect(userIdx).toBeLessThan(botIdx);
   });
 });
 
@@ -178,11 +189,13 @@ describe("fetchTelegramContext", () => {
 
     const result = await fetchTelegramContext(installationId, chatId);
 
-    expect(result.routingContext).toContain("[alice]: First message");
-    expect(result.routingContext).toContain("[bob]: Second message");
+    expect(result.routingContext).toContain("First message");
+    expect(result.routingContext).toContain("SENDER_ID: alice");
+    expect(result.routingContext).toContain("Second message");
+    expect(result.routingContext).toContain("SENDER_ID: bob");
 
-    const firstIdx = result.routingContext.indexOf("[alice]: First message");
-    const secondIdx = result.routingContext.indexOf("[bob]: Second message");
+    const firstIdx = result.routingContext.indexOf("First message");
+    const secondIdx = result.routingContext.indexOf("Second message");
     expect(firstIdx).toBeLessThan(secondIdx);
   });
 
@@ -211,12 +224,12 @@ describe("fetchTelegramContext", () => {
     const result = await fetchTelegramContext(installationId, chatId, "10");
 
     // Routing context includes all messages
-    expect(result.routingContext).toContain("[alice]: Old message");
-    expect(result.routingContext).toContain("[bob]: New message");
+    expect(result.routingContext).toContain("Old message");
+    expect(result.routingContext).toContain("New message");
 
     // Execution context only includes messages after ID 10
-    expect(result.executionContext).not.toContain("[alice]: Old message");
-    expect(result.executionContext).toContain("[bob]: New message");
+    expect(result.executionContext).not.toContain("Old message");
+    expect(result.executionContext).toContain("New message");
   });
 
   it("should return empty execution context when no new messages after lastProcessedMessageId", async () => {
@@ -234,7 +247,7 @@ describe("fetchTelegramContext", () => {
 
     const result = await fetchTelegramContext(installationId, chatId, "5");
 
-    expect(result.routingContext).toContain("[alice]: Only message");
+    expect(result.routingContext).toContain("Only message");
     expect(result.executionContext).toBe("");
   });
 
@@ -261,8 +274,8 @@ describe("fetchTelegramContext", () => {
 
     const result = await fetchTelegramContext(installationId, chatA);
 
-    expect(result.routingContext).toContain("[alice]: Chat A message");
-    expect(result.routingContext).not.toContain("[bob]: Chat B message");
+    expect(result.routingContext).toContain("Chat A message");
+    expect(result.routingContext).not.toContain("Chat B message");
   });
 
   it("should include bot messages in context", async () => {
@@ -290,7 +303,8 @@ describe("fetchTelegramContext", () => {
 
     const result = await fetchTelegramContext(installationId, chatId);
 
-    expect(result.routingContext).toContain("[alice]: User message");
-    expect(result.routingContext).toContain("[BOT]: Bot reply");
+    expect(result.routingContext).toContain("User message");
+    expect(result.routingContext).toContain("SENDER_ID: BOT");
+    expect(result.routingContext).toContain("Bot reply");
   });
 });

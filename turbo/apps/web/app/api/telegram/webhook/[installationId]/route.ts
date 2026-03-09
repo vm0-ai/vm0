@@ -78,8 +78,8 @@ export async function POST(
   }
 
   const message = update.message;
-  if (!message || !message.text) {
-    // No text message — nothing to process
+  if (!message || (!message.text && !message.photo)) {
+    // No text or photo — nothing to process
     return new Response("OK", { status: 200 });
   }
 
@@ -88,7 +88,8 @@ export async function POST(
   // Route to appropriate handler
   after(
     (async () => {
-      const command = parseBotCommand(message.text, installation.botUsername);
+      const messageText = message.text ?? message.caption;
+      const command = parseBotCommand(messageText, installation.botUsername);
 
       if (command === "start") {
         await handleStartCommand({ message }, installationId);
@@ -126,13 +127,18 @@ export async function POST(
         return;
       }
 
-      // Check for bot @mention in entities
+      // Check for bot @mention in entities or caption_entities
+      const mentionSource = message.text ?? message.caption ?? "";
+      const allEntities = [
+        ...(message.entities ?? []),
+        ...(message.caption_entities ?? []),
+      ];
       const hasBotMention =
         installation.botUsername &&
-        message.entities?.some(
+        allEntities.some(
           (e) =>
             e.type === "mention" &&
-            message.text?.slice(e.offset, e.offset + e.length).toLowerCase() ===
+            mentionSource.slice(e.offset, e.offset + e.length).toLowerCase() ===
               `@${installation.botUsername?.toLowerCase()}`,
         );
 
