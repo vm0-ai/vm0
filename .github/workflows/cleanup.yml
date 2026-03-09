@@ -46,7 +46,6 @@ jobs:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
-          export ANSIBLE_SSH_ARGS="-F $HOME/.ssh/config"
           cd ansible
           ansible-playbook \
             -i "${METAL_HOSTS}," \
@@ -62,7 +61,6 @@ jobs:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
-          export ANSIBLE_SSH_ARGS="-F $HOME/.ssh/config"
           cd ansible
           ansible-playbook \
             -i "${METAL_HOSTS}," \

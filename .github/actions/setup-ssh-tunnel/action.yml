@@ -61,11 +61,7 @@ runs:
           "  IdentityFile $HOME/.ssh/runner.pem" \
           "  ProxyCommand $HOME/.ssh/cf-proxy.sh %h ${CF_ACCESS_CLIENT_ID} ${CF_ACCESS_CLIENT_SECRET}")"
 
-        # Write to user config
-        echo "$SSH_CONFIG" > "$HOME/.ssh/config"
-        chmod 600 "$HOME/.ssh/config"
-
-        # Also write to system config so ssh/scp in containers read it
+        # Write to system config so all SSH clients (ssh, scp, ansible) read it
         if command -v sudo &>/dev/null; then
           sudo mkdir -p /etc/ssh/ssh_config.d
           echo "$SSH_CONFIG" | sudo tee /etc/ssh/ssh_config.d/tunnel.conf > /dev/null
