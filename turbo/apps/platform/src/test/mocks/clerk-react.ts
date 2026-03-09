@@ -9,6 +9,6 @@ export function ClerkProvider({ children }: ClerkProviderProps) {
   return children;
 }
 
-export function OrganizationSwitcher() {
-  return null;
+export function OrganizationSwitcher(): string {
+  return "OrganizationSwitcher";
 }

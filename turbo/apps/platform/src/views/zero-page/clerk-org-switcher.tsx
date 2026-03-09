@@ -34,6 +34,10 @@ function OrgSwitcherInner() {
       if (newOrgId !== prevOrgRef.current) {
         prevOrgRef.current = newOrgId;
         persistOrgId(newOrgId);
+        // Full page reload is required because server-side data (agents, jobs,
+        // secrets, etc.) is scoped to the active organization. A lighter state
+        // refresh is not feasible since multiple signal trees depend on the
+        // org context established at bootstrap time.
         location.reload();
       }
     });
