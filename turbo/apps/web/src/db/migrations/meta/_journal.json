@@ -834,6 +834,13 @@
       "when": 1773400000004,
       "tag": "0118_dark_gravity",
       "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1773400000005,
+      "tag": "0119_foamy_dark_beast",
+      "breakpoints": true
     }
   ]
 }

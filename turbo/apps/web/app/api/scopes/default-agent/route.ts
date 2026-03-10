@@ -45,7 +45,7 @@ const router = tsr.router(scopeDefaultAgentContract, {
         .where(
           and(
             eq(agentComposes.id, agentComposeId),
-            eq(agentComposes.scopeId, scope.id),
+            eq(agentComposes.clerkOrgId, scope.clerkOrgId),
           ),
         )
         .limit(1);

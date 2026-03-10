@@ -96,7 +96,7 @@ export async function GET(request: Request) {
       scopeSlug: scopes.slug,
     })
     .from(agentComposes)
-    .innerJoin(scopes, eq(scopes.id, agentComposes.scopeId))
+    .innerJoin(scopes, eq(scopes.clerkOrgId, agentComposes.clerkOrgId))
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
 
@@ -315,7 +315,7 @@ export async function PATCH(request: Request) {
     slashIndex === -1 ? null : body.agentName.slice(0, slashIndex);
 
   // Resolve target scope (no membership check - admin can select any agent)
-  let targetScopeId: string;
+  let targetClerkOrgId: string;
   if (scopeSlug) {
     const targetScope = await getScopeBySlug(scopeSlug);
     if (!targetScope) {
@@ -324,10 +324,10 @@ export async function PATCH(request: Request) {
         { status: 400 },
       );
     }
-    targetScopeId = targetScope.id;
+    targetClerkOrgId = targetScope.clerkOrgId;
   } else {
     const { scope } = await resolveScope(userId);
-    targetScopeId = scope.id;
+    targetClerkOrgId = scope.clerkOrgId;
   }
 
   // Find agent compose by name in target scope
@@ -336,7 +336,7 @@ export async function PATCH(request: Request) {
     .from(agentComposes)
     .where(
       and(
-        eq(agentComposes.scopeId, targetScopeId),
+        eq(agentComposes.clerkOrgId, targetClerkOrgId),
         eq(agentComposes.name, agentName),
       ),
     )

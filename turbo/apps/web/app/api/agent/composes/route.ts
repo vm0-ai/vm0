@@ -43,7 +43,7 @@ const router = tsr.router(composesMainContract, {
 
     // Resolve scope: for cross-scope lookups (shared agents), skip membership
     // check and rely on canAccessCompose for authorization instead.
-    let scopeId: string;
+    let clerkOrgId: string;
     let defaultAgentComposeId: string | null = null;
     if (query.scope) {
       const scope = await getScopeBySlug(query.scope);
@@ -58,11 +58,11 @@ const router = tsr.router(composesMainContract, {
           },
         };
       }
-      scopeId = scope.id;
+      clerkOrgId = scope.clerkOrgId;
       defaultAgentComposeId = scope.defaultAgentComposeId;
     } else {
       const { scope: resolvedScope } = await resolveScope(userId);
-      scopeId = resolvedScope.id;
+      clerkOrgId = resolvedScope.clerkOrgId;
       defaultAgentComposeId = resolvedScope.defaultAgentComposeId;
     }
 
@@ -71,7 +71,7 @@ const router = tsr.router(composesMainContract, {
       .select({
         id: agentComposes.id,
         userId: agentComposes.userId,
-        scopeId: agentComposes.scopeId,
+        clerkOrgId: agentComposes.clerkOrgId,
         name: agentComposes.name,
         headVersionId: agentComposes.headVersionId,
         createdAt: agentComposes.createdAt,
@@ -85,7 +85,7 @@ const router = tsr.router(composesMainContract, {
       )
       .where(
         and(
-          eq(agentComposes.scopeId, scopeId),
+          eq(agentComposes.clerkOrgId, clerkOrgId),
           eq(agentComposes.name, query.name),
         ),
       )
@@ -266,7 +266,7 @@ const router = tsr.router(composesMainContract, {
         .from(agentComposes)
         .where(
           and(
-            eq(agentComposes.scopeId, scope.id),
+            eq(agentComposes.clerkOrgId, scope.clerkOrgId),
             eq(agentComposes.name, normalizedAgentName),
           ),
         )

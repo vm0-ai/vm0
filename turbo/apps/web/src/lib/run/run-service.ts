@@ -345,7 +345,7 @@ async function loadCompose(
   callerComposeId?: string,
 ): Promise<{
   composeContent: AgentComposeYaml;
-  compose: { id: string; userId: string; scopeId: string };
+  compose: { id: string; userId: string; clerkOrgId: string };
 }> {
   if (callerComposeId) {
     // When caller provides composeId, both queries are independent — run in parallel
@@ -359,7 +359,7 @@ async function loadCompose(
         .select({
           id: agentComposes.id,
           userId: agentComposes.userId,
-          scopeId: agentComposes.scopeId,
+          clerkOrgId: agentComposes.clerkOrgId,
         })
         .from(agentComposes)
         .where(eq(agentComposes.id, callerComposeId))
@@ -386,7 +386,7 @@ async function loadCompose(
       content: agentComposeVersions.content,
       composeId: agentComposes.id,
       composeUserId: agentComposes.userId,
-      agentScopeId: agentComposes.scopeId,
+      agentClerkOrgId: agentComposes.clerkOrgId,
     })
     .from(agentComposeVersions)
     .leftJoin(
@@ -400,7 +400,7 @@ async function loadCompose(
     throw notFound("Agent compose version not found");
   }
 
-  if (!result.composeId || !result.composeUserId || !result.agentScopeId) {
+  if (!result.composeId || !result.composeUserId || !result.agentClerkOrgId) {
     throw notFound("Agent compose not found");
   }
 
@@ -409,7 +409,7 @@ async function loadCompose(
     compose: {
       id: result.composeId,
       userId: result.composeUserId,
-      scopeId: result.agentScopeId,
+      clerkOrgId: result.agentClerkOrgId,
     },
   };
 }
@@ -417,7 +417,7 @@ async function loadCompose(
 async function authorizeCompose(
   userId: string,
   userEmail: string,
-  compose: { id: string; userId: string; scopeId: string },
+  compose: { id: string; userId: string; clerkOrgId: string },
 ): Promise<void> {
   const hasAccess = await canAccessCompose(userId, userEmail, compose);
   if (!hasAccess) {

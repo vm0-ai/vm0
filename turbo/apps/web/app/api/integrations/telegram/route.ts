@@ -95,7 +95,7 @@ export async function GET(request: Request) {
       scopeSlug: scopes.slug,
     })
     .from(agentComposes)
-    .innerJoin(scopes, eq(scopes.id, agentComposes.scopeId))
+    .innerJoin(scopes, eq(scopes.clerkOrgId, agentComposes.clerkOrgId))
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
 
@@ -286,7 +286,7 @@ export async function PATCH(request: Request) {
     .from(agentComposes)
     .where(
       and(
-        eq(agentComposes.scopeId, targetScope.id),
+        eq(agentComposes.clerkOrgId, targetScope.clerkOrgId),
         eq(agentComposes.name, agentName),
       ),
     )

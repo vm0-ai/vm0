@@ -575,10 +575,11 @@ export async function createTestSessionWithConversation(
   userId: string,
   agentComposeId: string,
 ): Promise<{ id: string }> {
-  // Look up scopeId from the compose
+  // Look up scopeId via clerkOrgId from the compose
   const [compose] = await globalThis.services.db
-    .select({ scopeId: agentComposes.scopeId })
+    .select({ scopeId: scopes.id })
     .from(agentComposes)
+    .innerJoin(scopes, eq(agentComposes.clerkOrgId, scopes.clerkOrgId))
     .where(eq(agentComposes.id, agentComposeId))
     .limit(1);
   if (!compose) {
@@ -1403,12 +1404,13 @@ export async function createTestVariable(
  */
 async function getScopeIdFromVersion(versionId: string): Promise<string> {
   const [version] = await globalThis.services.db
-    .select({ scopeId: agentComposes.scopeId })
+    .select({ scopeId: scopes.id })
     .from(agentComposeVersions)
     .innerJoin(
       agentComposes,
       eq(agentComposes.id, agentComposeVersions.composeId),
     )
+    .innerJoin(scopes, eq(agentComposes.clerkOrgId, scopes.clerkOrgId))
     .where(eq(agentComposeVersions.id, versionId))
     .limit(1);
   if (!version) {
@@ -2307,7 +2309,7 @@ export async function findTestComposeWithScope(composeId: string) {
       scopeSlug: scopes.slug,
     })
     .from(agentComposes)
-    .innerJoin(scopes, eq(scopes.id, agentComposes.scopeId))
+    .innerJoin(scopes, eq(scopes.clerkOrgId, agentComposes.clerkOrgId))
     .where(eq(agentComposes.id, composeId))
     .limit(1);
   return row;

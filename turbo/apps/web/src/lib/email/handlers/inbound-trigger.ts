@@ -167,7 +167,7 @@ export async function handleInboundEmailTrigger(
   const hasAccess = await canAccessCompose(userId, userEmail, {
     id: compose.composeId,
     userId: compose.userId,
-    scopeId: compose.scopeId,
+    clerkOrgId: compose.clerkOrgId,
   });
 
   if (!hasAccess) {

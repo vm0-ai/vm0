@@ -205,7 +205,7 @@ export async function prepareForExecution(
   const scopeStart = Date.now();
   const [agentScopeInfo] = await globalThis.services.db
     .select({
-      scopeId: agentComposes.scopeId,
+      scopeId: scopes.id,
       scopeSlug: scopes.slug,
     })
     .from(agentComposeVersions)
@@ -213,7 +213,7 @@ export async function prepareForExecution(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
-    .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
+    .innerJoin(scopes, eq(agentComposes.clerkOrgId, scopes.clerkOrgId))
     .where(eq(agentComposeVersions.id, context.agentComposeVersionId))
     .limit(1);
   const scopeEnd = Date.now();

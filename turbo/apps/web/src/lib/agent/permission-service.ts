@@ -18,7 +18,7 @@ const log = logger("agent:permission");
 export async function canAccessCompose(
   userId: string,
   userEmail: string,
-  compose: { id: string; userId: string; scopeId: string },
+  compose: { id: string; userId: string; clerkOrgId: string },
 ): Promise<boolean> {
   // 1. Owner always has access
   if (compose.userId === userId) return true;
@@ -27,9 +27,10 @@ export async function canAccessCompose(
   const [member] = await globalThis.services.db
     .select({ id: scopeMembers.id })
     .from(scopeMembers)
+    .innerJoin(scopes, eq(scopes.id, scopeMembers.scopeId))
     .where(
       and(
-        eq(scopeMembers.scopeId, compose.scopeId),
+        eq(scopes.clerkOrgId, compose.clerkOrgId),
         eq(scopeMembers.userId, userId),
       ),
     )
@@ -144,7 +145,7 @@ export async function getEmailSharedAgents(
       agentComposes,
       eq(agentPermissions.agentComposeId, agentComposes.id),
     )
-    .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
+    .innerJoin(scopes, eq(agentComposes.clerkOrgId, scopes.clerkOrgId))
     .where(and(...conditions))
     .orderBy(desc(agentComposes.createdAt));
 }

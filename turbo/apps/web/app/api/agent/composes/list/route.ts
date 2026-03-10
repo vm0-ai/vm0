@@ -24,11 +24,11 @@ const router = tsr.router(composesListContract, {
     }
 
     // Resolve scope: use ?scope= query param or default scope
-    let scopeId: string;
+    let clerkOrgId: string;
     let defaultAgentComposeId: string | null = null;
     try {
       const { scope: resolvedScope } = await resolveScope(userId, query.scope);
-      scopeId = resolvedScope.id;
+      clerkOrgId = resolvedScope.clerkOrgId;
       defaultAgentComposeId = resolvedScope.defaultAgentComposeId;
     } catch (error) {
       if (isNotFound(error)) {
@@ -62,7 +62,7 @@ const router = tsr.router(composesListContract, {
         updatedAt: agentComposes.updatedAt,
       })
       .from(agentComposes)
-      .where(eq(agentComposes.scopeId, scopeId))
+      .where(eq(agentComposes.clerkOrgId, clerkOrgId))
       .orderBy(desc(agentComposes.updatedAt));
 
     // When using default scope (no ?scope= param), also include email-shared agents

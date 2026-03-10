@@ -171,7 +171,7 @@ export function computeReplyRecipients(opts: {
 interface ResolvedAgent {
   composeId: string;
   userId: string;
-  scopeId: string;
+  clerkOrgId: string;
   scopeSlug: string;
   headVersionId: string;
 }
@@ -186,25 +186,25 @@ export async function resolveAgentByAddress(
 ): Promise<ResolvedAgent | null> {
   // 1. Find scope by slug
   const [scope] = await globalThis.services.db
-    .select({ id: scopes.id })
+    .select({ clerkOrgId: scopes.clerkOrgId })
     .from(scopes)
     .where(eq(scopes.slug, scopeSlug))
     .limit(1);
 
   if (!scope) return null;
 
-  // 2. Find compose by scopeId + name
+  // 2. Find compose by clerkOrgId + name
   const [compose] = await globalThis.services.db
     .select({
       id: agentComposes.id,
       userId: agentComposes.userId,
-      scopeId: agentComposes.scopeId,
+      clerkOrgId: agentComposes.clerkOrgId,
       headVersionId: agentComposes.headVersionId,
     })
     .from(agentComposes)
     .where(
       and(
-        eq(agentComposes.scopeId, scope.id),
+        eq(agentComposes.clerkOrgId, scope.clerkOrgId),
         eq(agentComposes.name, agentName),
       ),
     )
@@ -218,7 +218,7 @@ export async function resolveAgentByAddress(
   return {
     composeId: compose.id,
     userId: compose.userId,
-    scopeId: compose.scopeId,
+    clerkOrgId: compose.clerkOrgId,
     scopeSlug,
     headVersionId: compose.headVersionId,
   };

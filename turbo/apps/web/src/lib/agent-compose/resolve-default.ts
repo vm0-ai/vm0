@@ -28,7 +28,7 @@ export async function resolveDefaultAgentComposeId(): Promise<string | null> {
   }
 
   const [scope] = await globalThis.services.db
-    .select({ id: scopes.id })
+    .select({ clerkOrgId: scopes.clerkOrgId })
     .from(scopes)
     .where(eq(scopes.slug, scopeSlug))
     .limit(1);
@@ -43,7 +43,7 @@ export async function resolveDefaultAgentComposeId(): Promise<string | null> {
     .from(agentComposes)
     .where(
       and(
-        eq(agentComposes.scopeId, scope.id),
+        eq(agentComposes.clerkOrgId, scope.clerkOrgId),
         eq(agentComposes.name, agentName),
       ),
     )
@@ -53,7 +53,7 @@ export async function resolveDefaultAgentComposeId(): Promise<string | null> {
     log.warn("Agent compose not found for VM0_DEFAULT_AGENT", {
       scopeSlug,
       agentName,
-      scopeId: scope.id,
+      clerkOrgId: scope.clerkOrgId,
     });
     return null;
   }

@@ -21,7 +21,7 @@ export const agentComposes = pgTable(
     userId: text("user_id").notNull(), // Clerk user ID
     scopeId: uuid("scope_id")
       .notNull()
-      .references(() => scopes.id, { onDelete: "cascade" }), // Scope reference
+      .references(() => scopes.id, { onDelete: "cascade" }), // FK kept for cascade; Phase 5 drops column
     name: varchar("name", { length: 64 }).notNull().default(""), // Agent name from compose
     headVersionId: varchar("head_version_id", { length: 64 }), // Points to latest version hash
     clerkOrgId: text("clerk_org_id").notNull(),
@@ -29,11 +29,6 @@ export const agentComposes = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    scopeNameIdx: uniqueIndex("idx_agent_composes_scope_name").on(
-      table.scopeId,
-      table.name,
-    ),
-    scopeIdx: index("idx_agent_composes_scope").on(table.scopeId),
     clerkOrgIdx: index("idx_agent_composes_clerk_org").on(table.clerkOrgId),
     clerkOrgNameIdx: uniqueIndex("idx_agent_composes_clerk_org_name").on(
       table.clerkOrgId,

@@ -120,7 +120,7 @@ async function buildAgentFields(
       const userAgents = await globalThis.services.db
         .select({ id: agentComposes.id, name: agentComposes.name })
         .from(agentComposes)
-        .where(eq(agentComposes.scopeId, defaultScope.id));
+        .where(eq(agentComposes.clerkOrgId, defaultScope.clerkOrgId));
 
       // Prepend default agent, deduplicate by id
       const seen = new Set<string>();

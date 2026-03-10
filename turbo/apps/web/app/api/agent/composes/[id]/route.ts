@@ -41,7 +41,7 @@ const router = tsr.router(composesByIdContract, {
       .select({
         id: agentComposes.id,
         userId: agentComposes.userId,
-        scopeId: agentComposes.scopeId,
+        clerkOrgId: agentComposes.clerkOrgId,
         name: agentComposes.name,
         headVersionId: agentComposes.headVersionId,
         createdAt: agentComposes.createdAt,
@@ -54,7 +54,7 @@ const router = tsr.router(composesByIdContract, {
         agentComposeVersions,
         eq(agentComposes.headVersionId, agentComposeVersions.id),
       )
-      .leftJoin(scopes, eq(agentComposes.scopeId, scopes.id))
+      .leftJoin(scopes, eq(agentComposes.clerkOrgId, scopes.clerkOrgId))
       .where(eq(agentComposes.id, params.id))
       .limit(1);
 
@@ -165,7 +165,7 @@ const router = tsr.router(composesByIdContract, {
       .from(storages)
       .where(
         and(
-          eq(storages.scopeId, compose.scopeId),
+          eq(storages.clerkOrgId, compose.clerkOrgId),
           eq(storages.name, storageName),
           eq(storages.type, "volume"),
         ),
