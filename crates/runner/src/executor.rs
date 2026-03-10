@@ -1055,7 +1055,8 @@ mod tests {
         ));
         assert!(dmesg_indicates_oom("oom-kill:constraint=CONSTRAINT_MEMCG"));
         assert!(dmesg_indicates_oom("oom_reaper: reaped process 42"));
-        assert!(dmesg_indicates_oom("Killed process 42 (node)"));
+        // "Killed process" alone (without OOM context) should NOT match
+        assert!(!dmesg_indicates_oom("Killed process 42 (node)"));
     }
 
     #[test]
@@ -1063,7 +1064,6 @@ mod tests {
         assert!(!dmesg_indicates_oom(""));
         assert!(!dmesg_indicates_oom("normal kernel log output"));
         assert!(!dmesg_indicates_oom("[  1.000] eth0: link up"));
-        // "killed" alone should not match — requires "killed process"
         assert!(!dmesg_indicates_oom("task killed by signal 15"));
         // substring "oom" in unrelated words should not match
         assert!(!dmesg_indicates_oom("the room is full"));
@@ -1072,7 +1072,7 @@ mod tests {
     #[test]
     fn dmesg_oom_case_insensitive() {
         assert!(dmesg_indicates_oom("Out Of Memory: killed process 99"));
-        assert!(dmesg_indicates_oom("Killed process 99 (agent)"));
+        assert!(!dmesg_indicates_oom("Killed process 99 (agent)"));
         assert!(dmesg_indicates_oom("OOM-kill: constraint=MEMCG"));
     }
 
