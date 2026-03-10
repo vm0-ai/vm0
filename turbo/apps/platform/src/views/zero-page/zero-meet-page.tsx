@@ -52,6 +52,7 @@ import {
   zeroEditedContent$,
   zeroInstructionsDirty$,
   zeroBuildingInstructions$,
+  zeroBuildError$,
   fetchZeroInstructions$,
   setZeroEditedContent$,
   discardZeroEdit$,
@@ -281,6 +282,7 @@ function ZeroInstructionsTab() {
   const editedLoadable = useLoadable(zeroEditedContent$);
   const dirtyLoadable = useLoadable(zeroInstructionsDirty$);
   const buildingLoadable = useLoadable(zeroBuildingInstructions$);
+  const buildErrorLoadable = useLoadable(zeroBuildError$);
 
   const instructions =
     instructionsLoadable.state === "hasData" ? instructionsLoadable.data : null;
@@ -292,6 +294,8 @@ function ZeroInstructionsTab() {
     dirtyLoadable.state === "hasData" && dirtyLoadable.data === true;
   const isBuilding =
     buildingLoadable.state === "hasData" && buildingLoadable.data === true;
+  const buildError =
+    buildErrorLoadable.state === "hasData" ? buildErrorLoadable.data : null;
 
   const setEdited = useSet(setZeroEditedContent$);
   const discard = useSet(discardZeroEdit$);
@@ -333,6 +337,11 @@ function ZeroInstructionsTab() {
                   {isDirty && (
                     <span className="text-xs font-medium text-amber-500">
                       Unsaved
+                    </span>
+                  )}
+                  {buildError && (
+                    <span className="text-xs font-medium text-destructive">
+                      {buildError}
                     </span>
                   )}
                 </div>

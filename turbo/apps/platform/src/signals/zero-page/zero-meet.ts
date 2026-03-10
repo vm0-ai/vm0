@@ -116,6 +116,9 @@ export const discardZeroEdit$ = command(({ set }) => {
 const building$ = state(false);
 export const zeroBuildingInstructions$ = computed((get) => get(building$));
 
+const internalBuildError$ = state<string | null>(null);
+export const zeroBuildError$ = computed((get) => get(internalBuildError$));
+
 export const buildZeroInstructions$ = command(async ({ get, set }) => {
   const detail = get(composeDetail$);
   const edited = get(editedContent$);
@@ -124,6 +127,7 @@ export const buildZeroInstructions$ = command(async ({ get, set }) => {
   }
 
   set(building$, true);
+  set(internalBuildError$, null);
 
   try {
     const fetchFn = get(fetch$);
@@ -142,7 +146,7 @@ export const buildZeroInstructions$ = command(async ({ get, set }) => {
     L.debug("Zero instructions built successfully");
   } catch (error) {
     throwIfAbort(error);
-    L.error("Failed to build instructions:", error);
+    set(internalBuildError$, "Failed to build instructions. Please try again.");
   } finally {
     set(building$, false);
   }
