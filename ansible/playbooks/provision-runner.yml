@@ -1,14 +1,14 @@
-# Provision Metal Host Dependencies
+# Provision Runner Host Dependencies
 #
 # Idempotent playbook that installs all system-level dependencies required by
-# the VM0 runner on bare-metal hosts. Safe to run repeatedly — all tasks use
+# the VM0 runner on runner hosts. Safe to run repeatedly — all tasks use
 # idempotent operations (apt state=present, group append, chmod).
 #
 # Usage:
 #   ansible-playbook -i "host1,host2," playbooks/provision-runner.yml \
 #     -e "ansible_user=ubuntu"
 
-- name: Provision metal host dependencies
+- name: Provision runner host dependencies
   hosts: all
 
   tasks:
