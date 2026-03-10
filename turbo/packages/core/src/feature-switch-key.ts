@@ -37,4 +37,5 @@ export enum FeatureSwitchKey {
   StripeConnector = "stripeConnector",
   GitHubIntegration = "githubIntegration",
   TelegramIntegration = "telegramIntegration",
+  Zero = "zero",
 }
