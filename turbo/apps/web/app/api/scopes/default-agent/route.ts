@@ -69,10 +69,32 @@ const router = tsr.router(scopeDefaultAgentContract, {
       }
     }
 
-    await globalThis.services.db
-      .update(scopes)
-      .set({ defaultAgentComposeId: agentComposeId })
-      .where(eq(scopes.id, scope.id));
+    await globalThis.services.db.transaction(async (tx) => {
+      // Clear previous default in agent_composes
+      await tx
+        .update(agentComposes)
+        .set({ isDefault: false })
+        .where(
+          and(
+            eq(agentComposes.clerkOrgId, scope.clerkOrgId),
+            eq(agentComposes.isDefault, true),
+          ),
+        );
+
+      // Set new default in agent_composes (if not clearing)
+      if (agentComposeId !== null) {
+        await tx
+          .update(agentComposes)
+          .set({ isDefault: true })
+          .where(eq(agentComposes.id, agentComposeId));
+      }
+
+      // Update scopes (existing behavior, kept for backward compat)
+      await tx
+        .update(scopes)
+        .set({ defaultAgentComposeId: agentComposeId })
+        .where(eq(scopes.id, scope.id));
+    });
 
     return {
       status: 200 as const,

@@ -1,4 +1,5 @@
 import {
+  boolean,
   pgTable,
   uuid,
   jsonb,
@@ -8,6 +9,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { scopes } from "./scope";
 
 /**
@@ -25,6 +27,7 @@ export const agentComposes = pgTable(
     name: varchar("name", { length: 64 }).notNull().default(""), // Agent name from compose
     headVersionId: varchar("head_version_id", { length: 64 }), // Points to latest version hash
     clerkOrgId: text("clerk_org_id").notNull(),
+    isDefault: boolean("is_default").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -34,6 +37,9 @@ export const agentComposes = pgTable(
       table.clerkOrgId,
       table.name,
     ),
+    defaultPerOrgIdx: uniqueIndex("idx_agent_composes_default_per_org")
+      .on(table.clerkOrgId)
+      .where(sql`is_default = true`),
   }),
 );
 

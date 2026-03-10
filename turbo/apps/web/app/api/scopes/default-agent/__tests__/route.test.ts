@@ -3,6 +3,7 @@ import { PUT } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  findTestAgentComposeById,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
@@ -23,6 +24,11 @@ function putDefaultAgent(
       body: JSON.stringify({ agentComposeId }),
     }),
   );
+}
+
+async function getComposeIsDefault(composeId: string): Promise<boolean> {
+  const row = await findTestAgentComposeById(composeId);
+  return row?.isDefault ?? false;
 }
 
 describe("PUT /api/scopes/default-agent", () => {
@@ -84,6 +90,42 @@ describe("PUT /api/scopes/default-agent", () => {
       "00000000-0000-0000-0000-000000000000",
     );
     expect(response.status).toBe(404);
+  });
+
+  it("should dual-write isDefault to agent_composes when setting default", async () => {
+    await context.setupUser();
+    const compose = await createTestCompose("test-agent");
+
+    await putDefaultAgent(undefined, compose.composeId);
+
+    expect(await getComposeIsDefault(compose.composeId)).toBe(true);
+  });
+
+  it("should clear isDefault on agent_composes when unsetting default", async () => {
+    await context.setupUser();
+    const compose = await createTestCompose("test-agent");
+
+    await putDefaultAgent(undefined, compose.composeId);
+    expect(await getComposeIsDefault(compose.composeId)).toBe(true);
+
+    await putDefaultAgent(undefined, null);
+    expect(await getComposeIsDefault(compose.composeId)).toBe(false);
+  });
+
+  it("should switch isDefault when changing default agent", async () => {
+    await context.setupUser();
+    const composeA = await createTestCompose("agent-a");
+    const composeB = await createTestCompose("agent-b");
+
+    // Set A as default
+    await putDefaultAgent(undefined, composeA.composeId);
+    expect(await getComposeIsDefault(composeA.composeId)).toBe(true);
+    expect(await getComposeIsDefault(composeB.composeId)).toBe(false);
+
+    // Switch to B
+    await putDefaultAgent(undefined, composeB.composeId);
+    expect(await getComposeIsDefault(composeA.composeId)).toBe(false);
+    expect(await getComposeIsDefault(composeB.composeId)).toBe(true);
   });
 
   it("should return 200 when setting same agent twice", async () => {
