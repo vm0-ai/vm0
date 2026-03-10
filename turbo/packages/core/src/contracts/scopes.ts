@@ -115,3 +115,38 @@ export const scopeContract = c.router({
 });
 
 export type ScopeContract = typeof scopeContract;
+
+/**
+ * Scope default agent contract for /api/scopes/default-agent
+ */
+export const scopeDefaultAgentContract = c.router({
+  /**
+   * PUT /api/scopes/default-agent?scope={slug}
+   * Set or unset the default agent for a scope.
+   * Only scope admins can perform this action.
+   * The agent must belong to the same scope.
+   */
+  setDefaultAgent: {
+    method: "PUT",
+    path: "/api/scopes/default-agent",
+    headers: authHeadersSchema,
+    query: z.object({
+      scope: z.string().optional(),
+    }),
+    body: z.object({
+      agentComposeId: z.string().uuid().nullable(),
+    }),
+    responses: {
+      200: z.object({
+        agentComposeId: z.string().uuid().nullable(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Set or unset the default agent for a scope",
+  },
+});
+
+export type ScopeDefaultAgentContract = typeof scopeDefaultAgentContract;

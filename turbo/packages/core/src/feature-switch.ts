@@ -191,6 +191,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
+  [FeatureSwitchKey.PosthogConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
   [FeatureSwitchKey.GitHubIntegration]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
@@ -200,6 +205,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
+  },
+  [FeatureSwitchKey.Zero]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
   },
 };
 
@@ -236,6 +245,7 @@ export const CONNECTOR_FEATURE_FLAGS: Partial<
   "outlook-calendar": FeatureSwitchKey.OutlookCalendarConnector,
   "meta-ads": FeatureSwitchKey.MetaAdsConnector,
   stripe: FeatureSwitchKey.StripeConnector,
+  posthog: FeatureSwitchKey.PosthogConnector,
 };
 
 /**

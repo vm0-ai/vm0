@@ -4,7 +4,6 @@ import {
   IconRobot,
   IconFile,
   IconChartLine,
-  IconSelector,
   IconLayoutGrid,
   IconCalendar,
   IconAdjustmentsHorizontal,
@@ -16,6 +15,7 @@ import { useLoadable } from "ccstate-react";
 import slackIcon from "../settings-page/icons/slack.svg";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { ClerkOrgSwitcher } from "./clerk-org-switcher.tsx";
 
 export type ZeroNavId =
   | "chat"
@@ -71,8 +71,6 @@ interface ZeroSidebarProps {
   onSelect: (id: ZeroNavId) => void;
   onRecentSelect?: (id: string) => void;
   selectedRecentId?: string | null;
-  zeroAvatarSrc?: string;
-  onAvatarClick?: () => void;
   onAccountAction?: (action: ZeroAccountAction) => void;
 }
 
@@ -264,46 +262,14 @@ export function ZeroSidebar({
   onSelect,
   onRecentSelect,
   selectedRecentId = null,
-  zeroAvatarSrc = "/zero-avatar.png",
-  onAvatarClick,
   onAccountAction,
 }: ZeroSidebarProps) {
   return (
     <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden">
-      {/* Zero + workspace — single module */}
+      {/* Organization switcher */}
       <div className="shrink-0 p-2 pb-1">
-        <div className="rounded-lg p-2 transition-colors duration-200 hover:bg-sidebar-accent/50">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onAvatarClick}
-              className="h-8 w-8 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="Switch Zero avatar"
-            >
-              <img
-                src={zeroAvatarSrc}
-                alt="Zero"
-                className="h-8 w-8 rounded-full object-cover object-top"
-                width={32}
-                height={32}
-              />
-            </button>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium leading-tight text-sidebar-foreground truncate">
-                Personal Workspace
-              </p>
-              <p className="text-xs leading-tight text-sidebar-foreground opacity-70 truncate mt-px">
-                Free • Owner
-              </p>
-            </div>
-            <button
-              type="button"
-              className="shrink-0 flex h-7 w-7 items-center justify-center rounded text-sidebar-foreground hover:bg-sidebar-accent transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="Switch workspace"
-            >
-              <IconSelector size={14} stroke={1.5} />
-            </button>
-          </div>
+        <div className="rounded-lg p-2">
+          <ClerkOrgSwitcher />
         </div>
       </div>
 

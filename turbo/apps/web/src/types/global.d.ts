@@ -21,4 +21,12 @@ declare global {
   var services: Services;
   // Captured Next.js after() callbacks for test assertions (see setup.ts)
   var nextAfterCallbacks: Array<() => Promise<unknown>>;
+
+  // Clerk custom JWT session claims (configured in Clerk Dashboard)
+  interface CustomJwtSessionClaims {
+    org_tier?: string;
+    membership_timezone?: string;
+    membership_notify_email?: boolean;
+    membership_notify_slack?: boolean;
+  }
 }

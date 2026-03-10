@@ -25,9 +25,11 @@ const router = tsr.router(composesListContract, {
 
     // Resolve scope: use ?scope= query param or default scope
     let scopeId: string;
+    let defaultAgentComposeId: string | null = null;
     try {
       const { scope: resolvedScope } = await resolveScope(userId, query.scope);
       scopeId = resolvedScope.id;
+      defaultAgentComposeId = resolvedScope.defaultAgentComposeId;
     } catch (error) {
       if (isNotFound(error)) {
         return {
@@ -54,6 +56,7 @@ const router = tsr.router(composesListContract, {
     // Query own composes for this scope
     const ownComposes = await globalThis.services.db
       .select({
+        id: agentComposes.id,
         name: agentComposes.name,
         headVersionId: agentComposes.headVersionId,
         updatedAt: agentComposes.updatedAt,
@@ -83,12 +86,14 @@ const router = tsr.router(composesListContract, {
         headVersionId: c.headVersionId,
         updatedAt: c.updatedAt.toISOString(),
         isOwner: true,
+        isDefault: c.id === defaultAgentComposeId,
       })),
       ...sharedComposes.map((c) => ({
         name: `${c.scopeSlug}/${c.name}`,
         headVersionId: c.headVersionId,
         updatedAt: c.updatedAt.toISOString(),
         isOwner: false,
+        isDefault: false,
       })),
     ];
 

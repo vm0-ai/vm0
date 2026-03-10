@@ -45,6 +45,8 @@ export function setupClerkOrgMock(options: {
       id: "inv_test",
     }),
     deleteOrganizationMembership: vi.fn().mockResolvedValue({}),
+    updateOrganizationMetadata: vi.fn().mockResolvedValue({}),
+    updateOrganizationMembershipMetadata: vi.fn().mockResolvedValue({}),
   };
 
   const mockUsers = {

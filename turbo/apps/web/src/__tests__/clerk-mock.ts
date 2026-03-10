@@ -104,6 +104,8 @@ export function mockClerk(options: {
         .mockImplementation(({ name }: { name: string }) =>
           Promise.resolve({ id: `org_mock_${name}` }),
         ),
+      updateOrganizationMetadata: vi.fn().mockResolvedValue({}),
+      updateOrganizationMembershipMetadata: vi.fn().mockResolvedValue({}),
     },
   } as unknown as Awaited<ReturnType<typeof clerkClient>>);
 }
