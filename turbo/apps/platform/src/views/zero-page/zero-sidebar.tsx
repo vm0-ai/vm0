@@ -1,4 +1,6 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconMessageCircle,
   IconRobot,
@@ -11,7 +13,6 @@ import {
   IconUsers,
   IconLogout,
 } from "@tabler/icons-react";
-import { useLoadable } from "ccstate-react";
 import slackIcon from "../settings-page/icons/slack.svg";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -153,7 +154,9 @@ function AccountDropdown({
   activeId: ZeroNavId;
   onAccountAction?: (action: ZeroAccountAction) => void;
 }) {
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuOpen$ = useCCState(false);
+  const accountMenuOpen = useGet(accountMenuOpen$);
+  const setAccountMenuOpen = useSet(accountMenuOpen$);
   const clerkLoadable = useLoadable(clerk$);
   const userLoadable = useLoadable(user$);
   const user = userLoadable.state === "hasData" ? userLoadable.data : null;

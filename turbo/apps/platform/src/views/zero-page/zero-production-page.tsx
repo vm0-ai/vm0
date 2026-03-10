@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
 import {
   IconSearch,
   IconFolder,
@@ -254,9 +255,15 @@ function DocListRow({ doc }: { doc: DocItem }) {
 type ViewMode = "list" | "gallery";
 
 export function ZeroProductionPage() {
-  const [filter, setFilter] = useState<DocScope>("all");
-  const [search, setSearch] = useState("");
-  const [viewMode, setViewMode] = useState<ViewMode>("gallery");
+  const filter$ = useCCState<DocScope>("all");
+  const filter = useGet(filter$);
+  const setFilter = useSet(filter$);
+  const search$ = useCCState("");
+  const search = useGet(search$);
+  const setSearch = useSet(search$);
+  const viewMode$ = useCCState<ViewMode>("gallery");
+  const viewMode = useGet(viewMode$);
+  const setViewMode = useSet(viewMode$);
 
   const filteredDocs = DOCS.filter((doc) => {
     const matchScope = filter === "all" || doc.scope === filter;

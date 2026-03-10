@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
 import {
   IconSearch,
   IconFilter,
@@ -148,10 +149,18 @@ function ActivityRow({
 }
 
 export function ZeroActivityPage() {
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedItem, setSelectedItem] = useState<ActivityItem | null>(null);
+  const search$ = useCCState("");
+  const search = useGet(search$);
+  const setSearch = useSet(search$);
+  const typeFilter$ = useCCState("all");
+  const typeFilter = useGet(typeFilter$);
+  const setTypeFilter = useSet(typeFilter$);
+  const statusFilter$ = useCCState("all");
+  const statusFilter = useGet(statusFilter$);
+  const setStatusFilter = useSet(statusFilter$);
+  const selectedItem$ = useCCState<ActivityItem | null>(null);
+  const selectedItem = useGet(selectedItem$);
+  const setSelectedItem = useSet(selectedItem$);
 
   const filtered = ACTIVITIES.filter((item) => {
     const matchSearch =

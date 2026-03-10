@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
 import slackIcon from "../settings-page/icons/slack.svg";
 import {
   Dialog,
@@ -72,17 +73,24 @@ export function ZeroOnboarding({
   zeroAvatarSrc?: string;
   onAvatarClick?: () => void;
 }) {
-  const [step, setStep] = useState<OnboardingStep>("1");
-  const [name, setName] = useState("Zero");
-  const [selectedProviderType, setSelectedProviderType] =
-    useState<ModelProviderType | null>(null);
-  const [providerFormValues, setProviderFormValues] = useState({
+  const step$ = useCCState<OnboardingStep>("1");
+  const step = useGet(step$);
+  const setStep = useSet(step$);
+  const name$ = useCCState("Zero");
+  const name = useGet(name$);
+  const setName = useSet(name$);
+  const selectedProviderType$ = useCCState<ModelProviderType | null>(null);
+  const selectedProviderType = useGet(selectedProviderType$);
+  const setSelectedProviderType = useSet(selectedProviderType$);
+  const providerFormValues$ = useCCState({
     secret: "",
     selectedModel: "",
     useDefaultModel: true,
     authMethod: "",
     secrets: {} as Record<string, string>,
   });
+  const providerFormValues = useGet(providerFormValues$);
+  const setProviderFormValues = useSet(providerFormValues$);
 
   const handleSelectProvider = (type: ModelProviderType) => {
     const defaultAuth = hasAuthMethods(type)

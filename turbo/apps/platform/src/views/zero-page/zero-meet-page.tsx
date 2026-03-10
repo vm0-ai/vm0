@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
   IconMessageCircle,
@@ -99,11 +100,19 @@ export function ZeroMeetPage({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroMeetPageProps) {
-  const [activeTab, setActiveTab] = useState("connections");
-  const [agentName, setAgentName] = useState("Zero");
-  const [tone, setTone] = useState<string>("Professional");
-  const [skills, setSkills] = useState<string[]>([...AVAILABLE_SKILLS]);
-  const [savedSettings, setSavedSettings] = useState<{
+  const activeTab$ = useCCState("connections");
+  const activeTab = useGet(activeTab$);
+  const setActiveTab = useSet(activeTab$);
+  const agentName$ = useCCState("Zero");
+  const agentName = useGet(agentName$);
+  const setAgentName = useSet(agentName$);
+  const tone$ = useCCState<string>("Professional");
+  const tone = useGet(tone$);
+  const setTone = useSet(tone$);
+  const skills$ = useCCState<string[]>([...AVAILABLE_SKILLS]);
+  const skills = useGet(skills$);
+  const setSkills = useSet(skills$);
+  const savedSettings$ = useCCState<{
     name: string;
     tone: string;
     skills: string[];
@@ -112,8 +121,12 @@ export function ZeroMeetPage({
     tone: "Professional",
     skills: [...AVAILABLE_SKILLS],
   });
+  const savedSettings = useGet(savedSettings$);
+  const setSavedSettings = useSet(savedSettings$);
   const ADD_SKILL_PLACEHOLDER = "__add_skill__";
-  const [addSkillValue, setAddSkillValue] = useState(ADD_SKILL_PLACEHOLDER);
+  const addSkillValue$ = useCCState(ADD_SKILL_PLACEHOLDER);
+  const addSkillValue = useGet(addSkillValue$);
+  const setAddSkillValue = useSet(addSkillValue$);
 
   const isSettingsDirty =
     agentName !== savedSettings.name ||

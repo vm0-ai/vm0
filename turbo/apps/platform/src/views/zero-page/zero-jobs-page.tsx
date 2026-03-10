@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
 import {
   IconUser,
   IconUsers,
@@ -50,7 +51,9 @@ export function ZeroJobsPage({
 }: {
   onNavigateToChat?: () => void;
 } = {}) {
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const selectedJobId$ = useCCState<string | null>(null);
+  const selectedJobId = useGet(selectedJobId$);
+  const setSelectedJobId = useSet(selectedJobId$);
 
   const selectedJob = selectedJobId
     ? ZERO_TEAM_JOBS.find((j) => j.id === selectedJobId)
