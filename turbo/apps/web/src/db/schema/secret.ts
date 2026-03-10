@@ -26,6 +26,7 @@ export const secrets = pgTable(
     description: text("description"),
     type: varchar("type", { length: 50 }).notNull().default("user"),
     userId: text("user_id").notNull(),
+    clerkOrgId: text("clerk_org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -39,5 +40,12 @@ export const secrets = pgTable(
     ),
     index("idx_secrets_scope").on(table.scopeId),
     index("idx_secrets_type").on(table.type),
+    index("idx_secrets_clerk_org").on(table.clerkOrgId),
+    uniqueIndex("idx_secrets_clerk_org_user_name_type").on(
+      table.clerkOrgId,
+      table.userId,
+      table.name,
+      table.type,
+    ),
   ],
 );

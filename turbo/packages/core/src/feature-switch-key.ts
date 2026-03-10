@@ -11,7 +11,6 @@ export enum FeatureSwitchKey {
   PlatformArtifacts = "platformArtifacts",
   PlatformApiKeys = "platformApiKeys",
   AhrefsConnector = "ahrefsConnector",
-  AsanaConnector = "asanaConnector",
   CanvaConnector = "canvaConnector",
   ComputerConnector = "computerConnector",
   DeelConnector = "deelConnector",
@@ -36,6 +35,8 @@ export enum FeatureSwitchKey {
   OutlookCalendarConnector = "outlookCalendarConnector",
   MetaAdsConnector = "metaAdsConnector",
   StripeConnector = "stripeConnector",
+  PosthogConnector = "posthogConnector",
   GitHubIntegration = "githubIntegration",
   TelegramIntegration = "telegramIntegration",
+  Zero = "zero",
 }

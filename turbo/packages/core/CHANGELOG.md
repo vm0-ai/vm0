@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.51.0](https://github.com/vm0-ai/vm0/compare/core-v8.50.0...core-v8.51.0) (2026-03-10)
+
+
+### Features
+
+* **platform:** add organization switching to zero page sidebar ([#4064](https://github.com/vm0-ai/vm0/issues/4064)) ([03fc6af](https://github.com/vm0-ai/vm0/commit/03fc6aff684efc65235dc74fe2ec689776bb8b05))
+* **scope:** add default agent compose field to scopes ([#4067](https://github.com/vm0-ai/vm0/issues/4067)) ([529b7fd](https://github.com/vm0-ai/vm0/commit/529b7fd3c559342c0eaba5c307ab0b879c5442d5))
+
+
+### Refactoring
+
+* align remaining scope terminology with resource model ([#4094](https://github.com/vm0-ai/vm0/issues/4094)) ([e4df6c9](https://github.com/vm0-ai/vm0/commit/e4df6c96f84ef0e0e1393215a08122bf83a73a21))
+
 ## [8.50.0](https://github.com/vm0-ai/vm0/compare/core-v8.49.0...core-v8.50.0) (2026-03-09)
 
 

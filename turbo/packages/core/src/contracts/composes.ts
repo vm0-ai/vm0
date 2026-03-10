@@ -122,6 +122,7 @@ const composeResponseSchema = z.object({
   name: z.string(),
   headVersionId: z.string().nullable(),
   content: agentComposeContentSchema.nullable(),
+  isDefault: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -270,6 +271,7 @@ const composeListItemSchema = z.object({
   headVersionId: z.string().nullable(),
   updatedAt: z.string(),
   isOwner: z.boolean(),
+  isDefault: z.boolean(),
 });
 
 /**

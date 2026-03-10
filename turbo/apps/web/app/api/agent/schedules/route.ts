@@ -10,6 +10,7 @@ import { deploySchedule, listSchedules } from "../../../../src/lib/schedule";
 import { logger } from "../../../../src/lib/logger";
 import { isNotFound, isBadRequest } from "../../../../src/lib/errors";
 import { resolveScopeId } from "../../../../src/lib/scope/scope-member-service";
+import { getScopeById } from "../../../../src/lib/scope/scope-service";
 
 const log = logger("api:schedules");
 
@@ -33,8 +34,17 @@ const router = tsr.router(schedulesMainContract, {
       // Note: vars and secrets are no longer accepted via API
       // They must be managed via platform tables (vm0 secret set, vm0 var set)
       const scopeId = await resolveScopeId(userId, body.scopeId);
+      const scope = await getScopeById(scopeId);
+      if (!scope) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Scope not found", code: "NOT_FOUND" },
+          },
+        };
+      }
 
-      const result = await deploySchedule(userId, scopeId, {
+      const result = await deploySchedule(userId, scopeId, scope.clerkOrgId, {
         name: body.name,
         composeId: body.composeId,
         cronExpression: body.cronExpression,

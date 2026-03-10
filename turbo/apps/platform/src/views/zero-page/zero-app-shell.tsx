@@ -83,8 +83,6 @@ export function ZeroAppShell() {
         onSelect={handleNavSelect}
         onRecentSelect={handleRecentSelect}
         selectedRecentId={activeId === "chat" ? recentId : null}
-        zeroAvatarSrc={zeroAvatarSrc}
-        onAvatarClick={cycleAvatar}
         onAccountAction={handleAccountAction}
       />
       <div className="flex flex-1 flex-col min-w-0 zero-workspace-bg">

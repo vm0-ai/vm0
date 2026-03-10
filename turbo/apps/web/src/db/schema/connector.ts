@@ -32,6 +32,7 @@ export const connectors = pgTable(
     oauthScopes: text("oauth_scopes"), // JSON array of scopes
     tokenExpiresAt: timestamp("token_expires_at"), // null = non-expiring token
     userId: text("user_id").notNull(),
+    clerkOrgId: text("clerk_org_id").notNull(),
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -44,5 +45,11 @@ export const connectors = pgTable(
       table.type,
     ),
     index("idx_connectors_scope").on(table.scopeId),
+    index("idx_connectors_clerk_org").on(table.clerkOrgId),
+    uniqueIndex("idx_connectors_clerk_org_user_type").on(
+      table.clerkOrgId,
+      table.userId,
+      table.type,
+    ),
   ],
 );

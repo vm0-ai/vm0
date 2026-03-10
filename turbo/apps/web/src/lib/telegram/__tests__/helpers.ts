@@ -40,6 +40,7 @@ export async function createTelegramInstallation(): Promise<string> {
     .values({
       userId: uniqueId("test-user"),
       scopeId: scope!.id,
+      clerkOrgId: scope!.clerkOrgId,
       name: uniqueId("test-compose"),
     })
     .returning();

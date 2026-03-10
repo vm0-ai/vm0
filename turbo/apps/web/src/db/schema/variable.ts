@@ -25,6 +25,7 @@ export const variables = pgTable(
     value: text("value").notNull(),
     description: text("description"),
     userId: text("user_id").notNull(),
+    clerkOrgId: text("clerk_org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -35,5 +36,11 @@ export const variables = pgTable(
       table.name,
     ),
     index("idx_variables_scope").on(table.scopeId),
+    index("idx_variables_clerk_org").on(table.clerkOrgId),
+    uniqueIndex("idx_variables_clerk_org_user_name").on(
+      table.clerkOrgId,
+      table.userId,
+      table.name,
+    ),
   ],
 );

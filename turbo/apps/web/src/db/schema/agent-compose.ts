@@ -24,6 +24,7 @@ export const agentComposes = pgTable(
       .references(() => scopes.id, { onDelete: "cascade" }), // Scope reference
     name: varchar("name", { length: 64 }).notNull().default(""), // Agent name from compose
     headVersionId: varchar("head_version_id", { length: 64 }), // Points to latest version hash
+    clerkOrgId: text("clerk_org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -33,6 +34,11 @@ export const agentComposes = pgTable(
       table.name,
     ),
     scopeIdx: index("idx_agent_composes_scope").on(table.scopeId),
+    clerkOrgIdx: index("idx_agent_composes_clerk_org").on(table.clerkOrgId),
+    clerkOrgNameIdx: uniqueIndex("idx_agent_composes_clerk_org_name").on(
+      table.clerkOrgId,
+      table.name,
+    ),
   }),
 );
 
