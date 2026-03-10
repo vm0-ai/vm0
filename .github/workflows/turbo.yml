@@ -1134,7 +1134,7 @@ jobs:
           # Split test files into chunks via random round-robin for balanced runtime
           mapfile -t FILES < <(ls e2e/tests/03-experimental-runner/*.bats | shuf)
           NUM_FILES=${#FILES[@]}
-          NUM_CHUNKS=4
+          NUM_CHUNKS=8
           [ "$NUM_CHUNKS" -gt "$NUM_FILES" ] && NUM_CHUNKS=$NUM_FILES
           echo "Runner E2E: $NUM_FILES files, $NUM_CHUNKS chunks"
 
