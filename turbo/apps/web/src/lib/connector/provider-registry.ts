@@ -40,6 +40,7 @@ import { webflowHandler } from "./providers/webflow-handler";
 import { outlookCalendarHandler } from "./providers/outlook-calendar-handler";
 import { outlookMailHandler } from "./providers/outlook-mail-handler";
 import { metaAdsHandler } from "./providers/meta-ads-handler";
+import { posthogHandler } from "./providers/posthog-handler";
 import { xeroHandler } from "./providers/xero-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
@@ -82,6 +83,7 @@ export const PROVIDER_HANDLERS: Record<
   webflow: webflowHandler,
   supabase: supabaseHandler,
   "meta-ads": metaAdsHandler,
+  posthog: posthogHandler,
   x: xHandler,
   xero: xeroHandler,
 };

@@ -912,6 +912,73 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  posthog: {
+    label: "PostHog",
+    helpText:
+      "Connect your PostHog account to access product analytics, feature flags, and experiments",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with PostHog to grant access.",
+        secrets: {
+          POSTHOG_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          POSTHOG_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+      "api-token": {
+        label: "Personal API Key",
+        helpText:
+          "1. Log in to your [PostHog Dashboard](https://us.posthog.com)\n2. Go to **Settings → Personal API keys**\n3. Click **+ Create personal API key**\n4. Select the scopes you need and copy the key",
+        secrets: {
+          POSTHOG_ACCESS_TOKEN: {
+            label: "Personal API Key",
+            required: true,
+            placeholder: "phx_...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      POSTHOG_PERSONAL_API_KEY: "$secrets.POSTHOG_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://us.posthog.com/oauth/authorize",
+      tokenUrl: "https://us.posthog.com/oauth/token",
+      scopes: [
+        "openid",
+        "profile",
+        "email",
+        "user:read",
+        "project:read",
+        "feature_flag:read",
+        "feature_flag:write",
+        "experiment:read",
+        "experiment:write",
+        "insight:read",
+        "insight:write",
+        "dashboard:read",
+        "dashboard:write",
+        "action:read",
+        "action:write",
+        "annotation:read",
+        "annotation:write",
+        "cohort:read",
+        "cohort:write",
+        "event_definition:read",
+        "query:read",
+        "survey:read",
+        "survey:write",
+        "error_tracking:read",
+      ],
+    } as ConnectorOAuthConfig,
+  },
   "intervals-icu": {
     label: "Intervals.icu",
     helpText:
@@ -1531,6 +1598,10 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
     targets: ["https://graph.facebook.com"],
     auth: BEARER_AUTH,
   },
+  posthog: {
+    targets: ["https://us.posthog.com/api", "https://app.posthog.com/api"],
+    auth: BEARER_AUTH,
+  },
   stripe: {
     targets: ["https://api.stripe.com"],
     auth: BEARER_AUTH,
@@ -1574,6 +1645,7 @@ export const connectorTypeSchema = z.enum([
   "outlook-mail",
   "outlook-calendar",
   "meta-ads",
+  "posthog",
   "stripe",
 ]);
 
