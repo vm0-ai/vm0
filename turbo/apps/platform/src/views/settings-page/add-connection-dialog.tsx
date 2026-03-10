@@ -121,7 +121,7 @@ function ApiTokenForm({
       )}
       {apiTokenConfig.helpText && (
         <div
-          className="text-sm text-muted-foreground leading-relaxed [&_a]:text-primary [&_a]:underline"
+          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
           dangerouslySetInnerHTML={{
             __html: renderMarkdown(apiTokenConfig.helpText),
           }}
