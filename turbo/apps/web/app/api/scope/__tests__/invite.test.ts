@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { POST as createScopeRoute } from "../route";
 import { POST } from "../invite/route";
-import { GET as listScopesRoute } from "../list/route";
 import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 import { setupClerkOrgMock } from "../../../../src/__tests__/clerk-org-mock";
+import { clerkClient } from "@clerk/nextjs/server";
 
 const context = testContext();
 
@@ -96,7 +96,7 @@ describe("POST /api/scope/invite - Invite Member", () => {
     expect(inviteData.message).toContain("new-member@example.com");
   });
 
-  it("should create scope_members record when invitee has existing account", async () => {
+  it("should create Clerk invitation for existing user without writing to scope_members", async () => {
     const userId = uniqueId("invite-admin2");
     const { slug } = await createTestScope(userId);
 
@@ -111,18 +111,15 @@ describe("POST /api/scope/invite - Invite Member", () => {
     const inviteRes = await POST(inviteReq);
     expect(inviteRes.status).toBe(200);
 
-    // Verify scope_members record was created for the invitee
-    mockClerk({ userId: "user_existing-user" });
-
-    const listReq = createTestRequest("http://localhost:3000/api/scope/list");
-    const listRes = await listScopesRoute(listReq);
-    expect(listRes.status).toBe(200);
-
-    const listData = await listRes.json();
-    const scopeEntry = listData.scopes.find(
-      (s: { slug: string }) => s.slug === slug,
+    // Verify Clerk invitation was created
+    const client = await clerkClient();
+    expect(
+      client.organizations.createOrganizationInvitation,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        emailAddress: "existing-user@example.com",
+        role: "org:member",
+      }),
     );
-    expect(scopeEntry).toBeDefined();
-    expect(scopeEntry.role).toBe("member");
   });
 });

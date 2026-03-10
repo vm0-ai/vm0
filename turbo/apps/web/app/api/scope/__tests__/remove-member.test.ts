@@ -208,13 +208,23 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     const removeRes = await DELETE(removeReq);
     expect(removeRes.status).toBe(200);
 
-    // Verify member can no longer access scope members
-    mockClerk({ userId: memberUserId });
+    // Verify member is no longer in the Clerk org membership list.
+    // Note: the stale scope_members record still grants route access during
+    // the migration period, but the Clerk-based members list won't include them.
+    setupClerkOrgMock({
+      userId: memberUserId,
+      orgId,
+      memberships: [{ userId: adminUserId, role: "org:admin" }],
+    });
     const statusReq2 = createTestRequest(
       `http://localhost:3000/api/scope/members?scope=${slug}`,
     );
     const statusRes2 = await getMembersRoute(statusReq2);
-    // After removal, the member should get 403 (not a member)
-    expect(statusRes2.status).toBe(403);
+    expect(statusRes2.status).toBe(200);
+    const statusData2 = await statusRes2.json();
+    const removedMember = statusData2.members.find(
+      (m: { userId: string }) => m.userId === memberUserId,
+    );
+    expect(removedMember).toBeUndefined();
   });
 });

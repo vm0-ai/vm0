@@ -43,7 +43,7 @@ export function mockClerk(options: {
   email?: string;
   orgId?: string | null;
   orgSlug?: string | null;
-  clerkOrgs?: Array<{ id: string; slug: string; name: string }>;
+  clerkOrgs?: Array<{ id: string; slug: string; name: string; role?: string }>;
 }) {
   const email = options.email ?? "test@example.com";
 
@@ -93,7 +93,7 @@ export function mockClerk(options: {
       getOrganizationMembershipList: vi.fn().mockResolvedValue({
         data: clerkOrgs.map((org) => ({
           organization: { id: org.id, slug: org.slug, name: org.name },
-          role: "org:admin",
+          role: org.role ?? "org:admin",
           publicUserData: { userId: options.userId },
         })),
       }),
