@@ -1372,6 +1372,29 @@ export const CONNECTOR_TYPES = {
       scopes: ["read_write"],
     } as ConnectorOAuthConfig,
   },
+  similarweb: {
+    label: "SimilarWeb",
+    helpText:
+      "Connect your SimilarWeb account to access website traffic analytics, competitive intelligence, and market insights",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [SimilarWeb](https://www.similarweb.com)\n2. Go to **Settings > Account > API Keys**\n3. Generate and activate an API key\n4. Copy the key",
+        secrets: {
+          SIMILARWEB_API_KEY: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-similarweb-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      SIMILARWEB_API_KEY: "$secrets.SIMILARWEB_API_KEY",
+    } as Record<string, string>,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -1535,6 +1558,10 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
     targets: ["https://api.stripe.com"],
     auth: BEARER_AUTH,
   },
+  similarweb: {
+    targets: ["https://api.similarweb.com"],
+    auth: { headers: { "api-key": "${token}" } },
+  },
 };
 
 export const connectorTypeSchema = z.enum([
@@ -1575,6 +1602,7 @@ export const connectorTypeSchema = z.enum([
   "outlook-calendar",
   "meta-ads",
   "stripe",
+  "similarweb",
 ]);
 
 /**

@@ -1,4 +1,4 @@
-import { type ConnectorType } from "@vm0/core";
+import { type ConnectorType, getConnectorDefaultAuthMethod } from "@vm0/core";
 import { type Env } from "../../env";
 import {
   type AuthUrlResult,
@@ -40,6 +40,7 @@ import { webflowHandler } from "./providers/webflow-handler";
 import { outlookCalendarHandler } from "./providers/outlook-calendar-handler";
 import { outlookMailHandler } from "./providers/outlook-mail-handler";
 import { metaAdsHandler } from "./providers/meta-ads-handler";
+import { similarwebHandler } from "./providers/similarweb-handler";
 import { xeroHandler } from "./providers/xero-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
@@ -82,6 +83,7 @@ export const PROVIDER_HANDLERS: Record<
   webflow: webflowHandler,
   supabase: supabaseHandler,
   "meta-ads": metaAdsHandler,
+  similarweb: similarwebHandler,
   x: xHandler,
   xero: xeroHandler,
 };
@@ -94,11 +96,14 @@ export function getConfiguredConnectorTypes(currentEnv: Env): ConnectorType[] {
   const configured: ConnectorType[] = [];
 
   for (const [type, handler] of Object.entries(PROVIDER_HANDLERS)) {
+    const connectorType = type as ConnectorType;
     if (
       handler.getClientId(currentEnv) &&
       handler.getClientSecret(currentEnv)
     ) {
-      configured.push(type as ConnectorType);
+      configured.push(connectorType);
+    } else if (getConnectorDefaultAuthMethod(connectorType) === "api-token") {
+      configured.push(connectorType);
     }
   }
 
