@@ -23,7 +23,7 @@ jobs:
   detect:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260310
     outputs:
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
       ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
@@ -72,7 +72,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260310
     needs: [detect]
     steps:
       - uses: actions/checkout@v6
@@ -126,7 +126,7 @@ jobs:
   runner-build:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260310
     needs: [detect]
     if: |
       needs.detect.outputs.ci-changed == 'true' ||
