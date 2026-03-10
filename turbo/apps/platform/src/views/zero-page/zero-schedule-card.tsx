@@ -7,6 +7,7 @@ import {
   IconList,
   IconLayoutGrid,
   IconPencil,
+  IconTrash,
 } from "@tabler/icons-react";
 import {
   Card,
@@ -79,6 +80,9 @@ export interface ScheduleEntry {
   id: string;
   time: string;
   prompt: string;
+  /** Schedule name used for API operations (edit/delete). */
+  name?: string;
+  enabled?: boolean;
 }
 
 function formatTimeOfDay(hour: number, minute: number): string {
@@ -328,19 +332,41 @@ interface ZeroScheduleCardProps {
   title: string;
   subtitle: string;
   initialSchedule: readonly Readonly<ScheduleEntry>[];
+  /** When provided, called on save instead of local state mutation. */
+  onSave?: (params: {
+    prompt: string;
+    freq: string;
+    date: string;
+    hour: number;
+    minute: number;
+    timezone: string;
+    loopMinutes: number;
+    editName?: string;
+  }) => Promise<void>;
+  /** When provided, called to delete a schedule by name. */
+  onDelete?: (name: string) => Promise<void>;
+  /** When true, the save button shows a loading state. */
+  saving?: boolean;
 }
 
 export function ZeroScheduleCard({
   title,
   subtitle,
   initialSchedule,
+  onSave,
+  onDelete,
+  saving,
 }: ZeroScheduleCardProps) {
   const scheduleViewMode$ = useCCState<"list" | "calendar">("list");
   const scheduleViewMode = useGet(scheduleViewMode$);
   const setScheduleViewMode = useSet(scheduleViewMode$);
-  const scheduleList$ = useCCState<ScheduleEntry[]>([...initialSchedule]);
-  const scheduleList = useGet(scheduleList$);
-  const setScheduleList = useSet(scheduleList$);
+  const internalScheduleList$ = useCCState<ScheduleEntry[]>([
+    ...initialSchedule,
+  ]);
+  const internalScheduleList = useGet(internalScheduleList$);
+  const setScheduleList = useSet(internalScheduleList$);
+  // In API mode (onSave provided), use prop directly; otherwise use internal state
+  const scheduleList = onSave ? [...initialSchedule] : internalScheduleList;
   const addScheduleOpen$ = useCCState(false);
   const addScheduleOpen = useGet(addScheduleOpen$);
   const setAddScheduleOpen = useSet(addScheduleOpen$);
@@ -396,10 +422,32 @@ export function ZeroScheduleCard({
     setAddScheduleOpen(true);
   };
 
-  const addScheduleEntry = () => {
+  const addScheduleEntry = async () => {
     if (!newSchedulePrompt.trim()) {
       return;
     }
+
+    if (onSave) {
+      // Find the editing entry's name for API update
+      const editingEntry = editingScheduleId
+        ? scheduleList.find((e) => e.id === editingScheduleId)
+        : null;
+      await onSave({
+        prompt: newSchedulePrompt.trim(),
+        freq: scheduleFreq,
+        date: scheduleDate,
+        hour: scheduleHour,
+        minute: scheduleMinute,
+        timezone: scheduleTimezone,
+        loopMinutes: scheduleLoopMinutes,
+        editName: editingEntry?.name,
+      });
+      setNewSchedulePrompt("");
+      setEditingScheduleId(null);
+      setAddScheduleOpen(false);
+      return;
+    }
+
     const timeStr = buildScheduleTimeString({
       freq: scheduleFreq,
       date: scheduleFreq === "once" ? scheduleDate : undefined,
@@ -501,6 +549,16 @@ export function ZeroScheduleCard({
                     >
                       <IconPencil size={14} stroke={1.5} />
                     </button>
+                    {onDelete && entry.name && (
+                      <button
+                        type="button"
+                        onClick={() => void onDelete(entry.name!)}
+                        className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
+                        aria-label={`Delete ${entry.time}`}
+                      >
+                        <IconTrash size={14} stroke={1.5} />
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -865,10 +923,10 @@ export function ZeroScheduleCard({
             </Button>
             <Button
               type="button"
-              onClick={addScheduleEntry}
-              disabled={!newSchedulePrompt.trim()}
+              onClick={() => void addScheduleEntry()}
+              disabled={!newSchedulePrompt.trim() || saving}
             >
-              {editingScheduleId ? "Save" : "Add"}
+              {saving ? "Saving…" : editingScheduleId ? "Save" : "Add"}
             </Button>
           </DialogFooter>
         </DialogContent>

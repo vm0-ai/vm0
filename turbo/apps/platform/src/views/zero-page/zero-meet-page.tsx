@@ -30,8 +30,15 @@ import {
   DropdownMenuItem,
   cn,
 } from "@vm0/ui";
-import { ZeroScheduleCard, DEFAULT_SCHEDULE } from "./zero-schedule-card";
+import { ZeroScheduleCard, type ScheduleEntry } from "./zero-schedule-card";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import {
+  fetchZeroSchedules$,
+  zeroScheduleEntries$,
+  saveZeroSchedule$,
+  deleteZeroSchedule$,
+  type ZeroScheduleSaveParams,
+} from "../../signals/zero-page/zero-schedule.ts";
 import {
   type ConnectorTypeWithStatus,
   allConnectorTypes$,
@@ -222,6 +229,54 @@ function ZeroSkillItem({
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Schedule tab — real schedule CRUD
+// ---------------------------------------------------------------------------
+
+function ZeroScheduleTab({ resolvedAgentName }: { resolvedAgentName: string }) {
+  const entriesLoadable = useLoadable(zeroScheduleEntries$);
+  const fetchSchedules = useSet(fetchZeroSchedules$);
+  const saveSchedule = useSet(saveZeroSchedule$);
+  const deleteSchedule = useSet(deleteZeroSchedule$);
+  const saving$ = useCCState(false);
+  const saving = useGet(saving$);
+  const setSaving = useSet(saving$);
+
+  // Fetch schedules on mount
+  const initialized$ = useCCState(false);
+  const initialized = useGet(initialized$);
+  const setInitialized = useSet(initialized$);
+  if (!initialized) {
+    setInitialized(true);
+    detach(fetchSchedules(), Reason.DomCallback);
+  }
+
+  const entries: ScheduleEntry[] =
+    entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
+
+  const handleSave = async (params: ZeroScheduleSaveParams) => {
+    setSaving(true);
+    try {
+      await saveSchedule(params);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-[900px] px-7">
+      <ZeroScheduleCard
+        title={`${resolvedAgentName}'s schedule`}
+        subtitle={`Set a time and prompt for ${resolvedAgentName} to run automatically.`}
+        initialSchedule={entries}
+        onSave={handleSave}
+        onDelete={deleteSchedule}
+        saving={saving}
+      />
     </div>
   );
 }
@@ -666,13 +721,7 @@ export function ZeroMeetPage({
         {activeTab === "skills" && <ZeroSkillsTab />}
 
         {activeTab === "schedule" && (
-          <div className="mx-auto max-w-[900px] px-7">
-            <ZeroScheduleCard
-              title={`${resolvedAgentName}'s schedule`}
-              subtitle={`Set a time and prompt for ${resolvedAgentName} to run automatically.`}
-              initialSchedule={DEFAULT_SCHEDULE}
-            />
-          </div>
+          <ZeroScheduleTab resolvedAgentName={resolvedAgentName} />
         )}
 
         {activeTab === "settings" && (
