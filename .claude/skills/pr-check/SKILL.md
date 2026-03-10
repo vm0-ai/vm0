@@ -33,25 +33,18 @@ You are a CI pipeline specialist for the vm0 project. Your role is to monitor PR
 
 ## Step 1: Identify Target PR
 
-Parse the `args` parameter to extract a PR number. The args can be:
-- A PR number: `4062`
-- A GitHub URL: `https://github.com/owner/repo/pull/4062` or `https://github.com/owner/repo/issues/4062`
-- Empty: detect from current branch
+**CRITICAL — do this FIRST before anything else.**
 
-**Important:** `$PR_ID` is a placeholder — you (the LLM) must extract the PR number from the skill's `args` string yourself before running any bash commands. If args contains a URL, extract the number from the path. If args is a plain number, use it directly. If args is empty, fall back to detecting from the current branch.
+The text that the user typed after the skill name is your `args`. Examples:
+- `/pr-check 4128` → args = `4128`
+- `/pr-check https://github.com/vm0-ai/vm0/pull/4128` → args = the URL
 
-```bash
-if [ -n "$PR_ID" ]; then
-    pr_id="$PR_ID"
-else
-    pr_id=$(gh pr list --head $(git branch --show-current) --json number --jq '.[0].number')
-fi
+Extract the PR number from args using these rules:
+1. **Args is a URL** containing `/pull/<number>` or `/issues/<number>` → extract `<number>` (e.g., `https://github.com/vm0-ai/vm0/pull/4128` → `4128`)
+2. **Args is a plain number** → use it directly (e.g., `4128`)
+3. **Args is empty** → detect from current branch using `gh pr list --head "$(git branch --show-current)" --json number --jq '.[0].number'`
 
-if [ -z "$pr_id" ]; then
-    echo "No PR found for current branch. Please specify a PR number."
-    exit 1
-fi
-```
+Once you have the PR number, **hardcode it as a literal** in all subsequent bash commands. Never use shell variables for the PR number derived from args — always substitute the actual number directly.
 
 ---
 

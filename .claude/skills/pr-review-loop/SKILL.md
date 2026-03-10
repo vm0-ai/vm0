@@ -32,27 +32,28 @@ Loop control is handled by a **bash driver script**, not by your memory. You MUS
 
 ### 1a: Identify PR
 
-Parse the `args` parameter to extract a PR number. The args can be:
-- A PR number: `4062`
-- A GitHub PR URL: `https://github.com/owner/repo/pull/4062`
-- A GitHub issue URL: `https://github.com/owner/repo/issues/4062` (treat as PR number)
-- Empty: detect from current branch
+**CRITICAL — do this FIRST before anything else.**
+
+The text that the user typed after `/pr-review-loop` is your `args`. Examples:
+- `/pr-review-loop 4128` → args = `4128`
+- `/pr-review-loop https://github.com/vm0-ai/vm0/pull/4128` → args = the URL
+
+Extract the PR number from args using these rules:
+1. **Args is a URL** containing `/pull/<number>` or `/issues/<number>` → extract `<number>` (e.g., `https://github.com/vm0-ai/vm0/pull/4128` → `4128`)
+2. **Args is a plain number** → use it directly (e.g., `4128`)
+3. **Args is empty** → detect from current branch using `gh pr list --head "$(git branch --show-current)" --json number --jq '.[0].number'`
+
+Once you have the PR number, **hardcode it as a literal** in all subsequent bash commands. Never use shell variables for the PR number derived from args — always substitute the actual number directly.
+
+### 1b: Checkout PR Branch
+
+Switch to the PR branch so that fixes are applied to the correct code:
 
 ```bash
-# Parse PR_ID from args — extract number from URL if needed
-PR_ID=$(echo "$ARGS" | grep -oP '(?:pull|issues)/\K[0-9]+' || echo "$ARGS" | grep -oP '^[0-9]+$' || echo "")
-
-if [ -n "$PR_ID" ]; then
-    PR_NUMBER="$PR_ID"
-else
-    CURRENT_BRANCH=$(git branch --show-current)
-    PR_NUMBER=$(gh pr list --head "$CURRENT_BRANCH" --json number --jq '.[0].number')
-fi
+gh pr checkout <PR_NUMBER>
 ```
 
-**Important:** `$ARGS` is a placeholder — you (the LLM) must extract the PR number from the skill's `args` string yourself before running any bash commands. If args contains a URL, extract the number from the path. If args is a plain number, use it directly. If args is empty, fall back to detecting from the current branch.
-
-### 1b: Create Driver Script
+### 1c: Create Driver Script
 
 Write this script to `/tmp/pr-review-loop-driver.sh` and make it executable:
 
@@ -92,7 +93,7 @@ DRIVER
 chmod +x /tmp/pr-review-loop-driver.sh
 ```
 
-### 1c: Initialize
+### 1d: Initialize
 
 ```bash
 ACTION=$(/tmp/pr-review-loop-driver.sh "$PR_NUMBER" init)
