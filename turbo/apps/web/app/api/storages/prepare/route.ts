@@ -158,7 +158,7 @@ const router = tsr.router(storagesPrepareContract, {
       })
       .onConflictDoUpdate({
         target: [
-          storages.scopeId,
+          storages.clerkOrgId,
           storages.userId,
           storages.name,
           storages.type,
