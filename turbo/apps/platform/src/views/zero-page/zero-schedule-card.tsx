@@ -85,6 +85,27 @@ export interface ScheduleEntry {
   enabled?: boolean;
 }
 
+function DeleteButton({
+  name,
+  label,
+  onDelete,
+}: {
+  name: string;
+  label: string;
+  onDelete: (name: string) => Promise<void>;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => void onDelete(name)}
+      className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
+      aria-label={`Delete ${label}`}
+    >
+      <IconTrash size={14} stroke={1.5} />
+    </button>
+  );
+}
+
 function formatTimeOfDay(hour: number, minute: number): string {
   if (hour === 0 && minute === 0) {
     return "12:00 AM";
@@ -549,15 +570,12 @@ export function ZeroScheduleCard({
                     >
                       <IconPencil size={14} stroke={1.5} />
                     </button>
-                    {onDelete && entry.name && (
-                      <button
-                        type="button"
-                        onClick={() => void onDelete(entry.name!)}
-                        className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
-                        aria-label={`Delete ${entry.time}`}
-                      >
-                        <IconTrash size={14} stroke={1.5} />
-                      </button>
+                    {onDelete && entry.name !== undefined && (
+                      <DeleteButton
+                        name={entry.name}
+                        label={entry.time}
+                        onDelete={onDelete}
+                      />
                     )}
                   </li>
                 ))}
