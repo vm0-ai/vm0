@@ -26,6 +26,7 @@ import neonIcon from "./icons/neon.svg";
 import notionIcon from "./icons/notion.svg";
 import outlookCalendarIcon from "./icons/outlook-calendar.svg";
 import outlookMailIcon from "./icons/outlook-mail.svg";
+import posthogIcon from "./icons/posthog.svg";
 import redditIcon from "./icons/reddit.svg";
 import sentryIcon from "./icons/sentry.svg";
 import slackIcon from "./icons/slack.svg";
@@ -65,6 +66,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   notion: notionIcon,
   "outlook-calendar": outlookCalendarIcon,
   "outlook-mail": outlookMailIcon,
+  posthog: posthogIcon,
   reddit: redditIcon,
   sentry: sentryIcon,
   slack: slackIcon,
