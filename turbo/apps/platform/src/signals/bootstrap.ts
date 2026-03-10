@@ -47,7 +47,7 @@ const ROUTE_CONFIG = [
   },
   {
     path: "/zero/:tab",
-    setup: setupAuthPageWrapper(setupZeroPage$)
+    setup: setupAuthPageWrapper(setupZeroPage$),
   },
   {
     path: "/zero",
