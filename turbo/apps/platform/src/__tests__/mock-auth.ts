@@ -3,17 +3,17 @@ import { vi } from "vitest";
 interface MockedUser {
   id: string;
   fullName: string;
-  organizationMemberships: Array<{ id: string }>;
+  organizationMemberships: { id: string }[];
   getOrganizationInvitations: (params?: {
     status?: string;
-  }) => Promise<{ data: Array<{ id: string }>; total_count: number }>;
+  }) => Promise<{ data: { id: string }[]; total_count: number }>;
 }
 
 let internalMockedUser: MockedUser | null = null;
 let internalMockedSession: { token: string } | null = null;
 let internalMockedOrganization: { id: string; name: string } | null = null;
-let internalMockedInvitations: Array<{ id: string }> = [];
-let internalMockedMemberships: Array<{ id: string }> = [{ id: "org_default" }];
+let internalMockedInvitations: { id: string }[] = [];
+let internalMockedMemberships: { id: string }[] = [{ id: "org_default" }];
 
 export function mockUser(
   user: { id: string; fullName: string } | null,
@@ -42,8 +42,8 @@ export function mockUser(
  */
 export function mockOrganization(options: {
   activeOrg?: { id: string; name: string } | null;
-  memberships?: Array<{ id: string }>;
-  pendingInvitations?: Array<{ id: string }>;
+  memberships?: { id: string }[];
+  pendingInvitations?: { id: string }[];
 }) {
   internalMockedOrganization = options.activeOrg ?? null;
   if (options.memberships) {
