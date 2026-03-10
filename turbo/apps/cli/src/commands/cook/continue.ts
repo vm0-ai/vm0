@@ -2,6 +2,7 @@ import { Command, Option } from "commander";
 import chalk from "chalk";
 import path from "path";
 import { loadCookState, saveCookState } from "../../lib/domain/cook-state";
+import { withErrorHandler } from "../../lib/command";
 import {
   ARTIFACT_DIR,
   printCommand,
@@ -23,15 +24,15 @@ export const continueCommand = new Command()
   .option("-v, --verbose", "Show full tool inputs and outputs")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(
-    async (
-      prompt: string,
-      options: {
-        envFile?: string;
-        verbose?: boolean;
-        debugNoMockClaude?: boolean;
-      },
-    ) => {
-      try {
+    withErrorHandler(
+      async (
+        prompt: string,
+        options: {
+          envFile?: string;
+          verbose?: boolean;
+          debugNoMockClaude?: boolean;
+        },
+      ) => {
         const state = await loadCookState();
         if (!state.lastSessionId) {
           console.error(chalk.red("✗ No previous session found"));
@@ -81,16 +82,6 @@ export const continueCommand = new Command()
 
         // Auto-pull artifact
         await autoPullArtifact(runOutput, artifactDir);
-      } catch (error) {
-        if (error instanceof Error) {
-          console.error(chalk.red(`✗ ${error.message}`));
-          if (error.cause instanceof Error) {
-            console.error(chalk.dim(`  Cause: ${error.cause.message}`));
-          }
-        } else {
-          console.error(chalk.red("✗ An unexpected error occurred"));
-        }
-        process.exit(1);
-      }
-    },
+      },
+    ),
   );
