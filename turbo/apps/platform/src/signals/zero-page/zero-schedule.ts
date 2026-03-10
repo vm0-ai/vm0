@@ -8,6 +8,7 @@ import {
   buildCronExpression,
   buildAtTime,
   type ScheduleBody,
+  type CronTimeOption,
 } from "../agent-detail/cron.ts";
 
 const L = logger("ZeroSchedule");
@@ -40,7 +41,6 @@ interface ScheduleResponse {
 // ---------------------------------------------------------------------------
 
 const internalSchedules$ = state<ScheduleResponse[]>([]);
-const internalLoading$ = state(false);
 
 // ---------------------------------------------------------------------------
 // Convert ScheduleResponse to display time string
@@ -130,7 +130,6 @@ export const fetchZeroSchedules$ = command(async ({ get, set }) => {
     return;
   }
 
-  set(internalLoading$, true);
   try {
     const fetchFn = get(fetch$);
     const response = await fetchFn("/api/agent/schedules");
@@ -153,8 +152,6 @@ export const fetchZeroSchedules$ = command(async ({ get, set }) => {
     throwIfAbort(error);
     L.error("Failed to fetch zero schedules:", error);
     set(internalSchedules$, []);
-  } finally {
-    set(internalLoading$, false);
   }
 });
 
@@ -208,19 +205,18 @@ export const saveZeroSchedule$ = command(
       body = { ...base, atTime: new Date().toISOString() };
     } else {
       // Map freq to cron time option
-      const freqMap: Record<string, string> = {
+      const freqMap: Record<string, CronTimeOption> = {
         every_weekday: "every-weekday",
         every_day: "every-day",
         every_week: "every-week",
         every_month: "every-month",
       };
-      const timeOption = freqMap[params.freq] ?? "every-day";
+      const timeOption = freqMap[params.freq];
+      if (!timeOption) {
+        throw new Error(`Unknown schedule frequency: ${params.freq}`);
+      }
       const cronExpression = buildCronExpression({
-        timeOption: timeOption as
-          | "every-weekday"
-          | "every-day"
-          | "every-week"
-          | "every-month",
+        timeOption,
         hour: String(params.hour),
         minute: String(params.minute),
       });
@@ -253,7 +249,9 @@ export const saveZeroSchedule$ = command(
     );
 
     if (!enableResponse.ok) {
-      L.warn("Failed to enable schedule:", enableResponse.statusText);
+      throw new Error(
+        `Schedule saved but failed to enable: ${enableResponse.statusText}`,
+      );
     }
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
