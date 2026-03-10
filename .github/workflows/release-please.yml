@@ -197,6 +197,7 @@ jobs:
           environment-variables: |
             DATABASE_URL=${{ steps.get-db-url.outputs.database-url }}
             BLOG_BASE_URL=https://www.vm0.ai
+            STRAPI_URL=${{ vars.STRAPI_URL }}
             CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             E2B_API_KEY=${{ secrets.E2B_API_KEY }}
