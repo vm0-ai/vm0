@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { POST as createScopeRoute } from "../route";
 import { POST } from "../invite/route";
+import { GET as getMembersRoute } from "../members/route";
 import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 import { setupClerkOrgMock } from "../../../../src/__tests__/clerk-org-mock";
-import { clerkClient } from "@clerk/nextjs/server";
 
 const context = testContext();
 
@@ -96,30 +96,46 @@ describe("POST /api/scope/invite - Invite Member", () => {
     expect(inviteData.message).toContain("new-member@example.com");
   });
 
-  it("should create Clerk invitation for existing user without writing to scope_members", async () => {
-    const userId = uniqueId("invite-admin2");
-    const { slug } = await createTestScope(userId);
+  it("should make invited member visible in scope members list", async () => {
+    const adminUserId = uniqueId("invite-admin2");
+    const memberUserId = "user_new-member";
+    const memberEmail = "new-member@example.com";
+    const { slug, orgId } = await createTestScope(adminUserId);
 
+    // Invite the member
     const inviteReq = createTestRequest(
       `http://localhost:3000/api/scope/invite?scope=${slug}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: "existing-user@example.com" }),
+        body: JSON.stringify({ email: memberEmail }),
       },
     );
     const inviteRes = await POST(inviteReq);
     expect(inviteRes.status).toBe(200);
 
-    // Verify Clerk invitation was created
-    const client = await clerkClient();
-    expect(
-      client.organizations.createOrganizationInvitation,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        emailAddress: "existing-user@example.com",
-        role: "org:member",
-      }),
+    // After invite, Clerk org now includes the new member
+    setupClerkOrgMock({
+      userId: adminUserId,
+      orgId,
+      memberships: [
+        { userId: adminUserId, role: "org:admin" },
+        { userId: memberUserId, role: "org:member" },
+      ],
+    });
+
+    // Verify invited member appears in the members list
+    const membersReq = createTestRequest(
+      `http://localhost:3000/api/scope/members?scope=${slug}`,
     );
+    const membersRes = await getMembersRoute(membersReq);
+    expect(membersRes.status).toBe(200);
+
+    const membersData = await membersRes.json();
+    const invitedMember = membersData.members.find(
+      (m: { userId: string }) => m.userId === memberUserId,
+    );
+    expect(invitedMember).toBeDefined();
+    expect(invitedMember.role).toBe("member");
   });
 });
