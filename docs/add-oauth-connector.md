@@ -177,11 +177,11 @@ After both apps are registered and the credentials file is populated:
    ```
    Then re-run the checks. Only investigate errors that persist after the environment is fresh.
 1. Ensure you use the real product SVG logo from the Internet, not a placeholder image.
-1. Ensure the new connector is protected with a feature switch, and that the feature switch is disabled by default.
-1. Add the OAuth env vars to both `.github/workflows/turbo.yml` and `.github/workflows/release-please.yml` deploy steps (client ID from `vars`, client secret from `secrets`).
-1. Ensure that `.env.tpl` references the correct secrets/vars and that the secret/var names in 1Password match the environment variable names.
-1. Run `bash scripts/sync-oauth.sh PROVIDER_NAME` to sync credentials from `/tmp/oauth-credentials/<PROVIDER>` to 1Password and GitHub. If any fields are missing, fill them in and re-run. Wait for the user to confirm completion.
-1. Verify that the secrets/vars are correctly set on GitHub by running `gh variable list | grep PROVIDER` and `gh secret list | grep PROVIDER`.
+1. **Feature switch:** Only connectors with an OAuth flow (Decision Matrix rows 1–3) need a feature switch (`enabled: false`). API-token-only connectors (row 4) do **not** need a feature switch — they are always visible once merged.
+1. **OAuth env vars (skip for API-token-only):** Add the OAuth env vars to both `.github/workflows/turbo.yml` and `.github/workflows/release-please.yml` deploy steps (client ID from `vars`, client secret from `secrets`).
+1. **`.env.tpl` (skip for API-token-only):** Ensure that `.env.tpl` references the correct secrets/vars and that the secret/var names in 1Password match the environment variable names.
+1. **Credential sync (skip for API-token-only):** Run `bash scripts/sync-oauth.sh PROVIDER_NAME` to sync credentials from `/tmp/oauth-credentials/<PROVIDER>` to 1Password and GitHub. If any fields are missing, fill them in and re-run. Wait for the user to confirm completion.
+1. **Verify GitHub secrets (skip for API-token-only):** Verify that the secrets/vars are correctly set on GitHub by running `gh variable list | grep PROVIDER` and `gh secret list | grep PROVIDER`.
 1. Make sure the local `.env.local` contains the correct secret/var values.
 1. Commit all changes and create a PR using `/pull-request`. This lets CI validate the implementation in parallel while you do local testing.
 1. Start the project locally using `/dev-tunnel` (starts the dev server, creates a Cloudflare tunnel, and sets up the proxy). Verify the server is running and accessible before proceeding.
