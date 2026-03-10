@@ -524,7 +524,7 @@ export const CONNECTOR_TYPES = {
         helpText:
           '1. Go to [Dropbox App Console](https://www.dropbox.com/developers/apps)\n2. Select or create your app\n3. Under **Settings**, click "Generate" to create an access token\n4. Copy the token\n\n> **Note:** Generated tokens are short-lived (4 hours). You may need to regenerate periodically.',
         secrets: {
-          DROPBOX_ACCESS_TOKEN: {
+          DROPBOX_TOKEN: {
             label: "Access Token",
             required: true,
             placeholder: "sl.xxxxxxxx",
@@ -599,7 +599,7 @@ export const CONNECTOR_TYPES = {
         helpText:
           "1. Go to **Apps & Integrations > Developer Center** in Deel\n2. Navigate to the **Organization tokens** tab\n3. Create a new token with required scopes\n4. Copy the generated token",
         secrets: {
-          DEEL_ACCESS_TOKEN: {
+          DEEL_TOKEN: {
             label: "API Token",
             required: true,
           },
@@ -648,7 +648,7 @@ export const CONNECTOR_TYPES = {
         helpText:
           "1. Go to [Figma Settings > Security](https://www.figma.com/settings#personal-access-tokens)\n2. Create a new personal access token\n3. Select required scopes (e.g., File content: Read/Write)\n4. Copy the generated token",
         secrets: {
-          FIGMA_ACCESS_TOKEN: {
+          FIGMA_TOKEN: {
             label: "Personal Access Token",
             required: true,
             placeholder: "figd_xxxxxxxx",
@@ -700,7 +700,7 @@ export const CONNECTOR_TYPES = {
         helpText:
           "1. Log in to your [Mercury Dashboard](https://app.mercury.com)\n2. Go to **Settings** and find the API section\n3. Generate a new API token\n4. Copy the token",
         secrets: {
-          MERCURY_ACCESS_TOKEN: {
+          MERCURY_TOKEN: {
             label: "API Token",
             required: true,
             placeholder: "secret-token:mercury_production_...",
@@ -837,7 +837,7 @@ export const CONNECTOR_TYPES = {
         helpText:
           '1. Go to [Neon Console > Account Settings > API Keys](https://console.neon.tech/app/settings/api-keys)\n2. Click "Create new API key"\n3. Copy the generated key',
         secrets: {
-          NEON_ACCESS_TOKEN: {
+          NEON_TOKEN: {
             label: "API Key",
             required: true,
             placeholder: "napi_xxxxxxxx",
@@ -847,7 +847,7 @@ export const CONNECTOR_TYPES = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
-      NEON_API_KEY: "$secrets.NEON_ACCESS_TOKEN",
+      NEON_TOKEN: "$secrets.NEON_ACCESS_TOKEN",
     } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://oauth2.neon.tech/oauth2/auth",
@@ -978,7 +978,7 @@ export const CONNECTOR_TYPES = {
         helpText:
           "1. Log in to your [PostHog Dashboard](https://us.posthog.com)\n2. Go to **Settings → Personal API keys**\n3. Click **+ Create personal API key**\n4. Select the scopes you need and copy the key",
         secrets: {
-          POSTHOG_ACCESS_TOKEN: {
+          POSTHOG_TOKEN: {
             label: "Personal API Key",
             required: true,
             placeholder: "phx_...",
@@ -988,7 +988,7 @@ export const CONNECTOR_TYPES = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
     environmentMapping: {
-      POSTHOG_PERSONAL_API_KEY: "$secrets.POSTHOG_ACCESS_TOKEN",
+      POSTHOG_TOKEN: "$secrets.POSTHOG_ACCESS_TOKEN",
     } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://us.posthog.com/oauth/authorize",
@@ -1041,7 +1041,7 @@ export const CONNECTOR_TYPES = {
         helpText:
           "1. Go to [Intervals.icu Settings > Developer Settings](https://intervals.icu/settings)\n2. Scroll to the bottom to find **Developer Settings**\n3. Generate or copy your API key",
         secrets: {
-          INTERVALS_ICU_ACCESS_TOKEN: {
+          INTERVALS_ICU_TOKEN: {
             label: "API Key",
             required: true,
           },
@@ -1223,7 +1223,7 @@ export const CONNECTOR_TYPES = {
         helpText:
           '1. Go to [Supabase Dashboard > Project Settings > API](https://supabase.com/dashboard/project/_/settings/api)\n2. Find the **service_role** key under "Project API keys"\n3. Copy the key\n\n> **Note:** The service_role key bypasses Row Level Security. Keep it secret.',
         secrets: {
-          SUPABASE_ACCESS_TOKEN: {
+          SUPABASE_TOKEN: {
             label: "Service Role Key",
             required: true,
             placeholder: "eyJhbGci... or sb_secret_...",
@@ -1300,7 +1300,7 @@ export const CONNECTOR_TYPES = {
         helpText:
           '1. Go to your Webflow site\'s **Settings > Apps & integrations > API access**\n2. Click "Generate API token"\n3. Select required scopes\n4. Copy the generated token\n\n> Tokens expire after 365 days of inactivity.',
         secrets: {
-          WEBFLOW_ACCESS_TOKEN: {
+          WEBFLOW_TOKEN: {
             label: "Site Token",
             required: true,
           },
@@ -1491,7 +1491,7 @@ export const CONNECTOR_TYPES = {
         helpText:
           "1. Log in to [SimilarWeb](https://www.similarweb.com)\n2. Go to **Settings > Account > API Keys**\n3. Generate and activate an API key\n4. Copy the key",
         secrets: {
-          SIMILARWEB_API_KEY: {
+          SIMILARWEB_TOKEN: {
             label: "API Key",
             required: true,
             placeholder: "your-similarweb-api-key",
@@ -1501,7 +1501,7 @@ export const CONNECTOR_TYPES = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
     environmentMapping: {
-      SIMILARWEB_API_KEY: "$secrets.SIMILARWEB_API_KEY",
+      SIMILARWEB_TOKEN: "$secrets.SIMILARWEB_API_KEY",
     } as Record<string, string>,
   },
   mailchimp: {

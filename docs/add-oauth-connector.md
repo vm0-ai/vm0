@@ -64,9 +64,54 @@ test -f "/tmp/oauth-credentials/${PROVIDER}" && grep -q "_PROD" "/tmp/oauth-cred
 
 ---
 
+## Authentication Strategy
+
+Before writing any code, determine which authentication methods the provider supports. This decision drives the entire implementation path.
+
+### Decision Matrix
+
+| # | Provider supports | Auth methods to implement | Feature switch for OAuth? | Notes |
+|---|-------------------|--------------------------|---------------------------|-------|
+| 1 | OAuth (review required) + API token | Both `oauth` and `api-token` | Yes (`enabled: false`) | OAuth stays gated until review is approved; API token is available immediately |
+| 2 | OAuth (no review) + API token | Both `oauth` and `api-token` | Yes (`enabled: false`) | OAuth gated during dev/testing; remove switch when ready to ship |
+| 3 | OAuth only (no API token) | `oauth` only | Yes (`enabled: false`) | Standard OAuth-only connector |
+| 4 | API token only (no OAuth) | `api-token` only | No | No OAuth registration needed; skip straight to implementation |
+
+### Secret Naming for API Token
+
+When a connector supports both OAuth and API token, the API token **must write directly to the same target secret** that the OAuth flow's `environmentMapping` maps to — not the intermediate OAuth access token.
+
+Example: if the OAuth flow produces `XXX_ACCESS_TOKEN` and the `environmentMapping` maps it to `XXX_TOKEN`:
+
+```
+# OAuth flow (environment mapping handles the rename):
+XXX_ACCESS_TOKEN  →  environmentMapping  →  XXX_TOKEN
+
+# API token flow (writes directly to the target — no mapping step):
+user-provided token  →  XXX_TOKEN
+```
+
+This means:
+- The `api-token` auth method does **not** need an `environmentMapping` entry.
+- The secret key written by the API token flow (`XXX_TOKEN`) must match the `vm0_secrets` name declared in the corresponding skill in `vm0-ai/vm0-skills`.
+- Both auth methods ultimately produce the same secret key, so the skill works identically regardless of how the user authenticated.
+
+**Naming convention:** The target secret must follow the `XXX_TOKEN` pattern (e.g., `FIGMA_TOKEN`, `MERCURY_TOKEN`). Do not encode the token type in the name (no `_API_KEY`, `_PERSONAL_API_KEY`, `_SECRET_KEY`, `_ACCESS_TOKEN`).
+
+### How to Determine
+
+1. Check the provider's developer documentation for OAuth support (authorization code flow).
+2. Check whether the provider offers personal API tokens / API keys from a dashboard.
+3. If OAuth is supported, check whether a review/approval process is required before external users can authorize (see [Step 5 of Skill Validation Loop](#step-5-check-production-oauth-app-requirements-ai) for common patterns).
+4. Based on the findings, pick the matching row from the decision matrix above and follow the corresponding implementation path.
+
+---
+
 ## OAuth App Registration
 
 Before writing any code, register the OAuth application with the provider. The client ID and client secret generated during registration are required for implementation.
+
+> **Skip this section** if the provider is API-token-only (Decision Matrix row 4). Proceed directly to [Add OAuth Connector Checklist](#add-oauth-connector-checklist).
 
 ### Register Two Apps
 

@@ -23,7 +23,7 @@ describe("POST /api/connectors/:type/token - Submit API Token", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secrets: { FIGMA_ACCESS_TOKEN: "test-token" } }),
+        body: JSON.stringify({ secrets: { FIGMA_TOKEN: "test-token" } }),
       },
     );
     const response = await POST(request);
@@ -42,7 +42,7 @@ describe("POST /api/connectors/:type/token - Submit API Token", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          secrets: { FIGMA_ACCESS_TOKEN: "figd_test123" },
+          secrets: { FIGMA_TOKEN: "figd_test123" },
         }),
       },
     );
@@ -58,7 +58,7 @@ describe("POST /api/connectors/:type/token - Submit API Token", () => {
     // Verify secret was stored
     const storedToken = await findTestConnectorSecret(
       user.scopeId,
-      "FIGMA_ACCESS_TOKEN",
+      "FIGMA_TOKEN",
     );
     expect(storedToken).toBe("figd_test123");
   });
@@ -77,7 +77,7 @@ describe("POST /api/connectors/:type/token - Submit API Token", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          secrets: { FIGMA_ACCESS_TOKEN: "figd_updated" },
+          secrets: { FIGMA_TOKEN: "figd_updated" },
         }),
       },
     );
@@ -95,7 +95,7 @@ describe("POST /api/connectors/:type/token - Submit API Token", () => {
     // Verify updated secret
     const storedToken = await findTestConnectorSecret(
       user.scopeId,
-      "FIGMA_ACCESS_TOKEN",
+      "FIGMA_TOKEN",
     );
     expect(storedToken).toBe("figd_updated");
   });
