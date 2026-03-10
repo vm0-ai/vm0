@@ -8,6 +8,7 @@ import { validateAgentCompose } from "../../lib/domain/yaml-validator";
 import { readStorageConfig } from "../../lib/storage/storage-utils";
 import { checkAndUpgrade } from "../../lib/utils/update-checker";
 import { saveCookState } from "../../lib/domain/cook-state";
+import { withErrorHandler } from "../../lib/command";
 import {
   CONFIG_FILE,
   ARTIFACT_DIR,
@@ -54,8 +55,7 @@ async function loadAndValidateConfig(): Promise<LoadedConfig> {
   console.log(chalk.bold(`Reading config: ${CONFIG_FILE}`));
 
   if (!existsSync(CONFIG_FILE)) {
-    console.error(chalk.red(`✗ Config file not found: ${CONFIG_FILE}`));
-    process.exit(1);
+    throw new Error(`Config file not found: ${CONFIG_FILE}`);
   }
 
   let config: AgentComposeConfig;
@@ -63,17 +63,15 @@ async function loadAndValidateConfig(): Promise<LoadedConfig> {
     const content = await readFile(CONFIG_FILE, "utf8");
     config = parseYaml(content) as AgentComposeConfig;
   } catch (error) {
-    console.error(chalk.red("✗ Invalid YAML format"));
     if (error instanceof Error) {
-      console.error(chalk.dim(`  ${error.message}`));
+      throw new Error("Invalid YAML format", { cause: error });
     }
-    process.exit(1);
+    throw new Error("Invalid YAML format");
   }
 
   const validation = validateAgentCompose(config);
   if (!validation.valid) {
-    console.error(chalk.red(`✗ ${validation.error}`));
-    process.exit(1);
+    throw new Error(validation.error);
   }
 
   const agentNames = Object.keys(config.agents);
@@ -105,9 +103,9 @@ async function processVolumes(
     const volumeDir = path.join(cwd, volumeConfig.name);
 
     if (!existsSync(volumeDir)) {
-      console.error(chalk.red(`✗ Directory not found: ${volumeConfig.name}`));
-      console.error(chalk.dim("  Create the directory and add files first"));
-      process.exit(1);
+      throw new Error(`Directory not found: ${volumeConfig.name}`, {
+        cause: new Error("Create the directory and add files first"),
+      });
     }
 
     try {
@@ -132,11 +130,10 @@ async function processVolumes(
 
       printCommand("cd ..");
     } catch (error) {
-      console.error(chalk.red(`✗ Failed`));
       if (error instanceof Error) {
-        console.error(chalk.dim(`  ${error.message}`));
+        throw new Error("Volume processing failed", { cause: error });
       }
-      process.exit(1);
+      throw error;
     }
   }
 }
@@ -178,11 +175,10 @@ async function processArtifact(cwd: string): Promise<string> {
 
     printCommand("cd ..");
   } catch (error) {
-    console.error(chalk.red(`✗ Failed`));
     if (error instanceof Error) {
-      console.error(chalk.dim(`  ${error.message}`));
+      throw new Error("Artifact processing failed", { cause: error });
     }
-    process.exit(1);
+    throw error;
   }
 
   return artifactDir;
@@ -202,11 +198,10 @@ async function composeAgent(cwd: string, skipConfirm: boolean): Promise<void> {
   try {
     await execVm0Command(composeArgs, { cwd });
   } catch (error) {
-    console.error(chalk.red(`✗ Compose failed`));
     if (error instanceof Error) {
-      console.error(chalk.dim(`  ${error.message}`));
+      throw new Error("Compose failed", { cause: error });
     }
-    process.exit(1);
+    throw error;
   }
 }
 
@@ -231,23 +226,17 @@ async function runAgent(
   );
   console.log();
 
-  let runOutput: string;
-  try {
-    const runArgs = [
-      "run",
-      agentName,
-      "--artifact-name",
-      ARTIFACT_DIR,
-      ...(options.envFile ? ["--env-file", options.envFile] : []),
-      ...(options.verbose ? ["--verbose"] : []),
-      ...(options.debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
-      prompt,
-    ];
-    runOutput = await execVm0RunWithCapture(runArgs, { cwd });
-  } catch {
-    // Error already displayed by vm0 run
-    process.exit(1);
-  }
+  const runArgs = [
+    "run",
+    agentName,
+    "--artifact-name",
+    ARTIFACT_DIR,
+    ...(options.envFile ? ["--env-file", options.envFile] : []),
+    ...(options.verbose ? ["--verbose"] : []),
+    ...(options.debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
+    prompt,
+  ];
+  const runOutput = await execVm0RunWithCapture(runArgs, { cwd });
 
   // Save session state for continue/resume commands
   const runIds = parseRunIdsFromOutput(runOutput);
@@ -276,52 +265,54 @@ export const cookAction = new Command()
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .addOption(new Option("--no-auto-update").hideHelp())
   .action(
-    async (
-      prompt: string | undefined,
-      options: {
-        envFile?: string;
-        yes?: boolean;
-        verbose?: boolean;
-        debugNoMockClaude?: boolean;
-        autoUpdate?: boolean;
-      },
-    ) => {
-      // Step 0: Check for updates and auto-upgrade if needed
-      // Note: --no-auto-update sets autoUpdate to false
-      if (options.autoUpdate !== false) {
-        const shouldExit = await checkAndUpgrade(__CLI_VERSION__, prompt);
-        if (shouldExit) {
-          process.exit(0);
+    withErrorHandler(
+      async (
+        prompt: string | undefined,
+        options: {
+          envFile?: string;
+          yes?: boolean;
+          verbose?: boolean;
+          debugNoMockClaude?: boolean;
+          autoUpdate?: boolean;
+        },
+      ) => {
+        // Step 0: Check for updates and auto-upgrade if needed
+        // Note: --no-auto-update sets autoUpdate to false
+        if (options.autoUpdate !== false) {
+          const shouldExit = await checkAndUpgrade(__CLI_VERSION__, prompt);
+          if (shouldExit) {
+            process.exit(0);
+          }
         }
-      }
 
-      const cwd = process.cwd();
+        const cwd = process.cwd();
 
-      // Step 1: Load and validate config
-      const { config, agentName } = await loadAndValidateConfig();
+        // Step 1: Load and validate config
+        const { config, agentName } = await loadAndValidateConfig();
 
-      // Step 2: Process volumes
-      await processVolumes(config, cwd);
+        // Step 2: Process volumes
+        await processVolumes(config, cwd);
 
-      // Step 3: Process artifact
-      const artifactDir = await processArtifact(cwd);
+        // Step 3: Process artifact
+        const artifactDir = await processArtifact(cwd);
 
-      // Step 4: Compose agent
-      await composeAgent(cwd, options.yes ?? false);
+        // Step 4: Compose agent
+        await composeAgent(cwd, options.yes ?? false);
 
-      // Step 5: Run agent (if prompt provided)
-      if (prompt) {
-        await runAgent(agentName, artifactDir, prompt, cwd, {
-          envFile: options.envFile,
-          verbose: options.verbose,
-          debugNoMockClaude: options.debugNoMockClaude,
-        });
-      } else {
-        console.log();
-        console.log("To run your agent:");
-        printCommand(
-          `vm0 run ${agentName} --artifact-name ${ARTIFACT_DIR} "your prompt"`,
-        );
-      }
-    },
+        // Step 5: Run agent (if prompt provided)
+        if (prompt) {
+          await runAgent(agentName, artifactDir, prompt, cwd, {
+            envFile: options.envFile,
+            verbose: options.verbose,
+            debugNoMockClaude: options.debugNoMockClaude,
+          });
+        } else {
+          console.log();
+          console.log("To run your agent:");
+          printCommand(
+            `vm0 run ${agentName} --artifact-name ${ARTIFACT_DIR} "your prompt"`,
+          );
+        }
+      },
+    ),
   );
