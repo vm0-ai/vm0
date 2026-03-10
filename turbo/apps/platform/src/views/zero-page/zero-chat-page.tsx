@@ -672,13 +672,15 @@ export function ZeroChatPage({
   const carouselRef = useSet(carouselRef$);
 
   // Stream tick — schedules the next streamed message after a delay
+  const streamTimeoutId$ = useCCState<number | null>(null);
   const scheduleStreamTick$ = useCommand(({ get, set }) => {
     const active = get(conversationActive$);
     const count = get(streamedCount$);
     if (!active || count >= 6) {
       return;
     }
-    window.setTimeout(() => {
+    const id = window.setTimeout(() => {
+      set(streamTimeoutId$, null);
       set(streamedCount$, (c: number) => Math.min(c + 1, 6));
       // Auto-scroll conversation end into view
       const el = get(conversationEndEl$);
@@ -688,8 +690,22 @@ export function ZeroChatPage({
       // Schedule next tick
       set(scheduleStreamTick$);
     }, STREAM_DELAY_MS);
+    set(streamTimeoutId$, id);
   });
   const scheduleStreamTick = useSet(scheduleStreamTick$);
+  // Clean up pending stream timeout on unmount
+  const streamCleanup$ = useCommand(
+    ({ get }, _el: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        const id = get(streamTimeoutId$);
+        if (id !== null) {
+          window.clearTimeout(id);
+        }
+      });
+    },
+  );
+  const streamCleanupRef$ = onRef(streamCleanup$);
+  const streamCleanupRef = useSet(streamCleanupRef$);
 
   // Toggle sub-agent list with auto-scroll when opening
   const toggleSubAgentList$ = useCommand(({ get, set }) => {
@@ -766,7 +782,10 @@ export function ZeroChatPage({
   if (showConversation && scenariosToShow.length > 0) {
     const isScenarioFromSidebar = initialScenarioId !== undefined;
     return (
-      <div className="flex flex-1 flex-col min-h-0 bg-transparent">
+      <div
+        ref={streamCleanupRef}
+        className="flex flex-1 flex-col min-h-0 bg-transparent"
+      >
         <header className="shrink-0 bg-transparent px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Button
