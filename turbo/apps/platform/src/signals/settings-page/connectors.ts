@@ -302,17 +302,21 @@ export const submitApiToken$ = command(
     signal: AbortSignal,
   ) => {
     const fetchFn = get(fetch$);
-    const resp = await fetchFn(`/api/connectors/${type}/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ secrets: inputSecrets }),
-    });
-    signal.throwIfAborted();
-    if (!resp.ok) {
-      const data = (await resp.json()) as { error?: { message?: string } };
-      throw new Error(
-        data?.error?.message ?? `Failed to submit token (${resp.status})`,
-      );
+    for (const [name, value] of Object.entries(inputSecrets)) {
+      if (!value) continue;
+      const resp = await fetchFn("/api/secrets", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, value }),
+      });
+      signal.throwIfAborted();
+      if (!resp.ok) {
+        const data = (await resp.json()) as { error?: { message?: string } };
+        throw new Error(
+          data?.error?.message ??
+            `Failed to save secret ${name} (${resp.status})`,
+        );
+      }
     }
     signal.throwIfAborted();
     set(reloadConnectors$);
