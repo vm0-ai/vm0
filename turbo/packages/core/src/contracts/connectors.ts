@@ -83,6 +83,29 @@ export const CONNECTOR_TYPES = {
       scopes: ["api"],
     } as ConnectorOAuthConfig,
   },
+  agentmail: {
+    label: "AgentMail",
+    helpText:
+      "Connect your AgentMail account to create email inboxes for AI agents, send and receive emails, manage threads, drafts, and webhooks",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [AgentMail Console](https://console.agentmail.to)\n2. Go to **API Keys**\n3. Create a new API key\n4. Copy the key",
+        secrets: {
+          AGENTMAIL_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-agentmail-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      AGENTMAIL_TOKEN: "$secrets.AGENTMAIL_API_KEY",
+    } as Record<string, string>,
+  },
   airtable: {
     label: "Airtable",
     helpText:
@@ -1851,6 +1874,7 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
 };
 
 export const connectorTypeSchema = z.enum([
+  "agentmail",
   "ahrefs",
   "airtable",
   "asana",

@@ -1,5 +1,6 @@
 import type { ConnectorType } from "@vm0/core";
 
+import agentmailIcon from "./icons/agentmail.svg";
 import ahrefsIcon from "./icons/ahrefs.svg";
 import airtableIcon from "./icons/airtable.svg";
 import asanaIcon from "./icons/asana.svg";
@@ -43,6 +44,7 @@ import xIcon from "./icons/x.svg";
 import xeroIcon from "./icons/xero.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
+  agentmail: agentmailIcon,
   ahrefs: ahrefsIcon,
   airtable: airtableIcon,
   asana: asanaIcon,
