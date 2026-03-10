@@ -1,5 +1,5 @@
 {
-  "id": "0b97e3ac-10d4-4cf7-a35a-155d5c783fec",
+  "id": "a9e96575-073a-4993-bbb3-13284cd996c0",
   "prevId": "872ef7cd-7b8c-429c-92e9-3877cebd8f8c",
   "version": "7",
   "dialect": "postgresql",
@@ -830,6 +830,15 @@
         }
       },
       "foreignKeys": {
+        "agent_runs_scope_id_scopes_id_fk": {
+          "name": "agent_runs_scope_id_scopes_id_fk",
+          "tableFrom": "agent_runs",
+          "tableTo": "scopes",
+          "columnsFrom": ["scope_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
         "agent_runs_agent_compose_version_id_agent_compose_versions_id_fk": {
           "name": "agent_runs_agent_compose_version_id_agent_compose_versions_id_fk",
           "tableFrom": "agent_runs",
@@ -4192,54 +4201,6 @@
         }
       },
       "indexes": {
-        "idx_storages_scope_user_name_type": {
-          "name": "idx_storages_scope_user_name_type",
-          "columns": [
-            {
-              "expression": "scope_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_storages_scope": {
-          "name": "idx_storages_scope",
-          "columns": [
-            {
-              "expression": "scope_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_storages_clerk_org": {
           "name": "idx_storages_clerk_org",
           "columns": [
@@ -4290,15 +4251,6 @@
         }
       },
       "foreignKeys": {
-        "storages_scope_id_scopes_id_fk": {
-          "name": "storages_scope_id_scopes_id_fk",
-          "tableFrom": "storages",
-          "tableTo": "scopes",
-          "columnsFrom": ["scope_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "storages_head_version_id_storage_versions_id_fk": {
           "name": "storages_head_version_id_storage_versions_id_fk",
           "tableFrom": "storages",
