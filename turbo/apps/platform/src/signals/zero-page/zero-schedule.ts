@@ -268,7 +268,7 @@ export const deleteZeroSchedule$ = command(
     const status = await get(zeroOnboardingStatus$);
     const composeId = status.defaultAgentComposeId;
     if (!composeId) {
-      return;
+      throw new Error("No default agent configured");
     }
 
     const fetchFn = get(fetch$);
