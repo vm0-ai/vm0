@@ -19,6 +19,7 @@ import googleDocsIcon from "./icons/google-docs.svg";
 import googleDriveIcon from "./icons/google-drive.svg";
 import googleSheetsIcon from "./icons/google-sheets.svg";
 import linearIcon from "./icons/linear.svg";
+import mailchimpIcon from "./icons/mailchimp.svg";
 import mercuryIcon from "./icons/mercury.svg";
 import metaAdsIcon from "./icons/meta-ads.svg";
 import mondayIcon from "./icons/monday.svg";
@@ -58,6 +59,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   "google-sheets": googleSheetsIcon,
   "intervals-icu": intervalsIcuIcon,
   linear: linearIcon,
+  mailchimp: mailchimpIcon,
   mercury: mercuryIcon,
   "meta-ads": metaAdsIcon,
   monday: mondayIcon,
