@@ -122,7 +122,7 @@ export async function GET(request: Request) {
     }
   }
 
-  // Resolve user scope and get existing secrets, vars, connectors
+  // Resolve user's default scope and get existing secrets, vars, connectors
   const { scope } = await resolveScope(userId);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(scope.id, userId),

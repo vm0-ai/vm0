@@ -106,7 +106,7 @@ export async function givenSlackWorkspaceInstalled(
   const accessToken = `xoxb-test-${uniqueId("token")}`;
   const adminSlackUserId = uniqueId("admin-slack");
 
-  // Create admin user scope + compose for the workspace agent
+  // Create admin scope + compose for the workspace agent
   const adminUserId = options.adminUserId ?? uniqueId("admin");
   mockClerk({ userId: adminUserId });
   await createTestScope(uniqueId("admin-scope"));

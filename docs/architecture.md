@@ -134,7 +134,7 @@ The orchestration layer coordinates job execution between web API and runners.
 
 **Format**: `{scope}/{name}`
 - Official: `vm0/*` (e.g., `vm0/production`) - VM0-managed runners
-- User: `{userid}/*` (e.g., `user123/private`) - Self-hosted runners
+- User: `{scope-slug}/*` (e.g., `my-team/private`) - Self-hosted runners
 
 **Authentication**:
 - Official runners: HMAC signature using `OFFICIAL_RUNNER_SECRET`

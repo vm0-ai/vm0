@@ -31,7 +31,7 @@ const router = tsr.router(storagesDownloadContract, {
       };
     }
 
-    // Resolve user's scope
+    // Resolve user's default scope
     const scopeSlug = new URL(request.url).searchParams.get("scope");
     const { scope: runtimeScope } = await resolveScope(userId, scopeSlug);
 
@@ -45,7 +45,7 @@ const router = tsr.router(storagesDownloadContract, {
     const storageUserId =
       storageType === "volume" ? VOLUME_SCOPE_USER_ID : userId;
 
-    // Check if storage exists and belongs to user's scope
+    // Check if storage exists and belongs to user's default scope
     const [storage] = await globalThis.services.db
       .select()
       .from(storages)

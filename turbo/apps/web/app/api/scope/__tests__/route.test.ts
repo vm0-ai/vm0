@@ -366,7 +366,7 @@ describe("/api/scope", () => {
       await context.setupUser();
     });
 
-    it("should return user's scope", async () => {
+    it("should return user's default scope", async () => {
       const request = createTestRequest("http://localhost:3000/api/scope");
       const response = await GET(request);
       const data = await response.json();

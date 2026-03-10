@@ -112,8 +112,8 @@ export const mainRunCommand = new Command()
         // 1.5. Validate: running another user's agent requires explicit opt-in
         if (scope && !options.experimentalSharedAgent) {
           // Check if it's the user's own scope
-          const userScope = await getScope();
-          const isOwnScope = userScope.slug === scope;
+          const defaultScope = await getScope();
+          const isOwnScope = defaultScope.slug === scope;
 
           if (!isOwnScope) {
             console.error(

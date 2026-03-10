@@ -97,7 +97,7 @@ const router = tsr.router(storagesPrepareContract, {
       };
     }
 
-    // Resolve user's scope
+    // Resolve user's default scope
     const scopeSlug = new URL(request.url).searchParams.get("scope");
     const { scope: runtimeScope } = await resolveScope(userId, scopeSlug);
 

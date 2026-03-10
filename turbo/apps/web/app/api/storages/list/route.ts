@@ -30,7 +30,7 @@ const router = tsr.router(storagesListContract, {
 
     const { type: storageType } = query;
 
-    // Resolve user's scope
+    // Resolve user's default scope
     const scopeSlug = new URL(request.url).searchParams.get("scope");
     const { scope: runtimeScope } = await resolveScope(userId, scopeSlug);
 

@@ -17,12 +17,12 @@ const mockScope: Scope = {
 };
 
 export const apiScopeHandlers = [
-  // GET /api/scope - Get current user's scope
+  // GET /api/scope - Get current user's default scope
   http.get("/api/scope", () => {
     return HttpResponse.json(mockScope);
   }),
 
-  // POST /api/scope - Create user's scope
+  // POST /api/scope - Create a scope
   // Always returns 409 since mock user always has scope
   http.post("/api/scope", () => {
     return HttpResponse.json(

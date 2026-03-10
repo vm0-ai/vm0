@@ -482,7 +482,7 @@ class ApiClient {
   }
 
   /**
-   * Get current user's scope
+   * Get current user's default scope
    */
   async getScope(): Promise<ScopeResponse> {
     const baseUrl = await this.getBaseUrl();
@@ -509,7 +509,7 @@ class ApiClient {
   }
 
   /**
-   * Create user's scope
+   * Create user's default scope
    */
   async createScope(body: {
     slug: string;
@@ -539,7 +539,7 @@ class ApiClient {
   }
 
   /**
-   * Update user's scope slug
+   * Update user's default scope slug
    */
   async updateScope(body: {
     slug: string;

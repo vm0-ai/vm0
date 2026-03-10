@@ -19,7 +19,7 @@ function listStorages(type: string) {
   );
 }
 
-describe("Storage user-scope isolation", () => {
+describe("Storage per-user isolation", () => {
   beforeEach(async () => {
     context.setupMocks();
     await context.setupUser();

@@ -67,7 +67,7 @@ export async function listSecrets(
 }
 
 /**
- * Get a secret by name for a user's scope (metadata only)
+ * Get a secret by name for a user's default scope (metadata only)
  * Only returns user-type secrets; model-provider secrets are managed via model-provider commands
  */
 export async function getSecret(

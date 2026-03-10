@@ -58,7 +58,7 @@ export type UpdateScopeRequest = z.infer<typeof updateScopeRequestSchema>;
 export const scopeContract = c.router({
   /**
    * GET /api/scope
-   * Get current user's scope
+   * Get current user's default scope
    */
   get: {
     method: "GET",
@@ -70,12 +70,12 @@ export const scopeContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Get current user's scope",
+    summary: "Get current user's default scope",
   },
 
   /**
    * POST /api/scope
-   * Create user's scope
+   * Create a scope
    */
   create: {
     method: "POST",
@@ -89,12 +89,12 @@ export const scopeContract = c.router({
       409: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Create user's scope",
+    summary: "Create a scope",
   },
 
   /**
    * PUT /api/scope
-   * Update user's scope slug
+   * Update scope slug
    */
   update: {
     method: "PUT",
@@ -110,7 +110,7 @@ export const scopeContract = c.router({
       409: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Update user's scope slug",
+    summary: "Update scope slug",
   },
 });
 

@@ -77,14 +77,14 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       };
     }
 
-    // Resolve user's scope
+    // Resolve Runtime Scope (user's default scope)
     const runtimeScope = await getDefaultScopeByClerkUserId(userId);
     if (!runtimeScope) {
       return {
         status: 400 as const,
         body: {
           error: {
-            message: "User scope not found",
+            message: "User's default scope not found",
             code: "BAD_REQUEST",
           },
         },

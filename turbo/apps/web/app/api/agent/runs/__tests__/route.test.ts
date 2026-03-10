@@ -414,7 +414,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       mockClerk({ userId: ownerUser.userId });
     });
 
-    it("should resolve model provider from runner's scope for shared agent", async () => {
+    it("should resolve model provider from Runtime Scope for shared agent", async () => {
       // User A (owner) creates an agent without explicit API key
       const ownerUser = user;
       const { composeId: sharedComposeId } = await createTestCompose(

@@ -37,7 +37,7 @@ function scopeToResponseBody(scope: {
 
 const router = tsr.router(scopeContract, {
   /**
-   * GET /api/scope - Get current user's scope
+   * GET /api/scope - Get current user's default scope
    *
    * Resolves the active scope via clerkOrgId from Clerk session,
    * or falls back to the user's default scope (first admin membership).
@@ -72,7 +72,7 @@ const router = tsr.router(scopeContract, {
   },
 
   /**
-   * POST /api/scope - Create user's scope
+   * POST /api/scope - Create a scope
    */
   create: async ({ body, headers }) => {
     initServices();
@@ -84,7 +84,7 @@ const router = tsr.router(scopeContract, {
 
     const { slug } = body;
 
-    log.debug("creating user scope", { userId, slug });
+    log.debug("creating scope", { userId, slug });
 
     try {
       // vm0-admin slug policy: allow vm0-prefixed slugs for admin users only

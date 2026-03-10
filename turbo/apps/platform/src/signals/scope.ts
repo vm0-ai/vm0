@@ -22,7 +22,7 @@ export interface Scope {
 }
 
 /**
- * Current user's scope.
+ * Current user's default scope.
  * Returns undefined if user has no scope or is not authenticated.
  */
 export const scope$ = computed(async (get) => {
