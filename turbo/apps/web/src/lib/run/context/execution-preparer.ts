@@ -213,7 +213,7 @@ export async function prepareForExecution(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
-    .innerJoin(scopes, eq(agentComposes.clerkOrgId, scopes.clerkOrgId))
+    .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
     .where(eq(agentComposeVersions.id, context.agentComposeVersionId))
     .limit(1);
   const scopeEnd = Date.now();
