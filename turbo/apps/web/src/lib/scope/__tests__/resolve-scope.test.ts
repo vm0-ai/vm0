@@ -6,6 +6,18 @@ import { resolveScope } from "../resolve-scope";
 
 const context = testContext();
 
+/**
+ * Build clerkOrgs array for scopes created in a test.
+ * Each scope created via createTestScope has clerkOrgId = "org_mock_{slug}".
+ */
+function scopeOrgs(...slugs: string[]) {
+  return slugs.map((slug) => ({
+    id: `org_mock_${slug}`,
+    slug,
+    name: slug,
+  }));
+}
+
 describe("resolveScope", () => {
   beforeEach(() => {
     context.setupMocks();
@@ -21,8 +33,12 @@ describe("resolveScope", () => {
     const scope1 = await createTestScope(slug1);
     const scope2 = await createTestScope(slug2);
 
-    // Mock session with orgId pointing to scope2
-    mockClerk({ userId, orgId: `org_mock_${slug2}` });
+    // Mock session with orgId pointing to scope2, include both scope orgs
+    mockClerk({
+      userId,
+      orgId: `org_mock_${slug2}`,
+      clerkOrgs: scopeOrgs(slug1, slug2),
+    });
 
     // Resolve with explicit slug for scope1 — should return scope1, not scope2
     const result = await resolveScope(userId, slug1);
@@ -40,7 +56,11 @@ describe("resolveScope", () => {
     const created = await createTestScope(slug);
 
     // Mock session with orgId matching the scope's clerkOrgId
-    mockClerk({ userId, orgId: `org_mock_${slug}` });
+    mockClerk({
+      userId,
+      orgId: `org_mock_${slug}`,
+      clerkOrgs: scopeOrgs(slug),
+    });
 
     // Resolve without slug or explicit orgId — should auto-detect from session
     const result = await resolveScope(userId);
@@ -58,7 +78,11 @@ describe("resolveScope", () => {
     const created = await createTestScope(slug);
 
     // Mock session with a different orgId (should NOT be used)
-    mockClerk({ userId, orgId: "org_session_different" });
+    mockClerk({
+      userId,
+      orgId: "org_session_different",
+      clerkOrgs: scopeOrgs(slug),
+    });
 
     // Pass explicit clerkOrgId matching the scope
     const result = await resolveScope(userId, null, `org_mock_${slug}`);
@@ -75,10 +99,14 @@ describe("resolveScope", () => {
     mockClerk({ userId });
     const created = await createTestScope(slug);
 
-    // Mock as CLI token — no orgId in session
-    mockClerk({ userId, orgId: null });
+    // Mock as CLI token — no orgId in session, but Clerk API returns user's orgs
+    mockClerk({
+      userId,
+      orgId: null,
+      clerkOrgs: scopeOrgs(slug),
+    });
 
-    // Resolve without slug — should fall through to getDefaultScope
+    // Resolve without slug — should fall through to getDefaultScope (Clerk API)
     const result = await resolveScope(userId);
 
     expect(result.scope.id).toBe(created.id);
@@ -93,7 +121,11 @@ describe("resolveScope", () => {
     const created = await createTestScope(slug);
 
     // Mock session with an orgId that doesn't match any scope
-    mockClerk({ userId, orgId: "org_nonexistent_xyz" });
+    mockClerk({
+      userId,
+      orgId: "org_nonexistent_xyz",
+      clerkOrgs: scopeOrgs(slug),
+    });
 
     // Resolve without slug — orgId lookup returns null, falls to default
     const result = await resolveScope(userId);
@@ -114,7 +146,11 @@ describe("resolveScope", () => {
     const scope2 = await createTestScope(slug2);
 
     // Mock session with orgId matching the SECOND scope
-    mockClerk({ userId, orgId: `org_mock_${slug2}` });
+    mockClerk({
+      userId,
+      orgId: `org_mock_${slug2}`,
+      clerkOrgs: scopeOrgs(slug1, slug2),
+    });
 
     // Resolve without slug — should return scope2 (from orgId), not scope1 (default)
     const result = await resolveScope(userId);
@@ -122,5 +158,110 @@ describe("resolveScope", () => {
     expect(result.scope.id).toBe(scope2.id);
     expect(result.scope.slug).toBe(slug2);
     expect(result.scope.id).not.toBe(scope1.id);
+  });
+
+  it("reads tier from JWT sessionClaims when org matches", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("scope");
+
+    mockClerk({ userId });
+    const created = await createTestScope(slug);
+
+    // Mock session with orgTier in JWT claims
+    mockClerk({
+      userId,
+      orgId: `org_mock_${slug}`,
+      orgTier: "pro",
+      clerkOrgs: scopeOrgs(slug),
+    });
+
+    const result = await resolveScope(userId);
+
+    expect(result.scope.id).toBe(created.id);
+    // tier should be overridden from JWT
+    expect(result.scope.tier).toBe("pro");
+  });
+
+  it("falls back to DB tier when JWT org_tier claim is missing", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("scope");
+
+    mockClerk({ userId });
+    await createTestScope(slug);
+
+    // Mock session WITHOUT orgTier
+    mockClerk({
+      userId,
+      orgId: `org_mock_${slug}`,
+      clerkOrgs: scopeOrgs(slug),
+    });
+
+    const result = await resolveScope(userId);
+
+    // tier should be DB default ("free")
+    expect(result.scope.tier).toBe("free");
+  });
+
+  it("does not override tier when resolving non-active org via explicit slug", async () => {
+    const userId = uniqueId("test-user");
+    const slug1 = uniqueId("scope");
+    const slug2 = uniqueId("scope");
+
+    mockClerk({ userId });
+    await createTestScope(slug1);
+    await createTestScope(slug2);
+
+    // JWT active org is scope2, but resolving scope1 via explicit slug
+    mockClerk({
+      userId,
+      orgId: `org_mock_${slug2}`,
+      orgTier: "max",
+      clerkOrgs: scopeOrgs(slug1, slug2),
+    });
+
+    const result = await resolveScope(userId, slug1);
+
+    // tier should NOT be overridden (slug1 != active org)
+    expect(result.scope.tier).toBe("free");
+  });
+
+  it("returns member with correct role", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("scope");
+
+    mockClerk({ userId });
+    await createTestScope(slug);
+
+    mockClerk({
+      userId,
+      orgId: `org_mock_${slug}`,
+      clerkOrgs: scopeOrgs(slug),
+    });
+
+    const result = await resolveScope(userId);
+
+    expect(result.member.role).toBe("admin");
+    expect(result.member.userId).toBe(userId);
+    expect(result.member.scopeId).toBe(result.scope.id);
+  });
+
+  it("throws 403 when user is not a Clerk org member", async () => {
+    const userId = uniqueId("test-user");
+    const otherUserId = uniqueId("other-user");
+    const slug = uniqueId("scope");
+
+    mockClerk({ userId });
+    await createTestScope(slug);
+
+    // Mock as different user who is NOT in the org
+    mockClerk({
+      userId: otherUserId,
+      orgId: null,
+      clerkOrgs: [], // No orgs
+    });
+
+    await expect(resolveScope(otherUserId, slug)).rejects.toThrow(
+      "You are not a member of this scope",
+    );
   });
 });

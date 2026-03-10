@@ -4,10 +4,8 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 import { scopes } from "../../../../../src/db/schema/scope";
 import { scopeMembers } from "../../../../../src/db/schema/scope-member";
-import {
-  getDefaultScopeByClerkUserId,
-  generateDefaultScopeSlug,
-} from "../../../../../src/lib/scope/scope-service";
+import { generateDefaultScopeSlug } from "../../../../../src/lib/scope/scope-service";
+import { getPrimaryAdminMembership } from "../../../../../src/lib/scope/scope-member-service";
 import {
   resolveTestUserId,
   isTestVariant,
@@ -51,7 +49,9 @@ function isTestTokenAllowed(request: Request): boolean {
  * e2e test users (403 Forbidden).
  */
 async function ensureTestScope(userId: string): Promise<void> {
-  const existing = await getDefaultScopeByClerkUserId(userId);
+  // Use direct DB lookup instead of Clerk-based getDefaultScope because
+  // test scopes use a sentinel clerkOrgId that doesn't exist in Clerk.
+  const existing = await getPrimaryAdminMembership(userId);
   if (existing) return;
 
   const slug = generateDefaultScopeSlug(userId);

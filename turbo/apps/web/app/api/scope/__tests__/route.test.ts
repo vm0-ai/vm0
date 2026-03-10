@@ -440,8 +440,15 @@ describe("/api/scope", () => {
       });
       await POST(req2);
 
-      // Set active org to second scope's clerkOrgId
-      mockClerk({ userId, orgId: `org_mock_${slug2}` });
+      // Set active org to second scope's clerkOrgId, include both scope orgs
+      mockClerk({
+        userId,
+        orgId: `org_mock_${slug2}`,
+        clerkOrgs: [
+          { id: `org_mock_${slug1}`, slug: slug1, name: slug1 },
+          { id: `org_mock_${slug2}`, slug: slug2, name: slug2 },
+        ],
+      });
 
       const request = createTestRequest("http://localhost:3000/api/scope");
       const response = await GET(request);
@@ -464,8 +471,12 @@ describe("/api/scope", () => {
       });
       await POST(reqCreate);
 
-      // Set an orgId that doesn't match any scope
-      mockClerk({ userId, orgId: "org_nonexistent_xyz" });
+      // Set an orgId that doesn't match any scope, but include the created scope org
+      mockClerk({
+        userId,
+        orgId: "org_nonexistent_xyz",
+        clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
+      });
 
       const request = createTestRequest("http://localhost:3000/api/scope");
       const response = await GET(request);

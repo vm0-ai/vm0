@@ -372,6 +372,7 @@ export function isOfficialRunnerGroup(group: string): boolean {
 export async function validateRunnerGroupScope(
   clerkUserId: string,
   group: string,
+  tokenScopeId?: string | null,
 ): Promise<void> {
   const scopeSlug = group.split("/")[0];
   if (!scopeSlug) {
@@ -383,9 +384,17 @@ export async function validateRunnerGroupScope(
     return;
   }
 
-  // TODO: This checks against the user's default scope, but should check scope
-  // membership instead. A user who belongs to multiple scopes can only use runner
-  // groups from their default scope, which is incorrect.
+  // CLI token with stored scope_id — verify slug matches directly
+  if (tokenScopeId) {
+    const scope = await getScopeById(tokenScopeId);
+    if (scope && scope.slug === scopeSlug) {
+      return;
+    }
+    throw forbidden(
+      `Runner group scope "${scopeSlug}" does not match your scope`,
+    );
+  }
+
   const defaultScope = await getDefaultScopeByClerkUserId(clerkUserId);
   if (!defaultScope) {
     throw forbidden(
