@@ -843,10 +843,10 @@ describe("run command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Agent not found"),
+        expect.stringContaining("404"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 compose"),
+        expect.stringContaining("Compose not found"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -873,7 +873,10 @@ describe("run command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Run failed"),
+        expect.stringContaining("500"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Execution failed"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -1209,9 +1212,9 @@ describe("run command", () => {
         ]);
       }).rejects.toThrow("process.exit called");
 
-      // Errors bubble up to main command handler which displays generic "Run failed" message
+      // Errors from polling bubble up and are formatted by withErrorHandler as ApiRequestError
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Run failed"),
+        expect.stringContaining("500"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Network error"),
@@ -1334,10 +1337,14 @@ describe("run command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("--experimental-shared-agent"),
+        expect.stringContaining(
+          "Running shared agents requires --experimental-shared-agent flag",
+        ),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("security risks"),
+        expect.stringContaining(
+          "Use: vm0 run other-user/my-agent --experimental-shared-agent",
+        ),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

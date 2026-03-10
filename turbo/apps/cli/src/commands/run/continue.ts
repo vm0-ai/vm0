@@ -1,5 +1,4 @@
 import { Command, Option } from "commander";
-import chalk from "chalk";
 import { getSession, createRun } from "../../lib/api";
 import {
   collectKeyValue,
@@ -7,9 +6,9 @@ import {
   loadValues,
   pollEvents,
   showNextSteps,
-  handleResumeOrContinueError,
   renderRunCreated,
 } from "./shared";
+import { withErrorHandler } from "../../lib/command";
 
 export const continueCommand = new Command()
   .name("continue")
@@ -42,44 +41,43 @@ export const continueCommand = new Command()
   .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(
-    async (
-      agentSessionId: string,
-      prompt: string,
-      options: {
-        envFile?: string;
-        vars: Record<string, string>;
-        secrets: Record<string, string>;
-        modelProvider?: string;
-        verbose?: boolean;
-        checkEnv?: boolean;
-        debugNoMockClaude?: boolean;
-      },
-      command: { optsWithGlobals: () => Record<string, unknown> },
-    ) => {
-      // Commander.js quirk: when parent command has same option name,
-      // the option value goes to parent. Use optsWithGlobals() to get all options.
-      const allOpts = command.optsWithGlobals() as {
-        envFile?: string;
-        vars: Record<string, string>;
-        secrets: Record<string, string>;
-        modelProvider?: string;
-        verbose?: boolean;
-        checkEnv?: boolean;
-        debugNoMockClaude?: boolean;
-      };
+    withErrorHandler(
+      async (
+        agentSessionId: string,
+        prompt: string,
+        options: {
+          envFile?: string;
+          vars: Record<string, string>;
+          secrets: Record<string, string>;
+          modelProvider?: string;
+          verbose?: boolean;
+          checkEnv?: boolean;
+          debugNoMockClaude?: boolean;
+        },
+        command: { optsWithGlobals: () => Record<string, unknown> },
+      ) => {
+        // Commander.js quirk: when parent command has same option name,
+        // the option value goes to parent. Use optsWithGlobals() to get all options.
+        const allOpts = command.optsWithGlobals() as {
+          envFile?: string;
+          vars: Record<string, string>;
+          secrets: Record<string, string>;
+          modelProvider?: string;
+          verbose?: boolean;
+          checkEnv?: boolean;
+          debugNoMockClaude?: boolean;
+        };
 
-      // Merge vars and secrets from command options
-      const vars = { ...allOpts.vars, ...options.vars };
-      const secrets = { ...allOpts.secrets, ...options.secrets };
+        // Merge vars and secrets from command options
+        const vars = { ...allOpts.vars, ...options.vars };
+        const secrets = { ...allOpts.secrets, ...options.secrets };
 
-      try {
         // 1. Validate session ID format
         if (!isUUID(agentSessionId)) {
-          console.error(
-            chalk.red(`✗ Invalid agent session ID format: ${agentSessionId}`),
+          throw new Error(
+            `Invalid agent session ID format: ${agentSessionId}`,
+            { cause: new Error("Agent session ID must be a valid UUID") },
           );
-          console.error(chalk.dim("  Agent session ID must be a valid UUID"));
-          process.exit(1);
         }
 
         // 2. Fetch session info to get required secret names
@@ -106,11 +104,10 @@ export const continueCommand = new Command()
 
         // 4. Check for immediate failure (e.g., missing secrets)
         if (response.status === "failed") {
-          console.error(chalk.red("✗ Run preparation failed"));
-          if (response.error) {
-            console.error(chalk.dim(`  ${response.error}`));
-          }
-          process.exit(1);
+          throw new Error(
+            "Run preparation failed",
+            response.error ? { cause: new Error(response.error) } : undefined,
+          );
         }
 
         // 5. Display run started/queued info
@@ -123,13 +120,6 @@ export const continueCommand = new Command()
           process.exit(1);
         }
         showNextSteps(result);
-      } catch (error) {
-        handleResumeOrContinueError(
-          error,
-          "Continue",
-          agentSessionId,
-          "Agent session",
-        );
-      }
-    },
+      },
+    ),
   );

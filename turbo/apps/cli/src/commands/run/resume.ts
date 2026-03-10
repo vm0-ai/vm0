@@ -1,5 +1,4 @@
 import { Command, Option } from "commander";
-import chalk from "chalk";
 import { getCheckpoint, createRun } from "../../lib/api";
 import {
   collectKeyValue,
@@ -8,9 +7,9 @@ import {
   loadValues,
   pollEvents,
   showNextSteps,
-  handleResumeOrContinueError,
   renderRunCreated,
 } from "./shared";
+import { withErrorHandler } from "../../lib/command";
 
 export const resumeCommand = new Command()
   .name("resume")
@@ -47,45 +46,43 @@ export const resumeCommand = new Command()
   .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(
-    async (
-      checkpointId: string,
-      prompt: string,
-      options: {
-        envFile?: string;
-        vars: Record<string, string>;
-        secrets: Record<string, string>;
-        modelProvider?: string;
-        verbose?: boolean;
-        checkEnv?: boolean;
-        debugNoMockClaude?: boolean;
-      },
-      command: { optsWithGlobals: () => Record<string, unknown> },
-    ) => {
-      // Commander.js quirk: when parent command has same option name,
-      // the option value goes to parent. Use optsWithGlobals() to get all options.
-      const allOpts = command.optsWithGlobals() as {
-        envFile?: string;
-        vars: Record<string, string>;
-        secrets: Record<string, string>;
-        volumeVersion: Record<string, string>;
-        modelProvider?: string;
-        verbose?: boolean;
-        checkEnv?: boolean;
-        debugNoMockClaude?: boolean;
-      };
+    withErrorHandler(
+      async (
+        checkpointId: string,
+        prompt: string,
+        options: {
+          envFile?: string;
+          vars: Record<string, string>;
+          secrets: Record<string, string>;
+          modelProvider?: string;
+          verbose?: boolean;
+          checkEnv?: boolean;
+          debugNoMockClaude?: boolean;
+        },
+        command: { optsWithGlobals: () => Record<string, unknown> },
+      ) => {
+        // Commander.js quirk: when parent command has same option name,
+        // the option value goes to parent. Use optsWithGlobals() to get all options.
+        const allOpts = command.optsWithGlobals() as {
+          envFile?: string;
+          vars: Record<string, string>;
+          secrets: Record<string, string>;
+          volumeVersion: Record<string, string>;
+          modelProvider?: string;
+          verbose?: boolean;
+          checkEnv?: boolean;
+          debugNoMockClaude?: boolean;
+        };
 
-      // Merge vars and secrets from command options
-      const vars = { ...allOpts.vars, ...options.vars };
-      const secrets = { ...allOpts.secrets, ...options.secrets };
+        // Merge vars and secrets from command options
+        const vars = { ...allOpts.vars, ...options.vars };
+        const secrets = { ...allOpts.secrets, ...options.secrets };
 
-      try {
         // 1. Validate checkpoint ID format
         if (!isUUID(checkpointId)) {
-          console.error(
-            chalk.red(`✗ Invalid checkpoint ID format: ${checkpointId}`),
-          );
-          console.error(chalk.dim("  Checkpoint ID must be a valid UUID"));
-          process.exit(1);
+          throw new Error(`Invalid checkpoint ID format: ${checkpointId}`, {
+            cause: new Error("Checkpoint ID must be a valid UUID"),
+          });
         }
 
         // 2. Fetch checkpoint info to get required secret names
@@ -117,11 +114,10 @@ export const resumeCommand = new Command()
 
         // 4. Check for immediate failure (e.g., missing secrets)
         if (response.status === "failed") {
-          console.error(chalk.red("✗ Run preparation failed"));
-          if (response.error) {
-            console.error(chalk.dim(`  ${response.error}`));
-          }
-          process.exit(1);
+          throw new Error(
+            "Run preparation failed",
+            response.error ? { cause: new Error(response.error) } : undefined,
+          );
         }
 
         // 5. Display run started/queued info
@@ -134,13 +130,6 @@ export const resumeCommand = new Command()
           process.exit(1);
         }
         showNextSteps(result);
-      } catch (error) {
-        handleResumeOrContinueError(
-          error,
-          "Resume",
-          checkpointId,
-          "Checkpoint",
-        );
-      }
-    },
+      },
+    ),
   );
