@@ -34,7 +34,7 @@ const router = tsr.router(variablesMainContract, {
 
     const scopeSlug = new URL(request.url).searchParams.get("scope");
     const { scope } = await resolveScope(userId, scopeSlug);
-    const vars = await listVariables(scope.clerkOrgId, userId);
+    const vars = await listVariables(scope.id, userId);
 
     return {
       status: 200 as const,
@@ -70,10 +70,11 @@ const router = tsr.router(variablesMainContract, {
       const scopeSlug = new URL(request.url).searchParams.get("scope");
       const { scope } = await resolveScope(userId, scopeSlug);
       const variable = await setVariable(
-        scope.clerkOrgId,
+        scope.id,
         userId,
         name,
         value,
+        scope.clerkOrgId,
         description,
       );
 

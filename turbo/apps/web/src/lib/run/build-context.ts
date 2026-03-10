@@ -626,18 +626,17 @@ function mergeConnectorSecretsForReferences(
  * @returns Merged variables (CLI takes precedence)
  */
 async function fetchAndMergeVariables(
-  clerkOrgId: string,
+  scopeId: string,
   userId: string,
   cliVars: Record<string, string> | undefined,
 ): Promise<Record<string, string> | undefined> {
-  // Business requirement: scope_id → clerk_org_id migration
-  const storedVars = await getVariableValues(clerkOrgId, userId);
+  const storedVars = await getVariableValues(scopeId, userId);
   if (Object.keys(storedVars).length === 0) {
     return cliVars;
   }
 
   log.debug(
-    `Fetched ${Object.keys(storedVars).length} stored variable(s) for org ${clerkOrgId}`,
+    `Fetched ${Object.keys(storedVars).length} stored variable(s) from scope ${scopeId}`,
   );
 
   // Merge: CLI vars override stored vars
@@ -778,7 +777,7 @@ async function resolveCredentialsAndEnvironment(
         modelProvider,
       ),
       resolveConnectorCredentials(scopeId, userId, clerkOrgId),
-      fetchAndMergeVariables(clerkOrgId, userId, vars),
+      fetchAndMergeVariables(scopeId, userId, vars),
     ]);
 
   // Merge credentials from all sources (connector > model-provider > user).

@@ -11,6 +11,7 @@ import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { ZeroContent } from "./zero-content.tsx";
 import { ZeroOnboarding } from "./zero-onboarding.tsx";
 import { user$ } from "../../signals/auth.ts";
+import { scope$ } from "../../signals/scope.ts";
 
 const ZERO_AVATARS = [
   "/zero-avatar.png",
@@ -34,6 +35,8 @@ export function ZeroAppShell() {
   const userLoadable = useLoadable(user$);
   const isLoggedIn =
     userLoadable.state === "hasData" && userLoadable.data !== undefined;
+  // Subscribe to scope$ so the scope API request fires on mount
+  useLoadable(scope$);
   const activeId$ = useCCState<ZeroNavId>("chat");
   const activeId = useGet(activeId$);
   const setActiveId = useSet(activeId$);

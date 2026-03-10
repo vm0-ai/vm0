@@ -438,7 +438,7 @@ async function validateComposeRequirements(
   composeContent: AgentComposeYaml,
   vars?: Record<string, string>,
   checkEnv?: boolean,
-  clerkOrgId?: string,
+  scopeId?: string,
 ): Promise<void> {
   if (!composeContent?.agents) {
     return;
@@ -448,11 +448,10 @@ async function validateComposeRequirements(
   if (checkEnv) {
     const requiredVars = extractTemplateVars(composeContent);
     if (requiredVars.length > 0) {
-      // Business requirement: scope_id → clerk_org_id migration
-      const resolvedClerkOrgId =
-        clerkOrgId ?? (await getDefaultScopeByClerkUserId(userId))?.clerkOrgId;
-      const storedVars = resolvedClerkOrgId
-        ? await getVariableValues(resolvedClerkOrgId, userId)
+      const resolvedScopeId =
+        scopeId ?? (await getDefaultScopeByClerkUserId(userId))?.id;
+      const storedVars = resolvedScopeId
+        ? await getVariableValues(resolvedScopeId, userId)
         : {};
       const allVars = { ...storedVars, ...vars };
       const missingVars = requiredVars.filter(
@@ -692,7 +691,7 @@ export async function createRun(
       composeContent,
       params.vars,
       params.checkEnv,
-      params.clerkOrgId,
+      params.scopeId,
     );
   }
 
@@ -851,7 +850,7 @@ export async function executeQueuedRun(
       composeContent,
       params.vars,
       params.checkEnv,
-      params.clerkOrgId,
+      params.scopeId,
     );
   }
 
