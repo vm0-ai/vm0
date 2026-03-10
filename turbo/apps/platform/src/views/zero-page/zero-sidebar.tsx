@@ -289,18 +289,7 @@ export function ZeroSidebar({
               />
             </button>
             <div className="min-w-0 flex-1">
-              {hasClerkAuth ? (
-                <ClerkOrgSwitcher />
-              ) : (
-                <>
-                  <p className="text-sm font-medium leading-tight text-sidebar-foreground truncate">
-                    Personal Workspace
-                  </p>
-                  <p className="text-xs leading-tight text-sidebar-foreground opacity-70 truncate mt-px">
-                    Self-hosted
-                  </p>
-                </>
-              )}
+              <ClerkOrgSwitcher />
             </div>
           </div>
         </div>
