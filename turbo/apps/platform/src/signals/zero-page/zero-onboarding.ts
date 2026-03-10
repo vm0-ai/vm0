@@ -1,12 +1,12 @@
 import { command, computed, state } from "ccstate";
 import {
   type ModelProviderType,
-  type OnboardingStatusResponse,
   getDefaultAuthMethod,
   getDefaultModel,
   getSecretsForAuthMethod,
   hasAuthMethods,
   hasModelSelection,
+  onboardingStatusResponseSchema,
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { initScope$, hasScope$ } from "../scope.ts";
@@ -29,7 +29,7 @@ export const zeroOnboardingStatus$ = computed(async (get) => {
   if (!resp.ok) {
     throw new Error(`Failed to fetch onboarding status: ${resp.status}`);
   }
-  return (await resp.json()) as OnboardingStatusResponse;
+  return onboardingStatusResponseSchema.parse(await resp.json());
 });
 
 export const zeroNeedsOnboarding$ = computed(async (get) => {

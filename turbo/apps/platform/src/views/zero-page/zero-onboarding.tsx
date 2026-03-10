@@ -38,10 +38,7 @@ import {
   completeZeroOnboarding$,
   zeroHasModelProvider$,
 } from "../../signals/zero-page/zero-onboarding.ts";
-import {
-  fetchSlackIntegration$,
-  slackInstallUrl$,
-} from "../../signals/integrations-page/slack-integration.ts";
+import { fetchSlackIntegration$ } from "../../signals/integrations-page/slack-integration.ts";
 import {
   allConnectorTypes$,
   connectConnector$,
@@ -176,7 +173,6 @@ export function ZeroOnboarding({
   const saveModelProvider = useSet(saveZeroModelProvider$);
   const completeOnboarding = useSet(completeZeroOnboarding$);
   const fetchSlack = useSet(fetchSlackIntegration$);
-  const slackInstallUrlLoadable = useLoadable(slackInstallUrl$);
   const hasModelProviderLoadable = useLoadable(zeroHasModelProvider$);
   const hasModelProvider =
     hasModelProviderLoadable.state === "hasData" &&
@@ -235,11 +231,7 @@ export function ZeroOnboarding({
       (async () => {
         await completeOnboarding(controller.signal);
         // Fetch Slack integration to get install URL
-        await fetchSlack();
-        const url =
-          slackInstallUrlLoadable.state === "hasData"
-            ? slackInstallUrlLoadable.data
-            : null;
+        const url = await fetchSlack();
         if (url) {
           window.location.href = url;
         }

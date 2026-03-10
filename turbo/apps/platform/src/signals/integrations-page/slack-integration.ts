@@ -47,55 +47,60 @@ export const slackInstallUrl$ = computed(
   (get) => get(slackIntegrationState$).installUrl,
 );
 
-export const fetchSlackIntegration$ = command(async ({ get, set }) => {
-  set(slackIntegrationState$, (prev) => ({
-    ...prev,
-    loading: true,
-    error: null,
-  }));
-
-  try {
-    const fetchFn = get(fetch$);
-    const response = await fetchFn("/api/integrations/slack");
-
-    if (response.status === 404) {
-      const body = (await response.json()) as {
-        installUrl?: string | null;
-      };
-      set(slackIntegrationState$, {
-        data: null,
-        loading: false,
-        error: null,
-        notLinked: true,
-        installUrl: body.installUrl ?? null,
-      });
-      return;
-    }
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to fetch Slack integration: ${response.statusText}`,
-      );
-    }
-
-    const data = (await response.json()) as SlackIntegrationData;
-    set(slackIntegrationState$, {
-      data,
-      loading: false,
-      error: null,
-      notLinked: false,
-      installUrl: null,
-    });
-  } catch (error) {
-    throwIfAbort(error);
-    L.error("Failed to fetch Slack integration:", error);
+export const fetchSlackIntegration$ = command(
+  async ({ get, set }): Promise<string | null> => {
     set(slackIntegrationState$, (prev) => ({
       ...prev,
-      loading: false,
-      error: error instanceof Error ? error.message : "Unknown error",
+      loading: true,
+      error: null,
     }));
-  }
-});
+
+    try {
+      const fetchFn = get(fetch$);
+      const response = await fetchFn("/api/integrations/slack");
+
+      if (response.status === 404) {
+        const body = (await response.json()) as {
+          installUrl?: string | null;
+        };
+        const installUrl = body.installUrl ?? null;
+        set(slackIntegrationState$, {
+          data: null,
+          loading: false,
+          error: null,
+          notLinked: true,
+          installUrl,
+        });
+        return installUrl;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch Slack integration: ${response.statusText}`,
+        );
+      }
+
+      const data = (await response.json()) as SlackIntegrationData;
+      set(slackIntegrationState$, {
+        data,
+        loading: false,
+        error: null,
+        notLinked: false,
+        installUrl: null,
+      });
+      return null;
+    } catch (error) {
+      throwIfAbort(error);
+      L.error("Failed to fetch Slack integration:", error);
+      set(slackIntegrationState$, (prev) => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      }));
+      return null;
+    }
+  },
+);
 
 const slackDisconnectDialogState$ = state(false);
 
