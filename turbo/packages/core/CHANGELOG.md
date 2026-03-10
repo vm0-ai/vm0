@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.53.0](https://github.com/vm0-ai/vm0/compare/core-v8.52.0...core-v8.53.0) (2026-03-10)
+
+
+### Features
+
+* **connectors:** implement proxy-side auth header injection for experimental connectors ([#4072](https://github.com/vm0-ai/vm0/issues/4072)) ([dabc986](https://github.com/vm0-ai/vm0/commit/dabc986158c0d98068a06599724da3307a4904f7))
+
+
+### Refactoring
+
+* fix ahrefs and mailchimp connector secret naming ([#4140](https://github.com/vm0-ai/vm0/issues/4140)) ([57716ed](https://github.com/vm0-ai/vm0/commit/57716ed243d53d51f7b119a84a6e570493081e26))
+* standardize connector api-token secret naming convention ([#4137](https://github.com/vm0-ai/vm0/issues/4137)) ([cc32c55](https://github.com/vm0-ai/vm0/commit/cc32c55527d76f5d7d8e83090d3bbfa06858ea5c))
+* treat api-token connector secrets as user secrets ([#4156](https://github.com/vm0-ai/vm0/issues/4156)) ([d12f5f6](https://github.com/vm0-ai/vm0/commit/d12f5f6060519514b316a6b126e5b30915ae54a1))
+
 ## [8.52.0](https://github.com/vm0-ai/vm0/compare/core-v8.51.0...core-v8.52.0) (2026-03-10)
 
 

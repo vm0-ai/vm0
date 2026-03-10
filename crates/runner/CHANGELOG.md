@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.22.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.21.1...runner-rs-v0.22.0) (2026-03-10)
+
+
+### Features
+
+* **connectors:** implement proxy-side auth header injection for experimental connectors ([#4072](https://github.com/vm0-ai/vm0/issues/4072)) ([dabc986](https://github.com/vm0-ai/vm0/commit/dabc986158c0d98068a06599724da3307a4904f7))
+
+
+### Bug Fixes
+
+* remove overly broad "killed process" pattern from oom detection ([#4127](https://github.com/vm0-ai/vm0/issues/4127)) ([42b8acf](https://github.com/vm0-ai/vm0/commit/42b8acf959b9d29909e7944f0048320f3215843a))
+* remove overly broad killed process pattern from oom detection ([#4147](https://github.com/vm0-ai/vm0/issues/4147)) ([8766dd9](https://github.com/vm0-ai/vm0/commit/8766dd98ba36113be183d666ec661e99177406b5))
+
 ## [0.21.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.21.0...runner-rs-v0.21.1) (2026-03-10)
 
 ## [0.21.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.20.4...runner-rs-v0.21.0) (2026-03-09)

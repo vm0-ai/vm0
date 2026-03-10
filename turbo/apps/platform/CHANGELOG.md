@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.100.0](https://github.com/vm0-ai/vm0/compare/platform-v0.99.0...platform-v0.100.0) (2026-03-10)
+
+
+### Features
+
+* **platform:** add account switching and org switcher to zero sidebar ([#4139](https://github.com/vm0-ai/vm0/issues/4139)) ([17ecf9d](https://github.com/vm0-ai/vm0/commit/17ecf9d7cb154bb05bf065fa2489bab959196257))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.53.0
+
 ## [0.99.0](https://github.com/vm0-ai/vm0/compare/platform-v0.98.0...platform-v0.99.0) (2026-03-10)
 
 

@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.93.0](https://github.com/vm0-ai/vm0/compare/web-v12.92.0...web-v12.93.0) (2026-03-10)
+
+
+### Features
+
+* **connectors:** implement proxy-side auth header injection for experimental connectors ([#4072](https://github.com/vm0-ai/vm0/issues/4072)) ([dabc986](https://github.com/vm0-ai/vm0/commit/dabc986158c0d98068a06599724da3307a4904f7))
+* **platform:** add account switching and org switcher to zero sidebar ([#4139](https://github.com/vm0-ai/vm0/issues/4139)) ([17ecf9d](https://github.com/vm0-ai/vm0/commit/17ecf9d7cb154bb05bf065fa2489bab959196257))
+
+
+### Refactoring
+
+* standardize connector api-token secret naming and clean up env ([#4148](https://github.com/vm0-ai/vm0/issues/4148)) ([f3400fe](https://github.com/vm0-ai/vm0/commit/f3400fef2cb68a6ca911b61b09e3ca9db8825ec4))
+* standardize connector api-token secret naming convention ([#4137](https://github.com/vm0-ai/vm0/issues/4137)) ([cc32c55](https://github.com/vm0-ai/vm0/commit/cc32c55527d76f5d7d8e83090d3bbfa06858ea5c))
+* switch agent_composes queries from scope_id to clerk_org_id ([#4145](https://github.com/vm0-ai/vm0/issues/4145)) ([add49fa](https://github.com/vm0-ai/vm0/commit/add49fad002a108981e35c11b731f06b1869145d))
+* switch agent_runs queries from scope_id to clerk_org_id ([#4143](https://github.com/vm0-ai/vm0/issues/4143)) ([265907d](https://github.com/vm0-ai/vm0/commit/265907dfaeb652e47c5c2030733203b4db4fe49f))
+* treat api-token connector secrets as user secrets ([#4156](https://github.com/vm0-ai/vm0/issues/4156)) ([d12f5f6](https://github.com/vm0-ai/vm0/commit/d12f5f6060519514b316a6b126e5b30915ae54a1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.53.0
+
 ## [12.92.0](https://github.com/vm0-ai/vm0/compare/web-v12.91.0...web-v12.92.0) (2026-03-10)
 
 

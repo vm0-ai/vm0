@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.54.3](https://github.com/vm0-ai/vm0/compare/cli-v9.54.2...cli-v9.54.3) (2026-03-10)
+
+
+### Refactoring
+
+* treat api-token connector secrets as user secrets ([#4156](https://github.com/vm0-ai/vm0/issues/4156)) ([d12f5f6](https://github.com/vm0-ai/vm0/commit/d12f5f6060519514b316a6b126e5b30915ae54a1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.53.0
+
 ## [9.54.2](https://github.com/vm0-ai/vm0/compare/cli-v9.54.1...cli-v9.54.2) (2026-03-10)
 
 
