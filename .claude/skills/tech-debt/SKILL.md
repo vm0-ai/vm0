@@ -123,6 +123,28 @@ grep -r "console\.log\s*=\s*vi\.fn\|console\.error\s*=\s*vi\.fn" turbo \
   --include="*.test.ts" --include="*.test.tsx" -l
 ```
 
+**15. Missing --max-warnings 0 in Lint Scripts**
+```bash
+# All lint scripts MUST use --max-warnings 0 to prevent warnings from passing CI
+# Find package.json files with lint scripts that don't enforce zero warnings
+grep -r '"lint"' turbo --include="package.json" | grep -v "max-warnings 0"
+```
+
+**16. ESLint Config "off" Rules (Rule Suppression Audit)**
+```bash
+# Find rules set to "off" or 0 in ESLint configs — each must be justified
+grep -r '"off"\|: 0[,}]' turbo/packages/eslint-config --include="*.js" --include="*.mjs"
+# Also check app-level eslint configs
+grep -r '"off"\|: 0[,}]' turbo/apps/*/eslint.config.* turbo/packages/*/eslint.config.*
+```
+
+**17. Oxlint Config "allow" Rules (Rule Suppression Audit)**
+```bash
+# Find rules set to "allow" in oxlint configs — each must be justified
+# Focus on non-test overrides which are more suspicious
+grep -r '"allow"' turbo --include=".oxlintrc.json"
+```
+
 #### Phase 2: Detailed Analysis
 
 For each file identified in Phase 1, perform detailed analysis:
@@ -155,6 +177,9 @@ For each file identified in Phase 1, perform detailed analysis:
 - BS-7: Fallback Patterns (fail fast)
 - BS-9: TypeScript any Usage
 - BS-14: Lint/Type Suppressions
+- BS-15: Missing --max-warnings 0 (lint scripts must enforce zero warnings)
+- BS-16: ESLint "off" rules (each must be justified, e.g. react-in-jsx-scope is OK)
+- BS-17: Oxlint "allow" rules (audit non-test overrides; test-file allows are generally OK)
 
 **Severity Levels:**
 - **Critical (P0)**: Zero-tolerance violations that must be fixed
@@ -162,6 +187,8 @@ For each file identified in Phase 1, perform detailed analysis:
   - Lint suppressions (@ts-ignore, eslint-disable)
   - Dynamic imports
   - AP-4: Mocking internal code
+  - Missing `--max-warnings 0` in lint scripts
+  - Unjustified ESLint "off" rules or oxlint "allow" rules in non-test production code
 - **High (P1)**: Significant issues that should be fixed soon
   - Files >1500 lines
   - Defensive programming (unnecessary try/catch)
@@ -276,6 +303,8 @@ Create detailed report in `/tmp/tech-debt-YYYYMMDD/`:
 2. **Lint Suppressions:** {count} files, {violations} violations
 3. **Dynamic Imports:** {count} files, {violations} violations
 4. **AP-4 Internal Mocking:** {count} files, {violations} violations
+5. **Missing --max-warnings 0:** {count} lint scripts
+6. **Unjustified ESLint/oxlint rule suppressions:** {count} rules
 
 ### High Priority Issues
 1. **Large Files (>1500 lines):** {count} files
@@ -307,6 +336,8 @@ Create detailed report in `/tmp/tech-debt-YYYYMMDD/`:
 - [ ] Remove all lint suppressions
 - [ ] Replace dynamic imports with static
 - [ ] Fix AP-4 internal mocking violations
+- [ ] Ensure all lint scripts use --max-warnings 0
+- [ ] Audit and justify all ESLint "off" / oxlint "allow" rules
 
 ### Phase 2: High Priority (2-4 weeks)
 - [ ] Refactor files >1500 lines
@@ -496,6 +527,8 @@ This issue tracks technical debt identified through automated codebase scanning.
 - [ ] Remove lint suppressions ({count} files)
 - [ ] Replace dynamic imports ({count} files)
 - [ ] Fix internal mocking violations ({count} files)
+- [ ] Ensure all lint scripts use --max-warnings 0 ({count} scripts)
+- [ ] Audit ESLint "off" / oxlint "allow" rules ({count} rules)
 
 ### Phase 2: High Priority (Target: 2-4 weeks)
 - [ ] Refactor large files ({count} files)
@@ -663,6 +696,8 @@ Detailed reports are also available in:
 - Lint suppressions (@ts-ignore, eslint-disable)
 - Dynamic imports
 - Mocking internal code (AP-4)
+- Missing `--max-warnings 0` in lint scripts
+- Unjustified ESLint "off" / oxlint "allow" rules in production code
 
 **High Priority Issues (P1):**
 - Files >1500 lines
