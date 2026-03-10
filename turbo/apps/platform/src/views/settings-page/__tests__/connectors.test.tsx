@@ -171,7 +171,7 @@ describe("add connection via api token", () => {
     });
     const mercuryCard = within(addDialog)
       .getByText("Mercury")
-      .closest('[class*="rounded-xl"]')!;
+      .closest('[class*="rounded-xl"]') as HTMLElement;
     await user.click(
       within(mercuryCard).getByRole("button", { name: /connect/i }),
     );
