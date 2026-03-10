@@ -44,6 +44,7 @@ const router = tsr.router(composesMainContract, {
     // Resolve scope: for cross-scope lookups (shared agents), skip membership
     // check and rely on canAccessCompose for authorization instead.
     let scopeId: string;
+    let defaultAgentComposeId: string | null = null;
     if (query.scope) {
       const scope = await getScopeBySlug(query.scope);
       if (!scope) {
@@ -58,9 +59,11 @@ const router = tsr.router(composesMainContract, {
         };
       }
       scopeId = scope.id;
+      defaultAgentComposeId = scope.defaultAgentComposeId;
     } else {
       const { scope: resolvedScope } = await resolveScope(userId);
       scopeId = resolvedScope.id;
+      defaultAgentComposeId = resolvedScope.defaultAgentComposeId;
     }
 
     // JOIN compose + version in a single query
@@ -124,6 +127,7 @@ const router = tsr.router(composesMainContract, {
         name: result.name,
         headVersionId: result.headVersionId,
         content: (result.content as AgentComposeYaml) ?? null,
+        isDefault: result.id === defaultAgentComposeId,
         createdAt: result.createdAt.toISOString(),
         updatedAt: result.updatedAt.toISOString(),
       },

@@ -38,4 +38,5 @@ export enum FeatureSwitchKey {
   PosthogConnector = "posthogConnector",
   GitHubIntegration = "githubIntegration",
   TelegramIntegration = "telegramIntegration",
+  Zero = "zero",
 }

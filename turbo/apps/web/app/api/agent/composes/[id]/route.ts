@@ -10,6 +10,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
+import { scopes } from "../../../../../src/db/schema/scope";
 import { storages } from "../../../../../src/db/schema/storage";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
@@ -35,7 +36,7 @@ const router = tsr.router(composesByIdContract, {
       };
     }
 
-    // JOIN compose + version in a single query
+    // JOIN compose + version + scope in a single query
     const [result] = await globalThis.services.db
       .select({
         id: agentComposes.id,
@@ -46,12 +47,14 @@ const router = tsr.router(composesByIdContract, {
         createdAt: agentComposes.createdAt,
         updatedAt: agentComposes.updatedAt,
         content: agentComposeVersions.content,
+        defaultAgentComposeId: scopes.defaultAgentComposeId,
       })
       .from(agentComposes)
       .leftJoin(
         agentComposeVersions,
         eq(agentComposes.headVersionId, agentComposeVersions.id),
       )
+      .leftJoin(scopes, eq(agentComposes.scopeId, scopes.id))
       .where(eq(agentComposes.id, params.id))
       .limit(1);
 
@@ -83,6 +86,7 @@ const router = tsr.router(composesByIdContract, {
         name: result.name,
         headVersionId: result.headVersionId,
         content: (result.content as AgentComposeYaml) ?? null,
+        isDefault: result.id === result.defaultAgentComposeId,
         createdAt: result.createdAt.toISOString(),
         updatedAt: result.updatedAt.toISOString(),
       },

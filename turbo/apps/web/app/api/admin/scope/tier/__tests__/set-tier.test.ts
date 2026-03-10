@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { clerkClient } from "@clerk/nextjs/server";
 import {
   testContext,
   uniqueId,
@@ -52,6 +53,14 @@ describe("PUT /api/admin/scope/tier", () => {
     expect(body.slug).toBe(scope.slug);
     expect(body.tier).toBe("pro");
     expect(body.updatedAt).toBeDefined();
+
+    // Verify dual-write to Clerk org metadata
+    const client = await vi.mocked(clerkClient)();
+    expect(
+      client.organizations.updateOrganizationMetadata,
+    ).toHaveBeenCalledWith(expect.any(String), {
+      publicMetadata: { tier: "pro" },
+    });
   });
 
   it("should set scope tier to max when called by admin", async () => {
