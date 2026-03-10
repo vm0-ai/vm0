@@ -1,5 +1,33 @@
 # Changelog
 
+## [9.55.0](https://github.com/vm0-ai/vm0/compare/cli-v9.54.3...cli-v9.55.0) (2026-03-10)
+
+
+### Features
+
+* **eslint:** add no-fetch-spy rule to enforce msw usage in tests ([#4164](https://github.com/vm0-ai/vm0/issues/4164)) ([aceffec](https://github.com/vm0-ai/vm0/commit/aceffecf774679acb7d04ebefbe3678ddcbb4cd1))
+
+
+### Refactoring
+
+* **cli:** migrate agent commands to withErrorHandler ([#4165](https://github.com/vm0-ai/vm0/issues/4165)) ([c183e03](https://github.com/vm0-ai/vm0/commit/c183e03c0f3df8784960d5929db767c5d2527657))
+* **cli:** migrate connector commands to centralized error handler ([#4169](https://github.com/vm0-ai/vm0/issues/4169)) ([a36b890](https://github.com/vm0-ai/vm0/commit/a36b8903f23934cafbc0f912ac8f5c70ff2b10a8))
+* **cli:** migrate cook commands to use error handler ([#4172](https://github.com/vm0-ai/vm0/issues/4172)) ([6609899](https://github.com/vm0-ai/vm0/commit/660989934e7cd6094702a51e61e286c00a9008f6))
+* **cli:** migrate misc commands to withErrorHandler ([#4173](https://github.com/vm0-ai/vm0/issues/4173)) ([f50cc26](https://github.com/vm0-ai/vm0/commit/f50cc26a9fbc953290b35c0a55bfd5b06541bf02))
+* **cli:** migrate model-provider commands to use error handler ([#4175](https://github.com/vm0-ai/vm0/issues/4175)) ([2cd0da7](https://github.com/vm0-ai/vm0/commit/2cd0da7788dba6cbd7da535c4869e76952319a63))
+* **cli:** migrate run kill command to use error handler ([#4171](https://github.com/vm0-ai/vm0/issues/4171)) ([51de8de](https://github.com/vm0-ai/vm0/commit/51de8de0eafe8c3be235ec56f13b659acb800934))
+* **cli:** migrate scope commands to use error handler ([#4167](https://github.com/vm0-ai/vm0/issues/4167)) ([c44c737](https://github.com/vm0-ai/vm0/commit/c44c737fae7431fd62f07f68a9c9fbea4e0c04a1))
+* **cli:** migrate storage status commands to withErrorHandler ([#4170](https://github.com/vm0-ai/vm0/issues/4170)) ([7d7b07f](https://github.com/vm0-ai/vm0/commit/7d7b07f5692b65b27711f532b6b0519823fc6026))
+* **cli:** migrate variable and secret commands to withErrorHandler ([#4174](https://github.com/vm0-ai/vm0/issues/4174)) ([e7db8cb](https://github.com/vm0-ai/vm0/commit/e7db8cb93735e6b05da0d74d70245c5ebef06c64))
+* **cli:** use os.homedir mock for scope test config isolation ([#4160](https://github.com/vm0-ai/vm0/issues/4160)) ([97a23e5](https://github.com/vm0-ai/vm0/commit/97a23e525eda5717de2e2a1620d7adf9da690ea4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.54.0
+
 ## [9.54.3](https://github.com/vm0-ai/vm0/compare/cli-v9.54.2...cli-v9.54.3) (2026-03-10)
 
 

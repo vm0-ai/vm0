@@ -1,5 +1,32 @@
 # Changelog
 
+## [12.94.0](https://github.com/vm0-ai/vm0/compare/web-v12.93.0...web-v12.94.0) (2026-03-10)
+
+
+### Features
+
+* add agentmail connector (api-token only) ([#4181](https://github.com/vm0-ai/vm0/issues/4181)) ([72eb5b1](https://github.com/vm0-ai/vm0/commit/72eb5b1952fc7ef0119bcfe01edc047e0791676b))
+* add axiom connector with api token auth ([#4182](https://github.com/vm0-ai/vm0/issues/4182)) ([d7586c4](https://github.com/vm0-ai/vm0/commit/d7586c4579e0d84fe618c4559c1b4c4621dc7a15))
+* add plausible analytics connector ([#4178](https://github.com/vm0-ai/vm0/issues/4178)) ([da9b451](https://github.com/vm0-ai/vm0/commit/da9b4517edc58c3db5f200958db760680971e049))
+* add productlane connector with api-token auth ([#4183](https://github.com/vm0-ai/vm0/issues/4183)) ([ea7f8db](https://github.com/vm0-ai/vm0/commit/ea7f8db0dd3fae77091c97155d9524d587ccdb5c))
+* add resend connector with api key authentication ([#4191](https://github.com/vm0-ai/vm0/issues/4191)) ([dc32ab8](https://github.com/vm0-ai/vm0/commit/dc32ab88eeb0c4f052458b5f3ab094bb7bf46b53))
+* wire zero onboarding to real api calls ([#4128](https://github.com/vm0-ai/vm0/issues/4128)) ([b756f8a](https://github.com/vm0-ai/vm0/commit/b756f8aab13d8b5ebf5e8383e96538fd0d980d61))
+
+
+### Refactoring
+
+* resolve scope from Clerk API instead of scope_members table ([#4124](https://github.com/vm0-ai/vm0/issues/4124)) ([4996b04](https://github.com/vm0-ai/vm0/commit/4996b04e895eae6082ce7ca2661291b2b21c38d5))
+* switch secrets, connectors, model_providers, agent_schedules from scope_id to clerk_org_id ([#4199](https://github.com/vm0-ai/vm0/issues/4199)) ([fa78d86](https://github.com/vm0-ai/vm0/commit/fa78d86c8c02ac86d17b40c3a75184c5c3e23019))
+* switch storages table from scope_id to clerk_org_id ([#4142](https://github.com/vm0-ai/vm0/issues/4142)) ([52ef417](https://github.com/vm0-ai/vm0/commit/52ef417d4f89486a203ea96a4641031568e9ef3b))
+* switch variables table from scope_id to clerk_org_id ([#4138](https://github.com/vm0-ai/vm0/issues/4138)) ([609f7c1](https://github.com/vm0-ai/vm0/commit/609f7c1d84c3d20238be1f75ac3beba39b8a971a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.54.0
+
 ## [12.93.0](https://github.com/vm0-ai/vm0/compare/web-v12.92.0...web-v12.93.0) (2026-03-10)
 
 
