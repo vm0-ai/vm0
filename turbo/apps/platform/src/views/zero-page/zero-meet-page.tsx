@@ -1,5 +1,5 @@
 import { useCCState } from "ccstate-react/experimental";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
   IconMessageCircle,
@@ -30,6 +30,7 @@ import {
   cn,
 } from "@vm0/ui";
 import { ZeroScheduleCard, DEFAULT_SCHEDULE } from "./zero-schedule-card";
+import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 
 const TONE_OPTIONS = [
   "Professional",
@@ -100,10 +101,13 @@ export function ZeroMeetPage({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroMeetPageProps) {
+  const agentNameLoadable = useLoadable(agentDisplayName$);
+  const resolvedAgentName =
+    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
   const activeTab$ = useCCState("connections");
   const activeTab = useGet(activeTab$);
   const setActiveTab = useSet(activeTab$);
-  const agentName$ = useCCState("Zero");
+  const agentName$ = useCCState(resolvedAgentName);
   const agentName = useGet(agentName$);
   const setAgentName = useSet(agentName$);
   const tone$ = useCCState<string>("Professional");
@@ -117,7 +121,7 @@ export function ZeroMeetPage({
     tone: string;
     skills: string[];
   }>({
-    name: "Zero",
+    name: resolvedAgentName,
     tone: "Professional",
     skills: [...AVAILABLE_SKILLS],
   });
@@ -183,7 +187,7 @@ export function ZeroMeetPage({
             <div className="min-w-0 pt-2 sm:pt-2.5">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-xl font-semibold tracking-tight text-foreground leading-tight">
-                  Zero
+                  {resolvedAgentName}
                 </h1>
                 <span className="zero-pill inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium">
                   Super Manager
@@ -253,8 +257,8 @@ export function ZeroMeetPage({
         {activeTab === "schedule" && (
           <div className="mx-auto max-w-[900px] px-7">
             <ZeroScheduleCard
-              title="Zero's schedule"
-              subtitle="Set a time and prompt for Zero to run automatically."
+              title={`${resolvedAgentName}'s schedule`}
+              subtitle={`Set a time and prompt for ${resolvedAgentName} to run automatically.`}
               initialSchedule={DEFAULT_SCHEDULE}
             />
           </div>
@@ -283,7 +287,7 @@ export function ZeroMeetPage({
                   <div
                     className="flex flex-col gap-2"
                     role="group"
-                    aria-label="How Zero sounds"
+                    aria-label={`How ${resolvedAgentName} sounds`}
                   >
                     <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       How they sound
@@ -424,9 +428,9 @@ export function ZeroMeetPage({
                         Expertise
                       </h2>
                       <p>
-                        Zero is an intelligent Super Manager designed to help
-                        teams with automation, data analysis, and workflow
-                        orchestration.
+                        {resolvedAgentName} is an intelligent Super Manager
+                        designed to help teams with automation, data analysis,
+                        and workflow orchestration.
                       </p>
                     </div>
                     <div>

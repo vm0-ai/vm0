@@ -149,7 +149,8 @@
     "NEXT_RUNTIME",
     "NEXT_PUBLIC_VERCEL_ENV",
     "NGROK_API_KEY",
-    "NGROK_COMPUTER_CONNECTOR_DOMAIN"
+    "NGROK_COMPUTER_CONNECTOR_DOMAIN",
+    "DEV"
   ],
   "tasks": {
     "build": {

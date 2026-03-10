@@ -1,6 +1,6 @@
 import type { ReactNode, KeyboardEvent } from "react";
 import { useCCState, useCommand } from "ccstate-react/experimental";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import { onRef } from "../../signals/utils.ts";
 import {
   IconSend,
@@ -23,6 +23,7 @@ import {
 } from "@tabler/icons-react";
 import { Button, Card, CardContent, cn } from "@vm0/ui";
 import { ZERO_TEAM_JOBS } from "./zero-jobs-page";
+import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 
 export type DemoScenarioId =
   | "hello-from-zero"
@@ -34,11 +35,13 @@ export type DemoScenarioId =
   | "agent-operations";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
-const ACTION_BUTTONS = [
-  { label: "Automate workflows", icon: IconBriefcase as NavIcon },
-  { label: "Customize Zero", icon: IconSettings as NavIcon },
-  { label: "Add connectors", icon: IconPlug as NavIcon },
-] as const;
+function getActionButtons(agentName: string) {
+  return [
+    { label: "Automate workflows", icon: IconBriefcase as NavIcon },
+    { label: `Customize ${agentName}`, icon: IconSettings as NavIcon },
+    { label: "Add connectors", icon: IconPlug as NavIcon },
+  ] as const;
+}
 
 const SUGGESTED_PROMPTS = [
   {
@@ -55,64 +58,73 @@ const SUGGESTED_PROMPTS = [
   },
 ] as const;
 
-const STREAMED_SCENARIOS: readonly Readonly<{
+function getStreamedScenarios(agentName: string): readonly Readonly<{
   id: DemoScenarioId;
   userMessage: string;
   assistantMessage: string;
-}>[] = [
-  {
-    id: "hello-from-zero",
-    userMessage: "Hi",
-    assistantMessage: "",
-  },
-  {
-    id: "approve",
-    userMessage: "Run the deployment to production",
-    assistantMessage:
-      "This action requires approval. Allow Zero to run the deployment?",
-  },
-  {
-    id: "ask-options",
-    userMessage: "Send a summary of this week’s activity",
-    assistantMessage: "Where should I send the summary?",
-  },
-  {
-    id: "team-personal",
-    userMessage:
-      "Create a daily digest workflow that summarizes important updates",
-    assistantMessage:
-      "I can create a Daily Digest workflow. Would you like this to be a Team workflow or a Personal workflow?",
-  },
-  {
-    id: "connect-connector",
-    userMessage: "Notify #releases when a PR is merged",
-    assistantMessage: "Connect Slack to enable this workflow.",
-  },
-  {
-    id: "rich-summary",
-    userMessage: "Run the HN AI daily digest workflow",
-    assistantMessage: "",
-  },
-  {
-    id: "agent-operations",
-    userMessage: "Test the Google Calendar connector and show me the steps",
-    assistantMessage: "",
-  },
-];
+}>[] {
+  return [
+    {
+      id: "hello-from-zero",
+      userMessage: "Hi",
+      assistantMessage: "",
+    },
+    {
+      id: "approve",
+      userMessage: "Run the deployment to production",
+      assistantMessage: `This action requires approval. Allow ${agentName} to run the deployment?`,
+    },
+    {
+      id: "ask-options",
+      userMessage: "Send a summary of this week’s activity",
+      assistantMessage: "Where should I send the summary?",
+    },
+    {
+      id: "team-personal",
+      userMessage:
+        "Create a daily digest workflow that summarizes important updates",
+      assistantMessage:
+        "I can create a Daily Digest workflow. Would you like this to be a Team workflow or a Personal workflow?",
+    },
+    {
+      id: "connect-connector",
+      userMessage: "Notify #releases when a PR is merged",
+      assistantMessage: "Connect Slack to enable this workflow.",
+    },
+    {
+      id: "rich-summary",
+      userMessage: "Run the HN AI daily digest workflow",
+      assistantMessage: "",
+    },
+    {
+      id: "agent-operations",
+      userMessage: "Test the Google Calendar connector and show me the steps",
+      assistantMessage: "",
+    },
+  ];
+}
 
 const STREAM_DELAY_MS = 1400;
 
-const LANDING_TAGLINES = [
-  "I'm Zero. Customize me and assign tasks anytime.",
-  "Your intelligent teammate, tuned to you.",
-  "Create workflows, run automations, get things done.",
-  "Ask me anything, I'll route it to the right minions.",
-  "200+ connectors, ready when you are.",
-] as const;
+function getLandingTaglines(agentName: string) {
+  return [
+    `I'm ${agentName}. Customize me and assign tasks anytime.`,
+    "Your intelligent teammate, tuned to you.",
+    "Create workflows, run automations, get things done.",
+    "Ask me anything, I'll route it to the right minions.",
+    "200+ connectors, ready when you are.",
+  ] as const;
+}
 const CAROUSEL_INTERVAL_MS = 4000;
 
+interface StreamedScenario {
+  id: DemoScenarioId;
+  userMessage: string;
+  assistantMessage: string;
+}
+
 interface ChatScenarioBlockProps {
-  scene: (typeof STREAMED_SCENARIOS)[number];
+  scene: StreamedScenario;
   onNavigateToActivity?: () => void;
   commandAllowed: boolean;
   setCommandAllowed: (v: boolean) => void;
@@ -126,14 +138,17 @@ interface ChatScenarioBlockProps {
   setConnectorConnected: (v: boolean) => void;
   zeroAvatarSrc?: string;
   onAvatarClick?: () => void;
+  agentName?: string;
 }
 
 function HelloFromZeroBlock({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
+  agentName = "Zero",
 }: {
   zeroAvatarSrc?: string;
   onAvatarClick?: () => void;
+  agentName?: string;
 }) {
   const avatarButton = (
     <button
@@ -156,8 +171,9 @@ function HelloFromZeroBlock({
         {avatarButton}
         <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0">
           <p className="text-foreground">
-            Hi! I&apos;m Zero, your AI teammate. I help you automate tasks, run
-            workflows, and get things done across your connected tools.
+            Hi! I&apos;m {agentName}, your AI teammate. I help you automate
+            tasks, run workflows, and get things done across your connected
+            tools.
           </p>
         </div>
       </div>
@@ -199,6 +215,7 @@ function ChatScenarioBlock({
   setConnectorConnected,
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
+  agentName = "Zero",
 }: ChatScenarioBlockProps) {
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -238,6 +255,7 @@ function ChatScenarioBlock({
             setTeamPersonalChoice={setTeamPersonalChoice}
             connectorConnected={connectorConnected}
             setConnectorConnected={setConnectorConnected}
+            agentName={agentName}
           />
         </div>
       </div>
@@ -260,6 +278,7 @@ function ChatScenarioAssistantContent({
   setTeamPersonalChoice,
   connectorConnected,
   setConnectorConnected,
+  agentName = "Zero",
 }: ChatScenarioAssistantContentProps) {
   if (scene.id === "rich-summary") {
     return (
@@ -351,6 +370,7 @@ function ChatScenarioAssistantContent({
       <ChatScenarioAgentOperations
         commandAllowed={commandAllowed}
         setCommandAllowed={setCommandAllowed}
+        agentName={agentName}
       />
     );
   }
@@ -488,9 +508,11 @@ function ChatScenarioAssistantContent({
 function ChatScenarioAgentOperations({
   commandAllowed,
   setCommandAllowed,
+  agentName = "Zero",
 }: {
   commandAllowed: boolean;
   setCommandAllowed: (v: boolean) => void;
+  agentName?: string;
 }) {
   return (
     <div className="text-foreground text-sm leading-relaxed">
@@ -564,13 +586,14 @@ function ChatScenarioAgentOperations({
               Verify environment and run command
             </h4>
             <p className="text-muted-foreground text-sm mt-1.5 leading-relaxed">
-              Allow Zero to run the following command to verify Node and npm.
+              Allow {agentName} to run the following command to verify Node and
+              npm.
             </p>
             {!commandAllowed ? (
               <div className="mt-3 rounded-lg border border-border/40 bg-muted/10 px-4 py-3">
                 <p className="text-sm text-foreground leading-relaxed">
-                  Allow Zero to run the following command to verify Node.js and
-                  npm:{" "}
+                  Allow {agentName} to run the following command to verify
+                  Node.js and npm:{" "}
                   <code className="font-mono text-xs bg-muted/50 px-1.5 py-0.5 rounded">
                     node --version && npm --version
                   </code>
@@ -626,6 +649,9 @@ export function ZeroChatPage({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroChatPageProps) {
+  const agentNameLoadable = useLoadable(agentDisplayName$);
+  const agentName =
+    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
   const input$ = useCCState("");
   const input = useGet(input$);
   const setInput = useSet(input$);
@@ -663,7 +689,10 @@ export function ZeroChatPage({
   const carouselCommand$ = useCommand(
     ({ set }, _el: HTMLElement, signal: AbortSignal) => {
       const id = window.setInterval(() => {
-        set(carouselIndex$, (i: number) => (i + 1) % LANDING_TAGLINES.length);
+        set(
+          carouselIndex$,
+          (i: number) => (i + 1) % getLandingTaglines(agentName).length,
+        );
       }, CAROUSEL_INTERVAL_MS);
       signal.addEventListener("abort", () => window.clearInterval(id));
     },
@@ -770,10 +799,11 @@ export function ZeroChatPage({
     }
   };
 
+  const streamedScenarios = getStreamedScenarios(agentName);
   const scenariosToShow = initialScenarioId
-    ? STREAMED_SCENARIOS.filter((s) => s.id === initialScenarioId)
+    ? streamedScenarios.filter((s) => s.id === initialScenarioId)
     : conversationActive
-      ? STREAMED_SCENARIOS.slice(0, streamedCount)
+      ? streamedScenarios.slice(0, streamedCount)
       : [];
   const showConversation =
     (initialScenarioId !== undefined && scenariosToShow.length > 0) ||
@@ -814,7 +844,7 @@ export function ZeroChatPage({
                 className="h-8 w-8 rounded-full object-cover object-top"
               />
             </button>
-            <span className="font-semibold text-foreground">Zero</span>
+            <span className="font-semibold text-foreground">{agentName}</span>
           </div>
           <div className="flex items-center gap-0.5">
             <Button
@@ -834,7 +864,7 @@ export function ZeroChatPage({
               size="icon"
               className="h-8 w-8 text-muted-foreground hover:text-foreground"
               onClick={onNavigateToSchedule}
-              aria-label="Zero schedule"
+              aria-label={`${agentName} schedule`}
             >
               <IconCalendar size={18} stroke={1.5} />
             </Button>
@@ -848,6 +878,7 @@ export function ZeroChatPage({
                   key={scene.id}
                   zeroAvatarSrc={zeroAvatarSrc}
                   onAvatarClick={onAvatarClick}
+                  agentName={agentName}
                 />
               ) : (
                 <ChatScenarioBlock
@@ -866,6 +897,7 @@ export function ZeroChatPage({
                   setConnectorConnected={setConnectorConnected}
                   zeroAvatarSrc={zeroAvatarSrc}
                   onAvatarClick={onAvatarClick}
+                  agentName={agentName}
                 />
               ),
             )}
@@ -946,7 +978,7 @@ export function ZeroChatPage({
                       className="w-fit rounded-lg"
                       onClick={onNavigateToJob}
                     >
-                      Manage in Zero&apos;s team
+                      Manage in {agentName}&apos;s team
                     </Button>
                   </div>
                 </div>
@@ -1050,7 +1082,7 @@ export function ZeroChatPage({
                 key={carouselIndex}
                 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground zero-tagline-animate-in"
               >
-                {LANDING_TAGLINES[carouselIndex]}
+                {getLandingTaglines(agentName)[carouselIndex]}
               </h2>
             </div>
           </div>
@@ -1118,7 +1150,7 @@ export function ZeroChatPage({
           {/* Action buttons */}
           <div className="flex flex-wrap justify-between items-center gap-2 w-full">
             <div className="flex flex-wrap gap-2">
-              {ACTION_BUTTONS.map(({ label, icon: Icon }) => (
+              {getActionButtons(agentName).map(({ label, icon: Icon }) => (
                 <Button
                   key={label}
                   variant="outline"

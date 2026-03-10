@@ -36,11 +36,22 @@ import {
   setZeroSecretField$,
   saveZeroModelProvider$,
   completeZeroOnboarding$,
+  zeroHasModelProvider$,
 } from "../../signals/zero-page/zero-onboarding.ts";
 import {
   fetchSlackIntegration$,
   slackInstallUrl$,
 } from "../../signals/integrations-page/slack-integration.ts";
+import {
+  allConnectorTypes$,
+  connectConnector$,
+  pollingConnectorType$,
+  selectedConnectorType$,
+  setSelectedConnectorType$,
+} from "../../signals/settings-page/connectors.ts";
+import { ConnectModal } from "../settings-page/add-connection-dialog.tsx";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { IconCircleCheck, IconLoader } from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
 
 const MODEL_PROVIDER_LIST: readonly ModelProviderType[] = [
@@ -82,6 +93,64 @@ const CONNECTOR_LIST: readonly ConnectorType[] = [
   "xero",
 ];
 
+function OnboardingConnectorCard({ type }: { type: ConnectorType }) {
+  const config = CONNECTOR_TYPES[type];
+  const connectorTypesLoadable = useLoadable(allConnectorTypes$);
+  const pollingType = useGet(pollingConnectorType$);
+  const connect = useSet(connectConnector$);
+  const setSelected = useSet(setSelectedConnectorType$);
+  const pageSignal = useGet(pageSignal$);
+
+  const isPolling = pollingType === type;
+
+  const item =
+    connectorTypesLoadable.state === "hasData"
+      ? connectorTypesLoadable.data.find((c) => c.type === type)
+      : undefined;
+
+  const isConnected = item?.connected ?? false;
+  const hasApiToken = item?.availableAuthMethods.includes("api-token") ?? false;
+
+  const handleClick = () => {
+    if (isConnected || isPolling) {
+      return;
+    }
+    if (hasApiToken) {
+      setSelected(type);
+    } else {
+      detach(connect(type, pageSignal), Reason.DomCallback);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={isConnected || isPolling}
+      className={`zero-card flex items-center gap-2 rounded-xl border px-3 py-2 min-w-0 transition-colors ${
+        isConnected
+          ? "border-green-500/30 bg-green-500/5"
+          : isPolling
+            ? "border-yellow-500/30 bg-yellow-500/5"
+            : "border-border hover:bg-muted/50 cursor-pointer"
+      }`}
+    >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
+        <ConnectorIcon type={type} size={18} />
+      </span>
+      <span className="text-sm font-medium text-foreground whitespace-nowrap">
+        {config.label}
+      </span>
+      {isConnected && (
+        <IconCircleCheck className="h-4 w-4 shrink-0 text-green-500" />
+      )}
+      {isPolling && (
+        <IconLoader className="h-4 w-4 shrink-0 text-yellow-500 animate-spin" />
+      )}
+    </button>
+  );
+}
+
 /** Zero onboarding: creates scope, model provider, and default agent. */
 export function ZeroOnboarding({
   zeroAvatarSrc = "/zero-avatar.png",
@@ -108,6 +177,12 @@ export function ZeroOnboarding({
   const completeOnboarding = useSet(completeZeroOnboarding$);
   const fetchSlack = useSet(fetchSlackIntegration$);
   const slackInstallUrlLoadable = useLoadable(slackInstallUrl$);
+  const hasModelProviderLoadable = useLoadable(zeroHasModelProvider$);
+  const hasModelProvider =
+    hasModelProviderLoadable.state === "hasData" &&
+    hasModelProviderLoadable.data === true;
+  const selectedConnectorType = useGet(selectedConnectorType$);
+  const setSelected = useSet(setSelectedConnectorType$);
 
   // Local UI state: whether user has picked a provider (showing form vs list)
   const providerPicked$ = useCCState(false);
@@ -120,7 +195,7 @@ export function ZeroOnboarding({
   };
 
   const handleStep1Next = () => {
-    setStep("2");
+    setStep(hasModelProvider ? "3" : "2");
   };
 
   const handleStep2Next = () => {
@@ -147,7 +222,7 @@ export function ZeroOnboarding({
   };
 
   const handleStep3Back = () => {
-    setStep("2");
+    setStep(hasModelProvider ? "1" : "2");
   };
 
   const handleStep4Back = () => {
@@ -340,27 +415,14 @@ export function ZeroOnboarding({
               </DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground leading-relaxed mt-1 mb-6 whitespace-nowrap">
-              Connect the tools Zero needs to work with. You can skip and add
-              more later.
+              Connect the tools {name || "Zero"} needs to work with. You can
+              skip and add more later.
             </p>
             <div className="w-full px-8 flex-1 min-h-0">
               <div className="w-full flex flex-wrap justify-center gap-3 pb-4">
-                {CONNECTOR_LIST.map((type) => {
-                  const config = CONNECTOR_TYPES[type];
-                  return (
-                    <div
-                      key={type}
-                      className="zero-card flex items-center gap-2 rounded-xl border border-border px-3 py-2 min-w-0"
-                    >
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
-                        <ConnectorIcon type={type} size={18} />
-                      </span>
-                      <span className="text-sm font-medium text-foreground whitespace-nowrap">
-                        {config.label}
-                      </span>
-                    </div>
-                  );
-                })}
+                {CONNECTOR_LIST.map((type) => (
+                  <OnboardingConnectorCard key={type} type={type} />
+                ))}
               </div>
             </div>
           </div>
@@ -382,6 +444,10 @@ export function ZeroOnboarding({
         </DialogContent>
       </Dialog>
 
+      {selectedConnectorType && (
+        <ConnectModal onClose={() => setSelected(null)} />
+      )}
+
       {/* Step 4: Where would you like to work with Zero? */}
       <Dialog open={step === "4"}>
         <DialogContent
@@ -392,7 +458,7 @@ export function ZeroOnboarding({
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-8">
             <DialogHeader className="space-y-2">
               <DialogTitle className="text-xl font-semibold tracking-tight">
-                Where would you like to work with Zero?
+                Where would you like to work with {name || "Zero"}?
               </DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-[400px] mt-1 mb-6">
@@ -404,11 +470,11 @@ export function ZeroOnboarding({
                   <img src={slackIcon} alt="" className="h-7 w-7" />
                 </span>
                 <span className="text-sm font-semibold text-foreground mb-1">
-                  Add Zero to Slack
+                  Add {name || "Zero"} to Slack
                 </span>
                 <p className="text-xs text-muted-foreground leading-relaxed mb-4">
-                  Work with Zero in your Slack workspace where your team already
-                  collaborates.
+                  Work with {name || "Zero"} in your Slack workspace where your
+                  team already collaborates.
                 </p>
                 <Button
                   size="sm"
@@ -433,8 +499,8 @@ export function ZeroOnboarding({
                   Continue in web
                 </span>
                 <p className="text-xs text-muted-foreground leading-relaxed mb-4">
-                  Chat with Zero in your browser with full access to workflows
-                  and settings.
+                  Chat with {name || "Zero"} in your browser with full access to
+                  workflows and settings.
                 </p>
                 <Button
                   size="sm"
@@ -443,7 +509,7 @@ export function ZeroOnboarding({
                   onClick={handleContinueWithWeb}
                   disabled={saving}
                 >
-                  {saving ? "Saving…" : "Chat with Zero"}
+                  {saving ? "Saving…" : `Chat with ${name || "Zero"}`}
                 </Button>
               </div>
             </div>

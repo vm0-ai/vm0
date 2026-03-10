@@ -22,7 +22,7 @@ const L = logger("ZeroOnboarding");
 
 const internalReload$ = state(0);
 
-const zeroOnboardingStatus$ = computed(async (get) => {
+export const zeroOnboardingStatus$ = computed(async (get) => {
   get(internalReload$);
   const fetchFn = get(fetch$);
   const resp = await fetchFn("/api/onboarding/status");
@@ -35,6 +35,11 @@ const zeroOnboardingStatus$ = computed(async (get) => {
 export const zeroNeedsOnboarding$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
   return status.needsOnboarding;
+});
+
+export const zeroHasModelProvider$ = computed(async (get) => {
+  const status = await get(zeroOnboardingStatus$);
+  return status.hasModelProvider;
 });
 
 // ---------------------------------------------------------------------------
@@ -192,15 +197,8 @@ export const initZeroOnboarding$ = command(
       return;
     }
 
-    // Determine which step to start at
-    if (!status.hasScope || !status.hasModelProvider) {
-      // Need scope or model provider — start at step 1 (name) then step 2 (provider)
-      set(internalStep$, "1");
-    } else if (!status.hasDefaultAgent) {
-      // Has scope and provider, just missing default agent
-      // Skip to step 3 (connectors) or step 4 (workspace)
-      set(internalStep$, "3");
-    }
+    // Always start from step 1 when onboarding is needed
+    set(internalStep$, "1");
   },
 );
 

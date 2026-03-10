@@ -12,6 +12,8 @@ export const onboardingStatusResponseSchema = z.object({
   hasScope: z.boolean(),
   hasModelProvider: z.boolean(),
   hasDefaultAgent: z.boolean(),
+  defaultAgentName: z.string().nullable(),
+  defaultAgentComposeId: z.string().nullable(),
 });
 
 export type OnboardingStatusResponse = z.infer<

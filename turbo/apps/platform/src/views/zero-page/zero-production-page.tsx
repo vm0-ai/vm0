@@ -1,5 +1,5 @@
 import { useCCState } from "ccstate-react/experimental";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconSearch,
   IconFolder,
@@ -26,6 +26,7 @@ import {
   PopoverTrigger,
 } from "@vm0/ui/components/ui/popover";
 import { Markdown } from "../components/markdown.tsx";
+import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 
 type DocScope = "all" | "team" | "personal";
 type DocType = "markdown" | "pdf" | "html" | "react-app";
@@ -42,44 +43,45 @@ interface DocItem {
   contentPreview: string;
 }
 
-const DOCS: readonly Readonly<DocItem>[] = [
-  {
-    id: "1",
-    title: "Team Weekly Report - Week 8",
-    type: "markdown",
-    scope: "team",
-    createdBy: "Zero Agent",
-    size: "24 KB",
-    created: "March 2, 2026",
-    contentPreview: `**Summary** — Team activity and deliverables.
+function getDocs(agentName: string): readonly Readonly<DocItem>[] {
+  return [
+    {
+      id: "1",
+      title: "Team Weekly Report - Week 8",
+      type: "markdown",
+      scope: "team",
+      createdBy: `${agentName} Agent`,
+      size: "24 KB",
+      created: "March 2, 2026",
+      contentPreview: `**Summary** — Team activity and deliverables.
 
 - 3 PRs merged this week; design review completed for the new dashboard. The calendar connector is in QA; we expect sign-off by Friday.
 - Pending: QA sign-off on the calendar connector, docs update for API v2. The engineering team has drafted the migration guide and will publish once tests are green.
 - Next week we focus on the schedule tool rollout and gathering feedback from early adopters.`,
-  },
-  {
-    id: "2",
-    title: "Product Requirements Document.pdf",
-    type: "pdf",
-    scope: "personal",
-    createdBy: "John Smith",
-    size: "1.2 MB",
-    created: "March 1, 2026",
-    contentPreview: `**Google Calendar connector scope**
+    },
+    {
+      id: "2",
+      title: "Product Requirements Document.pdf",
+      type: "pdf",
+      scope: "personal",
+      createdBy: "John Smith",
+      size: "1.2 MB",
+      created: "March 1, 2026",
+      contentPreview: `**Google Calendar connector scope**
 
 - **Searching events:** filter by calendar ID, time range, and free-text search. Results can be limited to a configurable page size. Supports recurring event expansion.
 - **Creating events:** customizable summary (title), description, start and end times, timezone, and attendee list. Supports workflow automation and templates.
 - **Updates and cancellation:** full CRUD for events. Webhook support for real-time sync with external systems.`,
-  },
-  {
-    id: "3",
-    title: "Data Analysis Report",
-    type: "html",
-    scope: "team",
-    createdBy: "Zero Agent",
-    size: "156 KB",
-    created: "February 28, 2026",
-    contentPreview: `Usage and performance metrics for the last 30 days.
+    },
+    {
+      id: "3",
+      title: "Data Analysis Report",
+      type: "html",
+      scope: "team",
+      createdBy: `${agentName} Agent`,
+      size: "156 KB",
+      created: "February 28, 2026",
+      contentPreview: `Usage and performance metrics for the last 30 days.
 
 | Metric        | Value   |
 |---------------|---------|
@@ -88,48 +90,49 @@ const DOCS: readonly Readonly<DocItem>[] = [
 | P95 latency   | 340ms   |
 
 Recommendations for optimizing cron-based schedules and reducing cold starts. We suggest batching small jobs and using the interval type for high-frequency tasks.`,
-  },
-  {
-    id: "4",
-    title: "Meeting Minutes",
-    type: "markdown",
-    scope: "team",
-    createdBy: "Zero Agent",
-    size: "89 KB",
-    created: "February 27, 2026",
-    contentPreview: `**Decisions**
+    },
+    {
+      id: "4",
+      title: "Meeting Minutes",
+      type: "markdown",
+      scope: "team",
+      createdBy: `${agentName} Agent`,
+      size: "89 KB",
+      created: "February 27, 2026",
+      contentPreview: `**Decisions**
 - Adopt 6-field cron for schedule tool; support \`cron\` and \`interval\` types. Product will document the cron expression format and provide examples.
 - Action items: document schedule setup flow, add examples for "remind me at 9 AM" and "every 30 minutes". Engineering to add validation and error messages for invalid expressions.`,
-  },
-  {
-    id: "5",
-    title: "Dashboard Demo",
-    type: "react-app",
-    scope: "personal",
-    createdBy: "Jane Doe",
-    size: "12 KB",
-    created: "February 26, 2026",
-    contentPreview: `**Interactive demo** of the production dashboard.
+    },
+    {
+      id: "5",
+      title: "Dashboard Demo",
+      type: "react-app",
+      scope: "personal",
+      createdBy: "Jane Doe",
+      size: "12 KB",
+      created: "February 26, 2026",
+      contentPreview: `**Interactive demo** of the production dashboard.
 
 - Document gallery with list/gallery toggle. Each card shows icon, title, and a rich-text preview; the content area uses a serif font and a bottom fade.
 - Search and scope filters (All / Team / Personal). Results update in real time. You can switch between grid and list layout without losing the current filter.`,
-  },
-  {
-    id: "6",
-    title: "Project Brief",
-    type: "html",
-    scope: "personal",
-    createdBy: "Mike Johnson",
-    size: "8 KB",
-    created: "February 25, 2026",
-    contentPreview: `**Phases**
+    },
+    {
+      id: "6",
+      title: "Project Brief",
+      type: "html",
+      scope: "personal",
+      createdBy: "Mike Johnson",
+      size: "8 KB",
+      created: "February 25, 2026",
+      contentPreview: `**Phases**
 1. Connector discovery and tool listing. Integrate with the MCP registry and support custom endpoints.
 2. Run flows (search, create, schedule). Add a run history view and export for audit.
 3. Reporting and export. Dashboards for usage and cost; API for programmatic access.
 
 *Dependencies:* MCP server config, calendar API keys, and approval from security for external OAuth.`,
-  },
-];
+    },
+  ];
+}
 
 const DOC_TYPE_ICON: Readonly<Record<DocType, string>> = {
   pdf: "/doc-types/PDF.svg",
@@ -255,6 +258,9 @@ function DocListRow({ doc }: { doc: DocItem }) {
 type ViewMode = "list" | "gallery";
 
 export function ZeroProductionPage() {
+  const agentNameLoadable = useLoadable(agentDisplayName$);
+  const agentName =
+    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
   const filter$ = useCCState<DocScope>("all");
   const filter = useGet(filter$);
   const setFilter = useSet(filter$);
@@ -265,7 +271,8 @@ export function ZeroProductionPage() {
   const viewMode = useGet(viewMode$);
   const setViewMode = useSet(viewMode$);
 
-  const filteredDocs = DOCS.filter((doc) => {
+  const docs = getDocs(agentName);
+  const filteredDocs = docs.filter((doc) => {
     const matchScope = filter === "all" || doc.scope === filter;
     const matchSearch =
       !search.trim() ||
@@ -283,7 +290,7 @@ export function ZeroProductionPage() {
               Documents
             </h1>
             <p className="text-sm text-muted-foreground">
-              Files and content created by Zero.
+              Files and content created by {agentName}.
             </p>
           </div>
 

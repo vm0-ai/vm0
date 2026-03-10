@@ -1,11 +1,12 @@
 import { useCCState } from "ccstate-react/experimental";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import { IconArrowLeft, IconSearch, IconDownload } from "@tabler/icons-react";
 import { Button, Input } from "@vm0/ui";
 import type { LogStatus } from "../../signals/logs-page/types.ts";
 import { StatusBadge } from "../logs-page/status-badge.tsx";
 import { StatusDot } from "../logs-page/components/status-dot.tsx";
 import type { ActivityItem } from "./zero-activity-types.ts";
+import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 
 type StepVariant = "neutral" | "todo" | "success";
 
@@ -148,6 +149,9 @@ export function ZeroActivityDetailPage({
   item,
   onBack,
 }: ZeroActivityDetailPageProps) {
+  const agentNameLoadable = useLoadable(agentDisplayName$);
+  const agentName =
+    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
   const stepSearch$ = useCCState("");
   const stepSearch = useGet(stepSearch$);
   const setStepSearch = useSet(stepSearch$);
@@ -155,7 +159,7 @@ export function ZeroActivityDetailPage({
     (s) => !stepSearch.trim() || stepMatchesSearch(s, stepSearch.trim()),
   );
 
-  const typeLabel = item.type === "zero" ? "Zero" : "Workflow";
+  const typeLabel = item.type === "zero" ? agentName : "Workflow";
   const totalCountDisplay = `${MOCK_STEPS.length}`;
 
   return (

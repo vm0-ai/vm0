@@ -1,3 +1,4 @@
+import { useLoadable } from "ccstate-react";
 import type { ZeroNavId, ZeroAccountSubId } from "./zero-sidebar.tsx";
 import { ZeroChatPage, type DemoScenarioId } from "./zero-chat-page.tsx";
 import { ZeroAccountPage } from "./zero-account-page.tsx";
@@ -7,6 +8,7 @@ import { ZeroProductionPage } from "./zero-production-page.tsx";
 import { ZeroActivityPage } from "./zero-activity-page.tsx";
 import { ZeroWorksPage } from "./zero-works-page.tsx";
 import { ZeroSchedulePage } from "./zero-schedule-page.tsx";
+import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 
 const RECENT_ID_TO_SCENARIO: Readonly<Record<string, DemoScenarioId>> = {
   hello: "hello-from-zero",
@@ -30,16 +32,20 @@ interface ZeroContentProps {
   onAvatarClick?: () => void;
 }
 
-const SECTION_TITLES: Readonly<Record<ZeroNavId, string>> = {
-  chat: "Chat with Zero",
-  meet: "Meet Zero",
-  schedule: "Schedule",
-  job: "Zero's team",
-  production: "Documents",
-  activity: "Activities",
-  works: "Where Zero works",
-  account: "Account",
-};
+function getSectionTitles(
+  agentName: string,
+): Readonly<Record<ZeroNavId, string>> {
+  return {
+    chat: `Chat with ${agentName}`,
+    meet: `Meet ${agentName}`,
+    schedule: "Schedule",
+    job: `${agentName}'s team`,
+    production: "Documents",
+    activity: "Activities",
+    works: `Where ${agentName} works`,
+    account: "Account",
+  };
+}
 
 export function ZeroContent({
   sectionId,
@@ -54,6 +60,9 @@ export function ZeroContent({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroContentProps) {
+  const agentNameLoadable = useLoadable(agentDisplayName$);
+  const agentName =
+    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
   if (sectionId === "chat") {
     const initialScenarioId = recentId
       ? (RECENT_ID_TO_SCENARIO[recentId] ?? undefined)
@@ -97,7 +106,7 @@ export function ZeroContent({
     return <ZeroAccountPage accountSubId={accountSubId ?? null} />;
   }
 
-  const title = recentLabel ?? SECTION_TITLES[sectionId];
+  const title = recentLabel ?? getSectionTitles(agentName)[sectionId];
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -107,8 +116,8 @@ export function ZeroContent({
         </h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
           {recentLabel
-            ? "Continue your dialogue with Zero"
-            : "Zero — your AI assistant"}
+            ? `Continue your dialogue with ${agentName}`
+            : `${agentName} — your AI assistant`}
         </p>
       </header>
       <main className="flex-1 overflow-auto px-4 sm:px-6 pb-8">

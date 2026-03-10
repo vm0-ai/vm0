@@ -1,5 +1,5 @@
 import { useCCState } from "ccstate-react/experimental";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconUser,
   IconUsers,
@@ -14,6 +14,7 @@ import {
   PopoverTrigger,
 } from "@vm0/ui/components/ui/popover";
 import { ZeroJobDetailPage, type JobItem } from "./zero-job-detail-page.tsx";
+import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 
 export const ZERO_TEAM_JOBS: readonly Readonly<JobItem>[] = [
   {
@@ -51,6 +52,9 @@ export function ZeroJobsPage({
 }: {
   onNavigateToChat?: () => void;
 } = {}) {
+  const agentNameLoadable = useLoadable(agentDisplayName$);
+  const agentName =
+    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
   const selectedJobId$ = useCCState<string | null>(null);
   const selectedJobId = useGet(selectedJobId$);
   const setSelectedJobId = useSet(selectedJobId$);
@@ -74,11 +78,11 @@ export function ZeroJobsPage({
         <div className="mx-auto max-w-[900px] flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              Zero&apos;s sub agents
+              {agentName}&apos;s sub agents
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Sub-agents created by Zero to run tailored workflows for you and
-              your team.
+              Sub-agents created by {agentName} to run tailored workflows for
+              you and your team.
             </p>
           </div>
           {onNavigateToChat && (

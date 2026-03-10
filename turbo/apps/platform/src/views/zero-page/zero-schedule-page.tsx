@@ -1,5 +1,5 @@
 import { useCCState } from "ccstate-react/experimental";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import { IconPencil, IconList, IconLayoutGrid } from "@tabler/icons-react";
 import {
   Card,
@@ -44,17 +44,19 @@ import {
   type ScheduleEntry,
 } from "./zero-schedule-card";
 import { ZERO_TEAM_JOBS } from "./zero-jobs-page";
+import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 
 type CombinedEntry = ScheduleEntry & { agentLabel: string };
 
 function buildCombinedSchedule(
   zeroSchedule: ScheduleEntry[],
   jobSchedules: Record<string, ScheduleEntry[]>,
+  agentName: string,
 ): CombinedEntry[] {
   const zeroEntries: CombinedEntry[] = zeroSchedule.map((e) => ({
     ...e,
     id: `zero-${e.id}`,
-    agentLabel: "Zero",
+    agentLabel: agentName,
   }));
   const jobEntries: CombinedEntry[] = ZERO_TEAM_JOBS.flatMap((job) =>
     (jobSchedules[job.id] ?? DUMMY_AGENT_SCHEDULE).map((e) => ({
@@ -66,10 +68,12 @@ function buildCombinedSchedule(
   return [...zeroEntries, ...jobEntries];
 }
 
-const AGENT_ORDER: readonly string[] = [
-  "Zero",
-  ...ZERO_TEAM_JOBS.map((j) => `${j.agentName} · ${j.title}`),
-];
+function getAgentOrder(agentName: string): readonly string[] {
+  return [
+    agentName,
+    ...ZERO_TEAM_JOBS.map((j) => `${j.agentName} · ${j.title}`),
+  ];
+}
 
 const AGENT_CELL_CLASSES = [
   "bg-blue-700/15 border-blue-700/40 text-blue-800 dark:text-blue-200 dark:border-blue-600/40 dark:bg-blue-900/25",
@@ -79,8 +83,11 @@ const AGENT_CELL_CLASSES = [
   "bg-teal-700/15 border-teal-700/40 text-teal-800 dark:text-teal-200 dark:border-teal-600/40 dark:bg-teal-900/25",
 ] as const;
 
-function getAgentCellClasses(agentLabel: string): string {
-  const i = AGENT_ORDER.indexOf(agentLabel);
+function getAgentCellClasses(
+  agentLabel: string,
+  agentOrder: readonly string[],
+): string {
+  const i = agentOrder.indexOf(agentLabel);
   return AGENT_CELL_CLASSES[i !== -1 ? i % AGENT_CELL_CLASSES.length : 0];
 }
 
@@ -107,6 +114,10 @@ const initialJobSchedules: Readonly<
 );
 
 export function ZeroSchedulePage() {
+  const agentNameLoadable = useLoadable(agentDisplayName$);
+  const agentName =
+    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+  const agentOrder = getAgentOrder(agentName);
   const scheduleViewMode$ = useCCState<"list" | "calendar">("list");
   const scheduleViewMode = useGet(scheduleViewMode$);
   const setScheduleViewMode = useSet(scheduleViewMode$);
@@ -147,7 +158,11 @@ export function ZeroSchedulePage() {
   const scheduleLoopMinutes = useGet(scheduleLoopMinutes$);
   const setScheduleLoopMinutes = useSet(scheduleLoopMinutes$);
 
-  const combinedSchedule = buildCombinedSchedule(zeroSchedule, jobSchedules);
+  const combinedSchedule = buildCombinedSchedule(
+    zeroSchedule,
+    jobSchedules,
+    agentName,
+  );
 
   const openEditSchedule = (entry: CombinedEntry) => {
     setEditingEntry(entry);
@@ -210,7 +225,7 @@ export function ZeroSchedulePage() {
               Schedule
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Schedules for Zero and all sub-agents.
+              Schedules for {agentName} and all sub-agents.
             </p>
           </div>
           <Tabs
@@ -337,6 +352,7 @@ export function ZeroSchedulePage() {
                                                 "w-full min-h-0 rounded px-1.5 py-0.5 text-[11px] leading-tight line-clamp-2 break-words border text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                                 getAgentCellClasses(
                                                   entry.agentLabel,
+                                                  agentOrder,
                                                 ),
                                               )}
                                               aria-label={`${entry.agentLabel}: ${entry.prompt}`}

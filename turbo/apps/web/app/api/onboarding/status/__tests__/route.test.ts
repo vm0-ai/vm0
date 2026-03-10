@@ -45,6 +45,8 @@ describe("GET /api/onboarding/status", () => {
       hasScope: false,
       hasModelProvider: false,
       hasDefaultAgent: false,
+      defaultAgentName: null,
+      defaultAgentComposeId: null,
     });
   });
 
@@ -111,6 +113,8 @@ describe("GET /api/onboarding/status", () => {
       hasScope: true,
       hasModelProvider: true,
       hasDefaultAgent: true,
+      defaultAgentName: "test-agent",
+      defaultAgentComposeId: compose.composeId,
     });
   });
 });

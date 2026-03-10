@@ -61,6 +61,7 @@ export type ZeroAccountSubId = "preferences" | null;
 
 interface ZeroSidebarProps {
   activeId: ZeroNavId;
+  agentName?: string | null;
   onSelect: (id: ZeroNavId) => void;
   onRecentSelect?: (id: string) => void;
   selectedRecentId?: string | null;
@@ -254,11 +255,26 @@ function AccountDropdown({
 
 export function ZeroSidebar({
   activeId,
+  agentName,
   onSelect,
   onRecentSelect,
   selectedRecentId = null,
   onAccountAction,
 }: ZeroSidebarProps) {
+  const displayName = agentName || "Zero";
+  const mainNav = MAIN_NAV.map((item) => ({
+    ...item,
+    label: item.label.replace("Zero", displayName),
+  }));
+  const recentItems = RECENT_ITEMS.map((item) => ({
+    ...item,
+    label: item.label.replace("Zero", displayName),
+  }));
+  const footerNav = FOOTER_NAV.map((item) => ({
+    ...item,
+    label: item.label.replace("Zero", displayName),
+  }));
+
   return (
     <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden">
       {/* Organization switcher */}
@@ -271,7 +287,7 @@ export function ZeroSidebar({
       {/* Main nav */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden p-2">
         <div className="flex flex-col gap-1">
-          {MAIN_NAV.map(({ id, label, icon: Icon }) => (
+          {mainNav.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
@@ -296,7 +312,7 @@ export function ZeroSidebar({
             </span>
           </div>
           <div className="flex flex-col gap-1">
-            {RECENT_ITEMS.map(({ id, label }) => (
+            {recentItems.map(({ id, label }) => (
               <button
                 key={id}
                 type="button"
@@ -323,7 +339,7 @@ export function ZeroSidebar({
       {/* Footer nav */}
       <div className="p-2">
         <div className="flex flex-col gap-1">
-          {FOOTER_NAV.map(({ id, label, icon: Icon, iconImg }) => (
+          {footerNav.map(({ id, label, icon: Icon, iconImg }) => (
             <button
               key={id}
               type="button"
