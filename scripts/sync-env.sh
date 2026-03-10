@@ -36,12 +36,31 @@ sync_with_1password() {
 }
 
 WEB_ENV_LOCAL="$PROJECT_ROOT/turbo/apps/web/.env.local"
+SCRIPTS_ENV_LOCAL="$PROJECT_ROOT/scripts/.env.local"
 
 # --- Computed variables ---
 # RUNNER_DEFAULT_GROUP is auto-derived from git email + hostname.
-configure_runner_group() {
-  [[ -f "$WEB_ENV_LOCAL" ]] || return 0
+# Written to both turbo/apps/web/.env.local (web app) and scripts/.env.local (dev-runner.sh).
+append_runner_group() {
+  local env_file="$1" group_name="$2"
+  [[ -f "$env_file" ]] || return 0
 
+  # Remove old value and its comment header if present
+  if grep -q "^RUNNER_DEFAULT_GROUP=" "$env_file" 2>/dev/null; then
+    sed -i '/^# Self-hosted Runner$/d; /^RUNNER_DEFAULT_GROUP=/d' "$env_file"
+  fi
+
+  # Remove trailing blank lines before appending
+  while [[ -s "$env_file" && -z "$(tail -c 1 "$env_file")" ]] && tail -1 "$env_file" | grep -q '^$'; do
+    sed -i '$ d' "$env_file"
+  done
+
+  echo "" >> "$env_file"
+  echo "# Self-hosted Runner" >> "$env_file"
+  echo "RUNNER_DEFAULT_GROUP=${group_name}" >> "$env_file"
+}
+
+configure_runner_group() {
   # Derive from git email + hostname (e.g. alice@vm0.ai on macbook -> alice-macbook)
   local username hostname_short
   username=$(git config user.email 2>/dev/null | sed 's/@.*//' | tr '[:upper:].' '[:lower:]-' | sed 's/-$//' || true)
@@ -54,19 +73,8 @@ configure_runner_group() {
 
   local group_name="vm0/local-${username}-${hostname_short}"
 
-  # Remove old value and its comment header if present, then append fresh
-  if grep -q "^RUNNER_DEFAULT_GROUP=" "$WEB_ENV_LOCAL" 2>/dev/null; then
-    sed -i '/^# Self-hosted Runner$/d; /^RUNNER_DEFAULT_GROUP=/d' "$WEB_ENV_LOCAL"
-  fi
-
-  # Remove trailing blank lines before appending
-  while [[ -s "$WEB_ENV_LOCAL" && -z "$(tail -c 1 "$WEB_ENV_LOCAL")" ]] && tail -1 "$WEB_ENV_LOCAL" | grep -q '^$'; do
-    sed -i '$ d' "$WEB_ENV_LOCAL"
-  done
-
-  echo "" >> "$WEB_ENV_LOCAL"
-  echo "# Self-hosted Runner" >> "$WEB_ENV_LOCAL"
-  echo "RUNNER_DEFAULT_GROUP=${group_name}" >> "$WEB_ENV_LOCAL"
+  append_runner_group "$WEB_ENV_LOCAL" "$group_name"
+  append_runner_group "$SCRIPTS_ENV_LOCAL" "$group_name"
   echo "  ✓ RUNNER_DEFAULT_GROUP=${group_name}"
 }
 

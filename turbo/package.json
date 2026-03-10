@@ -18,7 +18,9 @@
     "check-certs": "node packages/proxy/scripts/check-certs.js",
     "e2b:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-claude-code/build.ts",
     "e2b:codex:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-codex/build.ts",
-    "e2b:cli:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-cli/build.ts"
+    "e2b:cli:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-cli/build.ts",
+    "runner": "bash ../scripts/dev-runner.sh deploy",
+    "runner:remove": "bash ../scripts/dev-runner.sh remove"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.1",
