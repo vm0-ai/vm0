@@ -34,6 +34,19 @@ export interface ConnectorOAuthConfig {
 }
 
 /**
+ * Base configuration shape for all connector types.
+ */
+interface ConnectorConfig {
+  readonly label: string;
+  readonly helpText: string;
+  readonly featureFlag?: FeatureSwitchKey;
+  readonly authMethods: Record<string, ConnectorAuthMethodConfig>;
+  readonly defaultAuthMethod?: string;
+  readonly environmentMapping?: Record<string, string>;
+  readonly oauth?: ConnectorOAuthConfig;
+}
+
+/**
  * Connector type configuration
  * Maps type to display info, auth methods, and environment mapping
  *
@@ -41,7 +54,7 @@ export interface ConnectorOAuthConfig {
  * - `$secrets.X` - lookup secret X from the connector's secrets
  * - Other values are passed through as literals
  */
-export const CONNECTOR_TYPES = {
+export const CONNECTOR_TYPES: Record<ConnectorType, ConnectorConfig> = {
   axiom: {
     label: "Axiom",
     helpText:
