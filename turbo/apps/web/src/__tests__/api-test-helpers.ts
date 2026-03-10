@@ -2774,25 +2774,6 @@ export async function insertTestAgentRun(
 }
 
 /**
- * Insert a storage record directly in the database.
- *
- * Direct DB insert is required for schema-level tests (e.g., CASCADE behavior)
- * that need to verify foreign key constraints without the full storage flow.
- */
-export async function insertTestStorageRecord(
-  userId: string,
-  scopeId: string,
-  name: string,
-) {
-  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
-  const [row] = await globalThis.services.db
-    .insert(storages)
-    .values({ userId, scopeId, clerkOrgId, name, s3Prefix: "test/prefix" })
-    .returning();
-  return row!;
-}
-
-/**
  * Delete a scope directly from the database.
  *
  * Direct DB delete is required for schema-level tests that verify
@@ -2828,21 +2809,6 @@ export async function findTestAgentRunById(id: string) {
     .select()
     .from(agentRuns)
     .where(eq(agentRuns.id, id))
-    .limit(1);
-  return row;
-}
-
-/**
- * Find a storage by its internal ID.
- *
- * Direct DB read is required for schema-level tests that verify
- * records were cascade-deleted.
- */
-export async function findTestStorageById(id: string) {
-  const [row] = await globalThis.services.db
-    .select()
-    .from(storages)
-    .where(eq(storages.id, id))
     .limit(1);
   return row;
 }
