@@ -8,6 +8,7 @@ import {
 import { parseTime } from "../../lib/utils/time-parser";
 import { ClaudeEventParser } from "../../lib/events/claude-event-parser";
 import { EventRenderer } from "../../lib/events/event-renderer";
+import { withErrorHandler } from "../../lib/command";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -147,22 +148,6 @@ function renderResults(response: LogsSearchResponse): void {
   }
 }
 
-/**
- * Handle errors from the search API call
- */
-function handleSearchError(error: unknown): void {
-  if (error instanceof Error) {
-    if (error.message.includes("Not authenticated")) {
-      console.error(chalk.red("✗ Not authenticated"));
-      console.error(chalk.dim("  Run: vm0 auth login"));
-    } else {
-      console.error(chalk.red("✗ Failed to search logs"));
-      console.error(chalk.dim(`  ${error.message}`));
-    }
-  }
-  process.exit(1);
-}
-
 export const searchCommand = new Command()
   .name("search")
   .description("Search agent events across runs")
@@ -174,8 +159,8 @@ export const searchCommand = new Command()
   .option("--run <id>", "Filter by specific run ID")
   .option("--since <time>", "Search logs since (default: 7d)")
   .option("--limit <n>", "Maximum number of matches (default: 20)")
-  .action(async (keyword: string, options: SearchOptions) => {
-    try {
+  .action(
+    withErrorHandler(async (keyword: string, options: SearchOptions) => {
       const { before, after } = parseContextOptions(options);
       const since = options.since
         ? parseTime(options.since)
@@ -203,7 +188,5 @@ export const searchCommand = new Command()
       }
 
       renderResults(response);
-    } catch (error) {
-      handleSearchError(error);
-    }
-  });
+    }),
+  );
