@@ -43,11 +43,29 @@ export const setCommand = new Command()
           process.exit(1);
         }
 
-        const secret = await setSecret({
-          name,
-          value,
-          description: options.description,
-        });
+        let secret;
+        try {
+          secret = await setSecret({
+            name,
+            value,
+            description: options.description,
+          });
+        } catch (error) {
+          // Provide helpful examples for naming validation errors
+          if (
+            error instanceof Error &&
+            error.message.includes("must contain only uppercase")
+          ) {
+            console.error(chalk.red(`✗ ${error.message}`));
+            console.error();
+            console.error("Examples of valid secret names:");
+            console.error(chalk.dim("  MY_API_KEY"));
+            console.error(chalk.dim("  GITHUB_TOKEN"));
+            console.error(chalk.dim("  AWS_ACCESS_KEY_ID"));
+            process.exit(1);
+          }
+          throw error;
+        }
 
         console.log(chalk.green(`✓ Secret "${secret.name}" saved`));
         console.log();

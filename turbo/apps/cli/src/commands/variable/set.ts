@@ -16,11 +16,29 @@ export const setCommand = new Command()
         value: string,
         options: { description?: string },
       ) => {
-        const variable = await setVariable({
-          name,
-          value,
-          description: options.description,
-        });
+        let variable;
+        try {
+          variable = await setVariable({
+            name,
+            value,
+            description: options.description,
+          });
+        } catch (error) {
+          // Provide helpful examples for naming validation errors
+          if (
+            error instanceof Error &&
+            error.message.includes("must contain only uppercase")
+          ) {
+            console.error(chalk.red(`✗ ${error.message}`));
+            console.error();
+            console.error("Examples of valid variable names:");
+            console.error(chalk.dim("  MY_VAR"));
+            console.error(chalk.dim("  API_URL"));
+            console.error(chalk.dim("  DEBUG_MODE"));
+            process.exit(1);
+          }
+          throw error;
+        }
 
         console.log(chalk.green(`✓ Variable "${variable.name}" saved`));
         console.log();
