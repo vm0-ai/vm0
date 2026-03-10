@@ -3,12 +3,13 @@ import chalk from "chalk";
 import { readStorageConfig } from "../../lib/storage/storage-utils";
 import { getStorageDownload } from "../../lib/api";
 import { formatBytes } from "../../lib/utils/file-utils";
+import { withErrorHandler } from "../../lib/command";
 
 export const statusCommand = new Command()
   .name("status")
   .description("Show status of cloud memory")
-  .action(async () => {
-    try {
+  .action(
+    withErrorHandler(async () => {
       const cwd = process.cwd();
 
       // Read config
@@ -48,16 +49,5 @@ export const statusCommand = new Command()
         console.log(chalk.dim(`  Files: ${info.fileCount.toLocaleString()}`));
         console.log(chalk.dim(`  Size: ${formatBytes(info.size)}`));
       }
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("not found")) {
-        console.error(chalk.red("✗ Not found on remote"));
-        console.error(chalk.dim("  Run: vm0 memory push"));
-      } else {
-        console.error(chalk.red("✗ Status check failed"));
-        if (error instanceof Error) {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );
