@@ -205,7 +205,7 @@ export async function prepareForExecution(
   const scopeStart = Date.now();
   const [agentScopeInfo] = await globalThis.services.db
     .select({
-      scopeId: scopes.id,
+      clerkOrgId: agentComposes.clerkOrgId,
       scopeSlug: scopes.slug,
     })
     .from(agentComposeVersions)
@@ -227,22 +227,22 @@ export async function prepareForExecution(
   await Promise.all([
     context.artifactName
       ? ensureStorageExists(
-          runtimeScope.id,
+          runtimeScope.clerkOrgId,
           userId,
           context.artifactName,
           runtimeScope.slug,
           "artifact",
-          runtimeScope.clerkOrgId,
+          runtimeScope.id,
         )
       : null,
     context.memoryName
       ? ensureStorageExists(
-          runtimeScope.id,
+          runtimeScope.clerkOrgId,
           userId,
           context.memoryName,
           runtimeScope.slug,
           "memory",
-          runtimeScope.clerkOrgId,
+          runtimeScope.id,
         )
       : null,
   ]);
@@ -255,8 +255,8 @@ export async function prepareForExecution(
   const storageManifest = await prepareStorageManifest(
     context.agentCompose as AgentComposeYaml,
     context.vars || {},
-    agentScopeInfo.scopeId,
-    runtimeScope.id,
+    agentScopeInfo.clerkOrgId,
+    runtimeScope.clerkOrgId,
     userId,
     context.artifactName,
     context.artifactVersion,
@@ -268,7 +268,7 @@ export async function prepareForExecution(
   const storageEnd = Date.now();
 
   log.debug(
-    `Storage manifest prepared with dual scopes: agentScope=${agentScopeInfo.scopeId}, runtimeScope=${runtimeScope.id}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared with dual scopes: agentClerkOrgId=${agentScopeInfo.clerkOrgId}, runtimeClerkOrgId=${runtimeScope.clerkOrgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
   );
 
   // Build PreparedContext
