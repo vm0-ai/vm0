@@ -84,7 +84,7 @@ describe("connector disconnect command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("is not connected"),
+        expect.stringContaining("not found"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

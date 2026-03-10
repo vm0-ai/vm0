@@ -15,6 +15,7 @@ import {
 } from "@vm0/core";
 import { getApiUrl, getActiveToken } from "../../lib/api/config";
 import { deleteConnector, setSecret } from "../../lib/api";
+import { withErrorHandler } from "../../lib/command";
 import {
   checkComputerDependencies,
   startComputerServices,
@@ -313,8 +314,8 @@ export const connectCommand = new Command()
   .description("Connect a third-party service (e.g., GitHub)")
   .argument("<type>", "Connector type (e.g., github)")
   .option("--token <value>", "API token value (skip interactive prompt)")
-  .action(async (type: string, options: { token?: string }) => {
-    try {
+  .action(
+    withErrorHandler(async (type: string, options: { token?: string }) => {
       const parseResult = connectorTypeSchema.safeParse(type);
       if (!parseResult.success) {
         console.error(chalk.red(`✗ Unknown connector type: ${type}`));
@@ -339,15 +340,5 @@ export const connectCommand = new Command()
       }
 
       await connectViaOAuth(connectorType, apiUrl, headers);
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error(chalk.red(`✗ ${error.message}`));
-        if (error.cause instanceof Error) {
-          console.error(chalk.dim(`  Cause: ${error.cause.message}`));
-        }
-      } else {
-        console.error(chalk.red("✗ An unexpected error occurred"));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );
