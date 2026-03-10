@@ -41,7 +41,7 @@ interface DocItem {
   contentPreview: string;
 }
 
-const DOCS: DocItem[] = [
+const DOCS: readonly Readonly<DocItem>[] = [
   {
     id: "1",
     title: "Team Weekly Report - Week 8",
@@ -130,7 +130,7 @@ Recommendations for optimizing cron-based schedules and reducing cold starts. We
   },
 ];
 
-const DOC_TYPE_ICON: Record<DocType, string> = {
+const DOC_TYPE_ICON: Readonly<Record<DocType, string>> = {
   pdf: "/doc-types/PDF.svg",
   markdown: "/doc-types/DOC.svg",
   html: "/doc-types/DOC.svg",

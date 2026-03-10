@@ -30,40 +30,36 @@ export type DemoScenarioId =
   | "rich-summary"
   | "agent-operations";
 
-const ACTION_BUTTONS: {
-  label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-}[] = [
-  { label: "Automate workflows", icon: IconBriefcase },
-  { label: "Customize Zero", icon: IconSettings },
-  { label: "Add connectors", icon: IconPlug },
-];
+type NavIcon = (props: {
+  size?: number;
+  className?: string;
+}) => React.ReactNode;
+const ACTION_BUTTONS = [
+  { label: "Automate workflows", icon: IconBriefcase as NavIcon },
+  { label: "Customize Zero", icon: IconSettings as NavIcon },
+  { label: "Add connectors", icon: IconPlug as NavIcon },
+] as const;
 
-const SUGGESTED_PROMPTS: {
-  title: string;
-  description: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  iconClassName?: string;
-}[] = [
+const SUGGESTED_PROMPTS = [
   {
     title: "Auto-organize inbox",
     description: "Smart categorization, reply, and daily email digest",
-    icon: IconChartBar,
+    icon: IconChartBar as NavIcon,
     iconClassName: "text-emerald-600 dark:text-emerald-400",
   },
   {
     title: "Daily morning brief",
     description: "Trending topics on a schedule, your personalized digest",
-    icon: IconReceipt,
+    icon: IconReceipt as NavIcon,
     iconClassName: "text-primary",
   },
-];
+] as const;
 
-const STREAMED_SCENARIOS: {
+const STREAMED_SCENARIOS: readonly Readonly<{
   id: DemoScenarioId;
   userMessage: string;
   assistantMessage: string;
-}[] = [
+}>[] = [
   {
     id: "hello-from-zero",
     userMessage: "Hi",
@@ -112,7 +108,7 @@ const LANDING_TAGLINES = [
   "Create workflows, run automations, get things done.",
   "Ask me anything, I'll route it to the right minions.",
   "200+ connectors, ready when you are.",
-];
+] as const;
 const CAROUSEL_INTERVAL_MS = 4000;
 
 interface ChatScenarioBlockProps {

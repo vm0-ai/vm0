@@ -18,9 +18,9 @@ const ZERO_AVATARS = [
   "/avatars/avatar-2.png",
   "/avatars/avatar-3.png",
   "/avatars/avatar-4.png",
-];
+] as const;
 
-const RECENT_LABELS: Record<string, string> = {
+const RECENT_LABELS: Readonly<Record<string, string>> = {
   hello: "Hello from Zero",
   "1": "Daily digest workflow",
   "2": "Set up Slack integration",

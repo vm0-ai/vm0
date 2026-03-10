@@ -14,7 +14,7 @@ import {
 } from "@vm0/ui/components/ui/popover";
 import { ZeroJobDetailPage, type JobItem } from "./zero-job-detail-page.tsx";
 
-export const ZERO_TEAM_JOBS: JobItem[] = [
+export const ZERO_TEAM_JOBS: readonly Readonly<JobItem>[] = [
   {
     id: "1",
     agentName: "Minion 1",

@@ -65,7 +65,7 @@ function buildCombinedSchedule(
   return [...zeroEntries, ...jobEntries];
 }
 
-const AGENT_ORDER = [
+const AGENT_ORDER: readonly string[] = [
   "Zero",
   ...ZERO_TEAM_JOBS.map((j) => `${j.agentName} · ${j.title}`),
 ];
@@ -76,21 +76,23 @@ const AGENT_CELL_CLASSES = [
   "bg-amber-700/15 border-amber-700/40 text-amber-800 dark:text-amber-200 dark:border-amber-600/40 dark:bg-amber-900/25",
   "bg-violet-700/15 border-violet-700/40 text-violet-800 dark:text-violet-200 dark:border-violet-600/40 dark:bg-violet-900/25",
   "bg-teal-700/15 border-teal-700/40 text-teal-800 dark:text-teal-200 dark:border-teal-600/40 dark:bg-teal-900/25",
-];
+] as const;
 
 function getAgentCellClasses(agentLabel: string): string {
   const i = AGENT_ORDER.indexOf(agentLabel);
   return AGENT_CELL_CLASSES[i !== -1 ? i % AGENT_CELL_CLASSES.length : 0];
 }
 
-const JOB_INITIAL_PROMPTS: Record<string, string> = {
+const JOB_INITIAL_PROMPTS: Readonly<Record<string, string>> = {
   "1": "Compile the daily digest from Slack and email; highlight items that need follow-up.",
   "2": "Triage new GitHub issues, suggest labels and assignees, and post a short summary in #eng.",
   "3": "Draft the weekly team report from the last 7 days and save to the shared drive.",
   "4": "Summarize new customer feedback from Zendesk and Notion; flag recurring themes.",
 };
 
-const initialJobSchedules: Record<string, ScheduleEntry[]> = Object.fromEntries(
+const initialJobSchedules: Readonly<
+  Record<string, readonly Readonly<ScheduleEntry>[]>
+> = Object.fromEntries(
   ZERO_TEAM_JOBS.map((job) => [
     job.id,
     [
@@ -107,10 +109,16 @@ export function ZeroSchedulePage() {
   const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">(
     "list",
   );
-  const [zeroSchedule, setZeroSchedule] =
-    useState<ScheduleEntry[]>(DEFAULT_SCHEDULE);
-  const [jobSchedules, setJobSchedules] =
-    useState<Record<string, ScheduleEntry[]>>(initialJobSchedules);
+  const [zeroSchedule, setZeroSchedule] = useState<ScheduleEntry[]>([
+    ...DEFAULT_SCHEDULE,
+  ]);
+  const [jobSchedules, setJobSchedules] = useState<
+    Record<string, ScheduleEntry[]>
+  >(
+    Object.fromEntries(
+      Object.entries(initialJobSchedules).map(([k, v]) => [k, [...v]]),
+    ),
+  );
   const [editingEntry, setEditingEntry] = useState<CombinedEntry | null>(null);
   const [newSchedulePrompt, setNewSchedulePrompt] = useState("");
   const [scheduleFreq, setScheduleFreq] = useState<string>("every_day");

@@ -21,11 +21,11 @@ import {
 } from "@vm0/ui/components/ui/popover";
 import { ZeroSlackConfigContent } from "./zero-slack-config-content";
 
-const CONNECTED_TOOLS: {
+const CONNECTED_TOOLS: readonly Readonly<{
   id: string;
   name: string;
   description: string;
-}[] = [
+}>[] = [
   {
     id: "slack",
     name: "Slack",

@@ -47,7 +47,7 @@ const WORKFLOW_SKILLS_OPTIONS = [
   "Data Analysis",
   "Content Summarization",
   "Linear",
-];
+] as const;
 
 const INITIAL_SKILLS = [
   "Slack",
@@ -55,7 +55,7 @@ const INITIAL_SKILLS = [
   "Content Summarization",
 ] as const;
 
-const CONNECTOR_LIST: ConnectorType[] = [
+const CONNECTOR_LIST: readonly ConnectorType[] = [
   "github",
   "linear",
   "notion",

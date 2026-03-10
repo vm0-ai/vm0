@@ -46,8 +46,11 @@ export const SCHEDULE_FREQUENCY_OPTIONS = [
 ] as const;
 
 export const SCHEDULE_LOOP_MINUTES = [5, 15, 30, 60] as const;
-export const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i);
-export const MINUTE_OPTIONS = [0, 15, 30, 45];
+export const HOUR_OPTIONS: readonly number[] = Array.from(
+  { length: 24 },
+  (_, i) => i,
+);
+export const MINUTE_OPTIONS = [0, 15, 30, 45] as const;
 export const TIMEZONE_OPTIONS = [
   "UTC",
   "Asia/Shanghai",
@@ -290,7 +293,7 @@ export function getEntriesInCell(
   });
 }
 
-export const DEFAULT_SCHEDULE: ScheduleEntry[] = [
+export const DEFAULT_SCHEDULE: readonly Readonly<ScheduleEntry>[] = [
   {
     id: "1",
     time: "Every weekday at 9:00 AM",
@@ -311,7 +314,7 @@ export const DEFAULT_SCHEDULE: ScheduleEntry[] = [
 ];
 
 /** Dummy schedule for sub-agent (job) detail page — one entry per sub-agent. */
-const DUMMY_AGENT_SCHEDULE: ScheduleEntry[] = [
+const DUMMY_AGENT_SCHEDULE: readonly Readonly<ScheduleEntry>[] = [
   {
     id: "j1",
     time: "Every weekday at 9:00 AM",
@@ -323,7 +326,7 @@ export { DUMMY_AGENT_SCHEDULE };
 interface ZeroScheduleCardProps {
   title: string;
   subtitle: string;
-  initialSchedule: ScheduleEntry[];
+  initialSchedule: readonly Readonly<ScheduleEntry>[];
 }
 
 export function ZeroScheduleCard({
@@ -334,8 +337,9 @@ export function ZeroScheduleCard({
   const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">(
     "list",
   );
-  const [scheduleList, setScheduleList] =
-    useState<ScheduleEntry[]>(initialSchedule);
+  const [scheduleList, setScheduleList] = useState<ScheduleEntry[]>([
+    ...initialSchedule,
+  ]);
   const [addScheduleOpen, setAddScheduleOpen] = useState(false);
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(
     null,

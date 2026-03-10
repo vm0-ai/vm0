@@ -23,7 +23,7 @@ import type {
   ActivityType,
 } from "./zero-activity-types.ts";
 
-const ACTIVITIES: ActivityItem[] = [
+const ACTIVITIES: readonly Readonly<ActivityItem>[] = [
   {
     id: "1",
     title: "Zero Agent",
@@ -57,13 +57,16 @@ const ACTIVITIES: ActivityItem[] = [
   },
 ];
 
-const TYPE_OPTIONS: { value: "all" | ActivityType; label: string }[] = [
+const TYPE_OPTIONS: readonly Readonly<{
+  value: "all" | ActivityType;
+  label: string;
+}>[] = [
   { value: "all", label: "All Types" },
   { value: "zero", label: "Zero" },
   { value: "workflow", label: "Workflow" },
 ];
 
-const STATUS_OPTIONS: { value: string; label: string }[] = [
+const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
   { value: "all", label: "All Status" },
   { value: "success", label: "Success" },
   { value: "error", label: "Error" },

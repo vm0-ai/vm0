@@ -23,7 +23,7 @@ interface StepItem {
   time?: string;
 }
 
-const MOCK_STEPS: StepItem[] = [
+const MOCK_STEPS: readonly Readonly<StepItem>[] = [
   {
     id: "1",
     type: "prompt",

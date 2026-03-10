@@ -25,7 +25,7 @@ import { getUILabel } from "../settings-page/provider-ui-config";
 
 type OnboardingStep = "1" | "2" | "3" | "4" | "done";
 
-const MODEL_PROVIDER_LIST: ModelProviderType[] = [
+const MODEL_PROVIDER_LIST: readonly ModelProviderType[] = [
   "claude-code-oauth-token",
   "anthropic-api-key",
   "openrouter-api-key",
@@ -37,7 +37,7 @@ const MODEL_PROVIDER_LIST: ModelProviderType[] = [
   "aws-bedrock",
 ];
 
-const CONNECTOR_LIST: ConnectorType[] = [
+const CONNECTOR_LIST: readonly ConnectorType[] = [
   "github",
   "notion",
   "gmail",
