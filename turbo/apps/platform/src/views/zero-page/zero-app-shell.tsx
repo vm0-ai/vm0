@@ -35,6 +35,7 @@ export function ZeroAppShell() {
   const userLoadable = useLoadable(user$);
   const isLoggedIn =
     userLoadable.state === "hasData" && userLoadable.data !== undefined;
+  // Subscribe to scope$ so the scope API request fires on mount
   useLoadable(scope$);
   const activeId$ = useCCState<ZeroNavId>("chat");
   const activeId = useGet(activeId$);
