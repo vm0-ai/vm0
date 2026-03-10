@@ -209,10 +209,9 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     expect(removeRes.status).toBe(200);
 
     // Verify member is no longer in the Clerk org membership list.
-    // Note: the stale scope_members record still grants route access during
-    // the migration period, but the Clerk-based members list won't include them.
+    // Use admin user to check — the removed member can no longer access the scope.
     setupClerkOrgMock({
-      userId: memberUserId,
+      userId: adminUserId,
       orgId,
       memberships: [{ userId: adminUserId, role: "org:admin" }],
     });
