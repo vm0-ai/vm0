@@ -6,4 +6,4 @@ CF_TUNNEL_API_TOKEN=op://Team/cloudflare/CF_TUNNEL_API_TOKEN
 
 # Metal host for runner deployment (e.g. dev-1.aws.vm3.ai)
 RUNNER_LOCAL_HOST=op://Team/vm0/RUNNER_LOCAL_HOST
-OFFICIAL_RUNNER_SECRET=op://Team/vm0/OFFICIAL_RUNNER_SECRET
+OFFICIAL_RUNNER_SECRET=dummy
