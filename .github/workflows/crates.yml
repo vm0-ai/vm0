@@ -108,6 +108,21 @@ jobs:
           cd crates
           cargo run -p ably-subscriber --example smoke_test
 
+  mitm-addon-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run mitm-addon tests
+        run: |
+          pip install pytest mitmproxy
+          cd crates/runner/mitm-addon
+          python -m pytest tests/ -v
+
   runner-build:
     runs-on: ubuntu-latest
     container:

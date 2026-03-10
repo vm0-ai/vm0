@@ -174,3 +174,8 @@ turbo/apps/storybook/storybook-static/
 docs/tapes/**/*.gif
 docs/tapes/*.gif
 .env*.local
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/

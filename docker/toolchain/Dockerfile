@@ -176,5 +176,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     novnc \
     && rm -rf /var/lib/apt/lists/*
 
+# Install pip for Python testing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
 # Default command
 CMD ["/usr/bin/zsh"]

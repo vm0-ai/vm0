@@ -70,7 +70,7 @@ pub struct VmRegistration<'a> {
 }
 
 /// Embedded mitmproxy addon script (compiled into the binary).
-const MITM_ADDON: &str = include_str!("../scripts/mitm-addon.py");
+const MITM_ADDON: &str = include_str!("../mitm-addon/src/mitm_addon.py");
 
 /// Timeout for waiting for mitmdump to become ready after spawn.
 const READY_TIMEOUT: Duration = Duration::from_secs(10);
