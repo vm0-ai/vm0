@@ -129,9 +129,9 @@ function useAccountSessions() {
     .filter((s) => s.status === "active")
     .map((s) => ({
       sessionId: s.id,
-      name: s.user?.fullName ?? "User",
+      name: s.user?.fullName ?? "",
       email: s.user?.primaryEmailAddress?.emailAddress ?? "",
-      initial: (s.user?.fullName ?? "U").charAt(0).toUpperCase(),
+      initial: s.user?.fullName ? s.user.fullName.charAt(0).toUpperCase() : "",
       imageUrl: s.user?.imageUrl,
       isActive: s.id === currentSessionId,
     }));
@@ -147,7 +147,7 @@ function AccountDropdown({
   onAccountAction?: (action: ZeroAccountAction) => void;
 }) {
   const { user, clerk, accounts } = useAccountSessions();
-  const accountName = user?.fullName ?? "User";
+  const accountName = user?.fullName ?? "";
   const accountEmail = user?.primaryEmailAddress?.emailAddress ?? "";
   const accountInitial = accountName.charAt(0).toUpperCase();
 
