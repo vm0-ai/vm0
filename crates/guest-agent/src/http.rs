@@ -12,6 +12,7 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+const HTTP_TOO_MANY_REQUESTS: u16 = 429;
 
 static HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
     reqeast::builder()
@@ -24,7 +25,8 @@ static HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
 /// POST JSON to a webhook endpoint with Bearer auth, Vercel bypass, and retry.
 ///
 /// Returns the parsed JSON response on success, or `None` if the response body
-/// is empty. Returns `Err` only after all retries are exhausted.
+/// is empty. Returns `Err` immediately on non-retriable 4xx errors (except 429),
+/// or after all retries are exhausted for 5xx / 429 / network errors.
 pub async fn post_json(
     url: &str,
     body: &impl Serialize,
@@ -61,7 +63,7 @@ pub async fn post_json(
                     "HTTP POST failed (attempt {attempt}/{max_retries}): HTTP {status}",
                 );
                 // 4xx errors (except 429) are deterministic — retrying won't help
-                if status.is_client_error() && status.as_u16() != 429 {
+                if status.is_client_error() && status.as_u16() != HTTP_TOO_MANY_REQUESTS {
                     return Err(AgentError::Http(format!("POST {url}: HTTP {status}")));
                 }
             }
@@ -108,7 +110,7 @@ pub async fn put_presigned(url: &str, data: Bytes, content_type: &str) -> Result
                     "HTTP PUT presigned failed (attempt {attempt}/{max_retries}): HTTP {status}",
                 );
                 // 4xx errors (except 429) are deterministic — retrying won't help
-                if status.is_client_error() && status.as_u16() != 429 {
+                if status.is_client_error() && status.as_u16() != HTTP_TOO_MANY_REQUESTS {
                     return Err(AgentError::Http(format!("PUT presigned: HTTP {status}")));
                 }
             }
