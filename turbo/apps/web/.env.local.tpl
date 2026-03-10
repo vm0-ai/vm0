@@ -34,10 +34,6 @@ CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3
 # Optional: LLM API (OpenRouter)
 OPENROUTER_API_KEY=op://Development/openrouter/OPENROUTER_API_KEY
 
-# Optional: Ahrefs OAuth Connector
-AHREFS_OAUTH_CLIENT_ID=op://Development/ahrefs/AHREFS_OAUTH_CLIENT_ID
-AHREFS_OAUTH_CLIENT_SECRET=op://Development/ahrefs/AHREFS_OAUTH_CLIENT_SECRET
-
 # Optional: Airtable OAuth Connector
 AIRTABLE_OAUTH_CLIENT_ID=op://Development/airtable/AIRTABLE_OAUTH_CLIENT_ID
 AIRTABLE_OAUTH_CLIENT_SECRET=op://Development/airtable/AIRTABLE_OAUTH_CLIENT_SECRET
@@ -136,10 +132,6 @@ CANVA_OAUTH_CLIENT_SECRET=op://Development/canva/CANVA_OAUTH_CLIENT_SECRET
 WEBFLOW_OAUTH_CLIENT_ID=op://Development/webflow/WEBFLOW_OAUTH_CLIENT_ID
 WEBFLOW_OAUTH_CLIENT_SECRET=op://Development/webflow/WEBFLOW_OAUTH_CLIENT_SECRET
 
-# Optional: PostHog OAuth Connector
-POSTHOG_OAUTH_CLIENT_ID=op://Development/posthog/POSTHOG_OAUTH_CLIENT_ID
-POSTHOG_OAUTH_CLIENT_SECRET=op://Development/posthog/POSTHOG_OAUTH_CLIENT_SECRET
-
 # Optional: Stripe OAuth Connector
 STRIPE_OAUTH_CLIENT_ID=op://Development/stripe/STRIPE_OAUTH_CLIENT_ID
 STRIPE_OAUTH_CLIENT_SECRET=op://Development/stripe/STRIPE_OAUTH_CLIENT_SECRET
@@ -177,4 +169,4 @@ GITHUB_APP_WEBHOOK_SECRET=op://Development/github/GITHUB_APP_WEBHOOK_SECRET
 
 # Optional: Self-hosted Runner (for local development with runner on dev-1)
 # RUNNER_DEFAULT_GROUP is auto-configured by sync-env.sh — do not add here
-OFFICIAL_RUNNER_SECRET=op://Development/vm0/OFFICIAL_RUNNER_SECRET
+OFFICIAL_RUNNER_SECRET=op://Team/vm0/OFFICIAL_RUNNER_SECRET
