@@ -139,13 +139,16 @@ export async function createScope(
     throw badRequest(`Scope "${slug}" already exists`);
   }
 
-  // Create Clerk Organization so every scope is backed by one.
-  const client = await clerkClient();
-  const clerkOrg = await client.organizations.createOrganization({
-    name: slug,
-    createdBy: clerkUserId,
-  });
-  const clerkOrgId = clerkOrg.id;
+  // Use provided Clerk org ID (JIT discovery path) or create a new one.
+  let clerkOrgId = options?.clerkOrgId;
+  if (!clerkOrgId) {
+    const client = await clerkClient();
+    const clerkOrg = await client.organizations.createOrganization({
+      name: slug,
+      createdBy: clerkUserId,
+    });
+    clerkOrgId = clerkOrg.id;
+  }
 
   // Create scope + admin membership atomically
   const scope = await globalThis.services.db.transaction(async (tx) => {
