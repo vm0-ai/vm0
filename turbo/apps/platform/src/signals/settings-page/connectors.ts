@@ -52,7 +52,6 @@ export interface ConnectorTypeWithStatus {
 const CONNECTOR_FEATURE_FLAGS = Object.freeze<
   Partial<Record<ConnectorType, FeatureSwitchKey>>
 >({
-  asana: FeatureSwitchKey.AsanaConnector,
   canva: FeatureSwitchKey.CanvaConnector,
   computer: FeatureSwitchKey.ComputerConnector,
   deel: FeatureSwitchKey.DeelConnector,
