@@ -4,7 +4,7 @@ import { scopeMembers } from "../../db/schema/scope-member";
 import { scopes } from "../../db/schema/scope";
 import { badRequest, forbidden, notFound } from "../errors";
 import { logger } from "../logger";
-import { getScopeByClerkOrgId } from "./scope-service";
+import { getScopesByClerkOrgIds } from "./scope-service";
 import type { ScopeRole } from "@vm0/core";
 
 const log = logger("service:scope-member");
@@ -77,8 +77,12 @@ export async function getDefaultScope(userId: string) {
       ]
     : memberships.data;
 
+  // Batch-fetch all scopes by Clerk org IDs in a single query
+  const clerkOrgIds = candidates.map((m) => m.organization.id);
+  const scopeMap = await getScopesByClerkOrgIds(clerkOrgIds);
+
   for (const membership of candidates) {
-    const scope = await getScopeByClerkOrgId(membership.organization.id);
+    const scope = scopeMap.get(membership.organization.id);
     if (scope) {
       return {
         scope,

@@ -154,6 +154,7 @@ export async function requireScopeFromRequest(
     throw notFound("Scope not found");
   }
 
+  const authResult = await auth();
   const member = await verifyClerkMembership(scope, userId);
-  return { scope, member };
+  return { scope: applyJwtTier(scope, authResult), member };
 }
