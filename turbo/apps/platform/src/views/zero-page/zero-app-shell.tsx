@@ -15,6 +15,11 @@ import { zeroNeedsOnboarding$ } from "../../signals/zero-page/zero-onboarding.ts
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { resetDefaultAgent$ } from "../../signals/zero-page/zero-dev-tools.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import {
+  zeroActiveId$,
+  setZeroActiveId$,
+} from "../../signals/zero-page/zero-nav.ts";
+import { updateSearchParams$ } from "../../signals/route.ts";
 
 const ZERO_AVATARS = [
   "/zero-avatar.png",
@@ -114,6 +119,16 @@ function ZeroAppSkeleton({ visible }: { visible: boolean }) {
   );
 }
 
+function useSkeletonVisibility(isLoggedIn: boolean, dataReady: boolean) {
+  const everReady$ = useCCState(false);
+  const everReady = useGet(everReady$);
+  const setEverReady = useSet(everReady$);
+  if (dataReady && !everReady) {
+    setEverReady(true);
+  }
+  return isLoggedIn && !dataReady && !everReady;
+}
+
 function getRecentLabels(agentName: string): Readonly<Record<string, string>> {
   return {
     hello: `Hello from ${agentName}`,
@@ -129,18 +144,16 @@ export function ZeroAppShell() {
   const isLoggedIn =
     userLoadable.state === "hasData" && userLoadable.data !== undefined;
   const onboardingLoadable = useLoadable(zeroNeedsOnboarding$);
+  const onboardingReady = onboardingLoadable.state === "hasData";
   const showOnboarding =
-    isLoggedIn &&
-    onboardingLoadable.state === "hasData" &&
-    onboardingLoadable.data === true;
+    isLoggedIn && onboardingReady && onboardingLoadable.data === true;
   const agentDisplayNameLoadable = useLoadable(agentDisplayName$);
-  const agentDisplayName =
-    agentDisplayNameLoadable.state === "hasData"
-      ? agentDisplayNameLoadable.data
-      : "Zero";
-  const activeId$ = useCCState<ZeroNavId>("chat");
-  const activeId = useGet(activeId$);
-  const setActiveId = useSet(activeId$);
+  const agentNameReady = agentDisplayNameLoadable.state === "hasData";
+  const agentDisplayName = agentNameReady
+    ? agentDisplayNameLoadable.data
+    : "Zero";
+  const activeId = useGet(zeroActiveId$);
+  const setActiveId = useSet(setZeroActiveId$);
   const recentId$ = useCCState<string | null>(null);
   const recentId = useGet(recentId$);
   const accountSubId$ = useCCState<ZeroAccountSubId>(null);
@@ -158,12 +171,12 @@ export function ZeroAppShell() {
 
   const handleRecentSelect$ = useCommand(({ set }, id: string) => {
     set(recentId$, id);
-    set(activeId$, "chat" as ZeroNavId);
+    set(setZeroActiveId$, "chat");
   });
   const handleRecentSelect = useSet(handleRecentSelect$);
 
   const handleNavSelect$ = useCommand(({ set }, id: ZeroNavId) => {
-    set(activeId$, id);
+    set(setZeroActiveId$, id);
     set(recentId$, null);
     set(showAboutPage$, false);
   });
@@ -174,7 +187,7 @@ export function ZeroAppShell() {
       if (action === "signout" || action === "manage") {
         return;
       }
-      set(activeId$, "account" as ZeroNavId);
+      set(setZeroActiveId$, "account");
       set(accountSubId$, action as ZeroAccountSubId);
     },
   );
@@ -185,27 +198,15 @@ export function ZeroAppShell() {
   });
   const handleClearRecent = useSet(handleClearRecent$);
 
+  const updateSearchParams = useSet(updateSearchParams$);
   const resetDefaultAgent = useSet(resetDefaultAgent$);
 
   const recentLabel = recentId
     ? (getRecentLabels(agentDisplayName)[recentId] ?? null)
     : null;
 
-  const dataReady =
-    isLoggedIn &&
-    onboardingLoadable.state === "hasData" &&
-    agentDisplayNameLoadable.state === "hasData";
-
-  // Track: once data has been ready, never show skeleton again
-  const everReady$ = useCCState(false);
-  const everReady = useGet(everReady$);
-  const setEverReady = useSet(everReady$);
-  if (dataReady && !everReady) {
-    setEverReady(true);
-  }
-
-  // Show skeleton only for logged-in users whose data hasn't arrived yet
-  const showSkeleton = isLoggedIn && !dataReady && !everReady;
+  const dataReady = isLoggedIn && onboardingReady && agentNameReady;
+  const showSkeleton = useSkeletonVisibility(isLoggedIn, dataReady);
 
   return (
     <div className="zero-app flex h-dvh w-full bg-background">
@@ -281,6 +282,14 @@ export function ZeroAppShell() {
             onNavigateToSchedule={() => setActiveId("schedule")}
             onNavigateToJob={() => setActiveId("job")}
             onNavigateToChat={() => setActiveId("chat")}
+            onNavigateToMeet={(section) => {
+              setActiveId("meet");
+              if (section) {
+                const next = new URLSearchParams();
+                next.set("section", section);
+                updateSearchParams(next);
+              }
+            }}
             zeroAvatarSrc={zeroAvatarSrc}
             onAvatarClick={cycleAvatar}
           />

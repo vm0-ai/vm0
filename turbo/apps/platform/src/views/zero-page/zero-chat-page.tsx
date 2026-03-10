@@ -35,11 +35,24 @@ export type DemoScenarioId =
   | "agent-operations";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
+type ActionId = "automate" | "customize" | "connectors";
 function getActionButtons(agentName: string) {
   return [
-    { label: "Automate workflows", icon: IconBriefcase as NavIcon },
-    { label: `Customize ${agentName}`, icon: IconSettings as NavIcon },
-    { label: "Add connectors", icon: IconPlug as NavIcon },
+    {
+      id: "automate" as ActionId,
+      label: "Automate workflows",
+      icon: IconBriefcase as NavIcon,
+    },
+    {
+      id: "customize" as ActionId,
+      label: `Customize ${agentName}`,
+      icon: IconSettings as NavIcon,
+    },
+    {
+      id: "connectors" as ActionId,
+      label: "Add connectors",
+      icon: IconPlug as NavIcon,
+    },
   ] as const;
 }
 
@@ -636,6 +649,7 @@ interface ZeroChatPageProps {
   onNavigateToActivity?: () => void;
   onNavigateToSchedule?: () => void;
   onNavigateToJob?: () => void;
+  onNavigateToMeet?: (tab?: string) => void;
   zeroAvatarSrc?: string;
   onAvatarClick?: () => void;
 }
@@ -646,6 +660,7 @@ export function ZeroChatPage({
   onNavigateToActivity,
   onNavigateToSchedule,
   onNavigateToJob,
+  onNavigateToMeet,
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroChatPageProps) {
@@ -1150,12 +1165,21 @@ export function ZeroChatPage({
           {/* Action buttons */}
           <div className="flex flex-wrap justify-between items-center gap-2 w-full">
             <div className="flex flex-wrap gap-2">
-              {getActionButtons(agentName).map(({ label, icon: Icon }) => (
+              {getActionButtons(agentName).map(({ id, label, icon: Icon }) => (
                 <Button
-                  key={label}
+                  key={id}
                   variant="outline"
                   size="sm"
                   className="zero-btn-morandi rounded-lg h-8 px-3.5 text-sm font-medium gap-2 border"
+                  onClick={() => {
+                    if (id === "automate") {
+                      onNavigateToSchedule?.();
+                    } else if (id === "customize") {
+                      onNavigateToMeet?.("settings");
+                    } else if (id === "connectors") {
+                      onNavigateToMeet?.("connections");
+                    }
+                  }}
                 >
                   <Icon size={16} />
                   {label}
