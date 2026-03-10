@@ -60,15 +60,15 @@ function getConcurrencyLimitForTier(tier: ScopeTier): number {
 }
 
 /**
- * Check if scope has reached concurrent run limit
+ * Check if org has reached concurrent run limit
  *
- * @param scopeId Scope ID to check
+ * @param clerkOrgId Clerk org ID to check
  * @param scopeTier Scope tier for tier-based limit (default: "free")
  * @param db Optional database instance (for use within transactions)
  * @throws ConcurrentRunLimitError if limit exceeded
  */
 async function checkRunConcurrencyLimit(
-  scopeId: string,
+  clerkOrgId: string,
   scopeTier: ScopeTier = "free",
   db?: Database,
 ): Promise<void> {
@@ -97,7 +97,7 @@ async function checkRunConcurrencyLimit(
     .from(agentRuns)
     .where(
       and(
-        eq(agentRuns.scopeId, scopeId),
+        eq(agentRuns.clerkOrgId, clerkOrgId),
         or(
           eq(agentRuns.status, "running"),
           and(
@@ -112,7 +112,7 @@ async function checkRunConcurrencyLimit(
 
   if (activeRunCount >= effectiveLimit) {
     log.debug(
-      `Scope ${scopeId} has ${activeRunCount} active runs, limit is ${effectiveLimit}`,
+      `Org ${clerkOrgId} has ${activeRunCount} active runs, limit is ${effectiveLimit}`,
     );
     throw concurrentRunLimit();
   }
@@ -730,11 +730,17 @@ export async function createRun(
   let run;
   try {
     run = await globalThis.services.db.transaction(async (tx) => {
-      // Acquire per-scope advisory lock (released when transaction ends)
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${scopeId}))`);
+      // Acquire per-org advisory lock (released when transaction ends)
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${clerkOrgId}))`,
+      );
 
       // Check concurrent run limit within the serialized transaction
-      await checkRunConcurrencyLimit(scopeId, params.scopeTier ?? "free", tx);
+      await checkRunConcurrencyLimit(
+        clerkOrgId,
+        params.scopeTier ?? "free",
+        tx,
+      );
 
       // INSERT within the same transaction
       const [newRun] = await tx
@@ -812,10 +818,12 @@ export async function executeQueuedRun(
 
   // Step 1: Re-check concurrency + update status atomically with advisory lock
   // to prevent TOCTOU race where a concurrent createRun claims the slot.
-  const scopeId = params.scopeId ?? "";
+  const clerkOrgId = params.clerkOrgId ?? "";
   const [run] = await globalThis.services.db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${scopeId}))`);
-    await checkRunConcurrencyLimit(scopeId, params.scopeTier ?? "free", tx);
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${clerkOrgId}))`,
+    );
+    await checkRunConcurrencyLimit(clerkOrgId, params.scopeTier ?? "free", tx);
 
     return tx
       .update(agentRuns)

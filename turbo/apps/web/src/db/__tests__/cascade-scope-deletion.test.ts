@@ -21,7 +21,7 @@ import { env } from "../../env";
 const context = testContext();
 
 describe("Scope deletion CASCADE", () => {
-  it("should cascade-delete agent_composes, agent_runs, and storages when scope is deleted", async () => {
+  it("should cascade-delete agent_composes and storages when scope is deleted, but not agent_runs", async () => {
     context.setupMocks();
     const user = await context.setupUser();
 
@@ -43,10 +43,13 @@ describe("Scope deletion CASCADE", () => {
     // Delete the scope
     await deleteTestScope(user.scopeId);
 
-    // Verify all child records are deleted
+    // Verify cascade-deleted child records
     expect(await findTestAgentComposeById(compose.id)).toBeUndefined();
-    expect(await findTestAgentRunById(run.id)).toBeUndefined();
     expect(await findTestStorageById(storage.id)).toBeUndefined();
+
+    // agent_runs no longer has FK to scopes (removed in Phase 3 Clerk migration),
+    // so the run record is retained after scope deletion
+    expect(await findTestAgentRunById(run.id)).toBeDefined();
   });
 
   it("should cascade-delete installations via scope -> compose -> installation chain", async () => {

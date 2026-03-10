@@ -776,13 +776,7 @@ mod tests {
         let connectors = crate::types::ExperimentalConnectors {
             connectors: vec![crate::types::ConnectorEntry {
                 name: "gmail".to_string(),
-                targets: vec!["https://gmail.googleapis.com/gmail/v1/users/me".to_string()],
-                placeholder: "vm0_conn_gmail".to_string(),
-                auth: crate::types::ConnectorAuth {
-                    headers: [("Authorization".to_string(), "Bearer ${token}".to_string())]
-                        .into_iter()
-                        .collect(),
-                },
+                base: "https://gmail.googleapis.com/gmail/v1/users/me".to_string(),
             }],
         };
 
@@ -806,7 +800,6 @@ mod tests {
         let stored = vm.connectors.as_ref().unwrap();
         assert_eq!(stored.connectors.len(), 1);
         assert_eq!(stored.connectors[0].name, "gmail");
-        assert_eq!(stored.connectors[0].placeholder, "vm0_conn_gmail");
 
         // Verify JSON shape matches what the Python addon expects.
         let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
@@ -814,7 +807,5 @@ mod tests {
         let vm_json = &value["vms"]["10.200.0.5"];
         let conn = &vm_json["connectors"]["connectors"][0];
         assert_eq!(conn["name"], "gmail");
-        assert_eq!(conn["placeholder"], "vm0_conn_gmail");
-        assert_eq!(conn["auth"]["headers"]["Authorization"], "Bearer ${token}");
     }
 }
