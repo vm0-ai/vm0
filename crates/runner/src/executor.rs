@@ -345,10 +345,7 @@ async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: Uuid) -> Option<St
 /// Returns true if dmesg output indicates an OOM kill.
 fn dmesg_indicates_oom(stdout: &str) -> bool {
     let lower = stdout.to_lowercase();
-    lower.contains("out of memory")
-        || lower.contains("oom-kill")
-        || lower.contains("oom_reaper")
-        || lower.contains("killed process")
+    lower.contains("out of memory") || lower.contains("oom-kill") || lower.contains("oom_reaper")
 }
 
 /// Copy guest log files to the host log directory.
