@@ -276,11 +276,12 @@ async function verifyScheduleOwnership(
 
 /**
  * Validate that all required secrets/vars are available in platform tables.
- * Uses the schedule's scopeId + userId (not compose's) for cross-scope support.
+ * Uses the schedule's clerkOrgId + userId (not compose's) for cross-scope support.
  */
 async function validateRequiredConfig(
   compose: typeof agentComposes.$inferSelect,
   scopeId: string,
+  clerkOrgId: string,
   userId: string,
 ): Promise<void> {
   if (!compose.headVersionId) return;
@@ -302,7 +303,8 @@ async function validateRequiredConfig(
     `Fetched ${platformSecretNames.length} platform secret(s) for validation`,
   );
 
-  const platformVars = await getVariableValues(scopeId, userId);
+  // Business requirement: scope_id → clerk_org_id migration for variables
+  const platformVars = await getVariableValues(clerkOrgId, userId);
   const platformVarNames = Object.keys(platformVars);
   log.debug(
     `Fetched ${platformVarNames.length} platform variable(s) for validation`,
@@ -394,7 +396,7 @@ export async function deploySchedule(
     .limit(1);
 
   // Validate required secrets/vars against schedule's scope + user
-  await validateRequiredConfig(compose, scopeId, userId);
+  await validateRequiredConfig(compose, scopeId, clerkOrgId, userId);
 
   const { triggerType, nextRunAt } = resolveTrigger(request);
 

@@ -127,7 +127,7 @@ export async function GET(request: Request) {
   const { scope } = await resolveScope(userId);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(scope.id, userId),
-    listVariables(scope.id, userId),
+    listVariables(scope.clerkOrgId, userId),
     listConnectors(scope.id, userId),
   ]);
 

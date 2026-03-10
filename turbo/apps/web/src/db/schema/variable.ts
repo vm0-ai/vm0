@@ -7,20 +7,20 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
-import { scopes } from "./scope";
 
 /**
  * Variables table
- * Stores non-sensitive configuration variables per user within a scope
- * Values are stored in plaintext (unlike secrets which are encrypted)
+ * Stores non-sensitive configuration variables per user within a scope.
+ * Values are stored in plaintext (unlike secrets which are encrypted).
+ * Uses clerk_org_id as the primary scope key (business requirement: scope_id → clerk_org_id migration).
+ * scope_id column is retained for Phase 5 cleanup.
  */
 export const variables = pgTable(
   "variables",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    scopeId: uuid("scope_id")
-      .references(() => scopes.id, { onDelete: "cascade" })
-      .notNull(),
+    // Retained for Phase 5 cleanup — no longer used in queries
+    scopeId: uuid("scope_id"),
     name: varchar("name", { length: 255 }).notNull(),
     value: text("value").notNull(),
     description: text("description"),
@@ -30,17 +30,11 @@ export const variables = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex("idx_variables_scope_user_name").on(
-      table.scopeId,
-      table.userId,
-      table.name,
-    ),
-    index("idx_variables_scope").on(table.scopeId),
-    index("idx_variables_clerk_org").on(table.clerkOrgId),
     uniqueIndex("idx_variables_clerk_org_user_name").on(
       table.clerkOrgId,
       table.userId,
       table.name,
     ),
+    index("idx_variables_clerk_org").on(table.clerkOrgId),
   ],
 );

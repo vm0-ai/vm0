@@ -9,6 +9,7 @@
     "DB_POOL_CONNECT_TIMEOUT_MS",
     "DB_DRIVER",
     "VM0_DEBUG",
+    "DEV",
     "NODE_ENV",
     "SKIP_ENV_VALIDATION",
     "VERCEL",
