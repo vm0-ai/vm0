@@ -143,6 +143,9 @@ function initEnv() {
       // Meta Ads OAuth (for connector)
       META_ADS_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       META_ADS_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // PostHog OAuth (for connector)
+      POSTHOG_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      POSTHOG_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Canva OAuth (for connector)
       CANVA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       CANVA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -264,6 +267,8 @@ function initEnv() {
       REDDIT_OAUTH_CLIENT_SECRET: process.env.REDDIT_OAUTH_CLIENT_SECRET,
       STRAVA_OAUTH_CLIENT_ID: process.env.STRAVA_OAUTH_CLIENT_ID,
       STRAVA_OAUTH_CLIENT_SECRET: process.env.STRAVA_OAUTH_CLIENT_SECRET,
+      POSTHOG_OAUTH_CLIENT_ID: process.env.POSTHOG_OAUTH_CLIENT_ID,
+      POSTHOG_OAUTH_CLIENT_SECRET: process.env.POSTHOG_OAUTH_CLIENT_SECRET,
       STRIPE_OAUTH_CLIENT_ID: process.env.STRIPE_OAUTH_CLIENT_ID,
       STRIPE_OAUTH_CLIENT_SECRET: process.env.STRIPE_OAUTH_CLIENT_SECRET,
       GARMIN_CONNECT_OAUTH_CLIENT_ID:

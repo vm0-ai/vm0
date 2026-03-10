@@ -1,11 +1,11 @@
-import { useState, useCallback } from "react";
+import { useCCState, useCommand } from "ccstate-react/experimental";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   ZeroSidebar,
   type ZeroNavId,
   type ZeroAccountAction,
   type ZeroAccountSubId,
 } from "./zero-sidebar.tsx";
-import { useLoadable } from "ccstate-react";
 import { Button } from "@vm0/ui";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { ZeroContent } from "./zero-content.tsx";
@@ -18,9 +18,9 @@ const ZERO_AVATARS = [
   "/avatars/avatar-2.png",
   "/avatars/avatar-3.png",
   "/avatars/avatar-4.png",
-];
+] as const;
 
-const RECENT_LABELS: Record<string, string> = {
+const RECENT_LABELS: Readonly<Record<string, string>> = {
   hello: "Hello from Zero",
   "1": "Daily digest workflow",
   "2": "Set up Slack integration",
@@ -34,38 +34,52 @@ export function ZeroAppShell() {
   const userLoadable = useLoadable(user$);
   const isLoggedIn =
     userLoadable.state === "hasData" && userLoadable.data !== undefined;
-  const [activeId, setActiveId] = useState<ZeroNavId>("chat");
-  const [recentId, setRecentId] = useState<string | null>(null);
-  const [accountSubId, setAccountSubId] = useState<ZeroAccountSubId>(null);
-  const [avatarIndex, setAvatarIndex] = useState(0);
-  const [showAboutPage, setShowAboutPage] = useState(false);
+  const activeId$ = useCCState<ZeroNavId>("chat");
+  const activeId = useGet(activeId$);
+  const setActiveId = useSet(activeId$);
+  const recentId$ = useCCState<string | null>(null);
+  const recentId = useGet(recentId$);
+  const accountSubId$ = useCCState<ZeroAccountSubId>(null);
+  const accountSubId = useGet(accountSubId$);
+  const avatarIndex$ = useCCState(0);
+  const avatarIndex = useGet(avatarIndex$);
+  const showAboutPage$ = useCCState(false);
+  const showAboutPage = useGet(showAboutPage$);
+  const setShowAboutPage = useSet(showAboutPage$);
   const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
-  const cycleAvatar = useCallback(() => {
-    setAvatarIndex((i) => (i + 1) % ZERO_AVATARS.length);
-  }, []);
+  const cycleAvatar$ = useCommand(({ set }) => {
+    set(avatarIndex$, (i: number) => (i + 1) % ZERO_AVATARS.length);
+  });
+  const cycleAvatar = useSet(cycleAvatar$);
 
-  const handleRecentSelect = useCallback((id: string) => {
-    setRecentId(id);
-    setActiveId("chat");
-  }, []);
+  const handleRecentSelect$ = useCommand(({ set }, id: string) => {
+    set(recentId$, id);
+    set(activeId$, "chat" as ZeroNavId);
+  });
+  const handleRecentSelect = useSet(handleRecentSelect$);
 
-  const handleNavSelect = useCallback((id: ZeroNavId) => {
-    setActiveId(id);
-    setRecentId(null);
-    setShowAboutPage(false);
-  }, []);
+  const handleNavSelect$ = useCommand(({ set }, id: ZeroNavId) => {
+    set(activeId$, id);
+    set(recentId$, null);
+    set(showAboutPage$, false);
+  });
+  const handleNavSelect = useSet(handleNavSelect$);
 
-  const handleAccountAction = useCallback((action: ZeroAccountAction) => {
-    if (action === "signout" || action === "manage") {
-      return;
-    }
-    setActiveId("account");
-    setAccountSubId(action);
-  }, []);
+  const handleAccountAction$ = useCommand(
+    ({ set }, action: ZeroAccountAction) => {
+      if (action === "signout" || action === "manage") {
+        return;
+      }
+      set(activeId$, "account" as ZeroNavId);
+      set(accountSubId$, action as ZeroAccountSubId);
+    },
+  );
+  const handleAccountAction = useSet(handleAccountAction$);
 
-  const handleClearRecent = useCallback(() => {
-    setRecentId(null);
-  }, []);
+  const handleClearRecent$ = useCommand(({ set }) => {
+    set(recentId$, null);
+  });
+  const handleClearRecent = useSet(handleClearRecent$);
 
   const recentLabel = recentId ? (RECENT_LABELS[recentId] ?? null) : null;
 
@@ -83,8 +97,6 @@ export function ZeroAppShell() {
         onSelect={handleNavSelect}
         onRecentSelect={handleRecentSelect}
         selectedRecentId={activeId === "chat" ? recentId : null}
-        zeroAvatarSrc={zeroAvatarSrc}
-        onAvatarClick={cycleAvatar}
         onAccountAction={handleAccountAction}
       />
       <div className="flex flex-1 flex-col min-w-0 zero-workspace-bg">

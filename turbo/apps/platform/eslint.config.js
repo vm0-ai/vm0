@@ -59,13 +59,6 @@ export default [
       "ccstate/no-store-in-params": "error",
     },
   },
-  // Zero app: allow module-scope mock data
-  {
-    files: ["src/views/zero-page/**/*.ts", "src/views/zero-page/**/*.tsx"],
-    rules: {
-      "ccstate/no-package-variable": "off",
-    },
-  },
   {
     ignores: [
       "dist/**",

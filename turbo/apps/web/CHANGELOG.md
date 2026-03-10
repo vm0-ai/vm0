@@ -1,5 +1,33 @@
 # Changelog
 
+## [12.91.0](https://github.com/vm0-ai/vm0/compare/web-v12.90.0...web-v12.91.0) (2026-03-10)
+
+
+### Features
+
+* **scope:** add default agent compose field to scopes ([#4067](https://github.com/vm0-ai/vm0/issues/4067)) ([529b7fd](https://github.com/vm0-ai/vm0/commit/529b7fd3c559342c0eaba5c307ab0b879c5442d5))
+
+
+### Bug Fixes
+
+* allow shared agent detail access without scope membership ([#4069](https://github.com/vm0-ai/vm0/issues/4069)) ([9f596ab](https://github.com/vm0-ai/vm0/commit/9f596ab936674520e79a9c5e66b530547d972d7d))
+* **slack:** add logs link to dispatch failure error messages ([#4068](https://github.com/vm0-ai/vm0/issues/4068)) ([6ddf062](https://github.com/vm0-ai/vm0/commit/6ddf0626aac73f43bc4ece64b076c73045e6902e))
+* **web:** use clerk v6 redirect props for cross-domain sign-in ([#4109](https://github.com/vm0-ai/vm0/issues/4109)) ([c065eff](https://github.com/vm0-ai/vm0/commit/c065effdbca363b367b4e8326078184ed8ef8c95))
+
+
+### Refactoring
+
+* align remaining scope terminology with resource model ([#4094](https://github.com/vm0-ai/vm0/issues/4094)) ([e4df6c9](https://github.com/vm0-ai/vm0/commit/e4df6c96f84ef0e0e1393215a08122bf83a73a21))
+* dual-write scope metadata to clerk org and membership metadata ([#4103](https://github.com/vm0-ai/vm0/issues/4103)) ([c2065a4](https://github.com/vm0-ai/vm0/commit/c2065a489b1317a653a33644e9d7ad992aee2dce)), closes [#4100](https://github.com/vm0-ai/vm0/issues/4100)
+* **run:** remove unused return field from expand environment ([#4104](https://github.com/vm0-ai/vm0/issues/4104)) ([42df1e6](https://github.com/vm0-ai/vm0/commit/42df1e6abea11997b00ccd6a01825b1d2c9f85a1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.51.0
+
 ## [12.90.0](https://github.com/vm0-ai/vm0/compare/web-v12.89.0...web-v12.90.0) (2026-03-09)
 
 

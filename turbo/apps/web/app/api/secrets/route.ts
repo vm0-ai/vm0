@@ -67,6 +67,7 @@ const router = tsr.router(secretsMainContract, {
         userId,
         name,
         value,
+        scope.clerkOrgId,
         description,
       );
 

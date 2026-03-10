@@ -8,7 +8,7 @@ import { ZeroActivityPage } from "./zero-activity-page.tsx";
 import { ZeroWorksPage } from "./zero-works-page.tsx";
 import { ZeroSchedulePage } from "./zero-schedule-page.tsx";
 
-const RECENT_ID_TO_SCENARIO: Record<string, DemoScenarioId> = {
+const RECENT_ID_TO_SCENARIO: Readonly<Record<string, DemoScenarioId>> = {
   hello: "hello-from-zero",
   "1": "rich-summary",
   "2": "connect-connector",
@@ -30,7 +30,7 @@ interface ZeroContentProps {
   onAvatarClick?: () => void;
 }
 
-const SECTION_TITLES: Record<ZeroNavId, string> = {
+const SECTION_TITLES: Readonly<Record<ZeroNavId, string>> = {
   chat: "Chat with Zero",
   meet: "Meet Zero",
   schedule: "Schedule",

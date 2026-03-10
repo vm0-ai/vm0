@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { Card, CardContent } from "@vm0/ui/components/ui/card";
 import type { ZeroAccountSubId } from "./zero-sidebar.tsx";
@@ -41,7 +42,9 @@ function ZeroAccountOverview() {
 }
 
 function ZeroPreferencesSubPage() {
-  const [tab, setTab] = useState("notifications");
+  const tab$ = useCCState("notifications");
+  const tab = useGet(tab$);
+  const setTab = useSet(tab$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0">

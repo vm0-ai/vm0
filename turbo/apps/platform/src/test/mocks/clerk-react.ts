@@ -8,3 +8,7 @@ interface ClerkProviderProps {
 export function ClerkProvider({ children }: ClerkProviderProps) {
   return children;
 }
+
+export function OrganizationSwitcher(): string {
+  return "OrganizationSwitcher";
+}

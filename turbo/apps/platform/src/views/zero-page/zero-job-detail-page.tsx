@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
   IconArrowLeft,
@@ -47,7 +48,7 @@ const WORKFLOW_SKILLS_OPTIONS = [
   "Data Analysis",
   "Content Summarization",
   "Linear",
-];
+] as const;
 
 const INITIAL_SKILLS = [
   "Slack",
@@ -55,7 +56,7 @@ const INITIAL_SKILLS = [
   "Content Summarization",
 ] as const;
 
-const CONNECTOR_LIST: ConnectorType[] = [
+const CONNECTOR_LIST: readonly ConnectorType[] = [
   "github",
   "linear",
   "notion",
@@ -76,17 +77,25 @@ interface ZeroJobDetailPageProps {
 }
 
 export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
-  const [activeTab, setActiveTab] = useState("connectors");
-  const [settingsName, setSettingsName] = useState(job.title);
-  const [settingsDescription, setSettingsDescription] = useState(
-    job.description,
-  );
-  const [skills, setSkills] = useState<string[]>([...INITIAL_SKILLS]);
+  const activeTab$ = useCCState("connectors");
+  const activeTab = useGet(activeTab$);
+  const setActiveTab = useSet(activeTab$);
+  const settingsName$ = useCCState(job.title);
+  const settingsName = useGet(settingsName$);
+  const setSettingsName = useSet(settingsName$);
+  const settingsDescription$ = useCCState(job.description);
+  const settingsDescription = useGet(settingsDescription$);
+  const setSettingsDescription = useSet(settingsDescription$);
+  const skills$ = useCCState<string[]>([...INITIAL_SKILLS]);
+  const skills = useGet(skills$);
+  const setSkills = useSet(skills$);
   const ADD_SKILL_PLACEHOLDER = "__add_skill__";
-  const [addSkillValue, setAddSkillValue] = useState(ADD_SKILL_PLACEHOLDER);
-  const [connectedConnectors, setConnectedConnectors] = useState<
-    ConnectorType[]
-  >(["github", "slack"]);
+  const addSkillValue$ = useCCState(ADD_SKILL_PLACEHOLDER);
+  const addSkillValue = useGet(addSkillValue$);
+  const setAddSkillValue = useSet(addSkillValue$);
+  const connectedConnectors$ = useCCState<ConnectorType[]>(["github", "slack"]);
+  const connectedConnectors = useGet(connectedConnectors$);
+  const setConnectedConnectors = useSet(connectedConnectors$);
 
   const removeSkill = (s: string) =>
     setSkills((prev) => prev.filter((x) => x !== s));
@@ -105,7 +114,7 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
     (s) => !skills.includes(s),
   );
 
-  const [savedSettings, setSavedSettings] = useState<{
+  const savedSettings$ = useCCState<{
     name: string;
     description: string;
     skills: string[];
@@ -114,6 +123,8 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
     description: job.description,
     skills: [...INITIAL_SKILLS],
   });
+  const savedSettings = useGet(savedSettings$);
+  const setSavedSettings = useSet(savedSettings$);
 
   const isSettingsDirty =
     settingsName !== savedSettings.name ||

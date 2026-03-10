@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
 import { IconPencil, IconList, IconLayoutGrid } from "@tabler/icons-react";
 import {
   Card,
@@ -65,7 +66,7 @@ function buildCombinedSchedule(
   return [...zeroEntries, ...jobEntries];
 }
 
-const AGENT_ORDER = [
+const AGENT_ORDER: readonly string[] = [
   "Zero",
   ...ZERO_TEAM_JOBS.map((j) => `${j.agentName} · ${j.title}`),
 ];
@@ -76,21 +77,23 @@ const AGENT_CELL_CLASSES = [
   "bg-amber-700/15 border-amber-700/40 text-amber-800 dark:text-amber-200 dark:border-amber-600/40 dark:bg-amber-900/25",
   "bg-violet-700/15 border-violet-700/40 text-violet-800 dark:text-violet-200 dark:border-violet-600/40 dark:bg-violet-900/25",
   "bg-teal-700/15 border-teal-700/40 text-teal-800 dark:text-teal-200 dark:border-teal-600/40 dark:bg-teal-900/25",
-];
+] as const;
 
 function getAgentCellClasses(agentLabel: string): string {
   const i = AGENT_ORDER.indexOf(agentLabel);
   return AGENT_CELL_CLASSES[i !== -1 ? i % AGENT_CELL_CLASSES.length : 0];
 }
 
-const JOB_INITIAL_PROMPTS: Record<string, string> = {
+const JOB_INITIAL_PROMPTS: Readonly<Record<string, string>> = {
   "1": "Compile the daily digest from Slack and email; highlight items that need follow-up.",
   "2": "Triage new GitHub issues, suggest labels and assignees, and post a short summary in #eng.",
   "3": "Draft the weekly team report from the last 7 days and save to the shared drive.",
   "4": "Summarize new customer feedback from Zendesk and Notion; flag recurring themes.",
 };
 
-const initialJobSchedules: Record<string, ScheduleEntry[]> = Object.fromEntries(
+const initialJobSchedules: Readonly<
+  Record<string, readonly Readonly<ScheduleEntry>[]>
+> = Object.fromEntries(
   ZERO_TEAM_JOBS.map((job) => [
     job.id,
     [
@@ -104,23 +107,45 @@ const initialJobSchedules: Record<string, ScheduleEntry[]> = Object.fromEntries(
 );
 
 export function ZeroSchedulePage() {
-  const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">(
-    "list",
+  const scheduleViewMode$ = useCCState<"list" | "calendar">("list");
+  const scheduleViewMode = useGet(scheduleViewMode$);
+  const setScheduleViewMode = useSet(scheduleViewMode$);
+  const zeroSchedule$ = useCCState<ScheduleEntry[]>([...DEFAULT_SCHEDULE]);
+  const zeroSchedule = useGet(zeroSchedule$);
+  const setZeroSchedule = useSet(zeroSchedule$);
+  const jobSchedules$ = useCCState<Record<string, ScheduleEntry[]>>(
+    Object.fromEntries(
+      Object.entries(initialJobSchedules).map(([k, v]) => [k, [...v]]),
+    ),
   );
-  const [zeroSchedule, setZeroSchedule] =
-    useState<ScheduleEntry[]>(DEFAULT_SCHEDULE);
-  const [jobSchedules, setJobSchedules] =
-    useState<Record<string, ScheduleEntry[]>>(initialJobSchedules);
-  const [editingEntry, setEditingEntry] = useState<CombinedEntry | null>(null);
-  const [newSchedulePrompt, setNewSchedulePrompt] = useState("");
-  const [scheduleFreq, setScheduleFreq] = useState<string>("every_day");
-  const [scheduleDate, setScheduleDate] = useState<string>(() =>
+  const jobSchedules = useGet(jobSchedules$);
+  const setJobSchedules = useSet(jobSchedules$);
+  const editingEntry$ = useCCState<CombinedEntry | null>(null);
+  const editingEntry = useGet(editingEntry$);
+  const setEditingEntry = useSet(editingEntry$);
+  const newSchedulePrompt$ = useCCState("");
+  const newSchedulePrompt = useGet(newSchedulePrompt$);
+  const setNewSchedulePrompt = useSet(newSchedulePrompt$);
+  const scheduleFreq$ = useCCState<string>("every_day");
+  const scheduleFreq = useGet(scheduleFreq$);
+  const setScheduleFreq = useSet(scheduleFreq$);
+  const scheduleDate$ = useCCState<string>(
     new Date().toISOString().slice(0, 10),
   );
-  const [scheduleHour, setScheduleHour] = useState(9);
-  const [scheduleMinute, setScheduleMinute] = useState(0);
-  const [scheduleTimezone, setScheduleTimezone] = useState("UTC");
-  const [scheduleLoopMinutes, setScheduleLoopMinutes] = useState(15);
+  const scheduleDate = useGet(scheduleDate$);
+  const setScheduleDate = useSet(scheduleDate$);
+  const scheduleHour$ = useCCState(9);
+  const scheduleHour = useGet(scheduleHour$);
+  const setScheduleHour = useSet(scheduleHour$);
+  const scheduleMinute$ = useCCState(0);
+  const scheduleMinute = useGet(scheduleMinute$);
+  const setScheduleMinute = useSet(scheduleMinute$);
+  const scheduleTimezone$ = useCCState("UTC");
+  const scheduleTimezone = useGet(scheduleTimezone$);
+  const setScheduleTimezone = useSet(scheduleTimezone$);
+  const scheduleLoopMinutes$ = useCCState(15);
+  const scheduleLoopMinutes = useGet(scheduleLoopMinutes$);
+  const setScheduleLoopMinutes = useSet(scheduleLoopMinutes$);
 
   const combinedSchedule = buildCombinedSchedule(zeroSchedule, jobSchedules);
 

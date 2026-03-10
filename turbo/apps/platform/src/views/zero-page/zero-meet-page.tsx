@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
   IconMessageCircle,
@@ -37,16 +38,18 @@ const TONE_OPTIONS = [
   "Supportive",
 ] as const;
 
-const TONE_HINT: Record<(typeof TONE_OPTIONS)[number], string> = {
+const TONE_HINT: Readonly<Record<(typeof TONE_OPTIONS)[number], string>> = {
   Professional: "Clear and polished",
   Friendly: "Warm and approachable",
   Direct: "To the point",
   Supportive: "In your corner",
 };
 
-const TONE_SAMPLES: Record<
-  (typeof TONE_OPTIONS)[number],
-  { user: string; zero: string }
+const TONE_SAMPLES: Readonly<
+  Record<
+    (typeof TONE_OPTIONS)[number],
+    Readonly<{ user: string; zero: string }>
+  >
 > = {
   Professional: {
     user: "I need the Q3 report by Friday.",
@@ -78,9 +81,9 @@ const AVAILABLE_SKILLS = [
   "slack",
   "gmail",
   "elephant",
-];
+] as const;
 
-const CONNECTOR_LIST: ConnectorType[] = [
+const CONNECTOR_LIST: readonly ConnectorType[] = [
   "github",
   "linear",
   "notion",
@@ -97,17 +100,33 @@ export function ZeroMeetPage({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroMeetPageProps) {
-  const [activeTab, setActiveTab] = useState("connections");
-  const [agentName, setAgentName] = useState("Zero");
-  const [tone, setTone] = useState<string>("Professional");
-  const [skills, setSkills] = useState<string[]>([...AVAILABLE_SKILLS]);
-  const [savedSettings, setSavedSettings] = useState({
+  const activeTab$ = useCCState("connections");
+  const activeTab = useGet(activeTab$);
+  const setActiveTab = useSet(activeTab$);
+  const agentName$ = useCCState("Zero");
+  const agentName = useGet(agentName$);
+  const setAgentName = useSet(agentName$);
+  const tone$ = useCCState<string>("Professional");
+  const tone = useGet(tone$);
+  const setTone = useSet(tone$);
+  const skills$ = useCCState<string[]>([...AVAILABLE_SKILLS]);
+  const skills = useGet(skills$);
+  const setSkills = useSet(skills$);
+  const savedSettings$ = useCCState<{
+    name: string;
+    tone: string;
+    skills: string[];
+  }>({
     name: "Zero",
     tone: "Professional",
     skills: [...AVAILABLE_SKILLS],
   });
+  const savedSettings = useGet(savedSettings$);
+  const setSavedSettings = useSet(savedSettings$);
   const ADD_SKILL_PLACEHOLDER = "__add_skill__";
-  const [addSkillValue, setAddSkillValue] = useState(ADD_SKILL_PLACEHOLDER);
+  const addSkillValue$ = useCCState(ADD_SKILL_PLACEHOLDER);
+  const addSkillValue = useGet(addSkillValue$);
+  const setAddSkillValue = useSet(addSkillValue$);
 
   const isSettingsDirty =
     agentName !== savedSettings.name ||

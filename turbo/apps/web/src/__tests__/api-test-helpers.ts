@@ -527,11 +527,13 @@ async function createTestRunDirect(
     continuedFromSessionId?: string;
   },
 ): Promise<{ id: string }> {
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
       scopeId,
+      clerkOrgId,
       agentComposeVersionId: versionId,
       status: options?.status ?? "running",
       prompt: options?.prompt ?? "test prompt",
@@ -1410,6 +1412,22 @@ async function getScopeIdFromVersion(versionId: string): Promise<string> {
 }
 
 /**
+ * Resolve clerkOrgId from a scopeId.
+ * Shared by test helpers that insert records into scope-dependent tables.
+ */
+async function getClerkOrgIdFromScope(scopeId: string): Promise<string> {
+  const [scope] = await globalThis.services.db
+    .select({ clerkOrgId: scopes.clerkOrgId })
+    .from(scopes)
+    .where(eq(scopes.id, scopeId))
+    .limit(1);
+  if (!scope) {
+    throw new Error(`Scope ${scopeId} not found`);
+  }
+  return scope.clerkOrgId;
+}
+
+/**
  * Insert a stale pending run directly into the database.
  * This simulates a run stuck in "pending" state past the cleanup TTL,
  * which cannot be reproduced through normal API flows since the route
@@ -1426,6 +1444,7 @@ export async function insertStalePendingRun(
   ageMs: number = 20 * 60 * 1000,
 ): Promise<string> {
   const scopeId = await getScopeIdFromVersion(agentComposeVersionId);
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
 
   const staleCreatedAt = new Date(Date.now() - ageMs);
   const [run] = await globalThis.services.db
@@ -1433,6 +1452,7 @@ export async function insertStalePendingRun(
     .values({
       userId,
       scopeId,
+      clerkOrgId,
       agentComposeVersionId,
       status: "pending",
       prompt: "Stale pending run",
@@ -1520,11 +1540,14 @@ export async function createTestConnector(
     userId = member.userId;
   }
 
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
+
   const [connector] = await globalThis.services.db
     .insert(connectors)
     .values({
       scopeId,
       userId,
+      clerkOrgId,
       type,
       authMethod: options?.authMethod ?? "oauth",
       externalId: options?.externalId ?? "12345",
@@ -1543,6 +1566,7 @@ export async function createTestConnector(
   await globalThis.services.db.insert(secrets).values({
     scopeId,
     userId,
+    clerkOrgId,
     name: secretName,
     type: "connector",
     encryptedValue,
@@ -1724,12 +1748,14 @@ export async function createCompletedTestRun(options: {
   completedAt: Date;
 }): Promise<string> {
   const scopeId = await getScopeIdFromVersion(options.composeVersionId);
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
 
   const [row] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId: options.userId,
       scopeId,
+      clerkOrgId,
       agentComposeVersionId: options.composeVersionId,
       status: "completed",
       prompt: "test",
@@ -2171,12 +2197,14 @@ export async function createTestRunnerJob(
   contextOverrides?: Partial<StoredExecutionContext>,
 ): Promise<{ runId: string }> {
   const scopeId = await getScopeIdFromVersion(versionId);
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
 
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
       scopeId,
+      clerkOrgId,
       agentComposeVersionId: versionId,
       status: "pending",
       prompt: "test prompt",
@@ -2476,6 +2504,7 @@ export async function createTestTelegramInstallation(options?: {
     .values({
       userId: adminUserId,
       scopeId: scope!.id,
+      clerkOrgId: scope!.clerkOrgId,
       name: uniqueId("compose"),
     })
     .returning();
@@ -2575,9 +2604,10 @@ export async function insertTestAgentCompose(
   scopeId: string,
   name: string,
 ) {
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
   const [row] = await globalThis.services.db
     .insert(agentComposes)
-    .values({ userId, scopeId, name })
+    .values({ userId, scopeId, clerkOrgId, name })
     .returning();
   return row!;
 }
@@ -2593,11 +2623,13 @@ export async function insertTestAgentRun(
   scopeId: string,
   options?: { status?: string; prompt?: string },
 ) {
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
   const [row] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
       scopeId,
+      clerkOrgId,
       status: options?.status ?? "completed",
       prompt: options?.prompt ?? "test prompt",
     })
@@ -2616,9 +2648,10 @@ export async function insertTestStorageRecord(
   scopeId: string,
   name: string,
 ) {
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
   const [row] = await globalThis.services.db
     .insert(storages)
-    .values({ userId, scopeId, name, s3Prefix: "test/prefix" })
+    .values({ userId, scopeId, clerkOrgId, name, s3Prefix: "test/prefix" })
     .returning();
   return row!;
 }

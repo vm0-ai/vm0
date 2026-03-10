@@ -26,6 +26,7 @@ const router = tsr.router(connectorTokenContract, {
         userId,
         params.type,
         body.secrets,
+        scope.clerkOrgId,
       );
 
       return {

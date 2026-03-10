@@ -211,6 +211,7 @@ export async function upsertModelProvider(
   userId: string,
   type: ModelProviderType,
   secret: string,
+  clerkOrgId: string,
   selectedModel?: string,
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
   // Multi-auth providers need different handling
@@ -258,6 +259,7 @@ export async function upsertModelProvider(
       encryptedValue,
       type: "model-provider",
       description: `Model provider secret for ${MODEL_PROVIDER_TYPES[type].label}`,
+      clerkOrgId,
     })
     .onConflictDoUpdate({
       target: [secrets.scopeId, secrets.userId, secrets.name, secrets.type],
@@ -275,6 +277,7 @@ export async function upsertModelProvider(
       secretId: upsertedSecret!.id,
       isDefault: false,
       selectedModel: selectedModel ?? null,
+      clerkOrgId,
     })
     .onConflictDoUpdate({
       target: [
@@ -337,6 +340,7 @@ async function upsertMultiAuthSecret(
   value: string,
   description: string,
   encryptionKey: string,
+  clerkOrgId: string,
 ): Promise<void> {
   const encryptedValue = encryptCredentialValue(value, encryptionKey);
 
@@ -349,6 +353,7 @@ async function upsertMultiAuthSecret(
       encryptedValue,
       type: "model-provider",
       description,
+      clerkOrgId,
     })
     .onConflictDoUpdate({
       target: [secrets.scopeId, secrets.userId, secrets.name, secrets.type],
@@ -404,6 +409,7 @@ export async function upsertMultiAuthModelProvider(
   type: ModelProviderType,
   authMethod: string,
   secretValues: Record<string, string>,
+  clerkOrgId: string,
   selectedModel?: string,
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
   // Verify this is a multi-auth provider
@@ -487,6 +493,7 @@ export async function upsertMultiAuthModelProvider(
       value,
       secretDescription,
       encryptionKey,
+      clerkOrgId,
     );
   }
 
@@ -500,6 +507,7 @@ export async function upsertMultiAuthModelProvider(
       authMethod,
       isDefault: false,
       selectedModel: selectedModel ?? null,
+      clerkOrgId,
     })
     .onConflictDoUpdate({
       target: [

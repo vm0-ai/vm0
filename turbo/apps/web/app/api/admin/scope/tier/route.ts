@@ -11,6 +11,7 @@ import {
   getScopeBySlug,
   isVm0Admin,
 } from "../../../../../src/lib/scope/scope-service";
+import { clerkClient } from "@clerk/nextjs/server";
 import { scopes } from "../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 import { logger } from "../../../../../src/lib/logger";
@@ -64,6 +65,19 @@ const router = tsr.router(adminScopeTierContract, {
       .set({ tier: body.tier, updatedAt: new Date() })
       .where(eq(scopes.id, scope.id))
       .returning();
+
+    // Dual-write tier to Clerk org publicMetadata (fire-and-forget)
+    try {
+      const client = await clerkClient();
+      await client.organizations.updateOrganizationMetadata(scope.clerkOrgId, {
+        publicMetadata: { tier: body.tier },
+      });
+    } catch (err) {
+      log.error("Failed to write tier to Clerk metadata", {
+        error: err,
+        clerkOrgId: scope.clerkOrgId,
+      });
+    }
 
     return {
       status: 200 as const,

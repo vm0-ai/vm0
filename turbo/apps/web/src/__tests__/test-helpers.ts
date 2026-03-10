@@ -537,6 +537,7 @@ export function testContext(): TestContext {
         .values({
           userId: adminUserId,
           scopeId: scopeData.id,
+          clerkOrgId: scopeData.clerkOrgId,
           name: uniqueId("default-agent"),
         })
         .returning();
@@ -642,6 +643,7 @@ export function testContext(): TestContext {
       .values({
         userId: vm0UserId,
         scopeId: scopeData.id,
+        clerkOrgId: scopeData.clerkOrgId,
         name,
       })
       .returning();
@@ -669,7 +671,7 @@ export function testContext(): TestContext {
 
     initServices();
 
-    // Look up userId from scope_members
+    // Look up userId and clerkOrgId from scope_members + scopes
     const [member] = await globalThis.services.db
       .select({ userId: scopeMembers.userId })
       .from(scopeMembers)
@@ -678,12 +680,18 @@ export function testContext(): TestContext {
     if (!member) {
       throw new Error(`No scope member found for scope ${scopeId}`);
     }
+    const [scope] = await globalThis.services.db
+      .select({ clerkOrgId: scopes.clerkOrgId })
+      .from(scopes)
+      .where(eq(scopes.id, scopeId))
+      .limit(1);
 
     const [connector] = await globalThis.services.db
       .insert(connectors)
       .values({
         scopeId,
         userId: member.userId,
+        clerkOrgId: scope!.clerkOrgId,
         type,
         authMethod,
       })

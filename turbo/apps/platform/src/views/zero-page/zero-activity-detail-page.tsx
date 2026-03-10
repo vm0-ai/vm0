@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
 import { IconArrowLeft, IconSearch, IconDownload } from "@tabler/icons-react";
 import { Button, Input } from "@vm0/ui";
 import type { LogStatus } from "../../signals/logs-page/types.ts";
@@ -23,7 +24,7 @@ interface StepItem {
   time?: string;
 }
 
-const MOCK_STEPS: StepItem[] = [
+const MOCK_STEPS: readonly Readonly<StepItem>[] = [
   {
     id: "1",
     type: "prompt",
@@ -147,7 +148,9 @@ export function ZeroActivityDetailPage({
   item,
   onBack,
 }: ZeroActivityDetailPageProps) {
-  const [stepSearch, setStepSearch] = useState("");
+  const stepSearch$ = useCCState("");
+  const stepSearch = useGet(stepSearch$);
+  const setStepSearch = useSet(stepSearch$);
   const steps = MOCK_STEPS.filter(
     (s) => !stepSearch.trim() || stepMatchesSearch(s, stepSearch.trim()),
   );

@@ -43,6 +43,7 @@ export async function ensureStorageExists(
   storageName: string,
   scopeSlug: string,
   storageType: "artifact" | "memory",
+  clerkOrgId: string,
 ): Promise<void> {
   // Find or create storage record (artifact/memory use real userId)
   let [storage] = await globalThis.services.db
@@ -69,6 +70,7 @@ export async function ensureStorageExists(
         s3Prefix: `${scopeSlug}/${storageType}/${storageName}`,
         size: 0,
         fileCount: 0,
+        clerkOrgId,
       })
       .onConflictDoNothing()
       .returning();

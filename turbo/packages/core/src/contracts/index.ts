@@ -163,11 +163,13 @@ export {
 } from "./proxy";
 export {
   scopeContract,
+  scopeDefaultAgentContract,
   scopeSlugSchema,
   scopeResponseSchema,
   createScopeRequestSchema,
   updateScopeRequestSchema,
   type ScopeContract,
+  type ScopeDefaultAgentContract,
   type ScopeResponse,
   type CreateScopeRequest,
   type UpdateScopeRequest,

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
 import {
   IconSearch,
   IconSettings,
@@ -21,11 +22,11 @@ import {
 } from "@vm0/ui/components/ui/popover";
 import { ZeroSlackConfigContent } from "./zero-slack-config-content";
 
-const CONNECTED_TOOLS: {
+const CONNECTED_TOOLS: readonly Readonly<{
   id: string;
   name: string;
   description: string;
-}[] = [
+}>[] = [
   {
     id: "slack",
     name: "Slack",
@@ -34,8 +35,12 @@ const CONNECTED_TOOLS: {
 ];
 
 export function ZeroWorksPage() {
-  const [search, setSearch] = useState("");
-  const [slackConfigOpen, setSlackConfigOpen] = useState(false);
+  const search$ = useCCState("");
+  const search = useGet(search$);
+  const setSearch = useSet(search$);
+  const slackConfigOpen$ = useCCState(false);
+  const slackConfigOpen = useGet(slackConfigOpen$);
+  const setSlackConfigOpen = useSet(slackConfigOpen$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0">

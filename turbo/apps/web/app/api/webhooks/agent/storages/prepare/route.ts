@@ -101,6 +101,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       .values({
         userId: storageUserId,
         scopeId: runtimeScope.id,
+        clerkOrgId: runtimeScope.clerkOrgId,
         name: storageName,
         type: storageType,
         s3Prefix: `${runtimeScope.slug}/${storageType}/${storageName}`,

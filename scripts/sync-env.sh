@@ -30,9 +30,7 @@ sync_with_1password() {
     echo ""
     echo "Syncing: $tpl_file"
     echo "Output:  $output_file"
-    save_runner_group "$output_file"
     op inject --force -i "$tpl_file" -o "$output_file"
-    restore_runner_group "$output_file"
     echo "✓ Synced successfully"
   done < <(find "$PROJECT_ROOT" -name ".env.local.tpl" -type f)
 
@@ -138,78 +136,46 @@ sync_with_manual_input() {
   echo ""
 
   while IFS= read -r tpl_file; do
-    save_runner_group "${tpl_file%.tpl}"
     process_tpl_manually "$tpl_file"
-    restore_runner_group "${tpl_file%.tpl}"
   done < <(find "$PROJECT_ROOT" -name ".env.local.tpl" -type f)
 
   echo ""
   echo "✓ All environment variables synced successfully"
 }
 
-# --- Computed variables ---
-# RUNNER_DEFAULT_GROUP is derived from user input rather than stored in 1Password.
-# It must survive template overwrites (both op inject and manual flow).
-_SAVED_RUNNER_GROUP=""
 WEB_ENV_LOCAL="$PROJECT_ROOT/turbo/apps/web/.env.local"
 
-# Save RUNNER_DEFAULT_GROUP from an env file before it gets overwritten.
-save_runner_group() {
-  local env_file="$1"
-  _SAVED_RUNNER_GROUP=""
-  [[ -f "$env_file" ]] || return 0
-  _SAVED_RUNNER_GROUP=$(grep "^RUNNER_DEFAULT_GROUP=" "$env_file" 2>/dev/null | head -1 | cut -d= -f2-) || true
-}
-
-# Restore saved RUNNER_DEFAULT_GROUP back into the env file.
-restore_runner_group() {
-  local env_file="$1"
-  [[ -f "$env_file" ]] || return 0
-  [[ -z "$_SAVED_RUNNER_GROUP" ]] && return 0
-  if ! grep -q "^RUNNER_DEFAULT_GROUP=" "$env_file" 2>/dev/null; then
-    echo "" >> "$env_file"
-    echo "# Self-hosted Runner" >> "$env_file"
-    echo "RUNNER_DEFAULT_GROUP=${_SAVED_RUNNER_GROUP}" >> "$env_file"
-  fi
-}
-
+# --- Computed variables ---
+# RUNNER_DEFAULT_GROUP is auto-derived from git email + hostname.
 configure_runner_group() {
   [[ -f "$WEB_ENV_LOCAL" ]] || return 0
 
-  local existing
-  existing=$(grep "^RUNNER_DEFAULT_GROUP=" "$WEB_ENV_LOCAL" 2>/dev/null | head -1 | cut -d= -f2-) || true
+  # Derive from git email + hostname (e.g. alice@vm0.ai on macbook -> alice-macbook)
+  local username hostname_short
+  username=$(git config user.email 2>/dev/null | sed 's/@.*//' | tr '[:upper:].' '[:lower:]-' | sed 's/-$//' || true)
+  hostname_short=$(hostname -s)
 
-  if [[ -n "$existing" ]]; then
-    echo "  ✓ RUNNER_DEFAULT_GROUP=$existing (already set)"
+  if [[ -z "$username" ]]; then
+    echo "  ✗ RUNNER_DEFAULT_GROUP skipped (git user.email not configured)"
     return 0
   fi
 
-  echo ""
-  echo "Enter your name for the runner group (e.g. alice)."
-  echo "This sets RUNNER_DEFAULT_GROUP=vm0/local-<name> to route sandbox runs to your runner."
+  local group_name="vm0/local-${username}-${hostname_short}"
 
-  while true; do
-    printf "  Your name: "
-    read -r dev_name </dev/tty
+  # Remove old value and its comment header if present, then append fresh
+  if grep -q "^RUNNER_DEFAULT_GROUP=" "$WEB_ENV_LOCAL" 2>/dev/null; then
+    sed -i '/^# Self-hosted Runner$/d; /^RUNNER_DEFAULT_GROUP=/d' "$WEB_ENV_LOCAL"
+  fi
 
-    if [[ -z "$dev_name" ]]; then
-      echo "  ✗ Name is required"
-      continue
-    fi
-
-    # Validate: only lowercase letters, digits, and hyphens, must start/end with alphanumeric
-    if [[ ! "$dev_name" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]{1,2}$ ]]; then
-      echo "  ✗ Only lowercase letters, digits, and hyphens allowed, must start/end with alphanumeric"
-      continue
-    fi
-
-    break
+  # Remove trailing blank lines before appending
+  while [[ -s "$WEB_ENV_LOCAL" && -z "$(tail -c 1 "$WEB_ENV_LOCAL")" ]] && tail -1 "$WEB_ENV_LOCAL" | grep -q '^$'; do
+    sed -i '$ d' "$WEB_ENV_LOCAL"
   done
 
   echo "" >> "$WEB_ENV_LOCAL"
   echo "# Self-hosted Runner" >> "$WEB_ENV_LOCAL"
-  echo "RUNNER_DEFAULT_GROUP=vm0/local-${dev_name}" >> "$WEB_ENV_LOCAL"
-  echo "  ✓ RUNNER_DEFAULT_GROUP=vm0/local-${dev_name}"
+  echo "RUNNER_DEFAULT_GROUP=${group_name}" >> "$WEB_ENV_LOCAL"
+  echo "  ✓ RUNNER_DEFAULT_GROUP=${group_name}"
 }
 
 # --- Main ---
