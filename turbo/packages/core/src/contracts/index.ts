@@ -433,6 +433,7 @@ export {
   type ConnectorListResponse,
   type ConnectorSessionResponse,
   type ConnectorSessionStatusResponse,
+  type ConnectorConfig,
   type ConnectorSecretConfig,
   type ConnectorAuthMethodConfig,
   type ConnectorOAuthConfig,
