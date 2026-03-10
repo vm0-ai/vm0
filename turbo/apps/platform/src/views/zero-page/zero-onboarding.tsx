@@ -387,7 +387,7 @@ export function ZeroOnboarding({
               className="rounded-lg min-w-[100px]"
               disabled={!providerPicked || !canSave || saving}
             >
-              {saving ? "Saving…" : "Next"}
+              {saving ? "Saving\u2026" : "Next"}
             </Button>
           </div>
         </DialogContent>
@@ -475,7 +475,7 @@ export function ZeroOnboarding({
                   onClick={handleAddToSlack}
                   disabled={saving}
                 >
-                  {saving ? "Saving…" : "Add to Slack"}
+                  {saving ? "Saving\u2026" : "Add to Slack"}
                 </Button>
               </div>
               <div className="zero-card flex flex-col items-center text-center rounded-xl border border-border p-5">
@@ -501,7 +501,7 @@ export function ZeroOnboarding({
                   onClick={handleContinueWithWeb}
                   disabled={saving}
                 >
-                  {saving ? "Saving…" : `Chat with ${name || "Zero"}`}
+                  {saving ? "Saving\u2026" : `Chat with ${name || "Zero"}`}
                 </Button>
               </div>
             </div>
