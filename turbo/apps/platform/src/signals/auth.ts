@@ -141,6 +141,11 @@ export const needsOrgSelection$ = computed(async (get) => {
     return false;
   }
 
+  console.debug("[needsOrgSelection]", {
+    activeOrg: clerk.organization?.id ?? null,
+    memberships: user.organizationMemberships.length,
+  });
+
   // If an active organization is already set, no selection needed
   if (clerk.organization) {
     return false;
