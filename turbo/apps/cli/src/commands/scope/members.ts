@@ -8,7 +8,24 @@ export const membersCommand = new Command()
   .description("View scope members")
   .action(
     withErrorHandler(async () => {
-      const status = await getScopeMembers().catch((error: unknown) => {
+      try {
+        const status = await getScopeMembers();
+
+        console.log(chalk.bold(`Scope: ${status.slug}`));
+        console.log(`  Role: ${status.role}`);
+        console.log(
+          `  Created: ${new Date(status.createdAt).toLocaleDateString()}`,
+        );
+        console.log();
+        console.log(chalk.bold("Members:"));
+        for (const member of status.members) {
+          const roleTag =
+            member.role === "admin"
+              ? chalk.yellow(` (${member.role})`)
+              : chalk.dim(` (${member.role})`);
+          console.log(`  ${member.email}${roleTag}`);
+        }
+      } catch (error) {
         if (
           error instanceof Error &&
           error.message.includes("Organization access token required")
@@ -18,21 +35,6 @@ export const membersCommand = new Command()
           });
         }
         throw error;
-      });
-
-      console.log(chalk.bold(`Scope: ${status.slug}`));
-      console.log(`  Role: ${status.role}`);
-      console.log(
-        `  Created: ${new Date(status.createdAt).toLocaleDateString()}`,
-      );
-      console.log();
-      console.log(chalk.bold("Members:"));
-      for (const member of status.members) {
-        const roleTag =
-          member.role === "admin"
-            ? chalk.yellow(` (${member.role})`)
-            : chalk.dim(` (${member.role})`);
-        console.log(`  ${member.email}${roleTag}`);
       }
     }),
   );
