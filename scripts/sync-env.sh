@@ -168,7 +168,9 @@ configure_runner_group() {
   fi
 
   # Remove trailing blank lines before appending
-  sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$WEB_ENV_LOCAL"
+  while [[ -s "$WEB_ENV_LOCAL" && -z "$(tail -c 1 "$WEB_ENV_LOCAL")" ]] && tail -1 "$WEB_ENV_LOCAL" | grep -q '^$'; do
+    sed -i '$ d' "$WEB_ENV_LOCAL"
+  done
 
   echo "" >> "$WEB_ENV_LOCAL"
   echo "# Self-hosted Runner" >> "$WEB_ENV_LOCAL"
