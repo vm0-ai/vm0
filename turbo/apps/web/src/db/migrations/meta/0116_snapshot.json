@@ -1,5 +1,5 @@
 {
-  "id": "a1b2c3d4-5678-4abc-9def-0123456789ab",
+  "id": "6d9b3616-8c92-4961-af9b-696fe7802d1b",
   "prevId": "e6afdd2f-6363-42f9-80ad-9533f3a68eec",
   "version": "7",
   "dialect": "postgresql",
@@ -3125,7 +3125,17 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "scopes_default_agent_compose_id_agent_composes_id_fk": {
+          "name": "scopes_default_agent_compose_id_agent_composes_id_fk",
+          "tableFrom": "scopes",
+          "tableTo": "agent_composes",
+          "columnsFrom": ["default_agent_compose_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "scopes_slug_unique": {

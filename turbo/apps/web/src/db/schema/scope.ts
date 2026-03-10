@@ -8,6 +8,7 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { agentComposes } from "./agent-compose";
 
 /**
  * Scopes table
@@ -21,9 +22,10 @@ export const scopes = pgTable(
     slug: varchar("slug", { length: 64 }).notNull().unique(),
     clerkOrgId: text("clerk_org_id").notNull(),
     tier: varchar("tier", { length: 16 }).default("free").notNull(),
-    // FK to agent_composes(id) ON DELETE SET NULL — managed via raw migration
-    // to avoid circular Drizzle reference (agent_composes already references scopes)
-    defaultAgentComposeId: uuid("default_agent_compose_id"),
+    defaultAgentComposeId: uuid("default_agent_compose_id").references(
+      () => agentComposes.id,
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
