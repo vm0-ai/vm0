@@ -185,10 +185,10 @@ describe("artifact status", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("404"),
+        expect.stringContaining("Not found on remote"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("not found"),
+        expect.stringContaining("vm0 artifact push"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { readStorageConfig } from "../../lib/storage/storage-utils";
-import { getStorageDownload } from "../../lib/api";
+import { getStorageDownload, ApiRequestError } from "../../lib/api";
 import { formatBytes } from "../../lib/utils/file-utils";
 import { withErrorHandler } from "../../lib/command";
 
@@ -34,20 +34,29 @@ export const statusCommand = new Command()
       console.log(`Checking volume: ${config.name}`);
 
       // Call API
-      const info = await getStorageDownload({
-        name: config.name,
-        type: "volume",
-      });
-      const shortVersion = info.versionId.slice(0, 8);
+      try {
+        const info = await getStorageDownload({
+          name: config.name,
+          type: "volume",
+        });
+        const shortVersion = info.versionId.slice(0, 8);
 
-      if ("empty" in info) {
-        console.log(chalk.green("✓ Found (empty)"));
-        console.log(chalk.dim(`  Version: ${shortVersion}`));
-      } else {
-        console.log(chalk.green("✓ Found"));
-        console.log(chalk.dim(`  Version: ${shortVersion}`));
-        console.log(chalk.dim(`  Files: ${info.fileCount.toLocaleString()}`));
-        console.log(chalk.dim(`  Size: ${formatBytes(info.size)}`));
+        if ("empty" in info) {
+          console.log(chalk.green("✓ Found (empty)"));
+          console.log(chalk.dim(`  Version: ${shortVersion}`));
+        } else {
+          console.log(chalk.green("✓ Found"));
+          console.log(chalk.dim(`  Version: ${shortVersion}`));
+          console.log(chalk.dim(`  Files: ${info.fileCount.toLocaleString()}`));
+          console.log(chalk.dim(`  Size: ${formatBytes(info.size)}`));
+        }
+      } catch (error) {
+        if (error instanceof ApiRequestError && error.status === 404) {
+          console.error(chalk.red("✗ Not found on remote"));
+          console.error(chalk.dim("  Run: vm0 volume push"));
+          process.exit(1);
+        }
+        throw error;
       }
     }),
   );
