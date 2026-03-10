@@ -65,7 +65,7 @@ export const CONNECTOR_TYPES = {
         helpText:
           "1. Log in to your [Ahrefs Dashboard](https://app.ahrefs.com)\n2. Go to **API keys** under your account settings\n3. Generate a new API token\n4. Copy the token",
         secrets: {
-          AHREFS_ACCESS_TOKEN: {
+          AHREFS_TOKEN: {
             label: "API Token",
             required: true,
             placeholder: "your-ahrefs-api-token",
@@ -75,7 +75,7 @@ export const CONNECTOR_TYPES = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
     environmentMapping: {
-      AHREFS_API_KEY: "$secrets.AHREFS_ACCESS_TOKEN",
+      AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
     } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://app.ahrefs.com/api/auth",
@@ -1514,7 +1514,7 @@ export const CONNECTOR_TYPES = {
         helpText:
           "1. Log in to your [Mailchimp account](https://login.mailchimp.com)\n2. Go to **Account & Billing** → **Extras** → **API keys**\n3. Click **Create A Key**\n4. Copy the API key (format: `xxxxxxxx-us00`)",
         secrets: {
-          MAILCHIMP_ACCESS_TOKEN: {
+          MAILCHIMP_TOKEN: {
             label: "API Key",
             required: true,
             placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-us00",
@@ -1524,7 +1524,7 @@ export const CONNECTOR_TYPES = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
     environmentMapping: {
-      MAILCHIMP_API_KEY: "$secrets.MAILCHIMP_ACCESS_TOKEN",
+      MAILCHIMP_TOKEN: "$secrets.MAILCHIMP_ACCESS_TOKEN",
     } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://login.mailchimp.com/oauth2/authorize",
