@@ -1021,6 +1021,27 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  productlane: {
+    label: "Productlane",
+    helpText:
+      "Connect your Productlane account to manage feedback, insights, changelogs, and customer data",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to your [Productlane Dashboard](https://productlane.com)\n2. Go to **Settings → API**\n3. Copy your API key",
+        secrets: {
+          PRODUCTLANE_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-productlane-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {} as Record<string, string>,
+  },
   "intervals-icu": {
     label: "Intervals.icu",
     helpText:
@@ -1753,6 +1774,14 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   stripe: {
     services: [service("https://api.stripe.com", bearerAuth("STRIPE_API_KEY"))],
   },
+  productlane: {
+    services: [
+      service(
+        "https://productlane.com/api/v1",
+        bearerAuth("PRODUCTLANE_TOKEN"),
+      ),
+    ],
+  },
   similarweb: {
     services: [
       service("https://api.similarweb.com", {
@@ -1892,6 +1921,7 @@ export const connectorTypeSchema = z.enum([
   "stripe",
   "similarweb",
   "mailchimp",
+  "productlane",
 ]);
 
 /**
