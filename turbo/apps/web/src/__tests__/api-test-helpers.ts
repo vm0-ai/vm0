@@ -1942,13 +1942,13 @@ export async function createTestSlackComposeRequest(options: {
 /**
  * Find artifact storage for a scope, including its HEAD version details.
  */
-export async function findTestArtifactStorage(scopeId: string) {
+export async function findTestArtifactStorage(clerkOrgId: string) {
   const [storage] = await globalThis.services.db
     .select()
     .from(storages)
     .where(
       and(
-        eq(storages.scopeId, scopeId),
+        eq(storages.clerkOrgId, clerkOrgId),
         eq(storages.name, "artifact"),
         eq(storages.type, "artifact"),
       ),
@@ -1971,12 +1971,12 @@ export async function findTestArtifactStorage(scopeId: string) {
 }
 
 /**
- * Find a storage volume by scope and name.
+ * Find a storage volume by clerk org and name.
  * Volumes use the sentinel VOLUME_SCOPE_USER_ID for scope-level sharing.
  * Returns the storage id and name, or undefined if not found.
  */
 export async function findTestStorageByName(
-  scopeId: string,
+  clerkOrgId: string,
   name: string,
 ): Promise<{ id: string; name: string; s3Prefix: string } | undefined> {
   const [result] = await globalThis.services.db
@@ -1988,7 +1988,7 @@ export async function findTestStorageByName(
     .from(storages)
     .where(
       and(
-        eq(storages.scopeId, scopeId),
+        eq(storages.clerkOrgId, clerkOrgId),
         eq(storages.userId, VOLUME_SCOPE_USER_ID),
         eq(storages.name, name),
         eq(storages.type, "volume"),
@@ -1998,11 +1998,11 @@ export async function findTestStorageByName(
   return result;
 }
 /**
- * Find a storage record by scope, name, and type.
+ * Find a storage record by clerk org, name, and type.
  * Returns the storage userId and other details for verification.
  */
 export async function findTestStorage(
-  scopeId: string,
+  clerkOrgId: string,
   name: string,
   type: "volume" | "artifact" | "memory",
 ): Promise<
@@ -2018,7 +2018,7 @@ export async function findTestStorage(
     .from(storages)
     .where(
       and(
-        eq(storages.scopeId, scopeId),
+        eq(storages.clerkOrgId, clerkOrgId),
         eq(storages.name, name),
         eq(storages.type, type),
       ),
