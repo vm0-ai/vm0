@@ -66,6 +66,10 @@ cmd_deploy() {
   BINARY="$CRATES_DIR/target/$TARGET/release/runner"
   log "Binary: $BINARY ($(du -h "$BINARY" | cut -f1))"
 
+  # Stop old service before uploading (avoids "Text file busy")
+  log "Stopping old service..."
+  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME 2>/dev/null || true"
+
   # Upload
   log "Deploying to $SSH_USER@$HOST..."
   ssh_cmd "mkdir -p ~/$REMOTE_BIN_DIR"
@@ -103,10 +107,7 @@ cmd_deploy() {
     --api-url $API_URL \
     --token vm0_official_${RUNNER_SECRET}"
 
-  # Restart service
-  log "Stopping old service..."
-  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME 2>/dev/null || true"
-
+  # Start service
   log "Starting new service..."
   ssh_cmd "$RUNNER_BIN service start --name $RUNNER_NAME \
     --config $RUNNER_DIR/runner.yaml \
