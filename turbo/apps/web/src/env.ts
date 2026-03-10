@@ -2,23 +2,6 @@ import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
 /**
- * Whether Clerk authentication is configured.
- *
- *
- * Derived from the presence of NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY.
- * When false, the app falls back to single-user local auth.
- *
- * Uses a NEXT_PUBLIC_* var so Next.js auto-inlines it at build time,
- * making it work in both Server and Client Components.
- *
- * Does NOT trigger full env() validation, safe for use in layout.tsx
- * and other build-time evaluated Server Components.
- */
-export function hasClerkAuth(): boolean {
-  return !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-}
-
-/**
  * Whether the blog feature is available.
  *
  * Derived from the presence of a Strapi URL. No Strapi = no blog.
@@ -30,7 +13,7 @@ export function isBlogEnabled(): boolean {
 function initEnv() {
   const env = createEnv({
     server: {
-      DATABASE_URL: z.string().min(1),
+      DATABASE_URL: z.string().min(1).optional(),
       NODE_ENV: z
         .enum(["development", "test", "production"])
         .default("development"),
@@ -46,7 +29,7 @@ function initEnv() {
       // Defaults to 'neon' (optimized for serverless/Vercel)
       // Set to 'pg' for local development with standard Postgres
       DB_DRIVER: z.enum(["pg", "neon"]).default("neon"),
-      CLERK_SECRET_KEY: z.string().min(1).optional(),
+      CLERK_SECRET_KEY: z.string().min(1),
       E2B_API_KEY: z.string().min(1).optional(),
       VM0_API_URL: z.string().url().optional(),
       VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
@@ -77,6 +60,9 @@ function initEnv() {
       VM0_TUNNEL_URL: z.string().url().optional(), // Tunnel URL for local development webhooks
       // LLM API
       OPENROUTER_API_KEY: z.string().min(1).optional(), // OpenRouter API key for logged-in users
+      // Ahrefs OAuth (for connector)
+      AHREFS_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      AHREFS_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Airtable OAuth (for connector)
       AIRTABLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       AIRTABLE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -89,9 +75,15 @@ function initEnv() {
       // Google OAuth (shared across all Google connectors: Gmail, Calendar, Drive, etc.)
       GOOGLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Microsoft OAuth (shared across all Microsoft connectors: Outlook Calendar, etc.)
+      MICROSOFT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      MICROSOFT_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // HubSpot OAuth (for connector)
       HUBSPOT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       HUBSPOT_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Close OAuth (for connector)
+      CLOSE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      CLOSE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Deel OAuth (for connector)
       DEEL_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       DEEL_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -119,6 +111,9 @@ function initEnv() {
       // Strava OAuth (for connector)
       STRAVA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       STRAVA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Stripe OAuth (for connector)
+      STRIPE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      STRIPE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Garmin Connect OAuth (for connector)
       GARMIN_CONNECT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       GARMIN_CONNECT_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -129,6 +124,9 @@ function initEnv() {
       VERCEL_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       VERCEL_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       VERCEL_INTEGRATION_SLUG: z.string().min(1).optional(),
+      // Asana OAuth (for connector)
+      ASANA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      ASANA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Sentry OAuth (for connector)
       SENTRY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       SENTRY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -145,6 +143,12 @@ function initEnv() {
       MONDAY_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       MONDAY_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       MONDAY_OAUTH_APP_ID: z.string().min(1).optional(),
+      // Meta Ads OAuth (for connector)
+      META_ADS_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      META_ADS_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // PostHog OAuth (for connector)
+      POSTHOG_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      POSTHOG_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Canva OAuth (for connector)
       CANVA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       CANVA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -183,17 +187,12 @@ function initEnv() {
       USE_MOCK_CLAUDE: z.enum(["true", "false"]).optional(),
       VM0_DEBUG: z.string().optional(),
       CLAUDE_CODE_VERSION_URL: z.string().url().optional(),
-      // Docker sandbox config
-      DOCKER_NETWORK: z.string().optional(),
-      DOCKER_SANDBOX_IMAGE: z.string().optional(),
-      DOCKER_SANDBOX_MEMORY: z.string().optional(),
-      DOCKER_SANDBOX_CPUS: z.string().optional(),
       // Vercel platform detection
       VERCEL: z.string().optional(),
       VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
     },
     client: {
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1).optional(),
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
       NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
       // Blog/content config
       NEXT_PUBLIC_BASE_URL: z.string().url().optional(),
@@ -239,6 +238,8 @@ function initEnv() {
       VM0_DEFAULT_AGENT: process.env.VM0_DEFAULT_AGENT,
       VM0_TUNNEL_URL: process.env.VM0_TUNNEL_URL,
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+      AHREFS_OAUTH_CLIENT_ID: process.env.AHREFS_OAUTH_CLIENT_ID,
+      AHREFS_OAUTH_CLIENT_SECRET: process.env.AHREFS_OAUTH_CLIENT_SECRET,
       AIRTABLE_OAUTH_CLIENT_ID: process.env.AIRTABLE_OAUTH_CLIENT_ID,
       AIRTABLE_OAUTH_CLIENT_SECRET: process.env.AIRTABLE_OAUTH_CLIENT_SECRET,
       GH_OAUTH_CLIENT_ID: process.env.GH_OAUTH_CLIENT_ID,
@@ -247,8 +248,12 @@ function initEnv() {
       NOTION_OAUTH_CLIENT_SECRET: process.env.NOTION_OAUTH_CLIENT_SECRET,
       GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
       GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+      MICROSOFT_OAUTH_CLIENT_ID: process.env.MICROSOFT_OAUTH_CLIENT_ID,
+      MICROSOFT_OAUTH_CLIENT_SECRET: process.env.MICROSOFT_OAUTH_CLIENT_SECRET,
       HUBSPOT_OAUTH_CLIENT_ID: process.env.HUBSPOT_OAUTH_CLIENT_ID,
       HUBSPOT_OAUTH_CLIENT_SECRET: process.env.HUBSPOT_OAUTH_CLIENT_SECRET,
+      CLOSE_OAUTH_CLIENT_ID: process.env.CLOSE_OAUTH_CLIENT_ID,
+      CLOSE_OAUTH_CLIENT_SECRET: process.env.CLOSE_OAUTH_CLIENT_SECRET,
       DEEL_OAUTH_CLIENT_ID: process.env.DEEL_OAUTH_CLIENT_ID,
       DEEL_OAUTH_CLIENT_SECRET: process.env.DEEL_OAUTH_CLIENT_SECRET,
       DOCUSIGN_OAUTH_CLIENT_ID: process.env.DOCUSIGN_OAUTH_CLIENT_ID,
@@ -267,6 +272,10 @@ function initEnv() {
       REDDIT_OAUTH_CLIENT_SECRET: process.env.REDDIT_OAUTH_CLIENT_SECRET,
       STRAVA_OAUTH_CLIENT_ID: process.env.STRAVA_OAUTH_CLIENT_ID,
       STRAVA_OAUTH_CLIENT_SECRET: process.env.STRAVA_OAUTH_CLIENT_SECRET,
+      POSTHOG_OAUTH_CLIENT_ID: process.env.POSTHOG_OAUTH_CLIENT_ID,
+      POSTHOG_OAUTH_CLIENT_SECRET: process.env.POSTHOG_OAUTH_CLIENT_SECRET,
+      STRIPE_OAUTH_CLIENT_ID: process.env.STRIPE_OAUTH_CLIENT_ID,
+      STRIPE_OAUTH_CLIENT_SECRET: process.env.STRIPE_OAUTH_CLIENT_SECRET,
       GARMIN_CONNECT_OAUTH_CLIENT_ID:
         process.env.GARMIN_CONNECT_OAUTH_CLIENT_ID,
       GARMIN_CONNECT_OAUTH_CLIENT_SECRET:
@@ -276,6 +285,8 @@ function initEnv() {
       VERCEL_OAUTH_CLIENT_ID: process.env.VERCEL_OAUTH_CLIENT_ID,
       VERCEL_OAUTH_CLIENT_SECRET: process.env.VERCEL_OAUTH_CLIENT_SECRET,
       VERCEL_INTEGRATION_SLUG: process.env.VERCEL_INTEGRATION_SLUG,
+      ASANA_OAUTH_CLIENT_ID: process.env.ASANA_OAUTH_CLIENT_ID,
+      ASANA_OAUTH_CLIENT_SECRET: process.env.ASANA_OAUTH_CLIENT_SECRET,
       SENTRY_OAUTH_CLIENT_ID: process.env.SENTRY_OAUTH_CLIENT_ID,
       SENTRY_OAUTH_CLIENT_SECRET: process.env.SENTRY_OAUTH_CLIENT_SECRET,
       INTERVALS_ICU_OAUTH_CLIENT_ID: process.env.INTERVALS_ICU_OAUTH_CLIENT_ID,
@@ -286,6 +297,8 @@ function initEnv() {
       MONDAY_OAUTH_CLIENT_ID: process.env.MONDAY_OAUTH_CLIENT_ID,
       MONDAY_OAUTH_CLIENT_SECRET: process.env.MONDAY_OAUTH_CLIENT_SECRET,
       MONDAY_OAUTH_APP_ID: process.env.MONDAY_OAUTH_APP_ID,
+      META_ADS_OAUTH_CLIENT_ID: process.env.META_ADS_OAUTH_CLIENT_ID,
+      META_ADS_OAUTH_CLIENT_SECRET: process.env.META_ADS_OAUTH_CLIENT_SECRET,
       CANVA_OAUTH_CLIENT_ID: process.env.CANVA_OAUTH_CLIENT_ID,
       CANVA_OAUTH_CLIENT_SECRET: process.env.CANVA_OAUTH_CLIENT_SECRET,
       SUPABASE_OAUTH_CLIENT_ID: process.env.SUPABASE_OAUTH_CLIENT_ID,
@@ -316,10 +329,6 @@ function initEnv() {
       USE_MOCK_CLAUDE: process.env.USE_MOCK_CLAUDE,
       VM0_DEBUG: process.env.VM0_DEBUG,
       CLAUDE_CODE_VERSION_URL: process.env.CLAUDE_CODE_VERSION_URL,
-      DOCKER_NETWORK: process.env.DOCKER_NETWORK,
-      DOCKER_SANDBOX_IMAGE: process.env.DOCKER_SANDBOX_IMAGE,
-      DOCKER_SANDBOX_MEMORY: process.env.DOCKER_SANDBOX_MEMORY,
-      DOCKER_SANDBOX_CPUS: process.env.DOCKER_SANDBOX_CPUS,
       VERCEL: process.env.VERCEL,
       VERCEL_AUTOMATION_BYPASS_SECRET:
         process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
@@ -331,9 +340,6 @@ function initEnv() {
       NEXT_PUBLIC_DATA_SOURCE: process.env.NEXT_PUBLIC_DATA_SOURCE,
       NEXT_PUBLIC_STRAPI_URL: process.env.NEXT_PUBLIC_STRAPI_URL,
     },
-    // Skip validation during Docker build (SKIP_ENV_VALIDATION=true in Dockerfile)
-    // where server env vars are unavailable at build time.
-    skipValidation: process.env.SKIP_ENV_VALIDATION === "true",
     emptyStringAsUndefined: true,
   });
 
@@ -343,24 +349,6 @@ function initEnv() {
   const isServer = typeof window === "undefined";
 
   if (isServer) {
-    // Clerk integration validation - both keys must be present together
-    const hasClerkPublishableKey = !!env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-    const hasClerkSecretKey = !!env.CLERK_SECRET_KEY;
-
-    if (hasClerkPublishableKey && !hasClerkSecretKey) {
-      throw new Error(
-        "CLERK_SECRET_KEY is required when CLERK_PUBLISHABLE_KEY is set. " +
-          "Set CLERK_SECRET_KEY or remove CLERK_PUBLISHABLE_KEY to use local auth.",
-      );
-    }
-
-    if (hasClerkSecretKey && !hasClerkPublishableKey) {
-      throw new Error(
-        "CLERK_PUBLISHABLE_KEY is required when CLERK_SECRET_KEY is set. " +
-          "Set CLERK_PUBLISHABLE_KEY or remove CLERK_SECRET_KEY to use local auth.",
-      );
-    }
-
     // Slack integration validation
     const slackEnabled = env.SLACK_INTEGRATION_ENABLED === "true";
     if (slackEnabled) {

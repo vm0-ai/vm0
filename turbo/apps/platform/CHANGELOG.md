@@ -1,5 +1,137 @@
 # Changelog
 
+## [0.101.0](https://github.com/vm0-ai/vm0/compare/platform-v0.100.0...platform-v0.101.0) (2026-03-10)
+
+
+### Features
+
+* add agentmail connector (api-token only) ([#4181](https://github.com/vm0-ai/vm0/issues/4181)) ([72eb5b1](https://github.com/vm0-ai/vm0/commit/72eb5b1952fc7ef0119bcfe01edc047e0791676b))
+* add axiom connector with api token auth ([#4182](https://github.com/vm0-ai/vm0/issues/4182)) ([d7586c4](https://github.com/vm0-ai/vm0/commit/d7586c4579e0d84fe618c4559c1b4c4621dc7a15))
+* add experimental label to connectors with feature flag but no api-token auth ([#4177](https://github.com/vm0-ai/vm0/issues/4177)) ([3be4a4e](https://github.com/vm0-ai/vm0/commit/3be4a4e5f2e79d32e819ebc288bc66e10acf3d4f))
+* add plausible analytics connector ([#4178](https://github.com/vm0-ai/vm0/issues/4178)) ([da9b451](https://github.com/vm0-ai/vm0/commit/da9b4517edc58c3db5f200958db760680971e049))
+* add productlane connector with api-token auth ([#4183](https://github.com/vm0-ai/vm0/issues/4183)) ([ea7f8db](https://github.com/vm0-ai/vm0/commit/ea7f8db0dd3fae77091c97155d9524d587ccdb5c))
+* add resend connector with api key authentication ([#4191](https://github.com/vm0-ai/vm0/issues/4191)) ([dc32ab8](https://github.com/vm0-ai/vm0/commit/dc32ab88eeb0c4f052458b5f3ab094bb7bf46b53))
+* **platform:** add real connector integration to zero meet page connections tab ([#4179](https://github.com/vm0-ai/vm0/issues/4179)) ([55a0421](https://github.com/vm0-ai/vm0/commit/55a04216771362e6e5e87fa047eb2039d3cc6e24))
+* wire zero onboarding to real api calls ([#4128](https://github.com/vm0-ai/vm0/issues/4128)) ([b756f8a](https://github.com/vm0-ai/vm0/commit/b756f8aab13d8b5ebf5e8383e96538fd0d980d61))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.54.0
+
+## [0.100.0](https://github.com/vm0-ai/vm0/compare/platform-v0.99.0...platform-v0.100.0) (2026-03-10)
+
+
+### Features
+
+* **platform:** add account switching and org switcher to zero sidebar ([#4139](https://github.com/vm0-ai/vm0/issues/4139)) ([17ecf9d](https://github.com/vm0-ai/vm0/commit/17ecf9d7cb154bb05bf065fa2489bab959196257))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.53.0
+
+## [0.99.0](https://github.com/vm0-ai/vm0/compare/platform-v0.98.0...platform-v0.99.0) (2026-03-10)
+
+
+### Features
+
+* add ahrefs connector with api-token and oauth auth methods ([#4113](https://github.com/vm0-ai/vm0/issues/4113)) ([5c282b8](https://github.com/vm0-ai/vm0/commit/5c282b80719758dc0734f9c59d525934b03a366f))
+* add mailchimp connector with oauth and api key auth ([#4116](https://github.com/vm0-ai/vm0/issues/4116)) ([eb72755](https://github.com/vm0-ai/vm0/commit/eb72755110adfe18e7f90ac07ecd59cc6038fe9f))
+* add similarweb connector with api key authentication ([#4106](https://github.com/vm0-ai/vm0/issues/4106)) ([ae97fdb](https://github.com/vm0-ai/vm0/commit/ae97fdb399f28100780ca232e3023ff2f31a61b9))
+* enable asana connector for all users ([#4111](https://github.com/vm0-ai/vm0/issues/4111)) ([a961c9b](https://github.com/vm0-ai/vm0/commit/a961c9b7688153599afda2da79231f2d310397ac))
+
+
+### Refactoring
+
+* **platform:** enforce no-package-variable lint rule for zero pages ([#4110](https://github.com/vm0-ai/vm0/issues/4110)) ([671eec4](https://github.com/vm0-ai/vm0/commit/671eec470c9ef918ead1fd0f9b857a5f8e6147ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.52.0
+
+## [0.98.0](https://github.com/vm0-ai/vm0/compare/platform-v0.97.0...platform-v0.98.0) (2026-03-10)
+
+
+### Features
+
+* **platform:** add organization switching to zero page sidebar ([#4064](https://github.com/vm0-ai/vm0/issues/4064)) ([03fc6af](https://github.com/vm0-ai/vm0/commit/03fc6aff684efc65235dc74fe2ec689776bb8b05))
+
+
+### Bug Fixes
+
+* **platform:** hide about/pricing/sign-in card when user is logged in ([#4062](https://github.com/vm0-ai/vm0/issues/4062)) ([3a3ee35](https://github.com/vm0-ai/vm0/commit/3a3ee357a67fdd09f36c3152ce3f5c9d6755befd))
+
+
+### Refactoring
+
+* align remaining scope terminology with resource model ([#4094](https://github.com/vm0-ai/vm0/issues/4094)) ([e4df6c9](https://github.com/vm0-ai/vm0/commit/e4df6c96f84ef0e0e1393215a08122bf83a73a21))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.51.0
+
+## [0.97.0](https://github.com/vm0-ai/vm0/compare/platform-v0.96.0...platform-v0.97.0) (2026-03-09)
+
+
+### Features
+
+* add close crm connector integration ([#4056](https://github.com/vm0-ai/vm0/issues/4056)) ([08134ea](https://github.com/vm0-ai/vm0/commit/08134ea6a8e90139eb55ed776e75b0ce3d97869f))
+* add multi-auth method support for connectors ([#4053](https://github.com/vm0-ai/vm0/issues/4053)) ([b89cbdc](https://github.com/vm0-ai/vm0/commit/b89cbdcac841824b20feb93c50afdfb216a1d9ff))
+* add outlook calendar connector with microsoft oauth ([#4059](https://github.com/vm0-ai/vm0/issues/4059)) ([5a6572d](https://github.com/vm0-ai/vm0/commit/5a6572d01028177e22215646eb9c32ab28464343))
+
+
+### Refactoring
+
+* remove self-hosting feature and restore saas-only mode ([#4051](https://github.com/vm0-ai/vm0/issues/4051)) ([5dcac9d](https://github.com/vm0-ai/vm0/commit/5dcac9d3374e78eb263d180faef9ee2909e34dcb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.50.0
+
+## [0.96.0](https://github.com/vm0-ai/vm0/compare/platform-v0.95.0...platform-v0.96.0) (2026-03-09)
+
+
+### Features
+
+* add asana oauth connector integration ([#4066](https://github.com/vm0-ai/vm0/issues/4066)) ([488c35d](https://github.com/vm0-ai/vm0/commit/488c35d1bf8ff0fdf60730f5989c39c8433d1ba2))
+* add meta ads oauth connector integration ([#4058](https://github.com/vm0-ai/vm0/issues/4058)) ([f887225](https://github.com/vm0-ai/vm0/commit/f88722560ef6cc5a06259a783f3cad7cc3b65861))
+* add stripe oauth connector integration ([#4054](https://github.com/vm0-ai/vm0/issues/4054)) ([c9927fc](https://github.com/vm0-ai/vm0/commit/c9927fc1ec08bd4a46f3a10770610ed4979caf2d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.49.0
+
+## [0.95.0](https://github.com/vm0-ai/vm0/compare/platform-v0.94.1...platform-v0.95.0) (2026-03-09)
+
+
+### Features
+
+* **platform:** zero app about page, floating nav card, and UI tweaks ([#4050](https://github.com/vm0-ai/vm0/issues/4050)) ([298d772](https://github.com/vm0-ai/vm0/commit/298d7725022513564d1a9efe4d4fc2ec887e36b1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.48.0
+
 ## [0.94.1](https://github.com/vm0-ai/vm0/compare/platform-v0.94.0...platform-v0.94.1) (2026-03-09)
 
 

@@ -15,7 +15,9 @@ This skill supports two operations:
 1. **review** - Comprehensive code review with bad smell detection
 2. **cleanup** - Remove defensive try-catch blocks
 
-Parse the operation from the `args` parameter:
+Your args are: `$ARGUMENTS`
+
+Parse the operation from the args above:
 - `review <pr-id|commit-id|description>` - Review code changes
 - `cleanup` - Clean up defensive code patterns
 

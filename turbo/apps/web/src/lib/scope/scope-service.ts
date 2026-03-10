@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "crypto";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { scopes } from "../../db/schema/scope";
 import { scopeMembers } from "../../db/schema/scope-member";
@@ -12,8 +12,7 @@ import {
   isBadRequest,
 } from "../errors";
 import { logger } from "../logger";
-import { env, hasClerkAuth } from "../../env";
-import { SELF_HOSTED_CLERK_ORG_ID } from "../auth/constants";
+import { env } from "../../env";
 
 const log = logger("service:scope");
 
@@ -78,11 +77,11 @@ function validateScopeSlug(slug: string): void {
 /**
  * Get a scope by its ID
  */
-async function getScopeById(scopeId: string) {
+export async function getScopeById(id: string) {
   const result = await globalThis.services.db
     .select()
     .from(scopes)
-    .where(eq(scopes.id, scopeId))
+    .where(eq(scopes.id, id))
     .limit(1);
 
   return result[0] ?? null;
@@ -115,18 +114,34 @@ export async function getScopeByClerkOrgId(clerkOrgId: string) {
 }
 
 /**
+ * Get scopes by multiple Clerk organization IDs in a single query.
+ * Returns a Map from clerkOrgId to scope record.
+ */
+export async function getScopesByClerkOrgIds(
+  clerkOrgIds: string[],
+): Promise<Map<string, typeof scopes.$inferSelect>> {
+  if (clerkOrgIds.length === 0) return new Map();
+  const results = await globalThis.services.db
+    .select()
+    .from(scopes)
+    .where(inArray(scopes.clerkOrgId, clerkOrgIds));
+  return new Map(results.map((s) => [s.clerkOrgId, s]));
+}
+
+/**
  * Create a scope for a user with an admin membership.
  *
- * Merges the former createUserScope() and createOrganization() functions.
- * Handles Clerk org creation (or self-hosted fallback), slug validation,
- * and atomic scope + membership creation.
+ * Merges the former scope creation and organization setup functions.
+ * Handles Clerk org creation, slug validation,
+ * one-admin-per-user constraint, and atomic scope + membership creation.
  *
  * @param options.skipSlugValidation - Skip reserved-slug checks (for vm0-admin bypass)
+ * @param options.clerkOrgId - Use existing Clerk org instead of creating one (JIT discovery path)
  */
 export async function createScope(
   clerkUserId: string,
   slug: string,
-  options?: { skipSlugValidation?: boolean },
+  options?: { skipSlugValidation?: boolean; clerkOrgId?: string },
 ) {
   // Validate slug (unless explicitly skipped for vm0-admin)
   if (!options?.skipSlugValidation) {
@@ -139,19 +154,15 @@ export async function createScope(
     throw badRequest(`Scope "${slug}" already exists`);
   }
 
-  // Create Clerk Organization so every scope is backed by one.
-  // If Clerk auth is configured, org creation is required (fail-fast).
-  // If self-hosted (no Clerk), use the well-known sentinel ID.
-  let clerkOrgId: string;
-  if (hasClerkAuth()) {
+  // Use provided Clerk org ID (JIT discovery path) or create a new one.
+  let clerkOrgId = options?.clerkOrgId;
+  if (!clerkOrgId) {
     const client = await clerkClient();
     const clerkOrg = await client.organizations.createOrganization({
       name: slug,
       createdBy: clerkUserId,
     });
     clerkOrgId = clerkOrg.id;
-  } else {
-    clerkOrgId = SELF_HOSTED_CLERK_ORG_ID;
   }
 
   // Create scope + admin membership atomically
@@ -189,11 +200,11 @@ export async function createScope(
 }
 
 /**
- * Get a user's scope by their Clerk ID.
+ * Get a user's default scope by their Clerk ID.
  * Finds the first scope where the user is an admin member.
  * Returns the scope record or null if none found.
  */
-export async function getUserScopeByClerkId(clerkUserId: string) {
+export async function getDefaultScopeByClerkUserId(clerkUserId: string) {
   try {
     const { scope } = await getDefaultScope(clerkUserId);
     return scope;
@@ -208,23 +219,78 @@ export async function getUserScopeByClerkId(clerkUserId: string) {
  * Consolidates the auto-creation pattern used by CLI token exchange,
  * Slack OAuth, and the scope API.
  *
+ * In SaaS mode (Clerk auth configured), discovers existing Clerk orgs via
+ * JIT API call and creates a local scope bound to the first unmatched org.
+ * In self-hosted mode, falls back to creating a scope with a generated slug.
+ *
  * @returns The existing or newly created scope
  */
 export async function ensureDefaultScope(clerkUserId: string) {
-  const existing = await getUserScopeByClerkId(clerkUserId);
+  const existing = await getDefaultScopeByClerkUserId(clerkUserId);
   if (existing) return existing;
 
-  const defaultSlug = generateDefaultScopeSlug(clerkUserId);
-  try {
-    return await createScope(clerkUserId, defaultSlug);
-  } catch (error) {
-    // Handle rare slug collision — retry with random suffix
-    if (isBadRequest(error) && error.message.includes("already exists")) {
-      const fallbackSlug = `user-${randomBytes(4).toString("hex")}`;
-      return await createScope(clerkUserId, fallbackSlug);
+  return await discoverAndCreateScope(clerkUserId);
+}
+
+/**
+ * Check if a slug is valid without throwing.
+ * Reuses the same rules as validateScopeSlug() but returns a boolean.
+ */
+function isValidSlug(slug: string): boolean {
+  return (
+    slug.length >= 3 &&
+    slug.length <= 64 &&
+    SLUG_REGEX.test(slug) &&
+    !RESERVED_SLUGS.includes(slug) &&
+    !slug.startsWith("vm0")
+  );
+}
+
+/**
+ * Discover an existing Clerk org for a user and create a local scope bound to it.
+ * Queries the Clerk API for the user's org memberships, finds the first org
+ * without a matching local scope, and creates a scope record.
+ */
+async function discoverAndCreateScope(clerkUserId: string) {
+  const client = await clerkClient();
+  const memberships = await client.users.getOrganizationMembershipList({
+    userId: clerkUserId,
+  });
+
+  for (const membership of memberships.data) {
+    const clerkOrgId = membership.organization.id;
+    const existingScope = await getScopeByClerkOrgId(clerkOrgId);
+    if (existingScope) continue;
+
+    // Prefer Clerk org slug, fall back to deterministic user-{hash}
+    const clerkSlug = membership.organization.slug;
+    let slug: string;
+    if (clerkSlug && isValidSlug(clerkSlug)) {
+      const taken = await getScopeBySlug(clerkSlug);
+      slug = taken ? generateDefaultScopeSlug(clerkUserId) : clerkSlug;
+    } else {
+      slug = generateDefaultScopeSlug(clerkUserId);
     }
-    throw error;
+
+    try {
+      return await createScope(clerkUserId, slug, { clerkOrgId });
+    } catch (error) {
+      if (isBadRequest(error) && error.message.includes("already exists")) {
+        // Re-check: another concurrent request may have created this scope
+        const raceScope = await getScopeByClerkOrgId(clerkOrgId);
+        if (raceScope) return raceScope;
+
+        // Slug collision with unrelated scope — retry with random slug
+        const fallbackSlug = `user-${randomBytes(4).toString("hex")}`;
+        return await createScope(clerkUserId, fallbackSlug, { clerkOrgId });
+      }
+      throw error;
+    }
   }
+
+  throw notFound(
+    "No organization found. Please sign up again to create an organization.",
+  );
 }
 
 /**
@@ -278,6 +344,21 @@ export async function updateScopeSlug(
 
   log.debug("scope slug updated", { scopeId, newSlug });
 
+  // Dual-write: sync slug to Clerk org (fire-and-forget)
+  try {
+    const client = await clerkClient();
+    await client.organizations.updateOrganization(scope.clerkOrgId, {
+      slug: newSlug,
+    });
+  } catch (err) {
+    log.error("failed to write slug to Clerk org", {
+      error: err,
+      clerkOrgId: scope.clerkOrgId,
+      scopeId,
+      newSlug,
+    });
+  }
+
   return updated!;
 }
 
@@ -306,6 +387,7 @@ export function isOfficialRunnerGroup(group: string): boolean {
 export async function validateRunnerGroupScope(
   clerkUserId: string,
   group: string,
+  tokenScopeId?: string | null,
 ): Promise<void> {
   const scopeSlug = group.split("/")[0];
   if (!scopeSlug) {
@@ -317,17 +399,27 @@ export async function validateRunnerGroupScope(
     return;
   }
 
-  // For user runner groups, validate scope ownership
-  const userScope = await getUserScopeByClerkId(clerkUserId);
-  if (!userScope) {
+  // CLI token with stored scope_id — verify slug matches directly
+  if (tokenScopeId) {
+    const scope = await getScopeById(tokenScopeId);
+    if (scope && scope.slug === scopeSlug) {
+      return;
+    }
+    throw forbidden(
+      `Runner group scope "${scopeSlug}" does not match your scope`,
+    );
+  }
+
+  const defaultScope = await getDefaultScopeByClerkUserId(clerkUserId);
+  if (!defaultScope) {
     throw forbidden(
       `Runner group scope "${scopeSlug}" requires you to have a scope configured`,
     );
   }
 
-  if (userScope.slug !== scopeSlug) {
+  if (defaultScope.slug !== scopeSlug) {
     throw forbidden(
-      `Runner group scope "${scopeSlug}" does not match your scope "${userScope.slug}"`,
+      `Runner group scope "${scopeSlug}" does not match your scope "${defaultScope.slug}"`,
     );
   }
 }

@@ -1,10 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
+import { clerkClient } from "@clerk/nextjs/server";
 import { testContext, uniqueId } from "../../../__tests__/test-helpers";
 import { createTestScope } from "../../../__tests__/api-test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
-import { reloadEnv } from "../../../env";
-import { getScopeByClerkOrgId } from "../scope-service";
-import { SELF_HOSTED_CLERK_ORG_ID } from "../../auth/constants";
+import { getScopeByClerkOrgId, createScope } from "../scope-service";
 
 const context = testContext();
 
@@ -33,22 +32,47 @@ describe("getScopeByClerkOrgId", () => {
 
     expect(result).toBeNull();
   });
+});
 
-  it("should handle self-hosted sentinel org_self_hosted", async () => {
-    // Simulate self-hosted mode by removing Clerk keys
-    vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "");
-    vi.stubEnv("CLERK_SECRET_KEY", "");
-    reloadEnv();
+describe("createScope", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
 
+  it("should use provided clerkOrgId instead of creating a new Clerk org", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("scope");
+    const existingClerkOrgId = `org_existing_${slug}`;
+    mockClerk({ userId });
+
+    const scope = await createScope(userId, slug, {
+      clerkOrgId: existingClerkOrgId,
+    });
+
+    expect(scope.slug).toBe(slug);
+    expect(scope.clerkOrgId).toBe(existingClerkOrgId);
+
+    // Verify Clerk createOrganization was NOT called
+    const client = await clerkClient();
+    expect(client.organizations.createOrganization).not.toHaveBeenCalled();
+  });
+
+  it("should create a new Clerk org when clerkOrgId is not provided", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("scope");
     mockClerk({ userId });
 
-    await createTestScope(slug);
+    const scope = await createScope(userId, slug);
 
-    const result = await getScopeByClerkOrgId(SELF_HOSTED_CLERK_ORG_ID);
+    expect(scope.slug).toBe(slug);
+    // Clerk mock generates org ID as "org_mock_{slug}"
+    expect(scope.clerkOrgId).toBe(`org_mock_${slug}`);
 
-    expect(result).not.toBeNull();
-    expect(result!.clerkOrgId).toBe(SELF_HOSTED_CLERK_ORG_ID);
+    // Verify Clerk createOrganization WAS called
+    const client = await clerkClient();
+    expect(client.organizations.createOrganization).toHaveBeenCalledWith({
+      name: slug,
+      createdBy: userId,
+    });
   });
 });

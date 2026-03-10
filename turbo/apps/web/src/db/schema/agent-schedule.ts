@@ -19,6 +19,10 @@ import { agentRuns } from "./agent-run";
  * Stores schedule configurations for automated agent runs
  * Supports 1:N (one agent can have multiple named schedules)
  *
+ * Each schedule carries its own (scopeId, userId) pair for execution identity.
+ * This allows cross-scope sharing: User B (scope-b) can schedule User A's
+ * agent (scope-a) and the schedule resolves secrets from scope-b + user-b.
+ *
  * Note: The migration includes a CHECK constraint (trigger_check) ensuring
  * exactly one trigger type is set, matching the trigger_type column:
  * - 'cron': cron_expression NOT NULL, at_time NULL, interval_seconds NULL
@@ -32,6 +36,9 @@ export const agentSchedules = pgTable(
     composeId: uuid("compose_id")
       .notNull()
       .references(() => agentComposes.id, { onDelete: "cascade" }),
+    scopeId: uuid("scope_id").notNull(),
+    userId: text("user_id").notNull(),
+    clerkOrgId: text("clerk_org_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
 
     // Trigger type discriminator: 'cron' | 'once' | 'loop'
@@ -71,13 +78,15 @@ export const agentSchedules = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    // Schedule name unique within agent
-    uniqueIndex("idx_agent_schedules_compose_name").on(
-      table.composeId,
-      table.name,
-    ),
     // Index for finding schedules by compose
     index("idx_agent_schedules_compose").on(table.composeId),
+    index("idx_agent_schedules_clerk_org").on(table.clerkOrgId),
+    uniqueIndex("idx_agent_schedules_compose_name_clerk_org_user").on(
+      table.composeId,
+      table.name,
+      table.clerkOrgId,
+      table.userId,
+    ),
     // Partial index for efficient cron polling: enabled schedules with due next_run_at
     index("idx_agent_schedules_next_run")
       .on(table.nextRunAt)

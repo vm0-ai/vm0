@@ -423,6 +423,70 @@ function compareSchemas(
   };
 }
 
+async function validateTimestampOrdering(): Promise<void> {
+  console.log("=== Phase 0.5: Validate Journal Timestamp Ordering ===\n");
+
+  const journalPath = path.join(MIGRATIONS_DIR, "meta/_journal.json");
+  const journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
+  const entries = journal.entries as Array<{
+    idx: number;
+    tag: string;
+    when: number;
+  }>;
+
+  if (entries.length < 2) {
+    console.log("   Skipping (fewer than 2 migrations)\n");
+    return;
+  }
+
+  const violations: string[] = [];
+  for (let i = 1; i < entries.length; i++) {
+    const prev = entries[i - 1]!;
+    const curr = entries[i]!;
+    if (curr.when <= prev.when) {
+      const diffMs = prev.when - curr.when;
+      const diffDays = (diffMs / (1000 * 60 * 60 * 24)).toFixed(1);
+      violations.push(
+        `   ${String(prev.idx).padStart(4, "0")} ${prev.tag} (when=${prev.when}) → ` +
+          `${String(curr.idx).padStart(4, "0")} ${curr.tag} (when=${curr.when}) — ` +
+          `timestamp goes BACKWARDS by ${diffDays} days`,
+      );
+    }
+  }
+
+  if (violations.length > 0) {
+    console.error(
+      `   ❌ Found ${violations.length} timestamp ordering violation(s):\n`,
+    );
+    for (const v of violations) {
+      console.error(v);
+    }
+    console.error(
+      `\n   Drizzle's migrator only applies migrations whose timestamp`,
+    );
+    console.error(`   is greater than the last applied migration's timestamp.`);
+    console.error(
+      `   Out-of-order timestamps cause migrations to be SKIPPED in production.`,
+    );
+    console.error(`\n   🔧 How to fix:`);
+    console.error(
+      `      Update the "when" values in meta/_journal.json so that`,
+    );
+    console.error(
+      `      each entry's timestamp is strictly greater than the previous one.`,
+    );
+    console.error(
+      `      For example, set the violating entry's "when" to prev.when + 1.\n`,
+    );
+    throw new Error("Journal timestamp ordering violation");
+  }
+
+  console.log(
+    `   ✅ All ${entries.length} migrations have strictly increasing timestamps`,
+  );
+  console.log();
+}
+
 async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log("=== Phase 1.5: Validate Latest Snapshot Accuracy ===\n");
 
@@ -524,6 +588,9 @@ async function main(): Promise<void> {
     // Step 0: Validate snapshot files
     await validateSnapshotFiles();
 
+    // Step 0.5: Validate timestamp ordering
+    await validateTimestampOrdering();
+
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
 
@@ -554,10 +621,9 @@ async function main(): Promise<void> {
 
     if (comparisonPassed) {
       console.log("\n✅ SUCCESS: All validations passed!");
-      console.log(
-        "   ✅ Snapshot count matches migration count (89 migrations)",
-      );
+      console.log("   ✅ Snapshot count matches migration count");
       console.log("   ✅ Snapshot chain is intact (id/prevId references)");
+      console.log("   ✅ Journal timestamps are strictly increasing");
       console.log("   ✅ Latest snapshot accurately reflects final DB state");
       console.log("   ✅ Schemas are functionally equivalent");
       console.log("   ✅ All migrations match the schema definitions");

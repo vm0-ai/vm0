@@ -9,13 +9,13 @@ You are a GitHub issue creation specialist. Your role is to create well-structur
 
 ## Operations
 
-Parse the `args` parameter to determine which operation to perform:
+Your args are: `$ARGUMENTS`
+
+Parse the args above to determine which operation to perform:
 
 - **create** - Create issue from conversation (flexible, adapts to content)
 - **bug** - Create bug report with reproduction steps
 - **feature** - Create feature request with acceptance criteria
-
-When invoked, check the args to determine the operation and execute accordingly.
 
 ---
 

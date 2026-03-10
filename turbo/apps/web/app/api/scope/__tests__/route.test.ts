@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { clerkClient } from "@clerk/nextjs/server";
 import { GET, POST, PUT } from "../route";
 import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../src/__tests__/test-helpers";
@@ -34,21 +35,15 @@ describe("/api/scope", () => {
 
       expect(response.status).toBe(200);
       expect(data.id).toBeDefined();
-      expect(data.slug).toMatch(/^user-[a-f0-9]{8}$/);
+      // JIT discovery uses Clerk org slug, which starts with "org-"
+      expect(data.slug).toBeDefined();
     });
 
     it("should auto-create scope with fallback slug on collision", async () => {
-      // First, create a scope that will collide with the deterministic slug
-      // by pre-occupying the slug that ensureDefaultScope would generate
-      const collidingUserId = `collision-test-${Date.now()}`;
+      // JIT discovery uses Clerk org slug. Pre-occupy it to trigger fallback.
+      const clerkOrgSlug = `collision-slug-${Date.now()}`;
 
-      // Import to compute the expected slug
-      const { generateDefaultScopeSlug } = await import(
-        "../../../../src/lib/scope/scope-service"
-      );
-      const expectedSlug = generateDefaultScopeSlug(collidingUserId);
-
-      // Pre-occupy the deterministic slug with a different user
+      // Pre-occupy the Clerk org slug with a different user
       const occupierUserId = `occupier-${Date.now()}`;
       mockClerk({ userId: occupierUserId });
       const occupyRequest = createTestRequest(
@@ -56,22 +51,32 @@ describe("/api/scope", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slug: expectedSlug }),
+          body: JSON.stringify({ slug: clerkOrgSlug }),
         },
       );
       const occupyResponse = await POST(occupyRequest);
       expect(occupyResponse.status).toBe(201);
 
-      // Now the colliding user triggers auto-creation via GET
-      mockClerk({ userId: collidingUserId });
+      // Now a user whose Clerk org has the colliding slug triggers auto-creation
+      const collidingUserId = `collision-test-${Date.now()}`;
+      mockClerk({
+        userId: collidingUserId,
+        clerkOrgs: [
+          {
+            id: `org_collision_${Date.now()}`,
+            slug: clerkOrgSlug,
+            name: "Collision Org",
+          },
+        ],
+      });
       const request = createTestRequest("http://localhost:3000/api/scope");
       const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
       expect(data.id).toBeDefined();
-      // Should have fallen back to a random slug, not the colliding one
-      expect(data.slug).not.toBe(expectedSlug);
+      // Should have fallen back to user-{hash}, not the colliding slug
+      expect(data.slug).not.toBe(clerkOrgSlug);
       expect(data.slug).toMatch(/^user-[a-f0-9]{8}$/);
     });
 
@@ -156,63 +161,6 @@ describe("/api/scope", () => {
 
       expect(response2.status).toBe(400);
       expect(data.error.message).toContain("already exists");
-    });
-
-    it("should allow creating multiple scopes for same user", async () => {
-      const userId = `multi-scope-user-${Date.now()}`;
-      mockClerk({ userId });
-
-      const slug1 = `scope-one-${Date.now()}`;
-      const request1 = createTestRequest("http://localhost:3000/api/scope", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: slug1 }),
-      });
-      const response1 = await POST(request1);
-      expect(response1.status).toBe(201);
-
-      const slug2 = `scope-two-${Date.now()}`;
-      const request2 = createTestRequest("http://localhost:3000/api/scope", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: slug2 }),
-      });
-      const response2 = await POST(request2);
-      const data2 = await response2.json();
-
-      expect(response2.status).toBe(201);
-      expect(data2.slug).toBe(slug2);
-    });
-
-    it("should return first scope as default after creating multiple", async () => {
-      const userId = `default-scope-user-${Date.now()}`;
-      mockClerk({ userId });
-
-      // Create first scope
-      const slug1 = `first-${Date.now()}`;
-      const request1 = createTestRequest("http://localhost:3000/api/scope", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: slug1 }),
-      });
-      await POST(request1);
-
-      // Create second scope
-      const slug2 = `second-${Date.now()}`;
-      const request2 = createTestRequest("http://localhost:3000/api/scope", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: slug2 }),
-      });
-      await POST(request2);
-
-      // GET /api/scope should return the first (default) scope
-      const getRequest = createTestRequest("http://localhost:3000/api/scope");
-      const response = await GET(getRequest);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.slug).toBe(slug1);
     });
 
     describe("slug validation", () => {
@@ -411,6 +359,45 @@ describe("/api/scope", () => {
       expect(response.status).toBe(200);
       expect(data.slug).toBe(newSlug);
     });
+
+    it("should dual-write slug to Clerk org on update", async () => {
+      const newSlug = `dualwrite-${Date.now()}`;
+
+      const request = createTestRequest("http://localhost:3000/api/scope", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: newSlug, force: true }),
+      });
+      const response = await PUT(request);
+
+      expect(response.status).toBe(200);
+
+      const client = await clerkClient();
+      expect(client.organizations.updateOrganization).toHaveBeenCalledWith(
+        expect.stringMatching(/^org_mock_/),
+        { slug: newSlug },
+      );
+    });
+
+    it("should succeed even if Clerk dual-write fails", async () => {
+      const client = await clerkClient();
+      vi.mocked(client.organizations.updateOrganization).mockRejectedValueOnce(
+        new Error("Clerk API unavailable"),
+      );
+
+      const newSlug = `resilient-${Date.now()}`;
+
+      const request = createTestRequest("http://localhost:3000/api/scope", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: newSlug, force: true }),
+      });
+      const response = await PUT(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.slug).toBe(newSlug);
+    });
   });
 
   describe("GET /api/scope (after scope created)", () => {
@@ -419,7 +406,7 @@ describe("/api/scope", () => {
       await context.setupUser();
     });
 
-    it("should return user's scope", async () => {
+    it("should return user's default scope", async () => {
       const request = createTestRequest("http://localhost:3000/api/scope");
       const response = await GET(request);
       const data = await response.json();
@@ -427,6 +414,91 @@ describe("/api/scope", () => {
       expect(response.status).toBe(200);
       expect(data.id).toBeDefined();
       expect(data.slug).toBeDefined();
+    });
+  });
+
+  describe("GET /api/scope (clerkOrgId resolution)", () => {
+    it("should resolve scope by clerkOrgId from session", async () => {
+      const userId = `clerk-org-test-${Date.now()}`;
+      mockClerk({ userId });
+
+      // Create first scope (becomes default)
+      const slug1 = `first-org-${Date.now()}`;
+      const req1 = createTestRequest("http://localhost:3000/api/scope", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: slug1 }),
+      });
+      await POST(req1);
+
+      // Create second scope
+      const slug2 = `second-org-${Date.now()}`;
+      const req2 = createTestRequest("http://localhost:3000/api/scope", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: slug2 }),
+      });
+      await POST(req2);
+
+      // Set active org to second scope's clerkOrgId, include both scope orgs
+      mockClerk({
+        userId,
+        orgId: `org_mock_${slug2}`,
+        clerkOrgs: [
+          { id: `org_mock_${slug1}`, slug: slug1, name: slug1 },
+          { id: `org_mock_${slug2}`, slug: slug2, name: slug2 },
+        ],
+      });
+
+      const request = createTestRequest("http://localhost:3000/api/scope");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.slug).toBe(slug2);
+    });
+
+    it("should fall through to default when clerkOrgId has no matching scope", async () => {
+      const userId = `no-match-org-${Date.now()}`;
+      mockClerk({ userId });
+
+      // Create a default scope
+      const slug = `default-org-${Date.now()}`;
+      const reqCreate = createTestRequest("http://localhost:3000/api/scope", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug }),
+      });
+      await POST(reqCreate);
+
+      // Set an orgId that doesn't match any scope, but include the created scope org
+      mockClerk({
+        userId,
+        orgId: "org_nonexistent_xyz",
+        clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
+      });
+
+      const request = createTestRequest("http://localhost:3000/api/scope");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.slug).toBe(slug);
+    });
+
+    it("should work without orgId (CLI compatibility)", async () => {
+      const userId = `no-org-${Date.now()}`;
+      mockClerk({ userId });
+
+      const request = createTestRequest("http://localhost:3000/api/scope");
+      const response = await GET(request);
+      const data = await response.json();
+
+      // With Clerk configured, the user's default org is discovered via JIT
+      // and its slug is used (mockClerk defaults to org-{userId} slug)
+      expect(response.status).toBe(200);
+      // JIT discovery uses Clerk org slug (org-{userId} from mock)
+      expect(data.slug).toMatch(/^org-no-org-/);
     });
   });
 });

@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../../src/lib/auth/get-user-id";
 import { disableSchedule } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../../src/lib/errors";
+import { resolveScopeId } from "../../../../../../src/lib/scope/scope-member-service";
+import { getScopeById } from "../../../../../../src/lib/scope/scope-service";
 
 const log = logger("api:schedules:disable");
 
@@ -13,19 +15,20 @@ export async function POST(
 ) {
   initServices();
 
-  const userId = await getUserId(
+  const authCtx = await getAuthContext(
     request.headers.get("Authorization") ?? undefined,
   );
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { userId, scopeId: tokenScopeId } = authCtx;
 
   const { name } = await params;
 
-  let body: { composeId: string };
+  let body: { composeId: string; scopeId?: string };
   try {
     body = await request.json();
   } catch {
@@ -42,10 +45,24 @@ export async function POST(
     );
   }
 
+  const scopeId = await resolveScopeId(userId, body.scopeId, tokenScopeId);
+  const scope = await getScopeById(scopeId);
+  if (!scope) {
+    return NextResponse.json(
+      { error: { message: "Scope not found", code: "NOT_FOUND" } },
+      { status: 404 },
+    );
+  }
+
   log.debug(`Disabling schedule ${name} for compose ${body.composeId}`);
 
   try {
-    const schedule = await disableSchedule(userId, body.composeId, name);
+    const schedule = await disableSchedule(
+      userId,
+      scope.clerkOrgId,
+      body.composeId,
+      name,
+    );
 
     return NextResponse.json(schedule, { status: 200 });
   } catch (error) {

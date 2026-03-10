@@ -163,11 +163,13 @@ export {
 } from "./proxy";
 export {
   scopeContract,
+  scopeDefaultAgentContract,
   scopeSlugSchema,
   scopeResponseSchema,
   createScopeRequestSchema,
   updateScopeRequestSchema,
   type ScopeContract,
+  type ScopeDefaultAgentContract,
   type ScopeResponse,
   type CreateScopeRequest,
   type UpdateScopeRequest,
@@ -312,6 +314,10 @@ export {
   type ResumeSession,
   type FirewallRule,
   type ExperimentalFirewall,
+  connectorEntrySchema,
+  experimentalConnectorsSchema,
+  type ConnectorEntry,
+  type ExperimentalConnectors,
 } from "./runners";
 
 export {
@@ -413,7 +419,10 @@ export {
   getConnectorDerivedNames,
   getConnectorProvidedSecretNames,
   getConnectorOAuthConfig,
+  getConnectorProxyConfig,
   hasRequiredScopes,
+  getApiTokenRequiredSecretNames,
+  deriveApiTokenConnectedTypes,
   type ConnectorsMainContract,
   type ConnectorsByTypeContract,
   type ConnectorSessionsContract,
@@ -427,6 +436,7 @@ export {
   type ConnectorSecretConfig,
   type ConnectorAuthMethodConfig,
   type ConnectorOAuthConfig,
+  type ConnectorProxyConfig,
   // Computer connector
   computerConnectorContract,
   computerConnectorCreateResponseSchema,
@@ -474,3 +484,9 @@ export {
   type AdminScopeTierContract,
   type ScopeTier,
 } from "./admin";
+export {
+  onboardingStatusContract,
+  onboardingStatusResponseSchema,
+  type OnboardingStatusContract,
+  type OnboardingStatusResponse,
+} from "./onboarding";

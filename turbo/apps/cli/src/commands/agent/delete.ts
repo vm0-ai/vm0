@@ -2,6 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { getComposeByName, deleteCompose } from "../../lib/api";
 import { isInteractive, promptConfirm } from "../../lib/utils/prompt-utils";
+import { withErrorHandler } from "../../lib/command";
 
 export const deleteCommand = new Command()
   .name("delete")
@@ -9,8 +10,8 @@ export const deleteCommand = new Command()
   .description("Delete an agent")
   .argument("<name>", "Agent name to delete")
   .option("-y, --yes", "Skip confirmation prompt")
-  .action(async (name: string, options: { yes?: boolean }) => {
-    try {
+  .action(
+    withErrorHandler(async (name: string, options: { yes?: boolean }) => {
       // 1. Resolve agent name to compose
       const compose = await getComposeByName(name);
       if (!compose) {
@@ -35,24 +36,19 @@ export const deleteCommand = new Command()
       }
 
       // 3. Call delete API
-      await deleteCompose(compose.id);
-      console.log(chalk.green(`✓ Agent '${name}' deleted`));
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.red("✗ Not authenticated"));
-          console.error(chalk.dim("  Run: vm0 auth login"));
-        } else if (error.message.includes("currently running")) {
-          console.error(
-            chalk.red("✗ Cannot delete agent: agent is currently running"),
-          );
-          console.error(chalk.dim("  Run: vm0 run list"));
-        } else {
-          console.error(chalk.red(`✗ ${error.message}`));
+      try {
+        await deleteCompose(compose.id);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message.includes("currently running")
+        ) {
+          throw new Error("Cannot delete agent: agent is currently running", {
+            cause: new Error("Run: vm0 run list"),
+          });
         }
-      } else {
-        console.error(chalk.red("✗ An unexpected error occurred"));
+        throw error;
       }
-      process.exit(1);
-    }
-  });
+      console.log(chalk.green(`✓ Agent '${name}' deleted`));
+    }),
+  );

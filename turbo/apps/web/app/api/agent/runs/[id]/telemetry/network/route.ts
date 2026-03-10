@@ -13,8 +13,6 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../../../../src/lib/axiom";
-import { queryNetworkLogs } from "../../../../../../../src/lib/telemetry/local-store";
-
 /**
  * Axiom network event supports two modes:
  * - sni: SNI-only mode (no HTTPS decryption, only host/port/action)
@@ -85,22 +83,11 @@ ${sinceFilter}
     // Query Axiom for network logs
     const events = await queryAxiom<AxiomNetworkEvent>(apl);
 
-    // If Axiom is not configured or query failed, try DB fallback
-    if (events === null) {
-      const dbResult = await queryNetworkLogs(params.id, {
-        since,
-        limit,
-        order,
-      });
-      return {
-        status: 200 as const,
-        body: dbResult,
-      };
-    }
+    const resolvedEvents = events ?? [];
 
     // Check if there are more records
-    const hasMore = events.length > limit;
-    const records = hasMore ? events.slice(0, limit) : events;
+    const hasMore = resolvedEvents.length > limit;
+    const records = hasMore ? resolvedEvents.slice(0, limit) : resolvedEvents;
 
     // Transform to API response format (supports both SNI-only and MITM modes)
     const networkLogs = records.map((e) => ({

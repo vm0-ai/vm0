@@ -210,6 +210,14 @@ export function buildLogsUrl(runId: string, agentName: string): string {
 }
 
 /**
+ * Build the agent-level logs URL (no specific run).
+ * Used as fallback when runId is unavailable (e.g. dispatch failure).
+ */
+export function buildAgentLogsUrl(agentName: string): string {
+  return `${getPlatformUrl()}/agents/${encodeURIComponent(agentName)}/logs`;
+}
+
+/**
  * Ensure scope and artifact storage exist for a user.
  * Safety net for all agent link paths (App Home button, slash command, submission).
  *
@@ -224,11 +232,12 @@ export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
   // Slack callers (server actions, OAuth callback) don't have error handling for this.
   try {
     await ensureStorageExists(
-      scope.id,
+      scope.clerkOrgId,
       vm0UserId,
       "artifact",
       scope.slug,
       "artifact",
+      scope.id,
     );
   } catch (err) {
     log.error("Failed to ensure artifact exists for Slack user", {

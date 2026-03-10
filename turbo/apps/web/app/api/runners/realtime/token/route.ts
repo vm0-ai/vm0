@@ -35,7 +35,7 @@ const router = tsr.router(runnerRealtimeTokenContract, {
     } else {
       // User runners: validate scope
       try {
-        await validateRunnerGroupScope(auth.userId, group);
+        await validateRunnerGroupScope(auth.userId, group, auth.scopeId);
       } catch (error) {
         return createErrorResponse(
           "FORBIDDEN",

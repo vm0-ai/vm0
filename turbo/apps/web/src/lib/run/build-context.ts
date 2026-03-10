@@ -9,8 +9,11 @@ import {
   hasAuthMethods,
   getSecretNamesForAuthMethod,
   getConnectorEnvironmentMapping,
+  getConnectorProxyConfig,
   connectorTypeSchema,
   MODEL_PROVIDER_TYPES,
+  type ExperimentalConnectors,
+  type ConnectorType,
   type ModelProviderType,
   type ModelProviderFramework,
 } from "@vm0/core";
@@ -18,7 +21,7 @@ import { agentComposeVersions } from "../../db/schema/agent-compose";
 import { scopes } from "../../db/schema/scope";
 import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
-import type { ExecutionContext, ResumeSession, UserScope } from "./types";
+import type { ExecutionContext, ResumeSession, RuntimeScope } from "./types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
 import {
   resolveCheckpoint,
@@ -179,7 +182,7 @@ interface ModelProviderCredentialResult {
  * For providers with environment mapping (e.g., moonshot), resolves all env vars
  */
 async function resolveModelProviderCredential(
-  scopeId: string,
+  clerkOrgId: string,
   userId: string,
   framework: string,
   hasExplicitModelProviderConfig: boolean,
@@ -197,7 +200,7 @@ async function resolveModelProviderCredential(
 
   // Fetch default provider once (used for type resolution, model selection, and auth method)
   const defaultProvider = await getDefaultModelProvider(
-    scopeId,
+    clerkOrgId,
     userId,
     framework as ModelProviderFramework,
   );
@@ -231,7 +234,7 @@ async function resolveModelProviderCredential(
 
     // Fetch all model-provider credentials by name
     const allCredentialValues = await getSecretValues(
-      scopeId,
+      clerkOrgId,
       userId,
       "model-provider",
     );
@@ -280,7 +283,7 @@ async function resolveModelProviderCredential(
   }
 
   const credentialValue = await getSecretValue(
-    scopeId,
+    clerkOrgId,
     userId,
     credentialName,
     "model-provider",
@@ -318,6 +321,7 @@ async function resolveModelProviderCredential(
  */
 async function refreshConnectorAccessToken(
   connectorType: string,
+  clerkOrgId: string,
   scopeId: string,
   userId: string,
   connectorSecrets: Record<string, string>,
@@ -357,6 +361,7 @@ async function refreshConnectorAccessToken(
 
     // Persist new tokens to database
     await upsertConnectorSecret(
+      clerkOrgId,
       scopeId,
       userId,
       accessTokenSecret,
@@ -364,6 +369,7 @@ async function refreshConnectorAccessToken(
     );
     if (result.refreshToken) {
       await upsertConnectorSecret(
+        clerkOrgId,
         scopeId,
         userId,
         refreshTokenSecret,
@@ -390,9 +396,12 @@ async function refreshConnectorAccessToken(
  * Result of connector credential resolution
  */
 interface ConnectorCredentialResult {
-  credentials: Record<string, string> | undefined;
-  /** Environment variables to inject from connected connectors */
+  /** All raw connector secrets (for masking and direct secret reference resolution) */
+  connectorSecrets: Record<string, string> | undefined;
+  /** Environment variables mapped from OAuth connectors via environmentMapping */
   injectedEnvVars: Record<string, string> | undefined;
+  /** Connected connector type names (used to filter experimental_connectors placeholders) */
+  connectedTypes: string[];
 }
 
 /**
@@ -401,61 +410,83 @@ interface ConnectorCredentialResult {
  * environment variables (e.g., GH_TOKEN, GITHUB_TOKEN for GitHub connector).
  */
 async function resolveConnectorCredentials(
+  clerkOrgId: string,
   scopeId: string,
   userId: string,
 ): Promise<ConnectorCredentialResult> {
-  let credentials: Record<string, string> | undefined;
-
-  // Query connected connectors directly (only need the type for environmentMapping)
+  // Query connected connectors (need type for environmentMapping, authMethod for refresh filter)
   const userConnectors = await globalThis.services.db
-    .select({ type: connectors.type })
+    .select({ type: connectors.type, authMethod: connectors.authMethod })
     .from(connectors)
-    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.userId, userId)));
+    .where(
+      and(eq(connectors.clerkOrgId, clerkOrgId), eq(connectors.userId, userId)),
+    );
 
   if (userConnectors.length === 0) {
-    return { credentials, injectedEnvVars: undefined };
+    return {
+      connectorSecrets: undefined,
+      injectedEnvVars: undefined,
+      connectedTypes: [],
+    };
   }
 
-  const connectorSecrets = await getSecretValues(scopeId, userId, "connector");
+  const connectorSecrets = await getSecretValues(
+    clerkOrgId,
+    userId,
+    "connector",
+  );
   if (Object.keys(connectorSecrets).length === 0) {
-    return { credentials, injectedEnvVars: undefined };
+    return {
+      connectorSecrets: undefined,
+      injectedEnvVars: undefined,
+      connectedTypes: [],
+    };
   }
-
-  const allInjectedEnvVars: Record<string, string> = {};
 
   // Parse connector types upfront
   const validConnectors = userConnectors
-    .map((c) => connectorTypeSchema.safeParse(c.type))
-    .filter((r) => r.success)
-    .map((r) => r.data);
+    .map((c) => {
+      const parsed = connectorTypeSchema.safeParse(c.type);
+      return parsed.success
+        ? { type: parsed.data, authMethod: c.authMethod }
+        : null;
+    })
+    .filter(
+      (c): c is { type: ConnectorType; authMethod: string } => c !== null,
+    );
 
-  // Refresh all OAuth tokens in parallel.
+  // Refresh OAuth tokens in parallel.
   // Safe: each connector writes to distinct keys in connectorSecrets (e.g. github_access_token
   // vs slack_access_token), so concurrent mutations don't conflict.
   await Promise.all(
     validConnectors
-      .filter((type) => {
+      .filter(({ type }) => {
         const handler =
           PROVIDER_HANDLERS[type as keyof typeof PROVIDER_HANDLERS];
         return handler?.refreshToken;
       })
-      .map((type) =>
-        refreshConnectorAccessToken(type, scopeId, userId, connectorSecrets),
+      .map(({ type }) =>
+        refreshConnectorAccessToken(
+          type,
+          clerkOrgId,
+          scopeId,
+          userId,
+          connectorSecrets,
+        ),
       ),
   );
 
-  // Resolve environment mappings (uses refreshed secrets)
-  for (const connectorType of validConnectors) {
-    const mapping = getConnectorEnvironmentMapping(connectorType);
+  // Resolve environment mappings from connectors.
+  const allInjectedEnvVars: Record<string, string> = {};
 
+  for (const { type: connectorType } of validConnectors) {
+    const mapping = getConnectorEnvironmentMapping(connectorType);
     for (const [envVar, valueRef] of Object.entries(mapping)) {
       if (valueRef.startsWith("$secrets.")) {
         const secretName = valueRef.slice("$secrets.".length);
         const secretValue = connectorSecrets[secretName];
         if (secretValue) {
           allInjectedEnvVars[envVar] = secretValue;
-          credentials = credentials || {};
-          credentials[secretName] = secretValue;
         }
       } else {
         allInjectedEnvVars[envVar] = valueRef;
@@ -469,14 +500,18 @@ async function resolveConnectorCredentials(
     );
   }
 
-  return { credentials, injectedEnvVars: allInjectedEnvVars };
+  return {
+    connectorSecrets,
+    injectedEnvVars: allInjectedEnvVars,
+    connectedTypes: validConnectors.map((c) => c.type),
+  };
 }
 
 /**
  * Fetch credentials referenced in compose environment
  */
 async function fetchReferencedCredentials(
-  scopeId: string,
+  clerkOrgId: string,
   userId: string,
   environment: Record<string, string> | undefined,
 ): Promise<Record<string, string> | undefined> {
@@ -498,9 +533,9 @@ async function fetchReferencedCredentials(
   log.debug(`Secrets referenced in environment: ${referencedNames.join(", ")}`);
 
   // Only fetch user secrets for variable expansion (model-provider secrets are isolated)
-  const userSecrets = await getSecretValues(scopeId, userId, "user");
+  const userSecrets = await getSecretValues(clerkOrgId, userId, "user");
   log.debug(
-    `Fetched ${Object.keys(userSecrets).length} user secret(s) from scope ${scopeId}`,
+    `Fetched ${Object.keys(userSecrets).length} user secret(s) for org ${clerkOrgId}`,
   );
   return userSecrets;
 }
@@ -613,17 +648,17 @@ function mergeConnectorSecretsForReferences(
  * @returns Merged variables (CLI takes precedence)
  */
 async function fetchAndMergeVariables(
-  scopeId: string,
+  clerkOrgId: string,
   userId: string,
   cliVars: Record<string, string> | undefined,
 ): Promise<Record<string, string> | undefined> {
-  const storedVars = await getVariableValues(scopeId, userId);
+  const storedVars = await getVariableValues(clerkOrgId, userId);
   if (Object.keys(storedVars).length === 0) {
     return cliVars;
   }
 
   log.debug(
-    `Fetched ${Object.keys(storedVars).length} stored variable(s) from scope ${scopeId}`,
+    `Fetched ${Object.keys(storedVars).length} stored variable(s) for org ${clerkOrgId}`,
   );
 
   // Merge: CLI vars override stored vars
@@ -671,6 +706,7 @@ interface BuildContextParams {
   // When not provided, resolved via getDefaultScope fallback.
   scopeId?: string;
   scopeSlug?: string;
+  clerkOrgId?: string;
 }
 
 /**
@@ -726,6 +762,7 @@ async function loadAgentComposeForNewRun(
  * Extracted from buildExecutionContext to reduce complexity.
  */
 async function resolveCredentialsAndEnvironment(
+  clerkOrgId: string,
   scopeId: string,
   agentCompose: unknown,
   firstAgent:
@@ -753,27 +790,29 @@ async function resolveCredentialsAndEnvironment(
   // so there is no data dependency between them.
   const [dbSecrets, modelProviderResult, connectorResult, mergedVars] =
     await Promise.all([
-      fetchReferencedCredentials(scopeId, userId, firstAgent?.environment),
+      fetchReferencedCredentials(clerkOrgId, userId, firstAgent?.environment),
       resolveModelProviderCredential(
-        scopeId,
+        clerkOrgId,
         userId,
         framework,
         hasExplicitModelProviderConfig,
         modelProvider,
       ),
-      resolveConnectorCredentials(scopeId, userId),
-      fetchAndMergeVariables(scopeId, userId, vars),
+      resolveConnectorCredentials(clerkOrgId, scopeId, userId),
+      fetchAndMergeVariables(clerkOrgId, userId, vars),
     ]);
 
-  // Merge credentials from all sources (connector > model-provider > user).
-  // Return undefined when no source contributed credentials (preserves original behavior).
+  // Merge credentials from all sources for masking.
+  // All raw connector secrets are included (both OAuth intermediate and api-token target names).
   const hasCredentials =
-    dbSecrets || modelProviderResult.credentials || connectorResult.credentials;
+    dbSecrets ||
+    modelProviderResult.credentials ||
+    connectorResult.connectorSecrets;
   const credentials: Record<string, string> | undefined = hasCredentials
     ? {
         ...dbSecrets,
         ...modelProviderResult.credentials,
-        ...connectorResult.credentials,
+        ...connectorResult.connectorSecrets,
       }
     : undefined;
 
@@ -781,16 +820,26 @@ async function resolveCredentialsAndEnvironment(
   let secrets = mergeSecrets(dbSecrets, cliSecrets);
 
   // Merge connector secrets into secrets pool for explicit ${{ secrets.* }} references only.
-  // Connector secrets only fill gaps — user/CLI secrets take precedence.
+  // Two sources: raw connectorSecrets (api-token names like FIGMA_TOKEN) and
+  // injectedEnvVars (OAuth-mapped names like FIGMA_TOKEN from $secrets.FIGMA_ACCESS_TOKEN).
+  // injectedEnvVars overrides connectorSecrets so OAuth-mapped names take precedence.
+  const connectorEnvPool =
+    connectorResult.connectorSecrets || connectorResult.injectedEnvVars
+      ? {
+          ...connectorResult.connectorSecrets,
+          ...connectorResult.injectedEnvVars,
+        }
+      : undefined;
   secrets = mergeConnectorSecretsForReferences(
     firstAgent?.environment,
     secrets,
-    connectorResult.injectedEnvVars,
+    connectorEnvPool,
   );
 
   const modelProviderEnvVars = modelProviderResult.injectedEnvVars;
 
-  // Expand environment variables from compose config
+  // Expand environment variables from compose config.
+  // Connector placeholder env vars are handled internally (like sealSecrets).
   const { environment: expandedEnvironment } = expandEnvironmentFromCompose(
     agentCompose,
     mergedVars,
@@ -799,6 +848,7 @@ async function resolveCredentialsAndEnvironment(
     userId,
     runId,
     checkEnv,
+    connectorResult.connectedTypes,
   );
 
   // Auto-inject model provider env vars into environment
@@ -862,48 +912,60 @@ function applyResolutionDefaults(
 }
 
 /**
- * Resolve credential scope ID and user scope for storage.
+ * Resolve the Runtime Scope for this execution.
  *
- * The credential scope is used for secrets/variables/connectors.
- * The user scope is used for storage (artifacts, memory) in prepareForExecution.
- * Both use the same runtime scope when params.scopeId is provided.
+ * The Runtime Scope (scopeId + userId) determines secrets, variables,
+ * connectors, model providers, artifacts, and memories.
+ * See docs/resource-model.md for the full resource model.
  *
- * When params.scopeId is not provided, getDefaultScope serves both purposes.
+ * When params.scopeId is not provided, the user's default scope is used.
  */
 async function resolveScopes(params: BuildContextParams): Promise<{
-  credentialScopeId: string;
-  pendingUserScope:
-    | Promise<{ id: string; slug: string }>
-    | { id: string; slug: string };
+  runtimeScopeId: string;
+  runtimeClerkOrgId: string;
+  pendingRuntimeScope:
+    | Promise<{ id: string; slug: string; clerkOrgId: string }>
+    | { id: string; slug: string; clerkOrgId: string };
 }> {
   if (params.scopeId) {
-    // Both credential scope and user scope use the explicit runtime scope.
-    // This ensures artifacts/memory are created in the same scope as credentials.
-    if (params.scopeSlug) {
+    if (params.scopeSlug && params.clerkOrgId) {
       return {
-        credentialScopeId: params.scopeId,
-        pendingUserScope: { id: params.scopeId, slug: params.scopeSlug },
+        runtimeScopeId: params.scopeId,
+        runtimeClerkOrgId: params.clerkOrgId,
+        pendingRuntimeScope: {
+          id: params.scopeId,
+          slug: params.scopeSlug,
+          clerkOrgId: params.clerkOrgId,
+        },
       };
     }
-    // Fallback: query slug from DB when caller didn't provide it
+    // Fallback: query slug and clerkOrgId from DB when caller didn't provide them
+    const [result] = await globalThis.services.db
+      .select({ slug: scopes.slug, clerkOrgId: scopes.clerkOrgId })
+      .from(scopes)
+      .where(eq(scopes.id, params.scopeId))
+      .limit(1);
+    const resolved = {
+      id: params.scopeId,
+      slug: result?.slug ?? "",
+      clerkOrgId: result?.clerkOrgId ?? "",
+    };
     return {
-      credentialScopeId: params.scopeId,
-      pendingUserScope: globalThis.services.db
-        .select({ slug: scopes.slug })
-        .from(scopes)
-        .where(eq(scopes.id, params.scopeId))
-        .limit(1)
-        .then(([result]) => ({
-          id: params.scopeId as string,
-          slug: result?.slug ?? "",
-        })),
+      runtimeScopeId: params.scopeId,
+      runtimeClerkOrgId: resolved.clerkOrgId,
+      pendingRuntimeScope: resolved,
     };
   }
-  // No explicit scope — default scope serves both purposes
+  // No explicit scope — default scope is used
   const { scope } = await getDefaultScope(params.userId);
   return {
-    credentialScopeId: scope.id,
-    pendingUserScope: { id: scope.id, slug: scope.slug },
+    runtimeScopeId: scope.id,
+    runtimeClerkOrgId: scope.clerkOrgId,
+    pendingRuntimeScope: {
+      id: scope.id,
+      slug: scope.slug,
+      clerkOrgId: scope.clerkOrgId,
+    },
   };
 }
 
@@ -914,8 +976,54 @@ interface BuildContextTimings {
 
 interface BuildContextResult {
   context: ExecutionContext;
-  userScope: UserScope;
+  runtimeScope: RuntimeScope;
   timings: BuildContextTimings;
+}
+
+/**
+ * Build ExperimentalConnectors manifest from agent compose's experimental_connectors array.
+ * Returns null if no connectors are declared.
+ *
+ * For each declared connector name:
+ * 1. Validates it's a known connector type with proxy config
+ * 2. Flattens services to one entry per base URL (for runner-side matching)
+ *
+ * Placeholder env var injection is handled by expandEnvironmentFromCompose.
+ */
+function buildExperimentalConnectors(
+  agentCompose: unknown,
+): ExperimentalConnectors | null {
+  const compose = agentCompose as
+    | { agents?: Record<string, { experimental_connectors?: string[] }> }
+    | undefined;
+  if (!compose?.agents) return null;
+
+  const firstAgent = Object.values(compose.agents)[0];
+  const connectorNames = firstAgent?.experimental_connectors;
+  if (!connectorNames || connectorNames.length === 0) return null;
+
+  const entries: { name: string; base: string }[] = [];
+
+  for (const name of connectorNames) {
+    const parsed = connectorTypeSchema.safeParse(name);
+    if (!parsed.success) {
+      throw badRequest(`Unknown connector type: "${name}"`);
+    }
+    const connectorType = parsed.data;
+
+    const proxyConfig = getConnectorProxyConfig(connectorType);
+    if (!proxyConfig) {
+      throw badRequest(
+        `Connector "${name}" does not support proxy-side token replacement`,
+      );
+    }
+
+    for (const svc of proxyConfig.services) {
+      entries.push({ name, base: svc.base });
+    }
+  }
+
+  return { connectors: entries };
 }
 
 /**
@@ -949,10 +1057,12 @@ export async function buildExecutionContext(
 
   // Step 1: Resolve source and scopes in parallel (independent operations).
   // resolveSource loads checkpoint/session/conversation data.
-  // resolveScopes resolves credential scope and user's default scope (for storage).
+  // resolveScopes resolves the runtime scope for credentials and storage.
   const resolveStart = Date.now();
-  const [resolution, { credentialScopeId, pendingUserScope }] =
-    await Promise.all([resolveSource(params), resolveScopes(params)]);
+  const [
+    resolution,
+    { runtimeScopeId, runtimeClerkOrgId, pendingRuntimeScope },
+  ] = await Promise.all([resolveSource(params), resolveScopes(params)]);
   const resolveEnd = Date.now();
 
   // Step 2: Apply resolution defaults and build resumeSession (unified path)
@@ -1008,12 +1118,13 @@ export async function buildExecutionContext(
     ? Object.values(compose.agents)[0]
     : undefined;
 
-  // Step 4: Resolve credentials, user preferences, and user scope in parallel.
-  // pendingUserScope may already be resolved (when scopeId was not explicit).
+  // Step 4: Resolve credentials, user preferences, and runtime scope in parallel.
+  // pendingRuntimeScope may already be resolved (when scopeId was not explicit).
   const resolveCredentialsStart = Date.now();
-  const [credentialsResult, userPrefs, userScope] = await Promise.all([
+  const [credentialsResult, userPrefs, runtimeScope] = await Promise.all([
     resolveCredentialsAndEnvironment(
-      credentialScopeId,
+      runtimeClerkOrgId,
+      runtimeScopeId,
       agentCompose,
       firstAgent,
       vars,
@@ -1024,7 +1135,7 @@ export async function buildExecutionContext(
       params.userId,
     ),
     params.userId ? getUserPreferences(params.userId) : Promise.resolve(null),
-    Promise.resolve(pendingUserScope),
+    Promise.resolve(pendingRuntimeScope),
   ]);
   const resolveCredentialsEnd = Date.now();
 
@@ -1043,9 +1154,13 @@ export async function buildExecutionContext(
     ? { ...resolvedCredentials, ...secrets }
     : secrets;
 
+  // Build experimental connectors manifest (name + base entries for the runner)
+  const experimentalConnectors =
+    buildExperimentalConnectors(agentCompose) ?? undefined;
+
   // Build final execution context
   return {
-    userScope,
+    runtimeScope,
     context: {
       runId: params.runId,
       userId: params.userId,
@@ -1062,6 +1177,7 @@ export async function buildExecutionContext(
       volumeVersions,
       environment,
       userTimezone,
+      experimentalConnectors,
       resumeSession,
       resumeArtifact,
       // Metadata for vm0_start event

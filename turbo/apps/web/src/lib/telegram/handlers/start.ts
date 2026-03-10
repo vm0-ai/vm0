@@ -30,7 +30,7 @@ interface LinkTokenPayload {
  *
  * Flow:
  * 1. Parse deep link payload from /start {token}
- * 2. No token → send generic welcome
+ * 2. No token or "connect" → check link status and prompt login
  * 3. Token present → validate, create user link, send confirmation
  */
 export async function handleStartCommand(
@@ -65,18 +65,8 @@ export async function handleStartCommand(
   const parts = text.split(" ");
   const token = parts.length > 1 ? parts[1] : undefined;
 
-  if (!token) {
-    // No token — generic welcome
-    await sendMessage(
-      client,
-      chatId,
-      "Welcome! Visit the platform to connect your account and start chatting with the agent.",
-    );
-    return;
-  }
-
-  // Deep link from group chat: /start connect → treat as /connect in DM
-  if (token === "connect") {
+  if (!token || token === "connect") {
+    // No token or deep link from group chat (/start connect) → prompt login
     const userLink = await resolveUserLink(installationId, fromUserId);
     if (userLink) {
       await sendMessage(

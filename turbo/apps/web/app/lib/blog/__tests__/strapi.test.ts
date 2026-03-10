@@ -118,6 +118,19 @@ describe("blog/strapi", () => {
       );
     });
 
+    it("throws when response body is truncated JSON", async () => {
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, () => {
+          return new HttpResponse('{"data":[{"id":1', {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }),
+      );
+
+      await expect(getPostsFromStrapi("en")).rejects.toThrow();
+    });
+
     it("uses default locale when not provided", async () => {
       let capturedLocale: string | null = null;
 
@@ -180,6 +193,21 @@ describe("blog/strapi", () => {
       expect(post).toBeNull();
     });
 
+    it("throws when response body is truncated JSON", async () => {
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, () => {
+          return new HttpResponse('{"data":[', {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }),
+      );
+
+      await expect(
+        getPostBySlugFromStrapi("test-post", "en"),
+      ).rejects.toThrow();
+    });
+
     it("throws error when fetch fails", async () => {
       server.use(
         http.get(`${STRAPI_URL}/api/articles`, () => {
@@ -214,6 +242,19 @@ describe("blog/strapi", () => {
       const post = await getFeaturedPostFromStrapi("en");
 
       expect(post).toBeNull();
+    });
+
+    it("throws when response body is truncated JSON", async () => {
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, () => {
+          return new HttpResponse("{", {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }),
+      );
+
+      await expect(getFeaturedPostFromStrapi("en")).rejects.toThrow();
     });
 
     it("throws error when fetch fails", async () => {
@@ -251,6 +292,19 @@ describe("blog/strapi", () => {
       expect(categories).toEqual([]);
     });
 
+    it("throws when response body is truncated JSON", async () => {
+      server.use(
+        http.get(`${STRAPI_URL}/api/categories`, () => {
+          return new HttpResponse('{"data":', {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }),
+      );
+
+      await expect(getAllCategoriesFromStrapi("en")).rejects.toThrow();
+    });
+
     it("throws error when fetch fails", async () => {
       server.use(
         http.get(`${STRAPI_URL}/api/categories`, () => {
@@ -263,6 +317,32 @@ describe("blog/strapi", () => {
 
       await expect(getAllCategoriesFromStrapi("en")).rejects.toThrow(
         "Failed to fetch categories: 500 Internal Server Error",
+      );
+    });
+  });
+
+  describe("empty and invalid JSON responses", () => {
+    it("throws descriptive error when Strapi returns empty body", async () => {
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, () => {
+          return new HttpResponse("", { status: 200 });
+        }),
+      );
+
+      await expect(getPostsFromStrapi("en")).rejects.toThrow(
+        "Strapi returned empty response",
+      );
+    });
+
+    it("throws descriptive error when Strapi returns invalid JSON", async () => {
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, () => {
+          return new HttpResponse("<html>Bad Gateway</html>", { status: 200 });
+        }),
+      );
+
+      await expect(getPostsFromStrapi("en")).rejects.toThrow(
+        "Strapi returned invalid JSON",
       );
     });
   });

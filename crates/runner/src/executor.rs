@@ -107,25 +107,34 @@ async fn execute_inner(
     }
     telemetry.record("vm_create", t.elapsed(), true, None);
 
-    // Register VM in proxy registry (only when firewall is enabled)
+    // Register VM in proxy registry when firewall is enabled or connectors are present
     let source_ip = sandbox.source_ip().to_string();
     let firewall_enabled = context
         .experimental_firewall
         .as_ref()
         .is_some_and(|fw| fw.enabled);
+    let has_connectors = context
+        .experimental_connectors
+        .as_ref()
+        .is_some_and(|c| !c.connectors.is_empty());
+    let proxy_registered = firewall_enabled || has_connectors;
     let network_log_path = config.log_paths.network_log(context.run_id);
 
-    if let Some(fw) = &context.experimental_firewall
-        && fw.enabled
-    {
+    if proxy_registered {
+        let fw = context.experimental_firewall.as_ref();
+        let fw_mitm = fw.is_some_and(|f| f.experimental_mitm.unwrap_or(false));
+        // Connectors require MITM for header injection
+        let mitm_enabled = fw_mitm || has_connectors;
+
         let run_id_str = context.run_id.to_string();
         let registration = proxy::VmRegistration {
             run_id: &run_id_str,
             sandbox_token: &context.sandbox_token,
-            firewall_rules: fw.rules.as_deref().unwrap_or(&[]),
-            mitm_enabled: fw.experimental_mitm.unwrap_or(false),
-            seal_secrets_enabled: fw.experimental_seal_secrets.unwrap_or(false),
+            firewall_rules: fw.and_then(|f| f.rules.as_deref()).unwrap_or(&[]),
+            mitm_enabled,
+            seal_secrets_enabled: fw.is_some_and(|f| f.experimental_seal_secrets.unwrap_or(false)),
             network_log_path: &network_log_path,
+            connectors: context.experimental_connectors.as_ref(),
         };
         if let Err(e) = config.registry.register_vm(&source_ip, &registration).await {
             warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
@@ -140,7 +149,7 @@ async fn execute_inner(
 
     // Unregister VM from proxy + upload network logs before cleanup timer.
     // Unregister first ensures the addon writes no more log entries.
-    if firewall_enabled {
+    if proxy_registered {
         if let Err(e) = config.registry.unregister_vm(&source_ip).await {
             warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
         }
@@ -336,10 +345,7 @@ async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: Uuid) -> Option<St
 /// Returns true if dmesg output indicates an OOM kill.
 fn dmesg_indicates_oom(stdout: &str) -> bool {
     let lower = stdout.to_lowercase();
-    lower.contains("out of memory")
-        || lower.contains("oom-kill")
-        || lower.contains("oom_reaper")
-        || lower.contains("killed process")
+    lower.contains("out of memory") || lower.contains("oom-kill") || lower.contains("oom_reaper")
 }
 
 /// Copy guest log files to the host log directory.
@@ -575,9 +581,16 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
 
     // Tell Node.js to trust the proxy CA when MITM mode is enabled.
     // The certificate is pre-baked into the rootfs at build time.
-    if let Some(fw) = &context.experimental_firewall
-        && fw.experimental_mitm.unwrap_or(false)
-    {
+    // Connectors also require MITM for header injection.
+    let mitm_needed = context
+        .experimental_firewall
+        .as_ref()
+        .is_some_and(|fw| fw.experimental_mitm.unwrap_or(false))
+        || context
+            .experimental_connectors
+            .as_ref()
+            .is_some_and(|c| !c.connectors.is_empty());
+    if mitm_needed {
         env.insert("NODE_EXTRA_CA_CERTS".into(), VM_PROXY_CA_PATH.into());
     }
 
@@ -618,6 +631,9 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         env.insert("VM0_RESUME_SESSION_ID".into(), session.session_id.clone());
     }
 
+    // Note: Connector placeholder env vars (e.g., GITHUB_TOKEN=gho_vm0placeholder...)
+    // are injected by the web API into `context.environment` directly.
+
     // Secret values (base64-encoded, comma-separated)
     if let Some(secrets) = &context.secret_values
         && !secrets.is_empty()
@@ -655,6 +671,7 @@ mod tests {
             secret_values: None,
             cli_agent_type: String::new(),
             experimental_firewall: None,
+            experimental_connectors: None,
             debug_no_mock_claude: None,
             api_start_time: None,
             user_timezone: None,
@@ -970,21 +987,77 @@ mod tests {
     }
 
     #[test]
+    fn build_env_json_connectors_enable_ca_certs() {
+        let mut ctx = minimal_context();
+        ctx.experimental_connectors = Some(crate::types::ExperimentalConnectors {
+            connectors: vec![crate::types::ConnectorEntry {
+                name: "gmail".into(),
+                base: "https://gmail.googleapis.com/gmail/v1/users/me".into(),
+            }],
+        });
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("NODE_EXTRA_CA_CERTS").unwrap(), VM_PROXY_CA_PATH);
+    }
+
+    #[test]
+    fn build_env_json_empty_connectors_no_ca_certs() {
+        let mut ctx = minimal_context();
+        ctx.experimental_connectors =
+            Some(crate::types::ExperimentalConnectors { connectors: vec![] });
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
+    }
+
+    #[test]
+    fn execution_context_deserializes_with_connectors() {
+        let json = serde_json::json!({
+            "runId": "00000000-0000-0000-0000-000000000001",
+            "prompt": "test",
+            "sandboxToken": "tok",
+            "workingDir": "/workspace",
+            "cliAgentType": "claude-code",
+            "experimentalConnectors": {
+                "connectors": [{
+                    "name": "github",
+                    "base": "https://api.github.com"
+                }]
+            }
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        let conns = ctx.experimental_connectors.unwrap();
+        assert_eq!(conns.connectors.len(), 1);
+        assert_eq!(conns.connectors[0].name, "github");
+    }
+
+    #[test]
+    fn execution_context_deserializes_without_connectors() {
+        let json = serde_json::json!({
+            "runId": "00000000-0000-0000-0000-000000000001",
+            "prompt": "test",
+            "sandboxToken": "tok",
+            "workingDir": "/workspace",
+            "cliAgentType": "claude-code"
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        assert!(ctx.experimental_connectors.is_none());
+    }
+
+    #[test]
     fn dmesg_oom_positive() {
         assert!(dmesg_indicates_oom(
             "[  12.345] Out of memory: Killed process 1234 (claude)"
         ));
         assert!(dmesg_indicates_oom("oom-kill:constraint=CONSTRAINT_MEMCG"));
         assert!(dmesg_indicates_oom("oom_reaper: reaped process 42"));
-        assert!(dmesg_indicates_oom("Killed process 42 (node)"));
     }
 
     #[test]
     fn dmesg_oom_negative() {
         assert!(!dmesg_indicates_oom(""));
+        // "Killed process" alone (without OOM context) should NOT match
+        assert!(!dmesg_indicates_oom("Killed process 42 (node)"));
         assert!(!dmesg_indicates_oom("normal kernel log output"));
         assert!(!dmesg_indicates_oom("[  1.000] eth0: link up"));
-        // "killed" alone should not match — requires "killed process"
         assert!(!dmesg_indicates_oom("task killed by signal 15"));
         // substring "oom" in unrelated words should not match
         assert!(!dmesg_indicates_oom("the room is full"));
@@ -993,7 +1066,7 @@ mod tests {
     #[test]
     fn dmesg_oom_case_insensitive() {
         assert!(dmesg_indicates_oom("Out Of Memory: killed process 99"));
-        assert!(dmesg_indicates_oom("Killed process 99 (agent)"));
+        assert!(!dmesg_indicates_oom("Killed process 99 (agent)"));
         assert!(dmesg_indicates_oom("OOM-kill: constraint=MEMCG"));
     }
 

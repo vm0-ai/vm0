@@ -1,27 +1,37 @@
 import { eq, and, gt } from "drizzle-orm";
+import { auth } from "@clerk/nextjs/server";
 import { cliTokens } from "../../db/schema/cli-tokens";
 import { isSandboxToken } from "./sandbox-token";
-import { getAuthProvider } from "./auth-provider";
 import { logger } from "../logger";
 
 const log = logger("auth:user");
 
 /**
- * Get the current user ID from CLI token or auth provider session.
+ * Authentication context returned by getAuthContext.
+ * - scopeId: present when auth is via a CLI token that has a stored scope
+ */
+type AuthContext = {
+  userId: string;
+  scopeId: string | null;
+};
+
+/**
+ * Get the full authentication context from CLI token or Clerk session.
  * Returns null if not authenticated.
  *
- * @param authHeader - The Authorization header value (optional)
+ * For Clerk sessions, scopeId is null (scope is resolved from JWT orgId).
+ * For CLI tokens with scope_id, returns the stored scopeId.
  *
  * IMPORTANT: This function rejects sandbox JWT tokens.
  * Sandbox tokens can only be used on webhook endpoints via getSandboxAuth().
- * This ensures sandbox tokens cannot access normal user APIs.
  */
-export async function getUserId(authHeader?: string): Promise<string | null> {
-  // Session auth via provider (Clerk or local single-user)
-  const provider = getAuthProvider();
-  const userId = await provider.getUserId();
+export async function getAuthContext(
+  authHeader?: string,
+): Promise<AuthContext | null> {
+  // Session auth via Clerk
+  const { userId } = await auth();
   if (userId) {
-    return userId;
+    return { userId, scopeId: null };
   }
 
   if (!authHeader?.startsWith("Bearer ")) {
@@ -31,7 +41,6 @@ export async function getUserId(authHeader?: string): Promise<string | null> {
   const token = authHeader.substring(7); // Remove "Bearer "
 
   // Reject sandbox JWT tokens on normal APIs
-  // They must use webhook endpoints with getSandboxAuth()
   if (isSandboxToken(token)) {
     log.debug("Rejected sandbox JWT token on normal API endpoint");
     return null;
@@ -59,7 +68,18 @@ export async function getUserId(authHeader?: string): Promise<string | null> {
     .where(eq(cliTokens.token, token))
     .catch((err) => log.error("Failed to update token lastUsedAt:", err));
 
-  return tokenRecord.userId;
+  return { userId: tokenRecord.userId, scopeId: tokenRecord.scopeId };
+}
+
+/**
+ * Get the current user ID from CLI token or Clerk session.
+ * Returns null if not authenticated.
+ *
+ * Use getAuthContext() when you also need the CLI token's scopeId.
+ */
+export async function getUserId(authHeader?: string): Promise<string | null> {
+  const ctx = await getAuthContext(authHeader);
+  return ctx?.userId ?? null;
 }
 
 /**

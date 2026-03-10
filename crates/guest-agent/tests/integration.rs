@@ -132,6 +132,48 @@ async fn post_json_retry_exhausted() {
 }
 
 // =========================================================================
+// Group 1b: post_json 4xx handling
+// =========================================================================
+
+#[tokio::test]
+async fn post_json_4xx_returns_immediately_no_retry() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/test/post-400");
+        then.status(400);
+    });
+
+    let url = format!("{}/test/post-400", server.base_url());
+    let result = guest_agent::http::post_json(&url, &json!({}), 3).await;
+
+    // Should fail immediately — only 1 call, no retries.
+    mock.assert_calls_async(1).await;
+    assert!(result.is_err());
+    mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn post_json_429_retries() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/test/post-429");
+        then.status(429);
+    });
+
+    let url = format!("{}/test/post-429", server.base_url());
+    let result = guest_agent::http::post_json(&url, &json!({}), 3).await;
+
+    // 429 is retriable — should exhaust all retries.
+    mock.assert_calls_async(3).await;
+    assert!(result.is_err());
+    mock.delete_async().await;
+}
+
+// =========================================================================
 // Group 2: Auth headers
 // =========================================================================
 
@@ -233,6 +275,50 @@ async fn put_presigned_retry_then_succeed() {
     assert!(result.is_ok());
     success_mock.assert_calls_async(1).await;
     success_mock.delete_async().await;
+}
+
+// =========================================================================
+// Group 3b: put_presigned 4xx handling
+// =========================================================================
+
+#[tokio::test]
+async fn put_presigned_4xx_returns_immediately_no_retry() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let mock = server.mock(|when, then| {
+        when.method(PUT).path("/test/put-403");
+        then.status(403);
+    });
+
+    let url = format!("{}/test/put-403", server.base_url());
+    let data = Bytes::from_static(b"forbidden data");
+    let result = guest_agent::http::put_presigned(&url, data, "application/octet-stream").await;
+
+    // Should fail immediately — only 1 call, no retries.
+    mock.assert_calls_async(1).await;
+    assert!(result.is_err());
+    mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn put_presigned_429_retries() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let mock = server.mock(|when, then| {
+        when.method(PUT).path("/test/put-429");
+        then.status(429);
+    });
+
+    let url = format!("{}/test/put-429", server.base_url());
+    let data = Bytes::from_static(b"rate limited data");
+    let result = guest_agent::http::put_presigned(&url, data, "application/octet-stream").await;
+
+    // 429 is retriable — should exhaust all retries.
+    mock.assert_calls_async(3).await;
+    assert!(result.is_err());
+    mock.delete_async().await;
 }
 
 // =========================================================================

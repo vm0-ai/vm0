@@ -5,7 +5,7 @@ import {
   hasAuthMethods,
 } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
-import { getUserId } from "../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../src/lib/auth/get-user-id";
 import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import {
   listModelProviders,
@@ -24,14 +24,15 @@ const router = tsr.router(modelProvidersMainContract, {
   list: async ({ headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     const scopeSlug = new URL(request.url).searchParams.get("scope");
-    const { scope } = await resolveScope(userId, scopeSlug);
-    const providers = await listModelProviders(scope.id, userId);
+    const { scope } = await resolveScope(userId, scopeSlug, null, tokenScopeId);
+    const providers = await listModelProviders(scope.clerkOrgId, userId);
 
     return {
       status: 200 as const,
@@ -58,10 +59,11 @@ const router = tsr.router(modelProvidersMainContract, {
   upsert: async ({ body, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     const { type, secret, authMethod, secrets, selectedModel } = body;
 
@@ -69,7 +71,12 @@ const router = tsr.router(modelProvidersMainContract, {
 
     try {
       const scopeSlug = new URL(request.url).searchParams.get("scope");
-      const { scope } = await resolveScope(userId, scopeSlug);
+      const { scope } = await resolveScope(
+        userId,
+        scopeSlug,
+        null,
+        tokenScopeId,
+      );
 
       // Determine if this is a multi-auth provider or legacy provider
       const isMultiAuth = hasAuthMethods(type);
@@ -86,6 +93,7 @@ const router = tsr.router(modelProvidersMainContract, {
           );
         }
         const result = await upsertMultiAuthModelProvider(
+          scope.clerkOrgId,
           scope.id,
           userId,
           type,
@@ -104,6 +112,7 @@ const router = tsr.router(modelProvidersMainContract, {
           );
         }
         const result = await upsertModelProvider(
+          scope.clerkOrgId,
           scope.id,
           userId,
           type,

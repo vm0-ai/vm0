@@ -1,5 +1,5 @@
 import type { ArtifactSnapshot } from "../checkpoint/types";
-import type { ExperimentalFirewall } from "@vm0/core";
+import type { ExperimentalFirewall, ExperimentalConnectors } from "@vm0/core";
 
 /**
  * Run status values
@@ -80,6 +80,9 @@ export interface ExecutionContext {
   // Experimental firewall configuration for network egress control
   experimentalFirewall?: ExperimentalFirewall;
 
+  // Experimental connectors for proxy-side token replacement
+  experimentalConnectors?: ExperimentalConnectors;
+
   // Resume-specific (optional)
   resumeSession?: ResumeSession;
   resumeArtifact?: ArtifactSnapshot;
@@ -97,11 +100,14 @@ export interface ExecutionContext {
 }
 
 /**
- * User's default scope for storage resolution in prepareForExecution.
+ * Runtime Scope — the scope of the user who triggers an agent run.
+ * Combined with userId, determines artifacts, memories, secrets, variables,
+ * connectors, and model providers. See docs/resource-model.md.
+ *
  * Resolved once in buildExecutionContext to avoid redundant DB lookups.
- * May differ from the credential scope when an org scope is explicitly selected.
  */
-export interface UserScope {
+export interface RuntimeScope {
   id: string;
   slug: string;
+  clerkOrgId: string;
 }

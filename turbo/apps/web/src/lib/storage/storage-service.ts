@@ -31,18 +31,20 @@ function createEmptyTarGz(): Buffer {
  * (both manifest.json and archive.tar.gz so download.ts can create the mount directory).
  * If it already has a HEAD version, this is a no-op.
  *
- * @param scopeId - Scope ID for storage access
+ * @param clerkOrgId - Clerk org ID for storage access
  * @param userId - User ID for storage record ownership
  * @param storageName - Storage name
  * @param scopeSlug - Scope slug for S3 prefix construction
  * @param storageType - Storage type ("artifact" or "memory")
+ * @param scopeId - Scope ID for INSERT only (removed in Phase 5)
  */
 export async function ensureStorageExists(
-  scopeId: string,
+  clerkOrgId: string,
   userId: string,
   storageName: string,
   scopeSlug: string,
   storageType: "artifact" | "memory",
+  scopeId: string, // Required for INSERT until Phase 5 drops the column
 ): Promise<void> {
   // Find or create storage record (artifact/memory use real userId)
   let [storage] = await globalThis.services.db
@@ -50,7 +52,7 @@ export async function ensureStorageExists(
     .from(storages)
     .where(
       and(
-        eq(storages.scopeId, scopeId),
+        eq(storages.clerkOrgId, clerkOrgId),
         eq(storages.userId, userId),
         eq(storages.name, storageName),
         eq(storages.type, storageType),
@@ -69,6 +71,7 @@ export async function ensureStorageExists(
         s3Prefix: `${scopeSlug}/${storageType}/${storageName}`,
         size: 0,
         fileCount: 0,
+        clerkOrgId,
       })
       .onConflictDoNothing()
       .returning();
@@ -80,7 +83,7 @@ export async function ensureStorageExists(
         .from(storages)
         .where(
           and(
-            eq(storages.scopeId, scopeId),
+            eq(storages.clerkOrgId, clerkOrgId),
             eq(storages.userId, userId),
             eq(storages.name, storageName),
             eq(storages.type, storageType),
@@ -91,7 +94,7 @@ export async function ensureStorageExists(
     } else {
       storage = newStorage;
     }
-    log.info("Auto-created storage", { storageName, storageType, scopeId });
+    log.info("Auto-created storage", { storageName, storageType, clerkOrgId });
   }
 
   if (!storage) {
@@ -176,7 +179,7 @@ export async function ensureStorageExists(
 
 /**
  * Resolve version ID from version string
- * @param scopeId - Scope ID for storage access
+ * @param clerkOrgId - Clerk org ID for storage access
  * @param storageName - Storage name
  * @param storageType - Storage type ("volume", "artifact", or "memory")
  * @param version - Version string ("latest" or specific hash)
@@ -184,7 +187,7 @@ export async function ensureStorageExists(
  * @returns Version ID and S3 key
  */
 async function resolveVersion(
-  scopeId: string,
+  clerkOrgId: string,
   storageName: string,
   storageType: "volume" | "artifact" | "memory",
   version: string,
@@ -202,7 +205,7 @@ async function resolveVersion(
       .leftJoin(storageVersions, eq(storages.headVersionId, storageVersions.id))
       .where(
         and(
-          eq(storages.scopeId, scopeId),
+          eq(storages.clerkOrgId, clerkOrgId),
           eq(storages.userId, userId),
           eq(storages.name, storageName),
           eq(storages.type, storageType),
@@ -231,7 +234,7 @@ async function resolveVersion(
     .from(storages)
     .where(
       and(
-        eq(storages.scopeId, scopeId),
+        eq(storages.clerkOrgId, clerkOrgId),
         eq(storages.userId, userId),
         eq(storages.name, storageName),
         eq(storages.type, storageType),
@@ -270,9 +273,9 @@ async function resolveVersion(
  *
  * @param agentConfig - Agent configuration containing volume definitions
  * @param vars - Template variables for placeholder replacement
- * @param volumeScopeId - Scope ID for volume resolution (agent owner's scope)
- * @param artifactScopeId - Scope ID for artifact resolution (runner's scope)
- * @param userId - Runner's user ID (for artifact/memory ownership)
+ * @param agentClerkOrgId - Agent Clerk org ID for volume resolution (where the agent is defined)
+ * @param runtimeClerkOrgId - Runtime Clerk org ID for artifact/memory resolution (where the agent is executed)
+ * @param userId - User ID within the Runtime Scope (for artifact/memory ownership)
  * @param artifactName - Artifact storage name
  * @param artifactVersion - Artifact version (defaults to "latest")
  * @param volumeVersionOverrides - Optional volume version overrides
@@ -284,8 +287,8 @@ async function resolveVersion(
 export async function prepareStorageManifest(
   agentConfig: AgentVolumeConfig | undefined,
   vars: Record<string, string>,
-  volumeScopeId: string,
-  artifactScopeId: string,
+  agentClerkOrgId: string,
+  runtimeClerkOrgId: string,
   userId: string,
   artifactName?: string,
   artifactVersion?: string,
@@ -343,7 +346,7 @@ export async function prepareStorageManifest(
 
       try {
         const { versionId, s3Key } = await resolveVersion(
-          volumeScopeId,
+          agentClerkOrgId,
           volume.vasStorageName,
           "volume",
           volume.vasVersion,
@@ -400,7 +403,7 @@ export async function prepareStorageManifest(
   const artifactPromise = artifactSource
     ? (async () => {
         const { versionId, s3Key } = await resolveVersion(
-          artifactScopeId,
+          runtimeClerkOrgId,
           artifactSource.vasStorageName,
           "artifact",
           artifactSource.vasVersion,
@@ -431,12 +434,12 @@ export async function prepareStorageManifest(
       })()
     : Promise.resolve(null);
 
-  // Resolve memory (uses runner's scope, same as artifact)
+  // Resolve memory (uses Runtime Scope, same as artifact)
   // Memory storage is guaranteed to exist after ensureStorageExists() in prepareForExecution()
   const memoryPromise = memoryName
     ? (async (): Promise<ManifestArtifact | null> => {
         const { versionId, s3Key } = await resolveVersion(
-          artifactScopeId,
+          runtimeClerkOrgId,
           memoryName,
           "memory",
           "latest",

@@ -9,7 +9,9 @@ You are a GitHub issue planning specialist. Your role is to start working on a G
 
 ## Arguments
 
-Parse the `args` parameter to get the issue ID. For example, if args is `123`, work on issue #123.
+Your args are: `$ARGUMENTS`
+
+Parse the args above to get the issue ID. For example, if args is `123`, work on issue #123.
 
 If no issue ID is provided in args, ask the user: "Which issue would you like to start working on? Please provide the issue ID."
 

@@ -41,6 +41,94 @@ export interface ConnectorOAuthConfig {
  * - Other values are passed through as literals
  */
 export const CONNECTOR_TYPES = {
+  axiom: {
+    label: "Axiom",
+    helpText:
+      "Connect your Axiom account to query logs, manage datasets, and access observability data",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Axiom](https://app.axiom.co)\n2. Go to **Settings > API Tokens**\n3. Create a new API token with the required permissions\n4. Copy the token",
+        secrets: {
+          AXIOM_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "xaat-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      AXIOM_TOKEN: "$secrets.AXIOM_API_TOKEN",
+    } as Record<string, string>,
+  },
+  ahrefs: {
+    label: "Ahrefs",
+    helpText:
+      "Connect your Ahrefs account to access SEO data, backlink analysis, and keyword research",
+    authMethods: {
+      oauth: {
+        label: "OAuth",
+        helpText: "Sign in with Ahrefs to grant access.",
+        secrets: {
+          AHREFS_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          AHREFS_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to your [Ahrefs Dashboard](https://app.ahrefs.com)\n2. Go to **API keys** under your account settings\n3. Generate a new API token\n4. Copy the token",
+        secrets: {
+          AHREFS_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-ahrefs-api-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://app.ahrefs.com/api/auth",
+      tokenUrl: "https://app.ahrefs.com/api/token",
+      scopes: ["api"],
+    } as ConnectorOAuthConfig,
+  },
+  agentmail: {
+    label: "AgentMail",
+    helpText:
+      "Connect your AgentMail account to create email inboxes for AI agents, send and receive emails, manage threads, drafts, and webhooks",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [AgentMail Console](https://console.agentmail.to)\n2. Go to **API Keys**\n3. Create a new API key\n4. Copy the key",
+        secrets: {
+          AGENTMAIL_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-agentmail-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      AGENTMAIL_TOKEN: "$secrets.AGENTMAIL_API_KEY",
+    } as Record<string, string>,
+  },
   airtable: {
     label: "Airtable",
     helpText:
@@ -293,6 +381,36 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  close: {
+    label: "Close",
+    helpText:
+      "Connect your Close account to manage leads, contacts, and opportunities",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Close to grant access.",
+        secrets: {
+          CLOSE_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          CLOSE_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      CLOSE_TOKEN: "$secrets.CLOSE_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://app.close.com/oauth2/authorize/",
+      tokenUrl: "https://api.close.com/oauth2/token/",
+      scopes: ["all.full_access", "offline_access"],
+    } as ConnectorOAuthConfig,
+  },
   hubspot: {
     label: "HubSpot",
     helpText:
@@ -447,6 +565,18 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "Access Token",
+        helpText:
+          '1. Go to [Dropbox App Console](https://www.dropbox.com/developers/apps)\n2. Select or create your app\n3. Under **Settings**, click "Generate" to create an access token\n4. Copy the token\n\n> **Note:** Generated tokens are short-lived (4 hours). You may need to regenerate periodically.',
+        secrets: {
+          DROPBOX_TOKEN: {
+            label: "Access Token",
+            required: true,
+            placeholder: "sl.xxxxxxxx",
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
@@ -510,6 +640,17 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Go to **Apps & Integrations > Developer Center** in Deel\n2. Navigate to the **Organization tokens** tab\n3. Create a new token with required scopes\n4. Copy the generated token",
+        secrets: {
+          DEEL_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
@@ -545,6 +686,18 @@ export const CONNECTOR_TYPES = {
           FIGMA_REFRESH_TOKEN: {
             label: "Refresh Token",
             required: true,
+          },
+        },
+      },
+      "api-token": {
+        label: "Personal Access Token",
+        helpText:
+          "1. Go to [Figma Settings > Security](https://www.figma.com/settings#personal-access-tokens)\n2. Create a new personal access token\n3. Select required scopes (e.g., File content: Read/Write)\n4. Copy the generated token",
+        secrets: {
+          FIGMA_TOKEN: {
+            label: "Personal Access Token",
+            required: true,
+            placeholder: "figd_xxxxxxxx",
           },
         },
       },
@@ -585,6 +738,18 @@ export const CONNECTOR_TYPES = {
           MERCURY_REFRESH_TOKEN: {
             label: "Refresh Token",
             required: true,
+          },
+        },
+      },
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to your [Mercury Dashboard](https://app.mercury.com)\n2. Go to **Settings** and find the API section\n3. Generate a new API token\n4. Copy the token",
+        secrets: {
+          MERCURY_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "secret-token:mercury_production_...",
           },
         },
       },
@@ -713,10 +878,22 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "API Key",
+        helpText:
+          '1. Go to [Neon Console > Account Settings > API Keys](https://console.neon.tech/app/settings/api-keys)\n2. Click "Create new API key"\n3. Copy the generated key',
+        secrets: {
+          NEON_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "napi_xxxxxxxx",
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
-      NEON_API_KEY: "$secrets.NEON_ACCESS_TOKEN",
+      NEON_TOKEN: "$secrets.NEON_ACCESS_TOKEN",
     } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://oauth2.neon.tech/oauth2/auth",
@@ -823,6 +1000,94 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  posthog: {
+    label: "PostHog",
+    helpText:
+      "Connect your PostHog account to access product analytics, feature flags, and experiments",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with PostHog to grant access.",
+        secrets: {
+          POSTHOG_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          POSTHOG_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+      "api-token": {
+        label: "Personal API Key",
+        helpText:
+          "1. Log in to your [PostHog Dashboard](https://us.posthog.com)\n2. Go to **Settings → Personal API keys**\n3. Click **+ Create personal API key**\n4. Select the scopes you need and copy the key",
+        secrets: {
+          POSTHOG_TOKEN: {
+            label: "Personal API Key",
+            required: true,
+            placeholder: "phx_...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      POSTHOG_TOKEN: "$secrets.POSTHOG_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://us.posthog.com/oauth/authorize",
+      tokenUrl: "https://us.posthog.com/oauth/token",
+      scopes: [
+        "openid",
+        "profile",
+        "email",
+        "user:read",
+        "project:read",
+        "feature_flag:read",
+        "feature_flag:write",
+        "experiment:read",
+        "experiment:write",
+        "insight:read",
+        "insight:write",
+        "dashboard:read",
+        "dashboard:write",
+        "action:read",
+        "action:write",
+        "annotation:read",
+        "annotation:write",
+        "cohort:read",
+        "cohort:write",
+        "event_definition:read",
+        "query:read",
+        "survey:read",
+        "survey:write",
+        "error_tracking:read",
+      ],
+    } as ConnectorOAuthConfig,
+  },
+  productlane: {
+    label: "Productlane",
+    helpText:
+      "Connect your Productlane account to manage feedback, insights, changelogs, and customer data",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to your [Productlane Dashboard](https://productlane.com)\n2. Go to **Settings → API**\n3. Copy your API key",
+        secrets: {
+          PRODUCTLANE_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-productlane-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {} as Record<string, string>,
+  },
   "intervals-icu": {
     label: "Intervals.icu",
     helpText:
@@ -834,6 +1099,17 @@ export const CONNECTOR_TYPES = {
         secrets: {
           INTERVALS_ICU_ACCESS_TOKEN: {
             label: "Access Token",
+            required: true,
+          },
+        },
+      },
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Go to [Intervals.icu Settings > Developer Settings](https://intervals.icu/settings)\n2. Scroll to the bottom to find **Developer Settings**\n3. Generate or copy your API key",
+        secrets: {
+          INTERVALS_ICU_TOKEN: {
+            label: "API Key",
             required: true,
           },
         },
@@ -1009,6 +1285,18 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "Service Role Key",
+        helpText:
+          '1. Go to [Supabase Dashboard > Project Settings > API](https://supabase.com/dashboard/project/_/settings/api)\n2. Find the **service_role** key under "Project API keys"\n3. Copy the key\n\n> **Note:** The service_role key bypasses Row Level Security. Keep it secret.',
+        secrets: {
+          SUPABASE_TOKEN: {
+            label: "Service Role Key",
+            required: true,
+            placeholder: "eyJhbGci... or sb_secret_...",
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
@@ -1074,6 +1362,17 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "Site Token",
+        helpText:
+          '1. Go to your Webflow site\'s **Settings > Apps & integrations > API access**\n2. Click "Generate API token"\n3. Select required scopes\n4. Copy the generated token\n\n> Tokens expire after 365 days of inactivity.',
+        secrets: {
+          WEBFLOW_TOKEN: {
+            label: "Site Token",
+            required: true,
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {
@@ -1102,13 +1401,595 @@ export const CONNECTOR_TYPES = {
       ],
     } as ConnectorOAuthConfig,
   },
+  "outlook-mail": {
+    label: "Outlook Mail",
+    helpText: "Connect your Microsoft Outlook account to send and read emails",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Microsoft to grant Outlook Mail access.",
+        secrets: {
+          OUTLOOK_MAIL_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          OUTLOOK_MAIL_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl:
+        "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      scopes: ["Mail.ReadWrite", "Mail.Send", "User.Read", "offline_access"],
+    } as ConnectorOAuthConfig,
+  },
+  "outlook-calendar": {
+    label: "Outlook Calendar",
+    helpText:
+      "Connect your Microsoft account to access and manage Outlook calendar events",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Microsoft to grant Outlook Calendar access.",
+        secrets: {
+          OUTLOOK_CALENDAR_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          OUTLOOK_CALENDAR_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl:
+        "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      scopes: ["Calendars.ReadWrite", "User.Read", "offline_access"],
+    } as ConnectorOAuthConfig,
+  },
+  asana: {
+    label: "Asana",
+    helpText:
+      "Connect your Asana account to manage tasks, projects, portfolios, goals, and team workflows",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Asana to grant access.",
+        secrets: {
+          ASANA_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          ASANA_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://app.asana.com/-/oauth_authorize",
+      tokenUrl: "https://app.asana.com/-/oauth_token",
+      scopes: [],
+    } as ConnectorOAuthConfig,
+  },
+  "meta-ads": {
+    label: "Meta Ads",
+    helpText:
+      "Connect your Meta Ads Manager account to manage ad campaigns, audiences, and insights",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Facebook to grant access to Ads Manager.",
+        secrets: {
+          META_ADS_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://www.facebook.com/v22.0/dialog/oauth",
+      tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
+      scopes: ["ads_management", "ads_read", "business_management"],
+    } as ConnectorOAuthConfig,
+  },
+  stripe: {
+    label: "Stripe",
+    helpText:
+      "Connect your Stripe account to manage payments, customers, and subscriptions",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Stripe to grant access.",
+        secrets: {
+          STRIPE_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          STRIPE_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: false,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      STRIPE_API_KEY: "$secrets.STRIPE_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://connect.stripe.com/oauth/authorize",
+      tokenUrl: "https://connect.stripe.com/oauth/token",
+      scopes: ["read_write"],
+    } as ConnectorOAuthConfig,
+  },
+  similarweb: {
+    label: "SimilarWeb",
+    helpText:
+      "Connect your SimilarWeb account to access website traffic analytics, competitive intelligence, and market insights",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [SimilarWeb](https://www.similarweb.com)\n2. Go to **Settings > Account > API Keys**\n3. Generate and activate an API key\n4. Copy the key",
+        secrets: {
+          SIMILARWEB_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-similarweb-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      SIMILARWEB_TOKEN: "$secrets.SIMILARWEB_API_KEY",
+    } as Record<string, string>,
+  },
+  plausible: {
+    label: "Plausible",
+    helpText:
+      "Connect your Plausible Analytics account to access website traffic analytics, visitor stats, and site management",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Plausible Analytics](https://plausible.io)\n2. Go to **Account Settings** → **API Keys**\n3. Click **New API Key** and choose **Stats API**\n4. Copy the key (it is only shown once)",
+        secrets: {
+          PLAUSIBLE_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-plausible-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      PLAUSIBLE_TOKEN: "$secrets.PLAUSIBLE_TOKEN",
+    } as Record<string, string>,
+  },
+  mailchimp: {
+    label: "Mailchimp",
+    helpText:
+      "Connect your Mailchimp account to manage audiences, campaigns, templates, and automations",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to your [Mailchimp account](https://login.mailchimp.com)\n2. Go to **Account & Billing** → **Extras** → **API keys**\n3. Click **Create A Key**\n4. Copy the API key (format: `xxxxxxxx-us00`)",
+        secrets: {
+          MAILCHIMP_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-us00",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      MAILCHIMP_TOKEN: "$secrets.MAILCHIMP_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://login.mailchimp.com/oauth2/authorize",
+      tokenUrl: "https://login.mailchimp.com/oauth2/token",
+      scopes: [],
+    } as ConnectorOAuthConfig,
+  },
+  resend: {
+    label: "Resend",
+    helpText:
+      "Connect your Resend account to send transactional emails, manage domains, audiences, and contacts",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Resend](https://resend.com)\n2. Go to **API Keys** in the sidebar\n3. Click **Create API Key**\n4. Choose permissions (Full access recommended) and copy the key",
+        secrets: {
+          RESEND_API_KEY: {
+            label: "API Key",
+            required: true,
+            placeholder: "re_xxxxxxxxxx",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      RESEND_API_KEY: "$secrets.RESEND_API_KEY",
+    } as Record<string, string>,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
 
+/**
+ * Proxy-side connector configuration for token replacement.
+ *
+ * Defines which base URLs each connector covers and how auth headers
+ * are constructed. Used by the proxy to intercept requests matching a
+ * connector's base URLs and replace placeholder tokens with real credentials.
+ *
+ * `${secrets.XXX}` in header values is replaced by the proxy with the real secret value.
+ *
+ * NOTE: Currently hardcoded in CONNECTOR_PROXY_CONFIGS below.
+ * Will be migrated to GitHub-hosted connector.yaml definitions in Phase 2.
+ */
+interface ConnectorService {
+  base: string;
+  auth: {
+    headers: Record<string, string>;
+  };
+}
+
+export interface ConnectorProxyConfig {
+  services: ConnectorService[];
+  /** Custom placeholder values per env var (e.g., `{ GITHUB_TOKEN: "gho_..." }`). Falls back to auto-generated `VM0_PLACEHOLDER_{envVar}`. */
+  placeholders?: Record<string, string>;
+}
+
+/** Helper to build standard Bearer auth header with a secret reference. */
+function bearerAuth(secretName: string) {
+  return { headers: { Authorization: `Bearer \${secrets.${secretName}}` } };
+}
+
+/** Shorthand: single-base service with bearer auth. */
+function service(
+  base: string,
+  auth: ConnectorService["auth"],
+): ConnectorService {
+  return { base, auth };
+}
+
+const CONNECTOR_PROXY_CONFIGS: Partial<
+  Record<ConnectorType, ConnectorProxyConfig>
+> = {
+  ahrefs: {
+    services: [service("https://api.ahrefs.com", bearerAuth("AHREFS_API_KEY"))],
+  },
+  axiom: {
+    services: [service("https://api.axiom.co", bearerAuth("AXIOM_API_TOKEN"))],
+  },
+  airtable: {
+    services: [
+      service("https://api.airtable.com", bearerAuth("AIRTABLE_TOKEN")),
+    ],
+  },
+  github: {
+    services: [service("https://api.github.com", bearerAuth("GITHUB_TOKEN"))],
+    placeholders: {
+      GH_TOKEN: "gho_vm0placeholder0000000000000000000000",
+      GITHUB_TOKEN: "gho_vm0placeholder0000000000000000000000",
+    },
+  },
+  notion: {
+    services: [
+      service("https://api.notion.com/v1", {
+        headers: {
+          Authorization: "Bearer ${secrets.NOTION_TOKEN}",
+          "Notion-Version": "2022-06-28",
+        },
+      }),
+    ],
+  },
+  gmail: {
+    services: [
+      service(
+        "https://gmail.googleapis.com/gmail/v1/users/me",
+        bearerAuth("GMAIL_TOKEN"),
+      ),
+    ],
+  },
+  "google-sheets": {
+    services: [
+      service(
+        "https://sheets.googleapis.com/v4/spreadsheets",
+        bearerAuth("GOOGLE_SHEETS_TOKEN"),
+      ),
+    ],
+  },
+  "google-docs": {
+    services: [
+      service(
+        "https://docs.googleapis.com/v1/documents",
+        bearerAuth("GOOGLE_DOCS_TOKEN"),
+      ),
+    ],
+  },
+  "google-drive": {
+    services: [
+      service(
+        "https://www.googleapis.com/drive/v3",
+        bearerAuth("GOOGLE_DRIVE_TOKEN"),
+      ),
+    ],
+  },
+  "google-calendar": {
+    services: [
+      service(
+        "https://www.googleapis.com/calendar/v3",
+        bearerAuth("GOOGLE_CALENDAR_TOKEN"),
+      ),
+    ],
+  },
+  hubspot: {
+    services: [service("https://api.hubapi.com", bearerAuth("HUBSPOT_TOKEN"))],
+  },
+  slack: {
+    services: [
+      service("https://slack.com/api", bearerAuth("SLACK_TOKEN")),
+      service("https://files.slack.com", bearerAuth("SLACK_TOKEN")),
+    ],
+    placeholders: {
+      SLACK_TOKEN: "xoxb-0000-0000-vm0placeholder",
+    },
+  },
+  docusign: {
+    services: [
+      service(
+        "https://demo.docusign.net/restapi",
+        bearerAuth("DOCUSIGN_TOKEN"),
+      ),
+      service("https://na1.docusign.net/restapi", bearerAuth("DOCUSIGN_TOKEN")),
+    ],
+  },
+  dropbox: {
+    services: [
+      service("https://api.dropboxapi.com/2", bearerAuth("DROPBOX_TOKEN")),
+      service("https://content.dropboxapi.com/2", bearerAuth("DROPBOX_TOKEN")),
+    ],
+  },
+  linear: {
+    services: [service("https://api.linear.app", bearerAuth("LINEAR_API_KEY"))],
+  },
+  deel: {
+    services: [service("https://api.deel.com", bearerAuth("DEEL_TOKEN"))],
+  },
+  figma: {
+    services: [service("https://api.figma.com", bearerAuth("FIGMA_TOKEN"))],
+  },
+  mercury: {
+    services: [service("https://api.mercury.com", bearerAuth("MERCURY_TOKEN"))],
+  },
+  reddit: {
+    services: [service("https://oauth.reddit.com", bearerAuth("REDDIT_TOKEN"))],
+  },
+  strava: {
+    services: [
+      service("https://www.strava.com/api/v3", bearerAuth("STRAVA_TOKEN")),
+    ],
+  },
+  x: {
+    services: [service("https://api.x.com/2", bearerAuth("X_ACCESS_TOKEN"))],
+  },
+  neon: {
+    services: [
+      service("https://console.neon.tech/api/v2", bearerAuth("NEON_API_KEY")),
+    ],
+  },
+  vercel: {
+    services: [service("https://api.vercel.com", bearerAuth("VERCEL_TOKEN"))],
+  },
+  sentry: {
+    services: [service("https://sentry.io/api", bearerAuth("SENTRY_TOKEN"))],
+  },
+  monday: {
+    services: [
+      service("https://api.monday.com/v2", bearerAuth("MONDAY_TOKEN")),
+    ],
+  },
+  canva: {
+    services: [
+      service("https://api.canva.com/rest/v1", bearerAuth("CANVA_TOKEN")),
+    ],
+  },
+  xero: {
+    services: [service("https://api.xero.com", bearerAuth("XERO_TOKEN"))],
+  },
+  supabase: {
+    services: [
+      service("https://api.supabase.com/v1", bearerAuth("SUPABASE_TOKEN")),
+    ],
+  },
+  todoist: {
+    services: [
+      service("https://api.todoist.com/rest/v2", bearerAuth("TODOIST_TOKEN")),
+    ],
+  },
+  webflow: {
+    services: [
+      service("https://api.webflow.com/v2", bearerAuth("WEBFLOW_TOKEN")),
+    ],
+  },
+  asana: {
+    services: [
+      service("https://app.asana.com/api/1.0", bearerAuth("ASANA_TOKEN")),
+    ],
+  },
+  "meta-ads": {
+    services: [
+      service("https://graph.facebook.com", bearerAuth("META_ADS_TOKEN")),
+    ],
+  },
+  posthog: {
+    services: [
+      service("https://us.posthog.com/api", bearerAuth("POSTHOG_ACCESS_TOKEN")),
+      service(
+        "https://app.posthog.com/api",
+        bearerAuth("POSTHOG_ACCESS_TOKEN"),
+      ),
+    ],
+  },
+  stripe: {
+    services: [service("https://api.stripe.com", bearerAuth("STRIPE_API_KEY"))],
+  },
+  productlane: {
+    services: [
+      service(
+        "https://productlane.com/api/v1",
+        bearerAuth("PRODUCTLANE_TOKEN"),
+      ),
+    ],
+  },
+  similarweb: {
+    services: [
+      service("https://api.similarweb.com", {
+        headers: { "api-key": "${secrets.SIMILARWEB_API_KEY}" },
+      }),
+    ],
+  },
+  plausible: {
+    services: [
+      service("https://plausible.io/api", bearerAuth("PLAUSIBLE_TOKEN")),
+    ],
+  },
+  mailchimp: {
+    services: [
+      service(
+        "https://us1.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us2.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us3.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us4.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us5.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us6.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us7.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us8.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us9.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us10.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us11.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us12.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us13.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us14.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us15.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us16.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us17.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us18.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us19.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us20.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us21.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+    ],
+  },
+  resend: {
+    services: [service("https://api.resend.com", bearerAuth("RESEND_API_KEY"))],
+  },
+};
+
 export const connectorTypeSchema = z.enum([
+  "agentmail",
+  "ahrefs",
+  "axiom",
   "airtable",
+  "asana",
   "canva",
+  "close",
   "github",
   "gmail",
   "google-sheets",
@@ -1138,6 +2019,16 @@ export const connectorTypeSchema = z.enum([
   "supabase",
   "todoist",
   "webflow",
+  "outlook-mail",
+  "outlook-calendar",
+  "meta-ads",
+  "posthog",
+  "stripe",
+  "similarweb",
+  "mailchimp",
+  "plausible",
+  "productlane",
+  "resend",
 ]);
 
 /**
@@ -1185,6 +2076,16 @@ export function getConnectorEnvironmentMapping(
   type: ConnectorType,
 ): Record<string, string> {
   return CONNECTOR_TYPES[type].environmentMapping;
+}
+
+/**
+ * Get proxy config for a connector type (base URLs + auth headers).
+ * Returns undefined if the connector has no proxy config (e.g., computer connector).
+ */
+export function getConnectorProxyConfig(
+  type: ConnectorType,
+): ConnectorProxyConfig | undefined {
+  return CONNECTOR_PROXY_CONFIGS[type];
 }
 
 /**
@@ -1288,10 +2189,49 @@ export function hasRequiredScopes(
 }
 
 /**
+ * Get required secret names for a connector's api-token auth method.
+ * Returns null if the connector type does not support api-token auth.
+ */
+export function getApiTokenRequiredSecretNames(
+  type: ConnectorType,
+): string[] | null {
+  const config = CONNECTOR_TYPES[type];
+  const apiTokenConfig = config.authMethods["api-token"] as
+    | ConnectorAuthMethodConfig
+    | undefined;
+  if (!apiTokenConfig) return null;
+
+  return Object.entries(apiTokenConfig.secrets)
+    .filter(([, cfg]) => cfg.required)
+    .map(([name]) => name);
+}
+
+/**
+ * Derive which connector types are "connected" via api-token based on present user secret names.
+ * A connector type is considered connected if all its required api-token secrets exist.
+ */
+export function deriveApiTokenConnectedTypes(
+  userSecretNames: Set<string>,
+): ConnectorType[] {
+  const allTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+  const connected: ConnectorType[] = [];
+
+  for (const type of allTypes) {
+    const requiredNames = getApiTokenRequiredSecretNames(type);
+    if (!requiredNames || requiredNames.length === 0) continue;
+    if (requiredNames.every((name) => userSecretNames.has(name))) {
+      connected.push(type);
+    }
+  }
+
+  return connected;
+}
+
+/**
  * Connector response schema
  */
 export const connectorResponseSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().uuid().nullable(),
   type: connectorTypeSchema,
   authMethod: z.string(),
   externalId: z.string().nullable(),

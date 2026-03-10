@@ -10,6 +10,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
+import { scopes } from "../../../../../src/db/schema/scope";
 import { storages } from "../../../../../src/db/schema/storage";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
@@ -35,23 +36,25 @@ const router = tsr.router(composesByIdContract, {
       };
     }
 
-    // JOIN compose + version in a single query
+    // JOIN compose + version + scope in a single query
     const [result] = await globalThis.services.db
       .select({
         id: agentComposes.id,
         userId: agentComposes.userId,
-        scopeId: agentComposes.scopeId,
+        clerkOrgId: agentComposes.clerkOrgId,
         name: agentComposes.name,
         headVersionId: agentComposes.headVersionId,
         createdAt: agentComposes.createdAt,
         updatedAt: agentComposes.updatedAt,
         content: agentComposeVersions.content,
+        defaultAgentComposeId: scopes.defaultAgentComposeId,
       })
       .from(agentComposes)
       .leftJoin(
         agentComposeVersions,
         eq(agentComposes.headVersionId, agentComposeVersions.id),
       )
+      .leftJoin(scopes, eq(agentComposes.clerkOrgId, scopes.clerkOrgId))
       .where(eq(agentComposes.id, params.id))
       .limit(1);
 
@@ -83,6 +86,7 @@ const router = tsr.router(composesByIdContract, {
         name: result.name,
         headVersionId: result.headVersionId,
         content: (result.content as AgentComposeYaml) ?? null,
+        isDefault: result.id === result.defaultAgentComposeId,
         createdAt: result.createdAt.toISOString(),
         updatedAt: result.updatedAt.toISOString(),
       },
@@ -161,7 +165,7 @@ const router = tsr.router(composesByIdContract, {
       .from(storages)
       .where(
         and(
-          eq(storages.scopeId, compose.scopeId),
+          eq(storages.clerkOrgId, compose.clerkOrgId),
           eq(storages.name, storageName),
           eq(storages.type, "volume"),
         ),

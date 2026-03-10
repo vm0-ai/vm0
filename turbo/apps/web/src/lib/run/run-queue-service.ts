@@ -38,8 +38,17 @@ export async function enqueueRun(
 ): Promise<CreateRunResult> {
   const { userId, agentComposeVersionId, prompt } = params;
 
-  // Resolve scope ID (caller should have already resolved it, but fall back)
-  const scopeId = params.scopeId ?? (await getDefaultScope(userId)).scope.id;
+  // Resolve scope ID and clerkOrgId (caller should have already resolved it, but fall back)
+  let scopeId: string;
+  let clerkOrgId: string;
+  if (params.scopeId && params.clerkOrgId) {
+    scopeId = params.scopeId;
+    clerkOrgId = params.clerkOrgId;
+  } else {
+    const { scope } = await getDefaultScope(userId);
+    scopeId = scope.id;
+    clerkOrgId = scope.clerkOrgId;
+  }
 
   // Encrypt the full CreateRunParams for later replay
   const paramsJson = JSON.stringify(params);
@@ -57,6 +66,7 @@ export async function enqueueRun(
       .values({
         userId,
         scopeId,
+        clerkOrgId,
         agentComposeVersionId,
         status: "queued",
         prompt,

@@ -5,10 +5,12 @@ import {
 } from "../../../../src/lib/ts-rest-handler";
 import { schedulesMainContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { deploySchedule, listSchedules } from "../../../../src/lib/schedule";
 import { logger } from "../../../../src/lib/logger";
 import { isNotFound, isBadRequest } from "../../../../src/lib/errors";
+import { resolveScopeId } from "../../../../src/lib/scope/scope-member-service";
+import { getScopeById } from "../../../../src/lib/scope/scope-service";
 
 const log = logger("api:schedules");
 
@@ -16,8 +18,8 @@ const router = tsr.router(schedulesMainContract, {
   deploy: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -25,13 +27,25 @@ const router = tsr.router(schedulesMainContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     log.debug(`Deploying schedule ${body.name} for compose ${body.composeId}`);
 
     try {
       // Note: vars and secrets are no longer accepted via API
       // They must be managed via platform tables (vm0 secret set, vm0 var set)
-      const result = await deploySchedule(userId, {
+      const scopeId = await resolveScopeId(userId, body.scopeId, tokenScopeId);
+      const scope = await getScopeById(scopeId);
+      if (!scope) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Scope not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+
+      const result = await deploySchedule(userId, scope.clerkOrgId, scopeId, {
         name: body.name,
         composeId: body.composeId,
         cronExpression: body.cronExpression,
@@ -73,8 +87,8 @@ const router = tsr.router(schedulesMainContract, {
   list: async ({ headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -82,6 +96,7 @@ const router = tsr.router(schedulesMainContract, {
         },
       };
     }
+    const { userId } = authCtx;
 
     log.debug(`Listing schedules for user ${userId}`);
 

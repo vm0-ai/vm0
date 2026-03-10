@@ -7,7 +7,6 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
-import { scopes } from "./scope";
 
 /**
  * Variables table
@@ -18,22 +17,21 @@ export const variables = pgTable(
   "variables",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    scopeId: uuid("scope_id")
-      .references(() => scopes.id, { onDelete: "cascade" })
-      .notNull(),
+    scopeId: uuid("scope_id").notNull(),
     name: varchar("name", { length: 255 }).notNull(),
     value: text("value").notNull(),
     description: text("description"),
     userId: text("user_id").notNull(),
+    clerkOrgId: text("clerk_org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex("idx_variables_scope_user_name").on(
-      table.scopeId,
+    index("idx_variables_clerk_org").on(table.clerkOrgId),
+    uniqueIndex("idx_variables_clerk_org_user_name").on(
+      table.clerkOrgId,
       table.userId,
       table.name,
     ),
-    index("idx_variables_scope").on(table.scopeId),
   ],
 );

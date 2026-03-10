@@ -1,5 +1,178 @@
 # Changelog
 
+## [12.94.0](https://github.com/vm0-ai/vm0/compare/web-v12.93.0...web-v12.94.0) (2026-03-10)
+
+
+### Features
+
+* add agentmail connector (api-token only) ([#4181](https://github.com/vm0-ai/vm0/issues/4181)) ([72eb5b1](https://github.com/vm0-ai/vm0/commit/72eb5b1952fc7ef0119bcfe01edc047e0791676b))
+* add axiom connector with api token auth ([#4182](https://github.com/vm0-ai/vm0/issues/4182)) ([d7586c4](https://github.com/vm0-ai/vm0/commit/d7586c4579e0d84fe618c4559c1b4c4621dc7a15))
+* add plausible analytics connector ([#4178](https://github.com/vm0-ai/vm0/issues/4178)) ([da9b451](https://github.com/vm0-ai/vm0/commit/da9b4517edc58c3db5f200958db760680971e049))
+* add productlane connector with api-token auth ([#4183](https://github.com/vm0-ai/vm0/issues/4183)) ([ea7f8db](https://github.com/vm0-ai/vm0/commit/ea7f8db0dd3fae77091c97155d9524d587ccdb5c))
+* add resend connector with api key authentication ([#4191](https://github.com/vm0-ai/vm0/issues/4191)) ([dc32ab8](https://github.com/vm0-ai/vm0/commit/dc32ab88eeb0c4f052458b5f3ab094bb7bf46b53))
+* wire zero onboarding to real api calls ([#4128](https://github.com/vm0-ai/vm0/issues/4128)) ([b756f8a](https://github.com/vm0-ai/vm0/commit/b756f8aab13d8b5ebf5e8383e96538fd0d980d61))
+
+
+### Refactoring
+
+* resolve scope from Clerk API instead of scope_members table ([#4124](https://github.com/vm0-ai/vm0/issues/4124)) ([4996b04](https://github.com/vm0-ai/vm0/commit/4996b04e895eae6082ce7ca2661291b2b21c38d5))
+* switch secrets, connectors, model_providers, agent_schedules from scope_id to clerk_org_id ([#4199](https://github.com/vm0-ai/vm0/issues/4199)) ([fa78d86](https://github.com/vm0-ai/vm0/commit/fa78d86c8c02ac86d17b40c3a75184c5c3e23019))
+* switch storages table from scope_id to clerk_org_id ([#4142](https://github.com/vm0-ai/vm0/issues/4142)) ([52ef417](https://github.com/vm0-ai/vm0/commit/52ef417d4f89486a203ea96a4641031568e9ef3b))
+* switch variables table from scope_id to clerk_org_id ([#4138](https://github.com/vm0-ai/vm0/issues/4138)) ([609f7c1](https://github.com/vm0-ai/vm0/commit/609f7c1d84c3d20238be1f75ac3beba39b8a971a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.54.0
+
+## [12.93.0](https://github.com/vm0-ai/vm0/compare/web-v12.92.0...web-v12.93.0) (2026-03-10)
+
+
+### Features
+
+* **connectors:** implement proxy-side auth header injection for experimental connectors ([#4072](https://github.com/vm0-ai/vm0/issues/4072)) ([dabc986](https://github.com/vm0-ai/vm0/commit/dabc986158c0d98068a06599724da3307a4904f7))
+* **platform:** add account switching and org switcher to zero sidebar ([#4139](https://github.com/vm0-ai/vm0/issues/4139)) ([17ecf9d](https://github.com/vm0-ai/vm0/commit/17ecf9d7cb154bb05bf065fa2489bab959196257))
+
+
+### Refactoring
+
+* standardize connector api-token secret naming and clean up env ([#4148](https://github.com/vm0-ai/vm0/issues/4148)) ([f3400fe](https://github.com/vm0-ai/vm0/commit/f3400fef2cb68a6ca911b61b09e3ca9db8825ec4))
+* standardize connector api-token secret naming convention ([#4137](https://github.com/vm0-ai/vm0/issues/4137)) ([cc32c55](https://github.com/vm0-ai/vm0/commit/cc32c55527d76f5d7d8e83090d3bbfa06858ea5c))
+* switch agent_composes queries from scope_id to clerk_org_id ([#4145](https://github.com/vm0-ai/vm0/issues/4145)) ([add49fa](https://github.com/vm0-ai/vm0/commit/add49fad002a108981e35c11b731f06b1869145d))
+* switch agent_runs queries from scope_id to clerk_org_id ([#4143](https://github.com/vm0-ai/vm0/issues/4143)) ([265907d](https://github.com/vm0-ai/vm0/commit/265907dfaeb652e47c5c2030733203b4db4fe49f))
+* treat api-token connector secrets as user secrets ([#4156](https://github.com/vm0-ai/vm0/issues/4156)) ([d12f5f6](https://github.com/vm0-ai/vm0/commit/d12f5f6060519514b316a6b126e5b30915ae54a1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.53.0
+
+## [12.92.0](https://github.com/vm0-ai/vm0/compare/web-v12.91.0...web-v12.92.0) (2026-03-10)
+
+
+### Features
+
+* add ahrefs connector with api-token and oauth auth methods ([#4113](https://github.com/vm0-ai/vm0/issues/4113)) ([5c282b8](https://github.com/vm0-ai/vm0/commit/5c282b80719758dc0734f9c59d525934b03a366f))
+* add mailchimp connector with oauth and api key auth ([#4116](https://github.com/vm0-ai/vm0/issues/4116)) ([eb72755](https://github.com/vm0-ai/vm0/commit/eb72755110adfe18e7f90ac07ecd59cc6038fe9f))
+* add similarweb connector with api key authentication ([#4106](https://github.com/vm0-ai/vm0/issues/4106)) ([ae97fdb](https://github.com/vm0-ai/vm0/commit/ae97fdb399f28100780ca232e3023ff2f31a61b9))
+
+
+### Refactoring
+
+* add clerk_org_id column to all scope-dependent tables ([#4105](https://github.com/vm0-ai/vm0/issues/4105)) ([c8abd1d](https://github.com/vm0-ai/vm0/commit/c8abd1d2d9cce2465f49a99815c0362dddb14469))
+* remove scope_members writes from member management operations ([#4118](https://github.com/vm0-ai/vm0/issues/4118)) ([c26e055](https://github.com/vm0-ai/vm0/commit/c26e055d297405e6d37660451070eab09317608d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.52.0
+
+## [12.91.0](https://github.com/vm0-ai/vm0/compare/web-v12.90.0...web-v12.91.0) (2026-03-10)
+
+
+### Features
+
+* **scope:** add default agent compose field to scopes ([#4067](https://github.com/vm0-ai/vm0/issues/4067)) ([529b7fd](https://github.com/vm0-ai/vm0/commit/529b7fd3c559342c0eaba5c307ab0b879c5442d5))
+
+
+### Bug Fixes
+
+* allow shared agent detail access without scope membership ([#4069](https://github.com/vm0-ai/vm0/issues/4069)) ([9f596ab](https://github.com/vm0-ai/vm0/commit/9f596ab936674520e79a9c5e66b530547d972d7d))
+* **slack:** add logs link to dispatch failure error messages ([#4068](https://github.com/vm0-ai/vm0/issues/4068)) ([6ddf062](https://github.com/vm0-ai/vm0/commit/6ddf0626aac73f43bc4ece64b076c73045e6902e))
+* **web:** use clerk v6 redirect props for cross-domain sign-in ([#4109](https://github.com/vm0-ai/vm0/issues/4109)) ([c065eff](https://github.com/vm0-ai/vm0/commit/c065effdbca363b367b4e8326078184ed8ef8c95))
+
+
+### Refactoring
+
+* align remaining scope terminology with resource model ([#4094](https://github.com/vm0-ai/vm0/issues/4094)) ([e4df6c9](https://github.com/vm0-ai/vm0/commit/e4df6c96f84ef0e0e1393215a08122bf83a73a21))
+* dual-write scope metadata to clerk org and membership metadata ([#4103](https://github.com/vm0-ai/vm0/issues/4103)) ([c2065a4](https://github.com/vm0-ai/vm0/commit/c2065a489b1317a653a33644e9d7ad992aee2dce)), closes [#4100](https://github.com/vm0-ai/vm0/issues/4100)
+* **run:** remove unused return field from expand environment ([#4104](https://github.com/vm0-ai/vm0/issues/4104)) ([42df1e6](https://github.com/vm0-ai/vm0/commit/42df1e6abea11997b00ccd6a01825b1d2c9f85a1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.51.0
+
+## [12.90.0](https://github.com/vm0-ai/vm0/compare/web-v12.89.0...web-v12.90.0) (2026-03-09)
+
+
+### Features
+
+* add close crm connector integration ([#4056](https://github.com/vm0-ai/vm0/issues/4056)) ([08134ea](https://github.com/vm0-ai/vm0/commit/08134ea6a8e90139eb55ed776e75b0ce3d97869f))
+* add multi-auth method support for connectors ([#4053](https://github.com/vm0-ai/vm0/issues/4053)) ([b89cbdc](https://github.com/vm0-ai/vm0/commit/b89cbdcac841824b20feb93c50afdfb216a1d9ff))
+* add outlook calendar connector with microsoft oauth ([#4059](https://github.com/vm0-ai/vm0/issues/4059)) ([5a6572d](https://github.com/vm0-ai/vm0/commit/5a6572d01028177e22215646eb9c32ab28464343))
+* **scope:** auto-detect clerk org id in resolve-scope for platform requests ([#4083](https://github.com/vm0-ai/vm0/issues/4083)) ([0100f91](https://github.com/vm0-ai/vm0/commit/0100f917696a62d66c3e599f6ae1921c544efb31)), closes [#4076](https://github.com/vm0-ai/vm0/issues/4076)
+
+
+### Refactoring
+
+* align scope naming with resource model terminology ([#4088](https://github.com/vm0-ai/vm0/issues/4088)) ([cdc7738](https://github.com/vm0-ai/vm0/commit/cdc77383757a4a32d2acd8af08f3b090be06d322))
+* remove self-hosting feature and restore saas-only mode ([#4051](https://github.com/vm0-ai/vm0/issues/4051)) ([5dcac9d](https://github.com/vm0-ai/vm0/commit/5dcac9d3374e78eb263d180faef9ee2909e34dcb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.50.0
+
+## [12.89.0](https://github.com/vm0-ai/vm0/compare/web-v12.88.0...web-v12.89.0) (2026-03-09)
+
+
+### Features
+
+* add asana oauth connector integration ([#4066](https://github.com/vm0-ai/vm0/issues/4066)) ([488c35d](https://github.com/vm0-ai/vm0/commit/488c35d1bf8ff0fdf60730f5989c39c8433d1ba2))
+* add meta ads oauth connector integration ([#4058](https://github.com/vm0-ai/vm0/issues/4058)) ([f887225](https://github.com/vm0-ai/vm0/commit/f88722560ef6cc5a06259a783f3cad7cc3b65861))
+* add stripe oauth connector integration ([#4054](https://github.com/vm0-ai/vm0/issues/4054)) ([c9927fc](https://github.com/vm0-ai/vm0/commit/c9927fc1ec08bd4a46f3a10770610ed4979caf2d))
+
+
+### Bug Fixes
+
+* resolve model provider from runner's scope in integration handlers ([#4075](https://github.com/vm0-ai/vm0/issues/4075)) ([fc53218](https://github.com/vm0-ai/vm0/commit/fc53218e4787d0a6a97c501507e5cfa99524f46f))
+* **telegram:** make /start prompt login same as /connect ([#4060](https://github.com/vm0-ai/vm0/issues/4060)) ([0a4d138](https://github.com/vm0-ai/vm0/commit/0a4d138cdef7b3abea0cc2a5cf9a1a7cc7b1499c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.49.0
+
+## [12.88.0](https://github.com/vm0-ai/vm0/compare/web-v12.87.0...web-v12.88.0) (2026-03-09)
+
+
+### Features
+
+* **connectors:** add experimental connectors data pipeline ([#4048](https://github.com/vm0-ai/vm0/issues/4048)) ([f3ad976](https://github.com/vm0-ai/vm0/commit/f3ad976c82d86300636b545aa8b5b23c6ebfc744))
+* **schedule:** associate schedules with scope and user identity for cross-scope sharing ([#4011](https://github.com/vm0-ai/vm0/issues/4011)) ([ac3e58b](https://github.com/vm0-ai/vm0/commit/ac3e58b100d7b272b54abc2e1ec962b40652f0d2))
+* **scope:** extend resolve-scope to support clerk org id resolution ([#4047](https://github.com/vm0-ai/vm0/issues/4047)) ([9933100](https://github.com/vm0-ai/vm0/commit/993310046b13d62571dd4cba6d4ba342e11452eb))
+
+
+### Bug Fixes
+
+* **blog:** handle empty and invalid json responses from strapi api ([#4045](https://github.com/vm0-ai/vm0/issues/4045)) ([f481ed7](https://github.com/vm0-ai/vm0/commit/f481ed76eddd87d0bfbb3df13da3b35f652d466c))
+* **blog:** handle truncated json responses from strapi cms ([#4044](https://github.com/vm0-ai/vm0/issues/4044)) ([cbb66a6](https://github.com/vm0-ai/vm0/commit/cbb66a6e64ff47f1c6f80e7e9e4daa888eda46fc))
+
+
+### Refactoring
+
+* **scope:** discover existing clerk orgs via jit api instead of creating new ones ([#4049](https://github.com/vm0-ai/vm0/issues/4049)) ([fdfb9c7](https://github.com/vm0-ai/vm0/commit/fdfb9c7bc14fb90c67215cd42042cb5e065bda8d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.48.0
+
 ## [12.87.0](https://github.com/vm0-ai/vm0/compare/web-v12.86.0...web-v12.87.0) (2026-03-09)
 
 

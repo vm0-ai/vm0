@@ -15,7 +15,7 @@ import { createRun } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
-import { getUserScopeByClerkId } from "../../scope/scope-service";
+import { getDefaultScopeByClerkUserId } from "../../scope/scope-service";
 import { canAccessCompose } from "../../agent/permission-service";
 import { getUserEmail } from "../../auth/get-user-email";
 import { logger } from "../../logger";
@@ -100,8 +100,8 @@ async function resolveTrigger(
     };
   }
 
-  const userScope = await getUserScopeByClerkId(userId);
-  if (!userScope) {
+  const runtimeScope = await getDefaultScopeByClerkUserId(userId);
+  if (!runtimeScope) {
     log.debug("Sender has no scope", { from: senderEmail, userId });
     return {
       ok: false,
@@ -110,7 +110,7 @@ async function resolveTrigger(
   }
 
   return {
-    triggerAddress: { scope: userScope.slug, agent: agentName },
+    triggerAddress: { scope: runtimeScope.slug, agent: agentName },
     triggerLocalPart: agentName,
     userId,
   };
@@ -167,7 +167,7 @@ export async function handleInboundEmailTrigger(
   const hasAccess = await canAccessCompose(userId, userEmail, {
     id: compose.composeId,
     userId: compose.userId,
-    scopeId: compose.scopeId,
+    clerkOrgId: compose.clerkOrgId,
   });
 
   if (!hasAccess) {
@@ -277,8 +277,6 @@ export async function handleInboundEmailTrigger(
     artifactName: "artifact",
     memoryName: "memory",
     callbacks,
-    scopeId: compose.scopeId,
-    scopeSlug: compose.scopeSlug,
   });
 
   log.info("Dispatched agent run from email trigger", {

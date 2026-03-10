@@ -94,6 +94,12 @@ const agentDefinitionSchema = z.object({
    */
   experimental_firewall: experimentalFirewallSchema.optional(),
   /**
+   * External service connectors (e.g., github, slack).
+   * Connector env vars are injected as placeholders; the proxy replaces them at runtime.
+   * Requires experimental_runner to be configured.
+   */
+  experimental_connectors: z.array(z.string()).optional(),
+  /**
    * @deprecated Server-resolved field. User input is ignored.
    * @internal
    */
@@ -122,6 +128,7 @@ const composeResponseSchema = z.object({
   name: z.string(),
   headVersionId: z.string().nullable(),
   content: agentComposeContentSchema.nullable(),
+  isDefault: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -270,6 +277,7 @@ const composeListItemSchema = z.object({
   headVersionId: z.string().nullable(),
   updatedAt: z.string(),
   isOwner: z.boolean(),
+  isDefault: z.boolean(),
 });
 
 /**

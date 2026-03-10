@@ -75,9 +75,9 @@ const router = tsr.router(cliAuthTokenContract, {
         const userId = session.userId as string;
 
         // Ensure user has a default scope
-        await ensureDefaultScope(userId);
+        const scope = await ensureDefaultScope(userId);
 
-        // Generate CLI token
+        // Generate CLI token with scope binding
         const randomBytes = crypto.randomBytes(32);
         const cliToken = `vm0_live_${randomBytes.toString("base64url")}`;
         const now = new Date();
@@ -87,6 +87,8 @@ const router = tsr.router(cliAuthTokenContract, {
           token: cliToken,
           userId,
           name: "CLI Device Flow Authentication",
+          scopeId: scope.id,
+          clerkOrgId: scope.clerkOrgId,
           expiresAt,
           createdAt: now,
         });

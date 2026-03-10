@@ -32,16 +32,26 @@ Loop control is handled by a **bash driver script**, not by your memory. You MUS
 
 ### 1a: Identify PR
 
+**CRITICAL — do this FIRST before anything else.**
+
+Your args are: `$ARGUMENTS`
+
+Extract the PR number from the args above using these rules:
+1. **Args is a URL** containing `/pull/<number>` or `/issues/<number>` → extract `<number>` (e.g., `https://github.com/vm0-ai/vm0/pull/4128` → `4128`)
+2. **Args is a plain number** → use it directly (e.g., `4128`)
+3. **Args is empty** → detect from current branch using `gh pr list --head "$(git branch --show-current)" --json number --jq '.[0].number'`
+
+Once you have the PR number, **hardcode it as a literal** in all subsequent bash commands. Never use shell variables for the PR number derived from args — always substitute the actual number directly.
+
+### 1b: Checkout PR Branch
+
+Switch to the PR branch so that fixes are applied to the correct code:
+
 ```bash
-if [ -n "$PR_ID" ]; then
-    PR_NUMBER="$PR_ID"
-else
-    CURRENT_BRANCH=$(git branch --show-current)
-    PR_NUMBER=$(gh pr list --head "$CURRENT_BRANCH" --json number --jq '.[0].number')
-fi
+gh pr checkout <PR_NUMBER>
 ```
 
-### 1b: Create Driver Script
+### 1c: Create Driver Script
 
 Write this script to `/tmp/pr-review-loop-driver.sh` and make it executable:
 
@@ -81,7 +91,7 @@ DRIVER
 chmod +x /tmp/pr-review-loop-driver.sh
 ```
 
-### 1c: Initialize
+### 1d: Initialize
 
 ```bash
 ACTION=$(/tmp/pr-review-loop-driver.sh "$PR_NUMBER" init)

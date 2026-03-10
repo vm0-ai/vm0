@@ -18,10 +18,11 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
@@ -30,8 +31,8 @@ const router = tsr.router(composesMainContract, {
   getByName: async ({ query, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -39,17 +40,44 @@ const router = tsr.router(composesMainContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
-    // Resolve scope: use ?scope= query param or default scope
-    const { scope: resolvedScope } = await resolveScope(userId, query.scope);
-    const scopeId = resolvedScope.id;
+    // Resolve scope: for cross-scope lookups (shared agents), skip membership
+    // check and rely on canAccessCompose for authorization instead.
+    let clerkOrgId: string;
+    let defaultAgentComposeId: string | null = null;
+    if (query.scope) {
+      const scope = await getScopeBySlug(query.scope);
+      if (!scope) {
+        return {
+          status: 404 as const,
+          body: {
+            error: {
+              message: `Agent compose not found: ${query.name}`,
+              code: "NOT_FOUND",
+            },
+          },
+        };
+      }
+      clerkOrgId = scope.clerkOrgId;
+      defaultAgentComposeId = scope.defaultAgentComposeId;
+    } else {
+      const { scope: resolvedScope } = await resolveScope(
+        userId,
+        null,
+        null,
+        tokenScopeId,
+      );
+      clerkOrgId = resolvedScope.clerkOrgId;
+      defaultAgentComposeId = resolvedScope.defaultAgentComposeId;
+    }
 
     // JOIN compose + version in a single query
     const [result] = await globalThis.services.db
       .select({
         id: agentComposes.id,
         userId: agentComposes.userId,
-        scopeId: agentComposes.scopeId,
+        clerkOrgId: agentComposes.clerkOrgId,
         name: agentComposes.name,
         headVersionId: agentComposes.headVersionId,
         createdAt: agentComposes.createdAt,
@@ -63,7 +91,7 @@ const router = tsr.router(composesMainContract, {
       )
       .where(
         and(
-          eq(agentComposes.scopeId, scopeId),
+          eq(agentComposes.clerkOrgId, clerkOrgId),
           eq(agentComposes.name, query.name),
         ),
       )
@@ -105,6 +133,7 @@ const router = tsr.router(composesMainContract, {
         name: result.name,
         headVersionId: result.headVersionId,
         content: (result.content as AgentComposeYaml) ?? null,
+        isDefault: result.id === defaultAgentComposeId,
         createdAt: result.createdAt.toISOString(),
         updatedAt: result.updatedAt.toISOString(),
       },
@@ -114,8 +143,8 @@ const router = tsr.router(composesMainContract, {
   create: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -123,6 +152,7 @@ const router = tsr.router(composesMainContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     const { content } = body;
 
@@ -234,7 +264,7 @@ const router = tsr.router(composesMainContract, {
     const versionId = computeComposeVersionId(resolvedContent);
 
     // Get user's scope (required for compose creation)
-    const { scope: userScope } = await resolveScope(userId);
+    const { scope } = await resolveScope(userId, null, null, tokenScopeId);
 
     // Check compose and version existence in parallel
     const [existingComposes, existingVersions] = await Promise.all([
@@ -243,7 +273,7 @@ const router = tsr.router(composesMainContract, {
         .from(agentComposes)
         .where(
           and(
-            eq(agentComposes.scopeId, userScope.id),
+            eq(agentComposes.clerkOrgId, scope.clerkOrgId),
             eq(agentComposes.name, normalizedAgentName),
           ),
         )
@@ -269,8 +299,9 @@ const router = tsr.router(composesMainContract, {
         .insert(agentComposes)
         .values({
           userId,
-          scopeId: userScope.id,
+          scopeId: scope.id,
           name: normalizedAgentName,
+          clerkOrgId: scope.clerkOrgId,
         })
         .returning({ id: agentComposes.id });
 

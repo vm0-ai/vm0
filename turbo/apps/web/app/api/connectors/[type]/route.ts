@@ -1,7 +1,7 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { connectorsByTypeContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import {
   getConnector,
@@ -16,14 +16,15 @@ const router = tsr.router(connectorsByTypeContract, {
   get: async ({ params, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     const scopeSlug = new URL(request.url).searchParams.get("scope");
-    const { scope } = await resolveScope(userId, scopeSlug);
-    const connector = await getConnector(scope.id, userId, params.type);
+    const { scope } = await resolveScope(userId, scopeSlug, null, tokenScopeId);
+    const connector = await getConnector(scope.clerkOrgId, userId, params.type);
 
     if (!connector) {
       return createErrorResponse("NOT_FOUND", "Connector not found");
@@ -41,15 +42,21 @@ const router = tsr.router(connectorsByTypeContract, {
   delete: async ({ params, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     try {
       const scopeSlug = new URL(request.url).searchParams.get("scope");
-      const { scope } = await resolveScope(userId, scopeSlug);
-      await deleteConnector(scope.id, userId, params.type);
+      const { scope } = await resolveScope(
+        userId,
+        scopeSlug,
+        null,
+        tokenScopeId,
+      );
+      await deleteConnector(scope.clerkOrgId, userId, params.type);
 
       return {
         status: 204 as const,

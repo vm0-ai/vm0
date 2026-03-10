@@ -1,5 +1,107 @@
 # Changelog
 
+## [9.55.0](https://github.com/vm0-ai/vm0/compare/cli-v9.54.3...cli-v9.55.0) (2026-03-10)
+
+
+### Features
+
+* **eslint:** add no-fetch-spy rule to enforce msw usage in tests ([#4164](https://github.com/vm0-ai/vm0/issues/4164)) ([aceffec](https://github.com/vm0-ai/vm0/commit/aceffecf774679acb7d04ebefbe3678ddcbb4cd1))
+
+
+### Refactoring
+
+* **cli:** migrate agent commands to withErrorHandler ([#4165](https://github.com/vm0-ai/vm0/issues/4165)) ([c183e03](https://github.com/vm0-ai/vm0/commit/c183e03c0f3df8784960d5929db767c5d2527657))
+* **cli:** migrate connector commands to centralized error handler ([#4169](https://github.com/vm0-ai/vm0/issues/4169)) ([a36b890](https://github.com/vm0-ai/vm0/commit/a36b8903f23934cafbc0f912ac8f5c70ff2b10a8))
+* **cli:** migrate cook commands to use error handler ([#4172](https://github.com/vm0-ai/vm0/issues/4172)) ([6609899](https://github.com/vm0-ai/vm0/commit/660989934e7cd6094702a51e61e286c00a9008f6))
+* **cli:** migrate misc commands to withErrorHandler ([#4173](https://github.com/vm0-ai/vm0/issues/4173)) ([f50cc26](https://github.com/vm0-ai/vm0/commit/f50cc26a9fbc953290b35c0a55bfd5b06541bf02))
+* **cli:** migrate model-provider commands to use error handler ([#4175](https://github.com/vm0-ai/vm0/issues/4175)) ([2cd0da7](https://github.com/vm0-ai/vm0/commit/2cd0da7788dba6cbd7da535c4869e76952319a63))
+* **cli:** migrate run kill command to use error handler ([#4171](https://github.com/vm0-ai/vm0/issues/4171)) ([51de8de](https://github.com/vm0-ai/vm0/commit/51de8de0eafe8c3be235ec56f13b659acb800934))
+* **cli:** migrate scope commands to use error handler ([#4167](https://github.com/vm0-ai/vm0/issues/4167)) ([c44c737](https://github.com/vm0-ai/vm0/commit/c44c737fae7431fd62f07f68a9c9fbea4e0c04a1))
+* **cli:** migrate storage status commands to withErrorHandler ([#4170](https://github.com/vm0-ai/vm0/issues/4170)) ([7d7b07f](https://github.com/vm0-ai/vm0/commit/7d7b07f5692b65b27711f532b6b0519823fc6026))
+* **cli:** migrate variable and secret commands to withErrorHandler ([#4174](https://github.com/vm0-ai/vm0/issues/4174)) ([e7db8cb](https://github.com/vm0-ai/vm0/commit/e7db8cb93735e6b05da0d74d70245c5ebef06c64))
+* **cli:** use os.homedir mock for scope test config isolation ([#4160](https://github.com/vm0-ai/vm0/issues/4160)) ([97a23e5](https://github.com/vm0-ai/vm0/commit/97a23e525eda5717de2e2a1620d7adf9da690ea4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.54.0
+
+## [9.54.3](https://github.com/vm0-ai/vm0/compare/cli-v9.54.2...cli-v9.54.3) (2026-03-10)
+
+
+### Refactoring
+
+* treat api-token connector secrets as user secrets ([#4156](https://github.com/vm0-ai/vm0/issues/4156)) ([d12f5f6](https://github.com/vm0-ai/vm0/commit/d12f5f6060519514b316a6b126e5b30915ae54a1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.53.0
+
+## [9.54.2](https://github.com/vm0-ai/vm0/compare/cli-v9.54.1...cli-v9.54.2) (2026-03-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.52.0
+
+## [9.54.1](https://github.com/vm0-ai/vm0/compare/cli-v9.54.0...cli-v9.54.1) (2026-03-10)
+
+
+### Refactoring
+
+* align remaining scope terminology with resource model ([#4094](https://github.com/vm0-ai/vm0/issues/4094)) ([e4df6c9](https://github.com/vm0-ai/vm0/commit/e4df6c96f84ef0e0e1393215a08122bf83a73a21))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.51.0
+
+## [9.54.0](https://github.com/vm0-ai/vm0/compare/cli-v9.53.1...cli-v9.54.0) (2026-03-09)
+
+
+### Features
+
+* add multi-auth method support for connectors ([#4053](https://github.com/vm0-ai/vm0/issues/4053)) ([b89cbdc](https://github.com/vm0-ai/vm0/commit/b89cbdcac841824b20feb93c50afdfb216a1d9ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.50.0
+
+## [9.53.1](https://github.com/vm0-ai/vm0/compare/cli-v9.53.0...cli-v9.53.1) (2026-03-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.49.0
+
+## [9.53.0](https://github.com/vm0-ai/vm0/compare/cli-v9.52.0...cli-v9.53.0) (2026-03-09)
+
+
+### Features
+
+* **schedule:** associate schedules with scope and user identity for cross-scope sharing ([#4011](https://github.com/vm0-ai/vm0/issues/4011)) ([ac3e58b](https://github.com/vm0-ai/vm0/commit/ac3e58b100d7b272b54abc2e1ec962b40652f0d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.48.0
+
 ## [9.52.0](https://github.com/vm0-ai/vm0/compare/cli-v9.51.1...cli-v9.52.0) (2026-03-09)
 
 

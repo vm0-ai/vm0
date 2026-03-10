@@ -65,6 +65,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },
+  [FeatureSwitchKey.AhrefsConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
@@ -156,7 +161,47 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
+  [FeatureSwitchKey.CloseConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
   [FeatureSwitchKey.WebflowConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
+  [FeatureSwitchKey.OutlookMailConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
+  [FeatureSwitchKey.OutlookCalendarConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
+  [FeatureSwitchKey.MetaAdsConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
+  [FeatureSwitchKey.StripeConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
+  [FeatureSwitchKey.PosthogConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
+  [FeatureSwitchKey.MailchimpConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
+  [FeatureSwitchKey.ResendConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
@@ -171,6 +216,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
+  [FeatureSwitchKey.Zero]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
 };
 
 /**
@@ -180,7 +229,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
 export const CONNECTOR_FEATURE_FLAGS: Partial<
   Record<ConnectorType, FeatureSwitchKey>
 > = {
+  ahrefs: FeatureSwitchKey.AhrefsConnector,
   canva: FeatureSwitchKey.CanvaConnector,
+  close: FeatureSwitchKey.CloseConnector,
   computer: FeatureSwitchKey.ComputerConnector,
   deel: FeatureSwitchKey.DeelConnector,
   docusign: FeatureSwitchKey.DocuSignConnector,
@@ -200,6 +251,13 @@ export const CONNECTOR_FEATURE_FLAGS: Partial<
   "intervals-icu": FeatureSwitchKey.IntervalsIcuConnector,
   supabase: FeatureSwitchKey.SupabaseConnector,
   webflow: FeatureSwitchKey.WebflowConnector,
+  "outlook-mail": FeatureSwitchKey.OutlookMailConnector,
+  "outlook-calendar": FeatureSwitchKey.OutlookCalendarConnector,
+  "meta-ads": FeatureSwitchKey.MetaAdsConnector,
+  stripe: FeatureSwitchKey.StripeConnector,
+  posthog: FeatureSwitchKey.PosthogConnector,
+  mailchimp: FeatureSwitchKey.MailchimpConnector,
+  resend: FeatureSwitchKey.ResendConnector,
 };
 
 /**

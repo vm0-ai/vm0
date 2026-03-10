@@ -8,7 +8,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import {
   generatePresignedPutUrl,
@@ -87,8 +87,8 @@ const router = tsr.router(storagesPrepareContract, {
     initServices();
 
     // Authenticate user
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -96,10 +96,16 @@ const router = tsr.router(storagesPrepareContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
-    // Resolve user's scope
+    // Resolve user's default scope
     const scopeSlug = new URL(request.url).searchParams.get("scope");
-    const { scope: userScope } = await resolveScope(userId, scopeSlug);
+    const { scope: runtimeScope } = await resolveScope(
+      userId,
+      scopeSlug,
+      null,
+      tokenScopeId,
+    );
 
     const {
       storageName,
@@ -142,16 +148,17 @@ const router = tsr.router(storagesPrepareContract, {
       .insert(storages)
       .values({
         userId: storageUserId,
-        scopeId: userScope.id,
+        scopeId: runtimeScope.id,
+        clerkOrgId: runtimeScope.clerkOrgId,
         name: storageName,
         type: storageType,
-        s3Prefix: `${userScope.slug}/${storageType}/${storageName}`,
+        s3Prefix: `${runtimeScope.slug}/${storageType}/${storageName}`,
         size: 0,
         fileCount: 0,
       })
       .onConflictDoUpdate({
         target: [
-          storages.scopeId,
+          storages.clerkOrgId,
           storages.userId,
           storages.name,
           storages.type,
@@ -257,7 +264,7 @@ const router = tsr.router(storagesPrepareContract, {
     }
 
     // Generate presigned URLs for archive and manifest
-    const s3Key = `${userScope.slug}/${storageType}/${storageName}/${versionId}`;
+    const s3Key = `${runtimeScope.slug}/${storageType}/${storageName}/${versionId}`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const manifestKey = `${s3Key}/manifest.json`;
 

@@ -39,7 +39,7 @@ async function getUserTokenClientConfig(): Promise<{
 }
 
 /**
- * Get current user's scope
+ * Get current user's default scope
  */
 export async function getScope(): Promise<ScopeResponse> {
   const config = await getClientConfig();
@@ -55,7 +55,7 @@ export async function getScope(): Promise<ScopeResponse> {
 }
 
 /**
- * Create user's scope
+ * Create user's default scope
  */
 export async function createScope(body: {
   slug: string;
@@ -73,7 +73,7 @@ export async function createScope(body: {
 }
 
 /**
- * Update user's scope slug
+ * Update user's default scope slug
  */
 export async function updateScope(body: {
   slug: string;

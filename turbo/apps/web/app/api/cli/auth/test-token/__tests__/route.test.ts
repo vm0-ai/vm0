@@ -6,13 +6,19 @@ import { reloadEnv } from "../../../../../../src/env";
 
 // Mock Clerk Server API
 const mockGetUserList = vi.fn();
+const mockGetOrganizationMembershipList = vi.fn();
+const mockCreateOrganization = vi.fn();
 vi.mock("@clerk/nextjs/server", () => ({
   clerkClient: vi.fn(async () => ({
     users: {
       getUserList: mockGetUserList,
+      getOrganizationMembershipList: mockGetOrganizationMembershipList,
+    },
+    organizations: {
+      createOrganization: mockCreateOrganization,
     },
   })),
-  auth: vi.fn(),
+  auth: vi.fn(async () => ({ userId: null, orgId: null, orgRole: null })),
 }));
 
 const context = testContext();
@@ -23,9 +29,26 @@ describe("/api/cli/auth/test-token", () => {
     vi.stubEnv("CLERK_SECRET_KEY", "test-secret-key");
     reloadEnv();
     mockGetUserList.mockReset();
+    mockGetOrganizationMembershipList.mockReset();
+    mockCreateOrganization.mockReset();
     mockGetUserList.mockResolvedValue({
       data: [{ id: "user_test123" }],
     });
+    // Return a Clerk org membership so ensureDefaultScope can discover/create a local scope
+    mockGetOrganizationMembershipList.mockResolvedValue({
+      data: [
+        {
+          organization: {
+            id: "org_test_token",
+            slug: "test-token-org",
+            name: "test-token-org",
+          },
+          role: "org:admin",
+          publicUserData: { userId: "user_test123" },
+        },
+      ],
+    });
+    mockCreateOrganization.mockResolvedValue({ id: "org_mock_test" });
   });
 
   describe("environment-based access control", () => {

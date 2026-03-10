@@ -84,7 +84,11 @@ const router = tsr.router(runnersJobClaimContract, {
       }
 
       try {
-        await validateRunnerGroupScope(auth.userId, jobWithRun.job.runnerGroup);
+        await validateRunnerGroupScope(
+          auth.userId,
+          jobWithRun.job.runnerGroup,
+          auth.scopeId,
+        );
       } catch (error) {
         return createErrorResponse(
           "FORBIDDEN",
@@ -193,6 +197,7 @@ const router = tsr.router(runnersJobClaimContract, {
         secretValues, // Decrypted secrets
         cliAgentType: storedContext.cliAgentType,
         experimentalFirewall: storedContext.experimentalFirewall,
+        experimentalConnectors: storedContext.experimentalConnectors,
         debugNoMockClaude: storedContext.debugNoMockClaude,
         apiStartTime: storedContext.apiStartTime,
         userTimezone: storedContext.userTimezone,

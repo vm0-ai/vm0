@@ -4,7 +4,11 @@ import { slackUserLinks } from "../../../db/schema/slack-user-link";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createSlackClient, postMessage, setThreadStatus } from "../client";
-import { buildLoginPromptMessage } from "../blocks";
+import {
+  buildAgentResponseMessage,
+  buildLoginPromptMessage,
+  detectDeepLinks,
+} from "../blocks";
 import { extractMessageContent, type SlackFile } from "../context";
 import { runAgentForSlack } from "./run-agent";
 import {
@@ -12,9 +16,12 @@ import {
   fetchConversationContexts,
   lookupThreadSession,
   buildLoginUrl,
+  buildLogsUrl,
+  buildAgentLogsUrl,
   getWorkspaceAgent,
   resolveSessionCompose,
 } from "./shared";
+import { getPlatformUrl } from "../../url";
 import { logger } from "../../logger";
 
 const log = logger("slack:mention");
@@ -175,7 +182,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
 
   // 8. Dispatch agent run with callback (returns immediately)
   log.debug("Dispatching agent run", { existingSessionId });
-  const { status, response } = await runAgentForSlack({
+  const { status, response, runId } = await runAgentForSlack({
     composeId,
     agentName,
     sessionId: existingSessionId,
@@ -203,12 +210,20 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     });
   } else if (status === "failed") {
     log.error("Failed to dispatch agent run", { response });
-    await postMessage(
-      client,
-      context.channelId,
-      response ?? "Sorry, an error occurred. Please try again.",
-      { threadTs },
-    );
+    const errorText = response ?? "Sorry, an error occurred. Please try again.";
+    const logsUrl = runId
+      ? buildLogsUrl(runId, agentName)
+      : buildAgentLogsUrl(agentName);
+    const deepLinks = detectDeepLinks(errorText, getPlatformUrl(), agentName);
+    await postMessage(client, context.channelId, errorText, {
+      threadTs,
+      blocks: buildAgentResponseMessage(
+        errorText,
+        agentName,
+        logsUrl,
+        deepLinks,
+      ),
+    });
     // Clear thinking status on failure since callback won't be invoked
     await setThreadStatus(client, context.channelId, threadTs, "").catch(
       (err) => log.warn("Failed to clear thread status", { error: err }),

@@ -8,7 +8,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import {
   s3ObjectExists,
@@ -25,8 +25,8 @@ const router = tsr.router(storagesCommitContract, {
     initServices();
 
     // Authenticate user
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -34,10 +34,16 @@ const router = tsr.router(storagesCommitContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
-    // Resolve user's scope
+    // Resolve user's default scope
     const scopeSlug = new URL(request.url).searchParams.get("scope");
-    const { scope: userScope } = await resolveScope(userId, scopeSlug);
+    const { scope: runtimeScope } = await resolveScope(
+      userId,
+      scopeSlug,
+      null,
+      tokenScopeId,
+    );
 
     const { storageName, storageType, versionId, files, runId, message } = body;
 
@@ -73,7 +79,7 @@ const router = tsr.router(storagesCommitContract, {
       .from(storages)
       .where(
         and(
-          eq(storages.scopeId, userScope.id),
+          eq(storages.clerkOrgId, runtimeScope.clerkOrgId),
           eq(storages.userId, storageUserId),
           eq(storages.name, storageName),
           eq(storages.type, storageType),
@@ -200,7 +206,7 @@ const router = tsr.router(storagesCommitContract, {
     // Verify required S3 objects exist
     // For empty artifacts (fileCount === 0), only manifest is required
     // since there's no archive to extract
-    const s3Key = `${userScope.slug}/${storageType}/${storageName}/${versionId}`;
+    const s3Key = `${runtimeScope.slug}/${storageType}/${storageName}/${versionId}`;
     const manifestKey = `${s3Key}/manifest.json`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const fileCount = files.length;

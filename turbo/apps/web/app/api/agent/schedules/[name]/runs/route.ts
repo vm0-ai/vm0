@@ -5,10 +5,12 @@ import {
 } from "../../../../../../src/lib/ts-rest-handler";
 import { scheduleRunsContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../../src/lib/auth/get-user-id";
 import { getScheduleRecentRuns } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../../src/lib/errors";
+import { resolveScopeId } from "../../../../../../src/lib/scope/scope-member-service";
+import { getScopeById } from "../../../../../../src/lib/scope/scope-service";
 
 const log = logger("api:schedules:runs");
 
@@ -16,8 +18,8 @@ const router = tsr.router(scheduleRunsContract, {
   listRuns: async ({ params, query, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -25,14 +27,27 @@ const router = tsr.router(scheduleRunsContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     log.debug(
       `Listing runs for schedule ${params.name} (limit: ${query.limit})`,
     );
 
     try {
+      const scopeId = await resolveScopeId(userId, query.scopeId, tokenScopeId);
+      const scope = await getScopeById(scopeId);
+      if (!scope) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Scope not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+
       const runs = await getScheduleRecentRuns(
         userId,
+        scope.clerkOrgId,
         query.composeId,
         params.name,
         query.limit,

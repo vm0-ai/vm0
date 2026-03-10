@@ -1,5 +1,85 @@
 # Changelog
 
+## [8.54.0](https://github.com/vm0-ai/vm0/compare/core-v8.53.0...core-v8.54.0) (2026-03-10)
+
+
+### Features
+
+* add agentmail connector (api-token only) ([#4181](https://github.com/vm0-ai/vm0/issues/4181)) ([72eb5b1](https://github.com/vm0-ai/vm0/commit/72eb5b1952fc7ef0119bcfe01edc047e0791676b))
+* add axiom connector with api token auth ([#4182](https://github.com/vm0-ai/vm0/issues/4182)) ([d7586c4](https://github.com/vm0-ai/vm0/commit/d7586c4579e0d84fe618c4559c1b4c4621dc7a15))
+* add plausible analytics connector ([#4178](https://github.com/vm0-ai/vm0/issues/4178)) ([da9b451](https://github.com/vm0-ai/vm0/commit/da9b4517edc58c3db5f200958db760680971e049))
+* add productlane connector with api-token auth ([#4183](https://github.com/vm0-ai/vm0/issues/4183)) ([ea7f8db](https://github.com/vm0-ai/vm0/commit/ea7f8db0dd3fae77091c97155d9524d587ccdb5c))
+* add resend connector with api key authentication ([#4191](https://github.com/vm0-ai/vm0/issues/4191)) ([dc32ab8](https://github.com/vm0-ai/vm0/commit/dc32ab88eeb0c4f052458b5f3ab094bb7bf46b53))
+* wire zero onboarding to real api calls ([#4128](https://github.com/vm0-ai/vm0/issues/4128)) ([b756f8a](https://github.com/vm0-ai/vm0/commit/b756f8aab13d8b5ebf5e8383e96538fd0d980d61))
+
+
+### Refactoring
+
+* remove feature switch for api-token-only axiom connector ([#4194](https://github.com/vm0-ai/vm0/issues/4194)) ([90673ca](https://github.com/vm0-ai/vm0/commit/90673cad686f82549c5f360a607fe0f9a7b50c95))
+
+## [8.53.0](https://github.com/vm0-ai/vm0/compare/core-v8.52.0...core-v8.53.0) (2026-03-10)
+
+
+### Features
+
+* **connectors:** implement proxy-side auth header injection for experimental connectors ([#4072](https://github.com/vm0-ai/vm0/issues/4072)) ([dabc986](https://github.com/vm0-ai/vm0/commit/dabc986158c0d98068a06599724da3307a4904f7))
+
+
+### Refactoring
+
+* fix ahrefs and mailchimp connector secret naming ([#4140](https://github.com/vm0-ai/vm0/issues/4140)) ([57716ed](https://github.com/vm0-ai/vm0/commit/57716ed243d53d51f7b119a84a6e570493081e26))
+* standardize connector api-token secret naming convention ([#4137](https://github.com/vm0-ai/vm0/issues/4137)) ([cc32c55](https://github.com/vm0-ai/vm0/commit/cc32c55527d76f5d7d8e83090d3bbfa06858ea5c))
+* treat api-token connector secrets as user secrets ([#4156](https://github.com/vm0-ai/vm0/issues/4156)) ([d12f5f6](https://github.com/vm0-ai/vm0/commit/d12f5f6060519514b316a6b126e5b30915ae54a1))
+
+## [8.52.0](https://github.com/vm0-ai/vm0/compare/core-v8.51.0...core-v8.52.0) (2026-03-10)
+
+
+### Features
+
+* add ahrefs connector with api-token and oauth auth methods ([#4113](https://github.com/vm0-ai/vm0/issues/4113)) ([5c282b8](https://github.com/vm0-ai/vm0/commit/5c282b80719758dc0734f9c59d525934b03a366f))
+* add mailchimp connector with oauth and api key auth ([#4116](https://github.com/vm0-ai/vm0/issues/4116)) ([eb72755](https://github.com/vm0-ai/vm0/commit/eb72755110adfe18e7f90ac07ecd59cc6038fe9f))
+* add similarweb connector with api key authentication ([#4106](https://github.com/vm0-ai/vm0/issues/4106)) ([ae97fdb](https://github.com/vm0-ai/vm0/commit/ae97fdb399f28100780ca232e3023ff2f31a61b9))
+* enable asana connector for all users ([#4111](https://github.com/vm0-ai/vm0/issues/4111)) ([a961c9b](https://github.com/vm0-ai/vm0/commit/a961c9b7688153599afda2da79231f2d310397ac))
+
+## [8.51.0](https://github.com/vm0-ai/vm0/compare/core-v8.50.0...core-v8.51.0) (2026-03-10)
+
+
+### Features
+
+* **platform:** add organization switching to zero page sidebar ([#4064](https://github.com/vm0-ai/vm0/issues/4064)) ([03fc6af](https://github.com/vm0-ai/vm0/commit/03fc6aff684efc65235dc74fe2ec689776bb8b05))
+* **scope:** add default agent compose field to scopes ([#4067](https://github.com/vm0-ai/vm0/issues/4067)) ([529b7fd](https://github.com/vm0-ai/vm0/commit/529b7fd3c559342c0eaba5c307ab0b879c5442d5))
+
+
+### Refactoring
+
+* align remaining scope terminology with resource model ([#4094](https://github.com/vm0-ai/vm0/issues/4094)) ([e4df6c9](https://github.com/vm0-ai/vm0/commit/e4df6c96f84ef0e0e1393215a08122bf83a73a21))
+
+## [8.50.0](https://github.com/vm0-ai/vm0/compare/core-v8.49.0...core-v8.50.0) (2026-03-09)
+
+
+### Features
+
+* add close crm connector integration ([#4056](https://github.com/vm0-ai/vm0/issues/4056)) ([08134ea](https://github.com/vm0-ai/vm0/commit/08134ea6a8e90139eb55ed776e75b0ce3d97869f))
+* add multi-auth method support for connectors ([#4053](https://github.com/vm0-ai/vm0/issues/4053)) ([b89cbdc](https://github.com/vm0-ai/vm0/commit/b89cbdcac841824b20feb93c50afdfb216a1d9ff))
+* add outlook calendar connector with microsoft oauth ([#4059](https://github.com/vm0-ai/vm0/issues/4059)) ([5a6572d](https://github.com/vm0-ai/vm0/commit/5a6572d01028177e22215646eb9c32ab28464343))
+
+## [8.49.0](https://github.com/vm0-ai/vm0/compare/core-v8.48.0...core-v8.49.0) (2026-03-09)
+
+
+### Features
+
+* add asana oauth connector integration ([#4066](https://github.com/vm0-ai/vm0/issues/4066)) ([488c35d](https://github.com/vm0-ai/vm0/commit/488c35d1bf8ff0fdf60730f5989c39c8433d1ba2))
+* add meta ads oauth connector integration ([#4058](https://github.com/vm0-ai/vm0/issues/4058)) ([f887225](https://github.com/vm0-ai/vm0/commit/f88722560ef6cc5a06259a783f3cad7cc3b65861))
+* add stripe oauth connector integration ([#4054](https://github.com/vm0-ai/vm0/issues/4054)) ([c9927fc](https://github.com/vm0-ai/vm0/commit/c9927fc1ec08bd4a46f3a10770610ed4979caf2d))
+
+## [8.48.0](https://github.com/vm0-ai/vm0/compare/core-v8.47.0...core-v8.48.0) (2026-03-09)
+
+
+### Features
+
+* **connectors:** add experimental connectors data pipeline ([#4048](https://github.com/vm0-ai/vm0/issues/4048)) ([f3ad976](https://github.com/vm0-ai/vm0/commit/f3ad976c82d86300636b545aa8b5b23c6ebfc744))
+* **schedule:** associate schedules with scope and user identity for cross-scope sharing ([#4011](https://github.com/vm0-ai/vm0/issues/4011)) ([ac3e58b](https://github.com/vm0-ai/vm0/commit/ac3e58b100d7b272b54abc2e1ec962b40652f0d2))
+
 ## [8.47.0](https://github.com/vm0-ai/vm0/compare/core-v8.46.0...core-v8.47.0) (2026-03-09)
 
 

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconSearch,
   IconFilter,
@@ -17,53 +18,61 @@ import {
 import type { LogStatus } from "../../signals/logs-page/types.ts";
 import { StatusBadge } from "../logs-page/status-badge.tsx";
 import { ZeroActivityDetailPage } from "./zero-activity-detail-page.tsx";
+import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import type {
   ActivityItem,
   ActivityStatus,
   ActivityType,
 } from "./zero-activity-types.ts";
 
-const ACTIVITIES: ActivityItem[] = [
-  {
-    id: "1",
-    title: "Zero Agent",
-    type: "zero",
-    status: "success",
-    duration: "2.3s",
-    time: "02:56 PM",
-  },
-  {
-    id: "2",
-    title: "Code Review Reminder",
-    type: "workflow",
-    status: "error",
-    time: "02:46 PM",
-  },
-  {
-    id: "3",
-    title: "Zero Agent",
-    type: "zero",
-    status: "warning",
-    duration: "5.6s",
-    time: "02:36 PM",
-  },
-  {
-    id: "4",
-    title: "Slack Message Sync",
-    type: "workflow",
-    status: "success",
-    duration: "3.2s",
-    time: "02:06 PM",
-  },
-];
+function getActivities(agentName: string): readonly Readonly<ActivityItem>[] {
+  return [
+    {
+      id: "1",
+      title: `${agentName} Agent`,
+      type: "zero",
+      status: "success",
+      duration: "2.3s",
+      time: "02:56 PM",
+    },
+    {
+      id: "2",
+      title: "Code Review Reminder",
+      type: "workflow",
+      status: "error",
+      time: "02:46 PM",
+    },
+    {
+      id: "3",
+      title: `${agentName} Agent`,
+      type: "zero",
+      status: "warning",
+      duration: "5.6s",
+      time: "02:36 PM",
+    },
+    {
+      id: "4",
+      title: "Slack Message Sync",
+      type: "workflow",
+      status: "success",
+      duration: "3.2s",
+      time: "02:06 PM",
+    },
+  ];
+}
 
-const TYPE_OPTIONS: { value: "all" | ActivityType; label: string }[] = [
-  { value: "all", label: "All Types" },
-  { value: "zero", label: "Zero" },
-  { value: "workflow", label: "Workflow" },
-];
+function getTypeOptions(agentName: string): readonly Readonly<{
+  value: "all" | ActivityType;
+  label: string;
+}>[] {
+  return [
+    { value: "all", label: "All Types" },
+    { value: "zero", label: agentName },
+    { value: "workflow", label: "Workflow" },
+  ];
+}
 
-const STATUS_OPTIONS: { value: string; label: string }[] = [
+const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
   { value: "all", label: "All Status" },
   { value: "success", label: "Success" },
   { value: "error", label: "Error" },
@@ -85,11 +94,13 @@ const ROW_GRID =
 function ActivityRow({
   item,
   onSelect,
+  agentName = "Zero",
 }: {
   item: ActivityItem;
   onSelect: (item: ActivityItem) => void;
+  agentName?: string;
 }) {
-  const typeLabel = item.type === "zero" ? "Zero" : "Workflow";
+  const typeLabel = item.type === "zero" ? agentName : "Workflow";
 
   return (
     <div
@@ -145,12 +156,25 @@ function ActivityRow({
 }
 
 export function ZeroActivityPage() {
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedItem, setSelectedItem] = useState<ActivityItem | null>(null);
+  const agentNameLoadable = useLoadable(agentDisplayName$);
+  const agentName =
+    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+  const search$ = useCCState("");
+  const search = useGet(search$);
+  const setSearch = useSet(search$);
+  const typeFilter$ = useCCState("all");
+  const typeFilter = useGet(typeFilter$);
+  const setTypeFilter = useSet(typeFilter$);
+  const statusFilter$ = useCCState("all");
+  const statusFilter = useGet(statusFilter$);
+  const setStatusFilter = useSet(statusFilter$);
+  const selectedItem$ = useCCState<ActivityItem | null>(null);
+  const selectedItem = useGet(selectedItem$);
+  const setSelectedItem = useSet(selectedItem$);
 
-  const filtered = ACTIVITIES.filter((item) => {
+  const activities = getActivities(agentName);
+  const typeOptions = getTypeOptions(agentName);
+  const filtered = activities.filter((item) => {
     const matchSearch =
       !search.trim() ||
       item.title.toLowerCase().includes(search.trim().toLowerCase());
@@ -177,7 +201,7 @@ export function ZeroActivityPage() {
               Activity
             </h1>
             <p className="text-sm text-muted-foreground">
-              Logs and runs from Zero and your workflows.
+              Logs and runs from {agentName} and your workflows.
             </p>
           </div>
 
@@ -206,7 +230,7 @@ export function ZeroActivityPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {TYPE_OPTIONS.map((opt) => (
+                  {typeOptions.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
                       {opt.label}
                     </SelectItem>
@@ -255,7 +279,12 @@ export function ZeroActivityPage() {
             </div>
           )}
           {filtered.map((item) => (
-            <ActivityRow key={item.id} item={item} onSelect={setSelectedItem} />
+            <ActivityRow
+              key={item.id}
+              item={item}
+              onSelect={setSelectedItem}
+              agentName={agentName}
+            />
           ))}
           {filtered.length === 0 && (
             <p className="text-sm text-muted-foreground py-8 text-center">

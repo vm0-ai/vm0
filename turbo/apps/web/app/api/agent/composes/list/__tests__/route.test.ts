@@ -55,7 +55,7 @@ describe("GET /api/agent/composes/list", () => {
     expect(data.composes).toEqual([]);
   });
 
-  it("should return all composes for the user scope", async () => {
+  it("should return all composes for the user's default scope", async () => {
     // Create two test composes via API
     const agentName1 = `test-list-agent-1-${Date.now()}`;
     const agentName2 = `test-list-agent-2-${Date.now()}`;
@@ -197,9 +197,9 @@ describe("GET /api/agent/composes/list", () => {
       const { composeId } = await createTestCompose(agentName);
       await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
 
-      // Derive owner's scope slug
+      // Derive the Agent Scope slug
       const ownerSuffix = owner.userId.replace("owner-", "");
-      const ownerScopeSlug = `scope-${ownerSuffix}`;
+      const agentScopeSlug = `scope-${ownerSuffix}`;
 
       // Switch to recipient (original user) and list
       mockClerk({ userId: user.userId });
@@ -211,7 +211,7 @@ describe("GET /api/agent/composes/list", () => {
 
       expect(response.status).toBe(200);
       const names = data.composes.map((c: { name: string }) => c.name);
-      expect(names).toContain(`${ownerScopeSlug}/${agentName}`);
+      expect(names).toContain(`${agentScopeSlug}/${agentName}`);
     });
 
     it("should not show unshared agents from other users", async () => {
@@ -246,7 +246,7 @@ describe("GET /api/agent/composes/list", () => {
       await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
 
       const ownerSuffix = owner.userId.replace("combo-owner-", "");
-      const ownerScopeSlug = `scope-${ownerSuffix}`;
+      const agentScopeSlug = `scope-${ownerSuffix}`;
 
       // Switch back to original user
       mockClerk({ userId: user.userId });
@@ -261,7 +261,7 @@ describe("GET /api/agent/composes/list", () => {
       // Own agent has plain name
       expect(names).toContain(ownAgentName);
       // Shared agent has scope/name format
-      expect(names).toContain(`${ownerScopeSlug}/${sharedAgentName}`);
+      expect(names).toContain(`${agentScopeSlug}/${sharedAgentName}`);
     });
 
     it("should not include shared agents when scope param is provided", async () => {

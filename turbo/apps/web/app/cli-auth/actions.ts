@@ -1,9 +1,9 @@
 "use server";
 
 import { eq, and } from "drizzle-orm";
+import { auth } from "@clerk/nextjs/server";
 import { initServices } from "../../src/lib/init-services";
 import { deviceCodes } from "../../src/db/schema/device-codes";
-import { getAuthProvider } from "../../src/lib/auth/auth-provider";
 import { setTimezoneIfNotSet } from "../../src/lib/user/user-preferences-service";
 
 interface VerifyResult {
@@ -15,7 +15,7 @@ export async function verifyDeviceAction(
   code: string,
   timezone?: string,
 ): Promise<VerifyResult> {
-  const userId = await getAuthProvider().getUserId();
+  const { userId } = await auth();
 
   if (!userId) {
     return { success: false, error: "Not authenticated" };

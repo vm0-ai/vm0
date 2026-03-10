@@ -21,6 +21,7 @@ export const enableCommand = new Command()
       await enableSchedule({
         name: resolved.name,
         composeId: resolved.composeId,
+        scopeId: resolved.scopeId,
       });
 
       console.log(

@@ -11,7 +11,6 @@ import {
 import { sql } from "drizzle-orm";
 import { agentComposeVersions } from "./agent-compose";
 import { agentSchedules } from "./agent-schedule";
-import { scopes } from "./scope";
 
 /**
  * Agent Runs table
@@ -23,9 +22,7 @@ export const agentRuns = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(), // Clerk user ID - owner of this run
-    scopeId: uuid("scope_id")
-      .references(() => scopes.id, { onDelete: "cascade" })
-      .notNull(),
+    scopeId: uuid("scope_id").notNull(),
     agentComposeVersionId: varchar("agent_compose_version_id", {
       length: 64,
     }).references(() => agentComposeVersions.id, { onDelete: "set null" }),
@@ -44,6 +41,7 @@ export const agentRuns = pgTable(
     sandboxId: varchar("sandbox_id", { length: 255 }),
     result: jsonb("result"),
     error: text("error"),
+    clerkOrgId: text("clerk_org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     startedAt: timestamp("started_at"),
     completedAt: timestamp("completed_at"),
@@ -55,6 +53,7 @@ export const agentRuns = pgTable(
       table.userId,
       table.createdAt.desc(),
     ),
+    index("idx_agent_runs_clerk_org").on(table.clerkOrgId),
     // Composite index for status-based heartbeat queries
     index("idx_agent_runs_status_heartbeat").on(
       table.status,

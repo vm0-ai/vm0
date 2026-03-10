@@ -2,7 +2,7 @@ import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { composesListContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { eq, desc } from "drizzle-orm";
 import { resolveScope } from "../../../../../src/lib/scope/resolve-scope";
@@ -13,8 +13,8 @@ const router = tsr.router(composesListContract, {
   list: async ({ query, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -22,12 +22,20 @@ const router = tsr.router(composesListContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     // Resolve scope: use ?scope= query param or default scope
-    let scopeId: string;
+    let clerkOrgId: string;
+    let defaultAgentComposeId: string | null = null;
     try {
-      const { scope: resolvedScope } = await resolveScope(userId, query.scope);
-      scopeId = resolvedScope.id;
+      const { scope: resolvedScope } = await resolveScope(
+        userId,
+        query.scope,
+        null,
+        tokenScopeId,
+      );
+      clerkOrgId = resolvedScope.clerkOrgId;
+      defaultAgentComposeId = resolvedScope.defaultAgentComposeId;
     } catch (error) {
       if (isNotFound(error)) {
         return {
@@ -54,12 +62,13 @@ const router = tsr.router(composesListContract, {
     // Query own composes for this scope
     const ownComposes = await globalThis.services.db
       .select({
+        id: agentComposes.id,
         name: agentComposes.name,
         headVersionId: agentComposes.headVersionId,
         updatedAt: agentComposes.updatedAt,
       })
       .from(agentComposes)
-      .where(eq(agentComposes.scopeId, scopeId))
+      .where(eq(agentComposes.clerkOrgId, clerkOrgId))
       .orderBy(desc(agentComposes.updatedAt));
 
     // When using default scope (no ?scope= param), also include email-shared agents
@@ -83,12 +92,14 @@ const router = tsr.router(composesListContract, {
         headVersionId: c.headVersionId,
         updatedAt: c.updatedAt.toISOString(),
         isOwner: true,
+        isDefault: c.id === defaultAgentComposeId,
       })),
       ...sharedComposes.map((c) => ({
         name: `${c.scopeSlug}/${c.name}`,
         headVersionId: c.headVersionId,
         updatedAt: c.updatedAt.toISOString(),
         isOwner: false,
+        isDefault: false,
       })),
     ];
 

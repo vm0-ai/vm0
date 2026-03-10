@@ -1,0 +1,213 @@
+import { getConnectorOAuthConfig } from "@vm0/core";
+import { z } from "zod";
+
+const STRIPE_ACCOUNT_URL = "https://api.stripe.com/v1/account";
+
+interface StripeUserInfo {
+  id: string;
+  username: string | null;
+  email: string | null;
+}
+
+interface StripeTokenResult {
+  accessToken: string;
+  refreshToken: string | null;
+  scopes: string[];
+  userInfo: StripeUserInfo;
+}
+
+interface StripeRefreshResult {
+  accessToken: string;
+  refreshToken: string | null;
+}
+
+/**
+ * Build Stripe Connect OAuth authorization URL.
+ * Uses the Stripe Connect OAuth flow for Standard accounts.
+ */
+export function buildStripeAuthorizationUrl(
+  clientId: string,
+  redirectUri: string,
+  state: string,
+): string {
+  const oauthConfig = getConnectorOAuthConfig("stripe");
+  if (!oauthConfig) {
+    throw new Error("Stripe OAuth config not found");
+  }
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: oauthConfig.scopes.join(" "),
+    state,
+  });
+
+  return `${oauthConfig.authorizationUrl}?${params.toString()}`;
+}
+
+/**
+ * Exchange authorization code for access token and user info.
+ * Stripe Connect returns stripe_user_id and access token in the response.
+ */
+export async function exchangeStripeCode(
+  _clientId: string,
+  clientSecret: string,
+  code: string,
+): Promise<StripeTokenResult> {
+  const oauthConfig = getConnectorOAuthConfig("stripe");
+  if (!oauthConfig) {
+    throw new Error("Stripe OAuth config not found");
+  }
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_secret: clientSecret,
+      code,
+      grant_type: "authorization_code",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Stripe token exchange failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      stripe_user_id: z.string().optional(),
+      scope: z.string().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+
+  if (!data.access_token) {
+    throw new Error("No access token in Stripe response");
+  }
+
+  const stripeUserId = data.stripe_user_id ?? "";
+
+  // Fetch account info for display name and email
+  const userInfo = await fetchStripeAccountInfo(
+    data.access_token,
+    stripeUserId,
+  );
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
+    scopes: data.scope ? data.scope.split(" ") : [],
+    userInfo,
+  };
+}
+
+/**
+ * Refresh a Stripe access token using the refresh token.
+ */
+export async function refreshStripeToken(
+  _clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<StripeRefreshResult> {
+  const oauthConfig = getConnectorOAuthConfig("stripe");
+  if (!oauthConfig) {
+    throw new Error("Stripe OAuth config not found");
+  }
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Stripe token refresh failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+
+  if (!data.access_token) {
+    throw new Error("No access token in Stripe refresh response");
+  }
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
+  };
+}
+
+/**
+ * Fetch Stripe account info for the connected account.
+ */
+async function fetchStripeAccountInfo(
+  accessToken: string,
+  stripeUserId: string,
+): Promise<StripeUserInfo> {
+  const response = await fetch(STRIPE_ACCOUNT_URL, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    // Fall back to just the stripe_user_id if account fetch fails
+    return {
+      id: stripeUserId,
+      username: null,
+      email: null,
+    };
+  }
+
+  const data = z
+    .object({
+      id: z.string().optional(),
+      business_profile: z
+        .object({
+          name: z.string().nullable().optional(),
+        })
+        .nullable()
+        .optional(),
+      email: z.string().nullable().optional(),
+    })
+    .parse(await response.json());
+
+  return {
+    id: data.id ?? stripeUserId,
+    username: data.business_profile?.name ?? null,
+    email: data.email ?? null,
+  };
+}
+
+/**
+ * Get the primary secret name for Stripe connector (the access token).
+ */
+export function getStripeSecretName(): string {
+  return "STRIPE_ACCESS_TOKEN";
+}

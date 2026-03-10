@@ -223,7 +223,10 @@ describe("artifact status", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Status check failed"),
+        expect.stringContaining("500"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Internal server error"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -243,7 +246,7 @@ describe("artifact status", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Status check failed"),
+        expect.stringContaining("500"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Network error"),

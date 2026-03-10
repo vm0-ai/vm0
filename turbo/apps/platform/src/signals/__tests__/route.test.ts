@@ -7,6 +7,7 @@ import {
   pathname$,
   pathParams$,
   searchParams$,
+  updatePathname$,
   updateSearchParams$,
 } from "../route.ts";
 import { setRootSignal$ } from "../root-signal.ts";
@@ -50,6 +51,19 @@ describe("route", () => {
       store.set(updateSearchParams$, params);
 
       expect(store.get(pathname$)).toBe("/test-path");
+    });
+  });
+
+  describe("updatePathname$", () => {
+    it("should update pathname without reloading the route", () => {
+      const { store, signal } = context;
+      const pushStateMock = createPushStateMock(signal);
+      mockLocation({ pathname: "/zero", search: "" }, signal);
+
+      store.set(updatePathname$, "/zero/meet");
+
+      expect(pushStateMock).toHaveBeenCalledWith({}, "", "/zero/meet");
+      expect(store.get(pathname$)).toBe("/zero/meet");
     });
   });
 

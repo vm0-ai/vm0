@@ -22,6 +22,7 @@ import {
   listSchedules,
   enableSchedule,
   getUserPreferences,
+  getScope,
   ApiRequestError,
 } from "../../lib/api";
 import { withErrorHandler } from "../../lib/command";
@@ -563,6 +564,7 @@ interface DeployResult {
 async function buildAndDeploy(params: {
   scheduleName: string;
   composeId: string;
+  scopeId: string;
   agentName: string;
   frequency: ScheduleFrequency;
   time: string | undefined;
@@ -595,6 +597,7 @@ async function buildAndDeploy(params: {
   const deployResult = await deploySchedule({
     name: params.scheduleName,
     composeId: params.composeId,
+    scopeId: params.scopeId,
     cronExpression,
     atTime: atTimeISO,
     intervalSeconds: params.intervalSeconds,
@@ -658,10 +661,11 @@ function displayDeployResult(
 async function tryEnableSchedule(
   scheduleName: string,
   composeId: string,
+  scopeId: string,
   agentName: string,
 ): Promise<void> {
   try {
-    await enableSchedule({ name: scheduleName, composeId });
+    await enableSchedule({ name: scheduleName, composeId, scopeId });
     console.log(
       chalk.green(`✓ Enabled schedule for agent ${chalk.cyan(agentName)}`),
     );
@@ -696,16 +700,23 @@ function showEnableHint(agentName: string): void {
 async function handleScheduleEnabling(params: {
   scheduleName: string;
   composeId: string;
+  scopeId: string;
   agentName: string;
   enableFlag: boolean;
   shouldPromptEnable: boolean;
 }): Promise<void> {
-  const { scheduleName, composeId, agentName, enableFlag, shouldPromptEnable } =
-    params;
+  const {
+    scheduleName,
+    composeId,
+    scopeId,
+    agentName,
+    enableFlag,
+    shouldPromptEnable,
+  } = params;
 
   if (enableFlag) {
     // --enable flag: auto-enable
-    await tryEnableSchedule(scheduleName, composeId, agentName);
+    await tryEnableSchedule(scheduleName, composeId, scopeId, agentName);
     return;
   }
 
@@ -713,7 +724,7 @@ async function handleScheduleEnabling(params: {
     // Interactive: prompt user (default: yes)
     const enableNow = await promptConfirm("Enable this schedule?", true);
     if (enableNow) {
-      await tryEnableSchedule(scheduleName, composeId, agentName);
+      await tryEnableSchedule(scheduleName, composeId, scopeId, agentName);
     } else {
       showEnableHint(agentName);
     }
@@ -741,13 +752,13 @@ export const setupCommand = new Command()
   .option("-e, --enable", "Enable schedule immediately after creation")
   .action(
     withErrorHandler(async (agentName: string, options: SetupOptions) => {
-      // 1. Resolve agent to composeId and get content
+      // 1. Resolve agent to composeId and get content + active scope
       // Note: composeContent is resolved but validation of required secrets/vars
       // is now done server-side against platform tables
-      const { composeId, scheduleName } = await resolveAgent(
-        agentName,
-        options.name,
-      );
+      const [{ composeId, scheduleName }, scope] = await Promise.all([
+        resolveAgent(agentName, options.name),
+        getScope(),
+      ]);
 
       // 2. Check for existing schedule
       const existingSchedule = await findExistingSchedule(
@@ -809,6 +820,7 @@ export const setupCommand = new Command()
       const deployResult = await buildAndDeploy({
         scheduleName,
         composeId,
+        scopeId: scope.id,
         agentName,
         frequency,
         time,
@@ -832,6 +844,7 @@ export const setupCommand = new Command()
       await handleScheduleEnabling({
         scheduleName,
         composeId,
+        scopeId: scope.id,
         agentName,
         enableFlag: options.enable ?? false,
         shouldPromptEnable,

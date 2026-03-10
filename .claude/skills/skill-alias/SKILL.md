@@ -37,7 +37,9 @@ The input parameter follows this format:
 
 ### Step 1: Parse Input Parameter
 
-Parse the input from the args parameter using this format:
+Your args are: `$ARGUMENTS`
+
+Parse the input from the args above using this format:
 
 ```
 ALIAS='SKILL_NAME arguments'

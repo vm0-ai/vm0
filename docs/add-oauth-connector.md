@@ -64,9 +64,54 @@ test -f "/tmp/oauth-credentials/${PROVIDER}" && grep -q "_PROD" "/tmp/oauth-cred
 
 ---
 
+## Authentication Strategy
+
+Before writing any code, determine which authentication methods the provider supports. This decision drives the entire implementation path.
+
+### Decision Matrix
+
+| # | Provider supports | Auth methods to implement | Feature switch for OAuth? | Notes |
+|---|-------------------|--------------------------|---------------------------|-------|
+| 1 | OAuth (review required) + API token | Both `oauth` and `api-token` | Yes (`enabled: false`) | OAuth stays gated until review is approved; API token is available immediately |
+| 2 | OAuth (no review) + API token | Both `oauth` and `api-token` | Yes (`enabled: false`) | OAuth gated during dev/testing; remove switch when ready to ship |
+| 3 | OAuth only (no API token) | `oauth` only | Yes (`enabled: false`) | Standard OAuth-only connector |
+| 4 | API token only (no OAuth) | `api-token` only | No | No OAuth registration needed; skip straight to implementation |
+
+### Secret Naming for API Token
+
+When a connector supports both OAuth and API token, the API token **must write directly to the same target secret** that the OAuth flow's `environmentMapping` maps to — not the intermediate OAuth access token.
+
+Example: if the OAuth flow produces `XXX_ACCESS_TOKEN` and the `environmentMapping` maps it to `XXX_TOKEN`:
+
+```
+# OAuth flow (environment mapping handles the rename):
+XXX_ACCESS_TOKEN  →  environmentMapping  →  XXX_TOKEN
+
+# API token flow (writes directly to the target — no mapping step):
+user-provided token  →  XXX_TOKEN
+```
+
+This means:
+- The `api-token` auth method does **not** need an `environmentMapping` entry.
+- The secret key written by the API token flow (`XXX_TOKEN`) must match the `vm0_secrets` name declared in the corresponding skill in `vm0-ai/vm0-skills`.
+- Both auth methods ultimately produce the same secret key, so the skill works identically regardless of how the user authenticated.
+
+**Naming convention:** The target secret must follow the `XXX_TOKEN` pattern (e.g., `FIGMA_TOKEN`, `MERCURY_TOKEN`). Do not encode the token type in the name (no `_API_KEY`, `_PERSONAL_API_KEY`, `_SECRET_KEY`, `_ACCESS_TOKEN`).
+
+### How to Determine
+
+1. Check the provider's developer documentation for OAuth support (authorization code flow).
+2. Check whether the provider offers personal API tokens / API keys from a dashboard.
+3. If OAuth is supported, check whether a review/approval process is required before external users can authorize (see [Step 5 of Skill Validation Loop](#step-5-check-production-oauth-app-requirements-ai) for common patterns).
+4. Based on the findings, pick the matching row from the decision matrix above and follow the corresponding implementation path.
+
+---
+
 ## OAuth App Registration
 
 Before writing any code, register the OAuth application with the provider. The client ID and client secret generated during registration are required for implementation.
+
+> **Skip this section** if the provider is API-token-only (Decision Matrix row 4). Proceed directly to [Add OAuth Connector Checklist](#add-oauth-connector-checklist).
 
 ### Register Two Apps
 
@@ -132,11 +177,11 @@ After both apps are registered and the credentials file is populated:
    ```
    Then re-run the checks. Only investigate errors that persist after the environment is fresh.
 1. Ensure you use the real product SVG logo from the Internet, not a placeholder image.
-1. Ensure the new connector is protected with a feature switch, and that the feature switch is disabled by default.
-1. Add the OAuth env vars to both `.github/workflows/turbo.yml` and `.github/workflows/release-please.yml` deploy steps (client ID from `vars`, client secret from `secrets`).
-1. Ensure that `.env.tpl` references the correct secrets/vars and that the secret/var names in 1Password match the environment variable names.
-1. Run `bash scripts/sync-oauth.sh PROVIDER_NAME` to sync credentials from `/tmp/oauth-credentials/<PROVIDER>` to 1Password and GitHub. If any fields are missing, fill them in and re-run. Wait for the user to confirm completion.
-1. Verify that the secrets/vars are correctly set on GitHub by running `gh variable list | grep PROVIDER` and `gh secret list | grep PROVIDER`.
+1. **Feature switch:** Only connectors with an OAuth flow (Decision Matrix rows 1–3) need a feature switch (`enabled: false`). API-token-only connectors (row 4) do **not** need a feature switch — they are always visible once merged.
+1. **OAuth env vars (skip for API-token-only):** Add the OAuth env vars to both `.github/workflows/turbo.yml` and `.github/workflows/release-please.yml` deploy steps (client ID from `vars`, client secret from `secrets`).
+1. **`.env.tpl` (skip for API-token-only):** Ensure that `.env.tpl` references the correct secrets/vars and that the secret/var names in 1Password match the environment variable names.
+1. **Credential sync (skip for API-token-only):** Run `bash scripts/sync-oauth.sh PROVIDER_NAME` to sync credentials from `/tmp/oauth-credentials/<PROVIDER>` to 1Password and GitHub. If any fields are missing, fill them in and re-run. Wait for the user to confirm completion.
+1. **Verify GitHub secrets (skip for API-token-only):** Verify that the secrets/vars are correctly set on GitHub by running `gh variable list | grep PROVIDER` and `gh secret list | grep PROVIDER`.
 1. Make sure the local `.env.local` contains the correct secret/var values.
 1. Commit all changes and create a PR using `/pull-request`. This lets CI validate the implementation in parallel while you do local testing.
 1. Start the project locally using `/dev-tunnel` (starts the dev server, creates a Cloudflare tunnel, and sets up the proxy). Verify the server is running and accessible before proceeding.
@@ -273,6 +318,69 @@ After both apps are registered and the credentials file is populated:
    > 2. **Authorization/consent page** — the page asking to grant permissions to our app. This can be clicked directly with `agent-browser click @<authorize-button-ref>` without human confirmation.
 
    **If the callback returns an error page**, check the dev server logs and the error message in the URL. Before diving into code, **search the web for the error** — provider-specific quirks (e.g., OAuth scopes appended to the callback URL, non-standard token response shapes) are often documented in community forums or the provider's own changelog. Use `WebSearch` with the provider name and the error message to see if others have encountered the same issue.
+
+## API-Token-Only Quick Validation
+
+For connectors that only support API tokens (Decision Matrix row 4), there is no OAuth registration, no feature switch, and no connector provider code to write. The implementation is just the `CONNECTOR_TYPES` entry plus a skill. Use this streamlined flow to validate the skill quickly.
+
+### Prerequisites
+
+Ensure the dev server is running and the CLI is authenticated:
+
+```bash
+vm0 auth status          # ✓ Authenticated
+vm0 scope status         # Shows scope slug
+vm0 model-provider list  # Shows default provider
+```
+
+If any of these are not set up, follow [Step C in the Add OAuth Connector Checklist](#add-oauth-connector-checklist) for CLI auth, scope, and model provider setup.
+
+### Step 1: Obtain the API token [AI + Human]
+
+Use `agent-browser` in headed mode (via noVNC) to navigate the provider's developer portal and generate an API token. This is similar to the OAuth app registration flow — the user may need to assist with login.
+
+1. **Start the noVNC stack** (if not already running) — see the [noVNC setup instructions](#add-oauth-connector-checklist) in the OAuth checklist.
+
+2. **Navigate to the provider's API token page:**
+
+   ```bash
+   DISPLAY=:99 agent-browser --headed open "https://<provider-developer-portal-url>"
+   agent-browser wait 3000 && agent-browser snapshot -i
+   ```
+
+3. **If provider login is required**, stop and ask the user to log in via the noVNC viewer, then continue.
+
+4. **Generate or copy the API token.** Navigate to the API keys / tokens section, create a new token if needed, and copy the value.
+
+### Step 2: Set the secret via CLI [AI]
+
+Use `vm0 secret set` to store the API token under the name declared in the connector's `environmentMapping`:
+
+```bash
+vm0 secret set <SECRET_NAME> "<api-token-value>"
+```
+
+For example, for SimilarWeb:
+
+```bash
+vm0 secret set SIMILARWEB_TOKEN "your-similarweb-api-key"
+```
+
+The secret name must match both the `environmentMapping` key in `CONNECTOR_TYPES` and the `vm0_secrets` entry in the skill's `SKILL.md`.
+
+### Step 3: Validate with `vm0 cook` [AI]
+
+Follow the standard [Skill Validation Loop](#skill-validation-loop) starting from Step 1 (create or update the skill) through Step 4 (iterate until all examples pass). Since there is no OAuth flow, reconnection is never needed — if the token is wrong or expired, simply re-run `vm0 secret set` with a new token.
+
+### Step 4: Ship [AI]
+
+API-token-only connectors do not need a feature switch and do not require production OAuth app registration. Once the skill passes validation:
+
+1. Commit all changes (connector entry + skill) and create a PR.
+2. Ensure CI passes.
+3. No feature switch removal needed — the connector is immediately available to all users.
+
+---
 
 ## Skill Validation Loop
 

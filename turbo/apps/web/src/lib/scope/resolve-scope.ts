@@ -1,16 +1,14 @@
-import { clerkClient } from "@clerk/nextjs/server";
-import { scopeMembers } from "../../db/schema/scope-member";
-import { hasClerkAuth } from "../../env";
-import { isForbidden, badRequest, notFound } from "../errors";
+import { auth, clerkClient } from "@clerk/nextjs/server";
+import { forbidden, badRequest, notFound } from "../errors";
 import { logger } from "../logger";
-import { scopeRoleSchema } from "@vm0/core";
-import { getScopeBySlug } from "./scope-service";
 import {
-  requireScopeMember,
-  getDefaultScope,
-  getScopeMember,
-} from "./scope-member-service";
+  getScopeBySlug,
+  getScopeByClerkOrgId,
+  getScopeById,
+} from "./scope-service";
+import { getDefaultScope } from "./scope-member-service";
 
+import type { ScopeRole } from "@vm0/core";
 import type { scopes } from "../../db/schema/scope";
 
 const log = logger("scope:resolve");
@@ -18,23 +16,57 @@ const log = logger("scope:resolve");
 type Scope = typeof scopes.$inferSelect;
 
 /**
- * Verify a user's Clerk org membership and lazily create a scope_members record.
- *
- * Only attempts sync when:
- * - Clerk auth is configured
- * - The scope has a real Clerk org ID (not a sentinel like "pending_*" or "org_self_hosted")
- *
- * Returns the new scope member record, or null if the user is not a Clerk member.
+ * Minimal member object returned by scope resolution.
+ * Contains only the fields used downstream (primarily `role` for permission checks).
  */
-async function syncClerkMembership(scope: Scope, userId: string) {
-  if (
-    !hasClerkAuth() ||
-    scope.clerkOrgId.startsWith("pending_") ||
-    scope.clerkOrgId === "org_self_hosted"
-  ) {
-    return null;
+type ResolvedMember = {
+  role: ScopeRole;
+  userId: string;
+  scopeId: string;
+};
+
+/** Map Clerk org role string to our ScopeRole type. */
+function mapOrgRole(clerkRole: string | undefined | null): ScopeRole {
+  return clerkRole === "org:admin" ? "admin" : "member";
+}
+
+/**
+ * Verify a user's membership in a Clerk organization.
+ *
+ * Fast path: if the scope's clerkOrgId matches the JWT's active org,
+ * trust the JWT claims and skip the Clerk API call entirely.
+ *
+ * Slow path: for cross-org access (e.g. ?scope= pointing to a non-active org),
+ * fall back to Clerk Backend API.
+ *
+ * CLI token path: if tokenScopeId is provided and matches the scope,
+ * trust the token (membership was verified at token creation time).
+ */
+async function verifyMembership(
+  scope: Scope,
+  userId: string,
+  authResult: Awaited<ReturnType<typeof auth>>,
+  tokenScopeId?: string | null,
+): Promise<ResolvedMember> {
+  // CLI token with stored scope_id — trust if it matches
+  if (tokenScopeId && scope.id === tokenScopeId) {
+    return { role: "admin", userId, scopeId: scope.id };
   }
 
+  // JWT fast path: active org matches → trust JWT, no API call
+  if (scope.clerkOrgId === authResult.orgId) {
+    return {
+      role: mapOrgRole(authResult.orgRole),
+      userId,
+      scopeId: scope.id,
+    };
+  }
+
+  if (scope.clerkOrgId.startsWith("pending_")) {
+    throw forbidden("You are not a member of this scope");
+  }
+
+  // Slow path: cross-org access → Clerk Backend API
   try {
     const client = await clerkClient();
     const memberships =
@@ -45,76 +77,116 @@ async function syncClerkMembership(scope: Scope, userId: string) {
     const membership = memberships.data.find(
       (m) => m.publicUserData?.userId === userId,
     );
-    if (!membership) return null;
+    if (!membership) {
+      throw forbidden("You are not a member of this scope");
+    }
 
-    const role = membership.role === "org:admin" ? "admin" : "member";
-
-    // Create scope_members record
-    const [member] = await globalThis.services.db
-      .insert(scopeMembers)
-      .values({ scopeId: scope.id, userId, role })
-      .onConflictDoNothing()
-      .returning();
-
-    // If onConflictDoNothing returned nothing, the record was created by another concurrent request
-    const record = member ?? (await getScopeMember(scope.id, userId));
-    if (!record) return null;
-    return { ...record, role: scopeRoleSchema.parse(record.role) };
+    return {
+      role: mapOrgRole(membership.role),
+      userId,
+      scopeId: scope.id,
+    };
   } catch (error) {
-    // Intentional exception to fail-fast principle: when Clerk is unavailable,
-    // deny access (return null -> 403) rather than crashing the request.
-    // This is a security-first choice — external service failure should not
-    // grant access. The error is logged for observability.
-    log.error("syncClerkMembership failed", {
+    // Re-throw our own forbidden errors
+    if (error instanceof Error && error.message.includes("not a member")) {
+      throw error;
+    }
+    // Clerk API failure — deny access (security-first)
+    log.error("verifyMembership failed", {
       scopeId: scope.id,
       userId,
       clerkOrgId: scope.clerkOrgId,
       error,
     });
-    return null;
+    throw forbidden("You are not a member of this scope");
   }
 }
 
 /**
- * Verify scope membership with Clerk org sync fallback.
- *
- * Checks scope_members first. If the user is not found and the scope has a
- * Clerk org, attempts to lazily sync membership from Clerk.
+ * Override scope.tier with JWT session claim when the resolved org matches
+ * the JWT's active org. Falls back to DB tier if claim is missing.
  */
-async function requireMemberWithClerkSync(scope: Scope, userId: string) {
-  try {
-    return await requireScopeMember(scope.id, userId);
-  } catch (error) {
-    if (!isForbidden(error) || !scope.clerkOrgId) throw error;
-
-    // User not in scope_members — check Clerk org membership
-    const member = await syncClerkMembership(scope, userId);
-    if (!member) throw error; // Not a Clerk member either
-    return member;
+function applyJwtTier(
+  scope: Scope,
+  authResult: Awaited<ReturnType<typeof auth>>,
+): Scope {
+  if (
+    scope.clerkOrgId === authResult.orgId &&
+    authResult.sessionClaims?.org_tier
+  ) {
+    return { ...scope, tier: authResult.sessionClaims.org_tier };
   }
+  return scope;
 }
 
 /**
- * Resolve scope from request context using scope_members.
+ * Resolve scope from request context.
+ *
+ * Uses JWT claims for membership verification when possible (zero Clerk API calls).
+ * Falls back to Clerk Backend API for cross-org access or CLI tokens without scope_id.
  *
  * Resolution order:
- * 1. ?scope=<slug> query param -> look up scope, verify membership
- *    - If not in scope_members, try to sync from Clerk org membership
- * 2. Fallback -> user's default scope (first owned scope from scope_members)
+ * 1. tokenScopeId (from CLI token) -> direct scope lookup, trusted
+ * 2. scopeSlug (?scope=<slug> query param) -> look up scope, verify membership
+ * 3. clerkOrgId (from JWT session token) -> look up scope by org ID
+ * 4. Fallback -> user's default scope
  *
- * Returns { scope, member } for the resolved scope.
+ * When the resolved org matches the JWT's active org, `tier` is read from
+ * sessionClaims.org_tier (falling back to DB value if missing).
  */
-export async function resolveScope(userId: string, scopeSlug?: string | null) {
-  // 1. Explicit scope selection via ?scope= query param
+export async function resolveScope(
+  userId: string,
+  scopeSlug?: string | null,
+  clerkOrgId?: string | null,
+  tokenScopeId?: string | null,
+) {
+  const authResult = await auth();
+
+  // 1. Explicit scope selection via ?scope= query param (highest priority)
   if (scopeSlug) {
     const scope = await getScopeBySlug(scopeSlug);
     if (!scope) throw notFound("Scope not found");
 
-    const member = await requireMemberWithClerkSync(scope, userId);
-    return { scope, member };
+    const member = await verifyMembership(
+      scope,
+      userId,
+      authResult,
+      tokenScopeId,
+    );
+    return { scope: applyJwtTier(scope, authResult), member };
   }
 
-  // 2. Default scope fallback
+  // 2. CLI token with scope_id — direct lookup, no Clerk API needed
+  if (tokenScopeId) {
+    const scope = await getScopeById(tokenScopeId);
+    if (scope) {
+      return {
+        scope: applyJwtTier(scope, authResult),
+        member: { role: "admin" as ScopeRole, userId, scopeId: scope.id },
+      };
+    }
+  }
+
+  // 3. Clerk org ID — use provided value or auto-detect from JWT session token.
+  // For CLI tokens, auth().orgId returns null (no Clerk session),
+  // so this tier is skipped and we fall through to the default scope.
+  const effectiveOrgId = clerkOrgId ?? authResult.orgId ?? null;
+  if (effectiveOrgId) {
+    const scope = await getScopeByClerkOrgId(effectiveOrgId);
+    if (scope) {
+      const member = await verifyMembership(
+        scope,
+        userId,
+        authResult,
+        tokenScopeId,
+      );
+      return { scope: applyJwtTier(scope, authResult), member };
+    }
+    // Scope not found for this clerkOrgId — fall through to default
+    // (scope may not be created yet in the migration period)
+  }
+
+  // 4. Default scope fallback
   return getDefaultScope(userId);
 }
 
@@ -128,6 +200,7 @@ export async function resolveScope(userId: string, scopeSlug?: string | null) {
 export async function requireScopeFromRequest(
   request: Request,
   userId: string,
+  tokenScopeId?: string | null,
 ) {
   const url = new URL(request.url);
   const scopeSlug = url.searchParams.get("scope");
@@ -139,6 +212,12 @@ export async function requireScopeFromRequest(
     throw notFound("Scope not found");
   }
 
-  const member = await requireMemberWithClerkSync(scope, userId);
-  return { scope, member };
+  const authResult = await auth();
+  const member = await verifyMembership(
+    scope,
+    userId,
+    authResult,
+    tokenScopeId,
+  );
+  return { scope: applyJwtTier(scope, authResult), member };
 }

@@ -5,8 +5,6 @@
  * Add validation only when a variable is required by the application.
  */
 
-export const hasClerkAuth = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-
 declare global {
   interface Window {
     __vitest_index__?: boolean;

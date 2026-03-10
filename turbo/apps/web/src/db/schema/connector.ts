@@ -7,7 +7,6 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
-import { scopes } from "./scope";
 
 /**
  * Connectors table
@@ -19,9 +18,7 @@ export const connectors = pgTable(
   "connectors",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    scopeId: uuid("scope_id")
-      .references(() => scopes.id, { onDelete: "cascade" })
-      .notNull(),
+    scopeId: uuid("scope_id").notNull(),
     type: varchar("type", { length: 50 }).notNull(), // "github"
     authMethod: varchar("auth_method", { length: 50 }).notNull(), // "oauth"
 
@@ -32,17 +29,17 @@ export const connectors = pgTable(
     oauthScopes: text("oauth_scopes"), // JSON array of scopes
     tokenExpiresAt: timestamp("token_expires_at"), // null = non-expiring token
     userId: text("user_id").notNull(),
+    clerkOrgId: text("clerk_org_id").notNull(),
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    // One connector per type per user within a scope
-    uniqueIndex("idx_connectors_scope_user_type").on(
-      table.scopeId,
+    index("idx_connectors_clerk_org").on(table.clerkOrgId),
+    uniqueIndex("idx_connectors_clerk_org_user_type").on(
+      table.clerkOrgId,
       table.userId,
       table.type,
     ),
-    index("idx_connectors_scope").on(table.scopeId),
   ],
 );

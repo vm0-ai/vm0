@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { getUsage } from "../../lib/api";
 import { parseTime } from "../../lib/utils/time-parser";
 import { formatDuration } from "../../lib/utils/duration-formatter";
+import { withErrorHandler } from "../../lib/command";
 
 /**
  * Maximum time range allowed (30 days in milliseconds)
@@ -99,8 +100,8 @@ export const usageCommand = new Command()
     "--until <date>",
     "End date (ISO format or relative, defaults to now)",
   )
-  .action(async (options: { since?: string; until?: string }) => {
-    try {
+  .action(
+    withErrorHandler(async (options: { since?: string; until?: string }) => {
       // Calculate date range
       const now = new Date();
       let endDate: Date;
@@ -196,17 +197,5 @@ export const usageCommand = new Command()
         `${"TOTAL".padEnd(10)}${totalRunsDisplay}    ${totalTimeDisplay}`,
       );
       console.log();
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.red("✗ Not authenticated"));
-          console.error(chalk.dim("  Run: vm0 auth login"));
-        } else {
-          console.error(chalk.red(`✗ ${error.message}`));
-        }
-      } else {
-        console.error(chalk.red("✗ An unexpected error occurred"));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

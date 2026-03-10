@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
 import {
   IconPlus,
   IconList,
@@ -46,8 +47,11 @@ export const SCHEDULE_FREQUENCY_OPTIONS = [
 ] as const;
 
 export const SCHEDULE_LOOP_MINUTES = [5, 15, 30, 60] as const;
-export const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i);
-export const MINUTE_OPTIONS = [0, 15, 30, 45];
+export const HOUR_OPTIONS: readonly number[] = Array.from(
+  { length: 24 },
+  (_, i) => i,
+);
+export const MINUTE_OPTIONS = [0, 15, 30, 45] as const;
 export const TIMEZONE_OPTIONS = [
   "UTC",
   "Asia/Shanghai",
@@ -290,7 +294,7 @@ export function getEntriesInCell(
   });
 }
 
-export const DEFAULT_SCHEDULE: ScheduleEntry[] = [
+export const DEFAULT_SCHEDULE: readonly Readonly<ScheduleEntry>[] = [
   {
     id: "1",
     time: "Every weekday at 9:00 AM",
@@ -311,7 +315,7 @@ export const DEFAULT_SCHEDULE: ScheduleEntry[] = [
 ];
 
 /** Dummy schedule for sub-agent (job) detail page — one entry per sub-agent. */
-const DUMMY_AGENT_SCHEDULE: ScheduleEntry[] = [
+const DUMMY_AGENT_SCHEDULE: readonly Readonly<ScheduleEntry>[] = [
   {
     id: "j1",
     time: "Every weekday at 9:00 AM",
@@ -323,7 +327,7 @@ export { DUMMY_AGENT_SCHEDULE };
 interface ZeroScheduleCardProps {
   title: string;
   subtitle: string;
-  initialSchedule: ScheduleEntry[];
+  initialSchedule: readonly Readonly<ScheduleEntry>[];
 }
 
 export function ZeroScheduleCard({
@@ -331,24 +335,41 @@ export function ZeroScheduleCard({
   subtitle,
   initialSchedule,
 }: ZeroScheduleCardProps) {
-  const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">(
-    "list",
-  );
-  const [scheduleList, setScheduleList] =
-    useState<ScheduleEntry[]>(initialSchedule);
-  const [addScheduleOpen, setAddScheduleOpen] = useState(false);
-  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(
-    null,
-  );
-  const [newSchedulePrompt, setNewSchedulePrompt] = useState("");
-  const [scheduleFreq, setScheduleFreq] = useState<string>("every_day");
-  const [scheduleDate, setScheduleDate] = useState<string>(() =>
+  const scheduleViewMode$ = useCCState<"list" | "calendar">("list");
+  const scheduleViewMode = useGet(scheduleViewMode$);
+  const setScheduleViewMode = useSet(scheduleViewMode$);
+  const scheduleList$ = useCCState<ScheduleEntry[]>([...initialSchedule]);
+  const scheduleList = useGet(scheduleList$);
+  const setScheduleList = useSet(scheduleList$);
+  const addScheduleOpen$ = useCCState(false);
+  const addScheduleOpen = useGet(addScheduleOpen$);
+  const setAddScheduleOpen = useSet(addScheduleOpen$);
+  const editingScheduleId$ = useCCState<string | null>(null);
+  const editingScheduleId = useGet(editingScheduleId$);
+  const setEditingScheduleId = useSet(editingScheduleId$);
+  const newSchedulePrompt$ = useCCState("");
+  const newSchedulePrompt = useGet(newSchedulePrompt$);
+  const setNewSchedulePrompt = useSet(newSchedulePrompt$);
+  const scheduleFreq$ = useCCState<string>("every_day");
+  const scheduleFreq = useGet(scheduleFreq$);
+  const setScheduleFreq = useSet(scheduleFreq$);
+  const scheduleDate$ = useCCState<string>(
     new Date().toISOString().slice(0, 10),
   );
-  const [scheduleHour, setScheduleHour] = useState(9);
-  const [scheduleMinute, setScheduleMinute] = useState(0);
-  const [scheduleTimezone, setScheduleTimezone] = useState("UTC");
-  const [scheduleLoopMinutes, setScheduleLoopMinutes] = useState(15);
+  const scheduleDate = useGet(scheduleDate$);
+  const setScheduleDate = useSet(scheduleDate$);
+  const scheduleHour$ = useCCState(9);
+  const scheduleHour = useGet(scheduleHour$);
+  const setScheduleHour = useSet(scheduleHour$);
+  const scheduleMinute$ = useCCState(0);
+  const scheduleMinute = useGet(scheduleMinute$);
+  const setScheduleMinute = useSet(scheduleMinute$);
+  const scheduleTimezone$ = useCCState("UTC");
+  const scheduleTimezone = useGet(scheduleTimezone$);
+  const setScheduleTimezone = useSet(scheduleTimezone$);
+  const scheduleLoopMinutes$ = useCCState(15);
+  const scheduleLoopMinutes = useGet(scheduleLoopMinutes$);
+  const setScheduleLoopMinutes = useSet(scheduleLoopMinutes$);
 
   const openAddSchedule = () => {
     setEditingScheduleId(null);

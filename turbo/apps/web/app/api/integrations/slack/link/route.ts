@@ -16,7 +16,7 @@ import {
 } from "../../../../../src/lib/slack/handlers/shared";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { addPermission } from "../../../../../src/lib/agent/permission-service";
-import { getUserScopeByClerkId } from "../../../../../src/lib/scope/scope-service";
+import { getDefaultScopeByClerkUserId } from "../../../../../src/lib/scope/scope-service";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { logger } from "../../../../../src/lib/logger";
 import { syncWorkspaceAgentPermissions } from "../../../../../src/lib/slack/permission-sync";
@@ -115,12 +115,12 @@ async function buildAgentFields(
 
   let agents: Array<{ id: string; name: string }> = [];
   if (isAdmin) {
-    const userScope = await getUserScopeByClerkId(userId);
-    if (userScope) {
+    const defaultScope = await getDefaultScopeByClerkUserId(userId);
+    if (defaultScope) {
       const userAgents = await globalThis.services.db
         .select({ id: agentComposes.id, name: agentComposes.name })
         .from(agentComposes)
-        .where(eq(agentComposes.scopeId, userScope.id));
+        .where(eq(agentComposes.clerkOrgId, defaultScope.clerkOrgId));
 
       // Prepend default agent, deduplicate by id
       const seen = new Set<string>();

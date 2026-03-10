@@ -5,7 +5,7 @@ import {
 } from "../../../src/lib/ts-rest-handler";
 import { scopeContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
-import { getUserId } from "../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../src/lib/auth/get-user-id";
 import {
   createScope,
   updateScopeSlug,
@@ -37,47 +37,56 @@ function scopeToResponseBody(scope: {
 
 const router = tsr.router(scopeContract, {
   /**
-   * GET /api/scope - Get current user's scope
+   * GET /api/scope - Get current user's default scope
    *
-   * Resolves the active scope via ?scope=<slug> query param,
+   * Resolves the active scope via clerkOrgId from Clerk session,
    * or falls back to the user's default scope (first admin membership).
    */
   get: async ({ headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     try {
-      const { scope } = await resolveScope(userId);
+      const { scope } = await resolveScope(userId, null, null, tokenScopeId);
 
       return { status: 200 as const, body: scopeToResponseBody(scope) };
     } catch (error) {
       if (isNotFound(error)) {
-        // Auto-create default scope for new users
-        const scope = await ensureDefaultScope(userId);
-        return { status: 200 as const, body: scopeToResponseBody(scope) };
+        // Auto-create default scope for new users via JIT Clerk org discovery
+        try {
+          const scope = await ensureDefaultScope(userId);
+          return { status: 200 as const, body: scopeToResponseBody(scope) };
+        } catch (ensureError) {
+          if (isNotFound(ensureError)) {
+            return createErrorResponse("NOT_FOUND", ensureError.message);
+          }
+          throw ensureError;
+        }
       }
       throw error;
     }
   },
 
   /**
-   * POST /api/scope - Create user's scope
+   * POST /api/scope - Create a scope
    */
   create: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
+    const { userId } = authCtx;
 
     const { slug } = body;
 
-    log.debug("creating user scope", { userId, slug });
+    log.debug("creating scope", { userId, slug });
 
     try {
       // vm0-admin slug policy: allow vm0-prefixed slugs for admin users only
@@ -107,16 +116,17 @@ const router = tsr.router(scopeContract, {
   /**
    * PUT /api/scope - Update active scope slug
    *
-   * Resolves the active scope via ?scope=<slug> query param,
+   * Resolves the active scope via clerkOrgId from Clerk session,
    * or falls back to the user's default scope (first admin membership).
    */
   update: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     const { slug, force } = body;
 
@@ -124,7 +134,12 @@ const router = tsr.router(scopeContract, {
 
     let existingScope;
     try {
-      ({ scope: existingScope } = await resolveScope(userId));
+      ({ scope: existingScope } = await resolveScope(
+        userId,
+        null,
+        null,
+        tokenScopeId,
+      ));
     } catch (error) {
       if (isNotFound(error)) {
         return createErrorResponse(

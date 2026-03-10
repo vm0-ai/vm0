@@ -34,6 +34,7 @@ import {
 } from "@vm0/core";
 import type { z } from "zod";
 import { getApiUrl, getActiveToken } from "./config";
+import { handleError } from "./core/client-factory";
 
 // Import types from @vm0/core contracts
 import type {
@@ -482,7 +483,7 @@ class ApiClient {
   }
 
   /**
-   * Get current user's scope
+   * Get current user's default scope
    */
   async getScope(): Promise<ScopeResponse> {
     const baseUrl = await this.getBaseUrl();
@@ -509,7 +510,7 @@ class ApiClient {
   }
 
   /**
-   * Create user's scope
+   * Create user's default scope
    */
   async createScope(body: {
     slug: string;
@@ -539,7 +540,7 @@ class ApiClient {
   }
 
   /**
-   * Update user's scope slug
+   * Update user's default scope slug
    */
   async updateScope(body: {
     slug: string;
@@ -1259,9 +1260,7 @@ class ApiClient {
       return result.body;
     }
 
-    const errorBody = result.body as ApiErrorResponse;
-    const message = errorBody.error?.message || "Failed to search logs";
-    throw new Error(message);
+    handleError(result, "Failed to search logs");
   }
 }
 

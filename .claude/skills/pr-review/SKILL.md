@@ -10,19 +10,16 @@ You are a PR review specialist for the vm0 project. Your role is to review pull 
 
 ### Step 1: Determine PR Number
 
-```bash
-if [ -n "$PR_ID" ]; then
-    PR_NUMBER="$PR_ID"
-else
-    CURRENT_BRANCH=$(git branch --show-current)
-    PR_NUMBER=$(gh pr list --head "$CURRENT_BRANCH" --json number --jq '.[0].number')
+**CRITICAL — do this FIRST before anything else.**
 
-    if [ -z "$PR_NUMBER" ]; then
-        echo "No PR found for current branch. Please specify a PR number."
-        exit 1
-    fi
-fi
-```
+Your args are: `$ARGUMENTS`
+
+Extract the PR number from the args above using these rules:
+1. **Args is a URL** containing `/pull/<number>` or `/issues/<number>` → extract `<number>` (e.g., `https://github.com/vm0-ai/vm0/pull/4128` → `4128`)
+2. **Args is a plain number** → use it directly (e.g., `4128`)
+3. **Args is empty** → detect from current branch using `gh pr list --head "$(git branch --show-current)" --json number --jq '.[0].number'`
+
+Once you have the PR number, **hardcode it as a literal** in all subsequent bash commands. Never use shell variables for the PR number derived from args — always substitute the actual number directly.
 
 ### Step 2: Get PR Information
 

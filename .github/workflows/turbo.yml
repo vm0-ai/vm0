@@ -31,9 +31,6 @@ jobs:
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
       e2b-changed: ${{ steps.detect-e2b.outputs.e2b-changed }}
-      sandbox-changed: ${{ steps.detect-docker.outputs.sandbox-changed }}
-      docker-web-changed: ${{ steps.detect-docker.outputs.docker-web-changed }}
-      docker-platform-changed: ${{ steps.detect-docker.outputs.docker-platform-changed }}
       migration-changed: ${{ steps.detect-migration.outputs.migration-changed }}
       crates-changed: ${{ steps.detect-crates.outputs.crates-changed }}
       ci-changed: ${{ steps.detect-ci.outputs.ci-changed }}
@@ -105,47 +102,6 @@ jobs:
           else
             echo "No E2B template changes"
             echo "e2b-changed=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Detect Docker file changes
-        id: detect-docker
-        run: |
-          # Determine base ref based on event type
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_REF=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
-          elif [ "${{ github.event_name }}" = "merge_group" ]; then
-            BASE_REF="${{ github.event.merge_group.base_sha }}"
-          else
-            BASE_REF="HEAD^"
-          fi
-
-          CHANGED_FILES=$(git diff --name-only "$BASE_REF" HEAD)
-
-          # Check if web Docker files changed
-          if echo "$CHANGED_FILES" | grep -qE "^docker/(Dockerfile\.web|entrypoint\.sh)$"; then
-            echo "Docker web file changes detected"
-            echo "docker-web-changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "No Docker web file changes"
-            echo "docker-web-changed=false" >> $GITHUB_OUTPUT
-          fi
-
-          # Check if platform Docker files changed
-          if echo "$CHANGED_FILES" | grep -qE "^docker/(Dockerfile\.platform|Caddyfile\.platform)$"; then
-            echo "Docker platform file changes detected"
-            echo "docker-platform-changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "No Docker platform file changes"
-            echo "docker-platform-changed=false" >> $GITHUB_OUTPUT
-          fi
-
-          # Check if sandbox Docker file changed
-          if echo "$CHANGED_FILES" | grep -q "^docker/Dockerfile\.sandbox$"; then
-            echo "Docker sandbox file changes detected"
-            echo "sandbox-changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "No Docker sandbox file changes"
-            echo "sandbox-changed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Detect migration/schema changes
@@ -499,7 +455,6 @@ jobs:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          SKIP_ENV_VALIDATION: "true"
           BLOG_BASE_URL: ${{ needs.prepare.outputs.web-preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
@@ -534,6 +489,8 @@ jobs:
           NOTION_OAUTH_CLIENT_SECRET: ${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
           GOOGLE_OAUTH_CLIENT_ID: ${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          MICROSOFT_OAUTH_CLIENT_ID: ${{ vars.MICROSOFT_OAUTH_CLIENT_ID }}
+          MICROSOFT_OAUTH_CLIENT_SECRET: ${{ secrets.MICROSOFT_OAUTH_CLIENT_SECRET }}
           LINEAR_OAUTH_CLIENT_ID: ${{ vars.LINEAR_OAUTH_CLIENT_ID }}
           LINEAR_OAUTH_CLIENT_SECRET: ${{ secrets.LINEAR_OAUTH_CLIENT_SECRET }}
           FIGMA_OAUTH_CLIENT_ID: ${{ vars.FIGMA_OAUTH_CLIENT_ID }}
@@ -570,10 +527,22 @@ jobs:
           SUPABASE_OAUTH_CLIENT_SECRET: ${{ secrets.SUPABASE_OAUTH_CLIENT_SECRET }}
           HUBSPOT_OAUTH_CLIENT_ID: ${{ vars.HUBSPOT_OAUTH_CLIENT_ID }}
           HUBSPOT_OAUTH_CLIENT_SECRET: ${{ secrets.HUBSPOT_OAUTH_CLIENT_SECRET }}
+          CLOSE_OAUTH_CLIENT_ID: ${{ vars.CLOSE_OAUTH_CLIENT_ID }}
+          CLOSE_OAUTH_CLIENT_SECRET: ${{ secrets.CLOSE_OAUTH_CLIENT_SECRET }}
+          META_ADS_OAUTH_CLIENT_ID: ${{ vars.META_ADS_OAUTH_CLIENT_ID }}
+          META_ADS_OAUTH_CLIENT_SECRET: ${{ secrets.META_ADS_OAUTH_CLIENT_SECRET }}
+          AHREFS_OAUTH_CLIENT_ID: ${{ vars.AHREFS_OAUTH_CLIENT_ID }}
+          AHREFS_OAUTH_CLIENT_SECRET: ${{ secrets.AHREFS_OAUTH_CLIENT_SECRET }}
           AIRTABLE_OAUTH_CLIENT_ID: ${{ vars.AIRTABLE_OAUTH_CLIENT_ID }}
           AIRTABLE_OAUTH_CLIENT_SECRET: ${{ secrets.AIRTABLE_OAUTH_CLIENT_SECRET }}
           TODOIST_OAUTH_CLIENT_ID: ${{ vars.TODOIST_OAUTH_CLIENT_ID }}
           TODOIST_OAUTH_CLIENT_SECRET: ${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
+          ASANA_OAUTH_CLIENT_ID: ${{ vars.ASANA_OAUTH_CLIENT_ID }}
+          ASANA_OAUTH_CLIENT_SECRET: ${{ secrets.ASANA_OAUTH_CLIENT_SECRET }}
+          POSTHOG_OAUTH_CLIENT_ID: ${{ vars.POSTHOG_OAUTH_CLIENT_ID }}
+          POSTHOG_OAUTH_CLIENT_SECRET: ${{ secrets.POSTHOG_OAUTH_CLIENT_SECRET }}
+          STRIPE_OAUTH_CLIENT_ID: ${{ vars.STRIPE_OAUTH_CLIENT_ID }}
+          STRIPE_OAUTH_CLIENT_SECRET: ${{ secrets.STRIPE_OAUTH_CLIENT_SECRET }}
           NGROK_API_KEY: ${{ secrets.NGROK_API_KEY }}
           NGROK_COMPUTER_CONNECTOR_DOMAIN: ${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
           PLATFORM_URL: ${{ needs.prepare.outputs.platform-preview-url }}
@@ -711,6 +680,8 @@ jobs:
             NOTION_OAUTH_CLIENT_SECRET=${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
             GOOGLE_OAUTH_CLIENT_ID=${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
             GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+            MICROSOFT_OAUTH_CLIENT_ID=${{ vars.MICROSOFT_OAUTH_CLIENT_ID }}
+            MICROSOFT_OAUTH_CLIENT_SECRET=${{ secrets.MICROSOFT_OAUTH_CLIENT_SECRET }}
             LINEAR_OAUTH_CLIENT_ID=${{ vars.LINEAR_OAUTH_CLIENT_ID }}
             LINEAR_OAUTH_CLIENT_SECRET=${{ secrets.LINEAR_OAUTH_CLIENT_SECRET }}
             FIGMA_OAUTH_CLIENT_ID=${{ vars.FIGMA_OAUTH_CLIENT_ID }}
@@ -747,10 +718,20 @@ jobs:
             CANVA_OAUTH_CLIENT_SECRET=${{ secrets.CANVA_OAUTH_CLIENT_SECRET }}
             HUBSPOT_OAUTH_CLIENT_ID=${{ vars.HUBSPOT_OAUTH_CLIENT_ID }}
             HUBSPOT_OAUTH_CLIENT_SECRET=${{ secrets.HUBSPOT_OAUTH_CLIENT_SECRET }}
+            CLOSE_OAUTH_CLIENT_ID=${{ vars.CLOSE_OAUTH_CLIENT_ID }}
+            CLOSE_OAUTH_CLIENT_SECRET=${{ secrets.CLOSE_OAUTH_CLIENT_SECRET }}
+            META_ADS_OAUTH_CLIENT_ID=${{ vars.META_ADS_OAUTH_CLIENT_ID }}
+            META_ADS_OAUTH_CLIENT_SECRET=${{ secrets.META_ADS_OAUTH_CLIENT_SECRET }}
+            AHREFS_OAUTH_CLIENT_ID=${{ vars.AHREFS_OAUTH_CLIENT_ID }}
+            AHREFS_OAUTH_CLIENT_SECRET=${{ secrets.AHREFS_OAUTH_CLIENT_SECRET }}
             AIRTABLE_OAUTH_CLIENT_ID=${{ vars.AIRTABLE_OAUTH_CLIENT_ID }}
             AIRTABLE_OAUTH_CLIENT_SECRET=${{ secrets.AIRTABLE_OAUTH_CLIENT_SECRET }}
             TODOIST_OAUTH_CLIENT_ID=${{ vars.TODOIST_OAUTH_CLIENT_ID }}
             TODOIST_OAUTH_CLIENT_SECRET=${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
+            ASANA_OAUTH_CLIENT_ID=${{ vars.ASANA_OAUTH_CLIENT_ID }}
+            ASANA_OAUTH_CLIENT_SECRET=${{ secrets.ASANA_OAUTH_CLIENT_SECRET }}
+            STRIPE_OAUTH_CLIENT_ID=${{ vars.STRIPE_OAUTH_CLIENT_ID }}
+            STRIPE_OAUTH_CLIENT_SECRET=${{ secrets.STRIPE_OAUTH_CLIENT_SECRET }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
             NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
             PLATFORM_URL=${{ needs.prepare.outputs.platform-preview-url }}
@@ -1124,13 +1105,12 @@ jobs:
           GUEST_MOCK_CLAUDE_PATH=target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-mock-claude \
           cargo build --profile $CARGO_PROFILE --target $TARGET_TRIPLE -p runner
 
-      - name: Setup SSH
-        env:
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       - name: Resolve metal hosts
         id: host
@@ -1154,7 +1134,7 @@ jobs:
           # Split test files into chunks via random round-robin for balanced runtime
           mapfile -t FILES < <(ls e2e/tests/03-experimental-runner/*.bats | shuf)
           NUM_FILES=${#FILES[@]}
-          NUM_CHUNKS=4
+          NUM_CHUNKS=8
           [ "$NUM_CHUNKS" -gt "$NUM_FILES" ] && NUM_CHUNKS=$NUM_FILES
           echo "Runner E2E: $NUM_FILES files, $NUM_CHUNKS chunks"
 
@@ -1189,25 +1169,22 @@ jobs:
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           TARGET_DIR="crates/target/${TARGET_TRIPLE}/${CARGO_PROFILE}"
 
           # Provision system dependencies on all hosts (idempotent)
           echo "=== Provisioning system dependencies ==="
-          apt-get update && apt-get install -y python3 python3-pip
+          rm -rf /var/lib/apt/lists/* && apt-get update && apt-get install -y python3 python3-pip
           pip3 install ansible
           cd ansible
           ansible-playbook \
             -i "${METAL_HOSTS}," \
-            playbooks/provision-metal.yml \
-            --private-key $HOME/.ssh/runner.pem \
+            playbooks/provision-runner.yml \
             -e "ansible_user=${METAL_USER}" \
             -v
           if [ -n "${GRAFANA_CLOUD_API_KEY}" ]; then
             ansible-playbook \
               -i "${METAL_HOSTS}," \
               playbooks/provision-monitoring.yml \
-              --private-key $HOME/.ssh/runner.pem \
               -e "ansible_user=${METAL_USER}" \
               -e "grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL}" \
               -e "grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER}" \
@@ -1225,17 +1202,17 @@ jobs:
             echo "=== Deploying to ${HOST} (runner: ${RUNNER_NAME}) ==="
 
             # Clean previous run artifacts and upload runner (guests are embedded)
-            ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR} && mkdir -p ${BIN_DIR}"
-            scp $SSH_OPTS "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
+            ssh $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR} && mkdir -p ${BIN_DIR}"
+            scp "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
 
             # Clean up old rootfs/snapshots, keep the 3 most recent
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 3"
+            ssh $REMOTE "${BIN_DIR}/runner gc --keep-latest 3"
 
             # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner setup"
+            ssh $REMOTE "${BIN_DIR}/runner setup"
 
             # Run build to create rootfs + snapshot (outputs hashes to stdout)
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
+            ssh $REMOTE "${BIN_DIR}/runner build \
               --vcpu ${RUNNER_VCPU} \
               --memory-mb ${RUNNER_MEMORY_MB}"
             echo "=== Done deploying to ${HOST} ==="
@@ -1296,13 +1273,14 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       )
     steps:
-      - name: Setup SSH
-        env:
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       # Read METAL_HOSTS from secret directly — GitHub Actions masks secret values in job outputs
       - name: Rebuild config and start runner service on all hosts
@@ -1319,8 +1297,6 @@ jobs:
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
-
           start_on_host() {
             local HOST=$1
             local HOST_INDEX=$2
@@ -1329,13 +1305,13 @@ jobs:
             echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
 
             # Guard: ensure binary exists (fails fast on "Re-run failed jobs" without prepare)
-            if ! ssh $SSH_OPTS "$REMOTE" "test -x ${BIN_DIR}/runner"; then
+            if ! ssh "$REMOTE" "test -x ${BIN_DIR}/runner"; then
               echo "::error::Runner binary not found on ${HOST}. Use 'Re-run all jobs' to redeploy the runner first."
               return 1
             fi
 
             # Generate runner.yaml with real preview URL (no build needed, uses cached hashes)
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner config \
+            ssh $REMOTE "${BIN_DIR}/runner config \
               --rootfs-hash ${ROOTFS_HASH} \
               --snapshot-hash ${SNAPSHOT_HASH} \
               --name ${RUNNER_NAME} \
@@ -1347,7 +1323,7 @@ jobs:
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
             # Start as systemd transient service
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner service start \
+            ssh $REMOTE "${BIN_DIR}/runner service start \
               --name ${RUNNER_NAME} \
               --config ${RUNNER_DIR}/runner.yaml \
               --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
@@ -1356,7 +1332,7 @@ jobs:
 
             # Health check — wait for runner startup, then verify
             sleep 5
-            ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
+            ssh $REMOTE "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
             echo "=== Runner started on ${HOST} ==="
           }
 
@@ -1388,7 +1364,7 @@ jobs:
           # Sum auto-detected max_concurrent from all hosts' status.json
           TOTAL=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            MC=$(ssh $SSH_OPTS "${METAL_USER}@${HOST}" "grep -o '\"max_concurrent\": [0-9]*' ${RUNNER_DIR}/status.json | grep -o '[0-9]*'") || true
+            MC=$(ssh "${METAL_USER}@${HOST}" "grep -o '\"max_concurrent\": [0-9]*' ${RUNNER_DIR}/status.json | grep -o '[0-9]*'") || true
             if [ -z "$MC" ] || ! [[ "$MC" =~ ^[0-9]+$ ]]; then
               echo "::error::Failed to read max_concurrent from ${HOST}"
               exit 1
@@ -1448,7 +1424,7 @@ jobs:
         run: cd turbo/apps/cli && pnpm link --global
 
       - name: Install GNU parallel for bats
-        run: apt-get update && apt-get install -y parallel
+        run: rm -rf /var/lib/apt/lists/* && apt-get update && apt-get install -y parallel
 
       - name: Restore test token from cache
         uses: actions/cache/restore@v5
@@ -1477,13 +1453,12 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-      - name: Setup SSH
-        env:
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       - name: Verify runners are deployed
         env:
@@ -1492,15 +1467,18 @@ jobs:
           BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             HOST_INDEX=$((HOST_INDEX + 1))
             RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
             REMOTE="${METAL_USER}@${HOST}"
             echo "Checking runner ${RUNNER_NAME} on ${HOST}..."
-            if ! ssh $SSH_OPTS "$REMOTE" "test -x ${BIN_DIR}/runner"; then
+            if ! ssh "$REMOTE" "test -x ${BIN_DIR}/runner"; then
               echo "::error::Runner binary not found on ${HOST}. The cleanup job may have already run. Use 'Re-run all jobs' to redeploy the runner first."
+              exit 1
+            fi
+            if ! ssh "$REMOTE" "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"; then
+              echo "::error::Runner ${RUNNER_NAME} not healthy on ${HOST}. Use 'Re-run all jobs' to redeploy the runner first."
               exit 1
             fi
           done
@@ -1527,6 +1505,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          CI_GITHUB_TOKEN: ${{ github.token }}
 
       - name: Stop Cron Simulator
         if: always()
@@ -1663,13 +1642,12 @@ jobs:
       - name: Install Ansible
         run: pip3 install ansible
 
-      - name: Setup SSH key
-        env:
-          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-        run: |
-          mkdir -p "$HOME/.ssh"
-          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
-          chmod 600 "$HOME/.ssh/runner.pem"
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
       - name: Cleanup runner on all metal hosts
         env:
@@ -1681,7 +1659,6 @@ jobs:
           ansible-playbook \
             -i "${METAL_HOSTS}," \
             playbooks/cleanup-turbo-runner.yml \
-            --private-key "$HOME/.ssh/runner.pem" \
             -e "ansible_user=${METAL_USER}" \
             -e "job_ref=${JOB_REF}" \
             -v || true
@@ -1713,73 +1690,3 @@ jobs:
       - name: Build summary
         run: echo "✅ E2B templates built successfully (development account)"
 
-  # Docker build validation for application images (web, platform, sandbox)
-  # Build only (no push) - publishing happens in release-please workflow
-  docker-build-web:
-    runs-on: ubuntu-latest
-    needs: [prepare]
-    if: |
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
-      (needs.prepare.outputs.web-changed == 'true' || needs.prepare.outputs.docker-web-changed == 'true')
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build web image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/Dockerfile.web
-          push: false
-          tags: vm0:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  docker-build-platform:
-    runs-on: ubuntu-latest
-    needs: [prepare]
-    if: |
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
-      (needs.prepare.outputs.platform-changed == 'true' || needs.prepare.outputs.docker-platform-changed == 'true')
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build platform image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/Dockerfile.platform
-          push: false
-          tags: vm0-platform:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  docker-build-sandbox:
-    runs-on: ubuntu-latest
-    needs: [prepare]
-    if: |
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
-      needs.prepare.outputs.sandbox-changed == 'true'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build sandbox image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/Dockerfile.sandbox
-          push: false
-          tags: vm0-sandbox:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max

@@ -134,7 +134,7 @@ The orchestration layer coordinates job execution between web API and runners.
 
 **Format**: `{scope}/{name}`
 - Official: `vm0/*` (e.g., `vm0/production`) - VM0-managed runners
-- User: `{userid}/*` (e.g., `user123/private`) - Self-hosted runners
+- User: `{scope-slug}/*` (e.g., `my-team/private`) - Self-hosted runners
 
 **Authentication**:
 - Official runners: HMAC signature using `OFFICIAL_RUNNER_SECRET`
@@ -177,8 +177,8 @@ Firecracker is an open-source VMM (Virtual Machine Monitor) developed by AWS tha
 - Cannot run on cloud VMs (nested virtualization limitations)
 
 **Software**:
-- Firecracker v1.10.1 binary
-- Linux kernel v6.1.102 (for microVM)
+- Firecracker v1.14.1 binary
+- Linux kernel v6.1.155 (for microVM)
 - Node.js 24.x, pnpm, pm2
 - mitmproxy (network observability)
 - Docker (rootfs build only)
@@ -217,25 +217,24 @@ sandbox:
 
 #### Network Architecture
 
-**Isolation**: Each VM in separate network namespace
+**Isolation**: Each VM in separate network namespace via pre-warmed namespace pool
 
-**TAP Device**: One per VM
-- Name: `vm0tap{vmId}` (e.g., `vm0tap12345678`)
-- Layer 2 Ethernet virtualization
-- Bridges host and guest
+**Namespace Pool**: Pre-allocated network namespaces for fast VM startup
+- Each namespace gets a unique veth pair
+- Namespace side: `veth0` (e.g., `10.200.0.2`)
+- Host side: `vm0-ve-{pool}-{index}` (e.g., `vm0-ve-00-00`)
+- Pool supports up to 64 pools × 256 namespaces
 
-**IP Allocation**: 172.16.x.x/30 subnets
-- Host IP: .1 (e.g., 172.16.161.177)
-- Guest IP: .2 (e.g., 172.16.161.178)
-- 4 IPs total per VM: network, host, guest, broadcast
+**IP Allocation**: 10.200.0.0/16 subnets
+- Guest fixed IP: `192.168.241.2` (same across VMs, isolated by namespace)
+- NAT/MASQUERADE: Guest traffic routed through namespace to external network
 
-**Internet Access**: NAT via iptables on runner host
-
-**HTTP Proxy**: mitmproxy at host:8080
+**HTTP Proxy**: mitmproxy (dynamically allocated port)
 - Intercepts all HTTP/HTTPS traffic
-- Logs requests/responses
-- Firewall enforcement (experimental)
+- Logs requests/responses to per-run JSONL files
+- Firewall enforcement with first-match-wins rules (domain, IP, terminal)
 - CA certificate injected into VM trust store
+- Proxy registry: `{base_dir}/proxy-registry.json` (flock-based coordination)
 
 #### Execution Flow
 

@@ -197,6 +197,7 @@ jobs:
           environment-variables: |
             DATABASE_URL=${{ steps.get-db-url.outputs.database-url }}
             BLOG_BASE_URL=https://www.vm0.ai
+            STRAPI_URL=${{ vars.STRAPI_URL }}
             CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             E2B_API_KEY=${{ secrets.E2B_API_KEY }}
@@ -229,6 +230,8 @@ jobs:
             NOTION_OAUTH_CLIENT_SECRET=${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
             GOOGLE_OAUTH_CLIENT_ID=${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
             GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+            MICROSOFT_OAUTH_CLIENT_ID=${{ vars.MICROSOFT_OAUTH_CLIENT_ID }}
+            MICROSOFT_OAUTH_CLIENT_SECRET=${{ secrets.MICROSOFT_OAUTH_CLIENT_SECRET }}
             LINEAR_OAUTH_CLIENT_ID=${{ vars.LINEAR_OAUTH_CLIENT_ID }}
             LINEAR_OAUTH_CLIENT_SECRET=${{ secrets.LINEAR_OAUTH_CLIENT_SECRET }}
             FIGMA_OAUTH_CLIENT_ID=${{ vars.FIGMA_OAUTH_CLIENT_ID }}
@@ -267,10 +270,22 @@ jobs:
             CANVA_OAUTH_CLIENT_SECRET=${{ secrets.CANVA_OAUTH_CLIENT_SECRET }}
             HUBSPOT_OAUTH_CLIENT_ID=${{ vars.HUBSPOT_OAUTH_CLIENT_ID }}
             HUBSPOT_OAUTH_CLIENT_SECRET=${{ secrets.HUBSPOT_OAUTH_CLIENT_SECRET }}
+            CLOSE_OAUTH_CLIENT_ID=${{ vars.CLOSE_OAUTH_CLIENT_ID }}
+            CLOSE_OAUTH_CLIENT_SECRET=${{ secrets.CLOSE_OAUTH_CLIENT_SECRET }}
+            META_ADS_OAUTH_CLIENT_ID=${{ vars.META_ADS_OAUTH_CLIENT_ID }}
+            META_ADS_OAUTH_CLIENT_SECRET=${{ secrets.META_ADS_OAUTH_CLIENT_SECRET }}
+            AHREFS_OAUTH_CLIENT_ID=${{ vars.AHREFS_OAUTH_CLIENT_ID }}
+            AHREFS_OAUTH_CLIENT_SECRET=${{ secrets.AHREFS_OAUTH_CLIENT_SECRET }}
             AIRTABLE_OAUTH_CLIENT_ID=${{ vars.AIRTABLE_OAUTH_CLIENT_ID }}
             AIRTABLE_OAUTH_CLIENT_SECRET=${{ secrets.AIRTABLE_OAUTH_CLIENT_SECRET }}
             TODOIST_OAUTH_CLIENT_ID=${{ vars.TODOIST_OAUTH_CLIENT_ID }}
             TODOIST_OAUTH_CLIENT_SECRET=${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
+            ASANA_OAUTH_CLIENT_ID=${{ vars.ASANA_OAUTH_CLIENT_ID }}
+            ASANA_OAUTH_CLIENT_SECRET=${{ secrets.ASANA_OAUTH_CLIENT_SECRET }}
+            POSTHOG_OAUTH_CLIENT_ID=${{ vars.POSTHOG_OAUTH_CLIENT_ID }}
+            POSTHOG_OAUTH_CLIENT_SECRET=${{ secrets.POSTHOG_OAUTH_CLIENT_SECRET }}
+            STRIPE_OAUTH_CLIENT_ID=${{ vars.STRIPE_OAUTH_CLIENT_ID }}
+            STRIPE_OAUTH_CLIENT_SECRET=${{ secrets.STRIPE_OAUTH_CLIENT_SECRET }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
             NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
             PLATFORM_URL=${{ vars.PLATFORM_URL }}
@@ -624,7 +639,7 @@ jobs:
 
       - name: Install Python3 and Ansible
         run: |
-          apt-get update && apt-get install -y python3 python3-pip
+          rm -rf /var/lib/apt/lists/* && apt-get update && apt-get install -y python3 python3-pip
           pip3 install ansible
 
       - name: Notify Slack - Starting
@@ -698,32 +713,33 @@ jobs:
             --data-binary "@${ASSET_PATH}" \
             "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?name=${ASSET_NAME}"
 
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
       - name: Deploy to production with Ansible
         env:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          AWS_METAL_RUNNER_SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          echo "$AWS_METAL_RUNNER_SSH_KEY" > ~/.ssh/prod-runner.pem
-          chmod 600 ~/.ssh/prod-runner.pem
           cd ansible
           ansible-playbook \
             -i "${AWS_METAL_RUNNER_HOSTS}," \
-            playbooks/provision-metal.yml \
-            --private-key ~/.ssh/prod-runner.pem \
+            playbooks/provision-runner.yml \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -v
           if [ -n "${GRAFANA_CLOUD_API_KEY}" ]; then
             ansible-playbook \
               -i "${AWS_METAL_RUNNER_HOSTS}," \
               playbooks/provision-monitoring.yml \
-              --private-key ~/.ssh/prod-runner.pem \
               -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
               -e "grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL}" \
               -e "grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER}" \
@@ -734,7 +750,6 @@ jobs:
           ansible-playbook \
             -i "${AWS_METAL_RUNNER_HOSTS}," \
             playbooks/deploy-runner.yml \
-            --private-key ~/.ssh/prod-runner.pem \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=https://www.vm0.ai" \
@@ -812,272 +827,3 @@ jobs:
       - name: Build summary
         run: echo "✅ E2B templates built successfully (production account)"
 
-  # Publish Docker images to GHCR on release
-  # Uses native ARM runners instead of QEMU for faster builds
-  # Pattern: build per-platform digests in parallel, then merge into multi-arch manifest
-  publish-docker-web-build:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
-    strategy:
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-latest
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push by digest
-        id: build
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/Dockerfile.web
-          platforms: ${{ matrix.platform }}
-          outputs: type=image,name=ghcr.io/vm0-ai/vm0,push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=web-${{ matrix.platform }}
-          cache-to: type=gha,scope=web-${{ matrix.platform }},mode=max
-          labels: |
-            org.opencontainers.image.source=${{ github.event.repository.html_url }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ needs.release-please.outputs.web_version }}
-
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
-
-      - name: Upload digest
-        uses: actions/upload-artifact@v7
-        with:
-          name: web-digest-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  publish-docker-web-merge:
-    needs: [release-please, publish-docker-web-build]
-    if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v8
-        with:
-          path: /tmp/digests
-          pattern: web-digest-*
-          merge-multiple: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create manifest and push
-        working-directory: /tmp/digests
-        run: |
-          docker buildx imagetools create \
-            -t ghcr.io/vm0-ai/vm0:${{ needs.release-please.outputs.web_version }} \
-            -t ghcr.io/vm0-ai/vm0:latest \
-            $(printf 'ghcr.io/vm0-ai/vm0@sha256:%s ' *)
-
-  publish-docker-platform-build:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.platform_release_created == 'true' }}
-    strategy:
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-latest
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push by digest
-        id: build
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/Dockerfile.platform
-          platforms: ${{ matrix.platform }}
-          outputs: type=image,name=ghcr.io/vm0-ai/vm0-platform,push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=platform-${{ matrix.platform }}
-          cache-to: type=gha,scope=platform-${{ matrix.platform }},mode=max
-          labels: |
-            org.opencontainers.image.source=${{ github.event.repository.html_url }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ needs.release-please.outputs.platform_version }}
-
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
-
-      - name: Upload digest
-        uses: actions/upload-artifact@v7
-        with:
-          name: platform-digest-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  publish-docker-platform-merge:
-    needs: [release-please, publish-docker-platform-build]
-    if: ${{ needs.release-please.outputs.platform_release_created == 'true' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v8
-        with:
-          path: /tmp/digests
-          pattern: platform-digest-*
-          merge-multiple: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create manifest and push
-        working-directory: /tmp/digests
-        run: |
-          docker buildx imagetools create \
-            -t ghcr.io/vm0-ai/vm0-platform:${{ needs.release-please.outputs.platform_version }} \
-            -t ghcr.io/vm0-ai/vm0-platform:latest \
-            $(printf 'ghcr.io/vm0-ai/vm0-platform@sha256:%s ' *)
-
-  publish-docker-sandbox-build:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
-    strategy:
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-latest
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push by digest
-        id: build
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/Dockerfile.sandbox
-          platforms: ${{ matrix.platform }}
-          outputs: type=image,name=ghcr.io/vm0-ai/vm0-sandbox,push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=sandbox-${{ matrix.platform }}
-          cache-to: type=gha,scope=sandbox-${{ matrix.platform }},mode=max
-          labels: |
-            org.opencontainers.image.source=${{ github.event.repository.html_url }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ needs.release-please.outputs.web_version }}
-
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
-
-      - name: Upload digest
-        uses: actions/upload-artifact@v7
-        with:
-          name: sandbox-digest-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  publish-docker-sandbox-merge:
-    needs: [release-please, publish-docker-sandbox-build]
-    if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v8
-        with:
-          path: /tmp/digests
-          pattern: sandbox-digest-*
-          merge-multiple: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create manifest and push
-        working-directory: /tmp/digests
-        run: |
-          docker buildx imagetools create \
-            -t ghcr.io/vm0-ai/vm0-sandbox:${{ needs.release-please.outputs.web_version }} \
-            -t ghcr.io/vm0-ai/vm0-sandbox:latest \
-            $(printf 'ghcr.io/vm0-ai/vm0-sandbox@sha256:%s ' *)

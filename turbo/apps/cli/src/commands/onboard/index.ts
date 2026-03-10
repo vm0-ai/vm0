@@ -28,6 +28,7 @@ import {
   type PluginScope,
 } from "../../lib/domain/onboard/index.js";
 import type { ModelProviderType } from "@vm0/core";
+import { withErrorHandler } from "../../lib/command";
 
 const DEFAULT_AGENT_NAME = "my-vm0-agent";
 
@@ -299,8 +300,8 @@ export const onboardCommand = new Command()
   .description("Guided setup for new VM0 users")
   .option("-y, --yes", "Skip confirmation prompts")
   .option("--name <name>", `Agent name (default: ${DEFAULT_AGENT_NAME})`)
-  .action(async (options: OnboardOptions) => {
-    try {
+  .action(
+    withErrorHandler(async (options: OnboardOptions) => {
       const interactive = isInteractive();
 
       // Clear screen and print welcome banner at the start
@@ -328,15 +329,5 @@ export const onboardCommand = new Command()
       });
 
       printNextSteps(agentName, pluginInstalled);
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error(chalk.red(`✗ ${error.message}`));
-        if (error.cause instanceof Error) {
-          console.error(chalk.dim(`  Cause: ${error.cause.message}`));
-        }
-      } else {
-        console.error(chalk.red("✗ An unexpected error occurred"));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

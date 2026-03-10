@@ -33,6 +33,43 @@ const vm0Plugin = {
         };
       },
     },
+    "no-fetch-spy": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "Disallow spying on fetch with vi.spyOn. Use MSW instead.",
+        },
+        messages: {
+          noFetchSpy:
+            'Do not spy on fetch with vi.spyOn(globalThis, "fetch"). Use MSW to intercept HTTP requests instead. See: https://mswjs.io/docs/getting-started',
+        },
+        schema: [],
+      },
+      create(context) {
+        return {
+          CallExpression(node) {
+            const { callee } = node;
+            if (
+              callee.type === "MemberExpression" &&
+              callee.object.type === "Identifier" &&
+              callee.object.name === "vi" &&
+              callee.property.type === "Identifier" &&
+              callee.property.name === "spyOn" &&
+              node.arguments.length >= 2 &&
+              node.arguments[0].type === "Identifier" &&
+              ["globalThis", "global", "window"].includes(
+                node.arguments[0].name,
+              ) &&
+              node.arguments[1].type === "Literal" &&
+              node.arguments[1].value === "fetch"
+            ) {
+              context.report({ node, messageId: "noFetchSpy" });
+            }
+          },
+        };
+      },
+    },
   },
 };
 
@@ -109,6 +146,12 @@ export const config = [
           format: ["camelCase", "UPPER_CASE", "PascalCase"],
         },
       ],
+    },
+  },
+  {
+    files: ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
+    rules: {
+      "vm0/no-fetch-spy": "error",
     },
   },
   {

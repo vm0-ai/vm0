@@ -24,7 +24,6 @@ import { getAgentSessionWithConversation } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
 import { executeE2bRun } from "./executors/e2b-executor";
 import { executeRunnerJob } from "./executors/runner-executor";
-import { executeDockerRun } from "./executors/docker-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
 import { buildExecutionContext as buildContext } from "./build-context";
 import { generateSandboxToken } from "../auth/sandbox-token";
@@ -33,7 +32,10 @@ import { canAccessCompose } from "../agent/permission-service";
 import { getUserEmail } from "../auth/get-user-email";
 import { extractTemplateVars } from "../config-validator";
 
-import { getUserScopeByClerkId } from "../scope/scope-service";
+import {
+  getDefaultScopeByClerkUserId,
+  getScopeById,
+} from "../scope/scope-service";
 import { getDefaultScope } from "../scope/scope-member-service";
 import { getVariableValues } from "../variable/variable-service";
 import { encryptCredentialValue } from "../crypto/secrets-encryption";
@@ -58,15 +60,15 @@ function getConcurrencyLimitForTier(tier: ScopeTier): number {
 }
 
 /**
- * Check if scope has reached concurrent run limit
+ * Check if org has reached concurrent run limit
  *
- * @param scopeId Scope ID to check
+ * @param clerkOrgId Clerk org ID to check
  * @param scopeTier Scope tier for tier-based limit (default: "free")
  * @param db Optional database instance (for use within transactions)
  * @throws ConcurrentRunLimitError if limit exceeded
  */
 async function checkRunConcurrencyLimit(
-  scopeId: string,
+  clerkOrgId: string,
   scopeTier: ScopeTier = "free",
   db?: Database,
 ): Promise<void> {
@@ -95,7 +97,7 @@ async function checkRunConcurrencyLimit(
     .from(agentRuns)
     .where(
       and(
-        eq(agentRuns.scopeId, scopeId),
+        eq(agentRuns.clerkOrgId, clerkOrgId),
         or(
           eq(agentRuns.status, "running"),
           and(
@@ -110,7 +112,7 @@ async function checkRunConcurrencyLimit(
 
   if (activeRunCount >= effectiveLimit) {
     log.debug(
-      `Scope ${scopeId} has ${activeRunCount} active runs, limit is ${effectiveLimit}`,
+      `Org ${clerkOrgId} has ${activeRunCount} active runs, limit is ${effectiveLimit}`,
     );
     throw concurrentRunLimit();
   }
@@ -261,13 +263,10 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
   if (env().E2B_API_KEY) {
     log.debug(`Dispatching run ${context.runId} to E2B executor`);
     return await executeE2bRun(context);
-  } else if (env().DOCKER_SANDBOX_IMAGE) {
-    log.debug(`Dispatching run ${context.runId} to Docker executor`);
-    return await executeDockerRun(context);
   }
 
   throw new Error(
-    "No executor configured: set E2B_API_KEY for cloud mode or DOCKER_SANDBOX_IMAGE for Docker mode",
+    "No executor configured: set E2B_API_KEY or RUNNER_DEFAULT_GROUP",
   );
 }
 
@@ -323,6 +322,7 @@ export interface CreateRunParams {
   // When provided, used instead of getDefaultScope fallback.
   scopeId?: string;
   scopeSlug?: string;
+  clerkOrgId?: string;
   // Caller-resolved scope tier for concurrency limit derivation.
   scopeTier?: ScopeTier;
 }
@@ -345,7 +345,7 @@ async function loadCompose(
   callerComposeId?: string,
 ): Promise<{
   composeContent: AgentComposeYaml;
-  compose: { id: string; userId: string; scopeId: string };
+  compose: { id: string; userId: string; clerkOrgId: string };
 }> {
   if (callerComposeId) {
     // When caller provides composeId, both queries are independent — run in parallel
@@ -359,7 +359,7 @@ async function loadCompose(
         .select({
           id: agentComposes.id,
           userId: agentComposes.userId,
-          scopeId: agentComposes.scopeId,
+          clerkOrgId: agentComposes.clerkOrgId,
         })
         .from(agentComposes)
         .where(eq(agentComposes.id, callerComposeId))
@@ -386,7 +386,7 @@ async function loadCompose(
       content: agentComposeVersions.content,
       composeId: agentComposes.id,
       composeUserId: agentComposes.userId,
-      composeScopeId: agentComposes.scopeId,
+      agentClerkOrgId: agentComposes.clerkOrgId,
     })
     .from(agentComposeVersions)
     .leftJoin(
@@ -400,7 +400,7 @@ async function loadCompose(
     throw notFound("Agent compose version not found");
   }
 
-  if (!result.composeId || !result.composeUserId || !result.composeScopeId) {
+  if (!result.composeId || !result.composeUserId || !result.agentClerkOrgId) {
     throw notFound("Agent compose not found");
   }
 
@@ -409,7 +409,7 @@ async function loadCompose(
     compose: {
       id: result.composeId,
       userId: result.composeUserId,
-      scopeId: result.composeScopeId,
+      clerkOrgId: result.agentClerkOrgId,
     },
   };
 }
@@ -417,7 +417,7 @@ async function loadCompose(
 async function authorizeCompose(
   userId: string,
   userEmail: string,
-  compose: { id: string; userId: string; scopeId: string },
+  compose: { id: string; userId: string; clerkOrgId: string },
 ): Promise<void> {
   const hasAccess = await canAccessCompose(userId, userEmail, compose);
   if (!hasAccess) {
@@ -438,7 +438,7 @@ async function validateComposeRequirements(
   composeContent: AgentComposeYaml,
   vars?: Record<string, string>,
   checkEnv?: boolean,
-  scopeId?: string,
+  clerkOrgId?: string,
 ): Promise<void> {
   if (!composeContent?.agents) {
     return;
@@ -448,10 +448,10 @@ async function validateComposeRequirements(
   if (checkEnv) {
     const requiredVars = extractTemplateVars(composeContent);
     if (requiredVars.length > 0) {
-      const resolvedScopeId =
-        scopeId ?? (await getUserScopeByClerkId(userId))?.id;
-      const storedVars = resolvedScopeId
-        ? await getVariableValues(resolvedScopeId, userId)
+      const resolvedClerkOrgId =
+        clerkOrgId ?? (await getDefaultScopeByClerkUserId(userId))?.clerkOrgId;
+      const storedVars = resolvedClerkOrgId
+        ? await getVariableValues(resolvedClerkOrgId, userId)
         : {};
       const allVars = { ...storedVars, ...vars };
       const missingVars = requiredVars.filter(
@@ -527,6 +527,7 @@ async function buildAndDispatchRun(opts: {
   apiStartTime: number;
   scopeId: string | undefined;
   scopeSlug: string | undefined;
+  clerkOrgId: string | undefined;
   authorizeTime: number;
   transactionTime: number;
 }): Promise<{ status: string; sandboxId?: string }> {
@@ -538,6 +539,7 @@ async function buildAndDispatchRun(opts: {
     apiStartTime,
     scopeId,
     scopeSlug,
+    clerkOrgId,
     authorizeTime,
     transactionTime,
   } = opts;
@@ -556,7 +558,7 @@ async function buildAndDispatchRun(opts: {
     // Build execution context
     const {
       context,
-      userScope,
+      runtimeScope,
       timings: buildContextTimings,
     } = await buildContext({
       checkpointId: params.checkpointId,
@@ -583,11 +585,12 @@ async function buildAndDispatchRun(opts: {
       apiStartTime,
       scopeId,
       scopeSlug,
+      clerkOrgId,
     });
     const buildContextTime = Date.now();
 
     // Prepare execution context (storage manifest, working dir, etc.)
-    const prepareResult = await prepareForExecution(context, userScope);
+    const prepareResult = await prepareForExecution(context, runtimeScope);
     const prepareTime = Date.now();
 
     // Dispatch to executor
@@ -688,7 +691,7 @@ export async function createRun(
       composeContent,
       params.vars,
       params.checkEnv,
-      params.scopeId,
+      params.clerkOrgId,
     );
   }
 
@@ -702,13 +705,22 @@ export async function createRun(
   // Resolve scope ID and slug for the run record and storage
   let scopeId: string;
   let scopeSlug: string | undefined;
+  let clerkOrgId: string;
   if (params.scopeId) {
     scopeId = params.scopeId;
     scopeSlug = params.scopeSlug;
+    if (params.clerkOrgId) {
+      clerkOrgId = params.clerkOrgId;
+    } else {
+      const scope = await getScopeById(params.scopeId);
+      if (!scope) throw badRequest("Scope not found");
+      clerkOrgId = scope.clerkOrgId;
+    }
   } else {
     const { scope } = await getDefaultScope(userId);
     scopeId = scope.id;
     scopeSlug = scope.slug;
+    clerkOrgId = scope.clerkOrgId;
   }
 
   // Step 5: Concurrency check + INSERT in a transaction with advisory lock
@@ -718,11 +730,17 @@ export async function createRun(
   let run;
   try {
     run = await globalThis.services.db.transaction(async (tx) => {
-      // Acquire per-scope advisory lock (released when transaction ends)
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${scopeId}))`);
+      // Acquire per-org advisory lock (released when transaction ends)
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${clerkOrgId}))`,
+      );
 
       // Check concurrent run limit within the serialized transaction
-      await checkRunConcurrencyLimit(scopeId, params.scopeTier ?? "free", tx);
+      await checkRunConcurrencyLimit(
+        clerkOrgId,
+        params.scopeTier ?? "free",
+        tx,
+      );
 
       // INSERT within the same transaction
       const [newRun] = await tx
@@ -730,6 +748,7 @@ export async function createRun(
         .values({
           userId,
           scopeId,
+          clerkOrgId,
           agentComposeVersionId,
           status: "pending",
           prompt,
@@ -750,7 +769,7 @@ export async function createRun(
     });
   } catch (error) {
     if (isConcurrentRunLimit(error)) {
-      return enqueueRun({ ...params, scopeId, scopeSlug });
+      return enqueueRun({ ...params, scopeId, scopeSlug, clerkOrgId });
     }
     throw error;
   }
@@ -766,6 +785,7 @@ export async function createRun(
     apiStartTime,
     scopeId,
     scopeSlug,
+    clerkOrgId,
     authorizeTime,
     transactionTime,
   });
@@ -798,10 +818,12 @@ export async function executeQueuedRun(
 
   // Step 1: Re-check concurrency + update status atomically with advisory lock
   // to prevent TOCTOU race where a concurrent createRun claims the slot.
-  const scopeId = params.scopeId ?? "";
+  const clerkOrgId = params.clerkOrgId ?? "";
   const [run] = await globalThis.services.db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${scopeId}))`);
-    await checkRunConcurrencyLimit(scopeId, params.scopeTier ?? "free", tx);
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${clerkOrgId}))`,
+    );
+    await checkRunConcurrencyLimit(clerkOrgId, params.scopeTier ?? "free", tx);
 
     return tx
       .update(agentRuns)
@@ -836,7 +858,7 @@ export async function executeQueuedRun(
       composeContent,
       params.vars,
       params.checkEnv,
-      params.scopeId,
+      params.clerkOrgId,
     );
   }
 
@@ -850,6 +872,7 @@ export async function executeQueuedRun(
     apiStartTime,
     scopeId: params.scopeId,
     scopeSlug: params.scopeSlug,
+    clerkOrgId: params.clerkOrgId,
     authorizeTime,
     transactionTime,
   });

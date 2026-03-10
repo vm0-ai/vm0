@@ -7,7 +7,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { getApiUrl } from "../../../../src/lib/callback";
 import { githubInstallations } from "../../../../src/db/schema/github-installation";
 import { githubUserLinks } from "../../../../src/db/schema/github-user-link";
@@ -36,14 +36,15 @@ export async function GET(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization");
-  const userId = await getUserId(authHeader ?? undefined);
+  const authCtx = await getAuthContext(authHeader ?? undefined);
 
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { userId, scopeId: tokenScopeId } = authCtx;
 
   const db = globalThis.services.db;
 
@@ -93,7 +94,7 @@ export async function GET(request: Request) {
       scopeSlug: scopes.slug,
     })
     .from(agentComposes)
-    .innerJoin(scopes, eq(scopes.id, agentComposes.scopeId))
+    .innerJoin(scopes, eq(scopes.clerkOrgId, agentComposes.clerkOrgId))
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
 
@@ -121,13 +122,13 @@ export async function GET(request: Request) {
   }
 
   // Resolve user's scope for resource queries
-  const { scope: userScope } = await resolveScope(userId);
+  const { scope } = await resolveScope(userId, null, null, tokenScopeId);
 
   // Get user's existing secrets, vars, connectors
   const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(userScope.id, userId),
-    listVariables(userScope.id, userId),
-    listConnectors(userScope.id, userId),
+    listSecrets(scope.clerkOrgId, userId),
+    listVariables(scope.clerkOrgId, userId),
+    listConnectors(scope.clerkOrgId, userId),
   ]);
 
   const connectorProvided = getConnectorProvidedSecretNames(
@@ -177,14 +178,15 @@ export async function DELETE(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization");
-  const userId = await getUserId(authHeader ?? undefined);
+  const authCtx = await getAuthContext(authHeader ?? undefined);
 
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { userId } = authCtx;
 
   const db = globalThis.services.db;
 
@@ -263,14 +265,15 @@ export async function PATCH(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization");
-  const userId = await getUserId(authHeader ?? undefined);
+  const authCtx = await getAuthContext(authHeader ?? undefined);
 
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { userId } = authCtx;
 
   const body = (await request.json()) as { agentName?: string };
   if (!body.agentName) {
@@ -328,7 +331,7 @@ export async function PATCH(request: Request) {
     slashIndex === -1 ? null : body.agentName.slice(0, slashIndex);
 
   // Resolve target scope
-  let targetScopeId: string;
+  let targetClerkOrgId: string;
   if (scopeSlug) {
     const targetScope = await getScopeBySlug(scopeSlug);
     if (!targetScope) {
@@ -337,10 +340,10 @@ export async function PATCH(request: Request) {
         { status: 400 },
       );
     }
-    targetScopeId = targetScope.id;
+    targetClerkOrgId = targetScope.clerkOrgId;
   } else {
     const { scope } = await resolveScope(userId);
-    targetScopeId = scope.id;
+    targetClerkOrgId = scope.clerkOrgId;
   }
 
   // Find agent compose by name in target scope
@@ -349,7 +352,7 @@ export async function PATCH(request: Request) {
     .from(agentComposes)
     .where(
       and(
-        eq(agentComposes.scopeId, targetScopeId),
+        eq(agentComposes.clerkOrgId, targetClerkOrgId),
         eq(agentComposes.name, agentName),
       ),
     )

@@ -5,12 +5,16 @@
  * instead of direct database operations. This ensures tests validate the
  * complete API flow, catching issues that direct DB operations might miss.
  */
+import { vi } from "vitest";
+import { http as mswHttp, HttpResponse } from "msw";
 import { NextRequest } from "next/server";
 import type { AgentComposeYaml } from "../types/agent-compose";
 import {
   generateSandboxToken,
   generateComposeJobToken,
 } from "../lib/auth/sandbox-token";
+import { server } from "../mocks/server";
+import { reloadEnv } from "../env";
 import { cliTokens } from "../db/schema/cli-tokens";
 import { deviceCodes } from "../db/schema/device-codes";
 import { agentRuns } from "../db/schema/agent-run";
@@ -69,6 +73,7 @@ import {
 } from "../../app/api/secrets/route";
 import { PUT as setVariableRoute } from "../../app/api/variables/route";
 import { POST as addPermissionRoute } from "../../app/api/agent/composes/[id]/permissions/route";
+import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/callback/route";
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
@@ -527,11 +532,13 @@ async function createTestRunDirect(
     continuedFromSessionId?: string;
   },
 ): Promise<{ id: string }> {
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
       scopeId,
+      clerkOrgId,
       agentComposeVersionId: versionId,
       status: options?.status ?? "running",
       prompt: options?.prompt ?? "test prompt",
@@ -567,10 +574,11 @@ export async function createTestSessionWithConversation(
   userId: string,
   agentComposeId: string,
 ): Promise<{ id: string }> {
-  // Look up scopeId from the compose
+  // Look up scopeId via clerkOrgId from the compose
   const [compose] = await globalThis.services.db
-    .select({ scopeId: agentComposes.scopeId })
+    .select({ scopeId: scopes.id })
     .from(agentComposes)
+    .innerJoin(scopes, eq(agentComposes.clerkOrgId, scopes.clerkOrgId))
     .where(eq(agentComposes.id, agentComposeId))
     .limit(1);
   if (!compose) {
@@ -1395,18 +1403,35 @@ export async function createTestVariable(
  */
 async function getScopeIdFromVersion(versionId: string): Promise<string> {
   const [version] = await globalThis.services.db
-    .select({ scopeId: agentComposes.scopeId })
+    .select({ scopeId: scopes.id })
     .from(agentComposeVersions)
     .innerJoin(
       agentComposes,
       eq(agentComposes.id, agentComposeVersions.composeId),
     )
+    .innerJoin(scopes, eq(agentComposes.clerkOrgId, scopes.clerkOrgId))
     .where(eq(agentComposeVersions.id, versionId))
     .limit(1);
   if (!version) {
     throw new Error(`Compose version ${versionId} not found`);
   }
   return version.scopeId;
+}
+
+/**
+ * Resolve clerkOrgId from a scopeId.
+ * Shared by test helpers that insert records into scope-dependent tables.
+ */
+async function getClerkOrgIdFromScope(scopeId: string): Promise<string> {
+  const [scope] = await globalThis.services.db
+    .select({ clerkOrgId: scopes.clerkOrgId })
+    .from(scopes)
+    .where(eq(scopes.id, scopeId))
+    .limit(1);
+  if (!scope) {
+    throw new Error(`Scope ${scopeId} not found`);
+  }
+  return scope.clerkOrgId;
 }
 
 /**
@@ -1426,6 +1451,7 @@ export async function insertStalePendingRun(
   ageMs: number = 20 * 60 * 1000,
 ): Promise<string> {
   const scopeId = await getScopeIdFromVersion(agentComposeVersionId);
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
 
   const staleCreatedAt = new Date(Date.now() - ageMs);
   const [run] = await globalThis.services.db
@@ -1433,6 +1459,7 @@ export async function insertStalePendingRun(
     .values({
       userId,
       scopeId,
+      clerkOrgId,
       agentComposeVersionId,
       status: "pending",
       prompt: "Stale pending run",
@@ -1485,71 +1512,203 @@ export async function createTestPermission(
 }
 
 /**
- * Create a test connector directly in the database.
- * Used for setting up test data for connector API tests.
+ * Create a test connector via API routes.
  *
- * @param scopeId - The scope ID to associate with the connector
- * @param options - Optional overrides for connector properties
+ * - api-token: calls POST /api/connectors/:type/token
+ * - oauth: calls GET /api/connectors/:type/callback with MSW mocks
+ *
+ * @param scopeId - The scope ID (unused directly, kept for call-site compat)
+ * @param options - Connector configuration
  */
 export async function createTestConnector(
-  scopeId: string,
+  _scopeId: string,
   options?: {
     type?: ConnectorType;
-    authMethod?: "oauth" | "pat";
-    externalId?: string;
-    externalUsername?: string;
-    externalEmail?: string;
-    oauthScopes?: string[];
+    authMethod?: "oauth" | "api-token";
     accessToken?: string;
+    /** Secret name for api-token (e.g. "FIGMA_TOKEN"). Required for api-token. */
+    secretName?: string;
+    externalUsername?: string;
+    externalId?: string | null;
+    externalEmail?: string | null;
+    oauthScopes?: string[];
     userId?: string;
   },
-): Promise<typeof connectors.$inferSelect> {
-  const type = options?.type ?? "github";
+): Promise<void> {
+  const authMethod = options?.authMethod ?? "oauth";
 
-  // Resolve userId: use provided value or look up from scope_members
-  let userId = options?.userId;
-  if (!userId) {
-    const [member] = await globalThis.services.db
-      .select({ userId: scopeMembers.userId })
-      .from(scopeMembers)
-      .where(eq(scopeMembers.scopeId, scopeId))
-      .limit(1);
-    if (!member) {
-      throw new Error(`No scope member found for scope ${scopeId}`);
-    }
-    userId = member.userId;
+  if (authMethod === "api-token") {
+    await createTestApiTokenConnector(options);
+  } else {
+    await createTestOAuthConnector(options);
+  }
+}
+
+/**
+ * Create an api-token connector by storing user secrets via PUT /api/secrets.
+ * Api-token connector status is now derived from user secrets, not DB records.
+ */
+async function createTestApiTokenConnector(options?: {
+  type?: ConnectorType;
+  accessToken?: string;
+  secretName?: string;
+}): Promise<void> {
+  const type = options?.type ?? "github";
+  const tokenValue = options?.accessToken ?? "test-api-token";
+  const secretName =
+    options?.secretName ?? `${type.toUpperCase().replace(/-/g, "_")}_TOKEN`;
+
+  const request = createTestRequest("http://localhost:3000/api/secrets", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: secretName,
+      value: tokenValue,
+      description: `API token for ${type} connector`,
+    }),
+  });
+  const response = await setSecretRoute(request);
+  if (response.status !== 200 && response.status !== 201) {
+    const data = await response.json();
+    throw new Error(
+      `Failed to create api-token connector user secret: ${data.error?.message ?? response.status}`,
+    );
+  }
+}
+
+// OAuth provider mock configurations for test setup
+const OAUTH_PROVIDER_MOCKS: Record<
+  string,
+  {
+    tokenUrl: string;
+    userUrl: string;
+    envVars: Record<string, string>;
+    buildTokenResponse: (accessToken: string) => Record<string, unknown>;
+    buildUserResponse: (opts: {
+      userId?: number;
+      username?: string;
+      email?: string;
+    }) => Record<string, unknown>;
+  }
+> = {
+  github: {
+    tokenUrl: "https://github.com/login/oauth/access_token",
+    userUrl: "https://api.github.com/user",
+    envVars: {
+      GH_OAUTH_CLIENT_ID: "test-client-id",
+      GH_OAUTH_CLIENT_SECRET: "test-client-secret",
+    },
+    buildTokenResponse: (accessToken) => ({
+      access_token: accessToken,
+      scope: "repo,project",
+      token_type: "bearer",
+    }),
+    buildUserResponse: (opts) => ({
+      id: opts.userId ?? 12345,
+      login: opts.username ?? "testuser",
+      email: opts.email ?? "test@example.com",
+    }),
+  },
+  slack: {
+    tokenUrl: "https://slack.com/api/oauth.v2.access",
+    userUrl: "https://slack.com/api/users.info",
+    envVars: {},
+    buildTokenResponse: (accessToken) => ({
+      ok: true,
+      authed_user: {
+        id: "U12345",
+        access_token: accessToken,
+        scope: "channels:read,chat:write",
+      },
+    }),
+    buildUserResponse: (opts) => ({
+      ok: true,
+      user: {
+        id: opts.userId?.toString() ?? "U12345",
+        name: opts.username ?? "testuser",
+        real_name: opts.username ?? "Test User",
+        profile: { email: opts.email ?? "test@example.com" },
+      },
+    }),
+  },
+  figma: {
+    tokenUrl: "https://api.figma.com/v1/oauth/token",
+    userUrl: "https://api.figma.com/v1/me",
+    envVars: {
+      FIGMA_OAUTH_CLIENT_ID: "figma-test-client-id",
+      FIGMA_OAUTH_CLIENT_SECRET: "figma-test-client-secret",
+    },
+    buildTokenResponse: (accessToken) => ({
+      access_token: accessToken,
+      refresh_token: "figma-refresh-token",
+      expires_in: 7776000,
+    }),
+    buildUserResponse: (opts) => ({
+      id: opts.userId?.toString() ?? "12345",
+      email: opts.email ?? "test@example.com",
+      handle: opts.username ?? "testuser",
+    }),
+  },
+};
+
+/**
+ * Create an OAuth connector via GET /api/connectors/:type/callback with MSW mocks.
+ */
+async function createTestOAuthConnector(options?: {
+  type?: ConnectorType;
+  accessToken?: string;
+  externalUsername?: string;
+}): Promise<void> {
+  const type = options?.type ?? "github";
+  const accessToken = options?.accessToken ?? "test-github-token";
+  const providerMock = OAUTH_PROVIDER_MOCKS[type];
+  if (!providerMock) {
+    throw new Error(
+      `No OAuth mock config for connector type "${type}". ` +
+        `Supported: ${Object.keys(OAUTH_PROVIDER_MOCKS).join(", ")}`,
+    );
   }
 
-  const [connector] = await globalThis.services.db
-    .insert(connectors)
-    .values({
-      scopeId,
-      userId,
-      type,
-      authMethod: options?.authMethod ?? "oauth",
-      externalId: options?.externalId ?? "12345",
-      externalUsername: options?.externalUsername ?? "testuser",
-      externalEmail: options?.externalEmail ?? "test@example.com",
-      oauthScopes: JSON.stringify(options?.oauthScopes ?? ["repo"]),
-    })
-    .returning();
+  // Stub OAuth client env vars if the provider needs them
+  for (const [key, value] of Object.entries(providerMock.envVars)) {
+    vi.stubEnv(key, value);
+  }
+  reloadEnv();
 
-  // Also create the associated secret with proper encryption
-  const secretName = `${type.toUpperCase()}_ACCESS_TOKEN`;
-  const tokenValue = options?.accessToken ?? "test-github-token";
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  const encryptedValue = encryptCredentialValue(tokenValue, encryptionKey);
+  // Set up MSW handlers for token exchange + user info
+  server.use(
+    mswHttp.post(providerMock.tokenUrl, () =>
+      HttpResponse.json(providerMock.buildTokenResponse(accessToken)),
+    ),
+    mswHttp.get(providerMock.userUrl, () =>
+      HttpResponse.json(
+        providerMock.buildUserResponse({
+          username: options?.externalUsername ?? "testuser",
+        }),
+      ),
+    ),
+  );
 
-  await globalThis.services.db.insert(secrets).values({
-    scopeId,
-    userId,
-    name: secretName,
-    type: "connector",
-    encryptedValue,
-    description: `OAuth token for ${type} connector`,
+  // Create callback request with proper cookies
+  const state = "test-oauth-state";
+  const url = new URL(`http://localhost:3000/api/connectors/${type}/callback`);
+  url.searchParams.set("code", "test-code");
+  url.searchParams.set("state", state);
+
+  const request = createTestRequest(url.toString(), {
+    headers: { Cookie: `connector_oauth_state=${state}` },
+  });
+  const response = await connectorCallbackRoute(request, {
+    params: Promise.resolve({ type }),
   });
 
-  return connector!;
+  // Callback redirects to /connector/success on success
+  const location = response.headers.get("location") ?? "";
+  if (!location.includes("/connector/success")) {
+    throw new Error(
+      `OAuth callback failed: status=${response.status} location=${location}`,
+    );
+  }
 }
 
 /**
@@ -1563,15 +1722,17 @@ export async function createTestConnector(
 export async function findTestConnectorSecret(
   scopeId: string,
   secretName: string,
+  type: "connector" | "user" = "connector",
 ): Promise<string | undefined> {
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
   const [storedSecret] = await globalThis.services.db
     .select()
     .from(secrets)
     .where(
       and(
-        eq(secrets.scopeId, scopeId),
+        eq(secrets.clerkOrgId, clerkOrgId),
         eq(secrets.name, secretName),
-        eq(secrets.type, "connector"),
+        eq(secrets.type, type),
       ),
     )
     .limit(1);
@@ -1596,10 +1757,13 @@ export async function findTestConnectorTokenExpiresAt(
   scopeId: string,
   type: string,
 ): Promise<Date | null | undefined> {
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
   const [row] = await globalThis.services.db
     .select({ tokenExpiresAt: connectors.tokenExpiresAt })
     .from(connectors)
-    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.type, type)))
+    .where(
+      and(eq(connectors.clerkOrgId, clerkOrgId), eq(connectors.type, type)),
+    )
     .limit(1);
 
   if (!row) return undefined;
@@ -1724,12 +1888,14 @@ export async function createCompletedTestRun(options: {
   completedAt: Date;
 }): Promise<string> {
   const scopeId = await getScopeIdFromVersion(options.composeVersionId);
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
 
   const [row] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId: options.userId,
       scopeId,
+      clerkOrgId,
       agentComposeVersionId: options.composeVersionId,
       status: "completed",
       prompt: "test",
@@ -1780,13 +1946,13 @@ export async function createTestSlackComposeRequest(options: {
 /**
  * Find artifact storage for a scope, including its HEAD version details.
  */
-export async function findTestArtifactStorage(scopeId: string) {
+export async function findTestArtifactStorage(clerkOrgId: string) {
   const [storage] = await globalThis.services.db
     .select()
     .from(storages)
     .where(
       and(
-        eq(storages.scopeId, scopeId),
+        eq(storages.clerkOrgId, clerkOrgId),
         eq(storages.name, "artifact"),
         eq(storages.type, "artifact"),
       ),
@@ -1809,12 +1975,12 @@ export async function findTestArtifactStorage(scopeId: string) {
 }
 
 /**
- * Find a storage volume by scope and name.
+ * Find a storage volume by clerk org and name.
  * Volumes use the sentinel VOLUME_SCOPE_USER_ID for scope-level sharing.
  * Returns the storage id and name, or undefined if not found.
  */
 export async function findTestStorageByName(
-  scopeId: string,
+  clerkOrgId: string,
   name: string,
 ): Promise<{ id: string; name: string; s3Prefix: string } | undefined> {
   const [result] = await globalThis.services.db
@@ -1826,7 +1992,7 @@ export async function findTestStorageByName(
     .from(storages)
     .where(
       and(
-        eq(storages.scopeId, scopeId),
+        eq(storages.clerkOrgId, clerkOrgId),
         eq(storages.userId, VOLUME_SCOPE_USER_ID),
         eq(storages.name, name),
         eq(storages.type, "volume"),
@@ -1836,11 +2002,11 @@ export async function findTestStorageByName(
   return result;
 }
 /**
- * Find a storage record by scope, name, and type.
+ * Find a storage record by clerk org, name, and type.
  * Returns the storage userId and other details for verification.
  */
 export async function findTestStorage(
-  scopeId: string,
+  clerkOrgId: string,
   name: string,
   type: "volume" | "artifact" | "memory",
 ): Promise<
@@ -1856,7 +2022,7 @@ export async function findTestStorage(
     .from(storages)
     .where(
       and(
-        eq(storages.scopeId, scopeId),
+        eq(storages.clerkOrgId, clerkOrgId),
         eq(storages.name, name),
         eq(storages.type, type),
       ),
@@ -2149,7 +2315,7 @@ export async function findTestComposeWithScope(composeId: string) {
       scopeSlug: scopes.slug,
     })
     .from(agentComposes)
-    .innerJoin(scopes, eq(scopes.id, agentComposes.scopeId))
+    .innerJoin(scopes, eq(scopes.clerkOrgId, agentComposes.clerkOrgId))
     .where(eq(agentComposes.id, composeId))
     .limit(1);
   return row;
@@ -2171,12 +2337,14 @@ export async function createTestRunnerJob(
   contextOverrides?: Partial<StoredExecutionContext>,
 ): Promise<{ runId: string }> {
   const scopeId = await getScopeIdFromVersion(versionId);
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
 
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
       scopeId,
+      clerkOrgId,
       agentComposeVersionId: versionId,
       status: "pending",
       prompt: "test prompt",
@@ -2476,6 +2644,7 @@ export async function createTestTelegramInstallation(options?: {
     .values({
       userId: adminUserId,
       scopeId: scope!.id,
+      clerkOrgId: scope!.clerkOrgId,
       name: uniqueId("compose"),
     })
     .returning();
@@ -2575,9 +2744,10 @@ export async function insertTestAgentCompose(
   scopeId: string,
   name: string,
 ) {
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
   const [row] = await globalThis.services.db
     .insert(agentComposes)
-    .values({ userId, scopeId, name })
+    .values({ userId, scopeId, clerkOrgId, name })
     .returning();
   return row!;
 }
@@ -2593,32 +2763,16 @@ export async function insertTestAgentRun(
   scopeId: string,
   options?: { status?: string; prompt?: string },
 ) {
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
   const [row] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
       scopeId,
+      clerkOrgId,
       status: options?.status ?? "completed",
       prompt: options?.prompt ?? "test prompt",
     })
-    .returning();
-  return row!;
-}
-
-/**
- * Insert a storage record directly in the database.
- *
- * Direct DB insert is required for schema-level tests (e.g., CASCADE behavior)
- * that need to verify foreign key constraints without the full storage flow.
- */
-export async function insertTestStorageRecord(
-  userId: string,
-  scopeId: string,
-  name: string,
-) {
-  const [row] = await globalThis.services.db
-    .insert(storages)
-    .values({ userId, scopeId, name, s3Prefix: "test/prefix" })
     .returning();
   return row!;
 }
@@ -2659,21 +2813,6 @@ export async function findTestAgentRunById(id: string) {
     .select()
     .from(agentRuns)
     .where(eq(agentRuns.id, id))
-    .limit(1);
-  return row;
-}
-
-/**
- * Find a storage by its internal ID.
- *
- * Direct DB read is required for schema-level tests that verify
- * records were cascade-deleted.
- */
-export async function findTestStorageById(id: string) {
-  const [row] = await globalThis.services.db
-    .select()
-    .from(storages)
-    .where(eq(storages.id, id))
     .limit(1);
   return row;
 }

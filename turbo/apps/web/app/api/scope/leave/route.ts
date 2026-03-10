@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { requireScopeFromRequest } from "../../../../src/lib/scope/resolve-scope";
 import { leaveScope } from "../../../../src/lib/scope/scope-member-service";
 import {
@@ -16,16 +16,21 @@ export async function POST(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization") ?? undefined;
-  const userId = await getUserId(authHeader);
-  if (!userId) {
+  const authCtx = await getAuthContext(authHeader);
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { userId, scopeId: tokenScopeId } = authCtx;
 
   try {
-    const { scope, member } = await requireScopeFromRequest(request, userId);
+    const { scope, member } = await requireScopeFromRequest(
+      request,
+      userId,
+      tokenScopeId,
+    );
     await leaveScope(userId, scope.id, member.role);
     return NextResponse.json({ message: "Left scope" });
   } catch (error) {

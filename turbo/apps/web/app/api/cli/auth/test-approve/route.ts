@@ -10,7 +10,7 @@ import { env } from "../../../../../src/env";
  * Only available when USE_MOCK_CLAUDE is set to "true" (CI/test environments).
  *
  * This endpoint:
- * 1. Resolves the test user (via Clerk in SaaS, via default user in self-hosted)
+ * 1. Resolves the test user via Clerk
  * 2. Updates the device code status to "authenticated" with the test user ID
  */
 export async function POST(req: Request) {

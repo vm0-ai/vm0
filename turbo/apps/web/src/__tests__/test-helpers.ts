@@ -210,7 +210,7 @@ interface TestContext {
   createAgentCompose(
     vm0UserId: string,
     options?: { name?: string },
-  ): Promise<{ id: string; name: string; scopeId: string }>;
+  ): Promise<{ id: string; name: string; scopeId: string; clerkOrgId: string }>;
   createConnector(
     scopeId: string,
     options?: { type?: string; authMethod?: string },
@@ -220,6 +220,7 @@ interface TestContext {
 export interface UserContext {
   readonly userId: string;
   readonly scopeId: string;
+  readonly clerkOrgId: string;
 }
 
 /**
@@ -475,9 +476,17 @@ export function testContext(): TestContext {
       const scopeData = await createTestScope(`scope-${suffix}`);
       controller.signal.throwIfAborted();
 
+      // Look up clerkOrgId from the created scope
+      const [scope] = await globalThis.services.db
+        .select({ clerkOrgId: scopes.clerkOrgId })
+        .from(scopes)
+        .where(eq(scopes.id, scopeData.id))
+        .limit(1);
+
       return {
         userId,
         scopeId: scopeData.id,
+        clerkOrgId: scope!.clerkOrgId,
       };
     })();
 
@@ -537,6 +546,7 @@ export function testContext(): TestContext {
         .values({
           userId: adminUserId,
           scopeId: scopeData.id,
+          clerkOrgId: scopeData.clerkOrgId,
           name: uniqueId("default-agent"),
         })
         .returning();
@@ -611,7 +621,12 @@ export function testContext(): TestContext {
   async function createAgentCompose(
     vm0UserId: string,
     options: { name?: string } = {},
-  ): Promise<{ id: string; name: string; scopeId: string }> {
+  ): Promise<{
+    id: string;
+    name: string;
+    scopeId: string;
+    clerkOrgId: string;
+  }> {
     const { name = uniqueId("test-compose") } = options;
 
     initServices();
@@ -642,6 +657,7 @@ export function testContext(): TestContext {
       .values({
         userId: vm0UserId,
         scopeId: scopeData.id,
+        clerkOrgId: scopeData.clerkOrgId,
         name,
       })
       .returning();
@@ -654,6 +670,7 @@ export function testContext(): TestContext {
       id: compose.id,
       name: compose.name,
       scopeId: scopeData.id,
+      clerkOrgId: scopeData.clerkOrgId,
     };
   }
 
@@ -669,7 +686,7 @@ export function testContext(): TestContext {
 
     initServices();
 
-    // Look up userId from scope_members
+    // Look up userId and clerkOrgId from scope_members + scopes
     const [member] = await globalThis.services.db
       .select({ userId: scopeMembers.userId })
       .from(scopeMembers)
@@ -678,12 +695,18 @@ export function testContext(): TestContext {
     if (!member) {
       throw new Error(`No scope member found for scope ${scopeId}`);
     }
+    const [scope] = await globalThis.services.db
+      .select({ clerkOrgId: scopes.clerkOrgId })
+      .from(scopes)
+      .where(eq(scopes.id, scopeId))
+      .limit(1);
 
     const [connector] = await globalThis.services.db
       .insert(connectors)
       .values({
         scopeId,
         userId: member.userId,
+        clerkOrgId: scope!.clerkOrgId,
         type,
         authMethod,
       })

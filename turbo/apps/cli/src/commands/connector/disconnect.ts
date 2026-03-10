@@ -2,13 +2,14 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { CONNECTOR_TYPES, connectorTypeSchema } from "@vm0/core";
 import { deleteConnector } from "../../lib/api";
+import { withErrorHandler } from "../../lib/command";
 
 export const disconnectCommand = new Command()
   .name("disconnect")
   .description("Disconnect a third-party service")
   .argument("<type>", "Connector type to disconnect (e.g., github)")
-  .action(async (type: string) => {
-    try {
+  .action(
+    withErrorHandler(async (type: string) => {
       const parseResult = connectorTypeSchema.safeParse(type);
       if (!parseResult.success) {
         console.error(chalk.red(`✗ Unknown connector type: ${type}`));
@@ -23,21 +24,5 @@ export const disconnectCommand = new Command()
       const connectorType = parseResult.data;
       await deleteConnector(connectorType);
       console.log(chalk.green(`✓ Disconnected ${type}`));
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes("not found")) {
-          console.error(chalk.red(`✗ Connector "${type}" is not connected`));
-        } else if (error.message.includes("Not authenticated")) {
-          console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
-        } else {
-          console.error(chalk.red(`✗ ${error.message}`));
-          if (error.cause instanceof Error) {
-            console.error(chalk.dim(`  Cause: ${error.cause.message}`));
-          }
-        }
-      } else {
-        console.error(chalk.red("✗ An unexpected error occurred"));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

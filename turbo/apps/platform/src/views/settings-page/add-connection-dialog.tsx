@@ -14,6 +14,14 @@ import {
   allConnectorTypes$,
   pollingConnectorType$,
   connectConnector$,
+  submitApiToken$,
+  tokenFormSubmitting$,
+  setTokenFormValue$,
+  clearTokenForm$,
+  tokenFormValuesFor$,
+  setTokenFormSubmitting$,
+  selectedConnectorType$,
+  setSelectedConnectorType$,
   type ConnectorTypeWithStatus,
 } from "../../signals/settings-page/connectors.ts";
 import { openAddSecretDialog$ } from "../../signals/settings-page/secrets.ts";
@@ -23,17 +31,244 @@ import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 
 // ---------------------------------------------------------------------------
-// Connector row (for use inside dialog)
+// Inline markdown renderer for help text
 // ---------------------------------------------------------------------------
 
-function ConnectorRowInDialog({ item }: { item: ConnectorTypeWithStatus }) {
-  const pollingType = useGet(pollingConnectorType$);
-  const connect = useSet(connectConnector$);
+function renderMarkdown(text: string): string {
+  return text
+    .replace(
+      /\[([^\]]+)\]\(([^)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-primary underline">$1</a>',
+    )
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(
+      /^> (.+)$/gm,
+      '<div class="pl-3 border-l-2 border-muted text-muted-foreground">$1</div>',
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Connected status text helper
+// ---------------------------------------------------------------------------
+
+function connectedStatusText(item: ConnectorTypeWithStatus): string {
+  if (item.connector?.authMethod === "api-token") {
+    return "Connected via API Token";
+  }
+  if (item.connector?.externalUsername) {
+    return `Connected as @${item.connector.externalUsername}`;
+  }
+  return "Connected";
+}
+
+// ---------------------------------------------------------------------------
+// API Token form (shown inside connect modal)
+// ---------------------------------------------------------------------------
+
+function ApiTokenForm({
+  type,
+  item,
+  onSuccess,
+}: {
+  type: ConnectorType;
+  item: ConnectorTypeWithStatus;
+  onSuccess: () => void;
+}) {
+  const config = CONNECTOR_TYPES[type];
+  const apiTokenConfig = config.authMethods["api-token"];
+  const submit = useSet(submitApiToken$);
+  const setFormValue = useSet(setTokenFormValue$);
+  const clearForm = useSet(clearTokenForm$);
   const pageSignal = useGet(pageSignal$);
-  const isPolling = pollingType === item.type;
+  const secretValues = useGet(tokenFormValuesFor$(type));
+  const submittingType = useGet(tokenFormSubmitting$);
+  const setSubmitting = useSet(setTokenFormSubmitting$);
+  const submitting = submittingType === type;
+
+  if (!apiTokenConfig) {
+    return null;
+  }
+
+  const secretEntries = Object.entries(apiTokenConfig.secrets);
+  const allFilled = secretEntries.every(
+    ([name, cfg]) => !cfg.required || secretValues[name],
+  );
+
+  const handleSubmit = () => {
+    if (!allFilled || submitting) {
+      return;
+    }
+    setSubmitting(type);
+    detach(
+      (async () => {
+        await submit(type, secretValues, pageSignal);
+        setSubmitting(null);
+        clearForm(type);
+        onSuccess();
+      })().catch(() => {
+        setSubmitting(null);
+      }),
+      Reason.DomCallback,
+    );
+  };
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/50">
+    <div className="flex flex-col gap-3">
+      {item.connected && item.connector?.authMethod === "oauth" && (
+        <p className="text-xs text-amber-600">
+          This will replace your current OAuth connection.
+        </p>
+      )}
+      {apiTokenConfig.helpText && (
+        <div
+          className="text-sm text-muted-foreground leading-relaxed [&_a]:text-primary [&_a]:underline"
+          dangerouslySetInnerHTML={{
+            __html: renderMarkdown(apiTokenConfig.helpText),
+          }}
+        />
+      )}
+      {secretEntries.map(([name, secretConfig]) => (
+        <div key={name} className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-foreground">
+            {secretConfig.label}
+          </label>
+          <input
+            type="password"
+            placeholder={secretConfig.placeholder}
+            value={secretValues[name] ?? ""}
+            onChange={(e) => setFormValue(type, name, e.target.value)}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
+      ))}
+      <button
+        onClick={handleSubmit}
+        disabled={!allFilled || submitting}
+        className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+      >
+        {submitting ? "Saving..." : "Save"}
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Connect modal content (OAuth button + token form, or just token form)
+// ---------------------------------------------------------------------------
+
+function ConnectModalContent({
+  item,
+  onSuccess,
+}: {
+  item: ConnectorTypeWithStatus;
+  onSuccess: () => void;
+}) {
+  const connect = useSet(connectConnector$);
+  const pageSignal = useGet(pageSignal$);
+  const pollingType = useGet(pollingConnectorType$);
+  const isPolling = pollingType === item.type;
+
+  const config = CONNECTOR_TYPES[item.type];
+  const hasOAuth = item.availableAuthMethods.includes("oauth");
+  const hasApiToken = item.availableAuthMethods.includes("api-token");
+
+  // While OAuth is in progress, only show connecting state
+  if (isPolling) {
+    return <p className="text-sm text-muted-foreground">Connecting...</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {hasOAuth && (
+        <button
+          onClick={() =>
+            detach(connect(item.type, pageSignal), Reason.DomCallback)
+          }
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+        >
+          Sign in with {config.label}
+        </button>
+      )}
+
+      {hasOAuth && hasApiToken && (
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t border-border" />
+          </div>
+          <div className="relative flex justify-center text-xs">
+            <span className="bg-background px-2 text-muted-foreground">or</span>
+          </div>
+        </div>
+      )}
+
+      {hasApiToken && (
+        <ApiTokenForm type={item.type} item={item} onSuccess={onSuccess} />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Connect modal (opened when clicking Connect on a connector with api-token)
+// ---------------------------------------------------------------------------
+
+export function ConnectModal({ onClose }: { onClose: () => void }) {
+  const selectedType = useGet(selectedConnectorType$);
+  const connectorTypes = useLastResolved(allConnectorTypes$);
+
+  const item = connectorTypes?.find((c) => c.type === selectedType);
+
+  if (!selectedType || !item) {
+    return null;
+  }
+
+  const config = CONNECTOR_TYPES[selectedType];
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <ConnectorIcon type={selectedType} size={28} />
+            <DialogTitle>{config.label}</DialogTitle>
+          </div>
+        </DialogHeader>
+
+        {item.connected && (
+          <p className="text-sm text-muted-foreground">
+            {connectedStatusText(item)}
+          </p>
+        )}
+
+        <ConnectModalContent item={item} onSuccess={onClose} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Connector card (shows Connect button when not connected)
+// ---------------------------------------------------------------------------
+
+function ConnectorCard({ item }: { item: ConnectorTypeWithStatus }) {
+  const setSelected = useSet(setSelectedConnectorType$);
+  const connect = useSet(connectConnector$);
+  const pageSignal = useGet(pageSignal$);
+  const pollingType = useGet(pollingConnectorType$);
+  const isPolling = pollingType === item.type;
+
+  const hasApiToken = item.availableAuthMethods.includes("api-token");
+
+  const handleConnect = () => {
+    if (hasApiToken) {
+      setSelected(item.type);
+    } else {
+      detach(connect(item.type, pageSignal), Reason.DomCallback);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
       <div className="flex items-center gap-3">
         <div className="shrink-0">
           <ConnectorIcon type={item.type} size={28} />
@@ -49,14 +284,14 @@ function ConnectorRowInDialog({ item }: { item: ConnectorTypeWithStatus }) {
       </div>
       <div className="mt-auto">
         {item.connected ? (
-          <span className="text-xs text-muted-foreground">Connected</span>
+          <span className="text-xs text-muted-foreground">
+            {connectedStatusText(item)}
+          </span>
         ) : isPolling ? (
           <span className="text-xs text-muted-foreground">Connecting...</span>
         ) : (
           <button
-            onClick={() =>
-              detach(connect(item.type, pageSignal), Reason.DomCallback)
-            }
+            onClick={handleConnect}
             className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
           >
             Connect
@@ -124,7 +359,7 @@ function CustomAPITabContent({
 }
 
 // ---------------------------------------------------------------------------
-// Dialog
+// Add Connection Dialog
 // ---------------------------------------------------------------------------
 
 export function AddConnectionDialog({
@@ -176,7 +411,7 @@ export function AddConnectionDialog({
                   <div className="grid grid-cols-2 gap-3">
                     {connectorTypes
                       ? connectorTypes.map((item) => (
-                          <ConnectorRowInDialog key={item.type} item={item} />
+                          <ConnectorCard key={item.type} item={item} />
                         ))
                       : types.slice(0, 6).map((type) => (
                           <div

@@ -3,6 +3,8 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  getTestScope,
+  insertTestAgentPermission,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -138,5 +140,94 @@ describe("GET /api/agent/composes?name=<name>", () => {
 
     expect(getResponse.status).toBe(401);
     expect(getData.error.message).toContain("Not authenticated");
+  });
+
+  it("should return shared agent via cross-scope lookup with ?scope=", async () => {
+    const agentName = `test-shared-agent-${Date.now()}`;
+
+    // Create compose as owner
+    const { composeId } = await createTestCompose(agentName);
+
+    // Get the owner's scope slug
+    const ownerScope = await getTestScope(user.scopeId);
+
+    // Grant email permission to the recipient
+    const recipientEmail = "recipient@example.com";
+    await insertTestAgentPermission(composeId, recipientEmail, user.userId);
+
+    // Switch to recipient user
+    const recipient = await context.setupUser({ prefix: "recipient" });
+    mockClerk({ userId: recipient.userId, email: recipientEmail });
+
+    // Access the agent via cross-scope lookup
+    const getRequest = createTestRequest(
+      `http://localhost:3000/api/agent/composes?name=${agentName}&scope=${ownerScope.slug}`,
+      { method: "GET" },
+    );
+
+    const getResponse = await GET(getRequest);
+    const getData = await getResponse.json();
+
+    expect(getResponse.status).toBe(200);
+    expect(getData.id).toBe(composeId);
+    expect(getData.name).toBe(agentName);
+  });
+
+  it("should return 404 for non-shared agent via cross-scope lookup", async () => {
+    const agentName = `test-not-shared-${Date.now()}`;
+
+    // Create compose as owner (no permission granted)
+    await createTestCompose(agentName);
+
+    // Get the owner's scope slug
+    const ownerScope = await getTestScope(user.scopeId);
+
+    // Switch to another user with no permission
+    await context.setupUser({ prefix: "unauthorized" });
+
+    // Try to access via cross-scope lookup
+    const getRequest = createTestRequest(
+      `http://localhost:3000/api/agent/composes?name=${agentName}&scope=${ownerScope.slug}`,
+      { method: "GET" },
+    );
+
+    const getResponse = await GET(getRequest);
+    const getData = await getResponse.json();
+
+    expect(getResponse.status).toBe(404);
+    expect(getData.error.message).toContain("Agent compose not found");
+  });
+
+  it("should return own agent without ?scope= parameter", async () => {
+    const agentName = `test-own-agent-${Date.now()}`;
+
+    // Create compose as current user
+    const { composeId } = await createTestCompose(agentName);
+
+    // Access without scope param (uses resolveScope for own scope)
+    const getRequest = createTestRequest(
+      `http://localhost:3000/api/agent/composes?name=${agentName}`,
+      { method: "GET" },
+    );
+
+    const getResponse = await GET(getRequest);
+    const getData = await getResponse.json();
+
+    expect(getResponse.status).toBe(200);
+    expect(getData.id).toBe(composeId);
+    expect(getData.name).toBe(agentName);
+  });
+
+  it("should return 404 for invalid scope slug in cross-scope lookup", async () => {
+    const getRequest = createTestRequest(
+      "http://localhost:3000/api/agent/composes?name=any-agent&scope=nonexistent-scope",
+      { method: "GET" },
+    );
+
+    const getResponse = await GET(getRequest);
+    const getData = await getResponse.json();
+
+    expect(getResponse.status).toBe(404);
+    expect(getData.error.message).toContain("Agent compose not found");
   });
 });

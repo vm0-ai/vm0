@@ -33,7 +33,7 @@ describe("Delete Agent - Instructions Storage Cleanup", () => {
 
     // Verify volume exists and get its s3Prefix
     const storageBefore = await findTestStorageByName(
-      user.scopeId,
+      user.clerkOrgId,
       storageName,
     );
     expect(storageBefore).toBeDefined();
@@ -54,7 +54,10 @@ describe("Delete Agent - Instructions Storage Cleanup", () => {
     expect(response.status).toBe(204);
 
     // Instructions volume should be deleted from DB
-    const storageAfter = await findTestStorageByName(user.scopeId, storageName);
+    const storageAfter = await findTestStorageByName(
+      user.clerkOrgId,
+      storageName,
+    );
     expect(storageAfter).toBeUndefined();
 
     // S3 objects should be listed and deleted
@@ -103,13 +106,13 @@ describe("Delete Agent - Instructions Storage Cleanup", () => {
 
     // Instructions volume should be deleted
     const instructionsAfter = await findTestStorageByName(
-      user.scopeId,
+      user.clerkOrgId,
       instructionsName,
     );
     expect(instructionsAfter).toBeUndefined();
 
     // Skill volume should still exist
-    const skillAfter = await findTestStorageByName(user.scopeId, skillName);
+    const skillAfter = await findTestStorageByName(user.clerkOrgId, skillName);
     expect(skillAfter).toBeDefined();
   });
 });

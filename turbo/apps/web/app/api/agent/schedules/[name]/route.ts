@@ -5,13 +5,15 @@ import {
 } from "../../../../../src/lib/ts-rest-handler";
 import { schedulesByNameContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
 import {
   getScheduleByName,
   deleteSchedule,
 } from "../../../../../src/lib/schedule";
 import { logger } from "../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../src/lib/errors";
+import { resolveScopeId } from "../../../../../src/lib/scope/scope-member-service";
+import { getScopeById } from "../../../../../src/lib/scope/scope-service";
 
 const log = logger("api:schedules:name");
 
@@ -19,8 +21,8 @@ const router = tsr.router(schedulesByNameContract, {
   getByName: async ({ params, query, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -28,12 +30,25 @@ const router = tsr.router(schedulesByNameContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     log.debug(`Getting schedule ${params.name} for compose ${query.composeId}`);
 
     try {
+      const scopeId = await resolveScopeId(userId, query.scopeId, tokenScopeId);
+      const scope = await getScopeById(scopeId);
+      if (!scope) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Scope not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+
       const schedule = await getScheduleByName(
         userId,
+        scope.clerkOrgId,
         query.composeId,
         params.name,
       );
@@ -58,8 +73,8 @@ const router = tsr.router(schedulesByNameContract, {
   delete: async ({ params, query, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -67,13 +82,30 @@ const router = tsr.router(schedulesByNameContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     log.debug(
       `Deleting schedule ${params.name} for compose ${query.composeId}`,
     );
 
     try {
-      await deleteSchedule(userId, query.composeId, params.name);
+      const scopeId = await resolveScopeId(userId, query.scopeId, tokenScopeId);
+      const scope = await getScopeById(scopeId);
+      if (!scope) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Scope not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+
+      await deleteSchedule(
+        userId,
+        scope.clerkOrgId,
+        query.composeId,
+        params.name,
+      );
 
       return {
         status: 204 as const,

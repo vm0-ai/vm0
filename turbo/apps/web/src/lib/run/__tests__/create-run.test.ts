@@ -6,6 +6,7 @@ import {
 } from "../../../__tests__/test-helpers";
 import {
   createTestCompose,
+  createTestConnector,
   createTestVolume,
   createTestArtifact,
   createTestRequest,
@@ -694,6 +695,7 @@ describe("createRun()", () => {
         name: uniqueId("org-agent"),
       });
       const orgScopeId = orgCompose.scopeId;
+      const orgClerkOrgId = orgCompose.clerkOrgId;
 
       // Use the default compose but pass org scope for storage resolution
       const result = await createRun(
@@ -713,7 +715,7 @@ describe("createRun()", () => {
 
       // Verify artifact storage was created in the org scope (not user's default scope)
       const artifact = await findTestStorage(
-        orgScopeId,
+        orgClerkOrgId,
         "artifact",
         "artifact",
       );
@@ -721,7 +723,7 @@ describe("createRun()", () => {
       expect(artifact!.userId).toBe(user.userId);
 
       // Verify memory storage was created in the org scope
-      const memory = await findTestStorage(orgScopeId, "memory", "memory");
+      const memory = await findTestStorage(orgClerkOrgId, "memory", "memory");
       expect(memory).toBeDefined();
       expect(memory!.userId).toBe(user.userId);
     });
@@ -741,7 +743,7 @@ describe("createRun()", () => {
 
       // Verify artifact storage was created in user's default scope
       const artifact = await findTestStorage(
-        user.scopeId,
+        user.clerkOrgId,
         "artifact",
         "artifact",
       );
@@ -749,9 +751,70 @@ describe("createRun()", () => {
       expect(artifact!.userId).toBe(user.userId);
 
       // Verify memory storage was created in user's default scope
-      const memory = await findTestStorage(user.scopeId, "memory", "memory");
+      const memory = await findTestStorage(user.clerkOrgId, "memory", "memory");
       expect(memory).toBeDefined();
       expect(memory!.userId).toBe(user.userId);
+    });
+  });
+
+  describe("Connector Secret Injection", () => {
+    it("should inject api-token connector secret into sandbox environment", async () => {
+      // Create a compose that references the secret via ${{ secrets.FIGMA_TOKEN }}
+      const compose = await createTestCompose(uniqueId("api-token-agent"), {
+        overrides: {
+          environment: {
+            ANTHROPIC_API_KEY: "test-api-key",
+            FIGMA_TOKEN: "${{ secrets.FIGMA_TOKEN }}",
+          },
+        },
+      });
+
+      // Create a figma connector with api-token auth and secret stored under target name
+      await createTestConnector(user.scopeId, {
+        type: "figma",
+        authMethod: "api-token",
+        secretName: "FIGMA_TOKEN",
+        accessToken: "figd_test_secret_123",
+      });
+
+      await createRun(baseParams({ agentComposeVersionId: compose.versionId }));
+
+      // Verify the secret was injected into sandbox environment
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      expect(createCall).toBeDefined();
+      const sandboxOptions = createCall![1] as {
+        envs?: Record<string, string>;
+      };
+      expect(sandboxOptions.envs?.FIGMA_TOKEN).toBe("figd_test_secret_123");
+    });
+
+    it("should inject oauth connector secret via environmentMapping into sandbox environment", async () => {
+      // Create a compose that references the mapped secret name
+      const compose = await createTestCompose(uniqueId("oauth-agent"), {
+        overrides: {
+          environment: {
+            ANTHROPIC_API_KEY: "test-api-key",
+            GH_TOKEN: "${{ secrets.GH_TOKEN }}",
+          },
+        },
+      });
+
+      // Create a github connector with oauth auth via callback route
+      await createTestConnector(user.scopeId, {
+        type: "github",
+        authMethod: "oauth",
+        accessToken: "ghp_oauth_test_456",
+      });
+
+      await createRun(baseParams({ agentComposeVersionId: compose.versionId }));
+
+      // Verify the mapped secret was injected into sandbox environment
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      expect(createCall).toBeDefined();
+      const sandboxOptions = createCall![1] as {
+        envs?: Record<string, string>;
+      };
+      expect(sandboxOptions.envs?.GH_TOKEN).toBe("ghp_oauth_test_456");
     });
   });
 });

@@ -58,7 +58,7 @@ export type UpdateScopeRequest = z.infer<typeof updateScopeRequestSchema>;
 export const scopeContract = c.router({
   /**
    * GET /api/scope
-   * Get current user's scope
+   * Get current user's default scope
    */
   get: {
     method: "GET",
@@ -70,12 +70,12 @@ export const scopeContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Get current user's scope",
+    summary: "Get current user's default scope",
   },
 
   /**
    * POST /api/scope
-   * Create user's scope
+   * Create a scope
    */
   create: {
     method: "POST",
@@ -89,12 +89,12 @@ export const scopeContract = c.router({
       409: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Create user's scope",
+    summary: "Create a scope",
   },
 
   /**
    * PUT /api/scope
-   * Update user's scope slug
+   * Update scope slug
    */
   update: {
     method: "PUT",
@@ -110,8 +110,43 @@ export const scopeContract = c.router({
       409: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Update user's scope slug",
+    summary: "Update scope slug",
   },
 });
 
 export type ScopeContract = typeof scopeContract;
+
+/**
+ * Scope default agent contract for /api/scopes/default-agent
+ */
+export const scopeDefaultAgentContract = c.router({
+  /**
+   * PUT /api/scopes/default-agent?scope={slug}
+   * Set or unset the default agent for a scope.
+   * Only scope admins can perform this action.
+   * The agent must belong to the same scope.
+   */
+  setDefaultAgent: {
+    method: "PUT",
+    path: "/api/scopes/default-agent",
+    headers: authHeadersSchema,
+    query: z.object({
+      scope: z.string().optional(),
+    }),
+    body: z.object({
+      agentComposeId: z.string().uuid().nullable(),
+    }),
+    responses: {
+      200: z.object({
+        agentComposeId: z.string().uuid().nullable(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Set or unset the default agent for a scope",
+  },
+});
+
+export type ScopeDefaultAgentContract = typeof scopeDefaultAgentContract;

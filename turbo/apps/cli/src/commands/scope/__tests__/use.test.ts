@@ -3,7 +3,7 @@
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
- * - Mock (external): Web API via MSW, config file I/O
+ * - Mock (external): Web API via MSW, os.homedir for config isolation
  * - Real (internal): All CLI code, formatters, validators
  */
 
@@ -11,15 +11,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { useCommand } from "../use";
+import { mkdtempSync } from "fs";
+import * as path from "path";
+import * as os from "os";
 import chalk from "chalk";
 
-vi.mock("../../../lib/api/config", async (importOriginal) => {
-  const original =
-    await importOriginal<typeof import("../../../lib/api/config")>();
-  return {
-    ...original,
-    loadConfig: vi.fn().mockResolvedValue({ activeScope: undefined }),
-  };
+// Mock os.homedir to use temp directory
+const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "test-scope-use-"));
+vi.mock("os", async (importOriginal) => {
+  const original = await importOriginal<typeof import("os")>();
+  return { ...original, homedir: () => TEST_HOME };
 });
 
 describe("scope use command", () => {

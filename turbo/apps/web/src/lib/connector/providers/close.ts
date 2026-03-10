@@ -1,0 +1,201 @@
+import { getConnectorOAuthConfig } from "@vm0/core";
+import { z } from "zod";
+
+interface CloseUserInfo {
+  id: string;
+  email: string | null;
+  organizationId: string | null;
+}
+
+interface CloseTokenResult {
+  accessToken: string;
+  refreshToken: string | null;
+  expiresIn?: number;
+  scopes: string[];
+  userInfo: CloseUserInfo;
+}
+
+interface CloseRefreshResult {
+  accessToken: string;
+  refreshToken: string | null;
+}
+
+/**
+ * Build Close OAuth authorization URL.
+ */
+export function buildCloseAuthorizationUrl(
+  clientId: string,
+  redirectUri: string,
+  state: string,
+): string {
+  const oauthConfig = getConnectorOAuthConfig("close");
+  if (!oauthConfig) {
+    throw new Error("Close OAuth config not found");
+  }
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    state,
+  });
+
+  return `${oauthConfig.authorizationUrl}?${params.toString()}`;
+}
+
+/**
+ * Exchange authorization code for access token and user info.
+ */
+export async function exchangeCloseCode(
+  clientId: string,
+  clientSecret: string,
+  code: string,
+  redirectUri: string,
+): Promise<CloseTokenResult> {
+  const oauthConfig = getConnectorOAuthConfig("close");
+  if (!oauthConfig) {
+    throw new Error("Close OAuth config not found");
+  }
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      code,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Close token exchange failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
+      scope: z.string().optional(),
+      user_id: z.string().optional(),
+      organization_id: z.string().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+
+  if (!data.access_token) {
+    throw new Error("No access token in Close response");
+  }
+
+  const userInfo = await fetchCloseUserInfo(data.access_token);
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
+    scopes: data.scope ? data.scope.split(" ") : oauthConfig.scopes,
+    userInfo: {
+      id: userInfo.id ?? data.user_id ?? "unknown",
+      email: userInfo.email,
+      organizationId: data.organization_id ?? null,
+    },
+  };
+}
+
+/**
+ * Refresh a Close access token using the refresh token.
+ */
+export async function refreshCloseToken(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<CloseRefreshResult> {
+  const oauthConfig = getConnectorOAuthConfig("close");
+  if (!oauthConfig) {
+    throw new Error("Close OAuth config not found");
+  }
+
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Close token refresh failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      refresh_token: z.string().nullable().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+
+  if (!data.access_token) {
+    throw new Error("No access token in Close refresh response");
+  }
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
+  };
+}
+
+/**
+ * Fetch Close user info using the access token.
+ */
+async function fetchCloseUserInfo(
+  accessToken: string,
+): Promise<{ id: string; email: string | null }> {
+  const response = await fetch("https://api.close.com/api/v1/me/", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Close user info fetch failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      id: z.string(),
+      email: z.string().nullable().optional(),
+    })
+    .parse(await response.json());
+
+  return {
+    id: data.id,
+    email: data.email ?? null,
+  };
+}
+
+/**
+ * Get the primary secret name for Close connector (the access token).
+ */
+export function getCloseSecretName(): string {
+  return "CLOSE_ACCESS_TOKEN";
+}

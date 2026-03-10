@@ -50,9 +50,17 @@ NOTION_OAUTH_CLIENT_SECRET=op://Development/notion/NOTION_OAUTH_CLIENT_SECRET
 GOOGLE_OAUTH_CLIENT_ID=op://Development/google/GOOGLE_OAUTH_CLIENT_ID
 GOOGLE_OAUTH_CLIENT_SECRET=op://Development/google/GOOGLE_OAUTH_CLIENT_SECRET
 
+# Optional: Microsoft OAuth Connector (Outlook Calendar, etc.)
+MICROSOFT_OAUTH_CLIENT_ID=op://Development/microsoft/MICROSOFT_OAUTH_CLIENT_ID
+MICROSOFT_OAUTH_CLIENT_SECRET=op://Development/microsoft/MICROSOFT_OAUTH_CLIENT_SECRET
+
 # Optional: HubSpot OAuth Connector
 HUBSPOT_OAUTH_CLIENT_ID=op://Development/hubspot/HUBSPOT_OAUTH_CLIENT_ID
 HUBSPOT_OAUTH_CLIENT_SECRET=op://Development/hubspot/HUBSPOT_OAUTH_CLIENT_SECRET
+
+# Optional: Close OAuth Connector
+CLOSE_OAUTH_CLIENT_ID=op://Development/close/CLOSE_OAUTH_CLIENT_ID
+CLOSE_OAUTH_CLIENT_SECRET=op://Development/close/CLOSE_OAUTH_CLIENT_SECRET
 
 # Optional: Deel OAuth Connector
 DEEL_OAUTH_CLIENT_ID=op://Development/deel/DEEL_OAUTH_CLIENT_ID
@@ -74,25 +82,9 @@ LINEAR_OAUTH_CLIENT_SECRET=op://Development/linear/LINEAR_OAUTH_CLIENT_SECRET
 FIGMA_OAUTH_CLIENT_ID=op://Development/figma/FIGMA_OAUTH_CLIENT_ID
 FIGMA_OAUTH_CLIENT_SECRET=op://Development/figma/FIGMA_OAUTH_CLIENT_SECRET
 
-# Optional: Mercury OAuth Connector
-MERCURY_OAUTH_CLIENT_ID=op://Development/mercury/MERCURY_OAUTH_CLIENT_ID
-MERCURY_OAUTH_CLIENT_SECRET=op://Development/mercury/MERCURY_OAUTH_CLIENT_SECRET
-
-# Optional: Neon OAuth Connector
-NEON_OAUTH_CLIENT_ID=op://Development/neon/NEON_OAUTH_CLIENT_ID
-NEON_OAUTH_CLIENT_SECRET=op://Development/neon/NEON_OAUTH_CLIENT_SECRET
-
 # Optional: Strava OAuth Connector
 STRAVA_OAUTH_CLIENT_ID=op://Development/strava/STRAVA_OAUTH_CLIENT_ID
 STRAVA_OAUTH_CLIENT_SECRET=op://Development/strava/STRAVA_OAUTH_CLIENT_SECRET
-
-# Optional: Garmin Connect OAuth Connector
-GARMIN_CONNECT_OAUTH_CLIENT_ID=op://Development/garmin-connect/GARMIN_CONNECT_OAUTH_CLIENT_ID
-GARMIN_CONNECT_OAUTH_CLIENT_SECRET=op://Development/garmin-connect/GARMIN_CONNECT_OAUTH_CLIENT_SECRET
-
-# Optional: Reddit OAuth Connector
-REDDIT_OAUTH_CLIENT_ID=op://Development/reddit/REDDIT_OAUTH_CLIENT_ID
-REDDIT_OAUTH_CLIENT_SECRET=op://Development/reddit/REDDIT_OAUTH_CLIENT_SECRET
 
 # Optional: X OAuth Connector
 X_OAUTH_CLIENT_ID=op://Development/x/X_OAUTH_CLIENT_ID
@@ -128,6 +120,10 @@ MONDAY_OAUTH_APP_ID=op://Development/monday/MONDAY_OAUTH_APP_ID
 WIX_OAUTH_CLIENT_ID=op://Development/wix/WIX_OAUTH_CLIENT_ID
 WIX_OAUTH_CLIENT_SECRET=op://Development/wix/WIX_OAUTH_CLIENT_SECRET
 
+# Optional: Meta Ads OAuth Connector
+META_ADS_OAUTH_CLIENT_ID=op://Development/meta-ads/META_ADS_OAUTH_CLIENT_ID
+META_ADS_OAUTH_CLIENT_SECRET=op://Development/meta-ads/META_ADS_OAUTH_CLIENT_SECRET
+
 # Optional: Canva OAuth Connector
 CANVA_OAUTH_CLIENT_ID=op://Development/canva/CANVA_OAUTH_CLIENT_ID
 CANVA_OAUTH_CLIENT_SECRET=op://Development/canva/CANVA_OAUTH_CLIENT_SECRET
@@ -136,9 +132,9 @@ CANVA_OAUTH_CLIENT_SECRET=op://Development/canva/CANVA_OAUTH_CLIENT_SECRET
 WEBFLOW_OAUTH_CLIENT_ID=op://Development/webflow/WEBFLOW_OAUTH_CLIENT_ID
 WEBFLOW_OAUTH_CLIENT_SECRET=op://Development/webflow/WEBFLOW_OAUTH_CLIENT_SECRET
 
-# Optional: Supabase OAuth Connector
-SUPABASE_OAUTH_CLIENT_ID=op://Development/supabase/SUPABASE_OAUTH_CLIENT_ID
-SUPABASE_OAUTH_CLIENT_SECRET=op://Development/supabase/SUPABASE_OAUTH_CLIENT_SECRET
+# Optional: Stripe OAuth Connector
+STRIPE_OAUTH_CLIENT_ID=op://Development/stripe/STRIPE_OAUTH_CLIENT_ID
+STRIPE_OAUTH_CLIENT_SECRET=op://Development/stripe/STRIPE_OAUTH_CLIENT_SECRET
 
 # Optional: ngrok (Computer Connector)
 NGROK_API_KEY=op://Development/ngrok/NGROK_API_KEY
@@ -173,4 +169,4 @@ GITHUB_APP_WEBHOOK_SECRET=op://Development/github/GITHUB_APP_WEBHOOK_SECRET
 
 # Optional: Self-hosted Runner (for local development with runner on dev-1)
 # RUNNER_DEFAULT_GROUP is auto-configured by sync-env.sh — do not add here
-OFFICIAL_RUNNER_SECRET=op://Development/vm0/OFFICIAL_RUNNER_SECRET
+OFFICIAL_RUNNER_SECRET=op://Team/vm0/OFFICIAL_RUNNER_SECRET

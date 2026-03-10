@@ -68,7 +68,7 @@ const nextConfig = {
     ],
   },
   allowedDevOrigins: ["*.vm7.ai"],
-  serverExternalPackages: ["ably", "dockerode"],
+  serverExternalPackages: ["ably"],
   webpack: (config) => {
     config.ignoreWarnings = [
       // e2b SDK uses dynamic require() for cross-runtime compatibility (Node/Deno/Bun)

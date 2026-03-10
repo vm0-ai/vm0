@@ -6,8 +6,7 @@
 # Usage:
 #   ansible-playbook -i "host," playbooks/cleanup-crates-runner.yml \
 #     -e "ansible_user=ubuntu" \
-#     -e "job_ref=pr-123-test" \
-#     --private-key /path/to/key.pem
+#     -e "job_ref=pr-123-test"
 #
 # Required Variables:
 #   - job_ref: The job reference identifier (e.g., pr-123-test)

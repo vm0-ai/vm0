@@ -1,12 +1,17 @@
-import { type ConnectorType } from "@vm0/core";
+import { type ConnectorType, getConnectorDefaultAuthMethod } from "@vm0/core";
 import { type Env } from "../../env";
 import {
   type AuthUrlResult,
   type OAuthTokenResult,
   type ProviderHandler,
 } from "./provider-types";
+import { agentmailHandler } from "./providers/agentmail-handler";
+import { ahrefsHandler } from "./providers/ahrefs-handler";
 import { airtableHandler } from "./providers/airtable-handler";
+import { axiomHandler } from "./providers/axiom-handler";
+import { asanaHandler } from "./providers/asana-handler";
 import { canvaHandler } from "./providers/canva-handler";
+import { closeHandler } from "./providers/close-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
@@ -27,13 +32,23 @@ import { notionHandler } from "./providers/notion-handler";
 import { redditHandler } from "./providers/reddit-handler";
 import { slackHandler } from "./providers/slack-handler";
 import { stravaHandler } from "./providers/strava-handler";
+import { stripeHandler } from "./providers/stripe-handler";
 import { intervalsIcuHandler } from "./providers/intervals-icu-handler";
 import { sentryHandler } from "./providers/sentry-handler";
 import { vercelHandler } from "./providers/vercel-handler";
 import { xHandler } from "./providers/x-handler";
 import { supabaseHandler } from "./providers/supabase-handler";
+import { mailchimpHandler } from "./providers/mailchimp-handler";
 import { todoistHandler } from "./providers/todoist-handler";
 import { webflowHandler } from "./providers/webflow-handler";
+import { outlookCalendarHandler } from "./providers/outlook-calendar-handler";
+import { outlookMailHandler } from "./providers/outlook-mail-handler";
+import { metaAdsHandler } from "./providers/meta-ads-handler";
+import { posthogHandler } from "./providers/posthog-handler";
+import { plausibleHandler } from "./providers/plausible-handler";
+import { productlaneHandler } from "./providers/productlane-handler";
+import { resendHandler } from "./providers/resend-handler";
+import { similarwebHandler } from "./providers/similarweb-handler";
 import { xeroHandler } from "./providers/xero-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
@@ -42,8 +57,13 @@ export const PROVIDER_HANDLERS: Record<
   Exclude<ConnectorType, "computer">,
   ProviderHandler
 > = {
+  agentmail: agentmailHandler,
+  ahrefs: ahrefsHandler,
   airtable: airtableHandler,
+  axiom: axiomHandler,
+  asana: asanaHandler,
   canva: canvaHandler,
+  close: closeHandler,
   deel: deelHandler,
   docusign: docusignHandler,
   dropbox: dropboxHandler,
@@ -57,19 +77,29 @@ export const PROVIDER_HANDLERS: Record<
   "google-drive": googleDriveHandler,
   "google-sheets": googleSheetsHandler,
   linear: linearHandler,
+  mailchimp: mailchimpHandler,
   mercury: mercuryHandler,
   monday: mondayHandler,
   neon: neonHandler,
   notion: notionHandler,
+  "outlook-calendar": outlookCalendarHandler,
+  "outlook-mail": outlookMailHandler,
   reddit: redditHandler,
   "intervals-icu": intervalsIcuHandler,
   sentry: sentryHandler,
   slack: slackHandler,
   strava: stravaHandler,
+  stripe: stripeHandler,
   todoist: todoistHandler,
   vercel: vercelHandler,
   webflow: webflowHandler,
   supabase: supabaseHandler,
+  "meta-ads": metaAdsHandler,
+  posthog: posthogHandler,
+  plausible: plausibleHandler,
+  productlane: productlaneHandler,
+  resend: resendHandler,
+  similarweb: similarwebHandler,
   x: xHandler,
   xero: xeroHandler,
 };
@@ -82,11 +112,14 @@ export function getConfiguredConnectorTypes(currentEnv: Env): ConnectorType[] {
   const configured: ConnectorType[] = [];
 
   for (const [type, handler] of Object.entries(PROVIDER_HANDLERS)) {
+    const connectorType = type as ConnectorType;
     if (
       handler.getClientId(currentEnv) &&
       handler.getClientSecret(currentEnv)
     ) {
-      configured.push(type as ConnectorType);
+      configured.push(connectorType);
+    } else if (getConnectorDefaultAuthMethod(connectorType) === "api-token") {
+      configured.push(connectorType);
     }
   }
 

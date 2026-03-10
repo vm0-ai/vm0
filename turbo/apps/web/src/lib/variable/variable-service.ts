@@ -42,7 +42,7 @@ interface VariableInfo {
  * List all variables for a scope (includes values)
  */
 export async function listVariables(
-  scopeId: string,
+  clerkOrgId: string,
   userId: string,
 ): Promise<VariableInfo[]> {
   const result = await globalThis.services.db
@@ -55,7 +55,9 @@ export async function listVariables(
       updatedAt: variables.updatedAt,
     })
     .from(variables)
-    .where(and(eq(variables.scopeId, scopeId), eq(variables.userId, userId)))
+    .where(
+      and(eq(variables.clerkOrgId, clerkOrgId), eq(variables.userId, userId)),
+    )
     .orderBy(variables.name);
 
   return result;
@@ -65,7 +67,7 @@ export async function listVariables(
  * Get a variable by name for a scope (includes value)
  */
 export async function getVariable(
-  scopeId: string,
+  clerkOrgId: string,
   userId: string,
   name: string,
 ): Promise<VariableInfo | null> {
@@ -81,7 +83,7 @@ export async function getVariable(
     .from(variables)
     .where(
       and(
-        eq(variables.scopeId, scopeId),
+        eq(variables.clerkOrgId, clerkOrgId),
         eq(variables.userId, userId),
         eq(variables.name, name),
       ),
@@ -100,7 +102,7 @@ export async function getVariable(
  * Used for batch variable resolution during agent execution
  */
 export async function getVariableValues(
-  scopeId: string,
+  clerkOrgId: string,
   userId: string,
 ): Promise<Record<string, string>> {
   const result = await globalThis.services.db
@@ -109,7 +111,9 @@ export async function getVariableValues(
       value: variables.value,
     })
     .from(variables)
-    .where(and(eq(variables.scopeId, scopeId), eq(variables.userId, userId)));
+    .where(
+      and(eq(variables.clerkOrgId, clerkOrgId), eq(variables.userId, userId)),
+    );
 
   const values: Record<string, string> = {};
   for (const row of result) {
@@ -123,6 +127,7 @@ export async function getVariableValues(
  * Create or update a variable (upsert)
  */
 export async function setVariable(
+  clerkOrgId: string,
   scopeId: string,
   userId: string,
   name: string,
@@ -131,7 +136,7 @@ export async function setVariable(
 ): Promise<VariableInfo> {
   validateVariableName(name);
 
-  log.debug("setting variable", { scopeId, name });
+  log.debug("setting variable", { clerkOrgId, name });
 
   // Check if variable exists
   const existing = await globalThis.services.db
@@ -139,7 +144,7 @@ export async function setVariable(
     .from(variables)
     .where(
       and(
-        eq(variables.scopeId, scopeId),
+        eq(variables.clerkOrgId, clerkOrgId),
         eq(variables.userId, userId),
         eq(variables.name, name),
       ),
@@ -178,6 +183,7 @@ export async function setVariable(
       value,
       description: description ?? null,
       userId,
+      clerkOrgId,
     })
     .returning({
       id: variables.id,
@@ -196,7 +202,7 @@ export async function setVariable(
  * Delete a variable by name
  */
 export async function deleteVariable(
-  scopeId: string,
+  clerkOrgId: string,
   userId: string,
   name: string,
 ): Promise<void> {
@@ -206,7 +212,7 @@ export async function deleteVariable(
     .from(variables)
     .where(
       and(
-        eq(variables.scopeId, scopeId),
+        eq(variables.clerkOrgId, clerkOrgId),
         eq(variables.userId, userId),
         eq(variables.name, name),
       ),
@@ -221,5 +227,5 @@ export async function deleteVariable(
     .delete(variables)
     .where(eq(variables.id, variable.id));
 
-  log.debug("variable deleted", { scopeId, name });
+  log.debug("variable deleted", { clerkOrgId, name });
 }

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
   IconMessageCircle,
@@ -10,8 +11,9 @@ import {
   IconTool,
   IconCalendar,
   IconPencil,
+  IconLoader2,
 } from "@tabler/icons-react";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import type { ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "../settings-page/connector-icons";
 import {
   Card,
@@ -28,7 +30,22 @@ import {
   SelectValue,
   cn,
 } from "@vm0/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@vm0/ui/components/ui/dialog";
 import { ZeroScheduleCard, DEFAULT_SCHEDULE } from "./zero-schedule-card";
+import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import {
+  allConnectorTypes$,
+  connectConnector$,
+  pollingConnectorType$,
+} from "../../signals/settings-page/connectors.ts";
+import { deleteConnector$ } from "../../signals/external/connectors.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 
 const TONE_OPTIONS = [
   "Professional",
@@ -37,32 +54,34 @@ const TONE_OPTIONS = [
   "Supportive",
 ] as const;
 
-const TONE_HINT: Record<(typeof TONE_OPTIONS)[number], string> = {
+const TONE_HINT: Readonly<Record<(typeof TONE_OPTIONS)[number], string>> = {
   Professional: "Clear and polished",
   Friendly: "Warm and approachable",
   Direct: "To the point",
   Supportive: "In your corner",
 };
 
-const TONE_SAMPLES: Record<
-  (typeof TONE_OPTIONS)[number],
-  { user: string; zero: string }
+const TONE_SAMPLES: Readonly<
+  Record<
+    (typeof TONE_OPTIONS)[number],
+    Readonly<{ user: string; zero: string }>
+  >
 > = {
   Professional: {
     user: "I need the Q3 report by Friday.",
-    zero: "I’ll have the Q3 report ready by Friday. I’ll send a draft by Thursday for your review.",
+    zero: "I'll have the Q3 report ready by Friday. I'll send a draft by Thursday for your review.",
   },
   Friendly: {
     user: "I need the Q3 report by Friday.",
-    zero: "Sure thing! I’ll get that Q3 report to you by Friday—I’ll send over a draft Thursday so you can take a look.",
+    zero: "Sure thing! I'll get that Q3 report to you by Friday—I'll send over a draft Thursday so you can take a look.",
   },
   Direct: {
     user: "I need the Q3 report by Friday.",
-    zero: "Friday. I’ll send a draft Thursday.",
+    zero: "Friday. I'll send a draft Thursday.",
   },
   Supportive: {
     user: "I need the Q3 report by Friday.",
-    zero: "I’ll make sure you have the Q3 report by Friday. I’ll send a draft on Thursday so you have time to review—let me know if you’d like anything else.",
+    zero: "I'll make sure you have the Q3 report by Friday. I'll send a draft on Thursday so you have time to review—let me know if you'd like anything else.",
   },
 };
 
@@ -78,15 +97,172 @@ const AVAILABLE_SKILLS = [
   "slack",
   "gmail",
   "elephant",
-];
+] as const;
 
-const CONNECTOR_LIST: ConnectorType[] = [
-  "github",
-  "linear",
-  "notion",
-  "gmail",
-  "slack",
-];
+function isConnectorSkill(skill: string): skill is ConnectorType {
+  return (
+    skill === "github" ||
+    skill === "linear" ||
+    skill === "notion" ||
+    skill === "gmail" ||
+    skill === "slack"
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Connections tab — real connector status + OAuth connect
+// ---------------------------------------------------------------------------
+
+function ZeroConnectionsTab() {
+  const allTypesLoadable = useLoadable(allConnectorTypes$);
+  const pollingType = useGet(pollingConnectorType$);
+  const connect = useSet(connectConnector$);
+  const disconnect = useSet(deleteConnector$);
+  const signal = useGet(pageSignal$);
+  const dialogOpen$ = useCCState(false);
+  const dialogOpen = useGet(dialogOpen$);
+  const setDialogOpen = useSet(dialogOpen$);
+
+  const allTypes =
+    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+  const connectedItems = allTypes.filter(
+    (item) => item.connected || pollingType === item.type,
+  );
+  const unconnectedItems = allTypes.filter(
+    (item) => !item.connected && pollingType !== item.type,
+  );
+
+  return (
+    <div className="mx-auto max-w-[900px] px-7 flex flex-col gap-6">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Connectors
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Connect and authorize these services so your agent can act on your
+            behalf.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          className="h-9 shrink-0 gap-2 rounded-lg"
+          onClick={() => setDialogOpen(true)}
+        >
+          <IconPlus size={16} stroke={2} />
+          Add Connector
+        </Button>
+      </div>
+
+      {connectedItems.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 py-12">
+          <IconPlug
+            size={32}
+            stroke={1.2}
+            className="text-muted-foreground/50"
+          />
+          <p className="text-sm text-muted-foreground">
+            No connectors yet. Add one to get started.
+          </p>
+        </div>
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {connectedItems.map((item) => (
+            <li key={item.type}>
+              <Card className="zero-card">
+                <CardContent className="flex items-center gap-4 px-4 py-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted overflow-hidden">
+                    <ConnectorIcon type={item.type} size={24} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">
+                      {item.label}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {item.connected && item.connector?.externalUsername
+                        ? `Connected as @${item.connector.externalUsername}`
+                        : item.helpText}
+                    </p>
+                  </div>
+                  {pollingType === item.type ? (
+                    <span className="flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs text-muted-foreground">
+                      <IconLoader2
+                        size={14}
+                        stroke={1.5}
+                        className="animate-spin"
+                      />
+                      Connecting…
+                    </span>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 shrink-0 rounded-lg px-3 text-xs text-muted-foreground hover:text-destructive"
+                      onClick={() =>
+                        detach(disconnect(item.type), Reason.DomCallback)
+                      }
+                    >
+                      Disconnect
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Add Connector</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto -mx-6 px-6 pb-1">
+            {unconnectedItems.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                All available connectors are connected.
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {unconnectedItems.map((item) => {
+                  const isPolling = pollingType === item.type;
+                  return (
+                    <button
+                      key={item.type}
+                      type="button"
+                      disabled={isPolling}
+                      className="flex items-start gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-muted/50 disabled:opacity-60"
+                      onClick={() => {
+                        setDialogOpen(false);
+                        detach(connect(item.type, signal), Reason.DomCallback);
+                      }}
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted overflow-hidden mt-0.5">
+                        <ConnectorIcon type={item.type} size={22} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground">
+                          {item.label}
+                        </p>
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                          {item.helpText}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main meet page
+// ---------------------------------------------------------------------------
 
 interface ZeroMeetPageProps {
   zeroAvatarSrc?: string;
@@ -97,17 +273,36 @@ export function ZeroMeetPage({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroMeetPageProps) {
-  const [activeTab, setActiveTab] = useState("connections");
-  const [agentName, setAgentName] = useState("Zero");
-  const [tone, setTone] = useState<string>("Professional");
-  const [skills, setSkills] = useState<string[]>([...AVAILABLE_SKILLS]);
-  const [savedSettings, setSavedSettings] = useState({
-    name: "Zero",
+  const agentNameLoadable = useLoadable(agentDisplayName$);
+  const resolvedAgentName =
+    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+  const activeTab$ = useCCState("connections");
+  const activeTab = useGet(activeTab$);
+  const setActiveTab = useSet(activeTab$);
+  const agentName$ = useCCState(resolvedAgentName);
+  const agentName = useGet(agentName$);
+  const setAgentName = useSet(agentName$);
+  const tone$ = useCCState<string>("Professional");
+  const tone = useGet(tone$);
+  const setTone = useSet(tone$);
+  const skills$ = useCCState<string[]>([...AVAILABLE_SKILLS]);
+  const skills = useGet(skills$);
+  const setSkills = useSet(skills$);
+  const savedSettings$ = useCCState<{
+    name: string;
+    tone: string;
+    skills: string[];
+  }>({
+    name: resolvedAgentName,
     tone: "Professional",
     skills: [...AVAILABLE_SKILLS],
   });
+  const savedSettings = useGet(savedSettings$);
+  const setSavedSettings = useSet(savedSettings$);
   const ADD_SKILL_PLACEHOLDER = "__add_skill__";
-  const [addSkillValue, setAddSkillValue] = useState(ADD_SKILL_PLACEHOLDER);
+  const addSkillValue$ = useCCState(ADD_SKILL_PLACEHOLDER);
+  const addSkillValue = useGet(addSkillValue$);
+  const setAddSkillValue = useSet(addSkillValue$);
 
   const isSettingsDirty =
     agentName !== savedSettings.name ||
@@ -164,7 +359,7 @@ export function ZeroMeetPage({
             <div className="min-w-0 pt-2 sm:pt-2.5">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-xl font-semibold tracking-tight text-foreground leading-tight">
-                  Zero
+                  {resolvedAgentName}
                 </h1>
                 <span className="zero-pill inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium">
                   Super Manager
@@ -234,8 +429,8 @@ export function ZeroMeetPage({
         {activeTab === "schedule" && (
           <div className="mx-auto max-w-[900px] px-7">
             <ZeroScheduleCard
-              title="Zero's schedule"
-              subtitle="Set a time and prompt for Zero to run automatically."
+              title={`${resolvedAgentName}'s schedule`}
+              subtitle={`Set a time and prompt for ${resolvedAgentName} to run automatically.`}
               initialSchedule={DEFAULT_SCHEDULE}
             />
           </div>
@@ -264,7 +459,7 @@ export function ZeroMeetPage({
                   <div
                     className="flex flex-col gap-2"
                     role="group"
-                    aria-label="How Zero sounds"
+                    aria-label={`How ${resolvedAgentName} sounds`}
                   >
                     <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       How they sound
@@ -333,7 +528,7 @@ export function ZeroMeetPage({
                           className="flex min-w-[120px] max-w-[220px] flex-1 basis-[120px]"
                         >
                           <span className="zero-chip flex w-full min-w-0 items-center gap-2 rounded-2xl border px-3 py-2.5 text-sm text-foreground transition-colors duration-200">
-                            {CONNECTOR_LIST.includes(skill as ConnectorType) ? (
+                            {isConnectorSkill(skill) ? (
                               <ConnectorIcon
                                 type={skill as ConnectorType}
                                 size={16}
@@ -405,9 +600,9 @@ export function ZeroMeetPage({
                         Expertise
                       </h2>
                       <p>
-                        Zero is an intelligent Super Manager designed to help
-                        teams with automation, data analysis, and workflow
-                        orchestration.
+                        {resolvedAgentName} is an intelligent Super Manager
+                        designed to help teams with automation, data analysis,
+                        and workflow orchestration.
                       </p>
                     </div>
                     <div>
@@ -464,56 +659,7 @@ export function ZeroMeetPage({
           </div>
         )}
 
-        {activeTab === "connections" && (
-          <div className="mx-auto max-w-[900px] px-7 flex flex-col gap-6">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-              <div>
-                <h2 className="text-base font-semibold tracking-tight text-foreground">
-                  Connectors
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  Connect and authorize these services so your agent can act on
-                  your behalf.
-                </p>
-              </div>
-              <Button size="sm" className="h-9 shrink-0 gap-2 rounded-lg">
-                <IconPlus size={16} stroke={2} />
-                Add Connector
-              </Button>
-            </div>
-            <ul className="flex flex-col gap-3">
-              {CONNECTOR_LIST.map((type) => {
-                const config = CONNECTOR_TYPES[type];
-                return (
-                  <li key={type}>
-                    <Card className="zero-card">
-                      <CardContent className="flex items-center gap-4 px-4 py-3">
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted overflow-hidden">
-                          <ConnectorIcon type={type} size={24} />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-foreground">
-                            {config.label}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {config.helpText}
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="zero-btn-morandi h-8 shrink-0 rounded-lg border px-3"
-                        >
-                          Connect
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
+        {activeTab === "connections" && <ZeroConnectionsTab />}
       </main>
 
       {showSaveBar &&

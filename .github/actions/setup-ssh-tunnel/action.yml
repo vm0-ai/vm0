@@ -1,0 +1,79 @@
+name: "Setup SSH via Cloudflare Tunnel"
+description: "Install cloudflared and configure SSH to proxy through Cloudflare Tunnel"
+
+inputs:
+  ssh-key:
+    description: "SSH private key for metal runner"
+    required: true
+  cf-access-client-id:
+    description: "Cloudflare Access service token client ID"
+    required: true
+  cf-access-client-secret:
+    description: "Cloudflare Access service token client secret"
+    required: true
+  cloudflared-version:
+    description: "cloudflared version to install"
+    required: false
+    default: "2026.2.0"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install cloudflared
+      shell: bash
+      run: |
+        curl -sfL "https://github.com/cloudflare/cloudflared/releases/download/${{ inputs.cloudflared-version }}/cloudflared-linux-amd64.deb" -o /tmp/cloudflared.deb
+        if command -v sudo &>/dev/null; then
+          sudo dpkg -i /tmp/cloudflared.deb
+        else
+          dpkg -i /tmp/cloudflared.deb
+        fi
+
+    - name: Configure SSH
+      shell: bash
+      env:
+        SSH_KEY: ${{ inputs.ssh-key }}
+        CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+        CF_ACCESS_CLIENT_SECRET: ${{ inputs.cf-access-client-secret }}
+      run: |
+        mkdir -p "$HOME/.ssh"
+        echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+        chmod 600 "$HOME/.ssh/runner.pem"
+
+        # Store credentials in a restricted file sourced by the proxy script,
+        # so they don't appear in SSH config or process listings.
+        printf 'export CF_ACCESS_CLIENT_ID="%s"\nexport CF_ACCESS_CLIENT_SECRET="%s"\n' \
+          "$CF_ACCESS_CLIENT_ID" "$CF_ACCESS_CLIENT_SECRET" \
+          > "$HOME/.ssh/cf-access.env"
+        chmod 600 "$HOME/.ssh/cf-access.env"
+
+        # Proxy script that converts host to tunnel hostname.
+        # Must match parse_host() naming in scripts/cloudflared-ssh.sh:
+        #   subdomain dots -> hyphens, append -ssh
+        #   e.g. dev-1.aws.vm3.ai -> dev-1-aws-ssh.vm3.ai
+        printf '%s\n' \
+          '#!/bin/bash' \
+          "source $HOME/.ssh/cf-access.env" \
+          'HOST="$1"; DOMAIN="vm3.ai"' \
+          'SUB="${HOST%.${DOMAIN}}"' \
+          'TUNNEL_HOST="${SUB//./-}-ssh.${DOMAIN}"' \
+          'exec cloudflared access ssh --hostname "$TUNNEL_HOST" --id "$CF_ACCESS_CLIENT_ID" --secret "$CF_ACCESS_CLIENT_SECRET"' \
+          > "$HOME/.ssh/cf-proxy.sh"
+        chmod 755 "$HOME/.ssh/cf-proxy.sh"
+
+        SSH_CONFIG="$(printf '%s\n' \
+          "Host *.vm3.ai" \
+          "  StrictHostKeyChecking no" \
+          "  UserKnownHostsFile /dev/null" \
+          "  ConnectTimeout 10" \
+          "  IdentityFile $HOME/.ssh/runner.pem" \
+          "  ProxyCommand $HOME/.ssh/cf-proxy.sh %h")"
+
+        # Write to system config so all SSH clients (ssh, scp, ansible) read it
+        if command -v sudo &>/dev/null; then
+          sudo mkdir -p /etc/ssh/ssh_config.d
+          echo "$SSH_CONFIG" | sudo tee /etc/ssh/ssh_config.d/tunnel.conf > /dev/null
+        else
+          mkdir -p /etc/ssh/ssh_config.d
+          echo "$SSH_CONFIG" > /etc/ssh/ssh_config.d/tunnel.conf
+        fi
