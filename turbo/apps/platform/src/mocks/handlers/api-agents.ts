@@ -23,6 +23,34 @@ export const apiAgentsHandlers = [
     });
   }),
 
+  // GET /api/agent/composes/:id
+  http.get("/api/agent/composes/:id", ({ params }) => {
+    // Skip if it matches a sub-route like "list"
+    if (params.id === "list") {
+      return;
+    }
+
+    return HttpResponse.json({
+      id: params.id,
+      name: "zero",
+      headVersionId: "version_1",
+      content: {
+        version: "1",
+        agents: { zero: { framework: "claude-code" } },
+      },
+      createdAt: "2024-01-01T00:00:00Z",
+      updatedAt: "2024-01-01T00:00:00Z",
+    });
+  }),
+
+  // GET /api/agent/composes/:id/instructions
+  http.get("/api/agent/composes/:id/instructions", () => {
+    return HttpResponse.json({
+      content: null,
+      filename: null,
+    });
+  }),
+
   // GET /api/agent/schedules
   http.get("/api/agent/schedules", () => {
     return HttpResponse.json({ schedules: [] });

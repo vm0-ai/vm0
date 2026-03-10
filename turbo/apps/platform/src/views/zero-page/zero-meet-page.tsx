@@ -46,6 +46,17 @@ import {
 import { deleteConnector$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import {
+  zeroInstructions$,
+  zeroInstructionsLoading$,
+  zeroEditedContent$,
+  zeroInstructionsDirty$,
+  zeroBuildingInstructions$,
+  fetchZeroInstructions$,
+  setZeroEditedContent$,
+  discardZeroEdit$,
+  buildZeroInstructions$,
+} from "../../signals/zero-page/zero-meet.ts";
 
 const TONE_OPTIONS = [
   "Professional",
@@ -256,6 +267,112 @@ function ZeroConnectionsTab() {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Instructions tab — editable textarea with build
+// ---------------------------------------------------------------------------
+
+function ZeroInstructionsTab() {
+  const instructionsLoadable = useLoadable(zeroInstructions$);
+  const loadingLoadable = useLoadable(zeroInstructionsLoading$);
+  const editedLoadable = useLoadable(zeroEditedContent$);
+  const dirtyLoadable = useLoadable(zeroInstructionsDirty$);
+  const buildingLoadable = useLoadable(zeroBuildingInstructions$);
+
+  const instructions =
+    instructionsLoadable.state === "hasData" ? instructionsLoadable.data : null;
+  const loading =
+    loadingLoadable.state === "hasData" && loadingLoadable.data === true;
+  const edited =
+    editedLoadable.state === "hasData" ? editedLoadable.data : null;
+  const isDirty =
+    dirtyLoadable.state === "hasData" && dirtyLoadable.data === true;
+  const isBuilding =
+    buildingLoadable.state === "hasData" && buildingLoadable.data === true;
+
+  const setEdited = useSet(setZeroEditedContent$);
+  const discard = useSet(discardZeroEdit$);
+  const build = useSet(buildZeroInstructions$);
+  const fetchInstructions = useSet(fetchZeroInstructions$);
+
+  const fetched$ = useCCState(false);
+  const fetched = useGet(fetched$);
+  const setFetched = useSet(fetched$);
+  if (!fetched && !loading) {
+    setFetched(true);
+    detach(fetchInstructions(), Reason.DomCallback);
+  }
+
+  const displayContent = edited ?? instructions?.content ?? "";
+
+  return (
+    <div className="mx-auto max-w-[900px] px-7">
+      <Card className="zero-card-white">
+        <CardContent className="py-7">
+          {loading ? (
+            <div className="space-y-4 animate-pulse">
+              <div className="h-5 w-40 rounded bg-muted/50" />
+              <div className="h-64 w-full rounded bg-muted/30" />
+            </div>
+          ) : (
+            <>
+              <textarea
+                aria-label="Agent instructions editor"
+                className="px-1 text-sm font-mono text-foreground w-full min-h-[200px] bg-transparent border-none outline-none resize-none whitespace-pre-wrap leading-relaxed"
+                value={displayContent}
+                onChange={(e) => setEdited(e.target.value)}
+                rows={Math.max(10, displayContent.split("\n").length + 2)}
+                disabled={isBuilding}
+                placeholder="Write instructions for your agent..."
+              />
+              <div className="flex items-center justify-between pt-5 mt-5 border-t border-border/60">
+                <div className="flex items-center gap-2">
+                  {isDirty && (
+                    <span className="text-xs font-medium text-amber-500">
+                      Unsaved
+                    </span>
+                  )}
+                </div>
+                {isDirty && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={discard}
+                      disabled={isBuilding}
+                    >
+                      Discard
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-9 rounded-lg px-4"
+                      onClick={() => detach(build(), Reason.DomCallback)}
+                      disabled={isBuilding}
+                    >
+                      {isBuilding ? (
+                        <>
+                          <IconLoader2
+                            size={14}
+                            stroke={1.5}
+                            className="animate-spin mr-1.5"
+                          />
+                          Building…
+                        </>
+                      ) : (
+                        "Build"
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -589,75 +706,7 @@ export function ZeroMeetPage({
           </div>
         )}
 
-        {activeTab === "instructions" && (
-          <div className="mx-auto max-w-[900px] px-7">
-            <Card className="zero-card-white">
-              <CardContent className="py-7">
-                <div className="flex flex-col sm:flex-row gap-6 sm:gap-8 sm:items-end">
-                  <div className="space-y-5 text-sm text-foreground leading-relaxed flex-1 min-w-0">
-                    <div>
-                      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                        Expertise
-                      </h2>
-                      <p>
-                        {resolvedAgentName} is an intelligent Super Manager
-                        designed to help teams with automation, data analysis,
-                        and workflow orchestration.
-                      </p>
-                    </div>
-                    <div>
-                      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                        Communication Style
-                      </h2>
-                      <p>
-                        Professional and clear communication, with a focus on
-                        actionable insights.
-                      </p>
-                    </div>
-                    <div>
-                      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                        Core Capabilities
-                      </h2>
-                      <ul className="list-disc pl-4 space-y-0.5">
-                        <li>Web research and information gathering</li>
-                        <li>Code execution and analysis</li>
-                        <li>File processing and data analysis</li>
-                        <li>Workflow automation</li>
-                      </ul>
-                    </div>
-                    <div>
-                      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                        Behavior Guidelines
-                      </h2>
-                      <ul className="list-disc pl-4 space-y-0.5">
-                        <li>Provide concise, actionable responses</li>
-                        <li>Ask clarifying questions when needed</li>
-                        <li>Present information in a structured format</li>
-                        <li>Maintain context across conversations</li>
-                      </ul>
-                    </div>
-                    <div>
-                      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                        Response Format
-                      </h2>
-                      <p className="mb-1">When responding:</p>
-                      <ol className="list-decimal pl-4 space-y-0.5">
-                        <li>Acknowledge the request</li>
-                        <li>Provide relevant information or analysis</li>
-                        <li>Suggest next steps when appropriate</li>
-                        <li>Ask for clarification if needed</li>
-                      </ol>
-                    </div>
-                  </div>
-                </div>
-                <p className="text-muted-foreground text-xs pt-5 mt-5 border-t border-border/60">
-                  Edit the instructions directly to customize your agent&apos;s
-                  behavior.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+        {activeTab === "instructions" && <ZeroInstructionsTab />}
 
         {activeTab === "connections" && <ZeroConnectionsTab />}
       </main>
