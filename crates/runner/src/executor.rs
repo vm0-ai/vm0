@@ -1055,13 +1055,13 @@ mod tests {
         ));
         assert!(dmesg_indicates_oom("oom-kill:constraint=CONSTRAINT_MEMCG"));
         assert!(dmesg_indicates_oom("oom_reaper: reaped process 42"));
-        // "Killed process" alone (without OOM context) should NOT match
-        assert!(!dmesg_indicates_oom("Killed process 42 (node)"));
     }
 
     #[test]
     fn dmesg_oom_negative() {
         assert!(!dmesg_indicates_oom(""));
+        // "Killed process" alone (without OOM context) should NOT match
+        assert!(!dmesg_indicates_oom("Killed process 42 (node)"));
         assert!(!dmesg_indicates_oom("normal kernel log output"));
         assert!(!dmesg_indicates_oom("[  1.000] eth0: link up"));
         assert!(!dmesg_indicates_oom("task killed by signal 15"));
