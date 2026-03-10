@@ -931,8 +931,20 @@ export const CONNECTOR_TYPES = {
           },
         },
       },
+      "api-token": {
+        label: "Personal API Key",
+        helpText:
+          "1. Log in to your [PostHog Dashboard](https://us.posthog.com)\n2. Go to **Settings → Personal API keys**\n3. Click **+ Create personal API key**\n4. Select the scopes you need and copy the key",
+        secrets: {
+          POSTHOG_ACCESS_TOKEN: {
+            label: "Personal API Key",
+            required: true,
+            placeholder: "phx_...",
+          },
+        },
+      },
     } as Record<string, ConnectorAuthMethodConfig>,
-    defaultAuthMethod: "oauth",
+    defaultAuthMethod: "api-token",
     environmentMapping: {
       POSTHOG_PERSONAL_API_KEY: "$secrets.POSTHOG_ACCESS_TOKEN",
     } as Record<string, string>,
