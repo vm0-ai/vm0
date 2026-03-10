@@ -15,6 +15,8 @@ export const apiOnboardingHandlers = [
       hasScope: true,
       hasModelProvider: true,
       hasDefaultAgent: true,
+      defaultAgentName: "zero",
+      defaultAgentComposeId: "mock-compose-id",
     });
   }),
 ];
