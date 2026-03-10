@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.54.1](https://github.com/vm0-ai/vm0/compare/core-v8.54.0...core-v8.54.1) (2026-03-10)
+
+
+### Bug Fixes
+
+* resolve circular type reference in connector types ([#4207](https://github.com/vm0-ai/vm0/issues/4207)) ([37594f9](https://github.com/vm0-ai/vm0/commit/37594f901bf3fb26782d87427035b75149a1737c))
+
+
+### Refactoring
+
+* inline connector feature flags into connector types config ([#4203](https://github.com/vm0-ai/vm0/issues/4203)) ([99168e3](https://github.com/vm0-ai/vm0/commit/99168e3f8e253c3488112f822111c2e66af152dd))
+
 ## [8.54.0](https://github.com/vm0-ai/vm0/compare/core-v8.53.0...core-v8.54.0) (2026-03-10)
 
 

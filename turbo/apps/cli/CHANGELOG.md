@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.55.1](https://github.com/vm0-ai/vm0/compare/cli-v9.55.0...cli-v9.55.1) (2026-03-10)
+
+
+### Refactoring
+
+* **cli:** migrate auth commands to withErrorHandler ([#4200](https://github.com/vm0-ai/vm0/issues/4200)) ([9cce154](https://github.com/vm0-ai/vm0/commit/9cce154535b4764090498940a9c2636303f4bfec))
+* **cli:** replace process.exit with throw in scope set command ([#4208](https://github.com/vm0-ai/vm0/issues/4208)) ([1caed6a](https://github.com/vm0-ai/vm0/commit/1caed6a44cba61cda6ddc61d223240ad231620b7))
+* inline connector feature flags into connector types config ([#4203](https://github.com/vm0-ai/vm0/issues/4203)) ([99168e3](https://github.com/vm0-ai/vm0/commit/99168e3f8e253c3488112f822111c2e66af152dd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.54.1
+
 ## [9.55.0](https://github.com/vm0-ai/vm0/compare/cli-v9.54.3...cli-v9.55.0) (2026-03-10)
 
 
