@@ -18,7 +18,7 @@ vi.mock("@clerk/nextjs/server", () => ({
       createOrganization: mockCreateOrganization,
     },
   })),
-  auth: vi.fn(),
+  auth: vi.fn(async () => ({ userId: null, orgId: null, orgRole: null })),
 }));
 
 const context = testContext();

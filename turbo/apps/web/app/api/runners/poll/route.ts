@@ -48,7 +48,7 @@ const router = tsr.router(runnersPollContract, {
     } else {
       // User runners: validate scope and filter by userId
       try {
-        await validateRunnerGroupScope(auth.userId, group);
+        await validateRunnerGroupScope(auth.userId, group, auth.scopeId);
       } catch (error) {
         return createErrorResponse(
           "FORBIDDEN",

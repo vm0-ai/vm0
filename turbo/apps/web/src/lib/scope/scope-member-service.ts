@@ -1,10 +1,10 @@
-import { clerkClient } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { eq, and, asc } from "drizzle-orm";
 import { scopeMembers } from "../../db/schema/scope-member";
 import { scopes } from "../../db/schema/scope";
 import { badRequest, forbidden, notFound } from "../errors";
 import { logger } from "../logger";
-import { getScopesByClerkOrgIds } from "./scope-service";
+import { getScopeByClerkOrgId, getScopesByClerkOrgIds } from "./scope-service";
 import type { ScopeRole } from "@vm0/core";
 
 const log = logger("service:scope-member");
@@ -58,11 +58,32 @@ export async function getPrimaryAdminMembership(userId: string) {
 }
 
 /**
- * Get user's default scope via Clerk API.
- * Finds the user's org memberships and returns the first one with a matching local scope.
- * Prioritizes admin memberships over member memberships.
+ * Get user's default scope.
+ *
+ * Fast path: if the JWT session contains an orgId, look up the scope directly
+ * from the database — no Clerk API call needed.
+ *
+ * Slow path: for CLI tokens (no JWT) or when the JWT org has no local scope,
+ * fall back to Clerk Backend API to discover the user's org memberships.
  */
 export async function getDefaultScope(userId: string) {
+  // JWT fast path: use active org from session token
+  const authResult = await auth();
+  if (authResult.orgId) {
+    const scope = await getScopeByClerkOrgId(authResult.orgId);
+    if (scope) {
+      return {
+        scope,
+        member: {
+          role: mapClerkRole(authResult.orgRole ?? "org:member"),
+          userId,
+          scopeId: scope.id,
+        },
+      };
+    }
+  }
+
+  // Slow path: Clerk API (CLI tokens, or JWT org has no local scope yet)
   const client = await clerkClient();
   const memberships = await client.users.getOrganizationMembershipList({
     userId,

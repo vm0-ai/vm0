@@ -25,7 +25,7 @@ const OFFICIAL_RUNNER_TOKEN_PREFIX = "vm0_official_";
  * - 'official-runner': Authenticated via official runner secret
  */
 type RunnerAuthContext =
-  | { type: "user"; userId: string }
+  | { type: "user"; userId: string; scopeId: string | null }
   | { type: "official-runner" };
 
 /**
@@ -120,7 +120,11 @@ export async function getRunnerAuth(
         .where(eq(cliTokens.token, token))
         .catch((err) => log.error("Failed to update token lastUsedAt:", err));
 
-      return { type: "user", userId: tokenRecord.userId };
+      return {
+        type: "user",
+        userId: tokenRecord.userId,
+        scopeId: tokenRecord.scopeId,
+      };
     }
 
     return null;
