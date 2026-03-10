@@ -11,6 +11,7 @@ import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { ZeroContent } from "./zero-content.tsx";
 import { ZeroOnboarding } from "./zero-onboarding.tsx";
 import { user$ } from "../../signals/auth.ts";
+import { zeroNeedsOnboarding$ } from "../../signals/zero-page/zero-onboarding.ts";
 
 const ZERO_AVATARS = [
   "/zero-avatar.png",
@@ -28,12 +29,15 @@ const RECENT_LABELS: Readonly<Record<string, string>> = {
   "4": "Code review reminders",
 };
 
-const showOnboarding = false;
-
 export function ZeroAppShell() {
   const userLoadable = useLoadable(user$);
   const isLoggedIn =
     userLoadable.state === "hasData" && userLoadable.data !== undefined;
+  const onboardingLoadable = useLoadable(zeroNeedsOnboarding$);
+  const showOnboarding =
+    isLoggedIn &&
+    onboardingLoadable.state === "hasData" &&
+    onboardingLoadable.data === true;
   const activeId$ = useCCState<ZeroNavId>("chat");
   const activeId = useGet(activeId$);
   const setActiveId = useSet(activeId$);
@@ -85,7 +89,6 @@ export function ZeroAppShell() {
 
   return (
     <div className="zero-app flex h-dvh w-full bg-background">
-      {/* TODO: re-enable onboarding when ready */}
       {showOnboarding && (
         <ZeroOnboarding
           zeroAvatarSrc={zeroAvatarSrc}

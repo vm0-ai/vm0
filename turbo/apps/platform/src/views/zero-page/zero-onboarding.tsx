@@ -1,5 +1,5 @@
 import { useCCState } from "ccstate-react/experimental";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import slackIcon from "../settings-page/icons/slack.svg";
 import {
   Dialog,
@@ -13,18 +13,35 @@ import { ConnectorIcon } from "../settings-page/connector-icons";
 import { ProviderIcon } from "../settings-page/provider-icons";
 import {
   CONNECTOR_TYPES,
-  getDefaultAuthMethod,
-  getDefaultModel,
-  hasAuthMethods,
-  hasModelSelection,
   MODEL_PROVIDER_TYPES,
   type ConnectorType,
   type ModelProviderType,
 } from "@vm0/core";
 import { ProviderFormFields } from "../shared/provider-form-fields";
 import { getUILabel } from "../settings-page/provider-ui-config";
-
-type OnboardingStep = "1" | "2" | "3" | "4" | "done";
+import {
+  zeroOnboardingStep$,
+  zeroAgentName$,
+  zeroProviderType$,
+  zeroFormValues$,
+  zeroSaving$,
+  zeroCanSave$,
+  setZeroStep$,
+  setZeroAgentName$,
+  setZeroProviderType$,
+  setZeroSecret$,
+  setZeroModel$,
+  setZeroUseDefaultModel$,
+  setZeroAuthMethod$,
+  setZeroSecretField$,
+  saveZeroModelProvider$,
+  completeZeroOnboarding$,
+} from "../../signals/zero-page/zero-onboarding.ts";
+import {
+  fetchSlackIntegration$,
+  slackInstallUrl$,
+} from "../../signals/integrations-page/slack-integration.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 
 const MODEL_PROVIDER_LIST: readonly ModelProviderType[] = [
   "claude-code-oauth-token",
@@ -65,7 +82,7 @@ const CONNECTOR_LIST: readonly ConnectorType[] = [
   "xero",
 ];
 
-/** Demo onboarding: reference layout, Zero style (simple, elegant, consistent). */
+/** Zero onboarding: creates scope, model provider, and default agent. */
 export function ZeroOnboarding({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
@@ -73,59 +90,93 @@ export function ZeroOnboarding({
   zeroAvatarSrc?: string;
   onAvatarClick?: () => void;
 }) {
-  const step$ = useCCState<OnboardingStep>("1");
-  const step = useGet(step$);
-  const setStep = useSet(step$);
-  const name$ = useCCState("Zero");
-  const name = useGet(name$);
-  const setName = useSet(name$);
-  const selectedProviderType$ = useCCState<ModelProviderType | null>(null);
-  const selectedProviderType = useGet(selectedProviderType$);
-  const setSelectedProviderType = useSet(selectedProviderType$);
-  const providerFormValues$ = useCCState({
-    secret: "",
-    selectedModel: "",
-    useDefaultModel: true,
-    authMethod: "",
-    secrets: {} as Record<string, string>,
-  });
-  const providerFormValues = useGet(providerFormValues$);
-  const setProviderFormValues = useSet(providerFormValues$);
+  const step = useGet(zeroOnboardingStep$);
+  const setStep = useSet(setZeroStep$);
+  const name = useGet(zeroAgentName$);
+  const setName = useSet(setZeroAgentName$);
+  const providerType = useGet(zeroProviderType$);
+  const setProviderType = useSet(setZeroProviderType$);
+  const formValues = useGet(zeroFormValues$);
+  const setSecret = useSet(setZeroSecret$);
+  const setModel = useSet(setZeroModel$);
+  const setUseDefaultModel = useSet(setZeroUseDefaultModel$);
+  const setAuthMethod = useSet(setZeroAuthMethod$);
+  const setSecretField = useSet(setZeroSecretField$);
+  const saving = useGet(zeroSaving$);
+  const canSave = useGet(zeroCanSave$);
+  const saveModelProvider = useSet(saveZeroModelProvider$);
+  const completeOnboarding = useSet(completeZeroOnboarding$);
+  const fetchSlack = useSet(fetchSlackIntegration$);
+  const slackInstallUrlLoadable = useLoadable(slackInstallUrl$);
+
+  // Local UI state: whether user has picked a provider (showing form vs list)
+  const providerPicked$ = useCCState(false);
+  const providerPicked = useGet(providerPicked$);
+  const setProviderPicked = useSet(providerPicked$);
 
   const handleSelectProvider = (type: ModelProviderType) => {
-    const defaultAuth = hasAuthMethods(type)
-      ? (getDefaultAuthMethod(type) ?? "")
-      : "";
-    const defaultModel = hasModelSelection(type)
-      ? (getDefaultModel(type) ?? "")
-      : "";
-    setProviderFormValues({
-      secret: "",
-      selectedModel: defaultModel,
-      useDefaultModel: true,
-      authMethod: defaultAuth,
-      secrets: {},
-    });
-    setSelectedProviderType(type);
+    setProviderType(type);
+    setProviderPicked(true);
   };
 
-  const handleStep1Next = () => setStep("2");
-  const handleStep2Next = () => {
-    setSelectedProviderType(null);
-    setStep("3");
+  const handleStep1Next = () => {
+    setStep("2");
   };
+
+  const handleStep2Next = () => {
+    const controller = new AbortController();
+    detach(
+      (async () => {
+        await saveModelProvider(controller.signal);
+        setStep("3");
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
   const handleStep2Back = () => {
-    if (selectedProviderType) {
-      setSelectedProviderType(null);
+    if (providerPicked) {
+      setProviderPicked(false);
     } else {
       setStep("1");
     }
   };
-  const handleStep3Next = () => setStep("4");
-  const handleStep3Back = () => setStep("2");
-  const handleStep4Back = () => setStep("3");
-  const handleAddToSlack = () => setStep("done");
-  const handleContinueWithWeb = () => setStep("done");
+
+  const handleStep3Next = () => {
+    setStep("4");
+  };
+
+  const handleStep3Back = () => {
+    setStep("2");
+  };
+
+  const handleStep4Back = () => {
+    setStep("3");
+  };
+
+  const handleAddToSlack = () => {
+    const controller = new AbortController();
+    detach(
+      (async () => {
+        await completeOnboarding(controller.signal);
+        // Fetch Slack integration to get install URL
+        await fetchSlack();
+        const url =
+          slackInstallUrlLoadable.state === "hasData"
+            ? slackInstallUrlLoadable.data
+            : null;
+        if (url) {
+          window.location.href = url;
+        }
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  const handleContinueWithWeb = () => {
+    const controller = new AbortController();
+    detach(completeOnboarding(controller.signal), Reason.DomCallback);
+  };
 
   if (step === "done") {
     return null;
@@ -197,52 +248,27 @@ export function ZeroOnboarding({
           onEscapeKeyDown={(e) => e.preventDefault()}
         >
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col justify-center px-8 pt-8 pb-8">
-            {selectedProviderType ? (
+            {providerPicked ? (
               <div className="flex flex-col items-center pt-10">
                 <div className="flex items-center justify-center gap-3 mb-6">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden">
-                    <ProviderIcon type={selectedProviderType} size={28} />
+                    <ProviderIcon type={providerType} size={28} />
                   </span>
                   <h2 className="text-xl font-semibold tracking-tight text-foreground">
-                    {getUILabel(selectedProviderType)}
+                    {getUILabel(providerType)}
                   </h2>
                 </div>
                 <div className="w-full max-w-md flex flex-col gap-4 text-left">
                   <ProviderFormFields
-                    providerType={selectedProviderType}
-                    formValues={providerFormValues}
+                    providerType={providerType}
+                    formValues={formValues}
                     onProviderTypeChange={() => {}}
-                    onSecretChange={(v) =>
-                      setProviderFormValues((prev) => ({ ...prev, secret: v }))
-                    }
-                    onModelChange={(v) =>
-                      setProviderFormValues((prev) => ({
-                        ...prev,
-                        selectedModel: v,
-                        useDefaultModel: false,
-                      }))
-                    }
-                    onUseDefaultModelChange={(v) =>
-                      setProviderFormValues((prev) => ({
-                        ...prev,
-                        useDefaultModel: v,
-                        selectedModel: v ? "" : prev.selectedModel,
-                      }))
-                    }
-                    onAuthMethodChange={(v) =>
-                      setProviderFormValues((prev) => ({
-                        ...prev,
-                        authMethod: v,
-                        secrets: {},
-                      }))
-                    }
-                    onSecretFieldChange={(key, value) =>
-                      setProviderFormValues((prev) => ({
-                        ...prev,
-                        secrets: { ...prev.secrets, [key]: value },
-                      }))
-                    }
-                    isLoading={false}
+                    onSecretChange={setSecret}
+                    onModelChange={setModel}
+                    onUseDefaultModelChange={setUseDefaultModel}
+                    onAuthMethodChange={setAuthMethod}
+                    onSecretFieldChange={setSecretField}
+                    isLoading={saving}
                   />
                 </div>
               </div>
@@ -285,14 +311,16 @@ export function ZeroOnboarding({
               variant="ghost"
               className="rounded-lg text-muted-foreground"
               onClick={handleStep2Back}
+              disabled={saving}
             >
               Back
             </Button>
             <Button
               onClick={handleStep2Next}
               className="rounded-lg min-w-[100px]"
+              disabled={!providerPicked || !canSave || saving}
             >
-              Next
+              {saving ? "Saving…" : "Next"}
             </Button>
           </div>
         </DialogContent>
@@ -387,8 +415,9 @@ export function ZeroOnboarding({
                   variant="outline"
                   className="w-full rounded-lg zero-btn-morandi"
                   onClick={handleAddToSlack}
+                  disabled={saving}
                 >
-                  Add to Slack
+                  {saving ? "Saving…" : "Add to Slack"}
                 </Button>
               </div>
               <div className="zero-card flex flex-col items-center text-center rounded-xl border border-border p-5">
@@ -412,8 +441,9 @@ export function ZeroOnboarding({
                   variant="outline"
                   className="w-full rounded-lg zero-btn-morandi"
                   onClick={handleContinueWithWeb}
+                  disabled={saving}
                 >
-                  Chat with Zero
+                  {saving ? "Saving…" : "Chat with Zero"}
                 </Button>
               </div>
             </div>
@@ -423,6 +453,7 @@ export function ZeroOnboarding({
               variant="ghost"
               className="rounded-lg text-muted-foreground"
               onClick={handleStep4Back}
+              disabled={saving}
             >
               Back
             </Button>
