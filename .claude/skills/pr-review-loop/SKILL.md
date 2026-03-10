@@ -34,11 +34,9 @@ Loop control is handled by a **bash driver script**, not by your memory. You MUS
 
 **CRITICAL — do this FIRST before anything else.**
 
-The text that the user typed after `/pr-review-loop` is your `args`. Examples:
-- `/pr-review-loop 4128` → args = `4128`
-- `/pr-review-loop https://github.com/vm0-ai/vm0/pull/4128` → args = the URL
+Your args are: `$ARGUMENTS`
 
-Extract the PR number from args using these rules:
+Extract the PR number from the args above using these rules:
 1. **Args is a URL** containing `/pull/<number>` or `/issues/<number>` → extract `<number>` (e.g., `https://github.com/vm0-ai/vm0/pull/4128` → `4128`)
 2. **Args is a plain number** → use it directly (e.g., `4128`)
 3. **Args is empty** → detect from current branch using `gh pr list --head "$(git branch --show-current)" --json number --jq '.[0].number'`

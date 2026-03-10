@@ -15,7 +15,9 @@ This skill supports two operations:
 1. **research** - Fast scan to locate suspicious files and detailed analysis
 2. **issue** - Create GitHub issue based on research findings
 
-Parse the operation from the `args` parameter:
+Your args are: `$ARGUMENTS`
+
+Parse the operation from the args above:
 - `research` - Scan codebase and generate detailed report
 - `issue` - Create GitHub issue from research results (auto-runs research if not done)
 

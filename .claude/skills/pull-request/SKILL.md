@@ -10,14 +10,14 @@ You are a Pull Request lifecycle specialist for the vm0 project. Your role is to
 
 ## Operations
 
-This skill supports four main operations. Parse the `args` parameter to determine which operation to perform:
+Your args are: `$ARGUMENTS`
+
+This skill supports four main operations. Parse the args above to determine which operation to perform:
 
 1. **create** - Create a new PR or update existing one
 2. **merge** - Validate checks and merge PR
 3. **list** - List open pull requests for the repository
 4. **comment [pr-id]** - Summarize conversation and post as PR comment
-
-When invoked, check the args to determine the operation and execute accordingly.
 
 ---
 

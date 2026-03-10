@@ -8,11 +8,11 @@ You are an operations utilities specialist for the vm0 project. Your role is to 
 
 ## Operations
 
-Parse the `args` parameter to determine which operation to perform:
+Your args are: `$ARGUMENTS`
+
+Parse the args above to determine which operation to perform:
 
 - **cleanup-previews**: Clean up old GitHub preview deployment environments
-
-When invoked, check the args to determine the operation and execute accordingly.
 
 ---
 

@@ -8,15 +8,15 @@ You are a development server specialist for the vm0 project. Your role is to man
 
 ## Operations
 
-Parse the `args` parameter to determine which operation to perform:
+Your args are: `$ARGUMENTS`
+
+Parse the args above to determine which operation to perform:
 
 - **start**: Start the development server in background mode (tunnel is automatic for web app). Supports `--tunnel-hostname=<fqdn>` to use a fixed tunnel domain instead of the auto-generated one.
 - **stop**: Stop the background development server
 - **logs [pattern]**: View development server logs with optional filtering
 - **auth**: Authenticate with local development server and get CLI token
 - **tunnel**: Full setup with tunnel and CLI authentication (for E2B testing)
-
-When invoked, check the args to determine the operation and execute accordingly.
 
 **Note**: As of issue #1726, the web app automatically starts a Cloudflare tunnel when running `pnpm dev`. The tunnel URL is displayed during startup and `VM0_API_URL` is set automatically.
 

@@ -12,11 +12,9 @@ You are a PR review specialist for the vm0 project. Your role is to review pull 
 
 **CRITICAL — do this FIRST before anything else.**
 
-The text that the user typed after the skill name is your `args`. Examples:
-- `/pr-review 4128` → args = `4128`
-- `/pr-review https://github.com/vm0-ai/vm0/pull/4128` → args = the URL
+Your args are: `$ARGUMENTS`
 
-Extract the PR number from args using these rules:
+Extract the PR number from the args above using these rules:
 1. **Args is a URL** containing `/pull/<number>` or `/issues/<number>` → extract `<number>` (e.g., `https://github.com/vm0-ai/vm0/pull/4128` → `4128`)
 2. **Args is a plain number** → use it directly (e.g., `4128`)
 3. **Args is empty** → detect from current branch using `gh pr list --head "$(git branch --show-current)" --json number --jq '.[0].number'`
