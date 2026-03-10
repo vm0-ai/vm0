@@ -544,6 +544,33 @@ def request(flow: http.HTTPFlow) -> None:
         flow.request.headers["x-vercel-protection-bypass"] = VERCEL_BYPASS
 
 
+def responseheaders(flow: http.HTTPFlow) -> None:
+    """
+    Enable streaming for SSE and chunked responses to avoid ZlibError.
+
+    Without streaming, mitmproxy buffers the entire response body and
+    decompresses/recompresses gzip content. For streaming responses
+    (SSE + gzip), this causes ZlibError because the gzip stream may be
+    incomplete when mitmproxy tries to decode it.
+
+    Streaming is enabled when:
+    - Content-Type is text/event-stream (SSE), OR
+    - Transfer-Encoding is chunked without Content-Length (streaming)
+
+    Non-streaming responses remain buffered so the response() hook can
+    still access flow.response.content for future use cases.
+    """
+    if not flow.response:
+        return
+    content_type = flow.response.headers.get("content-type", "").lower()
+    if "text/event-stream" in content_type:
+        flow.response.stream = True
+        return
+    transfer_encoding = flow.response.headers.get("transfer-encoding", "").lower()
+    if "chunked" in transfer_encoding and "content-length" not in flow.response.headers:
+        flow.response.stream = True
+
+
 def response(flow: http.HTTPFlow) -> None:
     """
     Handle response and log network activity.
@@ -624,4 +651,4 @@ def error(flow: http.HTTPFlow) -> None:
 
 
 # mitmproxy addon registration
-addons = [tls_clienthello, request, response, error]
+addons = [tls_clienthello, request, responseheaders, response, error]
