@@ -71,6 +71,7 @@ const router = tsr.router(variablesMainContract, {
       const { scope } = await resolveScope(userId, scopeSlug);
       const variable = await setVariable(
         scope.clerkOrgId,
+        scope.id,
         userId,
         name,
         value,

@@ -17,7 +17,7 @@ export const variables = pgTable(
   "variables",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    scopeId: uuid("scope_id"),
+    scopeId: uuid("scope_id").notNull(),
     name: varchar("name", { length: 255 }).notNull(),
     value: text("value").notNull(),
     description: text("description"),

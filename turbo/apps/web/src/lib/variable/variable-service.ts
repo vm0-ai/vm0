@@ -128,6 +128,7 @@ export async function getVariableValues(
  */
 export async function setVariable(
   clerkOrgId: string,
+  scopeId: string,
   userId: string,
   name: string,
   value: string,
@@ -177,6 +178,7 @@ export async function setVariable(
   const [created] = await globalThis.services.db
     .insert(variables)
     .values({
+      scopeId,
       name,
       value,
       description: description ?? null,
