@@ -25,7 +25,7 @@ type AuthContext = {
  * IMPORTANT: This function rejects sandbox JWT tokens.
  * Sandbox tokens can only be used on webhook endpoints via getSandboxAuth().
  */
-async function getAuthContext(
+export async function getAuthContext(
   authHeader?: string,
 ): Promise<AuthContext | null> {
   // Session auth via Clerk

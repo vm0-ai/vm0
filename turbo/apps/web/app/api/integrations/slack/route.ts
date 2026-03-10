@@ -7,7 +7,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { slackUserLinks } from "../../../../src/db/schema/slack-user-link";
 import { slackInstallations } from "../../../../src/db/schema/slack-installation";
 import {
@@ -41,14 +41,15 @@ export async function GET(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization");
-  const userId = await getUserId(authHeader ?? undefined);
+  const authCtx = await getAuthContext(authHeader ?? undefined);
 
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { userId, scopeId: tokenScopeId } = authCtx;
 
   const db = globalThis.services.db;
 
@@ -124,7 +125,7 @@ export async function GET(request: Request) {
   }
 
   // Get user's existing secrets, vars, connectors
-  const { scope } = await resolveScope(userId);
+  const { scope } = await resolveScope(userId, null, null, tokenScopeId);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(scope.id, userId),
     listVariables(scope.clerkOrgId, userId),
@@ -176,14 +177,15 @@ export async function DELETE(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization");
-  const userId = await getUserId(authHeader ?? undefined);
+  const authCtx = await getAuthContext(authHeader ?? undefined);
 
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { userId } = authCtx;
 
   const { SECRETS_ENCRYPTION_KEY } = env();
   const db = globalThis.services.db;
@@ -246,14 +248,15 @@ export async function PATCH(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization");
-  const userId = await getUserId(authHeader ?? undefined);
+  const authCtx = await getAuthContext(authHeader ?? undefined);
 
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { userId, scopeId: tokenScopeId } = authCtx;
 
   const body = (await request.json()) as { agentName?: string };
   if (!body.agentName) {
@@ -326,7 +329,7 @@ export async function PATCH(request: Request) {
     }
     targetClerkOrgId = targetScope.clerkOrgId;
   } else {
-    const { scope } = await resolveScope(userId);
+    const { scope } = await resolveScope(userId, null, null, tokenScopeId);
     targetClerkOrgId = scope.clerkOrgId;
   }
 

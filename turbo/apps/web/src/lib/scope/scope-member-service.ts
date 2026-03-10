@@ -125,9 +125,13 @@ export async function getDefaultScope(userId: string) {
 export async function resolveScopeId(
   userId: string,
   scopeId: string | undefined,
+  tokenScopeId?: string | null,
 ): Promise<string> {
   if (scopeId) {
     return scopeId;
+  }
+  if (tokenScopeId) {
+    return tokenScopeId;
   }
   const { scope } = await getDefaultScope(userId);
   return scope.id;

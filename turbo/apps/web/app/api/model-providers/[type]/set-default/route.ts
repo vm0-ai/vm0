@@ -4,7 +4,7 @@ import {
   createErrorResponse,
 } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
 import { resolveScope } from "../../../../../src/lib/scope/resolve-scope";
 import { setModelProviderDefault } from "../../../../../src/lib/model-provider/model-provider-service";
 import { logger } from "../../../../../src/lib/logger";
@@ -19,10 +19,11 @@ const router = tsr.router(modelProvidersSetDefaultContract, {
   setDefault: async ({ params, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     log.debug("setting model provider as default", {
       userId,
@@ -31,7 +32,12 @@ const router = tsr.router(modelProvidersSetDefaultContract, {
 
     try {
       const scopeSlug = new URL(request.url).searchParams.get("scope");
-      const { scope } = await resolveScope(userId, scopeSlug);
+      const { scope } = await resolveScope(
+        userId,
+        scopeSlug,
+        null,
+        tokenScopeId,
+      );
       const provider = await setModelProviderDefault(
         scope.id,
         userId,

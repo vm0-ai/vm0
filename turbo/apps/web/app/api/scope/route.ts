@@ -5,7 +5,7 @@ import {
 } from "../../../src/lib/ts-rest-handler";
 import { scopeContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
-import { getUserId } from "../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../src/lib/auth/get-user-id";
 import {
   createScope,
   updateScopeSlug,
@@ -45,13 +45,14 @@ const router = tsr.router(scopeContract, {
   get: async ({ headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     try {
-      const { scope } = await resolveScope(userId);
+      const { scope } = await resolveScope(userId, null, null, tokenScopeId);
 
       return { status: 200 as const, body: scopeToResponseBody(scope) };
     } catch (error) {
@@ -77,10 +78,11 @@ const router = tsr.router(scopeContract, {
   create: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
+    const { userId } = authCtx;
 
     const { slug } = body;
 
@@ -120,10 +122,11 @@ const router = tsr.router(scopeContract, {
   update: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     const { slug, force } = body;
 
@@ -131,7 +134,12 @@ const router = tsr.router(scopeContract, {
 
     let existingScope;
     try {
-      ({ scope: existingScope } = await resolveScope(userId));
+      ({ scope: existingScope } = await resolveScope(
+        userId,
+        null,
+        null,
+        tokenScopeId,
+      ));
     } catch (error) {
       if (isNotFound(error)) {
         return createErrorResponse(

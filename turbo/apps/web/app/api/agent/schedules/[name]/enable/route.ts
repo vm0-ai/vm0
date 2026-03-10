@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../../src/lib/auth/get-user-id";
 import { enableSchedule } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
 import { isNotFound, isSchedulePast } from "../../../../../../src/lib/errors";
@@ -14,15 +14,16 @@ export async function POST(
 ) {
   initServices();
 
-  const userId = await getUserId(
+  const authCtx = await getAuthContext(
     request.headers.get("Authorization") ?? undefined,
   );
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { userId, scopeId: tokenScopeId } = authCtx;
 
   const { name } = await params;
 
@@ -43,7 +44,7 @@ export async function POST(
     );
   }
 
-  const scopeId = await resolveScopeId(userId, body.scopeId);
+  const scopeId = await resolveScopeId(userId, body.scopeId, tokenScopeId);
 
   log.debug(`Enabling schedule ${name} for compose ${body.composeId}`);
 

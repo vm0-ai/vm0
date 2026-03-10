@@ -22,7 +22,7 @@ import {
   createRun,
   type RunDispatchError,
 } from "../../../../src/lib/run";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../src/lib/logger";
 import {
   isForbidden,
@@ -281,8 +281,8 @@ const router = tsr.router(runsMainContract, {
   list: async ({ query, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -290,6 +290,7 @@ const router = tsr.router(runsMainContract, {
         },
       };
     }
+    const { userId } = authCtx;
 
     // Parse and validate status values
     const statusValues: string[] = query.status
@@ -395,8 +396,8 @@ const router = tsr.router(runsMainContract, {
   create: async ({ body, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -404,6 +405,7 @@ const router = tsr.router(runsMainContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     // Validate mutually exclusive shortcuts
     if (body.checkpointId && body.sessionId) {
@@ -452,7 +454,7 @@ const router = tsr.router(runsMainContract, {
     // Resolve scope for variable/secret resolution.
     // The actual variable fetching happens in build-context.ts.
     const scopeSlug = new URL(request.url).searchParams.get("scope");
-    const { scope } = await resolveScope(userId, scopeSlug);
+    const { scope } = await resolveScope(userId, scopeSlug, null, tokenScopeId);
 
     // Delegate run creation, validation, and dispatch to createRun()
     try {

@@ -5,7 +5,7 @@ import {
 } from "../../../../../src/lib/ts-rest-handler";
 import { schedulesByNameContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
 import {
   getScheduleByName,
   deleteSchedule,
@@ -20,8 +20,8 @@ const router = tsr.router(schedulesByNameContract, {
   getByName: async ({ params, query, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -29,11 +29,12 @@ const router = tsr.router(schedulesByNameContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     log.debug(`Getting schedule ${params.name} for compose ${query.composeId}`);
 
     try {
-      const scopeId = await resolveScopeId(userId, query.scopeId);
+      const scopeId = await resolveScopeId(userId, query.scopeId, tokenScopeId);
 
       const schedule = await getScheduleByName(
         userId,
@@ -62,8 +63,8 @@ const router = tsr.router(schedulesByNameContract, {
   delete: async ({ params, query, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -71,13 +72,14 @@ const router = tsr.router(schedulesByNameContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     log.debug(
       `Deleting schedule ${params.name} for compose ${query.composeId}`,
     );
 
     try {
-      const scopeId = await resolveScopeId(userId, query.scopeId);
+      const scopeId = await resolveScopeId(userId, query.scopeId, tokenScopeId);
 
       await deleteSchedule(userId, scopeId, query.composeId, params.name);
 

@@ -7,7 +7,7 @@ import {
 } from "@vm0/core";
 import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
 import { resolveScope } from "../../../../../src/lib/scope/resolve-scope";
 import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
 import { connectorSessions } from "../../../../../src/db/schema/connector-session";
@@ -109,9 +109,10 @@ export async function GET(
   const connectorType = typeResult.data;
 
   // Verify user is authenticated
-  const userId = await getUserIdFromRequest(request);
-  log.debug("OAuth callback auth check", { userId, hasUserId: !!userId });
-  if (!userId) {
+  const authHeader = request.headers.get("authorization") ?? undefined;
+  const authCtx = await getAuthContext(authHeader);
+  log.debug("OAuth callback auth check", { hasAuth: !!authCtx });
+  if (!authCtx) {
     return redirectWithError(origin, type, "Not authenticated");
   }
 
@@ -180,6 +181,8 @@ export async function GET(
         codeVerifier,
       );
 
+    const { userId, scopeId: tokenScopeId } = authCtx;
+
     log.debug("Storing connector", {
       userId,
       type,
@@ -197,7 +200,7 @@ export async function GET(
     // when the code adds new scopes and prompt users to re-authorize.
     // Note: do not read "scope" from the callback URL — OAuth providers (e.g., Monday.com)
     // may append OAuth scopes as ?scope=... which would be mistaken for an app scope slug.
-    const { scope } = await resolveScope(userId);
+    const { scope } = await resolveScope(userId, null, null, tokenScopeId);
     const { created } = await upsertOAuthConnector(
       scope.id,
       userId,

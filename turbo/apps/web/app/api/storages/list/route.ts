@@ -7,7 +7,7 @@ import { storagesListContract, VOLUME_SCOPE_USER_ID } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { storages } from "../../../../src/db/schema/storage";
 import { eq, and, desc } from "drizzle-orm";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import { logger } from "../../../../src/lib/logger";
 
@@ -18,8 +18,8 @@ const router = tsr.router(storagesListContract, {
     initServices();
 
     // Authenticate user
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -27,12 +27,18 @@ const router = tsr.router(storagesListContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     const { type: storageType } = query;
 
     // Resolve user's default scope
     const scopeSlug = new URL(request.url).searchParams.get("scope");
-    const { scope: runtimeScope } = await resolveScope(userId, scopeSlug);
+    const { scope: runtimeScope } = await resolveScope(
+      userId,
+      scopeSlug,
+      null,
+      tokenScopeId,
+    );
 
     // Volumes use sentinel userId (scope-shared); artifacts/memory use real userId
     const storageUserId =

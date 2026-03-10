@@ -8,7 +8,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import {
   s3ObjectExists,
@@ -25,8 +25,8 @@ const router = tsr.router(storagesCommitContract, {
     initServices();
 
     // Authenticate user
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -34,10 +34,16 @@ const router = tsr.router(storagesCommitContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     // Resolve user's default scope
     const scopeSlug = new URL(request.url).searchParams.get("scope");
-    const { scope: runtimeScope } = await resolveScope(userId, scopeSlug);
+    const { scope: runtimeScope } = await resolveScope(
+      userId,
+      scopeSlug,
+      null,
+      tokenScopeId,
+    );
 
     const { storageName, storageType, versionId, files, runId, message } = body;
 

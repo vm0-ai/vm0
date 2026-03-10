@@ -1,7 +1,7 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { scopeDefaultAgentContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { scopes } from "../../../../src/db/schema/scope";
@@ -11,8 +11,8 @@ const router = tsr.router(scopeDefaultAgentContract, {
   setDefaultAgent: async ({ query, body, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -20,8 +20,14 @@ const router = tsr.router(scopeDefaultAgentContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
-    const { scope, member } = await resolveScope(userId, query.scope);
+    const { scope, member } = await resolveScope(
+      userId,
+      query.scope,
+      null,
+      tokenScopeId,
+    );
 
     if (member.role !== "admin") {
       return {

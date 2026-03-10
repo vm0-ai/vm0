@@ -7,7 +7,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { getApiUrl } from "../../../../src/lib/callback";
 import { githubInstallations } from "../../../../src/db/schema/github-installation";
 import { githubUserLinks } from "../../../../src/db/schema/github-user-link";
@@ -36,14 +36,15 @@ export async function GET(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization");
-  const userId = await getUserId(authHeader ?? undefined);
+  const authCtx = await getAuthContext(authHeader ?? undefined);
 
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { userId, scopeId: tokenScopeId } = authCtx;
 
   const db = globalThis.services.db;
 
@@ -121,7 +122,7 @@ export async function GET(request: Request) {
   }
 
   // Resolve user's scope for resource queries
-  const { scope } = await resolveScope(userId);
+  const { scope } = await resolveScope(userId, null, null, tokenScopeId);
 
   // Get user's existing secrets, vars, connectors
   const [userSecrets, userVars, userConnectors] = await Promise.all([
@@ -177,14 +178,15 @@ export async function DELETE(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization");
-  const userId = await getUserId(authHeader ?? undefined);
+  const authCtx = await getAuthContext(authHeader ?? undefined);
 
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { userId } = authCtx;
 
   const db = globalThis.services.db;
 
@@ -263,14 +265,15 @@ export async function PATCH(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization");
-  const userId = await getUserId(authHeader ?? undefined);
+  const authCtx = await getAuthContext(authHeader ?? undefined);
 
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { userId } = authCtx;
 
   const body = (await request.json()) as { agentName?: string };
   if (!body.agentName) {

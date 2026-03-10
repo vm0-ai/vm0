@@ -2,7 +2,7 @@ import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { composesListContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { eq, desc } from "drizzle-orm";
 import { resolveScope } from "../../../../../src/lib/scope/resolve-scope";
@@ -13,8 +13,8 @@ const router = tsr.router(composesListContract, {
   list: async ({ query, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -22,12 +22,18 @@ const router = tsr.router(composesListContract, {
         },
       };
     }
+    const { userId, scopeId: tokenScopeId } = authCtx;
 
     // Resolve scope: use ?scope= query param or default scope
     let clerkOrgId: string;
     let defaultAgentComposeId: string | null = null;
     try {
-      const { scope: resolvedScope } = await resolveScope(userId, query.scope);
+      const { scope: resolvedScope } = await resolveScope(
+        userId,
+        query.scope,
+        null,
+        tokenScopeId,
+      );
       clerkOrgId = resolvedScope.clerkOrgId;
       defaultAgentComposeId = resolvedScope.defaultAgentComposeId;
     } catch (error) {
