@@ -152,7 +152,7 @@ configure_runner_group() {
 
   # Derive from git email + hostname (e.g. alice@vm0.ai on macbook -> alice-macbook)
   local username hostname_short
-  username=$(git config user.email 2>/dev/null | sed 's/@.*//' | tr '[:upper:].' '[:lower:]-' || true)
+  username=$(git config user.email 2>/dev/null | sed 's/@.*//' | tr '[:upper:].' '[:lower:]-' | sed 's/-$//' || true)
   hostname_short=$(hostname -s)
 
   if [[ -z "$username" ]]; then
@@ -166,6 +166,9 @@ configure_runner_group() {
   if grep -q "^RUNNER_DEFAULT_GROUP=" "$WEB_ENV_LOCAL" 2>/dev/null; then
     sed -i '/^# Self-hosted Runner$/d; /^RUNNER_DEFAULT_GROUP=/d' "$WEB_ENV_LOCAL"
   fi
+
+  # Remove trailing blank lines before appending
+  sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$WEB_ENV_LOCAL"
 
   echo "" >> "$WEB_ENV_LOCAL"
   echo "# Self-hosted Runner" >> "$WEB_ENV_LOCAL"
