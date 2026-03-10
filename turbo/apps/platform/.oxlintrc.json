@@ -10,35 +10,6 @@
           {
             "paths": [
               {
-                "allowImportNames": ["StrictMode", "Component"],
-                "allowTypeImports": true,
-                "name": "react"
-              },
-              {
-                "allowImportNames": [
-                  "useGet",
-                  "useSet",
-                  "useLoadable",
-                  "useResolved",
-                  "useLastLoadable",
-                  "useLastResolved"
-                ],
-                "allowTypeImports": true,
-                "name": "ccstate"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "files": ["src/views/zero-page/**/*.*"],
-      "rules": {
-        "no-restricted-imports": [
-          "deny",
-          {
-            "paths": [
-              {
                 "allowImportNames": [
                   "StrictMode",
                   "Component",
