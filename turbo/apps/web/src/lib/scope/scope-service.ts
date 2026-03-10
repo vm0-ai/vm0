@@ -77,11 +77,11 @@ function validateScopeSlug(slug: string): void {
 /**
  * Get a scope by its ID
  */
-async function getScopeById(scopeId: string) {
+export async function getScopeById(id: string) {
   const result = await globalThis.services.db
     .select()
     .from(scopes)
-    .where(eq(scopes.id, scopeId))
+    .where(eq(scopes.id, id))
     .limit(1);
 
   return result[0] ?? null;

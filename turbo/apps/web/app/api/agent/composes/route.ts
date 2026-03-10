@@ -294,6 +294,7 @@ const router = tsr.router(composesMainContract, {
           userId,
           scopeId: scope.id,
           name: normalizedAgentName,
+          clerkOrgId: scope.clerkOrgId,
         })
         .returning({ id: agentComposes.id });
 

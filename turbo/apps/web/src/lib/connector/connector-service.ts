@@ -134,6 +134,7 @@ export async function upsertOAuthConnector(
   accessToken: string,
   userInfo: ExternalUserInfo,
   oauthScopes: string[],
+  clerkOrgId: string,
   options?: {
     refreshToken?: string | null;
     refreshSecretName?: string;
@@ -170,6 +171,7 @@ export async function upsertOAuthConnector(
     accessToken,
     "connector",
     `OAuth token for ${type} connector`,
+    clerkOrgId,
   );
 
   // Upsert refresh token secret if provided
@@ -181,6 +183,7 @@ export async function upsertOAuthConnector(
       options.refreshToken,
       "connector",
       `OAuth refresh token for ${type} connector`,
+      clerkOrgId,
     );
   }
 
@@ -234,6 +237,7 @@ export async function upsertOAuthConnector(
         externalEmail: userInfo.email,
         oauthScopes: JSON.stringify(oauthScopes),
         tokenExpiresAt,
+        clerkOrgId,
       })
       .returning();
     if (!created) {
@@ -270,6 +274,7 @@ export async function upsertApiTokenConnector(
   userId: string,
   type: ConnectorType,
   inputSecrets: Record<string, string>,
+  clerkOrgId: string,
 ): Promise<{ connector: ConnectorResponse; created: boolean }> {
   const config = CONNECTOR_TYPES[type];
   const apiTokenConfig = config.authMethods["api-token"];
@@ -298,6 +303,7 @@ export async function upsertApiTokenConnector(
         value,
         "connector",
         `API token for ${type} connector`,
+        clerkOrgId,
       );
     }
   }
@@ -369,6 +375,7 @@ export async function upsertApiTokenConnector(
         externalEmail: null,
         oauthScopes: null,
         tokenExpiresAt: null,
+        clerkOrgId,
       })
       .returning();
     if (!created) {
@@ -472,6 +479,7 @@ export async function upsertConnectorSecret(
   userId: string,
   secretName: string,
   secretValue: string,
+  clerkOrgId: string,
 ): Promise<void> {
   await upsertSecretByScope(
     scopeId,
@@ -480,5 +488,6 @@ export async function upsertConnectorSecret(
     secretValue,
     "connector",
     `Connector secret: ${secretName}`,
+    clerkOrgId,
   );
 }

@@ -250,6 +250,7 @@ export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
     "artifact",
     scope.slug,
     "artifact",
+    scope.clerkOrgId,
   );
 }
 

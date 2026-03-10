@@ -91,6 +91,7 @@ const router = tsr.router(modelProvidersMainContract, {
           type,
           authMethod,
           secrets,
+          scope.clerkOrgId,
           selectedModel,
         );
         provider = result.provider;
@@ -108,6 +109,7 @@ const router = tsr.router(modelProvidersMainContract, {
           userId,
           type,
           secret,
+          scope.clerkOrgId,
           selectedModel,
         );
         provider = result.provider;

@@ -70,6 +70,7 @@ export async function givenGitHubInstallation(
     .values({
       userId,
       scopeId: scope!.id,
+      clerkOrgId: scope!.clerkOrgId,
       name: uniqueId("gh-agent"),
     })
     .returning();

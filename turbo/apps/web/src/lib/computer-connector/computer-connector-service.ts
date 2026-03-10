@@ -40,6 +40,7 @@ const COMPUTER_SECRETS = [
 export async function createComputerConnector(
   scopeId: string,
   userId: string,
+  clerkOrgId: string,
 ): Promise<ComputerConnectorCreateResponse> {
   // Check for existing connector
   const [existing] = await globalThis.services.db
@@ -139,6 +140,7 @@ export async function createComputerConnector(
     .values({
       scopeId,
       userId,
+      clerkOrgId,
       type: "computer",
       authMethod: "api",
       externalId: botUser.id,
@@ -161,6 +163,7 @@ export async function createComputerConnector(
       bridgeToken,
       "connector",
       "Computer connector: COMPUTER_CONNECTOR_BRIDGE_TOKEN",
+      clerkOrgId,
     ),
     upsertSecretByScope(
       scopeId,
@@ -169,6 +172,7 @@ export async function createComputerConnector(
       reservedDomain.id,
       "connector",
       "Computer connector: COMPUTER_CONNECTOR_DOMAIN_ID",
+      clerkOrgId,
     ),
     upsertSecretByScope(
       scopeId,
@@ -177,6 +181,7 @@ export async function createComputerConnector(
       domain,
       "connector",
       "Computer connector: COMPUTER_CONNECTOR_DOMAIN",
+      clerkOrgId,
     ),
   ]);
 

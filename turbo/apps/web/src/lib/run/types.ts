@@ -109,4 +109,5 @@ export interface ExecutionContext {
 export interface RuntimeScope {
   id: string;
   slug: string;
+  clerkOrgId: string;
 }

@@ -32,7 +32,10 @@ import { canAccessCompose } from "../agent/permission-service";
 import { getUserEmail } from "../auth/get-user-email";
 import { extractTemplateVars } from "../config-validator";
 
-import { getDefaultScopeByClerkUserId } from "../scope/scope-service";
+import {
+  getDefaultScopeByClerkUserId,
+  getScopeById,
+} from "../scope/scope-service";
 import { getDefaultScope } from "../scope/scope-member-service";
 import { getVariableValues } from "../variable/variable-service";
 import { encryptCredentialValue } from "../crypto/secrets-encryption";
@@ -319,6 +322,7 @@ export interface CreateRunParams {
   // When provided, used instead of getDefaultScope fallback.
   scopeId?: string;
   scopeSlug?: string;
+  clerkOrgId?: string;
   // Caller-resolved scope tier for concurrency limit derivation.
   scopeTier?: ScopeTier;
 }
@@ -523,6 +527,7 @@ async function buildAndDispatchRun(opts: {
   apiStartTime: number;
   scopeId: string | undefined;
   scopeSlug: string | undefined;
+  clerkOrgId: string | undefined;
   authorizeTime: number;
   transactionTime: number;
 }): Promise<{ status: string; sandboxId?: string }> {
@@ -534,6 +539,7 @@ async function buildAndDispatchRun(opts: {
     apiStartTime,
     scopeId,
     scopeSlug,
+    clerkOrgId,
     authorizeTime,
     transactionTime,
   } = opts;
@@ -579,6 +585,7 @@ async function buildAndDispatchRun(opts: {
       apiStartTime,
       scopeId,
       scopeSlug,
+      clerkOrgId,
     });
     const buildContextTime = Date.now();
 
@@ -698,13 +705,22 @@ export async function createRun(
   // Resolve scope ID and slug for the run record and storage
   let scopeId: string;
   let scopeSlug: string | undefined;
+  let clerkOrgId: string;
   if (params.scopeId) {
     scopeId = params.scopeId;
     scopeSlug = params.scopeSlug;
+    if (params.clerkOrgId) {
+      clerkOrgId = params.clerkOrgId;
+    } else {
+      const scope = await getScopeById(params.scopeId);
+      if (!scope) throw badRequest("Scope not found");
+      clerkOrgId = scope.clerkOrgId;
+    }
   } else {
     const { scope } = await getDefaultScope(userId);
     scopeId = scope.id;
     scopeSlug = scope.slug;
+    clerkOrgId = scope.clerkOrgId;
   }
 
   // Step 5: Concurrency check + INSERT in a transaction with advisory lock
@@ -726,6 +742,7 @@ export async function createRun(
         .values({
           userId,
           scopeId,
+          clerkOrgId,
           agentComposeVersionId,
           status: "pending",
           prompt,
@@ -746,7 +763,7 @@ export async function createRun(
     });
   } catch (error) {
     if (isConcurrentRunLimit(error)) {
-      return enqueueRun({ ...params, scopeId, scopeSlug });
+      return enqueueRun({ ...params, scopeId, scopeSlug, clerkOrgId });
     }
     throw error;
   }
@@ -762,6 +779,7 @@ export async function createRun(
     apiStartTime,
     scopeId,
     scopeSlug,
+    clerkOrgId,
     authorizeTime,
     transactionTime,
   });
@@ -846,6 +864,7 @@ export async function executeQueuedRun(
     apiStartTime,
     scopeId: params.scopeId,
     scopeSlug: params.scopeSlug,
+    clerkOrgId: params.clerkOrgId,
     authorizeTime,
     transactionTime,
   });

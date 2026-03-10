@@ -232,6 +232,7 @@ export async function prepareForExecution(
           context.artifactName,
           runtimeScope.slug,
           "artifact",
+          runtimeScope.clerkOrgId,
         )
       : null,
     context.memoryName
@@ -241,6 +242,7 @@ export async function prepareForExecution(
           context.memoryName,
           runtimeScope.slug,
           "memory",
+          runtimeScope.clerkOrgId,
         )
       : null,
   ]);

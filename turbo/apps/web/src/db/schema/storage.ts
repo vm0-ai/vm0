@@ -29,6 +29,7 @@ export const storages = pgTable(
       .references(() => scopes.id, { onDelete: "cascade" }), // Namespace (who owns)
     name: varchar("name", { length: 256 }).notNull(),
     type: varchar("type", { length: 16 }).notNull().default("volume"),
+    clerkOrgId: text("clerk_org_id").notNull(),
     s3Prefix: text("s3_prefix").notNull(),
     size: bigint("size", { mode: "number" }).notNull().default(0),
     fileCount: integer("file_count").notNull().default(0),
@@ -46,6 +47,10 @@ export const storages = pgTable(
       table.type,
     ),
     scopeIdx: index("idx_storages_scope").on(table.scopeId),
+    clerkOrgIdx: index("idx_storages_clerk_org").on(table.clerkOrgId),
+    clerkOrgUserNameTypeIdx: uniqueIndex(
+      "idx_storages_clerk_org_user_name_type",
+    ).on(table.clerkOrgId, table.userId, table.name, table.type),
   }),
 );
 
