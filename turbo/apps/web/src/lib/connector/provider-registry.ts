@@ -47,6 +47,7 @@ import { metaAdsHandler } from "./providers/meta-ads-handler";
 import { posthogHandler } from "./providers/posthog-handler";
 import { plausibleHandler } from "./providers/plausible-handler";
 import { productlaneHandler } from "./providers/productlane-handler";
+import { resendHandler } from "./providers/resend-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
 import { xeroHandler } from "./providers/xero-handler";
 
@@ -97,6 +98,7 @@ export const PROVIDER_HANDLERS: Record<
   posthog: posthogHandler,
   plausible: plausibleHandler,
   productlane: productlaneHandler,
+  resend: resendHandler,
   similarweb: similarwebHandler,
   x: xHandler,
   xero: xeroHandler,

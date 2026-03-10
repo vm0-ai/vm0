@@ -34,6 +34,7 @@ import plausibleIcon from "./icons/plausible.svg";
 import posthogIcon from "./icons/posthog.svg";
 import productlaneIcon from "./icons/productlane.svg";
 import redditIcon from "./icons/reddit.svg";
+import resendIcon from "./icons/resend.svg";
 import sentryIcon from "./icons/sentry.svg";
 import similarwebIcon from "./icons/similarweb.svg";
 import slackIcon from "./icons/slack.svg";
@@ -81,6 +82,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   posthog: posthogIcon,
   productlane: productlaneIcon,
   reddit: redditIcon,
+  resend: resendIcon,
   sentry: sentryIcon,
   similarweb: similarwebIcon,
   slack: slackIcon,

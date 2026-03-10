@@ -1622,6 +1622,29 @@ export const CONNECTOR_TYPES = {
       scopes: [],
     } as ConnectorOAuthConfig,
   },
+  resend: {
+    label: "Resend",
+    helpText:
+      "Connect your Resend account to send transactional emails, manage domains, audiences, and contacts",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Resend](https://resend.com)\n2. Go to **API Keys** in the sidebar\n3. Click **Create API Key**\n4. Choose permissions (Full access recommended) and copy the key",
+        secrets: {
+          RESEND_API_KEY: {
+            label: "API Key",
+            required: true,
+            placeholder: "re_xxxxxxxxxx",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      RESEND_API_KEY: "$secrets.RESEND_API_KEY",
+    } as Record<string, string>,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
@@ -1954,6 +1977,9 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       ),
     ],
   },
+  resend: {
+    services: [service("https://api.resend.com", bearerAuth("RESEND_API_KEY"))],
+  },
 };
 
 export const connectorTypeSchema = z.enum([
@@ -2002,6 +2028,7 @@ export const connectorTypeSchema = z.enum([
   "mailchimp",
   "plausible",
   "productlane",
+  "resend",
 ]);
 
 /**
