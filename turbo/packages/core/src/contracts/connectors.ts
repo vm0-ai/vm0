@@ -1524,7 +1524,7 @@ export const CONNECTOR_TYPES = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
     environmentMapping: {
-      PLAUSIBLE_TOKEN: "$secrets.PLAUSIBLE_API_KEY",
+      PLAUSIBLE_TOKEN: "$secrets.PLAUSIBLE_TOKEN",
     } as Record<string, string>,
   },
   mailchimp: {
@@ -1785,7 +1785,7 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   },
   plausible: {
     services: [
-      service("https://plausible.io/api", bearerAuth("PLAUSIBLE_API_KEY")),
+      service("https://plausible.io/api", bearerAuth("PLAUSIBLE_TOKEN")),
     ],
   },
   mailchimp: {
