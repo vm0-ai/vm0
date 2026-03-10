@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.98.0](https://github.com/vm0-ai/vm0/compare/platform-v0.97.0...platform-v0.98.0) (2026-03-10)
+
+
+### Features
+
+* **platform:** add organization switching to zero page sidebar ([#4064](https://github.com/vm0-ai/vm0/issues/4064)) ([03fc6af](https://github.com/vm0-ai/vm0/commit/03fc6aff684efc65235dc74fe2ec689776bb8b05))
+
+
+### Bug Fixes
+
+* **platform:** hide about/pricing/sign-in card when user is logged in ([#4062](https://github.com/vm0-ai/vm0/issues/4062)) ([3a3ee35](https://github.com/vm0-ai/vm0/commit/3a3ee357a67fdd09f36c3152ce3f5c9d6755befd))
+
+
+### Refactoring
+
+* align remaining scope terminology with resource model ([#4094](https://github.com/vm0-ai/vm0/issues/4094)) ([e4df6c9](https://github.com/vm0-ai/vm0/commit/e4df6c96f84ef0e0e1393215a08122bf83a73a21))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.51.0
+
 ## [0.97.0](https://github.com/vm0-ai/vm0/compare/platform-v0.96.0...platform-v0.97.0) (2026-03-09)
 
 

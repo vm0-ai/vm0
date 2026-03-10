@@ -1,4 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import type { ReactNode, KeyboardEvent } from "react";
+import { useCCState, useCommand } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
+import { onRef } from "../../signals/utils.ts";
 import {
   IconSend,
   IconPaperclip,
@@ -30,40 +33,33 @@ export type DemoScenarioId =
   | "rich-summary"
   | "agent-operations";
 
-const ACTION_BUTTONS: {
-  label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-}[] = [
-  { label: "Automate workflows", icon: IconBriefcase },
-  { label: "Customize Zero", icon: IconSettings },
-  { label: "Add connectors", icon: IconPlug },
-];
+type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
+const ACTION_BUTTONS = [
+  { label: "Automate workflows", icon: IconBriefcase as NavIcon },
+  { label: "Customize Zero", icon: IconSettings as NavIcon },
+  { label: "Add connectors", icon: IconPlug as NavIcon },
+] as const;
 
-const SUGGESTED_PROMPTS: {
-  title: string;
-  description: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  iconClassName?: string;
-}[] = [
+const SUGGESTED_PROMPTS = [
   {
     title: "Auto-organize inbox",
     description: "Smart categorization, reply, and daily email digest",
-    icon: IconChartBar,
+    icon: IconChartBar as NavIcon,
     iconClassName: "text-emerald-600 dark:text-emerald-400",
   },
   {
     title: "Daily morning brief",
     description: "Trending topics on a schedule, your personalized digest",
-    icon: IconReceipt,
+    icon: IconReceipt as NavIcon,
     iconClassName: "text-primary",
   },
-];
+] as const;
 
-const STREAMED_SCENARIOS: {
+const STREAMED_SCENARIOS: readonly Readonly<{
   id: DemoScenarioId;
   userMessage: string;
   assistantMessage: string;
-}[] = [
+}>[] = [
   {
     id: "hello-from-zero",
     userMessage: "Hi",
@@ -112,7 +108,7 @@ const LANDING_TAGLINES = [
   "Create workflows, run automations, get things done.",
   "Ask me anything, I'll route it to the right minions.",
   "200+ connectors, ready when you are.",
-];
+] as const;
 const CAROUSEL_INTERVAL_MS = 4000;
 
 interface ChatScenarioBlockProps {
@@ -630,56 +626,115 @@ export function ZeroChatPage({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroChatPageProps) {
-  const [input, setInput] = useState("");
-  const [conversationActive, setConversationActive] = useState(false);
-  const [streamedCount, setStreamedCount] = useState(0);
-  const conversationEndRef = useRef<HTMLDivElement>(null);
-  const subAgentListRef = useRef<HTMLDivElement>(null);
-  const [approveDone, setApproveDone] = useState(false);
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
-  const [teamPersonalChoice, setTeamPersonalChoice] = useState<
-    "team" | "personal" | null
-  >(null);
-  const [connectorConnected, setConnectorConnected] = useState(false);
-  const [commandAllowed, setCommandAllowed] = useState(false);
-  const [showSubAgentList, setShowSubAgentList] = useState(false);
-  const [carouselIndex, setCarouselIndex] = useState(0);
+  const input$ = useCCState("");
+  const input = useGet(input$);
+  const setInput = useSet(input$);
+  const conversationActive$ = useCCState(false);
+  const conversationActive = useGet(conversationActive$);
+  const setConversationActive = useSet(conversationActive$);
+  const streamedCount$ = useCCState(0);
+  const streamedCount = useGet(streamedCount$);
+  const setStreamedCount = useSet(streamedCount$);
+  const conversationEndEl$ = useCCState<HTMLDivElement | null>(null);
+  const conversationEndEl = useGet(conversationEndEl$);
+  const setConversationEndEl = useSet(conversationEndEl$);
+  const subAgentListEl$ = useCCState<HTMLDivElement | null>(null);
+  const setSubAgentListEl = useSet(subAgentListEl$);
+  const approveDone$ = useCCState(false);
+  const approveDone = useGet(approveDone$);
+  const setApproveDone = useSet(approveDone$);
+  const selectedOption$ = useCCState<string | null>(null);
+  const selectedOption = useGet(selectedOption$);
+  const setSelectedOption = useSet(selectedOption$);
+  const teamPersonalChoice$ = useCCState<"team" | "personal" | null>(null);
+  const teamPersonalChoice = useGet(teamPersonalChoice$);
+  const setTeamPersonalChoice = useSet(teamPersonalChoice$);
+  const connectorConnected$ = useCCState(false);
+  const connectorConnected = useGet(connectorConnected$);
+  const setConnectorConnected = useSet(connectorConnected$);
+  const commandAllowed$ = useCCState(false);
+  const commandAllowed = useGet(commandAllowed$);
+  const setCommandAllowed = useSet(commandAllowed$);
+  const showSubAgentList$ = useCCState(false);
+  const showSubAgentList = useGet(showSubAgentList$);
+  const carouselIndex$ = useCCState(0);
+  const carouselIndex = useGet(carouselIndex$);
+  // Carousel interval — starts on mount via onRef, cleans up on unmount
+  const carouselCommand$ = useCommand(
+    ({ set }, _el: HTMLElement, signal: AbortSignal) => {
+      const id = window.setInterval(() => {
+        set(carouselIndex$, (i: number) => (i + 1) % LANDING_TAGLINES.length);
+      }, CAROUSEL_INTERVAL_MS);
+      signal.addEventListener("abort", () => window.clearInterval(id));
+    },
+  );
+  const carouselRef$ = onRef(carouselCommand$);
+  const carouselRef = useSet(carouselRef$);
 
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setCarouselIndex((i) => (i + 1) % LANDING_TAGLINES.length);
-    }, CAROUSEL_INTERVAL_MS);
-    return () => window.clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    if (!conversationActive || streamedCount >= 6) {
+  // Stream tick — schedules the next streamed message after a delay
+  const streamTimeoutId$ = useCCState<number | null>(null);
+  const scheduleStreamTick$ = useCommand(({ get, set }) => {
+    const active = get(conversationActive$);
+    const count = get(streamedCount$);
+    if (!active || count >= 6) {
       return;
     }
     const id = window.setTimeout(() => {
-      setStreamedCount((c) => Math.min(c + 1, 6));
+      set(streamTimeoutId$, null);
+      set(streamedCount$, (c: number) => Math.min(c + 1, 6));
+      // Auto-scroll conversation end into view
+      const el = get(conversationEndEl$);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth" });
+      }
+      // Schedule next tick
+      set(scheduleStreamTick$);
     }, STREAM_DELAY_MS);
-    return () => {
-      window.clearTimeout(id);
-    };
-  }, [conversationActive, streamedCount]);
+    set(streamTimeoutId$, id);
+  });
+  const scheduleStreamTick = useSet(scheduleStreamTick$);
+  // Clean up pending stream timeout on unmount
+  const streamCleanup$ = useCommand(
+    ({ get }, _el: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        const id = get(streamTimeoutId$);
+        if (id !== null) {
+          window.clearTimeout(id);
+        }
+      });
+    },
+  );
+  const streamCleanupRef$ = onRef(streamCleanup$);
+  const streamCleanupRef = useSet(streamCleanupRef$);
 
-  useEffect(() => {
-    if (streamedCount > 0 && conversationEndRef.current) {
-      conversationEndRef.current.scrollIntoView({ behavior: "smooth" });
+  // Toggle sub-agent list with auto-scroll when opening
+  const toggleSubAgentList$ = useCommand(({ get, set }) => {
+    const current = get(showSubAgentList$);
+    set(showSubAgentList$, !current);
+    if (!current) {
+      // Becoming visible — scroll into view after next paint
+      window.requestAnimationFrame(() => {
+        const el = get(subAgentListEl$);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth" });
+        }
+      });
     }
-  }, [streamedCount]);
-
-  useEffect(() => {
-    if (showSubAgentList && subAgentListRef.current) {
-      subAgentListRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [showSubAgentList]);
+  });
+  const toggleSubAgentList = useSet(toggleSubAgentList$);
 
   const handleComposerFocus = () => {
     if (!conversationActive) {
       setConversationActive(true);
       setStreamedCount(1);
+      // Scroll conversation end into view after first message
+      if (conversationEndEl) {
+        window.requestAnimationFrame(() => {
+          conversationEndEl.scrollIntoView({ behavior: "smooth" });
+        });
+      }
+      // Start streaming ticks
+      scheduleStreamTick();
     }
   };
 
@@ -708,7 +763,7 @@ export function ZeroChatPage({
     handleSend(prompt);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -727,7 +782,10 @@ export function ZeroChatPage({
   if (showConversation && scenariosToShow.length > 0) {
     const isScenarioFromSidebar = initialScenarioId !== undefined;
     return (
-      <div className="flex flex-1 flex-col min-h-0 bg-transparent">
+      <div
+        ref={streamCleanupRef}
+        className="flex flex-1 flex-col min-h-0 bg-transparent"
+      >
         <header className="shrink-0 bg-transparent px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Button
@@ -766,7 +824,7 @@ export function ZeroChatPage({
                 "h-8 w-8 text-muted-foreground hover:text-foreground",
                 showSubAgentList && "bg-muted/60 text-foreground",
               )}
-              onClick={() => setShowSubAgentList((v) => !v)}
+              onClick={() => toggleSubAgentList()}
               aria-label={`${ZERO_TEAM_JOBS.length} sub-agents`}
             >
               <IconUsers size={18} stroke={1.5} />
@@ -813,7 +871,7 @@ export function ZeroChatPage({
             )}
             {showSubAgentList && (
               <div
-                ref={subAgentListRef}
+                ref={setSubAgentListEl}
                 className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300"
               >
                 <button
@@ -894,7 +952,7 @@ export function ZeroChatPage({
                 </div>
               </div>
             )}
-            <div ref={conversationEndRef} />
+            <div ref={setConversationEndEl} />
           </div>
         </main>
         <footer className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-8">
@@ -965,7 +1023,7 @@ export function ZeroChatPage({
 
   // Landing page: full content (title, triggers, composer, actions, prompts)
   return (
-    <div className="flex flex-1 flex-col min-h-0">
+    <div ref={carouselRef} className="flex flex-1 flex-col min-h-0">
       <header
         className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-2"
         aria-hidden="true"

@@ -6,8 +6,10 @@ import {
   timestamp,
   index,
   check,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { agentComposes } from "./agent-compose";
 
 /**
  * Scopes table
@@ -21,6 +23,10 @@ export const scopes = pgTable(
     slug: varchar("slug", { length: 64 }).notNull().unique(),
     clerkOrgId: text("clerk_org_id").notNull(),
     tier: varchar("tier", { length: 16 }).default("free").notNull(),
+    defaultAgentComposeId: uuid("default_agent_compose_id").references(
+      (): AnyPgColumn => agentComposes.id,
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

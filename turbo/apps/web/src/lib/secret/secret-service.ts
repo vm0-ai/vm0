@@ -188,6 +188,7 @@ export async function upsertSecretByScope(
   value: string,
   type: SecretType,
   description: string,
+  clerkOrgId: string,
 ): Promise<void> {
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   const encryptedValue = encryptCredentialValue(value, encryptionKey);
@@ -218,6 +219,7 @@ export async function upsertSecretByScope(
       encryptedValue,
       type,
       description,
+      clerkOrgId,
     });
   }
 }
@@ -230,6 +232,7 @@ export async function setSecret(
   userId: string,
   name: string,
   value: string,
+  clerkOrgId: string,
   description?: string,
 ): Promise<SecretInfo> {
   validateSecretName(name);
@@ -289,6 +292,7 @@ export async function setSecret(
       encryptedValue,
       description: description ?? null,
       userId,
+      clerkOrgId,
     })
     .returning({
       id: secrets.id,

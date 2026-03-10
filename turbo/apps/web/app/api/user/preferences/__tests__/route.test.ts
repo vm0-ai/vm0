@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { clerkClient } from "@clerk/nextjs/server";
 import { GET, PUT } from "../route";
 import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
@@ -292,6 +293,56 @@ describe("PUT /api/user/preferences", () => {
     expect(data.timezone).toBe("Europe/Berlin");
     expect(data.notifyEmail).toBe(true);
     expect(data.notifySlack).toBe(false);
+  });
+
+  it("should dual-write timezone to Clerk membership metadata", async () => {
+    const user = await context.setupUser();
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timezone: "Asia/Tokyo" }),
+      },
+    );
+    const response = await PUT(request);
+    expect(response.status).toBe(200);
+
+    const client = await vi.mocked(clerkClient)();
+    expect(
+      client.organizations.updateOrganizationMembershipMetadata,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: user.userId,
+        publicMetadata: { timezone: "Asia/Tokyo" },
+      }),
+    );
+  });
+
+  it("should dual-write notifyEmail and notifySlack to Clerk membership metadata", async () => {
+    const user = await context.setupUser();
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notifyEmail: true, notifySlack: false }),
+      },
+    );
+    const response = await PUT(request);
+    expect(response.status).toBe(200);
+
+    const client = await vi.mocked(clerkClient)();
+    expect(
+      client.organizations.updateOrganizationMembershipMetadata,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: user.userId,
+        publicMetadata: { notify_email: true, notify_slack: false },
+      }),
+    );
   });
 
   it("should reject request with no preferences", async () => {

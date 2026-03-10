@@ -143,6 +143,7 @@ const router = tsr.router(storagesPrepareContract, {
       .values({
         userId: storageUserId,
         scopeId: runtimeScope.id,
+        clerkOrgId: runtimeScope.clerkOrgId,
         name: storageName,
         type: storageType,
         s3Prefix: `${runtimeScope.slug}/${storageType}/${storageName}`,

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
 import {
   IconSearch,
   IconFolder,
@@ -41,7 +42,7 @@ interface DocItem {
   contentPreview: string;
 }
 
-const DOCS: DocItem[] = [
+const DOCS: readonly Readonly<DocItem>[] = [
   {
     id: "1",
     title: "Team Weekly Report - Week 8",
@@ -130,7 +131,7 @@ Recommendations for optimizing cron-based schedules and reducing cold starts. We
   },
 ];
 
-const DOC_TYPE_ICON: Record<DocType, string> = {
+const DOC_TYPE_ICON: Readonly<Record<DocType, string>> = {
   pdf: "/doc-types/PDF.svg",
   markdown: "/doc-types/DOC.svg",
   html: "/doc-types/DOC.svg",
@@ -254,9 +255,15 @@ function DocListRow({ doc }: { doc: DocItem }) {
 type ViewMode = "list" | "gallery";
 
 export function ZeroProductionPage() {
-  const [filter, setFilter] = useState<DocScope>("all");
-  const [search, setSearch] = useState("");
-  const [viewMode, setViewMode] = useState<ViewMode>("gallery");
+  const filter$ = useCCState<DocScope>("all");
+  const filter = useGet(filter$);
+  const setFilter = useSet(filter$);
+  const search$ = useCCState("");
+  const search = useGet(search$);
+  const setSearch = useSet(search$);
+  const viewMode$ = useCCState<ViewMode>("gallery");
+  const viewMode = useGet(viewMode$);
+  const setViewMode = useSet(viewMode$);
 
   const filteredDocs = DOCS.filter((doc) => {
     const matchScope = filter === "all" || doc.scope === filter;

@@ -29,7 +29,11 @@ const router = tsr.router(computerConnectorContract, {
     try {
       const scopeSlug = new URL(request.url).searchParams.get("scope");
       const { scope } = await resolveScope(userId, scopeSlug);
-      const result = await createComputerConnector(scope.id, userId);
+      const result = await createComputerConnector(
+        scope.id,
+        userId,
+        scope.clerkOrgId,
+      );
       return { status: 200 as const, body: result };
     } catch (error) {
       if (isBadRequest(error)) {

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
 import {
   IconSearch,
   IconFilter,
@@ -23,7 +24,7 @@ import type {
   ActivityType,
 } from "./zero-activity-types.ts";
 
-const ACTIVITIES: ActivityItem[] = [
+const ACTIVITIES: readonly Readonly<ActivityItem>[] = [
   {
     id: "1",
     title: "Zero Agent",
@@ -57,13 +58,16 @@ const ACTIVITIES: ActivityItem[] = [
   },
 ];
 
-const TYPE_OPTIONS: { value: "all" | ActivityType; label: string }[] = [
+const TYPE_OPTIONS: readonly Readonly<{
+  value: "all" | ActivityType;
+  label: string;
+}>[] = [
   { value: "all", label: "All Types" },
   { value: "zero", label: "Zero" },
   { value: "workflow", label: "Workflow" },
 ];
 
-const STATUS_OPTIONS: { value: string; label: string }[] = [
+const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
   { value: "all", label: "All Status" },
   { value: "success", label: "Success" },
   { value: "error", label: "Error" },
@@ -145,10 +149,18 @@ function ActivityRow({
 }
 
 export function ZeroActivityPage() {
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedItem, setSelectedItem] = useState<ActivityItem | null>(null);
+  const search$ = useCCState("");
+  const search = useGet(search$);
+  const setSearch = useSet(search$);
+  const typeFilter$ = useCCState("all");
+  const typeFilter = useGet(typeFilter$);
+  const setTypeFilter = useSet(typeFilter$);
+  const statusFilter$ = useCCState("all");
+  const statusFilter = useGet(statusFilter$);
+  const setStatusFilter = useSet(statusFilter$);
+  const selectedItem$ = useCCState<ActivityItem | null>(null);
+  const selectedItem = useGet(selectedItem$);
+  const setSelectedItem = useSet(selectedItem$);
 
   const filtered = ACTIVITIES.filter((item) => {
     const matchSearch =

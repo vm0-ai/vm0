@@ -127,6 +127,7 @@ export async function setVariable(
   userId: string,
   name: string,
   value: string,
+  clerkOrgId: string,
   description?: string,
 ): Promise<VariableInfo> {
   validateVariableName(name);
@@ -178,6 +179,7 @@ export async function setVariable(
       value,
       description: description ?? null,
       userId,
+      clerkOrgId,
     })
     .returning({
       id: variables.id,

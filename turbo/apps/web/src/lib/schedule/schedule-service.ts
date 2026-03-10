@@ -363,6 +363,7 @@ function resolveTrigger(request: DeployScheduleRequest): {
 export async function deploySchedule(
   userId: string,
   scopeId: string,
+  clerkOrgId: string,
   request: DeployScheduleRequest,
 ): Promise<{ schedule: ScheduleResponse; created: boolean }> {
   log.debug(
@@ -440,6 +441,7 @@ export async function deploySchedule(
         composeId: request.composeId,
         scopeId,
         userId,
+        clerkOrgId,
         name: request.name,
         triggerType,
         cronExpression: request.cronExpression ?? null,
@@ -850,7 +852,11 @@ async function executeSchedule(
 
   // Load scope tier and slug from schedule's scope (not compose's scope)
   const [scopeRecord] = await globalThis.services.db
-    .select({ tier: scopes.tier, slug: scopes.slug })
+    .select({
+      tier: scopes.tier,
+      slug: scopes.slug,
+      clerkOrgId: scopes.clerkOrgId,
+    })
     .from(scopes)
     .where(eq(scopes.id, schedule.scopeId))
     .limit(1);
@@ -913,6 +919,7 @@ async function executeSchedule(
       callbacks,
       scopeId: schedule.scopeId,
       scopeSlug: scopeRecord?.slug,
+      clerkOrgId: scopeRecord?.clerkOrgId,
       scopeTier: scopeRecord
         ? scopeTierSchema.parse(scopeRecord.tier)
         : undefined,

@@ -1,10 +1,11 @@
-import { useState, type ComponentType } from "react";
+import type { ReactNode } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconMessageCircle,
   IconRobot,
   IconFile,
   IconChartLine,
-  IconSelector,
   IconLayoutGrid,
   IconCalendar,
   IconAdjustmentsHorizontal,
@@ -12,10 +13,10 @@ import {
   IconUsers,
   IconLogout,
 } from "@tabler/icons-react";
-import { useLoadable } from "ccstate-react";
 import slackIcon from "../settings-page/icons/slack.svg";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { ClerkOrgSwitcher } from "./clerk-org-switcher.tsx";
 
 export type ZeroNavId =
   | "chat"
@@ -27,40 +28,32 @@ export type ZeroNavId =
   | "works"
   | "account";
 
-const MAIN_NAV: {
-  id: ZeroNavId;
-  label: string;
-  icon: ComponentType<{ size?: number; className?: string }>;
-}[] = [
-  { id: "chat", label: "Chat with Zero", icon: IconMessageCircle },
-  { id: "meet", label: "Meet Zero", icon: IconRobot },
-  { id: "job", label: "Zero's team", icon: IconUsers },
-  { id: "schedule", label: "Schedule", icon: IconCalendar },
-  { id: "production", label: "Documents", icon: IconFile },
-  { id: "activity", label: "Activities", icon: IconChartLine },
-];
+type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
+const MAIN_NAV = [
+  { id: "chat", label: "Chat with Zero", icon: IconMessageCircle as NavIcon },
+  { id: "meet", label: "Meet Zero", icon: IconRobot as NavIcon },
+  { id: "job", label: "Zero's team", icon: IconUsers as NavIcon },
+  { id: "schedule", label: "Schedule", icon: IconCalendar as NavIcon },
+  { id: "production", label: "Documents", icon: IconFile as NavIcon },
+  { id: "activity", label: "Activities", icon: IconChartLine as NavIcon },
+] as const;
 
-const RECENT_ITEMS: { id: string; label: string }[] = [
+const RECENT_ITEMS = [
   { id: "hello", label: "Hello from Zero" },
   { id: "1", label: "Daily digest workflow" },
   { id: "2", label: "Set up Slack integration" },
   { id: "3", label: "Weekly report automation" },
   { id: "4", label: "Code review reminders" },
-];
+] as const;
 
-const FOOTER_NAV: {
-  id: ZeroNavId;
-  label: string;
-  icon: ComponentType<{ size?: number; className?: string }>;
-  iconImg?: string;
-}[] = [
+const FOOTER_NAV = [
   {
-    id: "works",
+    id: "works" as const satisfies ZeroNavId,
     label: "Where Zero works",
-    icon: IconLayoutGrid,
+    icon: IconLayoutGrid as NavIcon,
     iconImg: slackIcon,
   },
-];
+] as const;
 
 export type ZeroAccountAction = "preferences" | "manage" | "signout";
 
@@ -71,8 +64,6 @@ interface ZeroSidebarProps {
   onSelect: (id: ZeroNavId) => void;
   onRecentSelect?: (id: string) => void;
   selectedRecentId?: string | null;
-  zeroAvatarSrc?: string;
-  onAvatarClick?: () => void;
   onAccountAction?: (action: ZeroAccountAction) => void;
 }
 
@@ -163,7 +154,9 @@ function AccountDropdown({
   activeId: ZeroNavId;
   onAccountAction?: (action: ZeroAccountAction) => void;
 }) {
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuOpen$ = useCCState(false);
+  const accountMenuOpen = useGet(accountMenuOpen$);
+  const setAccountMenuOpen = useSet(accountMenuOpen$);
   const clerkLoadable = useLoadable(clerk$);
   const userLoadable = useLoadable(user$);
   const user = userLoadable.state === "hasData" ? userLoadable.data : null;
@@ -264,46 +257,14 @@ export function ZeroSidebar({
   onSelect,
   onRecentSelect,
   selectedRecentId = null,
-  zeroAvatarSrc = "/zero-avatar.png",
-  onAvatarClick,
   onAccountAction,
 }: ZeroSidebarProps) {
   return (
     <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden">
-      {/* Zero + workspace — single module */}
+      {/* Organization switcher */}
       <div className="shrink-0 p-2 pb-1">
-        <div className="rounded-lg p-2 transition-colors duration-200 hover:bg-sidebar-accent/50">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onAvatarClick}
-              className="h-8 w-8 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="Switch Zero avatar"
-            >
-              <img
-                src={zeroAvatarSrc}
-                alt="Zero"
-                className="h-8 w-8 rounded-full object-cover object-top"
-                width={32}
-                height={32}
-              />
-            </button>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium leading-tight text-sidebar-foreground truncate">
-                Personal Workspace
-              </p>
-              <p className="text-xs leading-tight text-sidebar-foreground opacity-70 truncate mt-px">
-                Free • Owner
-              </p>
-            </div>
-            <button
-              type="button"
-              className="shrink-0 flex h-7 w-7 items-center justify-center rounded text-sidebar-foreground hover:bg-sidebar-accent transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="Switch workspace"
-            >
-              <IconSelector size={14} stroke={1.5} />
-            </button>
-          </div>
+        <div className="rounded-lg p-2">
+          <ClerkOrgSwitcher />
         </div>
       </div>
 

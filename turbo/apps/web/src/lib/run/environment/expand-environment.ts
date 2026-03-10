@@ -16,7 +16,6 @@ const log = logger("run:environment");
  */
 interface ExpandedEnvironmentResult {
   environment?: Record<string, string>;
-  sealSecretsEnabled: boolean;
 }
 
 /**
@@ -130,7 +129,7 @@ function processCredentialValues(
  * @param userId User ID for token binding
  * @param runId Run ID for token binding (required for seal_secrets)
  * @param checkEnv When true, validates that all required secrets/vars are provided
- * @returns Expanded environment variables and seal_secrets flag
+ * @returns Expanded environment variables
  */
 export function expandEnvironmentFromCompose(
   agentCompose: unknown,
@@ -143,7 +142,7 @@ export function expandEnvironmentFromCompose(
 ): ExpandedEnvironmentResult {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) {
-    return { environment: undefined, sealSecretsEnabled: false };
+    return { environment: undefined };
   }
 
   // Get first agent's environment (currently only one agent supported)
@@ -155,10 +154,7 @@ export function expandEnvironmentFromCompose(
     firstAgent?.experimental_firewall?.experimental_seal_secrets ?? false;
 
   if (!firstAgent?.environment) {
-    return {
-      environment: undefined,
-      sealSecretsEnabled,
-    };
+    return { environment: undefined };
   }
 
   const environment = firstAgent.environment;
@@ -238,5 +234,5 @@ export function expandEnvironmentFromCompose(
     }
   }
 
-  return { environment: result, sealSecretsEnabled };
+  return { environment: result };
 }

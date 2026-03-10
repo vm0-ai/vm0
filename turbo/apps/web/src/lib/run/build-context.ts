@@ -324,6 +324,7 @@ async function refreshConnectorAccessToken(
   scopeId: string,
   userId: string,
   connectorSecrets: Record<string, string>,
+  clerkOrgId: string,
 ): Promise<string | null> {
   const handler =
     PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
@@ -364,6 +365,7 @@ async function refreshConnectorAccessToken(
       userId,
       accessTokenSecret,
       result.accessToken,
+      clerkOrgId,
     );
     if (result.refreshToken) {
       await upsertConnectorSecret(
@@ -371,6 +373,7 @@ async function refreshConnectorAccessToken(
         userId,
         refreshTokenSecret,
         result.refreshToken,
+        clerkOrgId,
       );
     }
 
@@ -406,6 +409,7 @@ interface ConnectorCredentialResult {
 async function resolveConnectorCredentials(
   scopeId: string,
   userId: string,
+  clerkOrgId: string,
 ): Promise<ConnectorCredentialResult> {
   let credentials: Record<string, string> | undefined;
 
@@ -443,7 +447,13 @@ async function resolveConnectorCredentials(
         return handler?.refreshToken;
       })
       .map((type) =>
-        refreshConnectorAccessToken(type, scopeId, userId, connectorSecrets),
+        refreshConnectorAccessToken(
+          type,
+          scopeId,
+          userId,
+          connectorSecrets,
+          clerkOrgId,
+        ),
       ),
   );
 
@@ -674,6 +684,7 @@ interface BuildContextParams {
   // When not provided, resolved via getDefaultScope fallback.
   scopeId?: string;
   scopeSlug?: string;
+  clerkOrgId?: string;
 }
 
 /**
@@ -740,6 +751,7 @@ async function resolveCredentialsAndEnvironment(
   runId: string,
   checkEnv: boolean | undefined,
   userId: string,
+  clerkOrgId: string,
 ): Promise<{
   secrets: Record<string, string> | undefined;
   credentials: Record<string, string> | undefined;
@@ -764,7 +776,7 @@ async function resolveCredentialsAndEnvironment(
         hasExplicitModelProviderConfig,
         modelProvider,
       ),
-      resolveConnectorCredentials(scopeId, userId),
+      resolveConnectorCredentials(scopeId, userId, clerkOrgId),
       fetchAndMergeVariables(scopeId, userId, vars),
     ]);
 
@@ -875,36 +887,50 @@ function applyResolutionDefaults(
  */
 async function resolveScopes(params: BuildContextParams): Promise<{
   runtimeScopeId: string;
+  runtimeClerkOrgId: string;
   pendingRuntimeScope:
-    | Promise<{ id: string; slug: string }>
-    | { id: string; slug: string };
+    | Promise<{ id: string; slug: string; clerkOrgId: string }>
+    | { id: string; slug: string; clerkOrgId: string };
 }> {
   if (params.scopeId) {
-    if (params.scopeSlug) {
+    if (params.scopeSlug && params.clerkOrgId) {
       return {
         runtimeScopeId: params.scopeId,
-        pendingRuntimeScope: { id: params.scopeId, slug: params.scopeSlug },
+        runtimeClerkOrgId: params.clerkOrgId,
+        pendingRuntimeScope: {
+          id: params.scopeId,
+          slug: params.scopeSlug,
+          clerkOrgId: params.clerkOrgId,
+        },
       };
     }
-    // Fallback: query slug from DB when caller didn't provide it
+    // Fallback: query slug and clerkOrgId from DB when caller didn't provide them
+    const [result] = await globalThis.services.db
+      .select({ slug: scopes.slug, clerkOrgId: scopes.clerkOrgId })
+      .from(scopes)
+      .where(eq(scopes.id, params.scopeId))
+      .limit(1);
+    const resolved = {
+      id: params.scopeId,
+      slug: result?.slug ?? "",
+      clerkOrgId: result?.clerkOrgId ?? "",
+    };
     return {
       runtimeScopeId: params.scopeId,
-      pendingRuntimeScope: globalThis.services.db
-        .select({ slug: scopes.slug })
-        .from(scopes)
-        .where(eq(scopes.id, params.scopeId))
-        .limit(1)
-        .then(([result]) => ({
-          id: params.scopeId as string,
-          slug: result?.slug ?? "",
-        })),
+      runtimeClerkOrgId: resolved.clerkOrgId,
+      pendingRuntimeScope: resolved,
     };
   }
   // No explicit scope — default scope is used
   const { scope } = await getDefaultScope(params.userId);
   return {
     runtimeScopeId: scope.id,
-    pendingRuntimeScope: { id: scope.id, slug: scope.slug },
+    runtimeClerkOrgId: scope.clerkOrgId,
+    pendingRuntimeScope: {
+      id: scope.id,
+      slug: scope.slug,
+      clerkOrgId: scope.clerkOrgId,
+    },
   };
 }
 
@@ -1000,8 +1026,10 @@ export async function buildExecutionContext(
   // resolveSource loads checkpoint/session/conversation data.
   // resolveScopes resolves the runtime scope for credentials and storage.
   const resolveStart = Date.now();
-  const [resolution, { runtimeScopeId, pendingRuntimeScope }] =
-    await Promise.all([resolveSource(params), resolveScopes(params)]);
+  const [
+    resolution,
+    { runtimeScopeId, runtimeClerkOrgId, pendingRuntimeScope },
+  ] = await Promise.all([resolveSource(params), resolveScopes(params)]);
   const resolveEnd = Date.now();
 
   // Step 2: Apply resolution defaults and build resumeSession (unified path)
@@ -1071,6 +1099,7 @@ export async function buildExecutionContext(
       params.runId,
       params.checkEnv,
       params.userId,
+      runtimeClerkOrgId,
     ),
     params.userId ? getUserPreferences(params.userId) : Promise.resolve(null),
     Promise.resolve(pendingRuntimeScope),

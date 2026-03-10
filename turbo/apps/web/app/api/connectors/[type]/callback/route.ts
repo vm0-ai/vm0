@@ -209,6 +209,7 @@ export async function GET(
         email: userInfo.email,
       },
       getRequestedScopes(connectorType),
+      scope.clerkOrgId,
       { refreshToken, refreshSecretName, expiresIn },
     );
 

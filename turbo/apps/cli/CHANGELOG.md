@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.54.1](https://github.com/vm0-ai/vm0/compare/cli-v9.54.0...cli-v9.54.1) (2026-03-10)
+
+
+### Refactoring
+
+* align remaining scope terminology with resource model ([#4094](https://github.com/vm0-ai/vm0/issues/4094)) ([e4df6c9](https://github.com/vm0-ai/vm0/commit/e4df6c96f84ef0e0e1393215a08122bf83a73a21))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.51.0
+
 ## [9.54.0](https://github.com/vm0-ai/vm0/compare/cli-v9.53.1...cli-v9.54.0) (2026-03-09)
 
 
