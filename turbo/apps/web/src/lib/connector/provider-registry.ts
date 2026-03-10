@@ -5,6 +5,7 @@ import {
   type OAuthTokenResult,
   type ProviderHandler,
 } from "./provider-types";
+import { agentmailHandler } from "./providers/agentmail-handler";
 import { ahrefsHandler } from "./providers/ahrefs-handler";
 import { airtableHandler } from "./providers/airtable-handler";
 import { asanaHandler } from "./providers/asana-handler";
@@ -43,6 +44,7 @@ import { outlookCalendarHandler } from "./providers/outlook-calendar-handler";
 import { outlookMailHandler } from "./providers/outlook-mail-handler";
 import { metaAdsHandler } from "./providers/meta-ads-handler";
 import { posthogHandler } from "./providers/posthog-handler";
+import { plausibleHandler } from "./providers/plausible-handler";
 import { productlaneHandler } from "./providers/productlane-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
 import { xeroHandler } from "./providers/xero-handler";
@@ -53,6 +55,7 @@ export const PROVIDER_HANDLERS: Record<
   Exclude<ConnectorType, "computer">,
   ProviderHandler
 > = {
+  agentmail: agentmailHandler,
   ahrefs: ahrefsHandler,
   airtable: airtableHandler,
   asana: asanaHandler,
@@ -90,6 +93,7 @@ export const PROVIDER_HANDLERS: Record<
   supabase: supabaseHandler,
   "meta-ads": metaAdsHandler,
   posthog: posthogHandler,
+  plausible: plausibleHandler,
   productlane: productlaneHandler,
   similarweb: similarwebHandler,
   x: xHandler,

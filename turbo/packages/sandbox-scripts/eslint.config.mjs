@@ -13,4 +13,10 @@ export default [
       "turbo/no-undeclared-env-vars": "off",
     },
   },
+  {
+    files: ["src/**/*.test.ts"],
+    rules: {
+      "vm0/no-fetch-spy": "off",
+    },
+  },
 ];

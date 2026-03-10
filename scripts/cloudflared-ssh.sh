@@ -4,9 +4,9 @@
 # Uses remotely-managed tunnels via the Cloudflare API.
 # No local cloudflared or cert.pem needed — only an API token.
 #
-# Required environment variables:
-#   CLOUDFLARE_API_TOKEN   — API token with Account:Cloudflare Tunnel:Edit + Zone:DNS:Edit + Zone:Zone:Read
-#   CLOUDFLARE_ACCOUNT_ID  — Cloudflare account ID
+# Required environment variables (loaded from scripts/.env.local or exported):
+#   CF_TUNNEL_API_TOKEN   — API token with Account:Cloudflare Tunnel:Edit + Zone:DNS:Edit + Zone:Zone:Read
+#   CF_TUNNEL_ACCOUNT_ID  — Cloudflare account ID
 #
 # Usage:
 #   scripts/cloudflared-ssh.sh provision <host> [--domain vm3.ai] [--user ubuntu] [--version 2026.2.0]
@@ -18,6 +18,15 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# --- Load .env.local ---
+ENV_FILE="$SCRIPT_DIR/.env.local"
+if [[ -f "$ENV_FILE" ]]; then
+  # shellcheck source=/dev/null
+  source "$ENV_FILE"
+fi
+
 DEFAULT_DOMAIN="vm3.ai"
 DEFAULT_USER="ubuntu"
 DEFAULT_VERSION="2026.2.0"
@@ -27,7 +36,7 @@ err() { echo -e "\033[1;31m[cloudflared-ssh]\033[0m $1" >&2; }
 
 # --- Validate required environment variables ---
 require_env() {
-  for var in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+  for var in CF_TUNNEL_API_TOKEN CF_TUNNEL_ACCOUNT_ID; do
     if [[ -z "${!var:-}" ]]; then
       err "Required env var ${var} is not set"
       exit 1
@@ -39,7 +48,7 @@ require_env() {
 cf_api() {
   local method="$1" endpoint="$2" data="${3:-}"
   local args=(-sSL -X "$method"
-    -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"
+    -H "Authorization: Bearer ${CF_TUNNEL_API_TOKEN}"
     -H "Content-Type: application/json"
     "https://api.cloudflare.com/client/v4${endpoint}")
   [[ -n "$data" ]] && args+=(-d "$data")
@@ -61,14 +70,14 @@ get_zone_id() {
 # --- Get tunnel ID by name (empty if not found) ---
 get_tunnel_id() {
   local name="$1"
-  cf_api GET "/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel?name=${name}&is_deleted=false" \
+  cf_api GET "/accounts/${CF_TUNNEL_ACCOUNT_ID}/cfd_tunnel?name=${name}&is_deleted=false" \
     | jq -r '.result[0].id // empty'
 }
 
 # --- Get tunnel token ---
 get_tunnel_token() {
   local tunnel_id="$1"
-  cf_api GET "/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel/${tunnel_id}/token" \
+  cf_api GET "/accounts/${CF_TUNNEL_ACCOUNT_ID}/cfd_tunnel/${tunnel_id}/token" \
     | jq -r '.result // empty'
 }
 
@@ -120,7 +129,7 @@ do_provision() {
   else
     log "Creating tunnel: ${TUNNEL_NAME}"
     local create_resp
-    create_resp=$(cf_api POST "/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel" \
+    create_resp=$(cf_api POST "/accounts/${CF_TUNNEL_ACCOUNT_ID}/cfd_tunnel" \
       "{\"name\":\"${TUNNEL_NAME}\",\"config_src\":\"cloudflare\",\"tunnel_secret\":\"$(openssl rand -base64 32)\"}")
     tunnel_id=$(echo "$create_resp" | jq -r '.result.id // empty')
     if [[ -z "$tunnel_id" ]]; then
@@ -133,7 +142,7 @@ do_provision() {
   # Step 2: Configure ingress rules
   log "Configuring ingress: ${TUNNEL_FQDN} -> ssh://localhost:22"
   local config_resp
-  config_resp=$(cf_api PUT "/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel/${tunnel_id}/configurations" \
+  config_resp=$(cf_api PUT "/accounts/${CF_TUNNEL_ACCOUNT_ID}/cfd_tunnel/${tunnel_id}/configurations" \
     "{\"config\":{\"ingress\":[{\"hostname\":\"${TUNNEL_FQDN}\",\"service\":\"ssh://localhost:22\"},{\"service\":\"http_status:404\"}]}}")
   if [[ "$(echo "$config_resp" | jq -r '.success')" != "true" ]]; then
     err "Failed to configure ingress: $(echo "$config_resp" | jq -r '.errors')"
@@ -249,7 +258,7 @@ do_deprovision() {
   # Step 2: Delete tunnel (cascade forces disconnect of active connections)
   log "Deleting tunnel ${TUNNEL_NAME} (${tunnel_id})..."
   local del_resp
-  del_resp=$(cf_api DELETE "/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel/${tunnel_id}?cascade=true")
+  del_resp=$(cf_api DELETE "/accounts/${CF_TUNNEL_ACCOUNT_ID}/cfd_tunnel/${tunnel_id}?cascade=true")
   if [[ "$(echo "$del_resp" | jq -r '.success')" != "true" ]]; then
     err "Failed to delete tunnel: $(echo "$del_resp" | jq -r '.errors')"
     exit 1

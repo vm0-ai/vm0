@@ -83,6 +83,29 @@ export const CONNECTOR_TYPES = {
       scopes: ["api"],
     } as ConnectorOAuthConfig,
   },
+  agentmail: {
+    label: "AgentMail",
+    helpText:
+      "Connect your AgentMail account to create email inboxes for AI agents, send and receive emails, manage threads, drafts, and webhooks",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [AgentMail Console](https://console.agentmail.to)\n2. Go to **API Keys**\n3. Create a new API key\n4. Copy the key",
+        secrets: {
+          AGENTMAIL_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-agentmail-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      AGENTMAIL_TOKEN: "$secrets.AGENTMAIL_API_KEY",
+    } as Record<string, string>,
+  },
   airtable: {
     label: "Airtable",
     helpText:
@@ -1525,6 +1548,29 @@ export const CONNECTOR_TYPES = {
       SIMILARWEB_TOKEN: "$secrets.SIMILARWEB_API_KEY",
     } as Record<string, string>,
   },
+  plausible: {
+    label: "Plausible",
+    helpText:
+      "Connect your Plausible Analytics account to access website traffic analytics, visitor stats, and site management",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Plausible Analytics](https://plausible.io)\n2. Go to **Account Settings** → **API Keys**\n3. Click **New API Key** and choose **Stats API**\n4. Copy the key (it is only shown once)",
+        secrets: {
+          PLAUSIBLE_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-plausible-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      PLAUSIBLE_TOKEN: "$secrets.PLAUSIBLE_TOKEN",
+    } as Record<string, string>,
+  },
   mailchimp: {
     label: "Mailchimp",
     helpText:
@@ -1789,6 +1835,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       }),
     ],
   },
+  plausible: {
+    services: [
+      service("https://plausible.io/api", bearerAuth("PLAUSIBLE_TOKEN")),
+    ],
+  },
   mailchimp: {
     services: [
       service(
@@ -1880,6 +1931,7 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
 };
 
 export const connectorTypeSchema = z.enum([
+  "agentmail",
   "ahrefs",
   "airtable",
   "asana",
@@ -1921,6 +1973,7 @@ export const connectorTypeSchema = z.enum([
   "stripe",
   "similarweb",
   "mailchimp",
+  "plausible",
   "productlane",
 ]);
 
