@@ -11,6 +11,7 @@ export enum FeatureSwitchKey {
   PlatformArtifacts = "platformArtifacts",
   PlatformApiKeys = "platformApiKeys",
   AhrefsConnector = "ahrefsConnector",
+  AxiomConnector = "axiomConnector",
   CanvaConnector = "canvaConnector",
   ComputerConnector = "computerConnector",
   DeelConnector = "deelConnector",

@@ -2,6 +2,7 @@ import type { ConnectorType } from "@vm0/core";
 
 import ahrefsIcon from "./icons/ahrefs.svg";
 import airtableIcon from "./icons/airtable.svg";
+import axiomIcon from "./icons/axiom.svg";
 import asanaIcon from "./icons/asana.svg";
 import canvaIcon from "./icons/canva.svg";
 import closeIcon from "./icons/close.svg";
@@ -45,6 +46,7 @@ import xeroIcon from "./icons/xero.svg";
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   ahrefs: ahrefsIcon,
   airtable: airtableIcon,
+  axiom: axiomIcon,
   asana: asanaIcon,
   canva: canvaIcon,
   close: closeIcon,

@@ -41,6 +41,29 @@ export interface ConnectorOAuthConfig {
  * - Other values are passed through as literals
  */
 export const CONNECTOR_TYPES = {
+  axiom: {
+    label: "Axiom",
+    helpText:
+      "Connect your Axiom account to query logs, manage datasets, and access observability data",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Axiom](https://app.axiom.co)\n2. Go to **Settings > API Tokens**\n3. Create a new API token with the required permissions\n4. Copy the token",
+        secrets: {
+          AXIOM_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "xaat-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      AXIOM_TOKEN: "$secrets.AXIOM_API_TOKEN",
+    } as Record<string, string>,
+  },
   ahrefs: {
     label: "Ahrefs",
     helpText:
@@ -1580,6 +1603,9 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   ahrefs: {
     services: [service("https://api.ahrefs.com", bearerAuth("AHREFS_API_KEY"))],
   },
+  axiom: {
+    services: [service("https://api.axiom.co", bearerAuth("AXIOM_API_TOKEN"))],
+  },
   airtable: {
     services: [
       service("https://api.airtable.com", bearerAuth("AIRTABLE_TOKEN")),
@@ -1852,6 +1878,7 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
 
 export const connectorTypeSchema = z.enum([
   "ahrefs",
+  "axiom",
   "airtable",
   "asana",
   "canva",

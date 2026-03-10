@@ -70,6 +70,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
+  [FeatureSwitchKey.AxiomConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+  },
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
@@ -225,6 +230,7 @@ export const CONNECTOR_FEATURE_FLAGS: Partial<
   Record<ConnectorType, FeatureSwitchKey>
 > = {
   ahrefs: FeatureSwitchKey.AhrefsConnector,
+  axiom: FeatureSwitchKey.AxiomConnector,
   canva: FeatureSwitchKey.CanvaConnector,
   close: FeatureSwitchKey.CloseConnector,
   computer: FeatureSwitchKey.ComputerConnector,
