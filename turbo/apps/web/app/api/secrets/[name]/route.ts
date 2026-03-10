@@ -35,7 +35,7 @@ const router = tsr.router(secretsByNameContract, {
 
     const scopeSlug = new URL(request.url).searchParams.get("scope");
     const { scope } = await resolveScope(userId, scopeSlug, null, tokenScopeId);
-    const secret = await getSecret(scope.id, userId, params.name);
+    const secret = await getSecret(scope.clerkOrgId, userId, params.name);
     if (!secret) {
       return createErrorResponse(
         "NOT_FOUND",
@@ -78,7 +78,7 @@ const router = tsr.router(secretsByNameContract, {
         null,
         tokenScopeId,
       );
-      await deleteSecret(scope.id, userId, params.name);
+      await deleteSecret(scope.clerkOrgId, userId, params.name);
 
       return {
         status: 204 as const,

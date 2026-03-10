@@ -39,7 +39,7 @@ const router = tsr.router(modelProvidersSetDefaultContract, {
         tokenScopeId,
       );
       const provider = await setModelProviderDefault(
-        scope.id,
+        scope.clerkOrgId,
         userId,
         params.type,
       );

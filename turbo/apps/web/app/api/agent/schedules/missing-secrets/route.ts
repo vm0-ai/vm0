@@ -61,7 +61,7 @@ export async function GET(request: Request) {
   const userSecrets = await db
     .select({ name: secrets.name })
     .from(secrets)
-    .where(eq(secrets.scopeId, runtimeScope.id));
+    .where(eq(secrets.clerkOrgId, runtimeScope.clerkOrgId));
 
   const configuredSecretNames = new Set(userSecrets.map((s) => s.name));
 

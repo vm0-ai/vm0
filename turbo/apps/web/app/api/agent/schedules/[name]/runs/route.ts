@@ -10,6 +10,7 @@ import { getScheduleRecentRuns } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../../src/lib/errors";
 import { resolveScopeId } from "../../../../../../src/lib/scope/scope-member-service";
+import { getScopeById } from "../../../../../../src/lib/scope/scope-service";
 
 const log = logger("api:schedules:runs");
 
@@ -34,10 +35,19 @@ const router = tsr.router(scheduleRunsContract, {
 
     try {
       const scopeId = await resolveScopeId(userId, query.scopeId, tokenScopeId);
+      const scope = await getScopeById(scopeId);
+      if (!scope) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Scope not found", code: "NOT_FOUND" },
+          },
+        };
+      }
 
       const runs = await getScheduleRecentRuns(
         userId,
-        scopeId,
+        scope.clerkOrgId,
         query.composeId,
         params.name,
         query.limit,

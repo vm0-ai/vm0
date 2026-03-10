@@ -7,7 +7,6 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
-import { scopes } from "./scope";
 
 /**
  * Secrets table (formerly "credentials")
@@ -18,9 +17,7 @@ export const secrets = pgTable(
   "secrets",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    scopeId: uuid("scope_id")
-      .references(() => scopes.id, { onDelete: "cascade" })
-      .notNull(),
+    scopeId: uuid("scope_id").notNull(),
     name: varchar("name", { length: 255 }).notNull(),
     encryptedValue: text("encrypted_value").notNull(),
     description: text("description"),
@@ -31,14 +28,6 @@ export const secrets = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    // Unique per user within scope — different users can have the same secret name
-    uniqueIndex("idx_secrets_scope_user_name_type").on(
-      table.scopeId,
-      table.userId,
-      table.name,
-      table.type,
-    ),
-    index("idx_secrets_scope").on(table.scopeId),
     index("idx_secrets_type").on(table.type),
     index("idx_secrets_clerk_org").on(table.clerkOrgId),
     uniqueIndex("idx_secrets_clerk_org_user_name_type").on(

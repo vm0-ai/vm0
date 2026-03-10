@@ -25,7 +25,7 @@ const router = tsr.router(connectorsMainContract, {
 
     const scopeSlug = new URL(request.url).searchParams.get("scope");
     const { scope } = await resolveScope(userId, scopeSlug, null, tokenScopeId);
-    const connectorList = await listConnectors(scope.id, userId);
+    const connectorList = await listConnectors(scope.clerkOrgId, userId);
     const configuredTypes = getConfiguredConnectorTypes(
       globalThis.services.env,
     );

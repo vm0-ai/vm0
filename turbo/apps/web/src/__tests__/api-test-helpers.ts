@@ -1724,12 +1724,13 @@ export async function findTestConnectorSecret(
   secretName: string,
   type: "connector" | "user" = "connector",
 ): Promise<string | undefined> {
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
   const [storedSecret] = await globalThis.services.db
     .select()
     .from(secrets)
     .where(
       and(
-        eq(secrets.scopeId, scopeId),
+        eq(secrets.clerkOrgId, clerkOrgId),
         eq(secrets.name, secretName),
         eq(secrets.type, type),
       ),
@@ -1756,10 +1757,13 @@ export async function findTestConnectorTokenExpiresAt(
   scopeId: string,
   type: string,
 ): Promise<Date | null | undefined> {
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
   const [row] = await globalThis.services.db
     .select({ tokenExpiresAt: connectors.tokenExpiresAt })
     .from(connectors)
-    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.type, type)))
+    .where(
+      and(eq(connectors.clerkOrgId, clerkOrgId), eq(connectors.type, type)),
+    )
     .limit(1);
 
   if (!row) return undefined;

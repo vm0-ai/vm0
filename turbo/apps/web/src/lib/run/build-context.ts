@@ -182,7 +182,7 @@ interface ModelProviderCredentialResult {
  * For providers with environment mapping (e.g., moonshot), resolves all env vars
  */
 async function resolveModelProviderCredential(
-  scopeId: string,
+  clerkOrgId: string,
   userId: string,
   framework: string,
   hasExplicitModelProviderConfig: boolean,
@@ -200,7 +200,7 @@ async function resolveModelProviderCredential(
 
   // Fetch default provider once (used for type resolution, model selection, and auth method)
   const defaultProvider = await getDefaultModelProvider(
-    scopeId,
+    clerkOrgId,
     userId,
     framework as ModelProviderFramework,
   );
@@ -234,7 +234,7 @@ async function resolveModelProviderCredential(
 
     // Fetch all model-provider credentials by name
     const allCredentialValues = await getSecretValues(
-      scopeId,
+      clerkOrgId,
       userId,
       "model-provider",
     );
@@ -283,7 +283,7 @@ async function resolveModelProviderCredential(
   }
 
   const credentialValue = await getSecretValue(
-    scopeId,
+    clerkOrgId,
     userId,
     credentialName,
     "model-provider",
@@ -321,10 +321,10 @@ async function resolveModelProviderCredential(
  */
 async function refreshConnectorAccessToken(
   connectorType: string,
+  clerkOrgId: string,
   scopeId: string,
   userId: string,
   connectorSecrets: Record<string, string>,
-  clerkOrgId: string,
 ): Promise<string | null> {
   const handler =
     PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
@@ -361,19 +361,19 @@ async function refreshConnectorAccessToken(
 
     // Persist new tokens to database
     await upsertConnectorSecret(
+      clerkOrgId,
       scopeId,
       userId,
       accessTokenSecret,
       result.accessToken,
-      clerkOrgId,
     );
     if (result.refreshToken) {
       await upsertConnectorSecret(
+        clerkOrgId,
         scopeId,
         userId,
         refreshTokenSecret,
         result.refreshToken,
-        clerkOrgId,
       );
     }
 
@@ -410,15 +410,17 @@ interface ConnectorCredentialResult {
  * environment variables (e.g., GH_TOKEN, GITHUB_TOKEN for GitHub connector).
  */
 async function resolveConnectorCredentials(
+  clerkOrgId: string,
   scopeId: string,
   userId: string,
-  clerkOrgId: string,
 ): Promise<ConnectorCredentialResult> {
   // Query connected connectors (need type for environmentMapping, authMethod for refresh filter)
   const userConnectors = await globalThis.services.db
     .select({ type: connectors.type, authMethod: connectors.authMethod })
     .from(connectors)
-    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.userId, userId)));
+    .where(
+      and(eq(connectors.clerkOrgId, clerkOrgId), eq(connectors.userId, userId)),
+    );
 
   if (userConnectors.length === 0) {
     return {
@@ -428,7 +430,11 @@ async function resolveConnectorCredentials(
     };
   }
 
-  const connectorSecrets = await getSecretValues(scopeId, userId, "connector");
+  const connectorSecrets = await getSecretValues(
+    clerkOrgId,
+    userId,
+    "connector",
+  );
   if (Object.keys(connectorSecrets).length === 0) {
     return {
       connectorSecrets: undefined,
@@ -462,10 +468,10 @@ async function resolveConnectorCredentials(
       .map(({ type }) =>
         refreshConnectorAccessToken(
           type,
+          clerkOrgId,
           scopeId,
           userId,
           connectorSecrets,
-          clerkOrgId,
         ),
       ),
   );
@@ -505,7 +511,7 @@ async function resolveConnectorCredentials(
  * Fetch credentials referenced in compose environment
  */
 async function fetchReferencedCredentials(
-  scopeId: string,
+  clerkOrgId: string,
   userId: string,
   environment: Record<string, string> | undefined,
 ): Promise<Record<string, string> | undefined> {
@@ -527,9 +533,9 @@ async function fetchReferencedCredentials(
   log.debug(`Secrets referenced in environment: ${referencedNames.join(", ")}`);
 
   // Only fetch user secrets for variable expansion (model-provider secrets are isolated)
-  const userSecrets = await getSecretValues(scopeId, userId, "user");
+  const userSecrets = await getSecretValues(clerkOrgId, userId, "user");
   log.debug(
-    `Fetched ${Object.keys(userSecrets).length} user secret(s) from scope ${scopeId}`,
+    `Fetched ${Object.keys(userSecrets).length} user secret(s) for org ${clerkOrgId}`,
   );
   return userSecrets;
 }
@@ -756,6 +762,7 @@ async function loadAgentComposeForNewRun(
  * Extracted from buildExecutionContext to reduce complexity.
  */
 async function resolveCredentialsAndEnvironment(
+  clerkOrgId: string,
   scopeId: string,
   agentCompose: unknown,
   firstAgent:
@@ -767,7 +774,6 @@ async function resolveCredentialsAndEnvironment(
   runId: string,
   checkEnv: boolean | undefined,
   userId: string,
-  clerkOrgId: string,
 ): Promise<{
   secrets: Record<string, string> | undefined;
   credentials: Record<string, string> | undefined;
@@ -784,15 +790,15 @@ async function resolveCredentialsAndEnvironment(
   // so there is no data dependency between them.
   const [dbSecrets, modelProviderResult, connectorResult, mergedVars] =
     await Promise.all([
-      fetchReferencedCredentials(scopeId, userId, firstAgent?.environment),
+      fetchReferencedCredentials(clerkOrgId, userId, firstAgent?.environment),
       resolveModelProviderCredential(
-        scopeId,
+        clerkOrgId,
         userId,
         framework,
         hasExplicitModelProviderConfig,
         modelProvider,
       ),
-      resolveConnectorCredentials(scopeId, userId, clerkOrgId),
+      resolveConnectorCredentials(clerkOrgId, scopeId, userId),
       fetchAndMergeVariables(clerkOrgId, userId, vars),
     ]);
 
@@ -1117,6 +1123,7 @@ export async function buildExecutionContext(
   const resolveCredentialsStart = Date.now();
   const [credentialsResult, userPrefs, runtimeScope] = await Promise.all([
     resolveCredentialsAndEnvironment(
+      runtimeClerkOrgId,
       runtimeScopeId,
       agentCompose,
       firstAgent,
@@ -1126,7 +1133,6 @@ export async function buildExecutionContext(
       params.runId,
       params.checkEnv,
       params.userId,
-      runtimeClerkOrgId,
     ),
     params.userId ? getUserPreferences(params.userId) : Promise.resolve(null),
     Promise.resolve(pendingRuntimeScope),
