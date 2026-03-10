@@ -5,7 +5,7 @@
 # idempotent operations (apt state=present, group append, chmod).
 #
 # Usage:
-#   ansible-playbook -i "host1,host2," playbooks/provision-metal.yml \
+#   ansible-playbook -i "host1,host2," playbooks/provision-runner.yml \
 #     -e "ansible_user=ubuntu"
 
 - name: Provision metal host dependencies

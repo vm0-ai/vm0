@@ -226,7 +226,7 @@ jobs:
           cd ansible
           ansible-playbook \
             -i "${HOST}," \
-            playbooks/provision-metal.yml \
+            playbooks/provision-runner.yml \
             -e "ansible_user=${METAL_USER}" \
             -v
           if [ -n "${GRAFANA_CLOUD_API_KEY}" ]; then

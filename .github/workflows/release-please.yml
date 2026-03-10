@@ -733,7 +733,7 @@ jobs:
           cd ansible
           ansible-playbook \
             -i "${AWS_METAL_RUNNER_HOSTS}," \
-            playbooks/provision-metal.yml \
+            playbooks/provision-runner.yml \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -v
           if [ -n "${GRAFANA_CLOUD_API_KEY}" ]; then
