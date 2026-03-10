@@ -43,11 +43,9 @@ export const deleteCommand = new Command()
           error instanceof Error &&
           error.message.includes("currently running")
         ) {
-          console.error(
-            chalk.red("✗ Cannot delete agent: agent is currently running"),
-          );
-          console.error(chalk.dim("  Run: vm0 run list"));
-          process.exit(1);
+          throw new Error("Cannot delete agent: agent is currently running", {
+            cause: new Error("Run: vm0 run list"),
+          });
         }
         throw error;
       }
