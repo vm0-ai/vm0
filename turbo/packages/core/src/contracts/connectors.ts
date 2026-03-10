@@ -41,6 +41,48 @@ export interface ConnectorOAuthConfig {
  * - Other values are passed through as literals
  */
 export const CONNECTOR_TYPES = {
+  ahrefs: {
+    label: "Ahrefs",
+    helpText:
+      "Connect your Ahrefs account to access SEO data, backlink analysis, and keyword research",
+    authMethods: {
+      oauth: {
+        label: "OAuth",
+        helpText: "Sign in with Ahrefs to grant access.",
+        secrets: {
+          AHREFS_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          AHREFS_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to your [Ahrefs Dashboard](https://app.ahrefs.com)\n2. Go to **API keys** under your account settings\n3. Generate a new API token\n4. Copy the token",
+        secrets: {
+          AHREFS_ACCESS_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-ahrefs-api-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      AHREFS_API_KEY: "$secrets.AHREFS_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://app.ahrefs.com/api/auth",
+      tokenUrl: "https://app.ahrefs.com/api/token",
+      scopes: ["api"],
+    } as ConnectorOAuthConfig,
+  },
   airtable: {
     label: "Airtable",
     helpText:
@@ -1400,6 +1442,10 @@ const BEARER_AUTH = { headers: { Authorization: "Bearer ${token}" } };
 const CONNECTOR_PROXY_CONFIGS: Partial<
   Record<ConnectorType, ConnectorProxyConfig>
 > = {
+  ahrefs: {
+    targets: ["https://api.ahrefs.com"],
+    auth: BEARER_AUTH,
+  },
   airtable: {
     targets: ["https://api.airtable.com"],
     auth: BEARER_AUTH,
@@ -1538,6 +1584,7 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
 };
 
 export const connectorTypeSchema = z.enum([
+  "ahrefs",
   "airtable",
   "asana",
   "canva",

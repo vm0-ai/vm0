@@ -34,6 +34,10 @@ CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3
 # Optional: LLM API (OpenRouter)
 OPENROUTER_API_KEY=op://Development/openrouter/OPENROUTER_API_KEY
 
+# Optional: Ahrefs OAuth Connector
+AHREFS_OAUTH_CLIENT_ID=op://Development/ahrefs/AHREFS_OAUTH_CLIENT_ID
+AHREFS_OAUTH_CLIENT_SECRET=op://Development/ahrefs/AHREFS_OAUTH_CLIENT_SECRET
+
 # Optional: Airtable OAuth Connector
 AIRTABLE_OAUTH_CLIENT_ID=op://Development/airtable/AIRTABLE_OAUTH_CLIENT_ID
 AIRTABLE_OAUTH_CLIENT_SECRET=op://Development/airtable/AIRTABLE_OAUTH_CLIENT_SECRET

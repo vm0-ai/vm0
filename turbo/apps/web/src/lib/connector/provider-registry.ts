@@ -5,6 +5,7 @@ import {
   type OAuthTokenResult,
   type ProviderHandler,
 } from "./provider-types";
+import { ahrefsHandler } from "./providers/ahrefs-handler";
 import { airtableHandler } from "./providers/airtable-handler";
 import { asanaHandler } from "./providers/asana-handler";
 import { canvaHandler } from "./providers/canva-handler";
@@ -48,6 +49,7 @@ export const PROVIDER_HANDLERS: Record<
   Exclude<ConnectorType, "computer">,
   ProviderHandler
 > = {
+  ahrefs: ahrefsHandler,
   airtable: airtableHandler,
   asana: asanaHandler,
   canva: canvaHandler,
