@@ -319,6 +319,69 @@ After both apps are registered and the credentials file is populated:
 
    **If the callback returns an error page**, check the dev server logs and the error message in the URL. Before diving into code, **search the web for the error** — provider-specific quirks (e.g., OAuth scopes appended to the callback URL, non-standard token response shapes) are often documented in community forums or the provider's own changelog. Use `WebSearch` with the provider name and the error message to see if others have encountered the same issue.
 
+## API-Token-Only Quick Validation
+
+For connectors that only support API tokens (Decision Matrix row 4), there is no OAuth registration, no feature switch, and no connector provider code to write. The implementation is just the `CONNECTOR_TYPES` entry plus a skill. Use this streamlined flow to validate the skill quickly.
+
+### Prerequisites
+
+Ensure the dev server is running and the CLI is authenticated:
+
+```bash
+vm0 auth status          # ✓ Authenticated
+vm0 scope status         # Shows scope slug
+vm0 model-provider list  # Shows default provider
+```
+
+If any of these are not set up, follow [Step C in the Add OAuth Connector Checklist](#add-oauth-connector-checklist) for CLI auth, scope, and model provider setup.
+
+### Step 1: Obtain the API token [AI + Human]
+
+Use `agent-browser` in headed mode (via noVNC) to navigate the provider's developer portal and generate an API token. This is similar to the OAuth app registration flow — the user may need to assist with login.
+
+1. **Start the noVNC stack** (if not already running) — see the [noVNC setup instructions](#add-oauth-connector-checklist) in the OAuth checklist.
+
+2. **Navigate to the provider's API token page:**
+
+   ```bash
+   DISPLAY=:99 agent-browser --headed open "https://<provider-developer-portal-url>"
+   agent-browser wait 3000 && agent-browser snapshot -i
+   ```
+
+3. **If provider login is required**, stop and ask the user to log in via the noVNC viewer, then continue.
+
+4. **Generate or copy the API token.** Navigate to the API keys / tokens section, create a new token if needed, and copy the value.
+
+### Step 2: Set the secret via CLI [AI]
+
+Use `vm0 secret set` to store the API token under the name declared in the connector's `environmentMapping`:
+
+```bash
+vm0 secret set <SECRET_NAME> "<api-token-value>"
+```
+
+For example, for SimilarWeb:
+
+```bash
+vm0 secret set SIMILARWEB_TOKEN "your-similarweb-api-key"
+```
+
+The secret name must match both the `environmentMapping` key in `CONNECTOR_TYPES` and the `vm0_secrets` entry in the skill's `SKILL.md`.
+
+### Step 3: Validate with `vm0 cook` [AI]
+
+Follow the standard [Skill Validation Loop](#skill-validation-loop) starting from Step 1 (create or update the skill) through Step 4 (iterate until all examples pass). Since there is no OAuth flow, reconnection is never needed — if the token is wrong or expired, simply re-run `vm0 secret set` with a new token.
+
+### Step 4: Ship [AI]
+
+API-token-only connectors do not need a feature switch and do not require production OAuth app registration. Once the skill passes validation:
+
+1. Commit all changes (connector entry + skill) and create a PR.
+2. Ensure CI passes.
+3. No feature switch removal needed — the connector is immediately available to all users.
+
+---
+
 ## Skill Validation Loop
 
 After the connector is verified locally, iterate on the skill and connector code until all API examples pass. This is a loop between AI-driven testing and human-assisted OAuth reconnection.
