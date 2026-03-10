@@ -2088,7 +2088,9 @@ export function getConnectorAuthMethods(
 /**
  * Get default auth method for a connector type
  */
-export function getConnectorDefaultAuthMethod(type: ConnectorType): string {
+export function getConnectorDefaultAuthMethod(
+  type: ConnectorType,
+): string | undefined {
   return CONNECTOR_TYPES[type].defaultAuthMethod;
 }
 
@@ -2120,7 +2122,7 @@ export function getConnectorSecretNames(
 export function getConnectorEnvironmentMapping(
   type: ConnectorType,
 ): Record<string, string> {
-  return CONNECTOR_TYPES[type].environmentMapping;
+  return CONNECTOR_TYPES[type].environmentMapping ?? {};
 }
 
 /**

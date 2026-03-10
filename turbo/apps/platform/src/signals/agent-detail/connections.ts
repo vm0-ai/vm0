@@ -98,7 +98,7 @@ export const agentRequiredConnectorTypes$ = computed(
         if (type === "computer") {
           continue;
         }
-        const mapping = CONNECTOR_TYPES[type].environmentMapping;
+        const mapping = CONNECTOR_TYPES[type].environmentMapping ?? {};
         for (const envKey of Object.keys(mapping)) {
           if (envVarNames.has(envKey)) {
             required.add(type);
