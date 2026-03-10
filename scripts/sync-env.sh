@@ -152,8 +152,8 @@ configure_runner_group() {
 
   # Derive from git email + hostname (e.g. alice@vm0.ai on macbook -> alice-macbook)
   local username hostname_short
-  username=$(git config user.email 2>/dev/null | sed 's/@.*//' || true)
-  hostname_short=$(hostname)
+  username=$(git config user.email 2>/dev/null | sed 's/@.*//' | tr '[:upper:].' '[:lower:]-' || true)
+  hostname_short=$(hostname -s)
 
   if [[ -z "$username" ]]; then
     echo "  ✗ RUNNER_DEFAULT_GROUP skipped (git user.email not configured)"
@@ -162,11 +162,13 @@ configure_runner_group() {
 
   local group_name="vm0/local-${username}-${hostname_short}"
 
-  # Remove old value if present, then append fresh
+  # Remove old value and its comment header if present, then append fresh
   if grep -q "^RUNNER_DEFAULT_GROUP=" "$WEB_ENV_LOCAL" 2>/dev/null; then
-    sed -i '/^RUNNER_DEFAULT_GROUP=/d' "$WEB_ENV_LOCAL"
+    sed -i '/^# Self-hosted Runner$/d; /^RUNNER_DEFAULT_GROUP=/d' "$WEB_ENV_LOCAL"
   fi
 
+  echo "" >> "$WEB_ENV_LOCAL"
+  echo "# Self-hosted Runner" >> "$WEB_ENV_LOCAL"
   echo "RUNNER_DEFAULT_GROUP=${group_name}" >> "$WEB_ENV_LOCAL"
   echo "  ✓ RUNNER_DEFAULT_GROUP=${group_name}"
 }
