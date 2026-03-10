@@ -326,6 +326,21 @@ export async function updateScopeSlug(
 
   log.debug("scope slug updated", { scopeId, newSlug });
 
+  // Dual-write: sync slug to Clerk org (fire-and-forget)
+  try {
+    const client = await clerkClient();
+    await client.organizations.updateOrganization(scope.clerkOrgId, {
+      slug: newSlug,
+    });
+  } catch (err) {
+    log.error("failed to write slug to Clerk org", {
+      error: err,
+      clerkOrgId: scope.clerkOrgId,
+      scopeId,
+      newSlug,
+    });
+  }
+
   return updated!;
 }
 
