@@ -2,6 +2,9 @@ import {
   expandVariables,
   extractVariableReferences,
   groupVariablesBySource,
+  connectorTypeSchema,
+  getConnectorEnvironmentMapping,
+  getConnectorProxyConfig,
 } from "@vm0/core";
 import { env } from "../../../env";
 import { createProxyToken } from "../../proxy/token-service";
@@ -28,6 +31,7 @@ function processSecretValues(
   checkEnv: boolean | undefined,
   runId: string,
   userId: string,
+  connectorEnvVars?: Record<string, string>,
 ): Record<string, string> | undefined {
   if (secretNames.length === 0) return undefined;
 
@@ -42,25 +46,20 @@ function processSecretValues(
     }
   }
 
-  if (sealSecretsEnabled) {
-    log.debug(
-      `Seal secrets enabled for run ${runId}, encrypting ${secretNames.length} secret(s)`,
-    );
-    const secrets: Record<string, string> = {};
-    for (const name of secretNames) {
-      const secretValue = passedSecrets![name];
+  const secrets: Record<string, string> = {};
+  for (const name of secretNames) {
+    if (connectorEnvVars?.[name]) {
+      secrets[name] = connectorEnvVars[name];
+    } else if (sealSecretsEnabled) {
+      const secretValue = passedSecrets?.[name];
       if (secretValue) {
         secrets[name] = createProxyToken(runId, userId, name, secretValue);
       }
+    } else {
+      secrets[name] = passedSecrets![name]!;
     }
-    return secrets;
   }
-
-  const secrets: Record<string, string> = {};
-  for (const name of secretNames) {
-    secrets[name] = passedSecrets![name]!;
-  }
-  return secrets;
+  return Object.keys(secrets).length > 0 ? secrets : undefined;
 }
 
 /**
@@ -73,6 +72,7 @@ function processCredentialValues(
   checkEnv: boolean | undefined,
   runId: string,
   userId: string,
+  connectorEnvVars?: Record<string, string>,
 ): Record<string, string> | undefined {
   if (credentialNames.length === 0) return undefined;
 
@@ -89,13 +89,12 @@ function processCredentialValues(
     }
   }
 
-  if (sealSecretsEnabled) {
-    log.debug(
-      `Seal secrets enabled for run ${runId}, encrypting ${credentialNames.length} credential(s)`,
-    );
-    const processed: Record<string, string> = {};
-    for (const name of credentialNames) {
-      const credentialValue = credentials![name];
+  const processed: Record<string, string> = {};
+  for (const name of credentialNames) {
+    if (connectorEnvVars?.[name]) {
+      processed[name] = connectorEnvVars[name];
+    } else if (sealSecretsEnabled) {
+      const credentialValue = credentials?.[name];
       if (credentialValue) {
         processed[name] = createProxyToken(
           runId,
@@ -104,15 +103,42 @@ function processCredentialValues(
           credentialValue,
         );
       }
+    } else {
+      processed[name] = credentials![name]!;
     }
-    return processed;
   }
+  return Object.keys(processed).length > 0 ? processed : undefined;
+}
 
-  const processed: Record<string, string> = {};
-  for (const name of credentialNames) {
-    processed[name] = credentials![name]!;
+/**
+ * Build connector env var placeholders for experimental_connectors that are actually connected.
+ * Returns a map of env var name → placeholder value, or undefined if no connectors qualify.
+ */
+function buildConnectorEnvVars(
+  declaredConnectors: string[],
+  connectedTypes: string[],
+): Record<string, string> | undefined {
+  if (declaredConnectors.length === 0 || connectedTypes.length === 0)
+    return undefined;
+
+  const connected = new Set(connectedTypes);
+  const envVars: Record<string, string> = {};
+
+  for (const name of declaredConnectors) {
+    if (!connected.has(name)) continue;
+    const parsed = connectorTypeSchema.safeParse(name);
+    if (!parsed.success) continue;
+    const connectorType = parsed.data;
+    const proxyConfig = getConnectorProxyConfig(connectorType);
+    if (!proxyConfig) continue;
+
+    const envMapping = getConnectorEnvironmentMapping(connectorType);
+    for (const envVar of Object.keys(envMapping)) {
+      envVars[envVar] =
+        proxyConfig.placeholders?.[envVar] ?? `VM0_PLACEHOLDER_${envVar}`;
+    }
   }
-  return processed;
+  return Object.keys(envVars).length > 0 ? envVars : undefined;
 }
 
 /**
@@ -121,6 +147,9 @@ function processCredentialValues(
  *
  * When experimental_firewall.experimental_seal_secrets is enabled:
  * - Secrets are encrypted into proxy tokens (vm0_enc_xxx)
+ *
+ * When experimental_connectors is declared:
+ * - Connector env vars are set to placeholder values (proxy replaces at runtime)
  *
  * @param agentCompose Agent compose configuration
  * @param vars Variables for expansion (from --vars CLI param)
@@ -131,6 +160,7 @@ function processCredentialValues(
  * @param checkEnv When true, validates that all required secrets/vars are provided
  * @returns Expanded environment variables
  */
+// eslint-disable-next-line complexity
 export function expandEnvironmentFromCompose(
   agentCompose: unknown,
   vars: Record<string, string> | undefined,
@@ -139,6 +169,8 @@ export function expandEnvironmentFromCompose(
   userId: string,
   runId: string,
   checkEnv?: boolean,
+  /** Connected connector type names — only these get placeholder injection. */
+  connectedTypes?: string[],
 ): ExpandedEnvironmentResult {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) {
@@ -148,10 +180,6 @@ export function expandEnvironmentFromCompose(
   // Get first agent's environment (currently only one agent supported)
   const agents = Object.values(compose.agents);
   const firstAgent = agents[0];
-
-  // Check if seal_secrets is enabled via firewall config
-  const sealSecretsEnabled =
-    firstAgent?.experimental_firewall?.experimental_seal_secrets ?? false;
 
   if (!firstAgent?.environment) {
     return { environment: undefined };
@@ -172,6 +200,16 @@ export function expandEnvironmentFromCompose(
     );
   }
 
+  // Check if seal_secrets is enabled via firewall config
+  const sealSecretsEnabled =
+    firstAgent?.experimental_firewall?.experimental_seal_secrets ?? false;
+
+  // Build connector env var placeholders from experimental_connectors ∩ connectedTypes
+  const connectorEnvVars = buildConnectorEnvVars(
+    firstAgent?.experimental_connectors ?? [],
+    connectedTypes ?? [],
+  );
+
   // Process secrets if needed
   const secretNames = grouped.secrets.map((r) => r.name);
   const secrets = processSecretValues(
@@ -181,6 +219,7 @@ export function expandEnvironmentFromCompose(
     checkEnv,
     runId,
     userId,
+    connectorEnvVars,
   );
 
   // Process credentials if needed
@@ -192,6 +231,7 @@ export function expandEnvironmentFromCompose(
     checkEnv,
     runId,
     userId,
+    connectorEnvVars,
   );
 
   // Build sources for expansion

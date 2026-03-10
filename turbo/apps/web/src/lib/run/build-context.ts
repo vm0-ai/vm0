@@ -12,8 +12,8 @@ import {
   getConnectorProxyConfig,
   connectorTypeSchema,
   MODEL_PROVIDER_TYPES,
-  type ConnectorType,
   type ExperimentalConnectors,
+  type ConnectorType,
   type ModelProviderType,
   type ModelProviderFramework,
 } from "@vm0/core";
@@ -400,6 +400,8 @@ interface ConnectorCredentialResult {
   connectorSecrets: Record<string, string> | undefined;
   /** Environment variables mapped from OAuth connectors via environmentMapping */
   injectedEnvVars: Record<string, string> | undefined;
+  /** Connected connector type names (used to filter experimental_connectors placeholders) */
+  connectedTypes: string[];
 }
 
 /**
@@ -419,12 +421,20 @@ async function resolveConnectorCredentials(
     .where(and(eq(connectors.scopeId, scopeId), eq(connectors.userId, userId)));
 
   if (userConnectors.length === 0) {
-    return { connectorSecrets: undefined, injectedEnvVars: undefined };
+    return {
+      connectorSecrets: undefined,
+      injectedEnvVars: undefined,
+      connectedTypes: [],
+    };
   }
 
   const connectorSecrets = await getSecretValues(scopeId, userId, "connector");
   if (Object.keys(connectorSecrets).length === 0) {
-    return { connectorSecrets: undefined, injectedEnvVars: undefined };
+    return {
+      connectorSecrets: undefined,
+      injectedEnvVars: undefined,
+      connectedTypes: [],
+    };
   }
 
   // Parse connector types upfront
@@ -489,7 +499,11 @@ async function resolveConnectorCredentials(
     );
   }
 
-  return { connectorSecrets, injectedEnvVars: allInjectedEnvVars };
+  return {
+    connectorSecrets,
+    injectedEnvVars: allInjectedEnvVars,
+    connectedTypes: validConnectors.map((c) => c.type),
+  };
 }
 
 /**
@@ -823,7 +837,8 @@ async function resolveCredentialsAndEnvironment(
 
   const modelProviderEnvVars = modelProviderResult.injectedEnvVars;
 
-  // Expand environment variables from compose config
+  // Expand environment variables from compose config.
+  // Connector placeholder env vars are handled internally (like sealSecrets).
   const { environment: expandedEnvironment } = expandEnvironmentFromCompose(
     agentCompose,
     mergedVars,
@@ -832,6 +847,7 @@ async function resolveCredentialsAndEnvironment(
     userId,
     runId,
     checkEnv,
+    connectorResult.connectedTypes,
   );
 
   // Auto-inject model provider env vars into environment
@@ -964,13 +980,14 @@ interface BuildContextResult {
 }
 
 /**
- * Build ExperimentalConnectors from agent compose's experimental_connectors array.
+ * Build ExperimentalConnectors manifest from agent compose's experimental_connectors array.
  * Returns null if no connectors are declared.
  *
  * For each declared connector name:
  * 1. Validates it's a known connector type with proxy config
- * 2. Looks up targets and auth from CONNECTOR_PROXY_CONFIGS
- * 3. Generates a placeholder token (vm0_conn_{name})
+ * 2. Flattens services to one entry per base URL (for runner-side matching)
+ *
+ * Placeholder env var injection is handled by expandEnvironmentFromCompose.
  */
 function buildExperimentalConnectors(
   agentCompose: unknown,
@@ -984,15 +1001,15 @@ function buildExperimentalConnectors(
   const connectorNames = firstAgent?.experimental_connectors;
   if (!connectorNames || connectorNames.length === 0) return null;
 
-  const connectors = connectorNames.map((name) => {
-    // Validate connector type exists
+  const entries: { name: string; base: string }[] = [];
+
+  for (const name of connectorNames) {
     const parsed = connectorTypeSchema.safeParse(name);
     if (!parsed.success) {
       throw badRequest(`Unknown connector type: "${name}"`);
     }
-    const connectorType = parsed.data as ConnectorType;
+    const connectorType = parsed.data;
 
-    // Look up proxy config (targets + auth)
     const proxyConfig = getConnectorProxyConfig(connectorType);
     if (!proxyConfig) {
       throw badRequest(
@@ -1000,15 +1017,12 @@ function buildExperimentalConnectors(
       );
     }
 
-    return {
-      name,
-      targets: proxyConfig.targets,
-      placeholder: `vm0_conn_${name}`,
-      auth: proxyConfig.auth,
-    };
-  });
+    for (const svc of proxyConfig.services) {
+      entries.push({ name, base: svc.base });
+    }
+  }
 
-  return { connectors };
+  return { connectors: entries };
 }
 
 /**
@@ -1139,8 +1153,9 @@ export async function buildExecutionContext(
     ? { ...resolvedCredentials, ...secrets }
     : secrets;
 
-  // Build experimental connectors manifest from agent compose
-  const experimentalConnectors = buildExperimentalConnectors(agentCompose);
+  // Build experimental connectors manifest (name + base entries for the runner)
+  const experimentalConnectors =
+    buildExperimentalConnectors(agentCompose) ?? undefined;
 
   // Build final execution context
   return {
@@ -1161,7 +1176,7 @@ export async function buildExecutionContext(
       volumeVersions,
       environment,
       userTimezone,
-      experimentalConnectors: experimentalConnectors ?? undefined,
+      experimentalConnectors,
       resumeSession,
       resumeArtifact,
       // Metadata for vm0_start event

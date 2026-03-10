@@ -1505,6 +1505,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          CI_GITHUB_TOKEN: ${{ github.token }}
 
       - name: Stop Cron Simulator
         if: always()

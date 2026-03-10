@@ -14,6 +14,7 @@ import os
 import json
 import time
 import urllib.parse
+import urllib.request
 import ipaddress
 import socket
 from mitmproxy import http, ctx, tls
@@ -60,6 +61,9 @@ _registry_cache_key = (0, 0)
 
 # Track request start times for latency calculation
 _request_start_times = {}
+
+# Cache for connector auth headers: (run_id, connector_name, base) -> {"headers": dict, "expires_at": float}
+_connector_token_cache = {}
 
 
 def load_registry() -> dict:
@@ -115,6 +119,100 @@ def get_original_url(flow: http.HTTPFlow) -> str:
 
     path = flow.request.path
     return f"{scheme}://{host_with_port}{path}"
+
+
+# ============================================================================
+# Connector Token Replacement
+# ============================================================================
+
+def match_connector(url: str, vm_connectors: dict | None) -> dict | None:
+    """Match URL against connector base URLs. Returns connector entry or None.
+
+    Matches if the URL starts with the base and the next character is '/', '?', or end-of-string.
+    This prevents https://api.github.com matching https://api.github.com.evil.com.
+    """
+    if not vm_connectors:
+        return None
+    for connector in vm_connectors.get("connectors", []):
+        base = connector.get("base", "").rstrip("/")
+        if base and url.startswith(base):
+            # Ensure match is at a path boundary, not mid-hostname
+            rest = url[len(base):]
+            if not rest or rest[0] in ("/" , "?", "#"):
+                return connector
+    return None
+
+
+def fetch_connector_headers(connector_name: str, base: str, sandbox_token: str, run_id: str) -> dict:
+    """Fetch resolved auth headers from API."""
+    api_url = get_api_url()
+    url = f"{api_url}/api/webhooks/agent/connectors/auth"
+    data = json.dumps({"runId": run_id, "connectorName": connector_name, "base": base}).encode()
+    req = urllib.request.Request(url, data=data, headers={
+        "Authorization": f"Bearer {sandbox_token}",
+        "Content-Type": "application/json",
+    })
+    if VERCEL_BYPASS:
+        req.add_header("x-vercel-protection-bypass", VERCEL_BYPASS)
+    resp = urllib.request.urlopen(req, timeout=10)
+    return json.loads(resp.read())
+
+
+def get_connector_headers(run_id: str, connector_name: str, base: str, sandbox_token: str) -> dict:
+    """Get connector auth headers with caching. Returns resolved headers dict."""
+    cache_key = (run_id, connector_name, base)
+    cached = _connector_token_cache.get(cache_key)
+    if cached and cached["expires_at"] > time.time():
+        return cached["headers"]
+
+    result = fetch_connector_headers(connector_name, base, sandbox_token, run_id)
+    headers = result["headers"]
+    expires_in = result.get("expiresIn", 1800)
+    _connector_token_cache[cache_key] = {
+        "headers": headers,
+        "expires_at": time.time() + min(expires_in, 1800),
+    }
+    return headers
+
+
+def handle_connector_request(flow: http.HTTPFlow, connector: dict, vm_info: dict) -> None:
+    """Handle a connector-matched request: fetch resolved headers, inject into request."""
+    client_ip = flow.client_conn.peername[0]
+    connector_name = connector["name"]
+    connector_base = connector["base"]
+    run_id = vm_info.get("runId", "")
+    sandbox_token = vm_info.get("sandboxToken", "")
+
+    try:
+        headers = get_connector_headers(run_id, connector_name, connector_base, sandbox_token)
+    except Exception as e:
+        ctx.log.error(f"[{run_id}] Connector {connector_name} header fetch failed: {e}")
+        flow.metadata["firewall_action"] = "DENY"
+        flow.metadata["firewall_rule"] = f"connector:{connector_name}"
+        flow.metadata["original_url"] = get_original_url(flow)
+        flow.response = http.Response.make(
+            502,
+            b"Connector header fetch failed",
+            {"Content-Type": "text/plain"},
+        )
+        return
+
+    # Inject resolved auth headers into the request
+    for header_name, header_value in headers.items():
+        flow.request.headers[header_name] = header_value
+
+    # Store metadata for logging
+    flow.metadata["firewall_action"] = "ALLOW"
+    flow.metadata["firewall_rule"] = f"connector:{connector_name}"
+    flow.metadata["connector_base"] = connector_base
+    flow.metadata["original_url"] = get_original_url(flow)
+    flow.metadata["skip_rewrite"] = True
+    flow.metadata["vm_run_id"] = run_id
+    flow.metadata["vm_client_ip"] = client_ip
+    flow.metadata["vm_mitm_enabled"] = True
+    flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
+
+    ctx.log.info(f"[{run_id}] Connector {connector_name}: {flow.request.pretty_host}")
 
 
 # ============================================================================
@@ -334,6 +432,16 @@ def request(flow: http.HTTPFlow) -> None:
     flow.metadata["vm_mitm_enabled"] = mitm_enabled
     flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
 
+    # Check connector match BEFORE firewall rules.
+    # Connector requests go directly to the target API with real tokens injected.
+    vm_connectors = vm_info.get("connectors")
+    if vm_connectors:
+        original_url = get_original_url(flow)
+        connector = match_connector(original_url, vm_connectors)
+        if connector:
+            handle_connector_request(flow, connector, vm_info)
+            return
+
     # Get target hostname
     hostname = flow.request.pretty_host.lower()
 
@@ -490,6 +598,15 @@ def response(flow: http.HTTPFlow) -> None:
             })
 
         log_network_entry({"networkLogPath": network_log_path}, log_entry)
+
+    # Invalidate connector header cache on 401 so next request gets fresh headers
+    if flow.response and flow.response.status_code == 401 and firewall_rule:
+        if firewall_rule.startswith("connector:"):
+            connector_name = firewall_rule.split(":", 1)[1]
+            connector_base = flow.metadata.get("connector_base", "")
+            cache_key = (run_id, connector_name, connector_base)
+            if _connector_token_cache.pop(cache_key, None):
+                ctx.log.info(f"[{run_id}] Connector {connector_name}: 401 - cleared header cache")
 
     # Log errors to mitmproxy console
     if flow.response and flow.response.status_code >= 400:

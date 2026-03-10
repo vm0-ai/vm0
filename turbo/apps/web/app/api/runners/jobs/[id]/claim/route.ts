@@ -193,6 +193,7 @@ const router = tsr.router(runnersJobClaimContract, {
         secretValues, // Decrypted secrets
         cliAgentType: storedContext.cliAgentType,
         experimentalFirewall: storedContext.experimentalFirewall,
+        experimentalConnectors: storedContext.experimentalConnectors,
         debugNoMockClaude: storedContext.debugNoMockClaude,
         apiStartTime: storedContext.apiStartTime,
         userTimezone: storedContext.userTimezone,

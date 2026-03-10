@@ -631,6 +631,9 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         env.insert("VM0_RESUME_SESSION_ID".into(), session.session_id.clone());
     }
 
+    // Note: Connector placeholder env vars (e.g., GITHUB_TOKEN=gho_vm0placeholder...)
+    // are injected by the web API into `context.environment` directly.
+
     // Secret values (base64-encoded, comma-separated)
     if let Some(secrets) = &context.secret_values
         && !secrets.is_empty()
@@ -989,13 +992,7 @@ mod tests {
         ctx.experimental_connectors = Some(crate::types::ExperimentalConnectors {
             connectors: vec![crate::types::ConnectorEntry {
                 name: "gmail".into(),
-                targets: vec!["https://gmail.googleapis.com/gmail/v1/users/me".into()],
-                placeholder: "vm0_conn_gmail".into(),
-                auth: crate::types::ConnectorAuth {
-                    headers: [("Authorization".into(), "Bearer ${token}".into())]
-                        .into_iter()
-                        .collect(),
-                },
+                base: "https://gmail.googleapis.com/gmail/v1/users/me".into(),
             }],
         });
         let env = build_env_json(&ctx, "http://localhost");
@@ -1022,9 +1019,7 @@ mod tests {
             "experimentalConnectors": {
                 "connectors": [{
                     "name": "github",
-                    "targets": ["https://api.github.com"],
-                    "placeholder": "vm0_conn_github",
-                    "auth": { "headers": { "Authorization": "Bearer ${token}" } }
+                    "base": "https://api.github.com"
                 }]
             }
         });
@@ -1032,7 +1027,6 @@ mod tests {
         let conns = ctx.experimental_connectors.unwrap();
         assert_eq!(conns.connectors.len(), 1);
         assert_eq!(conns.connectors[0].name, "github");
-        assert_eq!(conns.connectors[0].placeholder, "vm0_conn_github");
     }
 
     #[test]

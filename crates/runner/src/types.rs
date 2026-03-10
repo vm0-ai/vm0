@@ -85,20 +85,12 @@ pub struct ExperimentalConnectors {
     pub connectors: Vec<ConnectorEntry>,
 }
 
-/// A single connector entry with target URLs and auth header templates.
+/// A single connector service entry with a base URL for proxy-side matching.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ConnectorEntry {
     pub name: String,
-    pub targets: Vec<String>,
-    pub placeholder: String,
-    pub auth: ConnectorAuth,
-}
-
-/// Auth header templates for a connector.
-/// The `${token}` placeholder in header values is replaced by the proxy.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ConnectorAuth {
-    pub headers: HashMap<String, String>,
+    pub base: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

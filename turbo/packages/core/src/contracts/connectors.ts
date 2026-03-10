@@ -1539,199 +1539,314 @@ export type ConnectorType = keyof typeof CONNECTOR_TYPES;
 /**
  * Proxy-side connector configuration for token replacement.
  *
- * Defines which URL targets each connector covers and how auth headers
+ * Defines which base URLs each connector covers and how auth headers
  * are constructed. Used by the proxy to intercept requests matching a
- * connector's targets and replace placeholder tokens with real credentials.
+ * connector's base URLs and replace placeholder tokens with real credentials.
  *
- * `${token}` in header values is replaced with the real OAuth access token.
+ * `${secrets.XXX}` in header values is replaced by the proxy with the real secret value.
  *
  * NOTE: Currently hardcoded in CONNECTOR_PROXY_CONFIGS below.
  * Will be migrated to GitHub-hosted connector.yaml definitions in Phase 2.
  */
-export interface ConnectorProxyConfig {
-  targets: string[];
+interface ConnectorService {
+  base: string;
   auth: {
     headers: Record<string, string>;
   };
 }
 
-const BEARER_AUTH = { headers: { Authorization: "Bearer ${token}" } };
+export interface ConnectorProxyConfig {
+  services: ConnectorService[];
+  /** Custom placeholder values per env var (e.g., `{ GITHUB_TOKEN: "gho_..." }`). Falls back to auto-generated `VM0_PLACEHOLDER_{envVar}`. */
+  placeholders?: Record<string, string>;
+}
+
+/** Helper to build standard Bearer auth header with a secret reference. */
+function bearerAuth(secretName: string) {
+  return { headers: { Authorization: `Bearer \${secrets.${secretName}}` } };
+}
+
+/** Shorthand: single-base service with bearer auth. */
+function service(
+  base: string,
+  auth: ConnectorService["auth"],
+): ConnectorService {
+  return { base, auth };
+}
 
 const CONNECTOR_PROXY_CONFIGS: Partial<
   Record<ConnectorType, ConnectorProxyConfig>
 > = {
   ahrefs: {
-    targets: ["https://api.ahrefs.com"],
-    auth: BEARER_AUTH,
+    services: [service("https://api.ahrefs.com", bearerAuth("AHREFS_API_KEY"))],
   },
   airtable: {
-    targets: ["https://api.airtable.com"],
-    auth: BEARER_AUTH,
+    services: [
+      service("https://api.airtable.com", bearerAuth("AIRTABLE_TOKEN")),
+    ],
   },
   github: {
-    targets: ["https://api.github.com"],
-    auth: BEARER_AUTH,
-  },
-  notion: {
-    targets: ["https://api.notion.com/v1"],
-    auth: {
-      headers: {
-        Authorization: "Bearer ${token}",
-        "Notion-Version": "2022-06-28",
-      },
+    services: [service("https://api.github.com", bearerAuth("GITHUB_TOKEN"))],
+    placeholders: {
+      GH_TOKEN: "gho_vm0placeholder0000000000000000000000",
+      GITHUB_TOKEN: "gho_vm0placeholder0000000000000000000000",
     },
   },
+  notion: {
+    services: [
+      service("https://api.notion.com/v1", {
+        headers: {
+          Authorization: "Bearer ${secrets.NOTION_TOKEN}",
+          "Notion-Version": "2022-06-28",
+        },
+      }),
+    ],
+  },
   gmail: {
-    targets: ["https://gmail.googleapis.com/gmail/v1/users/me"],
-    auth: BEARER_AUTH,
+    services: [
+      service(
+        "https://gmail.googleapis.com/gmail/v1/users/me",
+        bearerAuth("GMAIL_TOKEN"),
+      ),
+    ],
   },
   "google-sheets": {
-    targets: ["https://sheets.googleapis.com/v4/spreadsheets"],
-    auth: BEARER_AUTH,
+    services: [
+      service(
+        "https://sheets.googleapis.com/v4/spreadsheets",
+        bearerAuth("GOOGLE_SHEETS_TOKEN"),
+      ),
+    ],
   },
   "google-docs": {
-    targets: ["https://docs.googleapis.com/v1/documents"],
-    auth: BEARER_AUTH,
+    services: [
+      service(
+        "https://docs.googleapis.com/v1/documents",
+        bearerAuth("GOOGLE_DOCS_TOKEN"),
+      ),
+    ],
   },
   "google-drive": {
-    targets: ["https://www.googleapis.com/drive/v3"],
-    auth: BEARER_AUTH,
+    services: [
+      service(
+        "https://www.googleapis.com/drive/v3",
+        bearerAuth("GOOGLE_DRIVE_TOKEN"),
+      ),
+    ],
   },
   "google-calendar": {
-    targets: ["https://www.googleapis.com/calendar/v3"],
-    auth: BEARER_AUTH,
+    services: [
+      service(
+        "https://www.googleapis.com/calendar/v3",
+        bearerAuth("GOOGLE_CALENDAR_TOKEN"),
+      ),
+    ],
   },
   hubspot: {
-    targets: ["https://api.hubapi.com"],
-    auth: BEARER_AUTH,
+    services: [service("https://api.hubapi.com", bearerAuth("HUBSPOT_TOKEN"))],
   },
   slack: {
-    targets: ["https://slack.com/api", "https://files.slack.com"],
-    auth: BEARER_AUTH,
+    services: [
+      service("https://slack.com/api", bearerAuth("SLACK_TOKEN")),
+      service("https://files.slack.com", bearerAuth("SLACK_TOKEN")),
+    ],
+    placeholders: {
+      SLACK_TOKEN: "xoxb-0000-0000-vm0placeholder",
+    },
   },
   docusign: {
-    targets: [
-      "https://demo.docusign.net/restapi",
-      "https://na1.docusign.net/restapi",
+    services: [
+      service(
+        "https://demo.docusign.net/restapi",
+        bearerAuth("DOCUSIGN_TOKEN"),
+      ),
+      service("https://na1.docusign.net/restapi", bearerAuth("DOCUSIGN_TOKEN")),
     ],
-    auth: BEARER_AUTH,
   },
   dropbox: {
-    targets: [
-      "https://api.dropboxapi.com/2",
-      "https://content.dropboxapi.com/2",
+    services: [
+      service("https://api.dropboxapi.com/2", bearerAuth("DROPBOX_TOKEN")),
+      service("https://content.dropboxapi.com/2", bearerAuth("DROPBOX_TOKEN")),
     ],
-    auth: BEARER_AUTH,
   },
   linear: {
-    targets: ["https://api.linear.app"],
-    auth: BEARER_AUTH,
+    services: [service("https://api.linear.app", bearerAuth("LINEAR_API_KEY"))],
   },
   deel: {
-    targets: ["https://api.deel.com"],
-    auth: BEARER_AUTH,
+    services: [service("https://api.deel.com", bearerAuth("DEEL_TOKEN"))],
   },
   figma: {
-    targets: ["https://api.figma.com"],
-    auth: BEARER_AUTH,
+    services: [service("https://api.figma.com", bearerAuth("FIGMA_TOKEN"))],
   },
   mercury: {
-    targets: ["https://api.mercury.com"],
-    auth: BEARER_AUTH,
+    services: [service("https://api.mercury.com", bearerAuth("MERCURY_TOKEN"))],
   },
   reddit: {
-    targets: ["https://oauth.reddit.com"],
-    auth: BEARER_AUTH,
+    services: [service("https://oauth.reddit.com", bearerAuth("REDDIT_TOKEN"))],
   },
   strava: {
-    targets: ["https://www.strava.com/api/v3"],
-    auth: BEARER_AUTH,
+    services: [
+      service("https://www.strava.com/api/v3", bearerAuth("STRAVA_TOKEN")),
+    ],
   },
   x: {
-    targets: ["https://api.x.com/2"],
-    auth: BEARER_AUTH,
+    services: [service("https://api.x.com/2", bearerAuth("X_ACCESS_TOKEN"))],
   },
   neon: {
-    targets: ["https://console.neon.tech/api/v2"],
-    auth: BEARER_AUTH,
+    services: [
+      service("https://console.neon.tech/api/v2", bearerAuth("NEON_API_KEY")),
+    ],
   },
   vercel: {
-    targets: ["https://api.vercel.com"],
-    auth: BEARER_AUTH,
+    services: [service("https://api.vercel.com", bearerAuth("VERCEL_TOKEN"))],
   },
   sentry: {
-    targets: ["https://sentry.io/api"],
-    auth: BEARER_AUTH,
+    services: [service("https://sentry.io/api", bearerAuth("SENTRY_TOKEN"))],
   },
   monday: {
-    targets: ["https://api.monday.com/v2"],
-    auth: BEARER_AUTH,
+    services: [
+      service("https://api.monday.com/v2", bearerAuth("MONDAY_TOKEN")),
+    ],
   },
   canva: {
-    targets: ["https://api.canva.com/rest/v1"],
-    auth: BEARER_AUTH,
+    services: [
+      service("https://api.canva.com/rest/v1", bearerAuth("CANVA_TOKEN")),
+    ],
   },
   xero: {
-    targets: ["https://api.xero.com"],
-    auth: BEARER_AUTH,
+    services: [service("https://api.xero.com", bearerAuth("XERO_TOKEN"))],
   },
   supabase: {
-    targets: ["https://api.supabase.com/v1"],
-    auth: BEARER_AUTH,
+    services: [
+      service("https://api.supabase.com/v1", bearerAuth("SUPABASE_TOKEN")),
+    ],
   },
   todoist: {
-    targets: ["https://api.todoist.com/rest/v2"],
-    auth: BEARER_AUTH,
+    services: [
+      service("https://api.todoist.com/rest/v2", bearerAuth("TODOIST_TOKEN")),
+    ],
   },
   webflow: {
-    targets: ["https://api.webflow.com/v2"],
-    auth: BEARER_AUTH,
+    services: [
+      service("https://api.webflow.com/v2", bearerAuth("WEBFLOW_TOKEN")),
+    ],
   },
   asana: {
-    targets: ["https://app.asana.com/api/1.0"],
-    auth: BEARER_AUTH,
+    services: [
+      service("https://app.asana.com/api/1.0", bearerAuth("ASANA_TOKEN")),
+    ],
   },
   "meta-ads": {
-    targets: ["https://graph.facebook.com"],
-    auth: BEARER_AUTH,
+    services: [
+      service("https://graph.facebook.com", bearerAuth("META_ADS_TOKEN")),
+    ],
   },
   posthog: {
-    targets: ["https://us.posthog.com/api", "https://app.posthog.com/api"],
-    auth: BEARER_AUTH,
+    services: [
+      service("https://us.posthog.com/api", bearerAuth("POSTHOG_ACCESS_TOKEN")),
+      service(
+        "https://app.posthog.com/api",
+        bearerAuth("POSTHOG_ACCESS_TOKEN"),
+      ),
+    ],
   },
   stripe: {
-    targets: ["https://api.stripe.com"],
-    auth: BEARER_AUTH,
+    services: [service("https://api.stripe.com", bearerAuth("STRIPE_API_KEY"))],
   },
   similarweb: {
-    targets: ["https://api.similarweb.com"],
-    auth: { headers: { "api-key": "${token}" } },
+    services: [
+      service("https://api.similarweb.com", {
+        headers: { "api-key": "${secrets.SIMILARWEB_API_KEY}" },
+      }),
+    ],
   },
   mailchimp: {
-    targets: [
-      "https://us1.api.mailchimp.com/3.0",
-      "https://us2.api.mailchimp.com/3.0",
-      "https://us3.api.mailchimp.com/3.0",
-      "https://us4.api.mailchimp.com/3.0",
-      "https://us5.api.mailchimp.com/3.0",
-      "https://us6.api.mailchimp.com/3.0",
-      "https://us7.api.mailchimp.com/3.0",
-      "https://us8.api.mailchimp.com/3.0",
-      "https://us9.api.mailchimp.com/3.0",
-      "https://us10.api.mailchimp.com/3.0",
-      "https://us11.api.mailchimp.com/3.0",
-      "https://us12.api.mailchimp.com/3.0",
-      "https://us13.api.mailchimp.com/3.0",
-      "https://us14.api.mailchimp.com/3.0",
-      "https://us15.api.mailchimp.com/3.0",
-      "https://us16.api.mailchimp.com/3.0",
-      "https://us17.api.mailchimp.com/3.0",
-      "https://us18.api.mailchimp.com/3.0",
-      "https://us19.api.mailchimp.com/3.0",
-      "https://us20.api.mailchimp.com/3.0",
-      "https://us21.api.mailchimp.com/3.0",
+    services: [
+      service(
+        "https://us1.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us2.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us3.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us4.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us5.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us6.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us7.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us8.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us9.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us10.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us11.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us12.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us13.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us14.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us15.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us16.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us17.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us18.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us19.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us20.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
+      service(
+        "https://us21.api.mailchimp.com/3.0",
+        bearerAuth("MAILCHIMP_API_KEY"),
+      ),
     ],
-    auth: BEARER_AUTH,
   },
 };
 
@@ -1827,7 +1942,7 @@ export function getConnectorEnvironmentMapping(
 }
 
 /**
- * Get proxy config for a connector type (targets + auth headers).
+ * Get proxy config for a connector type (base URLs + auth headers).
  * Returns undefined if the connector has no proxy config (e.g., computer connector).
  */
 export function getConnectorProxyConfig(
