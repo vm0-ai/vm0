@@ -7,9 +7,7 @@ import {
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import { scopes } from "../../../../../src/db/schema/scope";
-import { eq } from "drizzle-orm";
-import { initServices } from "../../../../../src/lib/init-services";
+import { PUT as setDefaultAgent } from "../../../../api/scopes/default-agent/route";
 
 const context = testContext();
 
@@ -84,17 +82,22 @@ describe("GET /api/onboarding/status", () => {
   });
 
   it("should return needsOnboarding=false when all conditions met", async () => {
-    initServices();
-    const user = await context.setupUser();
+    await context.setupUser();
     await createTestModelProvider("anthropic-api-key", "test-secret-key");
 
-    // Create a compose and set as default
+    // Create a compose and set as default via API
     const compose = await createTestCompose("test-agent");
 
-    await globalThis.services.db
-      .update(scopes)
-      .set({ defaultAgentComposeId: compose.composeId })
-      .where(eq(scopes.id, user.scopeId));
+    const setDefaultRequest = createTestRequest(
+      "http://localhost:3000/api/scopes/default-agent",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentComposeId: compose.composeId }),
+      },
+    );
+    const setDefaultResponse = await setDefaultAgent(setDefaultRequest);
+    expect(setDefaultResponse.status).toBe(200);
 
     const request = createTestRequest(
       "http://localhost:3000/api/onboarding/status",
