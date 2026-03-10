@@ -172,4 +172,4 @@ GITHUB_APP_WEBHOOK_SECRET=op://Development/github/GITHUB_APP_WEBHOOK_SECRET
 
 # Optional: Self-hosted Runner (for local development with runner on dev-1)
 # RUNNER_DEFAULT_GROUP is auto-configured by sync-env.sh — do not add here
-OFFICIAL_RUNNER_SECRET=dummy
+OFFICIAL_RUNNER_SECRET=0000000000000000000000000000000000000000000000000000000000000000
