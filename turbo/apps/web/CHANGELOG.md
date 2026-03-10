@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.92.0](https://github.com/vm0-ai/vm0/compare/web-v12.91.0...web-v12.92.0) (2026-03-10)
+
+
+### Features
+
+* add ahrefs connector with api-token and oauth auth methods ([#4113](https://github.com/vm0-ai/vm0/issues/4113)) ([5c282b8](https://github.com/vm0-ai/vm0/commit/5c282b80719758dc0734f9c59d525934b03a366f))
+* add mailchimp connector with oauth and api key auth ([#4116](https://github.com/vm0-ai/vm0/issues/4116)) ([eb72755](https://github.com/vm0-ai/vm0/commit/eb72755110adfe18e7f90ac07ecd59cc6038fe9f))
+* add similarweb connector with api key authentication ([#4106](https://github.com/vm0-ai/vm0/issues/4106)) ([ae97fdb](https://github.com/vm0-ai/vm0/commit/ae97fdb399f28100780ca232e3023ff2f31a61b9))
+
+
+### Refactoring
+
+* add clerk_org_id column to all scope-dependent tables ([#4105](https://github.com/vm0-ai/vm0/issues/4105)) ([c8abd1d](https://github.com/vm0-ai/vm0/commit/c8abd1d2d9cce2465f49a99815c0362dddb14469))
+* remove scope_members writes from member management operations ([#4118](https://github.com/vm0-ai/vm0/issues/4118)) ([c26e055](https://github.com/vm0-ai/vm0/commit/c26e055d297405e6d37660451070eab09317608d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.52.0
+
 ## [12.91.0](https://github.com/vm0-ai/vm0/compare/web-v12.90.0...web-v12.91.0) (2026-03-10)
 
 
