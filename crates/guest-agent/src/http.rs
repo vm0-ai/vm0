@@ -55,11 +55,15 @@ pub async fn post_json(
                 return Ok(Some(val));
             }
             Ok(resp) => {
+                let status = resp.status();
                 log_warn!(
                     LOG_TAG,
-                    "HTTP POST failed (attempt {attempt}/{max_retries}): HTTP {}",
-                    resp.status()
+                    "HTTP POST failed (attempt {attempt}/{max_retries}): HTTP {status}",
                 );
+                // 4xx errors (except 429) are deterministic — retrying won't help
+                if status.is_client_error() && status.as_u16() != 429 {
+                    return Err(AgentError::Http(format!("POST {url}: HTTP {status}")));
+                }
             }
             Err(e) => {
                 log_warn!(
@@ -98,11 +102,15 @@ pub async fn put_presigned(url: &str, data: Bytes, content_type: &str) -> Result
         {
             Ok(resp) if resp.status().is_success() => return Ok(()),
             Ok(resp) => {
+                let status = resp.status();
                 log_warn!(
                     LOG_TAG,
-                    "HTTP PUT presigned failed (attempt {attempt}/{max_retries}): HTTP {}",
-                    resp.status()
+                    "HTTP PUT presigned failed (attempt {attempt}/{max_retries}): HTTP {status}",
                 );
+                // 4xx errors (except 429) are deterministic — retrying won't help
+                if status.is_client_error() && status.as_u16() != 429 {
+                    return Err(AgentError::Http(format!("PUT presigned: HTTP {status}")));
+                }
             }
             Err(e) => {
                 log_warn!(
