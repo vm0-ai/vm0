@@ -126,7 +126,7 @@ export async function GET(request: Request) {
   // Get user's existing secrets, vars, connectors
   const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(scope.id, userId),
-    listVariables(scope.id, userId),
+    listVariables(scope.clerkOrgId, userId),
     listConnectors(scope.id, userId),
   ]);
 

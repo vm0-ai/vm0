@@ -282,6 +282,7 @@ async function validateRequiredConfig(
   compose: typeof agentComposes.$inferSelect,
   scopeId: string,
   userId: string,
+  clerkOrgId: string,
 ): Promise<void> {
   if (!compose.headVersionId) return;
 
@@ -302,7 +303,7 @@ async function validateRequiredConfig(
     `Fetched ${platformSecretNames.length} platform secret(s) for validation`,
   );
 
-  const platformVars = await getVariableValues(scopeId, userId);
+  const platformVars = await getVariableValues(clerkOrgId, userId);
   const platformVarNames = Object.keys(platformVars);
   log.debug(
     `Fetched ${platformVarNames.length} platform variable(s) for validation`,
@@ -394,7 +395,7 @@ export async function deploySchedule(
     .limit(1);
 
   // Validate required secrets/vars against schedule's scope + user
-  await validateRequiredConfig(compose, scopeId, userId);
+  await validateRequiredConfig(compose, scopeId, userId, clerkOrgId);
 
   const { triggerType, nextRunAt } = resolveTrigger(request);
 

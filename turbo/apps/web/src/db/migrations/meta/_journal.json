@@ -841,6 +841,13 @@
       "when": 1773400000005,
       "tag": "0119_foamy_dark_beast",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1773400000006,
+      "tag": "0120_talented_elektra",
+      "breakpoints": true
     }
   ]
 }
