@@ -15,19 +15,16 @@ export const statusCommand = new Command()
       // Read config
       const config = await readStorageConfig(cwd);
       if (!config) {
-        console.error(chalk.red("✗ No artifact initialized in this directory"));
-        console.error(chalk.dim("  Run: vm0 artifact init"));
-        process.exit(1);
+        throw new Error("No artifact initialized in this directory", {
+          cause: new Error("Run: vm0 artifact init"),
+        });
       }
 
       if (config.type !== "artifact") {
-        console.error(
-          chalk.red(
-            "✗ This directory is initialized as a volume, not an artifact",
-          ),
+        throw new Error(
+          "This directory is initialized as a volume, not an artifact",
+          { cause: new Error("Use: vm0 volume status") },
         );
-        console.error(chalk.dim("  Use: vm0 volume status"));
-        process.exit(1);
       }
 
       // Start message
@@ -52,9 +49,9 @@ export const statusCommand = new Command()
         }
       } catch (error) {
         if (error instanceof ApiRequestError && error.status === 404) {
-          console.error(chalk.red("✗ Not found on remote"));
-          console.error(chalk.dim("  Run: vm0 artifact push"));
-          process.exit(1);
+          throw new Error("Not found on remote", {
+            cause: new Error("Run: vm0 artifact push"),
+          });
         }
         throw error;
       }
