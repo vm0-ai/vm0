@@ -848,6 +848,13 @@
       "when": 1773400000006,
       "tag": "0120_talented_elektra",
       "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1773400000007,
+      "tag": "0121_sturdy_magdalene",
+      "breakpoints": true
     }
   ]
 }
