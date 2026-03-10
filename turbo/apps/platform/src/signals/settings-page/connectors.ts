@@ -303,7 +303,9 @@ export const submitApiToken$ = command(
   ) => {
     const fetchFn = get(fetch$);
     for (const [name, value] of Object.entries(inputSecrets)) {
-      if (!value) continue;
+      if (!value) {
+        continue;
+      }
       const resp = await fetchFn("/api/secrets", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
