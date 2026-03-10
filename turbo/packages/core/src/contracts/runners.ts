@@ -84,11 +84,7 @@ export const runnersPollContract = c.router({
  */
 export const connectorEntrySchema = z.object({
   name: z.string(),
-  targets: z.array(z.string()),
-  placeholder: z.string(),
-  auth: z.object({
-    headers: z.record(z.string(), z.string()),
-  }),
+  base: z.string(),
 });
 
 /**

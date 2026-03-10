@@ -29,7 +29,12 @@ export async function GET(request: Request) {
 
   try {
     const { scope } = await requireScopeFromRequest(request, userId);
-    const status = await getScopeMembers(userId, scope.id);
+    const status = await getScopeMembers(
+      userId,
+      scope.clerkOrgId,
+      scope.slug,
+      scope.createdAt,
+    );
     return NextResponse.json(status);
   } catch (error) {
     if (isBadRequest(error)) {

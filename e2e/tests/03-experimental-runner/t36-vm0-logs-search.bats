@@ -11,11 +11,11 @@
 load '../../helpers/setup'
 
 setup_file() {
-    export AGENT_NAME="e2e-t34-$(date +%s%3N)-$RANDOM"
+    export AGENT_NAME="e2e-t36-$(date +%s%3N)-$RANDOM"
 }
 
 setup() {
-    create_test_volume "e2e-vol-t34"
+    create_test_volume "e2e-vol-t36"
 
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
     export ARTIFACT_NAME="e2e-search-test-$(date +%s%3N)-$RANDOM"

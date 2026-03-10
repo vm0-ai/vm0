@@ -94,6 +94,12 @@ const agentDefinitionSchema = z.object({
    */
   experimental_firewall: experimentalFirewallSchema.optional(),
   /**
+   * External service connectors (e.g., github, slack).
+   * Connector env vars are injected as placeholders; the proxy replaces them at runtime.
+   * Requires experimental_runner to be configured.
+   */
+  experimental_connectors: z.array(z.string()).optional(),
+  /**
    * @deprecated Server-resolved field. User input is ignored.
    * @internal
    */

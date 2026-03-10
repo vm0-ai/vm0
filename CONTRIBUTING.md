@@ -4,7 +4,7 @@
 
 ## Development Setup
 
-This project uses [Dev Containers](https://containers.dev/) for development. The dev container includes all required dependencies and tools.
+This project uses [Dev Containers](https://containers.dev/) for development. The dev container includes all required dependencies (Node.js, pnpm, PostgreSQL, etc.).
 
 ### Prerequisites
 
@@ -12,28 +12,35 @@ This project uses [Dev Containers](https://containers.dev/) for development. The
 - [VS Code](https://code.visualstudio.com/) with [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
 - [mkcert](https://github.com/FiloSottile/mkcert) for local SSL certificates
 
-**Required SaaS services (community contributors need to register these before running the setup):**
+### External Services
 
-| Service | Purpose | Tokens needed | Dashboard |
-|---------|---------|---------------|-----------|
-| [Clerk](https://clerk.com) | User authentication and session management | `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY` | [dashboard.clerk.com](https://dashboard.clerk.com) |
-| [E2B](https://e2b.dev) | Cloud sandbox runtime for executing agent code | `E2B_API_KEY` | [e2b.dev/dashboard](https://e2b.dev/dashboard) |
-| [Cloudflare R2](https://www.cloudflare.com/products/r2/) | Object storage for user files and artifacts | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_USER_STORAGES_BUCKET_NAME` | [dash.cloudflare.com](https://dash.cloudflare.com) |
-| [Slack API](https://api.slack.com) | Slack app integration for notifications and commands | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET` | [api.slack.com/apps](https://api.slack.com/apps) |
+You need to register the following services and obtain API keys:
 
-### SSL Certificates and Hosts Configuration
+**Required** (dev server won't start without these):
 
-Before opening the project in VS Code, you need to set up SSL certificates and hosts on your **host machine** (the machine running Docker, not inside the container).
+| Service | Purpose | Keys needed |
+|---------|---------|-------------|
+| [Clerk](https://clerk.com) | User authentication and session management | `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY` |
+| [Cloudflare R2](https://www.cloudflare.com/products/r2/) | Object storage for user files and artifacts | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_USER_STORAGES_BUCKET_NAME` |
 
-#### 1. Install mkcert
+**Optional** (only needed for specific features):
 
-**macOS:**
+| Service | Purpose | Keys needed |
+|---------|---------|-------------|
+| [E2B](https://e2b.dev) | Cloud sandbox for running agents | `E2B_API_KEY` |
+
+All other environment variables (OAuth connectors, Slack, Axiom, etc.) can be left empty.
+
+### SSL Certificates
+
+Before opening the project in a dev container, generate SSL certificates on your **host machine**:
+
+**Install mkcert:**
+
 ```bash
+# macOS
 brew install mkcert
-```
 
-**Linux:**
-```bash
 # Debian/Ubuntu
 sudo apt install mkcert
 
@@ -41,16 +48,12 @@ sudo apt install mkcert
 sudo pacman -S mkcert
 ```
 
-#### 2. Generate SSL Certificates
-
-Run the certificate generation script from the project root on your host machine:
+**Generate certificates:**
 
 ```bash
 cd /path/to/vm0
 bash scripts/generate-certs.sh
 ```
-
-This script uses mkcert to create locally-trusted SSL certificates for development.
 
 ### Getting Started
 
@@ -62,43 +65,66 @@ This script uses mkcert to create locally-trusted SSL certificates for developme
 
 ### Environment Variables
 
-Run the sync script to populate environment variables from `.env.local.tpl` templates:
+Create `.env.local` files manually from the `.env.local.tpl` templates:
 
 ```bash
-scripts/sync-env.sh
+# Copy templates
+cp turbo/apps/web/.env.local.tpl turbo/apps/web/.env.local
+cp turbo/apps/platform/.env.local.tpl turbo/apps/platform/.env.local
 ```
 
-The script will ask if you have 1Password access:
-- **VM0 team members**: Choose yes to auto-sync from 1Password
-- **Community contributors**: Choose no to enter values interactively (only missing values are prompted)
+Then edit the `.env.local` files:
 
-`SECRETS_ENCRYPTION_KEY` is auto-generated if you press Enter when prompted.
-
-### Local Web Development
-
-To run the web application locally with HTTPS:
-
-1. **Ensure SSL certificates and hosts are configured** (see [SSL Certificates and Hosts Configuration](#ssl-certificates-and-hosts-configuration) above)
-
-2. **Start the dev server** (inside dev container):
+1. Replace `op://...` values for required services (Clerk, E2B, Cloudflare R2) with your actual keys
+2. For `SECRETS_ENCRYPTION_KEY`, generate one:
    ```bash
-   bash scripts/prepare.sh && cd turbo && pnpm dev
+   openssl rand -hex 32
+   ```
+3. For `PLATFORM_URL`, use `https://vm7.ai:8443`
+4. Leave optional `op://...` values empty if you don't need those integrations
+
+### Running Tests
+
+Inside the dev container:
+
+```bash
+cd turbo && pnpm install && pnpm -F web db:migrate && pnpm build && pnpm test
+```
+
+- `db:migrate` sets up the local database schema
+- `pnpm build` builds shared packages (e.g. `@vm0/core`)
+
+### Running the Dev Server
+
+1. Run the preparation script (installs deps, migrates DB):
+   ```bash
+   bash scripts/prepare.sh
    ```
 
-3. **Access the application**:
-   Open https://vm7.ai:8443/ in your browser.
+2. Start the dev server:
+   ```bash
+   cd turbo && pnpm dev
+   ```
 
-### Local Testing
+3. Access the application at https://vm7.ai:8443/
 
-Run tests inside the dev container:
+### Accessing the Local Database
+
+The dev container includes a PostgreSQL instance:
 
 ```bash
-cd turbo && pnpm install && pnpm test
+psql $DATABASE_URL
 ```
+
+Useful commands: `\dt` (list tables), `\d tablename` (table schema), `\q` (quit).
 
 ## Pull Request Process
 
 1. Create a new branch from `main`
 2. Make your changes
-3. Commit your changes following [Conventional Commits](https://www.conventionalcommits.org/) format
-4. Push your branch and create a pull request
+3. Commit following [Conventional Commits](https://www.conventionalcommits.org/) format
+4. Run quality checks before pushing:
+   ```bash
+   cd turbo && pnpm turbo run lint && pnpm check-types && pnpm format && pnpm vitest
+   ```
+5. Push your branch and create a pull request

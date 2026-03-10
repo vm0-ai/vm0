@@ -14,6 +14,7 @@ const mockClerkClient = vi.mocked(clerkClient);
 export function setupClerkOrgMock(options: {
   userId: string;
   orgId?: string;
+  orgSlug?: string;
   email?: string;
   memberships?: Array<{
     userId: string;
@@ -22,6 +23,7 @@ export function setupClerkOrgMock(options: {
   }>;
 }): void {
   const orgId = options.orgId ?? `org_${options.userId}`;
+  const orgSlug = options.orgSlug ?? `org-${options.userId}`;
   const email = options.email;
   const memberships = options.memberships ?? [
     { userId: options.userId, role: "org:admin", createdAt: Date.now() },
@@ -84,7 +86,7 @@ export function setupClerkOrgMock(options: {
       ),
     getOrganizationMembershipList: vi.fn().mockResolvedValue({
       data: memberships.map((m) => ({
-        organization: { id: orgId },
+        organization: { id: orgId, slug: orgSlug, name: orgSlug },
         role: m.role,
         publicUserData: { userId: m.userId },
       })),

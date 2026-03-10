@@ -12,8 +12,8 @@ import {
   getConnectorProxyConfig,
   connectorTypeSchema,
   MODEL_PROVIDER_TYPES,
-  type ConnectorType,
   type ExperimentalConnectors,
+  type ConnectorType,
   type ModelProviderType,
   type ModelProviderFramework,
 } from "@vm0/core";
@@ -396,9 +396,12 @@ async function refreshConnectorAccessToken(
  * Result of connector credential resolution
  */
 interface ConnectorCredentialResult {
-  credentials: Record<string, string> | undefined;
-  /** Environment variables to inject from connected connectors */
+  /** All raw connector secrets (for masking and direct secret reference resolution) */
+  connectorSecrets: Record<string, string> | undefined;
+  /** Environment variables mapped from OAuth connectors via environmentMapping */
   injectedEnvVars: Record<string, string> | undefined;
+  /** Connected connector type names (used to filter experimental_connectors placeholders) */
+  connectedTypes: string[];
 }
 
 /**
@@ -411,42 +414,53 @@ async function resolveConnectorCredentials(
   userId: string,
   clerkOrgId: string,
 ): Promise<ConnectorCredentialResult> {
-  let credentials: Record<string, string> | undefined;
-
-  // Query connected connectors directly (only need the type for environmentMapping)
+  // Query connected connectors (need type for environmentMapping, authMethod for refresh filter)
   const userConnectors = await globalThis.services.db
-    .select({ type: connectors.type })
+    .select({ type: connectors.type, authMethod: connectors.authMethod })
     .from(connectors)
     .where(and(eq(connectors.scopeId, scopeId), eq(connectors.userId, userId)));
 
   if (userConnectors.length === 0) {
-    return { credentials, injectedEnvVars: undefined };
+    return {
+      connectorSecrets: undefined,
+      injectedEnvVars: undefined,
+      connectedTypes: [],
+    };
   }
 
   const connectorSecrets = await getSecretValues(scopeId, userId, "connector");
   if (Object.keys(connectorSecrets).length === 0) {
-    return { credentials, injectedEnvVars: undefined };
+    return {
+      connectorSecrets: undefined,
+      injectedEnvVars: undefined,
+      connectedTypes: [],
+    };
   }
-
-  const allInjectedEnvVars: Record<string, string> = {};
 
   // Parse connector types upfront
   const validConnectors = userConnectors
-    .map((c) => connectorTypeSchema.safeParse(c.type))
-    .filter((r) => r.success)
-    .map((r) => r.data);
+    .map((c) => {
+      const parsed = connectorTypeSchema.safeParse(c.type);
+      return parsed.success
+        ? { type: parsed.data, authMethod: c.authMethod }
+        : null;
+    })
+    .filter(
+      (c): c is { type: ConnectorType; authMethod: string } => c !== null,
+    );
 
-  // Refresh all OAuth tokens in parallel.
+  // Refresh OAuth tokens in parallel.
   // Safe: each connector writes to distinct keys in connectorSecrets (e.g. github_access_token
   // vs slack_access_token), so concurrent mutations don't conflict.
   await Promise.all(
     validConnectors
-      .filter((type) => {
+      .filter(({ type, authMethod }) => {
+        if (authMethod === "api-token") return false;
         const handler =
           PROVIDER_HANDLERS[type as keyof typeof PROVIDER_HANDLERS];
         return handler?.refreshToken;
       })
-      .map((type) =>
+      .map(({ type }) =>
         refreshConnectorAccessToken(
           type,
           scopeId,
@@ -457,18 +471,21 @@ async function resolveConnectorCredentials(
       ),
   );
 
-  // Resolve environment mappings (uses refreshed secrets)
-  for (const connectorType of validConnectors) {
-    const mapping = getConnectorEnvironmentMapping(connectorType);
+  // Resolve OAuth environment mappings only.
+  // API-token secrets are already stored under the target name (e.g. FIGMA_TOKEN),
+  // so they're resolved directly from connectorSecrets via mergeConnectorSecretsForReferences.
+  const allInjectedEnvVars: Record<string, string> = {};
 
+  for (const { type: connectorType, authMethod } of validConnectors) {
+    if (authMethod === "api-token") continue;
+
+    const mapping = getConnectorEnvironmentMapping(connectorType);
     for (const [envVar, valueRef] of Object.entries(mapping)) {
       if (valueRef.startsWith("$secrets.")) {
         const secretName = valueRef.slice("$secrets.".length);
         const secretValue = connectorSecrets[secretName];
         if (secretValue) {
           allInjectedEnvVars[envVar] = secretValue;
-          credentials = credentials || {};
-          credentials[secretName] = secretValue;
         }
       } else {
         allInjectedEnvVars[envVar] = valueRef;
@@ -482,7 +499,11 @@ async function resolveConnectorCredentials(
     );
   }
 
-  return { credentials, injectedEnvVars: allInjectedEnvVars };
+  return {
+    connectorSecrets,
+    injectedEnvVars: allInjectedEnvVars,
+    connectedTypes: validConnectors.map((c) => c.type),
+  };
 }
 
 /**
@@ -780,15 +801,17 @@ async function resolveCredentialsAndEnvironment(
       fetchAndMergeVariables(scopeId, userId, vars),
     ]);
 
-  // Merge credentials from all sources (connector > model-provider > user).
-  // Return undefined when no source contributed credentials (preserves original behavior).
+  // Merge credentials from all sources for masking.
+  // All raw connector secrets are included (both OAuth intermediate and api-token target names).
   const hasCredentials =
-    dbSecrets || modelProviderResult.credentials || connectorResult.credentials;
+    dbSecrets ||
+    modelProviderResult.credentials ||
+    connectorResult.connectorSecrets;
   const credentials: Record<string, string> | undefined = hasCredentials
     ? {
         ...dbSecrets,
         ...modelProviderResult.credentials,
-        ...connectorResult.credentials,
+        ...connectorResult.connectorSecrets,
       }
     : undefined;
 
@@ -796,16 +819,26 @@ async function resolveCredentialsAndEnvironment(
   let secrets = mergeSecrets(dbSecrets, cliSecrets);
 
   // Merge connector secrets into secrets pool for explicit ${{ secrets.* }} references only.
-  // Connector secrets only fill gaps — user/CLI secrets take precedence.
+  // Two sources: raw connectorSecrets (api-token names like FIGMA_TOKEN) and
+  // injectedEnvVars (OAuth-mapped names like FIGMA_TOKEN from $secrets.FIGMA_ACCESS_TOKEN).
+  // injectedEnvVars overrides connectorSecrets so OAuth-mapped names take precedence.
+  const connectorEnvPool =
+    connectorResult.connectorSecrets || connectorResult.injectedEnvVars
+      ? {
+          ...connectorResult.connectorSecrets,
+          ...connectorResult.injectedEnvVars,
+        }
+      : undefined;
   secrets = mergeConnectorSecretsForReferences(
     firstAgent?.environment,
     secrets,
-    connectorResult.injectedEnvVars,
+    connectorEnvPool,
   );
 
   const modelProviderEnvVars = modelProviderResult.injectedEnvVars;
 
-  // Expand environment variables from compose config
+  // Expand environment variables from compose config.
+  // Connector placeholder env vars are handled internally (like sealSecrets).
   const { environment: expandedEnvironment } = expandEnvironmentFromCompose(
     agentCompose,
     mergedVars,
@@ -814,6 +847,7 @@ async function resolveCredentialsAndEnvironment(
     userId,
     runId,
     checkEnv,
+    connectorResult.connectedTypes,
   );
 
   // Auto-inject model provider env vars into environment
@@ -946,13 +980,14 @@ interface BuildContextResult {
 }
 
 /**
- * Build ExperimentalConnectors from agent compose's experimental_connectors array.
+ * Build ExperimentalConnectors manifest from agent compose's experimental_connectors array.
  * Returns null if no connectors are declared.
  *
  * For each declared connector name:
  * 1. Validates it's a known connector type with proxy config
- * 2. Looks up targets and auth from CONNECTOR_PROXY_CONFIGS
- * 3. Generates a placeholder token (vm0_conn_{name})
+ * 2. Flattens services to one entry per base URL (for runner-side matching)
+ *
+ * Placeholder env var injection is handled by expandEnvironmentFromCompose.
  */
 function buildExperimentalConnectors(
   agentCompose: unknown,
@@ -966,15 +1001,15 @@ function buildExperimentalConnectors(
   const connectorNames = firstAgent?.experimental_connectors;
   if (!connectorNames || connectorNames.length === 0) return null;
 
-  const connectors = connectorNames.map((name) => {
-    // Validate connector type exists
+  const entries: { name: string; base: string }[] = [];
+
+  for (const name of connectorNames) {
     const parsed = connectorTypeSchema.safeParse(name);
     if (!parsed.success) {
       throw badRequest(`Unknown connector type: "${name}"`);
     }
-    const connectorType = parsed.data as ConnectorType;
+    const connectorType = parsed.data;
 
-    // Look up proxy config (targets + auth)
     const proxyConfig = getConnectorProxyConfig(connectorType);
     if (!proxyConfig) {
       throw badRequest(
@@ -982,15 +1017,12 @@ function buildExperimentalConnectors(
       );
     }
 
-    return {
-      name,
-      targets: proxyConfig.targets,
-      placeholder: `vm0_conn_${name}`,
-      auth: proxyConfig.auth,
-    };
-  });
+    for (const svc of proxyConfig.services) {
+      entries.push({ name, base: svc.base });
+    }
+  }
 
-  return { connectors };
+  return { connectors: entries };
 }
 
 /**
@@ -1121,8 +1153,9 @@ export async function buildExecutionContext(
     ? { ...resolvedCredentials, ...secrets }
     : secrets;
 
-  // Build experimental connectors manifest from agent compose
-  const experimentalConnectors = buildExperimentalConnectors(agentCompose);
+  // Build experimental connectors manifest (name + base entries for the runner)
+  const experimentalConnectors =
+    buildExperimentalConnectors(agentCompose) ?? undefined;
 
   // Build final execution context
   return {
@@ -1143,7 +1176,7 @@ export async function buildExecutionContext(
       volumeVersions,
       environment,
       userTimezone,
-      experimentalConnectors: experimentalConnectors ?? undefined,
+      experimentalConnectors,
       resumeSession,
       resumeArtifact,
       // Metadata for vm0_start event

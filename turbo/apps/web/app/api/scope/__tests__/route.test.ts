@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { clerkClient } from "@clerk/nextjs/server";
 import { GET, POST, PUT } from "../route";
 import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../src/__tests__/test-helpers";
@@ -346,6 +347,45 @@ describe("/api/scope", () => {
 
     it("should update scope slug with force flag", async () => {
       const newSlug = `updated-${Date.now()}`;
+
+      const request = createTestRequest("http://localhost:3000/api/scope", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: newSlug, force: true }),
+      });
+      const response = await PUT(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.slug).toBe(newSlug);
+    });
+
+    it("should dual-write slug to Clerk org on update", async () => {
+      const newSlug = `dualwrite-${Date.now()}`;
+
+      const request = createTestRequest("http://localhost:3000/api/scope", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: newSlug, force: true }),
+      });
+      const response = await PUT(request);
+
+      expect(response.status).toBe(200);
+
+      const client = await clerkClient();
+      expect(client.organizations.updateOrganization).toHaveBeenCalledWith(
+        expect.stringMatching(/^org_mock_/),
+        { slug: newSlug },
+      );
+    });
+
+    it("should succeed even if Clerk dual-write fails", async () => {
+      const client = await clerkClient();
+      vi.mocked(client.organizations.updateOrganization).mockRejectedValueOnce(
+        new Error("Clerk API unavailable"),
+      );
+
+      const newSlug = `resilient-${Date.now()}`;
 
       const request = createTestRequest("http://localhost:3000/api/scope", {
         method: "PUT",

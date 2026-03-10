@@ -5,6 +5,7 @@ import {
   type OAuthTokenResult,
   type ProviderHandler,
 } from "./provider-types";
+import { ahrefsHandler } from "./providers/ahrefs-handler";
 import { airtableHandler } from "./providers/airtable-handler";
 import { asanaHandler } from "./providers/asana-handler";
 import { canvaHandler } from "./providers/canva-handler";
@@ -35,6 +36,7 @@ import { sentryHandler } from "./providers/sentry-handler";
 import { vercelHandler } from "./providers/vercel-handler";
 import { xHandler } from "./providers/x-handler";
 import { supabaseHandler } from "./providers/supabase-handler";
+import { mailchimpHandler } from "./providers/mailchimp-handler";
 import { todoistHandler } from "./providers/todoist-handler";
 import { webflowHandler } from "./providers/webflow-handler";
 import { outlookCalendarHandler } from "./providers/outlook-calendar-handler";
@@ -50,6 +52,7 @@ export const PROVIDER_HANDLERS: Record<
   Exclude<ConnectorType, "computer">,
   ProviderHandler
 > = {
+  ahrefs: ahrefsHandler,
   airtable: airtableHandler,
   asana: asanaHandler,
   canva: canvaHandler,
@@ -67,6 +70,7 @@ export const PROVIDER_HANDLERS: Record<
   "google-drive": googleDriveHandler,
   "google-sheets": googleSheetsHandler,
   linear: linearHandler,
+  mailchimp: mailchimpHandler,
   mercury: mercuryHandler,
   monday: mondayHandler,
   neon: neonHandler,

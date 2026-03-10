@@ -131,14 +131,18 @@ async function getScopeWithClerkOrg(scopeId: string) {
 
 /**
  * Get scope members list.
+ * Reads membership data directly from Clerk API.
  */
-export async function getScopeMembers(clerkUserId: string, scopeId: string) {
-  const scope = await getScopeWithClerkOrg(scopeId);
-
+export async function getScopeMembers(
+  clerkUserId: string,
+  clerkOrgId: string,
+  scopeSlug: string,
+  createdAt: Date,
+) {
   // Get members from Clerk
   const client = await clerkClient();
   const memberships = await client.organizations.getOrganizationMembershipList({
-    organizationId: scope.clerkOrgId,
+    organizationId: clerkOrgId,
   });
 
   // Batch-resolve emails for all members in a single Clerk API call
@@ -178,10 +182,10 @@ export async function getScopeMembers(clerkUserId: string, scopeId: string) {
     : "member";
 
   return {
-    slug: scope.slug,
+    slug: scopeSlug,
     role: callerRole,
     members,
-    createdAt: scope.createdAt.toISOString(),
+    createdAt: createdAt.toISOString(),
   };
 }
 
@@ -208,21 +212,6 @@ export async function inviteMember(
     inviterUserId: callerUserId,
     role: "org:member",
   });
-
-  // Resolve invitee's Clerk user ID (if they already have an account)
-  // and create scope_members record eagerly so they have access immediately.
-  const users = await client.users.getUserList({ emailAddress: [email] });
-  if (users.data.length > 0) {
-    const inviteeUserId = users.data[0]!.id;
-    await globalThis.services.db
-      .insert(scopeMembers)
-      .values({
-        scopeId,
-        userId: inviteeUserId,
-        role: "member",
-      })
-      .onConflictDoNothing();
-  }
 
   log.debug("Invitation sent", { scopeId, email });
 }
@@ -277,16 +266,6 @@ export async function removeMember(
     userId: targetUserId,
   });
 
-  // Remove from scope_members
-  await globalThis.services.db
-    .delete(scopeMembers)
-    .where(
-      and(
-        eq(scopeMembers.scopeId, scopeId),
-        eq(scopeMembers.userId, targetUserId),
-      ),
-    );
-
   log.debug("Member removed", { scopeId, targetUserId, email });
 }
 
@@ -314,36 +293,21 @@ export async function leaveScope(
     userId: clerkUserId,
   });
 
-  // Remove from scope_members
-  await globalThis.services.db
-    .delete(scopeMembers)
-    .where(
-      and(
-        eq(scopeMembers.scopeId, scopeId),
-        eq(scopeMembers.userId, clerkUserId),
-      ),
-    );
-
   log.debug("User left scope", { scopeId, clerkUserId });
 }
 
 /**
- * Get all scopes accessible to a user (via scope_members).
+ * Get all scopes accessible to a user (via Clerk organization memberships).
  */
 export async function getUserAccessibleScopes(
   clerkUserId: string,
 ): Promise<Array<{ slug: string; role: string }>> {
-  const memberScopes = await globalThis.services.db
-    .select({
-      slug: scopes.slug,
-      role: scopeMembers.role,
-    })
-    .from(scopeMembers)
-    .innerJoin(scopes, eq(scopeMembers.scopeId, scopes.id))
-    .where(eq(scopeMembers.userId, clerkUserId));
-
-  return memberScopes.map((s) => ({
-    slug: s.slug,
-    role: s.role,
+  const client = await clerkClient();
+  const memberships = await client.users.getOrganizationMembershipList({
+    userId: clerkUserId,
+  });
+  return memberships.data.map((m) => ({
+    slug: m.organization.slug,
+    role: mapClerkRole(m.role),
   }));
 }
