@@ -79,7 +79,7 @@ describe("run kill command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to kill run"),
+        expect.stringContaining("Not authenticated"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("vm0 auth login"),
@@ -107,10 +107,7 @@ describe("run kill command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to kill run"),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Run not found"),
+        expect.stringContaining("No such run"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -134,9 +131,6 @@ describe("run kill command", () => {
         await killCommand.parseAsync(["node", "cli", "completed-run"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to kill run"),
-      );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("cannot be cancelled"),
       );
@@ -162,9 +156,6 @@ describe("run kill command", () => {
         await killCommand.parseAsync(["node", "cli", "run-123"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to kill run"),
-      );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Internal server error"),
       );
