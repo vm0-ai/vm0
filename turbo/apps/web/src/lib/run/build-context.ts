@@ -454,8 +454,7 @@ async function resolveConnectorCredentials(
   // vs slack_access_token), so concurrent mutations don't conflict.
   await Promise.all(
     validConnectors
-      .filter(({ type, authMethod }) => {
-        if (authMethod === "api-token") return false;
+      .filter(({ type }) => {
         const handler =
           PROVIDER_HANDLERS[type as keyof typeof PROVIDER_HANDLERS];
         return handler?.refreshToken;
@@ -471,14 +470,10 @@ async function resolveConnectorCredentials(
       ),
   );
 
-  // Resolve OAuth environment mappings only.
-  // API-token secrets are already stored under the target name (e.g. FIGMA_TOKEN),
-  // so they're resolved directly from connectorSecrets via mergeConnectorSecretsForReferences.
+  // Resolve environment mappings from connectors.
   const allInjectedEnvVars: Record<string, string> = {};
 
-  for (const { type: connectorType, authMethod } of validConnectors) {
-    if (authMethod === "api-token") continue;
-
+  for (const { type: connectorType } of validConnectors) {
     const mapping = getConnectorEnvironmentMapping(connectorType);
     for (const [envVar, valueRef] of Object.entries(mapping)) {
       if (valueRef.startsWith("$secrets.")) {

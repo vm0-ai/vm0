@@ -2,7 +2,6 @@ import { initClient } from "@ts-rest/core";
 import {
   connectorsMainContract,
   connectorsByTypeContract,
-  connectorTokenContract,
   type ConnectorType,
   type ConnectorListResponse,
   type ConnectorResponse,
@@ -67,26 +66,4 @@ export async function getConnector(
   }
 
   handleError(result, `Failed to get connector "${type}"`);
-}
-
-/**
- * Submit API token for a connector
- */
-export async function submitConnectorToken(
-  type: ConnectorType,
-  inputSecrets: Record<string, string>,
-): Promise<ConnectorResponse> {
-  const config = await getClientConfig();
-  const client = initClient(connectorTokenContract, config);
-
-  const result = await client.submit({
-    params: { type },
-    body: { secrets: inputSecrets },
-  });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, `Failed to submit token for "${type}"`);
 }

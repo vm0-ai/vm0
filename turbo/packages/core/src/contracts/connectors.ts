@@ -2052,10 +2052,49 @@ export function hasRequiredScopes(
 }
 
 /**
+ * Get required secret names for a connector's api-token auth method.
+ * Returns null if the connector type does not support api-token auth.
+ */
+export function getApiTokenRequiredSecretNames(
+  type: ConnectorType,
+): string[] | null {
+  const config = CONNECTOR_TYPES[type];
+  const apiTokenConfig = config.authMethods["api-token"] as
+    | ConnectorAuthMethodConfig
+    | undefined;
+  if (!apiTokenConfig) return null;
+
+  return Object.entries(apiTokenConfig.secrets)
+    .filter(([, cfg]) => cfg.required)
+    .map(([name]) => name);
+}
+
+/**
+ * Derive which connector types are "connected" via api-token based on present user secret names.
+ * A connector type is considered connected if all its required api-token secrets exist.
+ */
+export function deriveApiTokenConnectedTypes(
+  userSecretNames: Set<string>,
+): ConnectorType[] {
+  const allTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+  const connected: ConnectorType[] = [];
+
+  for (const type of allTypes) {
+    const requiredNames = getApiTokenRequiredSecretNames(type);
+    if (!requiredNames || requiredNames.length === 0) continue;
+    if (requiredNames.every((name) => userSecretNames.has(name))) {
+      connected.push(type);
+    }
+  }
+
+  return connected;
+}
+
+/**
  * Connector response schema
  */
 export const connectorResponseSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().uuid().nullable(),
   type: connectorTypeSchema,
   authMethod: z.string(),
   externalId: z.string().nullable(),
@@ -2299,30 +2338,3 @@ export const computerConnectorContract = c.router({
 });
 
 export type ComputerConnectorContract = typeof computerConnectorContract;
-
-/**
- * Connector token contract for /api/connectors/[type]/token
- * Submit API token for connectors that support the api-token auth method
- */
-export const connectorTokenContract = c.router({
-  submit: {
-    method: "POST",
-    path: "/api/connectors/:type/token",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      type: connectorTypeSchema,
-    }),
-    body: z.object({
-      secrets: z.record(z.string(), z.string()),
-    }),
-    responses: {
-      200: connectorResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Submit API token for a connector",
-  },
-});
-
-export type ConnectorTokenContract = typeof connectorTokenContract;

@@ -14,7 +14,7 @@ import {
   type ConnectorType,
 } from "@vm0/core";
 import { getApiUrl, getActiveToken } from "../../lib/api/config";
-import { deleteConnector, submitConnectorToken } from "../../lib/api";
+import { deleteConnector, setSecret } from "../../lib/api";
 import {
   checkComputerDependencies,
   startComputerServices,
@@ -106,7 +106,13 @@ async function connectViaApiToken(
     }
   }
 
-  await submitConnectorToken(connectorType, inputSecrets);
+  for (const [name, value] of Object.entries(inputSecrets)) {
+    await setSecret({
+      name,
+      value,
+      description: `API token for ${config.label} connector`,
+    });
+  }
   console.log(
     chalk.green(`\n✓ ${config.label} connected successfully via API token!`),
   );

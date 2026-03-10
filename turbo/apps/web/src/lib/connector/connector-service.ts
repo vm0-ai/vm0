@@ -4,6 +4,8 @@ import {
   type ConnectorType,
   type ConnectorResponse,
   connectorTypeSchema,
+  deriveApiTokenConnectedTypes,
+  getApiTokenRequiredSecretNames,
 } from "@vm0/core";
 import { connectors } from "../../db/schema/connector";
 import { secrets } from "../../db/schema/secret";
@@ -34,29 +36,48 @@ function getSecretNameForConnector(type: ConnectorType): string {
 }
 
 /**
- * List all connectors for a scope
+ * List all connectors for a scope.
+ * Returns OAuth connectors from DB plus derived api-token connectors
+ * based on user secrets that match api-token required secret names.
  */
 export async function listConnectors(
   scopeId: string,
   userId: string,
 ): Promise<ConnectorResponse[]> {
-  const result = await globalThis.services.db
-    .select({
-      id: connectors.id,
-      type: connectors.type,
-      authMethod: connectors.authMethod,
-      externalId: connectors.externalId,
-      externalUsername: connectors.externalUsername,
-      externalEmail: connectors.externalEmail,
-      oauthScopes: connectors.oauthScopes,
-      createdAt: connectors.createdAt,
-      updatedAt: connectors.updatedAt,
-    })
-    .from(connectors)
-    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.userId, userId)))
-    .orderBy(connectors.type);
+  const db = globalThis.services.db;
 
-  return result.map((row) => ({
+  // Query OAuth connectors from DB and user secret names in parallel
+  const [dbResult, userSecretRows] = await Promise.all([
+    db
+      .select({
+        id: connectors.id,
+        type: connectors.type,
+        authMethod: connectors.authMethod,
+        externalId: connectors.externalId,
+        externalUsername: connectors.externalUsername,
+        externalEmail: connectors.externalEmail,
+        oauthScopes: connectors.oauthScopes,
+        createdAt: connectors.createdAt,
+        updatedAt: connectors.updatedAt,
+      })
+      .from(connectors)
+      .where(
+        and(eq(connectors.scopeId, scopeId), eq(connectors.userId, userId)),
+      )
+      .orderBy(connectors.type),
+    db
+      .select({ name: secrets.name })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.scopeId, scopeId),
+          eq(secrets.userId, userId),
+          eq(secrets.type, "user"),
+        ),
+      ),
+  ]);
+
+  const dbConnectors: ConnectorResponse[] = dbResult.map((row) => ({
     id: row.id,
     type: parseConnectorType(row.type),
     authMethod: row.authMethod,
@@ -67,10 +88,35 @@ export async function listConnectors(
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }));
+
+  // Derive api-token connected types from user secrets
+  const userSecretNames = new Set(userSecretRows.map((r) => r.name));
+  const derivedTypes = deriveApiTokenConnectedTypes(userSecretNames);
+
+  // DB record takes precedence over derived
+  const dbTypeSet = new Set(dbConnectors.map((c) => c.type));
+  const now = new Date().toISOString();
+  const derivedConnectors: ConnectorResponse[] = derivedTypes
+    .filter((type) => !dbTypeSet.has(type))
+    .map((type) => ({
+      id: null,
+      type,
+      authMethod: "api-token",
+      externalId: null,
+      externalUsername: null,
+      externalEmail: null,
+      oauthScopes: null,
+      createdAt: now,
+      updatedAt: now,
+    }));
+
+  return [...dbConnectors, ...derivedConnectors];
 }
 
 /**
- * Get a specific connector by type
+ * Get a specific connector by type.
+ * Returns DB record for OAuth connectors, or derived response for api-token
+ * connectors whose required user secrets are all present.
  */
 export async function getConnector(
   scopeId: string,
@@ -99,21 +145,50 @@ export async function getConnector(
     )
     .limit(1);
 
-  if (!result[0]) {
-    return null;
+  if (result[0]) {
+    const row = result[0];
+    return {
+      id: row.id,
+      type: parseConnectorType(row.type),
+      authMethod: row.authMethod,
+      externalId: row.externalId,
+      externalUsername: row.externalUsername,
+      externalEmail: row.externalEmail,
+      oauthScopes: row.oauthScopes ? JSON.parse(row.oauthScopes) : null,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
   }
 
-  const row = result[0];
+  // Check if type supports api-token and all required user secrets exist
+  const requiredNames = getApiTokenRequiredSecretNames(type);
+  if (!requiredNames || requiredNames.length === 0) return null;
+
+  const userSecretRows = await globalThis.services.db
+    .select({ name: secrets.name })
+    .from(secrets)
+    .where(
+      and(
+        eq(secrets.scopeId, scopeId),
+        eq(secrets.userId, userId),
+        eq(secrets.type, "user"),
+      ),
+    );
+
+  const userSecretNames = new Set(userSecretRows.map((r) => r.name));
+  if (!requiredNames.every((name) => userSecretNames.has(name))) return null;
+
+  const now = new Date().toISOString();
   return {
-    id: row.id,
-    type: parseConnectorType(row.type),
-    authMethod: row.authMethod,
-    externalId: row.externalId,
-    externalUsername: row.externalUsername,
-    externalEmail: row.externalEmail,
-    oauthScopes: row.oauthScopes ? JSON.parse(row.oauthScopes) : null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    id: null,
+    type,
+    authMethod: "api-token",
+    externalId: null,
+    externalUsername: null,
+    externalEmail: null,
+    oauthScopes: null,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -266,148 +341,9 @@ export async function upsertOAuthConnector(
 }
 
 /**
- * Create or update a connector with API token
- * Stores secrets directly without OAuth flow
- */
-export async function upsertApiTokenConnector(
-  scopeId: string,
-  userId: string,
-  type: ConnectorType,
-  inputSecrets: Record<string, string>,
-  clerkOrgId: string,
-): Promise<{ connector: ConnectorResponse; created: boolean }> {
-  const config = CONNECTOR_TYPES[type];
-  const apiTokenConfig = config.authMethods["api-token"];
-  if (!apiTokenConfig) {
-    throw badRequest(
-      `Connector ${type} does not support api-token auth method`,
-    );
-  }
-
-  // Validate all required secrets are provided
-  for (const [name, secretConfig] of Object.entries(apiTokenConfig.secrets)) {
-    if (secretConfig.required && !inputSecrets[name]) {
-      throw badRequest(`Missing required secret: ${name}`);
-    }
-  }
-
-  const db = globalThis.services.db;
-
-  // Store each secret
-  for (const [name, value] of Object.entries(inputSecrets)) {
-    if (name in apiTokenConfig.secrets) {
-      await upsertSecretByScope(
-        scopeId,
-        userId,
-        name,
-        value,
-        "connector",
-        `API token for ${type} connector`,
-        clerkOrgId,
-      );
-    }
-  }
-
-  // Check if connector exists
-  const existingConnector = await db
-    .select({ id: connectors.id })
-    .from(connectors)
-    .where(
-      and(
-        eq(connectors.scopeId, scopeId),
-        eq(connectors.userId, userId),
-        eq(connectors.type, type),
-      ),
-    )
-    .limit(1);
-
-  const isUpdate = existingConnector.length > 0;
-
-  let connectorRow: {
-    id: string;
-    type: string;
-    authMethod: string;
-    externalId: string | null;
-    externalUsername: string | null;
-    externalEmail: string | null;
-    oauthScopes: string | null;
-    tokenExpiresAt: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-  };
-
-  if (isUpdate) {
-    const existingId = existingConnector[0]?.id;
-    if (!existingId) {
-      throw new Error("Existing connector not found during update");
-    }
-    const [updated] = await db
-      .update(connectors)
-      .set({
-        authMethod: "api-token",
-        externalId: null,
-        externalUsername: null,
-        externalEmail: null,
-        oauthScopes: null,
-        tokenExpiresAt: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(connectors.id, existingId))
-      .returning();
-    if (!updated) {
-      throw new Error("Failed to update connector");
-    }
-    connectorRow = updated;
-    log.debug("connector updated via api-token", {
-      connectorId: connectorRow.id,
-      type,
-    });
-  } else {
-    const [created] = await db
-      .insert(connectors)
-      .values({
-        scopeId,
-        userId,
-        type,
-        authMethod: "api-token",
-        externalId: null,
-        externalUsername: null,
-        externalEmail: null,
-        oauthScopes: null,
-        tokenExpiresAt: null,
-        clerkOrgId,
-      })
-      .returning();
-    if (!created) {
-      throw new Error("Failed to create connector");
-    }
-    connectorRow = created;
-    log.debug("connector created via api-token", {
-      connectorId: connectorRow.id,
-      type,
-    });
-  }
-
-  return {
-    connector: {
-      id: connectorRow.id,
-      type: parseConnectorType(connectorRow.type),
-      authMethod: connectorRow.authMethod,
-      externalId: connectorRow.externalId,
-      externalUsername: connectorRow.externalUsername,
-      externalEmail: connectorRow.externalEmail,
-      oauthScopes: connectorRow.oauthScopes
-        ? JSON.parse(connectorRow.oauthScopes)
-        : null,
-      createdAt: connectorRow.createdAt.toISOString(),
-      updatedAt: connectorRow.updatedAt.toISOString(),
-    },
-    created: !isUpdate,
-  };
-}
-
-/**
- * Delete a connector and its associated secret
+ * Delete a connector and its associated secrets.
+ * For OAuth connectors: deletes DB record + connector-type secrets.
+ * For api-token connectors (no DB record): deletes user secrets matching required api-token secret names.
  */
 export async function deleteConnector(
   scopeId: string,
@@ -416,7 +352,7 @@ export async function deleteConnector(
 ): Promise<void> {
   const db = globalThis.services.db;
 
-  // Check if connector exists and get its auth method
+  // Check if connector exists in DB (OAuth connectors)
   const [existing] = await db
     .select({ id: connectors.id, authMethod: connectors.authMethod })
     .from(connectors)
@@ -429,46 +365,71 @@ export async function deleteConnector(
     )
     .limit(1);
 
-  if (!existing) {
-    throw notFound("Connector not found");
+  if (existing) {
+    // OAuth connector: delete DB record + connector-type secrets
+    await db.delete(connectors).where(eq(connectors.id, existing.id));
+
+    const secretNames: string[] = [];
+    const config = CONNECTOR_TYPES[type];
+    const authMethodConfig = config.authMethods[existing.authMethod];
+    if (authMethodConfig) {
+      secretNames.push(...Object.keys(authMethodConfig.secrets));
+    }
+
+    if (existing.authMethod === "oauth" && type !== "computer") {
+      const handler =
+        PROVIDER_HANDLERS[type as Exclude<ConnectorType, "computer">];
+      const refreshSecretName = handler.getRefreshSecretName?.();
+      if (refreshSecretName) {
+        secretNames.push(refreshSecretName);
+      }
+    }
+
+    for (const name of secretNames) {
+      await db
+        .delete(secrets)
+        .where(
+          and(
+            eq(secrets.scopeId, scopeId),
+            eq(secrets.userId, userId),
+            eq(secrets.name, name),
+            eq(secrets.type, "connector"),
+          ),
+        );
+    }
+
+    log.debug("connector deleted", { scopeId, type });
+    return;
   }
 
-  // Delete connector from database
-  await db.delete(connectors).where(eq(connectors.id, existing.id));
-
-  // Collect all secret names to delete
-  const secretNames: string[] = [];
-  const config = CONNECTOR_TYPES[type];
-  const authMethodConfig = config.authMethods[existing.authMethod];
-  if (authMethodConfig) {
-    secretNames.push(...Object.keys(authMethodConfig.secrets));
-  }
-
-  // Also delete refresh token secret for OAuth connectors
-  if (existing.authMethod === "oauth" && type !== "computer") {
-    const handler =
-      PROVIDER_HANDLERS[type as Exclude<ConnectorType, "computer">];
-    const refreshSecretName = handler.getRefreshSecretName?.();
-    if (refreshSecretName) {
-      secretNames.push(refreshSecretName);
+  // No DB record — check if type supports api-token and user secrets exist
+  const requiredNames = getApiTokenRequiredSecretNames(type);
+  if (requiredNames && requiredNames.length > 0) {
+    let deletedAny = false;
+    for (const name of requiredNames) {
+      const result = await db
+        .delete(secrets)
+        .where(
+          and(
+            eq(secrets.scopeId, scopeId),
+            eq(secrets.userId, userId),
+            eq(secrets.name, name),
+            eq(secrets.type, "user"),
+          ),
+        )
+        .returning({ id: secrets.id });
+      if (result.length > 0) deletedAny = true;
+    }
+    if (deletedAny) {
+      log.debug("api-token connector deleted via user secrets", {
+        scopeId,
+        type,
+      });
+      return;
     }
   }
 
-  // Delete all associated secrets
-  for (const name of secretNames) {
-    await db
-      .delete(secrets)
-      .where(
-        and(
-          eq(secrets.scopeId, scopeId),
-          eq(secrets.userId, userId),
-          eq(secrets.name, name),
-          eq(secrets.type, "connector"),
-        ),
-      );
-  }
-
-  log.debug("connector deleted", { scopeId, type });
+  throw notFound("Connector not found");
 }
 
 /**

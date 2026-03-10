@@ -84,7 +84,6 @@ export {
   listConnectors,
   deleteConnector,
   getConnector,
-  submitConnectorToken,
 } from "./domains/connectors";
 
 // Domain modules - Usage

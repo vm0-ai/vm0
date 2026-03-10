@@ -73,7 +73,6 @@ import {
 } from "../../app/api/secrets/route";
 import { PUT as setVariableRoute } from "../../app/api/variables/route";
 import { POST as addPermissionRoute } from "../../app/api/agent/composes/[id]/permissions/route";
-import { POST as connectorTokenRoute } from "../../app/api/connectors/[type]/token/route";
 import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/callback/route";
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
@@ -1544,7 +1543,8 @@ export async function createTestConnector(
 }
 
 /**
- * Create an api-token connector via POST /api/connectors/:type/token.
+ * Create an api-token connector by storing user secrets via PUT /api/secrets.
+ * Api-token connector status is now derived from user secrets, not DB records.
  */
 async function createTestApiTokenConnector(options?: {
   type?: ConnectorType;
@@ -1556,19 +1556,20 @@ async function createTestApiTokenConnector(options?: {
   const secretName =
     options?.secretName ?? `${type.toUpperCase().replace(/-/g, "_")}_TOKEN`;
 
-  const request = createTestRequest(
-    `http://localhost:3000/api/connectors/${type}/token`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ secrets: { [secretName]: tokenValue } }),
-    },
-  );
-  const response = await connectorTokenRoute(request);
-  if (response.status !== 200) {
+  const request = createTestRequest("http://localhost:3000/api/secrets", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: secretName,
+      value: tokenValue,
+      description: `API token for ${type} connector`,
+    }),
+  });
+  const response = await setSecretRoute(request);
+  if (response.status !== 200 && response.status !== 201) {
     const data = await response.json();
     throw new Error(
-      `Failed to create api-token connector: ${data.error?.message ?? response.status}`,
+      `Failed to create api-token connector user secret: ${data.error?.message ?? response.status}`,
     );
   }
 }
@@ -1719,6 +1720,7 @@ async function createTestOAuthConnector(options?: {
 export async function findTestConnectorSecret(
   scopeId: string,
   secretName: string,
+  type: "connector" | "user" = "connector",
 ): Promise<string | undefined> {
   const [storedSecret] = await globalThis.services.db
     .select()
@@ -1727,7 +1729,7 @@ export async function findTestConnectorSecret(
       and(
         eq(secrets.scopeId, scopeId),
         eq(secrets.name, secretName),
-        eq(secrets.type, "connector"),
+        eq(secrets.type, type),
       ),
     )
     .limit(1);

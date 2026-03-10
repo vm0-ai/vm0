@@ -421,6 +421,8 @@ export {
   getConnectorOAuthConfig,
   getConnectorProxyConfig,
   hasRequiredScopes,
+  getApiTokenRequiredSecretNames,
+  deriveApiTokenConnectedTypes,
   type ConnectorsMainContract,
   type ConnectorsByTypeContract,
   type ConnectorSessionsContract,
@@ -440,9 +442,6 @@ export {
   computerConnectorCreateResponseSchema,
   type ComputerConnectorContract,
   type ComputerConnectorCreateResponse,
-  // API token connector
-  connectorTokenContract,
-  type ConnectorTokenContract,
 } from "./connectors";
 
 export {

@@ -39,6 +39,14 @@ export const listCommand = new Command()
           } else {
             typeIndicator = chalk.dim(" [connector]");
           }
+        } else if (secret.type === "user") {
+          const derived = getConnectorDerivedNames(secret.name);
+          if (derived) {
+            typeIndicator = chalk.dim(` [${derived.connectorLabel} connector]`);
+            derivedLine = chalk.dim(
+              `Available as: ${derived.envVarNames.join(", ")}`,
+            );
+          }
         }
 
         console.log(`  ${chalk.cyan(secret.name)}${typeIndicator}`);
