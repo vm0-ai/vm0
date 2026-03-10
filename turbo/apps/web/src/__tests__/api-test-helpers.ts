@@ -5,12 +5,16 @@
  * instead of direct database operations. This ensures tests validate the
  * complete API flow, catching issues that direct DB operations might miss.
  */
+import { vi } from "vitest";
+import { http as mswHttp, HttpResponse } from "msw";
 import { NextRequest } from "next/server";
 import type { AgentComposeYaml } from "../types/agent-compose";
 import {
   generateSandboxToken,
   generateComposeJobToken,
 } from "../lib/auth/sandbox-token";
+import { server } from "../mocks/server";
+import { reloadEnv } from "../env";
 import { cliTokens } from "../db/schema/cli-tokens";
 import { deviceCodes } from "../db/schema/device-codes";
 import { agentRuns } from "../db/schema/agent-run";
@@ -69,6 +73,8 @@ import {
 } from "../../app/api/secrets/route";
 import { PUT as setVariableRoute } from "../../app/api/variables/route";
 import { POST as addPermissionRoute } from "../../app/api/agent/composes/[id]/permissions/route";
+import { POST as connectorTokenRoute } from "../../app/api/connectors/[type]/token/route";
+import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/callback/route";
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
@@ -1505,75 +1511,201 @@ export async function createTestPermission(
 }
 
 /**
- * Create a test connector directly in the database.
- * Used for setting up test data for connector API tests.
+ * Create a test connector via API routes.
  *
- * @param scopeId - The scope ID to associate with the connector
- * @param options - Optional overrides for connector properties
+ * - api-token: calls POST /api/connectors/:type/token
+ * - oauth: calls GET /api/connectors/:type/callback with MSW mocks
+ *
+ * @param scopeId - The scope ID (unused directly, kept for call-site compat)
+ * @param options - Connector configuration
  */
 export async function createTestConnector(
-  scopeId: string,
+  _scopeId: string,
   options?: {
     type?: ConnectorType;
-    authMethod?: "oauth" | "pat";
-    externalId?: string;
-    externalUsername?: string;
-    externalEmail?: string;
-    oauthScopes?: string[];
+    authMethod?: "oauth" | "api-token";
     accessToken?: string;
+    /** Secret name for api-token (e.g. "FIGMA_TOKEN"). Required for api-token. */
+    secretName?: string;
+    externalUsername?: string;
+    externalId?: string | null;
+    externalEmail?: string | null;
+    oauthScopes?: string[];
     userId?: string;
   },
-): Promise<typeof connectors.$inferSelect> {
-  const type = options?.type ?? "github";
+): Promise<void> {
+  const authMethod = options?.authMethod ?? "oauth";
 
-  // Resolve userId: use provided value or look up from scope_members
-  let userId = options?.userId;
-  if (!userId) {
-    const [member] = await globalThis.services.db
-      .select({ userId: scopeMembers.userId })
-      .from(scopeMembers)
-      .where(eq(scopeMembers.scopeId, scopeId))
-      .limit(1);
-    if (!member) {
-      throw new Error(`No scope member found for scope ${scopeId}`);
-    }
-    userId = member.userId;
+  if (authMethod === "api-token") {
+    await createTestApiTokenConnector(options);
+  } else {
+    await createTestOAuthConnector(options);
+  }
+}
+
+/**
+ * Create an api-token connector via POST /api/connectors/:type/token.
+ */
+async function createTestApiTokenConnector(options?: {
+  type?: ConnectorType;
+  accessToken?: string;
+  secretName?: string;
+}): Promise<void> {
+  const type = options?.type ?? "github";
+  const tokenValue = options?.accessToken ?? "test-api-token";
+  const secretName =
+    options?.secretName ?? `${type.toUpperCase().replace(/-/g, "_")}_TOKEN`;
+
+  const request = createTestRequest(
+    `http://localhost:3000/api/connectors/${type}/token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secrets: { [secretName]: tokenValue } }),
+    },
+  );
+  const response = await connectorTokenRoute(request);
+  if (response.status !== 200) {
+    const data = await response.json();
+    throw new Error(
+      `Failed to create api-token connector: ${data.error?.message ?? response.status}`,
+    );
+  }
+}
+
+// OAuth provider mock configurations for test setup
+const OAUTH_PROVIDER_MOCKS: Record<
+  string,
+  {
+    tokenUrl: string;
+    userUrl: string;
+    envVars: Record<string, string>;
+    buildTokenResponse: (accessToken: string) => Record<string, unknown>;
+    buildUserResponse: (opts: {
+      userId?: number;
+      username?: string;
+      email?: string;
+    }) => Record<string, unknown>;
+  }
+> = {
+  github: {
+    tokenUrl: "https://github.com/login/oauth/access_token",
+    userUrl: "https://api.github.com/user",
+    envVars: {
+      GH_OAUTH_CLIENT_ID: "test-client-id",
+      GH_OAUTH_CLIENT_SECRET: "test-client-secret",
+    },
+    buildTokenResponse: (accessToken) => ({
+      access_token: accessToken,
+      scope: "repo,project",
+      token_type: "bearer",
+    }),
+    buildUserResponse: (opts) => ({
+      id: opts.userId ?? 12345,
+      login: opts.username ?? "testuser",
+      email: opts.email ?? "test@example.com",
+    }),
+  },
+  slack: {
+    tokenUrl: "https://slack.com/api/oauth.v2.access",
+    userUrl: "https://slack.com/api/users.info",
+    envVars: {},
+    buildTokenResponse: (accessToken) => ({
+      ok: true,
+      authed_user: {
+        id: "U12345",
+        access_token: accessToken,
+        scope: "channels:read,chat:write",
+      },
+    }),
+    buildUserResponse: (opts) => ({
+      ok: true,
+      user: {
+        id: opts.userId?.toString() ?? "U12345",
+        name: opts.username ?? "testuser",
+        real_name: opts.username ?? "Test User",
+        profile: { email: opts.email ?? "test@example.com" },
+      },
+    }),
+  },
+  figma: {
+    tokenUrl: "https://api.figma.com/v1/oauth/token",
+    userUrl: "https://api.figma.com/v1/me",
+    envVars: {
+      FIGMA_OAUTH_CLIENT_ID: "figma-test-client-id",
+      FIGMA_OAUTH_CLIENT_SECRET: "figma-test-client-secret",
+    },
+    buildTokenResponse: (accessToken) => ({
+      access_token: accessToken,
+      refresh_token: "figma-refresh-token",
+      expires_in: 7776000,
+    }),
+    buildUserResponse: (opts) => ({
+      id: opts.userId?.toString() ?? "12345",
+      email: opts.email ?? "test@example.com",
+      handle: opts.username ?? "testuser",
+    }),
+  },
+};
+
+/**
+ * Create an OAuth connector via GET /api/connectors/:type/callback with MSW mocks.
+ */
+async function createTestOAuthConnector(options?: {
+  type?: ConnectorType;
+  accessToken?: string;
+  externalUsername?: string;
+}): Promise<void> {
+  const type = options?.type ?? "github";
+  const accessToken = options?.accessToken ?? "test-github-token";
+  const providerMock = OAUTH_PROVIDER_MOCKS[type];
+  if (!providerMock) {
+    throw new Error(
+      `No OAuth mock config for connector type "${type}". ` +
+        `Supported: ${Object.keys(OAUTH_PROVIDER_MOCKS).join(", ")}`,
+    );
   }
 
-  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
+  // Stub OAuth client env vars if the provider needs them
+  for (const [key, value] of Object.entries(providerMock.envVars)) {
+    vi.stubEnv(key, value);
+  }
+  reloadEnv();
 
-  const [connector] = await globalThis.services.db
-    .insert(connectors)
-    .values({
-      scopeId,
-      userId,
-      clerkOrgId,
-      type,
-      authMethod: options?.authMethod ?? "oauth",
-      externalId: options?.externalId ?? "12345",
-      externalUsername: options?.externalUsername ?? "testuser",
-      externalEmail: options?.externalEmail ?? "test@example.com",
-      oauthScopes: JSON.stringify(options?.oauthScopes ?? ["repo"]),
-    })
-    .returning();
+  // Set up MSW handlers for token exchange + user info
+  server.use(
+    mswHttp.post(providerMock.tokenUrl, () =>
+      HttpResponse.json(providerMock.buildTokenResponse(accessToken)),
+    ),
+    mswHttp.get(providerMock.userUrl, () =>
+      HttpResponse.json(
+        providerMock.buildUserResponse({
+          username: options?.externalUsername ?? "testuser",
+        }),
+      ),
+    ),
+  );
 
-  // Also create the associated secret with proper encryption
-  const secretName = `${type.toUpperCase()}_ACCESS_TOKEN`;
-  const tokenValue = options?.accessToken ?? "test-github-token";
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  const encryptedValue = encryptCredentialValue(tokenValue, encryptionKey);
+  // Create callback request with proper cookies
+  const state = "test-oauth-state";
+  const url = new URL(`http://localhost:3000/api/connectors/${type}/callback`);
+  url.searchParams.set("code", "test-code");
+  url.searchParams.set("state", state);
 
-  await globalThis.services.db.insert(secrets).values({
-    scopeId,
-    userId,
-    clerkOrgId,
-    name: secretName,
-    type: "connector",
-    encryptedValue,
-    description: `OAuth token for ${type} connector`,
+  const request = createTestRequest(url.toString(), {
+    headers: { Cookie: `connector_oauth_state=${state}` },
+  });
+  const response = await connectorCallbackRoute(request, {
+    params: Promise.resolve({ type }),
   });
 
-  return connector!;
+  // Callback redirects to /connector/success on success
+  const location = response.headers.get("location") ?? "";
+  if (!location.includes("/connector/success")) {
+    throw new Error(
+      `OAuth callback failed: status=${response.status} location=${location}`,
+    );
+  }
 }
 
 /**

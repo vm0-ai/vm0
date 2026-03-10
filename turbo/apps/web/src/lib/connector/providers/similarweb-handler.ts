@@ -9,5 +9,5 @@ export const similarwebHandler: ProviderHandler = {
   },
   getClientId: () => undefined,
   getClientSecret: () => undefined,
-  getSecretName: () => "SIMILARWEB_API_KEY",
+  getSecretName: () => "SIMILARWEB_TOKEN",
 };
