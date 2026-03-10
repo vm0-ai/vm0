@@ -101,9 +101,10 @@ export const allConnectorTypes$ = computed(async (get) => {
       if (hasApiToken) {
         availableAuthMethods.push("api-token");
       }
+      const isExperimental = !!flag && !hasApiToken;
       return {
         type,
-        label: config.label,
+        label: isExperimental ? `[Experimental] ${config.label}` : config.label,
         helpText: config.helpText,
         connected: connector !== null,
         connector,
