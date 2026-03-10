@@ -21,14 +21,9 @@ export const statusCommand = new Command()
           error instanceof Error &&
           error.message.includes("No scope configured")
         ) {
-          console.log(chalk.yellow("No scope configured"));
-          console.log();
-          console.log("Set your scope with:");
-          console.log(chalk.cyan("  vm0 scope set <slug>"));
-          console.log();
-          console.log("Example:");
-          console.log(chalk.dim("  vm0 scope set myusername"));
-          process.exit(1);
+          throw new Error("No scope configured", {
+            cause: new Error("Set your scope with: vm0 scope set <slug>"),
+          });
         }
         throw error;
       }
