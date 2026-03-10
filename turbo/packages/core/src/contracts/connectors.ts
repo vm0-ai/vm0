@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 const c = initContract();
 
@@ -66,6 +67,7 @@ export const CONNECTOR_TYPES = {
   },
   ahrefs: {
     label: "Ahrefs",
+    featureFlag: FeatureSwitchKey.AhrefsConnector,
     helpText:
       "Connect your Ahrefs account to access SEO data, backlink analysis, and keyword research",
     authMethods: {
@@ -225,6 +227,7 @@ export const CONNECTOR_TYPES = {
   },
   gmail: {
     label: "Gmail",
+    featureFlag: FeatureSwitchKey.GmailConnector,
     helpText: "Connect your Gmail account to send and read emails",
     authMethods: {
       oauth: {
@@ -254,6 +257,7 @@ export const CONNECTOR_TYPES = {
   },
   "google-sheets": {
     label: "Google Sheets",
+    featureFlag: FeatureSwitchKey.GoogleSheetsConnector,
     helpText: "Connect your Google account to access and manage spreadsheets",
     authMethods: {
       oauth: {
@@ -286,6 +290,7 @@ export const CONNECTOR_TYPES = {
   },
   "google-docs": {
     label: "Google Docs",
+    featureFlag: FeatureSwitchKey.GoogleDocsConnector,
     helpText: "Connect your Google account to access and manage documents",
     authMethods: {
       oauth: {
@@ -318,6 +323,7 @@ export const CONNECTOR_TYPES = {
   },
   "google-drive": {
     label: "Google Drive",
+    featureFlag: FeatureSwitchKey.GoogleDriveConnector,
     helpText: "Connect your Google account to access and manage files in Drive",
     authMethods: {
       oauth: {
@@ -350,6 +356,7 @@ export const CONNECTOR_TYPES = {
   },
   "google-calendar": {
     label: "Google Calendar",
+    featureFlag: FeatureSwitchKey.GoogleCalendarConnector,
     helpText:
       "Connect your Google account to access and manage calendar events",
     authMethods: {
@@ -383,6 +390,7 @@ export const CONNECTOR_TYPES = {
   },
   close: {
     label: "Close",
+    featureFlag: FeatureSwitchKey.CloseConnector,
     helpText:
       "Connect your Close account to manage leads, contacts, and opportunities",
     authMethods: {
@@ -456,6 +464,7 @@ export const CONNECTOR_TYPES = {
   },
   computer: {
     label: "Computer",
+    featureFlag: FeatureSwitchKey.ComputerConnector,
     helpText:
       "Expose local services to remote sandboxes via authenticated ngrok tunnels",
     authMethods: {
@@ -519,6 +528,7 @@ export const CONNECTOR_TYPES = {
   },
   docusign: {
     label: "DocuSign",
+    featureFlag: FeatureSwitchKey.DocuSignConnector,
     helpText:
       "Connect your DocuSign account to send and manage electronic signatures",
     authMethods: {
@@ -549,6 +559,7 @@ export const CONNECTOR_TYPES = {
   },
   dropbox: {
     label: "Dropbox",
+    featureFlag: FeatureSwitchKey.DropboxConnector,
     helpText: "Connect your Dropbox account to access and manage files",
     authMethods: {
       oauth: {
@@ -623,6 +634,7 @@ export const CONNECTOR_TYPES = {
   },
   deel: {
     label: "Deel",
+    featureFlag: FeatureSwitchKey.DeelConnector,
     helpText:
       "Connect your Deel account to access HR, payroll, and contractor data",
     authMethods: {
@@ -673,6 +685,7 @@ export const CONNECTOR_TYPES = {
   },
   figma: {
     label: "Figma",
+    featureFlag: FeatureSwitchKey.FigmaConnector,
     helpText: "Connect your Figma account to access design files and projects",
     authMethods: {
       oauth: {
@@ -724,6 +737,7 @@ export const CONNECTOR_TYPES = {
   },
   mercury: {
     label: "Mercury",
+    featureFlag: FeatureSwitchKey.MercuryConnector,
     helpText:
       "Connect your Mercury account to access banking and financial data",
     authMethods: {
@@ -766,6 +780,7 @@ export const CONNECTOR_TYPES = {
   },
   reddit: {
     label: "Reddit",
+    featureFlag: FeatureSwitchKey.RedditConnector,
     helpText:
       "Connect your Reddit account to access Reddit discussions and content",
     authMethods: {
@@ -796,6 +811,7 @@ export const CONNECTOR_TYPES = {
   },
   strava: {
     label: "Strava",
+    featureFlag: FeatureSwitchKey.StravaConnector,
     helpText:
       "Connect your Strava account to access activities and athlete data",
     authMethods: {
@@ -861,6 +877,7 @@ export const CONNECTOR_TYPES = {
   },
   neon: {
     label: "Neon",
+    featureFlag: FeatureSwitchKey.NeonConnector,
     helpText:
       "Connect your Neon account to manage serverless Postgres databases and projects",
     authMethods: {
@@ -910,6 +927,7 @@ export const CONNECTOR_TYPES = {
   },
   "garmin-connect": {
     label: "Garmin Connect",
+    featureFlag: FeatureSwitchKey.GarminConnectConnector,
     helpText:
       "Connect your Garmin Connect account to access wellness and activity data",
     authMethods: {
@@ -1002,6 +1020,7 @@ export const CONNECTOR_TYPES = {
   },
   posthog: {
     label: "PostHog",
+    featureFlag: FeatureSwitchKey.PosthogConnector,
     helpText:
       "Connect your PostHog account to access product analytics, feature flags, and experiments",
     authMethods: {
@@ -1090,6 +1109,7 @@ export const CONNECTOR_TYPES = {
   },
   "intervals-icu": {
     label: "Intervals.icu",
+    featureFlag: FeatureSwitchKey.IntervalsIcuConnector,
     helpText:
       "Connect your Intervals.icu account to access training, activity, wellness, and calendar data",
     authMethods: {
@@ -1172,6 +1192,7 @@ export const CONNECTOR_TYPES = {
   },
   canva: {
     label: "Canva",
+    featureFlag: FeatureSwitchKey.CanvaConnector,
     helpText:
       "Connect your Canva account to access designs, assets, and projects",
     authMethods: {
@@ -1268,6 +1289,7 @@ export const CONNECTOR_TYPES = {
   },
   supabase: {
     label: "Supabase",
+    featureFlag: FeatureSwitchKey.SupabaseConnector,
     helpText:
       "Connect your Supabase account to manage projects, databases, and APIs",
     authMethods: {
@@ -1349,6 +1371,7 @@ export const CONNECTOR_TYPES = {
   },
   webflow: {
     label: "Webflow",
+    featureFlag: FeatureSwitchKey.WebflowConnector,
     helpText:
       "Connect your Webflow account to manage sites, pages, CMS collections, and ecommerce",
     authMethods: {
@@ -1403,6 +1426,7 @@ export const CONNECTOR_TYPES = {
   },
   "outlook-mail": {
     label: "Outlook Mail",
+    featureFlag: FeatureSwitchKey.OutlookMailConnector,
     helpText: "Connect your Microsoft Outlook account to send and read emails",
     authMethods: {
       oauth: {
@@ -1433,6 +1457,7 @@ export const CONNECTOR_TYPES = {
   },
   "outlook-calendar": {
     label: "Outlook Calendar",
+    featureFlag: FeatureSwitchKey.OutlookCalendarConnector,
     helpText:
       "Connect your Microsoft account to access and manage Outlook calendar events",
     authMethods: {
@@ -1494,6 +1519,7 @@ export const CONNECTOR_TYPES = {
   },
   "meta-ads": {
     label: "Meta Ads",
+    featureFlag: FeatureSwitchKey.MetaAdsConnector,
     helpText:
       "Connect your Meta Ads Manager account to manage ad campaigns, audiences, and insights",
     authMethods: {
@@ -1520,6 +1546,7 @@ export const CONNECTOR_TYPES = {
   },
   stripe: {
     label: "Stripe",
+    featureFlag: FeatureSwitchKey.StripeConnector,
     helpText:
       "Connect your Stripe account to manage payments, customers, and subscriptions",
     authMethods: {
@@ -1596,6 +1623,7 @@ export const CONNECTOR_TYPES = {
   },
   mailchimp: {
     label: "Mailchimp",
+    featureFlag: FeatureSwitchKey.MailchimpConnector,
     helpText:
       "Connect your Mailchimp account to manage audiences, campaigns, templates, and automations",
     authMethods: {
@@ -1624,6 +1652,7 @@ export const CONNECTOR_TYPES = {
   },
   resend: {
     label: "Resend",
+    featureFlag: FeatureSwitchKey.ResendConnector,
     helpText:
       "Connect your Resend account to send transactional emails, manage domains, audiences, and contacts",
     authMethods: {

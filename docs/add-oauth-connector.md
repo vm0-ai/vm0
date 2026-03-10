@@ -11,7 +11,7 @@ Run all checks for a given `<PROVIDER>` (e.g., `hubspot`, `todoist`, `gmail`). U
 | 1 | **Connector code exists** | `ls turbo/apps/web/src/lib/connector/providers/<provider>*.ts` | Whether implementation has started |
 | 2 | **CONNECTOR_TYPES entry** | `grep '<provider>' turbo/packages/core/src/contracts/connectors.ts` | Whether the connector is registered |
 | 3 | **Feature switch exists** | `grep '<provider>' turbo/packages/core/src/feature-switch.ts` | Whether the connector is behind a feature flag |
-| 4 | **Feature switch enabled** | Check `enabled: true/false` in `FEATURE_SWITCHES[FeatureSwitchKey.<Provider>Connector]` in `turbo/packages/core/src/feature-switch.ts` | `false` = still gated (dev/testing); removed from `CONNECTOR_FEATURE_FLAGS` or `true` = public |
+| 4 | **Feature switch enabled** | Check `enabled: true/false` in `FEATURE_SWITCHES[FeatureSwitchKey.<Provider>Connector]` in `turbo/packages/core/src/feature-switch.ts` | `false` = still gated (dev/testing); `true` = public |
 | 5 | **`.env.tpl` entry** | `grep '<PREFIX>_OAUTH' turbo/apps/web/.env.local.tpl` | Whether 1Password references are set up |
 | 6 | **GitHub vars/secrets** | `gh variable list \| grep <PREFIX>_OAUTH` and `gh secret list \| grep <PREFIX>_OAUTH` | Whether CI/CD credentials are synced |
 | 7 | **Workflow env vars** | `grep '<PREFIX>_OAUTH' .github/workflows/turbo.yml .github/workflows/release-please.yml` | Whether deploy pipelines pass the credentials |
