@@ -1,3 +1,4 @@
+import { auth } from "@clerk/nextjs/server";
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { userPreferencesContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
@@ -20,7 +21,8 @@ const router = tsr.router(userPreferencesContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const prefs = await getUserPreferences(userId);
+    const { sessionClaims } = await auth();
+    const prefs = await getUserPreferences(userId, sessionClaims ?? undefined);
 
     return {
       status: 200 as const,

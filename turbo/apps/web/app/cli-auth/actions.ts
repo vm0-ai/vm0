@@ -15,7 +15,7 @@ export async function verifyDeviceAction(
   code: string,
   timezone?: string,
 ): Promise<VerifyResult> {
-  const { userId } = await auth();
+  const { userId, sessionClaims } = await auth();
 
   if (!userId) {
     return { success: false, error: "Not authenticated" };
@@ -58,7 +58,7 @@ export async function verifyDeviceAction(
 
   // Auto-set timezone if user has no preference yet (first login)
   if (timezone) {
-    await setTimezoneIfNotSet(userId, timezone);
+    await setTimezoneIfNotSet(userId, timezone, sessionClaims);
   }
 
   return { success: true };

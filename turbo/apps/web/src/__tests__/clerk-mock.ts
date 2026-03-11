@@ -48,6 +48,9 @@ let createdOrgs: Array<{
  * @param options.orgSlug - Organization slug from active org session (optional)
  * @param options.clerkOrgs - Clerk orgs the user belongs to (for JIT discovery)
  * @param options.orgTier - Tier to include in JWT sessionClaims.org_tier (optional)
+ * @param options.membershipTimezone - Timezone to include in JWT sessionClaims.membership_timezone (optional)
+ * @param options.membershipNotifyEmail - Flag to include in JWT sessionClaims.membership_notify_email (optional)
+ * @param options.membershipNotifySlack - Flag to include in JWT sessionClaims.membership_notify_slack (optional)
  */
 export function mockClerk(options: {
   userId: string | null;
@@ -56,6 +59,9 @@ export function mockClerk(options: {
   orgSlug?: string | null;
   orgRole?: string | null;
   orgTier?: string;
+  membershipTimezone?: string;
+  membershipNotifyEmail?: boolean;
+  membershipNotifySlack?: boolean;
   clerkOrgs?: Array<{ id: string; slug: string; name: string; role?: string }>;
 }) {
   const email = options.email ?? "test@example.com";
@@ -93,6 +99,15 @@ export function mockClerk(options: {
     orgRole: options.orgRole ?? (options.orgId ? "org:admin" : undefined),
     sessionClaims: {
       ...(options.orgTier !== undefined && { org_tier: options.orgTier }),
+      ...(options.membershipTimezone !== undefined && {
+        membership_timezone: options.membershipTimezone,
+      }),
+      ...(options.membershipNotifyEmail !== undefined && {
+        membership_notify_email: options.membershipNotifyEmail,
+      }),
+      ...(options.membershipNotifySlack !== undefined && {
+        membership_notify_slack: options.membershipNotifySlack,
+      }),
     },
   } as Awaited<ReturnType<typeof auth>>);
 

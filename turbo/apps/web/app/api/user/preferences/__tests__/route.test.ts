@@ -68,6 +68,74 @@ describe("GET /api/user/preferences", () => {
   });
 });
 
+describe("GET /api/user/preferences (JWT claims)", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should read preferences from JWT claims when available", async () => {
+    const user = await context.setupUser();
+
+    // Re-mock with JWT membership claims
+    mockClerk({
+      userId: user.userId,
+      orgId: user.clerkOrgId,
+      membershipTimezone: "Asia/Tokyo",
+      membershipNotifyEmail: true,
+      membershipNotifySlack: false,
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.timezone).toBe("Asia/Tokyo");
+    expect(data.notifyEmail).toBe(true);
+    expect(data.notifySlack).toBe(false);
+  });
+
+  it("should fall back to DB when JWT claims are missing", async () => {
+    await context.setupUser();
+
+    // Default mock has no membership claims → falls back to DB
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.timezone).toBeNull();
+    expect(data.notifyEmail).toBe(false);
+    expect(data.notifySlack).toBe(true);
+  });
+
+  it("should use default values for missing JWT claims", async () => {
+    const user = await context.setupUser();
+
+    // Only timezone in JWT, no notification claims
+    mockClerk({
+      userId: user.userId,
+      orgId: user.clerkOrgId,
+      membershipTimezone: "Europe/London",
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.timezone).toBe("Europe/London");
+    expect(data.notifyEmail).toBe(false);
+    expect(data.notifySlack).toBe(true);
+  });
+});
+
 describe("PUT /api/user/preferences", () => {
   beforeEach(() => {
     context.setupMocks();

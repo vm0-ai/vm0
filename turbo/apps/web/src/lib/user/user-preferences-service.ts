@@ -27,11 +27,33 @@ function isValidTimezone(timezone: string): boolean {
 }
 
 /**
- * Get user preferences from scope_members (primary admin membership)
+ * Get user preferences.
+ *
+ * Fast path: when sessionClaims are provided (JWT context), reads from
+ * Clerk membership JWT claims — zero DB calls.
+ *
+ * Fallback: when no claims (cron, run-builder, CLI tokens), reads from
+ * scope_members via getPrimaryAdminMembership().
  */
 export async function getUserPreferences(
   userId: string,
+  sessionClaims?: CustomJwtSessionClaims,
 ): Promise<UserPreferences> {
+  // JWT fast path: use Clerk membership claims
+  if (
+    sessionClaims &&
+    (sessionClaims.membership_timezone !== undefined ||
+      sessionClaims.membership_notify_email !== undefined ||
+      sessionClaims.membership_notify_slack !== undefined)
+  ) {
+    return {
+      timezone: sessionClaims.membership_timezone ?? null,
+      notifyEmail: sessionClaims.membership_notify_email ?? false,
+      notifySlack: sessionClaims.membership_notify_slack ?? true,
+    };
+  }
+
+  // Fallback: read from scope_members (cron, run-builder, CLI tokens)
   const member = await getPrimaryAdminMembership(userId);
 
   return {
@@ -125,12 +147,16 @@ export async function updateUserPreferences(
 export async function setTimezoneIfNotSet(
   userId: string,
   timezone: string,
+  sessionClaims?: CustomJwtSessionClaims,
 ): Promise<void> {
   if (!isValidTimezone(timezone)) {
     return; // Silently ignore invalid timezone during auto-detection
   }
 
-  const { timezone: existingTimezone } = await getUserPreferences(userId);
+  const { timezone: existingTimezone } = await getUserPreferences(
+    userId,
+    sessionClaims,
+  );
 
   if (existingTimezone === null) {
     const memberRecord = await getPrimaryAdminMembership(userId);
