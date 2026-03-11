@@ -16,7 +16,7 @@
     "fumadocs-mdx": "14.2.8",
     "fumadocs-ui": "15.7.4",
     "mermaid": "^11.12.2",
-    "next": "15.5.7",
+    "next": "15.5.12",
     "react": "^19.1.2",
     "react-dom": "^19.1.2"
   },

@@ -42,7 +42,7 @@
     "drizzle-orm": "^0.44.5",
     "html-to-text": "^9.0.5",
     "import-in-the-middle": "^2.0.6",
-    "next": "^15.5.7",
+    "next": "^15.5.12",
     "next-intl": "^4.6.1",
     "p-limit": "^7.2.0",
     "pg": "^8.16.3",
