@@ -310,7 +310,6 @@ const router = tsr.router(composesMainContract, {
         .insert(agentComposes)
         .values({
           userId,
-          scopeId: scope.id,
           name: normalizedAgentName,
           orgId: scope.orgId,
         })

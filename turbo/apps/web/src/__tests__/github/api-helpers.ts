@@ -73,7 +73,6 @@ export async function givenGitHubInstallation(
     .insert(agentComposes)
     .values({
       userId,
-      scopeId: scope!.id,
       orgId: scope!.orgId,
       name: uniqueId("gh-agent"),
     })

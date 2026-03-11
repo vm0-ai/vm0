@@ -424,7 +424,6 @@ export async function deploySchedule(
       .insert(agentSchedules)
       .values({
         composeId: request.composeId,
-        scopeId,
         userId,
         orgId,
         name: request.name,

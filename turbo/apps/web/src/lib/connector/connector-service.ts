@@ -326,7 +326,6 @@ export async function upsertOAuthConnector(
     const [created] = await db
       .insert(connectors)
       .values({
-        scopeId,
         userId,
         type,
         authMethod: "oauth",

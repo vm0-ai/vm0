@@ -38,15 +38,12 @@ export async function enqueueRun(
 ): Promise<CreateRunResult> {
   const { userId, agentComposeVersionId, prompt } = params;
 
-  // Resolve scope ID and orgId (caller should have already resolved it, but fall back)
-  let scopeId: string;
+  // Resolve orgId (caller should have already resolved it, but fall back)
   let orgId: string;
   if (params.scopeId && params.orgId) {
-    scopeId = params.scopeId;
     orgId = params.orgId;
   } else {
     const { scope } = await getDefaultScope(userId);
-    scopeId = scope.id;
     orgId = scope.orgId;
   }
 
@@ -65,7 +62,6 @@ export async function enqueueRun(
       .insert(agentRuns)
       .values({
         userId,
-        scopeId,
         orgId,
         agentComposeVersionId,
         status: "queued",

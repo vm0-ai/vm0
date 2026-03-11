@@ -268,7 +268,6 @@ export async function upsertModelProvider(
   const [provider] = await globalThis.services.db
     .insert(modelProviders)
     .values({
-      scopeId,
       type,
       userId,
       secretId: upsertedSecret!.id,
@@ -344,7 +343,6 @@ async function upsertMultiAuthSecret(
   await globalThis.services.db
     .insert(secrets)
     .values({
-      scopeId,
       userId,
       name,
       encryptedValue,
@@ -498,7 +496,6 @@ export async function upsertMultiAuthModelProvider(
   const [provider] = await globalThis.services.db
     .insert(modelProviders)
     .values({
-      scopeId,
       type,
       userId,
       authMethod,

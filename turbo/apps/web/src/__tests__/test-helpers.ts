@@ -513,7 +513,6 @@ export function testContext(): TestContext {
         .insert(agentComposes)
         .values({
           userId: adminUserId,
-          scopeId: scopeData.id,
           orgId: scopeData.orgId,
           name: uniqueId("default-agent"),
         })
@@ -661,7 +660,6 @@ export function testContext(): TestContext {
     const [connector] = await globalThis.services.db
       .insert(connectors)
       .values({
-        scopeId,
         userId,
         orgId: scope!.orgId,
         type,

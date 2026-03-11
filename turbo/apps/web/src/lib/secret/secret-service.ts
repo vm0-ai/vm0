@@ -210,7 +210,6 @@ export async function upsertSecretByScope(
       .where(eq(secrets.id, existing.id));
   } else {
     await globalThis.services.db.insert(secrets).values({
-      scopeId,
       userId,
       name,
       encryptedValue,
@@ -284,7 +283,6 @@ export async function setSecret(
   const [created] = await globalThis.services.db
     .insert(secrets)
     .values({
-      scopeId,
       name,
       encryptedValue,
       description: description ?? null,

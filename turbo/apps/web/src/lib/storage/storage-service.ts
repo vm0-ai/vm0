@@ -44,7 +44,6 @@ export async function ensureStorageExists(
   storageName: string,
   scopeSlug: string,
   storageType: "artifact" | "memory",
-  scopeId: string, // Required for INSERT until Phase 5 drops the column
 ): Promise<void> {
   // Find or create storage record (artifact/memory use real userId)
   let [storage] = await globalThis.services.db
@@ -64,7 +63,6 @@ export async function ensureStorageExists(
     const [newStorage] = await globalThis.services.db
       .insert(storages)
       .values({
-        scopeId,
         name: storageName,
         type: storageType,
         userId,

@@ -570,7 +570,6 @@ async function createTestRunDirect(
     .insert(agentRuns)
     .values({
       userId,
-      scopeId,
       orgId,
       agentComposeVersionId: versionId,
       status: options?.status ?? "running",
@@ -2818,7 +2817,7 @@ export async function insertTestAgentCompose(
   const orgId = await getOrgIdFromScope(scopeId);
   const [row] = await globalThis.services.db
     .insert(agentComposes)
-    .values({ userId, scopeId, orgId, name })
+    .values({ userId, orgId, name })
     .returning();
   return row!;
 }
@@ -2839,7 +2838,6 @@ export async function insertTestAgentRun(
     .insert(agentRuns)
     .values({
       userId,
-      scopeId,
       orgId,
       status: options?.status ?? "completed",
       prompt: options?.prompt ?? "test prompt",

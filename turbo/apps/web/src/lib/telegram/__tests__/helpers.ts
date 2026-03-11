@@ -31,7 +31,6 @@ export async function createTelegramInstallation(): Promise<string> {
     .insert(agentComposes)
     .values({
       userId: uniqueId("test-user"),
-      scopeId: scope!.id,
       orgId: scope!.orgId,
       name: uniqueId("test-compose"),
     })

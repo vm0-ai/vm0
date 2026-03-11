@@ -237,7 +237,6 @@ export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
       "artifact",
       scope.slug,
       "artifact",
-      scope.id,
     );
   } catch (err) {
     log.error("Failed to ensure artifact exists for Slack user", {

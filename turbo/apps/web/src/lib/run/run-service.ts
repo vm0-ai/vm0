@@ -728,7 +728,6 @@ export async function createRun(
         .insert(agentRuns)
         .values({
           userId,
-          scopeId,
           orgId,
           agentComposeVersionId,
           status: "pending",
