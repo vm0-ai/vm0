@@ -61,8 +61,19 @@ const router = tsr.router(userPreferencesContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
+    // Clerk session → orgId from JWT; CLI token → look up from scopeId
+    const { orgId } = await auth();
+    let clerkOrgId = orgId;
+    if (!clerkOrgId && ctx.scopeId) {
+      const scope = await getScopeById(ctx.scopeId);
+      clerkOrgId = scope?.clerkOrgId ?? null;
+    }
+    if (!clerkOrgId) {
+      return createErrorResponse("BAD_REQUEST", "No organization context");
+    }
+
     try {
-      const prefs = await updateUserPreferences(ctx.userId, {
+      const prefs = await updateUserPreferences(clerkOrgId, ctx.userId, {
         timezone: body.timezone,
         notifyEmail: body.notifyEmail,
         notifySlack: body.notifySlack,

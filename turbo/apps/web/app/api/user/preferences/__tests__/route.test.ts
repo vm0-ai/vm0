@@ -224,8 +224,29 @@ describe("PUT /api/user/preferences", () => {
     expect(data.error.message).toContain("Not authenticated");
   });
 
+  it("should return BAD_REQUEST when no organization context is available", async () => {
+    const user = await context.setupUser();
+    // No orgId in session and no scopeId in auth context
+    mockClerk({ userId: user.userId });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timezone: "America/New_York" }),
+      },
+    );
+    const response = await PUT(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error.message).toContain("No organization context");
+  });
+
   it("should update timezone successfully", async () => {
-    await context.setupUser();
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.clerkOrgId });
 
     const request = createTestRequest(
       "http://localhost:3000/api/user/preferences",
@@ -243,7 +264,8 @@ describe("PUT /api/user/preferences", () => {
   });
 
   it("should reject invalid timezone", async () => {
-    await context.setupUser();
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.clerkOrgId });
 
     const request = createTestRequest(
       "http://localhost:3000/api/user/preferences",
@@ -261,7 +283,8 @@ describe("PUT /api/user/preferences", () => {
   });
 
   it("should reject empty timezone", async () => {
-    await context.setupUser();
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.clerkOrgId });
 
     const request = createTestRequest(
       "http://localhost:3000/api/user/preferences",
@@ -277,7 +300,8 @@ describe("PUT /api/user/preferences", () => {
   });
 
   it("should allow updating timezone multiple times", async () => {
-    await context.setupUser();
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.clerkOrgId });
 
     // First update
     const request1 = createTestRequest(
@@ -308,7 +332,8 @@ describe("PUT /api/user/preferences", () => {
   });
 
   it("should update notifyEmail to true", async () => {
-    await context.setupUser();
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.clerkOrgId });
 
     const request = createTestRequest(
       "http://localhost:3000/api/user/preferences",
@@ -326,7 +351,8 @@ describe("PUT /api/user/preferences", () => {
   });
 
   it("should update timezone and notifyEmail together", async () => {
-    await context.setupUser();
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.clerkOrgId });
 
     const request = createTestRequest(
       "http://localhost:3000/api/user/preferences",
@@ -348,7 +374,8 @@ describe("PUT /api/user/preferences", () => {
   });
 
   it("should update only notifyEmail without affecting timezone", async () => {
-    await context.setupUser();
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.clerkOrgId });
 
     // Set timezone first
     const putTz = createTestRequest(
@@ -379,7 +406,8 @@ describe("PUT /api/user/preferences", () => {
   });
 
   it("should update notifySlack to false", async () => {
-    await context.setupUser();
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.clerkOrgId });
 
     const request = createTestRequest(
       "http://localhost:3000/api/user/preferences",
@@ -397,7 +425,8 @@ describe("PUT /api/user/preferences", () => {
   });
 
   it("should update notifySlack independently without affecting other preferences", async () => {
-    await context.setupUser();
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.clerkOrgId });
 
     // Set timezone and notifyEmail first
     const setup = createTestRequest(
@@ -430,6 +459,7 @@ describe("PUT /api/user/preferences", () => {
 
   it("should dual-write timezone to Clerk membership metadata", async () => {
     const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.clerkOrgId });
 
     const request = createTestRequest(
       "http://localhost:3000/api/user/preferences",
@@ -455,6 +485,7 @@ describe("PUT /api/user/preferences", () => {
 
   it("should dual-write notifyEmail and notifySlack to Clerk membership metadata", async () => {
     const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.clerkOrgId });
 
     const request = createTestRequest(
       "http://localhost:3000/api/user/preferences",
@@ -479,7 +510,8 @@ describe("PUT /api/user/preferences", () => {
   });
 
   it("should reject request with no preferences", async () => {
-    await context.setupUser();
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.clerkOrgId });
 
     const request = createTestRequest(
       "http://localhost:3000/api/user/preferences",

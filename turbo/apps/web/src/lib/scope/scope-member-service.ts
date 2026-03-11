@@ -1,6 +1,5 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { eq, and, asc } from "drizzle-orm";
-import { scopeMembers } from "../../db/schema/scope-member";
+import { eq } from "drizzle-orm";
 import { scopes } from "../../db/schema/scope";
 import { badRequest, forbidden, notFound } from "../errors";
 import { logger } from "../logger";
@@ -41,20 +40,6 @@ export async function requireScopeMember(scopeId: string, userId: string) {
     userId,
     scopeId,
   };
-}
-
-/**
- * Find the user's primary admin membership (first admin membership by creation date).
- * Returns the raw scope_members record, or null if none found.
- */
-export async function getPrimaryAdminMembership(userId: string) {
-  const [record] = await globalThis.services.db
-    .select()
-    .from(scopeMembers)
-    .where(and(eq(scopeMembers.userId, userId), eq(scopeMembers.role, "admin")))
-    .orderBy(asc(scopeMembers.createdAt))
-    .limit(1);
-  return record ?? null;
 }
 
 /**

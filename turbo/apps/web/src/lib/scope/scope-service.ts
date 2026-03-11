@@ -2,7 +2,6 @@ import { createHash, randomBytes } from "crypto";
 import { eq, inArray } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { scopes } from "../../db/schema/scope";
-import { scopeMembers } from "../../db/schema/scope-member";
 import { requireScopeMember, getDefaultScope } from "./scope-member-service";
 import {
   badRequest,
@@ -129,14 +128,12 @@ export async function getScopesByClerkOrgIds(
 }
 
 /**
- * Create a scope for a user with an admin membership.
+ * Create a scope for a user.
  *
- * Merges the former scope creation and organization setup functions.
- * Handles Clerk org creation, slug validation,
- * one-admin-per-user constraint, and atomic scope + membership creation.
+ * Handles slug validation and scope creation.
  *
  * @param options.skipSlugValidation - Skip reserved-slug checks (for vm0-admin bypass)
- * @param options.clerkOrgId - Use existing Clerk org instead of creating one (JIT discovery path)
+ * @param options.clerkOrgId - Clerk org ID to bind the scope to
  */
 export async function createScope(
   clerkUserId: string,
@@ -156,29 +153,20 @@ export async function createScope(
 
   const { clerkOrgId } = options;
 
-  // Create scope + admin membership atomically
-  const scope = await globalThis.services.db.transaction(async (tx) => {
-    const [newScope] = await tx
-      .insert(scopes)
-      .values({
-        slug,
-        clerkOrgId,
-      })
-      .onConflictDoNothing({ target: scopes.slug })
-      .returning();
+  const [newScope] = await globalThis.services.db
+    .insert(scopes)
+    .values({
+      slug,
+      clerkOrgId,
+    })
+    .onConflictDoNothing({ target: scopes.slug })
+    .returning();
 
-    if (!newScope) {
-      throw badRequest(`Scope "${slug}" already exists`);
-    }
+  if (!newScope) {
+    throw badRequest(`Scope "${slug}" already exists`);
+  }
 
-    await tx.insert(scopeMembers).values({
-      scopeId: newScope.id,
-      userId: clerkUserId,
-      role: "admin",
-    });
-
-    return newScope;
-  });
+  const scope = newScope;
 
   log.debug("scope created", {
     clerkUserId,

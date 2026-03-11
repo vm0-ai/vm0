@@ -92,7 +92,6 @@ import {
 } from "../db/schema/agent-compose";
 import { agentPermissions } from "../db/schema/agent-permission";
 import { scopes } from "../db/schema/scope";
-import { scopeMembers } from "../db/schema/scope-member";
 import { conversations } from "../db/schema/conversation";
 import { uniqueId } from "./test-helpers";
 
@@ -2707,12 +2706,6 @@ export async function createTestTelegramInstallation(options?: {
       target: orgCache.clerkOrgId,
       set: { slug: scopeSlug, tier: "free", cachedAt: new Date() },
     });
-
-  await globalThis.services.db.insert(scopeMembers).values({
-    scopeId: scope!.id,
-    userId: adminUserId,
-    role: "admin",
-  });
 
   const [compose] = await globalThis.services.db
     .insert(agentComposes)
