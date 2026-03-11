@@ -96,9 +96,7 @@ pub async fn upload_network_logs(
 
     match result {
         Ok(resp) if resp.status().is_success() => {
-            if let Err(e) = tokio::fs::remove_file(path).await {
-                warn!(run_id = %run_id, error = %e, "failed to delete network log file");
-            }
+            // File is kept locally for debugging; gc_job_logs deletes after 7 days.
         }
         Ok(resp) => {
             warn!(run_id = %run_id, status = %resp.status(), "network logs upload rejected");
