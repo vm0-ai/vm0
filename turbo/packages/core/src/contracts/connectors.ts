@@ -810,7 +810,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {} as Record<string, string>,
   },
   reddit: {
     label: "Reddit",
@@ -1737,7 +1736,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {} as Record<string, string>,
   },
 } satisfies Record<string, ConnectorConfig>;
 
