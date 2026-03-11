@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import { fetch$ } from "../fetch.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import { triggerAndPollComposeJob } from "../agent-detail/compose-job.ts";
+import type { AgentInstructions } from "../agent-detail/types.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 
@@ -11,19 +12,16 @@ const L = logger("ZeroMeet");
 // Instructions state
 // ---------------------------------------------------------------------------
 
-interface InstructionsData {
-  content: string | null;
-  filename: string | null;
-}
-
 interface InstructionsState {
-  instructions: InstructionsData | null;
+  instructions: AgentInstructions | null;
   loading: boolean;
+  error: string | null;
 }
 
 const instructionsState$ = state<InstructionsState>({
   instructions: null,
   loading: false,
+  error: null,
 });
 
 export const zeroInstructions$ = computed(
@@ -32,6 +30,7 @@ export const zeroInstructions$ = computed(
 export const zeroInstructionsLoading$ = computed(
   (get) => get(instructionsState$).loading,
 );
+export const zeroFetchError$ = computed((get) => get(instructionsState$).error);
 
 // ---------------------------------------------------------------------------
 // Compose detail (needed for build)
@@ -40,7 +39,7 @@ export const zeroInstructionsLoading$ = computed(
 interface ComposeDetail {
   composeId: string;
   name: string;
-  content: object | null;
+  content: Record<string, unknown> | null;
 }
 
 const composeDetail$ = state<ComposeDetail | null>(null);
@@ -56,7 +55,7 @@ export const fetchZeroInstructions$ = command(async ({ get, set }) => {
     return;
   }
 
-  set(instructionsState$, { instructions: null, loading: true });
+  set(instructionsState$, { instructions: null, loading: true, error: null });
 
   const fetchFn = get(fetch$);
 
@@ -66,25 +65,32 @@ export const fetchZeroInstructions$ = command(async ({ get, set }) => {
     fetchFn(`/api/agent/composes/${composeId}`),
   ]);
 
-  if (instrResp.ok) {
-    const data = (await instrResp.json()) as InstructionsData;
-    set(instructionsState$, { instructions: data, loading: false });
-  } else {
-    set(instructionsState$, { instructions: null, loading: false });
+  if (!instrResp.ok || !composeResp.ok) {
+    set(instructionsState$, {
+      instructions: null,
+      loading: false,
+      error: "Failed to load instructions.",
+    });
+    return;
   }
 
-  if (composeResp.ok) {
-    const compose = (await composeResp.json()) as {
-      id: string;
-      name: string;
-      content: object | null;
-    };
-    set(composeDetail$, {
-      composeId: compose.id,
-      name: compose.name,
-      content: compose.content,
-    });
-  }
+  const instrData = (await instrResp.json()) as AgentInstructions;
+  set(instructionsState$, {
+    instructions: instrData,
+    loading: false,
+    error: null,
+  });
+
+  const compose = (await composeResp.json()) as {
+    id: string;
+    name: string;
+    content: Record<string, unknown> | null;
+  };
+  set(composeDetail$, {
+    composeId: compose.id,
+    name: compose.name,
+    content: compose.content,
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -138,6 +144,7 @@ export const buildZeroInstructions$ = command(async ({ get, set }) => {
     set(instructionsState$, {
       instructions: { content: edited, filename: current?.filename ?? null },
       loading: false,
+      error: null,
     });
 
     // Clear editing state

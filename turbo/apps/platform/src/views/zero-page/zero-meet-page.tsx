@@ -53,6 +53,7 @@ import {
   zeroInstructionsDirty$,
   zeroBuildingInstructions$,
   zeroBuildError$,
+  zeroFetchError$,
   fetchZeroInstructions$,
   setZeroEditedContent$,
   discardZeroEdit$,
@@ -283,6 +284,7 @@ function ZeroInstructionsTab() {
   const dirtyLoadable = useLoadable(zeroInstructionsDirty$);
   const buildingLoadable = useLoadable(zeroBuildingInstructions$);
   const buildErrorLoadable = useLoadable(zeroBuildError$);
+  const fetchErrorLoadable = useLoadable(zeroFetchError$);
 
   const instructions =
     instructionsLoadable.state === "hasData" ? instructionsLoadable.data : null;
@@ -296,6 +298,8 @@ function ZeroInstructionsTab() {
     buildingLoadable.state === "hasData" && buildingLoadable.data === true;
   const buildError =
     buildErrorLoadable.state === "hasData" ? buildErrorLoadable.data : null;
+  const fetchError =
+    fetchErrorLoadable.state === "hasData" ? fetchErrorLoadable.data : null;
 
   const setEdited = useSet(setZeroEditedContent$);
   const discard = useSet(discardZeroEdit$);
@@ -321,6 +325,8 @@ function ZeroInstructionsTab() {
               <div className="h-5 w-40 rounded bg-muted/50" />
               <div className="h-64 w-full rounded bg-muted/30" />
             </div>
+          ) : fetchError ? (
+            <p className="text-sm text-destructive">{fetchError}</p>
           ) : (
             <>
               <textarea
