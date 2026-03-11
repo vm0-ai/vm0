@@ -287,7 +287,7 @@ class TestResponseHandler:
 
         flow.response = MagicMock()
         flow.response.status_code = 401
-        flow.response.content = b"Unauthorized"
+        flow.response.headers = {}
 
         # Pre-populate connector token cache
         cache_key = ("run-conn-1", "github", "https://api.github.com")
@@ -315,7 +315,7 @@ class TestResponseHandler:
 
         flow.response = MagicMock()
         flow.response.status_code = 500
-        flow.response.content = b"Internal Server Error"
+        flow.response.headers = {}
 
         mock_log = MagicMock()
         with patch.object(mitm_addon.ctx, "log", mock_log, create=True):
