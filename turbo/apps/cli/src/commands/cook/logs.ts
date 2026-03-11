@@ -30,9 +30,9 @@ export const logsCommand = new Command()
       }) => {
         const state = await loadCookState();
         if (!state.lastRunId) {
-          console.error(chalk.red("✗ No previous run found"));
-          console.error(chalk.dim("  Run 'vm0 cook <prompt>' first"));
-          process.exit(1);
+          throw new Error("No previous run found", {
+            cause: new Error("Run 'vm0 cook <prompt>' first"),
+          });
         }
 
         // Build command args

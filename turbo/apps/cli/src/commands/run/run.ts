@@ -214,7 +214,7 @@ export const mainRunCommand = new Command()
           verbose: options.verbose,
         });
         if (!result.succeeded) {
-          process.exit(1);
+          throw new Error("Run failed");
         }
         showNextSteps(result);
 

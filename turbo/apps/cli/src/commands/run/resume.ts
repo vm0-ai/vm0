@@ -127,7 +127,7 @@ export const resumeCommand = new Command()
         const verbose = options.verbose || allOpts.verbose;
         const result = await pollEvents(response.runId, { verbose });
         if (!result.succeeded) {
-          process.exit(1);
+          throw new Error("Run failed");
         }
         showNextSteps(result);
       },
