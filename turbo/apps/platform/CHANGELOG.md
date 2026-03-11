@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.102.0](https://github.com/vm0-ai/vm0/compare/platform-v0.101.1...platform-v0.102.0) (2026-03-11)
+
+
+### Features
+
+* add 8 api-token connectors in batch ([#4315](https://github.com/vm0-ai/vm0/issues/4315)) ([f97b48a](https://github.com/vm0-ai/vm0/commit/f97b48a8f870f496ed13015d3e28fa7bbab9f463))
+* add chatwoot connector with api token authentication ([#4254](https://github.com/vm0-ai/vm0/issues/4254)) ([e421500](https://github.com/vm0-ai/vm0/commit/e421500d107ff5e1852f100b88ed103e40a9a12d))
+* add deepseek connector with api key authentication ([#4246](https://github.com/vm0-ai/vm0/issues/4246)) ([a6486ce](https://github.com/vm0-ai/vm0/commit/a6486ced94ae2da8735fc74970e8bf0e9305485e))
+* add dev.to api-token connector ([#4257](https://github.com/vm0-ai/vm0/issues/4257)) ([327703f](https://github.com/vm0-ai/vm0/commit/327703f7ae7e1e83abb1cfb95f8eebe94d738450))
+* add dify api-token connector ([#4320](https://github.com/vm0-ai/vm0/issues/4320)) ([fca1b95](https://github.com/vm0-ai/vm0/commit/fca1b95939a7327da9ef37667da53f108f0ccd65))
+* add elevenlabs api-token connector ([#4250](https://github.com/vm0-ai/vm0/issues/4250)) ([09f4258](https://github.com/vm0-ai/vm0/commit/09f425850da50466ddf7c95cb0c5fedb9daf114b))
+* add fal.ai connector for ai model execution ([#4247](https://github.com/vm0-ai/vm0/issues/4247)) ([9a90bdb](https://github.com/vm0-ai/vm0/commit/9a90bdbecc7f67f7924ef8ec2513eb611c42b51d))
+* add minimax connector ([#4248](https://github.com/vm0-ai/vm0/issues/4248)) ([f388dfc](https://github.com/vm0-ai/vm0/commit/f388dfc36fa3b27aeac8801adf7d57a13aea0a93))
+* add openai connector with api key authentication ([#4251](https://github.com/vm0-ai/vm0/issues/4251)) ([c2c6b16](https://github.com/vm0-ai/vm0/commit/c2c6b16105c812a97db9700561716dfccd50b62e))
+* add organization selection page after sign-in/sign-up ([#4161](https://github.com/vm0-ai/vm0/issues/4161)) ([d360bea](https://github.com/vm0-ai/vm0/commit/d360bea6e4c01cd5aef71271099bc3b56999f29b))
+* add pdf4me connector with api token authentication ([#4260](https://github.com/vm0-ai/vm0/issues/4260)) ([8995cf4](https://github.com/vm0-ai/vm0/commit/8995cf4c352f5fa315f028a56e8e9b0f18f09670))
+* add pdfco connector with api key authentication ([#4259](https://github.com/vm0-ai/vm0/issues/4259)) ([e98abf5](https://github.com/vm0-ai/vm0/commit/e98abf53d9c64ea9b04eea38840674328d6af11f))
+* add perplexity connector with api key authentication ([#4249](https://github.com/vm0-ai/vm0/issues/4249)) ([1b55c46](https://github.com/vm0-ai/vm0/commit/1b55c46798f7ae99ec63995bff5b3b5b918a4677))
+* add podchaser connector with api token authentication ([#4261](https://github.com/vm0-ai/vm0/issues/4261)) ([b20c28a](https://github.com/vm0-ai/vm0/commit/b20c28a37fbc62b9c1cb622e1f1c4fa41963c820))
+* add pushinator api-token connector ([#4278](https://github.com/vm0-ai/vm0/issues/4278)) ([d905bf1](https://github.com/vm0-ai/vm0/commit/d905bf10aae155a9d1d7e59f887ffcd8bc0dd9ce)), closes [#4262](https://github.com/vm0-ai/vm0/issues/4262)
+* add qdrant api-token connector ([#4300](https://github.com/vm0-ai/vm0/issues/4300)) ([72c0cab](https://github.com/vm0-ai/vm0/commit/72c0cab8812b5841a3f21d1235729007346ff20a)), closes [#4263](https://github.com/vm0-ai/vm0/issues/4263)
+* add qiita api-token connector ([#4301](https://github.com/vm0-ai/vm0/issues/4301)) ([93ce728](https://github.com/vm0-ai/vm0/commit/93ce72858d43d332b7c65a970266176b9e086576)), closes [#4264](https://github.com/vm0-ai/vm0/issues/4264)
+* add reportei api-token connector ([#4303](https://github.com/vm0-ai/vm0/issues/4303)) ([44717e3](https://github.com/vm0-ai/vm0/commit/44717e33a0c1b2138efe28ce4a5e5270d00f214c))
+* add serpapi api-token connector ([#4305](https://github.com/vm0-ai/vm0/issues/4305)) ([4adade6](https://github.com/vm0-ai/vm0/commit/4adade60428328ef0caa53ddda1a7a87c94c24e7))
+* add web scraping and browser automation connectors ([#4258](https://github.com/vm0-ai/vm0/issues/4258)) ([d168594](https://github.com/vm0-ai/vm0/commit/d1685943f8c7ee979d2a06f5995d5ad1b2de8b77))
+* add zendesk api-token connector ([#4319](https://github.com/vm0-ai/vm0/issues/4319)) ([e442fed](https://github.com/vm0-ai/vm0/commit/e442fed3f9d2a1bf8e081a6de719b38019c9cb6a))
+* add zeptomail connector ([#4255](https://github.com/vm0-ai/vm0/issues/4255)) ([55fe174](https://github.com/vm0-ai/vm0/commit/55fe17453dfc912f34e0d3d3444dc77650d1d0d3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.55.0
+
 ## [0.101.1](https://github.com/vm0-ai/vm0/compare/platform-v0.101.0...platform-v0.101.1) (2026-03-10)
 
 
