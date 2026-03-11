@@ -45,20 +45,15 @@ export async function generateRunnerGroupToken(
     return null;
   }
 
-  try {
-    const channelName = getRunnerGroupChannelName(group);
-    const tokenRequest = await client.auth.createTokenRequest({
-      capability: {
-        [channelName]: ["subscribe"],
-      },
-      ttl: 3600000, // 1 hour
-    });
-    log.debug(`Generated token for runner-group:${group}`);
-    return tokenRequest;
-  } catch (error) {
-    log.error(`Ably token generation failed for runner-group:${group}:`, error);
-    return null;
-  }
+  const channelName = getRunnerGroupChannelName(group);
+  const tokenRequest = await client.auth.createTokenRequest({
+    capability: {
+      [channelName]: ["subscribe"],
+    },
+    ttl: 3600000, // 1 hour
+  });
+  log.debug(`Generated token for runner-group:${group}`);
+  return tokenRequest;
 }
 
 /**

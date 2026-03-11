@@ -207,8 +207,10 @@ describe("POST /api/runners/realtime/token", () => {
       );
       const data = await response.json();
 
+      // Exception propagates to createHandler's error handler which returns
+      // a generic 500 message (no defensive catch in generateRunnerGroupToken)
       expect(response.status).toBe(500);
-      expect(data.error.message).toContain("Realtime service unavailable");
+      expect(data.error.message).toContain("An internal error occurred");
     });
   });
 });
