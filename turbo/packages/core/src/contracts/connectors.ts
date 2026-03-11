@@ -813,6 +813,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  runway: {
+    label: "Runway",
+    helpText:
+      "Connect your Runway account to generate AI videos from images, text, or video inputs",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [Runway Developer Portal](https://dev.runwayml.com/)\n2. Purchase credits and create an API key in the dashboard\n3. Copy the API key",
+        secrets: {
+          RUNWAY_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-runway-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   reddit: {
     label: "Reddit",
     featureFlag: FeatureSwitchKey.RedditConnector,
@@ -2392,6 +2412,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       service("https://api.podchaser.com", bearerAuth("PODCHASER_TOKEN")),
     ],
   },
+  runway: {
+    services: [
+      service("https://api.dev.runwayml.com/v1", bearerAuth("RUNWAY_TOKEN")),
+    ],
+  },
 };
 
 export const connectorTypeSchema = z.enum([
@@ -2456,6 +2481,7 @@ export const connectorTypeSchema = z.enum([
   "devto",
   "fal",
   "podchaser",
+  "runway",
 ]);
 
 /**
