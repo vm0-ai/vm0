@@ -2515,6 +2515,24 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  zapier: {
+    label: "Zapier",
+    helpText:
+      "Connect your Zapier account to trigger zaps and use AI Actions (NLA) to automate workflows",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        secrets: {
+          ZAPIER_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-zapier-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   zapsign: {
     label: "ZapSign",
     helpText:
@@ -3181,6 +3199,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       service("https://www.wrike.com/api/v4", bearerAuth("WRIKE_TOKEN")),
     ],
   },
+  zapier: {
+    services: [
+      service("https://actions.zapier.com", bearerAuth("ZAPIER_TOKEN")),
+    ],
+  },
   zapsign: {
     services: [
       service("https://api.zapsign.com.br/api/v1", bearerAuth("ZAPSIGN_TOKEN")),
@@ -3281,6 +3304,7 @@ export const connectorTypeSchema = z.enum([
   "twenty",
   "youtube",
   "wrike",
+  "zapier",
   "zapsign",
   "zendesk",
   "prisma-postgres",

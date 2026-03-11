@@ -65,6 +65,7 @@ import { tavilyHandler } from "./providers/tavily-handler";
 import { tldvHandler } from "./providers/tldv-handler";
 import { twentyHandler } from "./providers/twenty-handler";
 import { youtubeHandler } from "./providers/youtube-handler";
+import { zapierHandler } from "./providers/zapier-handler";
 import { zapsignHandler } from "./providers/zapsign-handler";
 import { zendeskHandler } from "./providers/zendesk-handler";
 import { slackHandler } from "./providers/slack-handler";
@@ -198,6 +199,7 @@ export const PROVIDER_HANDLERS: Record<
   tldv: tldvHandler,
   twenty: twentyHandler,
   youtube: youtubeHandler,
+  zapier: zapierHandler,
   zapsign: zapsignHandler,
   zendesk: zendeskHandler,
 };

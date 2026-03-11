@@ -77,6 +77,7 @@ import tavilyIcon from "./icons/tavily.svg";
 import tldvIcon from "./icons/tldv.svg";
 import twentyIcon from "./icons/twenty.svg";
 import youtubeIcon from "./icons/youtube.svg";
+import zapierIcon from "./icons/zapier.svg";
 import zapsignIcon from "./icons/zapsign.svg";
 import zendeskIcon from "./icons/zendesk.svg";
 import resendIcon from "./icons/resend.svg";
@@ -174,6 +175,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   tldv: tldvIcon,
   twenty: twentyIcon,
   youtube: youtubeIcon,
+  zapier: zapierIcon,
   zapsign: zapsignIcon,
   zendesk: zendeskIcon,
   resend: resendIcon,
