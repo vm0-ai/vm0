@@ -3,12 +3,12 @@ import type {
   LogDetail,
   AgentEvent,
   AgentEventsResponse,
-  ArtifactDownloadResponse,
   LogStatus,
 } from "./types.ts";
 import { delay } from "signal-timers";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
+import { downloadArtifact } from "../artifact-download.ts";
 import { currentLogId$ } from "./log-detail-state.ts";
 const MOCK_LOG_DETAIL_ENABLED = import.meta.env.VITE_MOCK_LOG_DETAIL === "true";
 
@@ -256,43 +256,8 @@ export const artifactDownloadPromise$ = computed((get) =>
  */
 export const downloadArtifact$ = command(
   ({ get, set }, params: { name: string; version?: string }): Promise<void> => {
-    const downloadPromise = (async () => {
-      const fetchFn = get(fetch$);
-      const searchParams = new URLSearchParams({ name: params.name });
-      if (params.version) {
-        searchParams.set("version", params.version);
-      }
-
-      const response = await fetchFn(
-        `/api/platform/artifacts/download?${searchParams.toString()}`,
-      );
-
-      if (!response.ok) {
-        const errorData = (await response.json()) as {
-          error?: { message?: string };
-        };
-        throw new Error(
-          errorData.error?.message ?? `Failed to get download URL`,
-        );
-      }
-
-      const data = (await response.json()) as ArtifactDownloadResponse;
-
-      // Validate URL before attempting to open
-      if (!data.url) {
-        throw new Error("Download URL not provided by server");
-      }
-
-      // Trigger download by opening the presigned URL
-      const opened = window.open(data.url, "_blank");
-
-      // Check if popup was blocked
-      if (!opened || opened.closed || typeof opened.closed === "undefined") {
-        throw new Error(
-          "Download blocked by browser. Please allow popups for this site.",
-        );
-      }
-    })();
+    const fetchFn = get(fetch$);
+    const downloadPromise = downloadArtifact(fetchFn, params);
 
     set(internalArtifactDownloadPromise$, downloadPromise);
 

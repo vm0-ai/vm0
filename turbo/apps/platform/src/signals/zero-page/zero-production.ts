@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
-import type { ArtifactDownloadResponse } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
+import { downloadArtifact } from "../artifact-download.ts";
 
 // ---------------------------------------------------------------------------
 // Artifact list
@@ -46,30 +46,6 @@ export const fetchZeroArtifacts$ = command(async ({ get, set }) => {
 export const downloadArtifact$ = command(
   async ({ get }, params: { name: string }) => {
     const fetchFn = get(fetch$);
-    const searchParams = new URLSearchParams({ name: params.name });
-
-    const response = await fetchFn(
-      `/api/platform/artifacts/download?${searchParams.toString()}`,
-    );
-
-    if (!response.ok) {
-      const errorData = (await response.json()) as {
-        error?: { message?: string };
-      };
-      throw new Error(errorData.error?.message ?? "Failed to get download URL");
-    }
-
-    const data = (await response.json()) as ArtifactDownloadResponse;
-
-    if (!data.url) {
-      throw new Error("Download URL not provided by server");
-    }
-
-    const opened = window.open(data.url, "_blank");
-    if (!opened || opened.closed || typeof opened.closed === "undefined") {
-      throw new Error(
-        "Download blocked by browser. Please allow popups for this site.",
-      );
-    }
+    await downloadArtifact(fetchFn, params);
   },
 );

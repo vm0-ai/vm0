@@ -58,9 +58,3 @@ export interface AgentEventsResponse {
   hasMore: boolean;
   framework: string;
 }
-
-// Artifact download URL response
-export interface ArtifactDownloadResponse {
-  url: string;
-  expiresAt: string;
-}
