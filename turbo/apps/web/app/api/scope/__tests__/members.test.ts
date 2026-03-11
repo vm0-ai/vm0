@@ -17,6 +17,7 @@ async function createTestScope(userId: string) {
   setupClerkOrgMock({
     userId,
     orgId: `org_${userId}`,
+    orgSlug: slug,
     memberships: [{ userId, role: "org:admin" }],
   });
 
@@ -74,6 +75,7 @@ describe("GET /api/scope/members - Scope Members", () => {
     setupClerkOrgMock({
       userId,
       orgId,
+      orgSlug: slug,
       memberships: [{ userId, role: "org:admin" }],
     });
 
@@ -100,6 +102,7 @@ describe("GET /api/scope/members - Scope Members", () => {
       setupClerkOrgMock({
         userId: memberUserId,
         orgId,
+        orgSlug: slug,
         memberships: [
           { userId: adminUserId, role: "org:admin" },
           { userId: memberUserId, role: "org:member" },
@@ -125,6 +128,7 @@ describe("GET /api/scope/members - Scope Members", () => {
       setupClerkOrgMock({
         userId: outsiderUserId,
         orgId,
+        orgSlug: slug,
         memberships: [{ userId: adminUserId, role: "org:admin" }],
       });
 
@@ -143,6 +147,7 @@ describe("GET /api/scope/members - Scope Members", () => {
       setupClerkOrgMock({
         userId: memberUserId,
         orgId,
+        orgSlug: slug,
         memberships: [],
       });
       const client = await clerkClient();

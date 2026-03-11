@@ -20,6 +20,7 @@ async function createTestScope(userId: string) {
   setupClerkOrgMock({
     userId,
     orgId,
+    orgSlug: slug,
     memberships: [{ userId, role: "org:admin" }],
   });
 
@@ -50,6 +51,7 @@ async function addMember(
   setupClerkOrgMock({
     userId: adminUserId,
     orgId,
+    orgSlug: slug,
     memberships: [
       { userId: adminUserId, role: "org:admin" },
       { userId: memberUserId, role: "org:member" },
@@ -166,6 +168,7 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     setupClerkOrgMock({
       userId: memberUserId,
       orgId,
+      orgSlug: slug,
       memberships: [
         { userId: adminUserId, role: "org:admin" },
         { userId: memberUserId, role: "org:member" },
@@ -181,6 +184,7 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     setupClerkOrgMock({
       userId: adminUserId,
       orgId,
+      orgSlug: slug,
       memberships: [
         { userId: adminUserId, role: "org:admin" },
         { userId: memberUserId, role: "org:member" },
@@ -215,6 +219,7 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     setupClerkOrgMock({
       userId: adminUserId,
       orgId,
+      orgSlug: slug,
       memberships: [{ userId: adminUserId, role: "org:admin" }],
     });
     const statusReq2 = createTestRequest(

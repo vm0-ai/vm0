@@ -7,10 +7,8 @@ import { adminScopeTierContract, scopeTierSchema } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
-import {
-  getScopeBySlug,
-  isVm0Admin,
-} from "../../../../../src/lib/scope/scope-service";
+import { isVm0Admin } from "../../../../../src/lib/scope/scope-service";
+import { getOrgBySlug } from "../../../../../src/lib/scope/org-cache-service";
 import { clerkClient } from "@clerk/nextjs/server";
 import { scopes } from "../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
@@ -45,8 +43,8 @@ const router = tsr.router(adminScopeTierContract, {
       };
     }
 
-    const scope = await getScopeBySlug(body.slug);
-    if (!scope) {
+    const orgData = await getOrgBySlug(body.slug);
+    if (!orgData) {
       return {
         status: 404 as const,
         body: {
@@ -63,19 +61,20 @@ const router = tsr.router(adminScopeTierContract, {
     const [updated] = await globalThis.services.db
       .update(scopes)
       .set({ tier: body.tier, updatedAt: new Date() })
-      .where(eq(scopes.id, scope.id))
+      .where(eq(scopes.clerkOrgId, orgData.clerkOrgId))
       .returning();
 
     // Dual-write tier to Clerk org publicMetadata (fire-and-forget)
     try {
       const client = await clerkClient();
-      await client.organizations.updateOrganizationMetadata(scope.clerkOrgId, {
-        publicMetadata: { tier: body.tier },
-      });
+      await client.organizations.updateOrganizationMetadata(
+        orgData.clerkOrgId,
+        { publicMetadata: { tier: body.tier } },
+      );
     } catch (err) {
       log.error("Failed to write tier to Clerk metadata", {
         error: err,
-        clerkOrgId: scope.clerkOrgId,
+        clerkOrgId: orgData.clerkOrgId,
       });
     }
 

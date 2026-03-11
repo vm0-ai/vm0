@@ -90,7 +90,7 @@ export async function getScopeById(id: string) {
 /**
  * Get a scope by its slug
  */
-export async function getScopeBySlug(slug: string) {
+async function getScopeBySlug(slug: string) {
   const result = await globalThis.services.db
     .select()
     .from(scopes)

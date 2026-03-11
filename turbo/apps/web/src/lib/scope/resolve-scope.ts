@@ -1,11 +1,8 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { forbidden, badRequest, notFound } from "../errors";
 import { logger } from "../logger";
-import {
-  getScopeBySlug,
-  getScopeByClerkOrgId,
-  getScopeById,
-} from "./scope-service";
+import { getScopeByClerkOrgId, getScopeById } from "./scope-service";
+import { getOrgBySlug } from "./org-cache-service";
 import { getDefaultScope } from "./scope-member-service";
 
 import type { ScopeRole } from "@vm0/core";
@@ -144,7 +141,9 @@ export async function resolveScope(
 
   // 1. Explicit scope selection via ?scope= query param (highest priority)
   if (scopeSlug) {
-    const scope = await getScopeBySlug(scopeSlug);
+    const orgData = await getOrgBySlug(scopeSlug);
+    if (!orgData) throw notFound("Scope not found");
+    const scope = await getScopeByClerkOrgId(orgData.clerkOrgId);
     if (!scope) throw notFound("Scope not found");
 
     const member = await verifyMembership(
@@ -209,7 +208,10 @@ export async function requireScopeFromRequest(
   let scope: Scope | null = null;
 
   if (scopeSlug) {
-    scope = await getScopeBySlug(scopeSlug);
+    const orgData = await getOrgBySlug(scopeSlug);
+    if (orgData) {
+      scope = await getScopeByClerkOrgId(orgData.clerkOrgId);
+    }
   } else if (orgParam) {
     scope = await getScopeByClerkOrgId(orgParam);
   } else {

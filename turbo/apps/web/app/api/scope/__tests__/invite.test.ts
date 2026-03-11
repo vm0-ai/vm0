@@ -18,6 +18,7 @@ async function createTestScope(userId: string) {
   setupClerkOrgMock({
     userId,
     orgId,
+    orgSlug: slug,
     memberships: [{ userId, role: "org:admin" }],
   });
 
@@ -120,6 +121,7 @@ describe("POST /api/scope/invite - Invite Member", () => {
     setupClerkOrgMock({
       userId: adminUserId,
       orgId,
+      orgSlug: slug,
       memberships: [
         { userId: adminUserId, role: "org:admin" },
         { userId: memberUserId, role: "org:member" },

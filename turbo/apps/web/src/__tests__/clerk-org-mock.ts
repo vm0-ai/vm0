@@ -36,6 +36,25 @@ export function setupClerkOrgMock(options: {
       id: orgId,
       name: "test-org",
     }),
+    getOrganization: vi
+      .fn()
+      .mockImplementation(
+        (params: { organizationId?: string; slug?: string }) => {
+          if (params.organizationId === orgId || params.slug === orgSlug) {
+            return Promise.resolve({
+              id: orgId,
+              slug: orgSlug,
+              name: orgSlug,
+              publicMetadata: {},
+            });
+          }
+          return Promise.reject(
+            new Error(
+              `Organization ${params.organizationId ?? params.slug} not found`,
+            ),
+          );
+        },
+      ),
     getOrganizationMembershipList: vi.fn().mockResolvedValue({
       data: memberships.map((m) => ({
         publicUserData: { userId: m.userId },

@@ -56,6 +56,7 @@ describe("POST /api/scope/leave - Leave Scope", () => {
     setupClerkOrgMock({
       userId,
       orgId,
+      orgSlug: slug,
       memberships: [{ userId, role: "org:admin" }],
     });
 
