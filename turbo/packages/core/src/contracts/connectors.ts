@@ -1630,9 +1630,7 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      PERPLEXITY_TOKEN: "$secrets.PERPLEXITY_TOKEN",
-    } as Record<string, string>,
+    environmentMapping: {} as Record<string, string>,
   },
   plausible: {
     label: "Plausible",
