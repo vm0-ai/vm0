@@ -1,151 +1,24 @@
 ---
 name: agent-api-connector
-description: Process api-token connector issues end-to-end — implement one new connector, then check/merge existing PRs, all in one loop iteration
+description: Process api-token connector issues end-to-end — merge existing PRs first, then implement one new connector
 context: fork
 ---
 
 # Process API-Token Connector
 
 You are an api-token connector lifecycle specialist. Each invocation does TWO phases:
-1. **Phase A:** Implement one new connector (if any unlinked issue exists)
-2. **Phase B:** Check and merge existing connector PRs (resolve conflicts, wait for CI, merge when ready)
+1. **Phase A:** Check and merge existing connector PRs (resolve conflicts, wait for CI, merge when ready)
+2. **Phase B:** Implement one new connector (only if no open connector PR exists)
 
 This single-agent design avoids the N! merge conflict problem caused by parallel agents.
 
 ---
 
-## Phase A: Implement New Connector
+## Phase A: Check and Merge Existing PRs
 
-### Step A1: Find Next Issue
+Process existing open connector PRs **one at a time, sequentially**.
 
-1. Ensure you are on `main` branch with latest code:
-   ```bash
-   rm -f .claude/scheduled_tasks.lock
-   git checkout main
-   git stash 2>/dev/null; git pull; git stash pop 2>/dev/null; true
-   ```
-
-2. List open issues with the `api-token connector` label that have no linked PR:
-   ```bash
-   gh issue list --repo vm0-ai/vm0 --label "api-token connector" --state open \
-     --json number,title,closedByPullRequestsReferences --limit 50
-   ```
-
-3. Filter to issues where `closedByPullRequestsReferences` is empty. Pick the lowest issue number.
-
-4. Also check there is no existing open PR for this connector:
-   ```bash
-   gh api "repos/vm0-ai/vm0/pulls?state=open&per_page=100" --jq '.[].title' | grep -i <connector-name>
-   ```
-
-5. If no unlinked issues remain, skip to **Phase B**.
-
-### Step A2: Research the Connector
-
-In parallel:
-
-1. **Read the skill definition** from `vm0-ai/vm0-skills`:
-   ```bash
-   gh api "repos/vm0-ai/vm0-skills/contents/<name>/SKILL.md" --jq '.content' | base64 -d
-   ```
-   - Note the `vm0_secrets` name — it must follow `XXX_TOKEN` convention per `docs/add-oauth-connector.md`
-   - Note the API base URL and auth method (Bearer, custom header, query param, Basic)
-
-2. **Find a real SVG logo** from the internet (simpleicons.org, svgrepo.com, worldvectorlogo.com, brandfetch.com, or the service's official website/GitHub repo). **Never fabricate a logo.**
-
-### Step A3: Create Feature Branch
-
-```bash
-git checkout -b feat/add-<name>-connector
-```
-
-### Step A4: Implement the Connector
-
-Edit these files (use existing connectors like `twenty`, `qiita`, `zeptomail` as templates):
-
-#### 4a. `turbo/packages/core/src/contracts/connectors.ts` (3 spots)
-
-1. **CONNECTOR_TYPES_DEF** — Add connector config with label, helpText, authMethods (api-token), defaultAuthMethod. Insert alphabetically.
-
-2. **CONNECTOR_PROXY_CONFIGS** — Add proxy service definition if the API uses header-based auth:
-   - Bearer auth: `service("https://api.example.com", bearerAuth("XXX_TOKEN"))`
-   - Custom header: `service("https://api.example.com", { headers: { "x-api-key": "${secrets.XXX_TOKEN}" } })`
-   - **Skip proxy** if auth is query-param-based or requires base64 encoding (Basic auth)
-
-3. **connectorTypeSchema z.enum** — Add the connector type string
-
-#### 4b. `turbo/apps/web/src/lib/connector/providers/<name>-handler.ts` (new file)
-
-```typescript
-import { type ProviderHandler } from "../provider-types";
-
-export const <name>Handler: ProviderHandler = {
-  buildAuthUrl() {
-    throw new Error("<Name> does not support OAuth — use API token auth");
-  },
-  exchangeCode() {
-    throw new Error("<Name> does not support OAuth — use API token auth");
-  },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "XXX_TOKEN",
-};
-```
-
-#### 4c. `turbo/apps/web/src/lib/connector/provider-registry.ts` (2 spots)
-
-1. Add import for the handler
-2. Add entry to `PROVIDER_HANDLERS` record
-
-#### 4d. `turbo/apps/platform/src/views/settings-page/icons/<name>.svg` (new file)
-
-The real SVG logo found in Step A2.
-
-#### 4e. `turbo/apps/platform/src/views/settings-page/connector-icons.tsx` (2 spots)
-
-1. Add import for the SVG icon
-2. Add entry to `CONNECTOR_ICONS` record
-
-### Step A5: Update vm0-skills Secret Name (if needed)
-
-If the skill's `vm0_secrets` doesn't follow `XXX_TOKEN` convention, rename it:
-
-```bash
-SHA=$(gh api "repos/vm0-ai/vm0-skills/contents/<name>/SKILL.md" --jq '.sha')
-gh api "repos/vm0-ai/vm0-skills/contents/<name>/SKILL.md" --jq '.content' | base64 -d | \
-  sed 's/OLD_SECRET/NEW_SECRET/g' > /tmp/skill.md
-CONTENT=$(base64 -w0 /tmp/skill.md)
-gh api --method PUT "repos/vm0-ai/vm0-skills/contents/<name>/SKILL.md" \
-  -f message="chore: rename OLD_SECRET to NEW_SECRET" -f content="$CONTENT" -f sha="$SHA"
-```
-
-### Step A6: Commit and Push
-
-```bash
-git add <all changed files>
-git commit -m "feat: add <name> api-token connector"
-git push -u origin feat/add-<name>-connector
-```
-
-**Important:** Do NOT run `check-types` locally — it gets stuck. The lefthook pre-commit hook runs prettier + knip which is sufficient.
-
-### Step A7: Create PR
-
-```bash
-gh pr create --title "feat: add <name> api-token connector" --body "$(cat <<'EOF'
-## Summary
-- Add <Name> as an api-token connector
-- <Proxy config description or "No proxy config (query param auth)">
-- <Secret rename description if applicable>
-
-Closes #<issue-number>
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
-```
-
-### Step A8: Return to Main
+### Step A0: Sync Main
 
 ```bash
 rm -f .claude/scheduled_tasks.lock
@@ -153,20 +26,16 @@ git checkout main
 git stash 2>/dev/null; git pull; git stash pop 2>/dev/null; true
 ```
 
----
-
-## Phase B: Check and Merge Existing PRs
-
-After implementing (or if no new issue to implement), process existing open connector PRs **one at a time, sequentially**.
-
-### Step B1: List Connector PRs
+### Step A1: List Connector PRs
 
 ```bash
 gh pr list --state open --json number,title,mergeable,headRefName \
   --jq '.[] | select(.title | test("connector|api.?key|api.?token"; "i")) | {number, title, mergeable}'
 ```
 
-### Step B2: Process Each PR Sequentially
+If no open connector PRs, skip to **Phase B**.
+
+### Step A2: Process Each PR Sequentially
 
 For each PR (one at a time, never parallel):
 
@@ -243,7 +112,7 @@ gh pr view <PR> --json mergeable --jq '.mergeable'
 
 4. Proceed to next PR.
 
-### Step B3: Summary
+### Step A3: Summary
 
 After processing all PRs, report:
 - How many PRs were merged
@@ -253,8 +122,145 @@ After processing all PRs, report:
 
 ---
 
+## Phase B: Implement New Connector
+
+**Skip Phase B entirely if any open connector PR exists after Phase A.** Only proceed when there are zero open connector PRs.
+
+### Step B1: Find Next Issue
+
+1. List open issues with the `api-token connector` label that have no linked PR:
+   ```bash
+   gh issue list --repo vm0-ai/vm0 --label "api-token connector" --state open \
+     --json number,title,closedByPullRequestsReferences --limit 50
+   ```
+
+2. Filter to issues where `closedByPullRequestsReferences` is empty. Pick the lowest issue number.
+
+3. Also check there is no existing open PR for this connector:
+   ```bash
+   gh api "repos/vm0-ai/vm0/pulls?state=open&per_page=100" --jq '.[].title' | grep -i <connector-name>
+   ```
+
+4. If no unlinked issues remain, end.
+
+### Step B2: Research the Connector
+
+In parallel:
+
+1. **Read the skill definition** from `vm0-ai/vm0-skills`:
+   ```bash
+   gh api "repos/vm0-ai/vm0-skills/contents/<name>/SKILL.md" --jq '.content' | base64 -d
+   ```
+   - Note the `vm0_secrets` name — it must follow `XXX_TOKEN` convention per `docs/add-oauth-connector.md`
+   - Note the API base URL and auth method (Bearer, custom header, query param, Basic)
+
+2. **Find a real SVG logo** from the internet (simpleicons.org, svgrepo.com, worldvectorlogo.com, brandfetch.com, or the service's official website/GitHub repo). **Never fabricate a logo.**
+
+### Step B3: Create Feature Branch
+
+```bash
+git checkout -b feat/add-<name>-connector
+```
+
+### Step B4: Implement the Connector
+
+Edit these files (use existing connectors like `twenty`, `qiita`, `zeptomail` as templates):
+
+#### 4a. `turbo/packages/core/src/contracts/connectors.ts` (3 spots)
+
+1. **CONNECTOR_TYPES_DEF** — Add connector config with label, helpText, authMethods (api-token), defaultAuthMethod. Insert alphabetically.
+
+2. **CONNECTOR_PROXY_CONFIGS** — Add proxy service definition if the API uses header-based auth:
+   - Bearer auth: `service("https://api.example.com", bearerAuth("XXX_TOKEN"))`
+   - Custom header: `service("https://api.example.com", { headers: { "x-api-key": "${secrets.XXX_TOKEN}" } })`
+   - **Skip proxy** if auth is query-param-based or requires base64 encoding (Basic auth)
+
+3. **connectorTypeSchema z.enum** — Add the connector type string
+
+#### 4b. `turbo/apps/web/src/lib/connector/providers/<name>-handler.ts` (new file)
+
+```typescript
+import { type ProviderHandler } from "../provider-types";
+
+export const <name>Handler: ProviderHandler = {
+  buildAuthUrl() {
+    throw new Error("<Name> does not support OAuth — use API token auth");
+  },
+  exchangeCode() {
+    throw new Error("<Name> does not support OAuth — use API token auth");
+  },
+  getClientId: () => undefined,
+  getClientSecret: () => undefined,
+  getSecretName: () => "XXX_TOKEN",
+};
+```
+
+#### 4c. `turbo/apps/web/src/lib/connector/provider-registry.ts` (2 spots)
+
+1. Add import for the handler
+2. Add entry to `PROVIDER_HANDLERS` record
+
+#### 4d. `turbo/apps/platform/src/views/settings-page/icons/<name>.svg` (new file)
+
+The real SVG logo found in Step B2.
+
+#### 4e. `turbo/apps/platform/src/views/settings-page/connector-icons.tsx` (2 spots)
+
+1. Add import for the SVG icon
+2. Add entry to `CONNECTOR_ICONS` record
+
+### Step B5: Update vm0-skills Secret Name (if needed)
+
+If the skill's `vm0_secrets` doesn't follow `XXX_TOKEN` convention, rename it:
+
+```bash
+SHA=$(gh api "repos/vm0-ai/vm0-skills/contents/<name>/SKILL.md" --jq '.sha')
+gh api "repos/vm0-ai/vm0-skills/contents/<name>/SKILL.md" --jq '.content' | base64 -d | \
+  sed 's/OLD_SECRET/NEW_SECRET/g' > /tmp/skill.md
+CONTENT=$(base64 -w0 /tmp/skill.md)
+gh api --method PUT "repos/vm0-ai/vm0-skills/contents/<name>/SKILL.md" \
+  -f message="chore: rename OLD_SECRET to NEW_SECRET" -f content="$CONTENT" -f sha="$SHA"
+```
+
+### Step B6: Commit and Push
+
+```bash
+git add <all changed files>
+git commit -m "feat: add <name> api-token connector"
+git push -u origin feat/add-<name>-connector
+```
+
+**Important:** Do NOT run `check-types` locally — it gets stuck. The lefthook pre-commit hook runs prettier + knip which is sufficient.
+
+### Step B7: Create PR
+
+```bash
+gh pr create --title "feat: add <name> api-token connector" --body "$(cat <<'EOF'
+## Summary
+- Add <Name> as an api-token connector
+- <Proxy config description or "No proxy config (query param auth)">
+- <Secret rename description if applicable>
+
+Closes #<issue-number>
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+
+### Step B8: Return to Main
+
+```bash
+rm -f .claude/scheduled_tasks.lock
+git checkout main
+git stash 2>/dev/null; git pull; git stash pop 2>/dev/null; true
+```
+
+---
+
 ## Key Rules
 
+- **One open connector PR at a time** — do not create a new connector PR while another is still open. Merge existing PRs first in Phase A
 - **One PR per issue, one issue at a time**
 - **Sequential PR processing** — never process multiple PRs in parallel
 - **Never merge a PR you pushed to in the same round** — always wait for fresh CI
