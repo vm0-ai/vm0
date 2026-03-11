@@ -58,6 +58,7 @@ export const zeroCurrentSessionId$ = computed((get) => get(internalSessionId$));
 
 const internalActiveRunId$ = state<string | null>(null);
 const internalRunStatus$ = state<LogStatus | null>(null);
+const internalRunError$ = state<string | null>(null);
 const internalRunEvents$ = state<Computed<Promise<PageResult>>[]>([]);
 
 const internalSending$ = state(false);
@@ -149,6 +150,7 @@ export const switchZeroSession$ = command(
       set(internalActiveRunId$, null);
       set(internalRunEvents$, []);
       set(internalRunStatus$, null);
+      set(internalRunError$, null);
       set(internalSending$, false);
     } catch (error) {
       throwIfAbort(error);
@@ -165,6 +167,7 @@ export const startNewZeroSession$ = command(({ set }) => {
   set(internalActiveRunId$, null);
   set(internalRunEvents$, []);
   set(internalRunStatus$, null);
+  set(internalRunError$, null);
   set(internalSending$, false);
   set(internalChatInput$, "");
 });
@@ -254,6 +257,7 @@ export const sendZeroChatMessage$ = command(
       set(internalActiveRunId$, runId);
       set(internalRunEvents$, []);
       set(internalRunStatus$, null);
+      set(internalRunError$, null);
 
       // Abort any existing polling
       const prev = get(pollingAbortController$);
@@ -275,6 +279,9 @@ export const sendZeroChatMessage$ = command(
           },
           setStatus: (s) => {
             set(internalRunStatus$, s);
+          },
+          setError: (e) => {
+            set(internalRunError$, e);
           },
         },
         onTerminal: (completedRunId) => {
@@ -307,7 +314,9 @@ export const sendZeroChatMessage$ = command(
 
 const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
   const runStatus = get(internalRunStatus$);
+  const runError = get(internalRunError$);
   const messages = get(internalMessages$);
+  const isFailed = runStatus === "failed";
 
   const lastIdx = messages.length - 1;
   if (lastIdx >= 0 && messages[lastIdx].role === "assistant") {
@@ -316,10 +325,17 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
       updated[lastIdx] = {
         ...updated[lastIdx],
         status: runStatus ?? undefined,
+        error: isFailed ? (runError ?? "Run failed") : undefined,
         runId,
       };
       return updated;
     });
+  }
+
+  // If run failed, no need to extract result or persist
+  if (isFailed) {
+    set(internalActiveRunId$, null);
+    return;
   }
 
   set(internalActiveRunId$, null);
