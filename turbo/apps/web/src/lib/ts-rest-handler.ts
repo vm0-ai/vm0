@@ -43,32 +43,39 @@ export function createSafeErrorHandler(
   const log = logger(`api:${routeName}`);
 
   return function safeErrorHandler(err: unknown): TsRestResponse | void {
-    // Zod validation errors are safe to return (field names + validation messages)
-    if (
-      err &&
-      typeof err === "object" &&
-      "bodyError" in err &&
-      "queryError" in err
-    ) {
-      const validationError = err as {
-        bodyError: {
-          issues: Array<{ path: string[]; message: string }>;
-        } | null;
-        queryError: {
-          issues: Array<{ path: string[]; message: string }>;
-        } | null;
-      };
+    // Zod/standard-schema validation errors are safe to return (field names + validation messages)
+    if (err && typeof err === "object") {
+      // ts-rest validation errors have bodyError, queryError, and/or pathParamsError
+      const hasValidationFields =
+        "bodyError" in err || "queryError" in err || "pathParamsError" in err;
 
-      const source = validationError.bodyError ?? validationError.queryError;
-      if (source) {
-        const issue = source.issues[0];
-        if (issue) {
-          const path = issue.path.join(".");
-          const message = path ? `${path}: ${issue.message}` : issue.message;
-          return TsRestResponse.fromJson(
-            { error: { message, code: "BAD_REQUEST" } },
-            { status: 400 },
-          );
+      if (hasValidationFields) {
+        const validationError = err as {
+          bodyError?: {
+            issues: Array<{ path: string[]; message: string }>;
+          } | null;
+          queryError?: {
+            issues: Array<{ path: string[]; message: string }>;
+          } | null;
+          pathParamsError?: {
+            issues: Array<{ path: string[]; message: string }>;
+          } | null;
+        };
+
+        const source =
+          validationError.pathParamsError ??
+          validationError.bodyError ??
+          validationError.queryError;
+        if (source) {
+          const issue = source.issues[0];
+          if (issue) {
+            const path = issue.path.join(".");
+            const message = path ? `${path}: ${issue.message}` : issue.message;
+            return TsRestResponse.fromJson(
+              { error: { message, code: "BAD_REQUEST" } },
+              { status: 400 },
+            );
+          }
         }
       }
     }

@@ -573,7 +573,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       expect(response.status).toBe(401);
       const data = await response.json();
       expect(data.error.code).toBe("UNAUTHORIZED");
-      expect(data.error.message).toContain("decryption failed");
+      expect(data.error.message).toContain("invalid or expired");
       expect(data.error.header).toBe("x-api-key");
 
       // Should NOT have called fetch since decryption failed
@@ -615,7 +615,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       expect(response.status).toBe(401);
       const data = await response.json();
       expect(data.error.code).toBe("UNAUTHORIZED");
-      expect(data.error.message).toContain("decryption failed");
+      expect(data.error.message).toContain("invalid or expired");
 
       // Should NOT have called fetch
       expect(fetchCalled).toBe(false);

@@ -48,8 +48,8 @@ describe("POST /api/connectors/:type/sessions - Create Session", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    // ts-rest validates connector type at contract level
-    expect(data.message).toMatch(/validation failed/i);
+    // ts-rest validates connector type at contract level, error is sanitized
+    expect(data.error.code).toBe("BAD_REQUEST");
   });
 
   it("should create session successfully", async () => {
