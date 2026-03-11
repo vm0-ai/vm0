@@ -1,140 +1,90 @@
-import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconSearch,
-  IconFilter,
   IconClock,
   IconChevronRight,
+  IconLoader2,
 } from "@tabler/icons-react";
-import {
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  cn,
-} from "@vm0/ui";
-import type { LogStatus } from "../../signals/logs-page/types.ts";
+import { Button, Input, cn } from "@vm0/ui";
+import type { LogStatus, LogEntry } from "../../signals/logs-page/types.ts";
 import { StatusBadge } from "../logs-page/status-badge.tsx";
 import { ZeroActivityDetailPage } from "./zero-activity-detail-page.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
-import type {
-  ActivityItem,
-  ActivityStatus,
-  ActivityType,
-} from "./zero-activity-types.ts";
+import {
+  zeroActivityLogs$,
+  zeroActivitySearch$,
+  setZeroActivitySearch$,
+  zeroActivityHasMore$,
+  zeroActivityLoading$,
+  fetchZeroActivityLogs$,
+  loadMoreZeroActivityLogs$,
+  zeroActivitySelectedLogId$,
+  setZeroActivitySelectedLogId$,
+  logStatusToActivityStatus,
+  formatLogTime,
+} from "../../signals/zero-page/zero-activity.ts";
+import { Reason, detach } from "../../signals/utils.ts";
 
-function getActivities(agentName: string): readonly Readonly<ActivityItem>[] {
-  return [
-    {
-      id: "1",
-      title: `${agentName} Agent`,
-      type: "zero",
-      status: "success",
-      duration: "2.3s",
-      time: "02:56 PM",
-    },
-    {
-      id: "2",
-      title: "Code Review Reminder",
-      type: "workflow",
-      status: "error",
-      time: "02:46 PM",
-    },
-    {
-      id: "3",
-      title: `${agentName} Agent`,
-      type: "zero",
-      status: "warning",
-      duration: "5.6s",
-      time: "02:36 PM",
-    },
-    {
-      id: "4",
-      title: "Slack Message Sync",
-      type: "workflow",
-      status: "success",
-      duration: "3.2s",
-      time: "02:06 PM",
-    },
-  ];
-}
-
-function getTypeOptions(agentName: string): readonly Readonly<{
-  value: "all" | ActivityType;
-  label: string;
-}>[] {
-  return [
-    { value: "all", label: "All Types" },
-    { value: "zero", label: agentName },
-    { value: "workflow", label: "Workflow" },
-  ];
-}
-
-const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
-  { value: "all", label: "All Status" },
-  { value: "success", label: "Success" },
-  { value: "error", label: "Error" },
-  { value: "warning", label: "Warning" },
-];
-
-function toLogStatus(status: ActivityStatus): LogStatus {
-  const map: Record<ActivityStatus, LogStatus> = {
+function activityStatusToLogStatus(
+  status: "success" | "error" | "warning" | "running",
+): LogStatus {
+  const map: Record<string, LogStatus> = {
     success: "completed",
     error: "failed",
     warning: "timeout",
+    running: "running",
   };
-  return map[status];
+  return map[status] ?? "running";
 }
 
 const ROW_GRID =
-  "grid grid-cols-[5rem_1fr_1fr_1fr_1fr_2.5rem] gap-x-6 items-center";
+  "grid grid-cols-[5rem_1fr_1fr_1fr_2.5rem] gap-x-6 items-center";
 
 function ActivityRow({
-  item,
+  entry,
   onSelect,
   agentName = "Zero",
 }: {
-  item: ActivityItem;
-  onSelect: (item: ActivityItem) => void;
+  entry: LogEntry;
+  onSelect: (id: string) => void;
   agentName?: string;
 }) {
-  const typeLabel = item.type === "zero" ? agentName : "Workflow";
+  const status = logStatusToActivityStatus(entry.status);
+  const time = formatLogTime(entry.createdAt);
 
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => onSelect(item)}
+      onClick={() => onSelect(entry.id)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
-          onSelect(item);
+          onSelect(entry.id);
         }
       }}
       className="py-3 rounded-r-sm transition-colors hover:bg-muted/20 cursor-pointer"
     >
       <div className={cn(ROW_GRID)}>
         <div className="text-left text-sm text-muted-foreground tabular-nums">
-          {item.time}
+          {time}
         </div>
         <div className="min-w-0 truncate text-left text-sm text-foreground">
-          {item.title}
-        </div>
-        <div className="text-left text-sm text-muted-foreground">
-          {typeLabel}
+          {agentName}
         </div>
         <div className="text-left">
-          <StatusBadge status={toLogStatus(item.status)} zeroStyle />
+          <StatusBadge status={activityStatusToLogStatus(status)} zeroStyle />
         </div>
         <div className="text-left text-sm text-muted-foreground tabular-nums">
-          {item.duration ? (
-            <span className="inline-flex items-center gap-0.5">
-              <IconClock size={12} stroke={1.5} />
-              {item.duration}
+          {entry.status === "running" ? (
+            <span className="inline-flex items-center gap-1">
+              <IconLoader2 size={12} stroke={1.5} className="animate-spin" />
+              Running
             </span>
           ) : (
-            "—"
+            <span className="inline-flex items-center gap-0.5">
+              <IconClock size={12} stroke={1.5} />
+              {entry.status}
+            </span>
           )}
         </div>
         <div>
@@ -142,7 +92,7 @@ function ActivityRow({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onSelect(item);
+              onSelect(entry.id);
             }}
             className="rounded p-1 text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors"
             aria-label="View details"
@@ -159,35 +109,28 @@ export function ZeroActivityPage() {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-  const search$ = useCCState("");
-  const search = useGet(search$);
-  const setSearch = useSet(search$);
-  const typeFilter$ = useCCState("all");
-  const typeFilter = useGet(typeFilter$);
-  const setTypeFilter = useSet(typeFilter$);
-  const statusFilter$ = useCCState("all");
-  const statusFilter = useGet(statusFilter$);
-  const setStatusFilter = useSet(statusFilter$);
-  const selectedItem$ = useCCState<ActivityItem | null>(null);
-  const selectedItem = useGet(selectedItem$);
-  const setSelectedItem = useSet(selectedItem$);
 
-  const activities = getActivities(agentName);
-  const typeOptions = getTypeOptions(agentName);
-  const filtered = activities.filter((item) => {
-    const matchSearch =
-      !search.trim() ||
-      item.title.toLowerCase().includes(search.trim().toLowerCase());
-    const matchType = typeFilter === "all" || item.type === typeFilter;
-    const matchStatus = statusFilter === "all" || item.status === statusFilter;
-    return matchSearch && matchType && matchStatus;
-  });
+  const logs = useGet(zeroActivityLogs$);
+  const search = useGet(zeroActivitySearch$);
+  const setSearch = useSet(setZeroActivitySearch$);
+  const hasMore = useGet(zeroActivityHasMore$);
+  const loading = useGet(zeroActivityLoading$);
+  const fetchLogs = useSet(fetchZeroActivityLogs$);
+  const loadMore = useSet(loadMoreZeroActivityLogs$);
+  const selectedLogId = useGet(zeroActivitySelectedLogId$);
+  const setSelectedLogId = useSet(setZeroActivitySelectedLogId$);
 
-  if (selectedItem) {
+  // Initial fetch on mount
+  const initialized$ = useLoadable(zeroActivityLogs$);
+  if (initialized$.state === "loading" && logs.length === 0) {
+    detach(fetchLogs(), Reason.DomCallback);
+  }
+
+  if (selectedLogId) {
     return (
       <ZeroActivityDetailPage
-        item={selectedItem}
-        onBack={() => setSelectedItem(null)}
+        logId={selectedLogId}
+        onBack={() => setSelectedLogId(null)}
       />
     );
   }
@@ -215,45 +158,11 @@ export function ZeroActivityPage() {
               <Input
                 placeholder="Search logs..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) =>
+                  detach(setSearch(e.target.value), Reason.DomCallback)
+                }
                 className="zero-search-input pl-9 h-9 rounded-lg border"
               />
-            </div>
-            <div className="flex items-center gap-3">
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="h-9 w-[140px] gap-2 rounded-lg bg-muted/40 border-border/70">
-                  <IconFilter
-                    size={14}
-                    stroke={1.5}
-                    className="shrink-0 text-muted-foreground"
-                  />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {typeOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="h-9 w-[140px] gap-2 rounded-lg bg-muted/40 border-border/70">
-                  <IconFilter
-                    size={14}
-                    stroke={1.5}
-                    className="shrink-0 text-muted-foreground"
-                  />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUS_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
           </div>
         </div>
@@ -261,7 +170,7 @@ export function ZeroActivityPage() {
 
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-2 pb-8">
         <div className="mx-auto max-w-[900px]">
-          {filtered.length > 0 && (
+          {logs.length > 0 && (
             <div>
               <div
                 className={cn(
@@ -270,26 +179,45 @@ export function ZeroActivityPage() {
                 )}
               >
                 <div className="text-left">Time</div>
-                <div className="text-left">Title</div>
-                <div className="text-left">Type</div>
+                <div className="text-left">Agent</div>
                 <div className="text-left">Status</div>
-                <div className="text-left">Duration</div>
+                <div className="text-left">Info</div>
                 <div />
               </div>
             </div>
           )}
-          {filtered.map((item) => (
+          {logs.map((entry) => (
             <ActivityRow
-              key={item.id}
-              item={item}
-              onSelect={setSelectedItem}
+              key={entry.id}
+              entry={entry}
+              onSelect={setSelectedLogId}
               agentName={agentName}
             />
           ))}
-          {filtered.length === 0 && (
+          {logs.length === 0 && !loading && (
             <p className="text-sm text-muted-foreground py-8 text-center">
-              No activity matches your filters.
+              No activity found.
             </p>
+          )}
+          {loading && (
+            <div className="flex justify-center py-8">
+              <IconLoader2
+                size={20}
+                stroke={1.5}
+                className="animate-spin text-muted-foreground"
+              />
+            </div>
+          )}
+          {hasMore && !loading && (
+            <div className="flex justify-center pt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => detach(loadMore(), Reason.DomCallback)}
+              >
+                Load more
+              </Button>
+            </div>
           )}
         </div>
       </main>

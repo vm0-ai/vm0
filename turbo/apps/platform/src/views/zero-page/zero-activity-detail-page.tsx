@@ -1,166 +1,137 @@
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
-import { IconArrowLeft, IconSearch, IconDownload } from "@tabler/icons-react";
+import { IconArrowLeft, IconSearch, IconLoader2 } from "@tabler/icons-react";
 import { Button, Input } from "@vm0/ui";
-import type { LogStatus } from "../../signals/logs-page/types.ts";
+import type { LogStatus, AgentEvent } from "../../signals/logs-page/types.ts";
 import { StatusBadge } from "../logs-page/status-badge.tsx";
 import { StatusDot } from "../logs-page/components/status-dot.tsx";
-import type { ActivityItem } from "./zero-activity-types.ts";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import {
+  zeroActivityDetail$,
+  zeroActivityEvents$,
+  setupZeroActivityEventPolling$,
+  formatLogTime,
+  formatDuration,
+} from "../../signals/zero-page/zero-activity.ts";
+import { Reason, detach } from "../../signals/utils.ts";
 
-type StepVariant = "neutral" | "todo" | "success";
+// ---------------------------------------------------------------------------
+// Map AgentEvent to display step
+// ---------------------------------------------------------------------------
+
+type StepVariant = "neutral" | "todo" | "success" | "error" | "pending";
 
 interface StepItem {
   id: string;
-  type:
-    | "prompt"
-    | "initialize"
-    | "todo"
-    | "skill"
-    | "bash"
-    | "read"
-    | "message";
+  type: string;
   content: string;
   variant: StepVariant;
   time?: string;
 }
 
-const MOCK_STEPS: readonly Readonly<StepItem>[] = [
-  {
-    id: "1",
-    type: "prompt",
-    content:
-      "Scan Hacker News for trending AI stories, summarize the top 5, and post the d...",
-    variant: "neutral",
-    time: "08:30:04",
-  },
-  {
-    id: "2",
-    type: "initialize",
-    content: "18 tools 5 agents > 10 commands",
-    variant: "neutral",
-    time: "08:30:05",
-  },
-  {
-    id: "3",
-    type: "message",
-    content:
-      "I'll help you create a daily digest of trending AI stories from Hacker News and post it to Slack. Let me break this down into steps....",
-    variant: "neutral",
-    time: "08:30:06",
-  },
-  {
-    id: "4",
-    type: "todo",
-    content: "Fetch top stories from Hacker News API [0/5]",
-    variant: "todo",
-    time: "08:30:07",
-  },
-  {
-    id: "5",
-    type: "message",
-    content: "Now let me fetch the top stories from Hacker News.",
-    variant: "neutral",
-    time: "08:30:08",
-  },
-  {
-    id: "6",
-    type: "skill",
-    content: "hackernews",
-    variant: "success",
-    time: "08:30:09",
-  },
-  {
-    id: "7",
-    type: "bash",
-    content: `bash -c 'curl -s "https://hacker-news.firebaseio.com/v0/t...`,
-    variant: "success",
-    time: "08:30:10",
-  },
-  {
-    id: "8",
-    type: "read",
-    content: "/tmp/all_stories.json",
-    variant: "success",
-    time: "08:30:11",
-  },
-  {
-    id: "9",
-    type: "bash",
-    content: `cat /tmp/all_stories.json | jq '.[0:10] | [] | {id, titl...`,
-    variant: "success",
-    time: "08:30:12",
-  },
-  {
-    id: "10",
-    type: "message",
-    content:
-      "Let me try a different approach to fetch the stories more reliably.",
-    variant: "neutral",
-    time: "08:30:15",
-  },
-  {
-    id: "11",
-    type: "message",
-    content: "Let me read more to see the actual story data.",
-    variant: "neutral",
-    time: "08:30:18",
-  },
-  {
-    id: "12",
-    type: "message",
-    content:
-      "Now let me filter for AI-related stories by checking titles, URLs, and fetching more details.",
-    variant: "neutral",
-    time: "08:30:22",
-  },
-  {
-    id: "13",
-    type: "bash",
-    content: "5 calls",
-    variant: "success",
-    time: "08:31:32",
-  },
-];
+function eventToStep(event: AgentEvent, index: number): StepItem {
+  const eventType = event.eventType;
+  const data = event.eventData as Record<string, unknown> | undefined;
+  const time = new Date(event.createdAt).toLocaleTimeString("en-US", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 
-function toLogStatus(status: ActivityItem["status"]): LogStatus {
-  const map: Record<ActivityItem["status"], LogStatus> = {
-    success: "completed",
-    error: "failed",
-    warning: "timeout",
+  let content = "";
+  let variant: StepVariant = "neutral";
+
+  if (typeof data === "object" && data !== null) {
+    if (typeof data.content === "string") {
+      content = data.content;
+    } else if (typeof data.message === "string") {
+      content = data.message;
+    } else if (typeof data.name === "string") {
+      content = data.name;
+    } else if (typeof data.text === "string") {
+      content = data.text;
+    } else {
+      content = JSON.stringify(data).slice(0, 200);
+    }
+  }
+
+  // Determine variant based on event type
+  if (eventType.includes("error") || eventType.includes("fail")) {
+    variant = "error";
+  } else if (
+    eventType.includes("tool") ||
+    eventType.includes("bash") ||
+    eventType.includes("skill")
+  ) {
+    variant = "success";
+  } else if (eventType.includes("todo") || eventType.includes("plan")) {
+    variant = "todo";
+  }
+
+  return {
+    id: String(event.sequenceNumber ?? index),
+    type: eventType,
+    content: content || eventType,
+    variant,
+    time,
   };
-  return map[status];
-}
-
-interface ZeroActivityDetailPageProps {
-  item: ActivityItem;
-  onBack: () => void;
 }
 
 function stepMatchesSearch(step: StepItem, term: string): boolean {
   const t = term.toLowerCase();
   return (
     step.content.toLowerCase().includes(t) ||
-    (step.type !== "message" && step.type.toLowerCase().includes(t))
+    step.type.toLowerCase().includes(t)
   );
 }
 
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+interface ZeroActivityDetailPageProps {
+  logId: string;
+  onBack: () => void;
+}
+
 export function ZeroActivityDetailPage({
-  item,
   onBack,
 }: ZeroActivityDetailPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+
+  const detailLoadable = useLoadable(zeroActivityDetail$);
+  const eventsLoadable = useLoadable(zeroActivityEvents$);
+  const setupPolling = useSet(setupZeroActivityEventPolling$);
+
   const stepSearch$ = useCCState("");
   const stepSearch = useGet(stepSearch$);
   const setStepSearch = useSet(stepSearch$);
-  const steps = MOCK_STEPS.filter(
+
+  // Start polling on mount (the logId is already set in the signal)
+  // We use a simple initialized flag via loadable state
+  if (eventsLoadable.state === "loading") {
+    const controller = new AbortController();
+    detach(setupPolling(controller.signal), Reason.DomCallback);
+  }
+
+  const detail =
+    detailLoadable.state === "hasData" ? detailLoadable.data : null;
+  const events: AgentEvent[] =
+    eventsLoadable.state === "hasData" ? eventsLoadable.data : [];
+
+  const allSteps = events.map(eventToStep);
+  const steps = allSteps.filter(
     (s) => !stepSearch.trim() || stepMatchesSearch(s, stepSearch.trim()),
   );
 
-  const typeLabel = item.type === "zero" ? agentName : "Workflow";
-  const totalCountDisplay = `${MOCK_STEPS.length}`;
+  const status: LogStatus = detail?.status ?? "running";
+  const time = detail ? formatLogTime(detail.createdAt) : "";
+  const duration = detail
+    ? formatDuration(detail.startedAt, detail.completedAt)
+    : undefined;
 
   return (
     <div className="h-full flex flex-col min-h-0">
@@ -179,11 +150,15 @@ export function ZeroActivityDetailPage({
           </div>
         </header>
         <div className="max-w-[900px] w-full mx-auto px-4 sm:px-6 pb-8">
-          {/* Compact header card: title + meta with labels and short dividers */}
+          {/* Compact header card */}
           <div className="zero-card shrink-0 px-4 py-3">
             <div className="flex flex-wrap items-center gap-y-2">
               <h2 className="text-base font-semibold tracking-tight text-foreground truncate min-w-0 pr-3">
-                {item.title}
+                {detail?.prompt
+                  ? detail.prompt.length > 80
+                    ? `${detail.prompt.slice(0, 80)}...`
+                    : detail.prompt
+                  : agentName}
               </h2>
               <span
                 className="w-px h-3.5 shrink-0 bg-border self-center"
@@ -192,15 +167,15 @@ export function ZeroActivityDetailPage({
               <div className="flex flex-wrap items-center gap-x-0 text-sm">
                 <div className="flex items-center gap-1.5 pl-3 pr-3">
                   <span className="text-muted-foreground shrink-0">Status</span>
-                  <StatusBadge status={toLogStatus(item.status)} zeroStyle />
+                  <StatusBadge status={status} zeroStyle />
                 </div>
                 <span
                   className="w-px h-3.5 shrink-0 bg-border self-center"
                   aria-hidden
                 />
                 <div className="flex items-center gap-1.5 pl-3 pr-3">
-                  <span className="text-muted-foreground shrink-0">Type</span>
-                  <span className="text-foreground truncate">{typeLabel}</span>
+                  <span className="text-muted-foreground shrink-0">Agent</span>
+                  <span className="text-foreground truncate">{agentName}</span>
                 </div>
                 <span
                   className="w-px h-3.5 shrink-0 bg-border self-center"
@@ -211,7 +186,7 @@ export function ZeroActivityDetailPage({
                     Duration
                   </span>
                   <span className="text-foreground whitespace-nowrap">
-                    {item.duration ?? "—"}
+                    {duration ?? "—"}
                   </span>
                 </div>
                 <span
@@ -221,19 +196,10 @@ export function ZeroActivityDetailPage({
                 <div className="flex items-center gap-1.5 pl-3 pr-3">
                   <span className="text-muted-foreground shrink-0">Time</span>
                   <span className="text-foreground whitespace-nowrap">
-                    {item.time}
+                    {time}
                   </span>
                 </div>
               </div>
-              <div className="flex-1 min-w-0" />
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 shrink-0 gap-1 rounded-md text-sm text-muted-foreground hover:text-foreground ml-auto"
-              >
-                <IconDownload size={14} stroke={1.5} />
-                Download
-              </Button>
             </div>
           </div>
 
@@ -247,8 +213,8 @@ export function ZeroActivityDetailPage({
                   </span>
                   <span className="text-sm text-muted-foreground whitespace-nowrap">
                     {stepSearch.trim()
-                      ? `(${steps.length}/${MOCK_STEPS.length} matched)`
-                      : `${totalCountDisplay} total`}
+                      ? `(${steps.length}/${allSteps.length} matched)`
+                      : `${allSteps.length} total`}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3">
@@ -267,7 +233,15 @@ export function ZeroActivityDetailPage({
               </div>
 
               <div>
-                {steps.length === 0 ? (
+                {eventsLoadable.state === "loading" && events.length === 0 ? (
+                  <div className="flex justify-center py-8">
+                    <IconLoader2
+                      size={20}
+                      stroke={1.5}
+                      className="animate-spin text-muted-foreground"
+                    />
+                  </div>
+                ) : steps.length === 0 ? (
                   <div className="py-8 text-center text-muted-foreground">
                     No events available
                   </div>
