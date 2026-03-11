@@ -33,7 +33,6 @@ describe("expandEnvironmentFromCompose — connector env vars", () => {
       compose,
       undefined,
       undefined,
-      undefined,
       "user-1",
       "run-1",
       false,
@@ -61,7 +60,6 @@ describe("expandEnvironmentFromCompose — connector env vars", () => {
       compose,
       undefined,
       { GH_TOKEN: "user-provided" },
-      undefined,
       "user-1",
       "run-1",
       false,
@@ -85,7 +83,6 @@ describe("expandEnvironmentFromCompose — connector env vars", () => {
       compose,
       undefined,
       { GH_TOKEN: "user-provided" },
-      undefined,
       "user-1",
       "run-1",
       false,
@@ -108,7 +105,6 @@ describe("expandEnvironmentFromCompose — connector env vars", () => {
 
     const { environment } = expandEnvironmentFromCompose(
       compose,
-      undefined,
       undefined,
       undefined,
       "user-1",
@@ -136,7 +132,6 @@ describe("expandEnvironmentFromCompose — connector env vars", () => {
       compose,
       undefined,
       { GH_TOKEN: "user-provided-token" },
-      undefined,
       "user-1",
       "run-1",
       false,
@@ -159,7 +154,6 @@ describe("expandEnvironmentFromCompose — connector env vars", () => {
 
     const { environment } = expandEnvironmentFromCompose(
       compose,
-      undefined,
       undefined,
       undefined,
       "user-1",
