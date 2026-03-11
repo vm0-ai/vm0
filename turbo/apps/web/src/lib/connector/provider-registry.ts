@@ -38,6 +38,7 @@ import { googleCalendarHandler } from "./providers/google-calendar-handler";
 import { googleDocsHandler } from "./providers/google-docs-handler";
 import { googleDriveHandler } from "./providers/google-drive-handler";
 import { googleSheetsHandler } from "./providers/google-sheets-handler";
+import { intercomHandler } from "./providers/intercom-handler";
 import { lineHandler } from "./providers/line-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { makeHandler } from "./providers/make-handler";
@@ -143,6 +144,7 @@ export const PROVIDER_HANDLERS: Record<
   reddit: redditHandler,
   reportei: reporteiHandler,
   serpapi: serpapiHandler,
+  intercom: intercomHandler,
   "intervals-icu": intervalsIcuHandler,
   sentry: sentryHandler,
   slack: slackHandler,

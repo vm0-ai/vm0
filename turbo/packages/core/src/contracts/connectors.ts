@@ -647,6 +647,25 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as ConnectorOAuthConfig,
   },
+  intercom: {
+    label: "Intercom",
+    helpText:
+      "Connect your Intercom account to manage customer conversations, contacts, messages, and support tickets",
+    authMethods: {
+      "api-token": {
+        label: "Access Token",
+        helpText:
+          "1. Log in to your [Intercom workspace](https://app.intercom.com/)\n2. Navigate to **Settings** → **Developers** → **Developer Hub**\n3. Create a new app or select an existing one\n4. Go to **Configure** → **Authentication**\n5. Copy your **Access Token**",
+        secrets: {
+          INTERCOM_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   line: {
     label: "LINE",
     helpText:
@@ -2598,6 +2617,13 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   linear: {
     services: [service("https://api.linear.app", bearerAuth("LINEAR_API_KEY"))],
   },
+  intercom: {
+    services: [
+      service("https://api.intercom.io", bearerAuth("INTERCOM_TOKEN")),
+      service("https://api.eu.intercom.io", bearerAuth("INTERCOM_TOKEN")),
+      service("https://api.au.intercom.io", bearerAuth("INTERCOM_TOKEN")),
+    ],
+  },
   line: {
     services: [service("https://api.line.me", bearerAuth("LINE_TOKEN"))],
   },
@@ -3007,6 +3033,7 @@ export const connectorTypeSchema = z.enum([
   "docusign",
   "dropbox",
   "linear",
+  "intercom",
   "line",
   "make",
   "figma",
