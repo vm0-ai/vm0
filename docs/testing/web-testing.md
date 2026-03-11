@@ -50,14 +50,14 @@ describe("POST /api/agent/runs", () => {
     testComposeId = composeId;
   });
 
-  it("should create a run with running status", async () => {
+  it("should create a run with pending status", async () => {
     // Given - fixtures prepared in beforeEach
 
     // When - execute the behavior under test
     const data = await createTestRun(testComposeId, "Test prompt");
 
     // Then - assert the result
-    expect(data.status).toBe("running");
+    expect(data.status).toBe("pending");
     expect(data.runId).toBeDefined();
   });
 });
@@ -277,16 +277,11 @@ If you find yourself needing `initServices()`, it's a sign that you're accessing
 Run state transitions should be done via webhook helpers, not direct database modifications:
 
 ```typescript
-// Create run (status automatically set to running)
+// Create run (status automatically set to pending)
 const { runId } = await createTestRun(composeId, "test prompt");
 
 // Complete run (via checkpoint + complete webhook)
 await completeTestRun(user.userId, runId);
-
-// Test failure scenarios - mock Sandbox creation failure
-vi.mocked(Sandbox.create).mockRejectedValueOnce(new Error("Sandbox failed"));
-const data = await createTestRun(composeId, "test");
-expect(data.status).toBe("failed");
 ```
 
 ---
