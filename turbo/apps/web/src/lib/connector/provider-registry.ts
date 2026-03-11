@@ -8,15 +8,24 @@ import {
 import { agentmailHandler } from "./providers/agentmail-handler";
 import { ahrefsHandler } from "./providers/ahrefs-handler";
 import { airtableHandler } from "./providers/airtable-handler";
+import { apifyHandler } from "./providers/apify-handler";
 import { axiomHandler } from "./providers/axiom-handler";
 import { asanaHandler } from "./providers/asana-handler";
+import { brightDataHandler } from "./providers/bright-data-handler";
+import { browserbaseHandler } from "./providers/browserbase-handler";
+import { browserlessHandler } from "./providers/browserless-handler";
 import { canvaHandler } from "./providers/canva-handler";
+import { chatwootHandler } from "./providers/chatwoot-handler";
 import { closeHandler } from "./providers/close-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { deepseekHandler } from "./providers/deepseek-handler";
+import { devtoHandler } from "./providers/devto-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
+import { elevenlabsHandler } from "./providers/elevenlabs-handler";
+import { falHandler } from "./providers/fal-handler";
 import { figmaHandler } from "./providers/figma-handler";
+import { firecrawlHandler } from "./providers/firecrawl-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
 import { githubHandler } from "./providers/github-handler";
 import { hubspotHandler } from "./providers/hubspot-handler";
@@ -27,9 +36,11 @@ import { googleDriveHandler } from "./providers/google-drive-handler";
 import { googleSheetsHandler } from "./providers/google-sheets-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
+import { minimaxHandler } from "./providers/minimax-handler";
 import { mondayHandler } from "./providers/monday-handler";
 import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
+import { openaiHandler } from "./providers/openai-handler";
 import { redditHandler } from "./providers/reddit-handler";
 import { slackHandler } from "./providers/slack-handler";
 import { stravaHandler } from "./providers/strava-handler";
@@ -46,9 +57,14 @@ import { outlookCalendarHandler } from "./providers/outlook-calendar-handler";
 import { outlookMailHandler } from "./providers/outlook-mail-handler";
 import { metaAdsHandler } from "./providers/meta-ads-handler";
 import { posthogHandler } from "./providers/posthog-handler";
+import { pdf4meHandler } from "./providers/pdf4me-handler";
+import { perplexityHandler } from "./providers/perplexity-handler";
 import { plausibleHandler } from "./providers/plausible-handler";
+import { podchaserHandler } from "./providers/podchaser-handler";
 import { productlaneHandler } from "./providers/productlane-handler";
+import { qdrantHandler } from "./providers/qdrant-handler";
 import { resendHandler } from "./providers/resend-handler";
+import { scrapeninjaHandler } from "./providers/scrapeninja-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
 import { xeroHandler } from "./providers/xero-handler";
 
@@ -61,15 +77,24 @@ export const PROVIDER_HANDLERS: Record<
   agentmail: agentmailHandler,
   ahrefs: ahrefsHandler,
   airtable: airtableHandler,
+  apify: apifyHandler,
   axiom: axiomHandler,
   asana: asanaHandler,
+  "bright-data": brightDataHandler,
+  browserbase: browserbaseHandler,
+  browserless: browserlessHandler,
   canva: canvaHandler,
+  chatwoot: chatwootHandler,
   close: closeHandler,
   deel: deelHandler,
   deepseek: deepseekHandler,
+  devto: devtoHandler,
   docusign: docusignHandler,
   dropbox: dropboxHandler,
+  elevenlabs: elevenlabsHandler,
+  fal: falHandler,
   figma: figmaHandler,
+  firecrawl: firecrawlHandler,
   "garmin-connect": garminConnectHandler,
   github: githubHandler,
   gmail: gmailHandler,
@@ -81,9 +106,11 @@ export const PROVIDER_HANDLERS: Record<
   linear: linearHandler,
   mailchimp: mailchimpHandler,
   mercury: mercuryHandler,
+  minimax: minimaxHandler,
   monday: mondayHandler,
   neon: neonHandler,
   notion: notionHandler,
+  openai: openaiHandler,
   "outlook-calendar": outlookCalendarHandler,
   "outlook-mail": outlookMailHandler,
   reddit: redditHandler,
@@ -98,9 +125,14 @@ export const PROVIDER_HANDLERS: Record<
   supabase: supabaseHandler,
   "meta-ads": metaAdsHandler,
   posthog: posthogHandler,
+  pdf4me: pdf4meHandler,
+  perplexity: perplexityHandler,
   plausible: plausibleHandler,
+  podchaser: podchaserHandler,
   productlane: productlaneHandler,
+  qdrant: qdrantHandler,
   resend: resendHandler,
+  scrapeninja: scrapeninjaHandler,
   similarweb: similarwebHandler,
   x: xHandler,
   xero: xeroHandler,

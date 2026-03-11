@@ -5,10 +5,11 @@ import {
   type ConnectorResponse,
   connectorTypeSchema,
   deriveApiTokenConnectedTypes,
-  getApiTokenRequiredSecretNames,
+  getApiTokenFieldsByType,
 } from "@vm0/core";
 import { connectors } from "../../db/schema/connector";
 import { secrets } from "../../db/schema/secret";
+import { variables } from "../../db/schema/variable";
 import { notFound, badRequest } from "../errors";
 import { logger } from "../logger";
 import { upsertSecretByScope } from "../secret/secret-service";
@@ -46,8 +47,8 @@ export async function listConnectors(
 ): Promise<ConnectorResponse[]> {
   const db = globalThis.services.db;
 
-  // Query OAuth connectors from DB and user secret names in parallel
-  const [dbResult, userSecretRows] = await Promise.all([
+  // Query OAuth connectors from DB, user secret names, and variable names in parallel
+  const [dbResult, userSecretRows, userVariableRows] = await Promise.all([
     db
       .select({
         id: connectors.id,
@@ -78,6 +79,12 @@ export async function listConnectors(
           eq(secrets.type, "user"),
         ),
       ),
+    db
+      .select({ name: variables.name })
+      .from(variables)
+      .where(
+        and(eq(variables.clerkOrgId, clerkOrgId), eq(variables.userId, userId)),
+      ),
   ]);
 
   const dbConnectors: ConnectorResponse[] = dbResult.map((row) => ({
@@ -92,9 +99,13 @@ export async function listConnectors(
     updatedAt: row.updatedAt.toISOString(),
   }));
 
-  // Derive api-token connected types from user secrets
+  // Derive api-token connected types from user secrets and variables
   const userSecretNames = new Set(userSecretRows.map((r) => r.name));
-  const derivedTypes = deriveApiTokenConnectedTypes(userSecretNames);
+  const userVariableNames = new Set(userVariableRows.map((r) => r.name));
+  const derivedTypes = deriveApiTokenConnectedTypes(
+    userSecretNames,
+    userVariableNames,
+  );
 
   // DB record takes precedence over derived
   const dbTypeSet = new Set(dbConnectors.map((c) => c.type));
@@ -163,23 +174,44 @@ export async function getConnector(
     };
   }
 
-  // Check if type supports api-token and all required user secrets exist
-  const requiredNames = getApiTokenRequiredSecretNames(type);
-  if (!requiredNames || requiredNames.length === 0) return null;
+  // Check if type supports api-token and all required fields exist
+  const fields = getApiTokenFieldsByType(type);
+  if (!fields || (fields.secrets.length === 0 && fields.variables.length === 0))
+    return null;
 
-  const userSecretRows = await globalThis.services.db
-    .select({ name: secrets.name })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.clerkOrgId, clerkOrgId),
-        eq(secrets.userId, userId),
-        eq(secrets.type, "user"),
-      ),
-    );
+  const [userSecretRows, userVariableRows] = await Promise.all([
+    fields.secrets.length > 0
+      ? globalThis.services.db
+          .select({ name: secrets.name })
+          .from(secrets)
+          .where(
+            and(
+              eq(secrets.clerkOrgId, clerkOrgId),
+              eq(secrets.userId, userId),
+              eq(secrets.type, "user"),
+            ),
+          )
+      : Promise.resolve([]),
+    fields.variables.length > 0
+      ? globalThis.services.db
+          .select({ name: variables.name })
+          .from(variables)
+          .where(
+            and(
+              eq(variables.clerkOrgId, clerkOrgId),
+              eq(variables.userId, userId),
+            ),
+          )
+      : Promise.resolve([]),
+  ]);
 
   const userSecretNames = new Set(userSecretRows.map((r) => r.name));
-  if (!requiredNames.every((name) => userSecretNames.has(name))) return null;
+  const userVariableNames = new Set(userVariableRows.map((r) => r.name));
+  const secretsOk = fields.secrets.every((name) => userSecretNames.has(name));
+  const variablesOk = fields.variables.every((name) =>
+    userVariableNames.has(name),
+  );
+  if (!secretsOk || !variablesOk) return null;
 
   const now = new Date().toISOString();
   return {
@@ -405,11 +437,11 @@ export async function deleteConnector(
     return;
   }
 
-  // No DB record — check if type supports api-token and user secrets exist
-  const requiredNames = getApiTokenRequiredSecretNames(type);
-  if (requiredNames && requiredNames.length > 0) {
+  // No DB record — check if type supports api-token and delete secrets + variables
+  const fields = getApiTokenFieldsByType(type);
+  if (fields && (fields.secrets.length > 0 || fields.variables.length > 0)) {
     let deletedAny = false;
-    for (const name of requiredNames) {
+    for (const name of fields.secrets) {
       const result = await db
         .delete(secrets)
         .where(
@@ -423,8 +455,21 @@ export async function deleteConnector(
         .returning({ id: secrets.id });
       if (result.length > 0) deletedAny = true;
     }
+    for (const name of fields.variables) {
+      const result = await db
+        .delete(variables)
+        .where(
+          and(
+            eq(variables.clerkOrgId, clerkOrgId),
+            eq(variables.userId, userId),
+            eq(variables.name, name),
+          ),
+        )
+        .returning({ id: variables.id });
+      if (result.length > 0) deletedAny = true;
+    }
     if (deletedAny) {
-      log.debug("api-token connector deleted via user secrets", {
+      log.debug("api-token connector deleted via user secrets/variables", {
         clerkOrgId,
         type,
       });
