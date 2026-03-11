@@ -3260,16 +3260,6 @@ export function getConnectorEnvironmentMapping(
 }
 
 /**
- * Get proxy config for a connector type (base URLs + auth headers).
- * Returns undefined if the connector has no proxy config (e.g., computer connector).
- */
-export function getServiceConfig(
-  type: ConnectorType,
-): ServiceConfig | undefined {
-  return SERVICE_CONFIGS[type];
-}
-
-/**
  * Get connector label and derived env var names for a connector secret.
  * Performs a reverse lookup from secret name to the connector type and
  * environment mapping that references it.
