@@ -718,6 +718,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  clickup: {
+    label: "ClickUp",
+    helpText:
+      "Connect your ClickUp account to manage tasks, projects, and team workflows",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [ClickUp](https://app.clickup.com)\n2. Click your avatar in the bottom-left corner\n3. Go to **Settings** → **Apps**\n4. Under **API Token**, click **Generate** and copy it",
+        secrets: {
+          CLICKUP_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "pk_...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   dify: {
     label: "Dify",
     helpText:
@@ -2501,6 +2521,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   linear: {
     services: [service("https://api.linear.app", bearerAuth("LINEAR_API_KEY"))],
   },
+  clickup: {
+    services: [
+      service("https://api.clickup.com/api/v2", bearerAuth("CLICKUP_TOKEN")),
+    ],
+  },
   deel: {
     services: [service("https://api.deel.com", bearerAuth("DEEL_TOKEN"))],
   },
@@ -2850,6 +2875,7 @@ export const connectorTypeSchema = z.enum([
   "airtable",
   "asana",
   "canva",
+  "clickup",
   "close",
   "github",
   "gmail",

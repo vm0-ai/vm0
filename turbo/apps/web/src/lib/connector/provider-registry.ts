@@ -16,6 +16,7 @@ import { browserbaseHandler } from "./providers/browserbase-handler";
 import { browserlessHandler } from "./providers/browserless-handler";
 import { canvaHandler } from "./providers/canva-handler";
 import { chatwootHandler } from "./providers/chatwoot-handler";
+import { clickupHandler } from "./providers/clickup-handler";
 import { closeHandler } from "./providers/close-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { deepseekHandler } from "./providers/deepseek-handler";
@@ -101,6 +102,7 @@ export const PROVIDER_HANDLERS: Record<
   browserless: browserlessHandler,
   canva: canvaHandler,
   chatwoot: chatwootHandler,
+  clickup: clickupHandler,
   close: closeHandler,
   deel: deelHandler,
   deepseek: deepseekHandler,
