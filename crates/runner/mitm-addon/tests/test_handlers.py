@@ -253,7 +253,12 @@ class TestResponseHandler:
         # Add response
         flow.response = MagicMock()
         flow.response.status_code = 200
-        flow.response.headers = {"content-length": "256"}
+        flow.response.headers = {
+            "content-length": "256",
+            "content-type": "application/json",
+            "content-encoding": "gzip",
+            "transfer-encoding": "chunked",
+        }
 
         # Simulate tracked start time
         mitm_addon._request_start_times[flow.id] = __import__("time").time() - 0.1
@@ -272,6 +277,9 @@ class TestResponseHandler:
         assert entry["host"] == "api.anthropic.com"
         assert entry["latency_ms"] > 0
         assert entry["response_size"] == 256
+        assert entry["resp_content_type"] == "application/json"
+        assert entry["resp_content_encoding"] == "gzip"
+        assert entry["resp_transfer_encoding"] == "chunked"
 
     def test_401_connector_cache_invalidation(self):
         """401 response with connector firewall_rule pops the cache entry."""

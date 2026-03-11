@@ -613,6 +613,13 @@ def response(flow: http.HTTPFlow) -> None:
                 "response_size": response_size,
             })
 
+            # Add response headers useful for debugging gzip/encoding issues
+            if flow.response:
+                for h in ("content-type", "content-encoding", "transfer-encoding"):
+                    v = flow.response.headers.get(h)
+                    if v:
+                        log_entry[f"resp_{h.replace('-', '_')}"] = v
+
         log_network_entry({"networkLogPath": network_log_path}, log_entry)
 
     # Invalidate connector header cache on 401 so next request gets fresh headers
