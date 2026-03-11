@@ -1704,6 +1704,26 @@ const CONNECTOR_TYPES_DEF = {
       scopes: [],
     } as ConnectorOAuthConfig,
   },
+  chatwoot: {
+    label: "Chatwoot",
+    helpText:
+      "Connect your Chatwoot account to manage conversations, contacts, and customer support workflows",
+    authMethods: {
+      "api-token": {
+        label: "API Access Token",
+        helpText:
+          "1. Log in to your [Chatwoot](https://app.chatwoot.com) instance\n2. Go to **Settings > Account Settings**\n3. Find **Access Token** in the profile section\n4. Copy the token",
+        secrets: {
+          CHATWOOT_TOKEN: {
+            label: "API Access Token",
+            required: true,
+            placeholder: "your-chatwoot-access-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   resend: {
     label: "Resend",
     featureFlag: FeatureSwitchKey.ResendConnector,
@@ -2071,6 +2091,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       ),
     ],
   },
+  chatwoot: {
+    services: [
+      service("https://app.chatwoot.com", bearerAuth("CHATWOOT_TOKEN")),
+    ],
+  },
   resend: {
     services: [service("https://api.resend.com", bearerAuth("RESEND_API_KEY"))],
   },
@@ -2120,6 +2145,7 @@ export const connectorTypeSchema = z.enum([
   "posthog",
   "stripe",
   "openai",
+  "chatwoot",
   "similarweb",
   "mailchimp",
   "plausible",

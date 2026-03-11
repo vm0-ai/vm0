@@ -11,6 +11,7 @@ import { airtableHandler } from "./providers/airtable-handler";
 import { axiomHandler } from "./providers/axiom-handler";
 import { asanaHandler } from "./providers/asana-handler";
 import { canvaHandler } from "./providers/canva-handler";
+import { chatwootHandler } from "./providers/chatwoot-handler";
 import { closeHandler } from "./providers/close-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { docusignHandler } from "./providers/docusign-handler";
@@ -65,6 +66,7 @@ export const PROVIDER_HANDLERS: Record<
   axiom: axiomHandler,
   asana: asanaHandler,
   canva: canvaHandler,
+  chatwoot: chatwootHandler,
   close: closeHandler,
   deel: deelHandler,
   docusign: docusignHandler,

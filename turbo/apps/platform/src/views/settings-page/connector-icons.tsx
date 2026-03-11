@@ -6,6 +6,7 @@ import airtableIcon from "./icons/airtable.svg";
 import axiomIcon from "./icons/axiom.svg";
 import asanaIcon from "./icons/asana.svg";
 import canvaIcon from "./icons/canva.svg";
+import chatwootIcon from "./icons/chatwoot.svg";
 import closeIcon from "./icons/close.svg";
 import computerIcon from "./icons/computer.svg";
 import deelIcon from "./icons/deel.svg";
@@ -56,6 +57,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   axiom: axiomIcon,
   asana: asanaIcon,
   canva: canvaIcon,
+  chatwoot: chatwootIcon,
   close: closeIcon,
   computer: computerIcon,
   deel: deelIcon,
