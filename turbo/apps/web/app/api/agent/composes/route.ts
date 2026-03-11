@@ -47,6 +47,9 @@ const router = tsr.router(composesMainContract, {
 
     // Resolve scope: for cross-scope lookups (shared agents), skip membership
     // check and rely on canAccessCompose for authorization instead.
+    // isCrossScopeLookup is true when an explicit scope/org param is provided,
+    // which requires canAccessCompose authorization below.
+    const isCrossScopeLookup = Boolean(query.scope || query.org);
     let clerkOrgId: string;
     let defaultAgentComposeId: string | null = null;
     if (query.scope) {
@@ -128,7 +131,7 @@ const router = tsr.router(composesMainContract, {
     }
 
     // Check permission to access this compose (for cross-scope lookups)
-    if (query.scope) {
+    if (isCrossScopeLookup) {
       const userEmail = await getUserEmail(userId);
       const hasAccess = await canAccessCompose(userId, userEmail, result);
       if (!hasAccess) {
