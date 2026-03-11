@@ -58,7 +58,9 @@ export const mergedItems$ = computed(async (get) => {
   const items: MergedItem[] = [];
 
   for (const secret of secretsList) {
-    if (managedNames.has(secret.name)) continue;
+    if (managedNames.has(secret.name)) {
+      continue;
+    }
     items.push({
       kind: "secret",
       name: secret.name,
@@ -67,7 +69,9 @@ export const mergedItems$ = computed(async (get) => {
   }
 
   for (const variable of variablesList) {
-    if (managedNames.has(variable.name)) continue;
+    if (managedNames.has(variable.name)) {
+      continue;
+    }
     items.push({
       kind: "variable",
       name: variable.name,
