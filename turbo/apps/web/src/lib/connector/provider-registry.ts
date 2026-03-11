@@ -43,6 +43,7 @@ import { googleDocsHandler } from "./providers/google-docs-handler";
 import { googleDriveHandler } from "./providers/google-drive-handler";
 import { googleSheetsHandler } from "./providers/google-sheets-handler";
 import { intercomHandler } from "./providers/intercom-handler";
+import { jotformHandler } from "./providers/jotform-handler";
 import { lineHandler } from "./providers/line-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { makeHandler } from "./providers/make-handler";
@@ -157,6 +158,7 @@ export const PROVIDER_HANDLERS: Record<
   reportei: reporteiHandler,
   serpapi: serpapiHandler,
   intercom: intercomHandler,
+  jotform: jotformHandler,
   "intervals-icu": intervalsIcuHandler,
   sentry: sentryHandler,
   slack: slackHandler,

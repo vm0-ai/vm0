@@ -725,6 +725,25 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  jotform: {
+    label: "Jotform",
+    helpText:
+      "Connect your Jotform account to manage forms, submissions, and automate form workflows",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to your [Jotform account](https://www.jotform.com/myaccount/api)\n2. Navigate to **Settings** → **API**\n3. Click **Create New Key**\n4. Copy your **API Key**",
+        secrets: {
+          JOTFORM_TOKEN: {
+            label: "API Key",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   line: {
     label: "LINE",
     helpText:
@@ -2816,6 +2835,20 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       service("https://api.au.intercom.io", bearerAuth("INTERCOM_TOKEN")),
     ],
   },
+  jotform: {
+    services: [
+      service("https://api.jotform.com", {
+        headers: {
+          APIKEY: "${secrets.JOTFORM_TOKEN}",
+        },
+      }),
+      service("https://eu-api.jotform.com", {
+        headers: {
+          APIKEY: "${secrets.JOTFORM_TOKEN}",
+        },
+      }),
+    ],
+  },
   line: {
     services: [service("https://api.line.me", bearerAuth("LINE_TOKEN"))],
   },
@@ -3254,6 +3287,7 @@ export const connectorTypeSchema = z.enum([
   "dropbox",
   "linear",
   "intercom",
+  "jotform",
   "line",
   "make",
   "figma",
