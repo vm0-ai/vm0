@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import {
   type ModelProviderType,
+  type OnboardingStatusResponse,
   getDefaultAuthMethod,
   getDefaultModel,
   getSecretsForAuthMethod,
@@ -13,6 +14,7 @@ import { initScope$, hasScope$ } from "../scope.ts";
 import { createModelProvider$ } from "../external/model-providers.ts";
 import { getProviderShape } from "../../views/settings-page/provider-ui-config.ts";
 import { logger } from "../log.ts";
+import { throwIfAbort } from "../utils.ts";
 
 const L = logger("ZeroOnboarding");
 
@@ -23,13 +25,30 @@ const L = logger("ZeroOnboarding");
 const internalReload$ = state(0);
 
 export const zeroOnboardingStatus$ = computed(async (get) => {
+  const FALLBACK: OnboardingStatusResponse = {
+    needsOnboarding: false,
+    hasScope: true,
+    hasModelProvider: true,
+    hasDefaultAgent: true,
+    defaultAgentName: "zero",
+    defaultAgentComposeId: null,
+  };
   get(internalReload$);
   const fetchFn = get(fetch$);
-  const resp = await fetchFn("/api/onboarding/status");
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch onboarding status: ${resp.status}`);
+  try {
+    const resp = await fetchFn("/api/onboarding/status");
+    if (!resp.ok) {
+      L.warn("Onboarding status request failed, using fallback", {
+        status: resp.status,
+      });
+      return FALLBACK;
+    }
+    return onboardingStatusResponseSchema.parse(await resp.json());
+  } catch (error) {
+    throwIfAbort(error);
+    L.warn("Onboarding status fetch error, using fallback", { error });
+    return FALLBACK;
   }
-  return onboardingStatusResponseSchema.parse(await resp.json());
 });
 
 export const zeroNeedsOnboarding$ = computed(async (get) => {

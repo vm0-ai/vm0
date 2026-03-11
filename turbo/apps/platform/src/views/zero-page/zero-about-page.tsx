@@ -32,8 +32,8 @@ export function ZeroAboutPage({ onBack }: ZeroAboutPageProps) {
               {agentName} is your AI teammate, not just a tool. It automates
               workflows, grows with you, and works where you already are: in
               Slack, on the web, with access to what you need and memory of what
-              you've done. Safe, easy to use, and built to feel like part of the
-              team.
+              you&apos;ve done. Safe, easy to use, and built to feel like part
+              of the team.
             </p>
           </div>
 
@@ -42,9 +42,9 @@ export function ZeroAboutPage({ onBack }: ZeroAboutPageProps) {
               Who {agentName} is for
             </h2>
             <p className="text-sm text-foreground leading-relaxed">
-              Whether you're technical or not, {agentName} is ready. Use it for
-              quick help or go deep with workflows and automation. Everyone can
-              get started; power users can do more.
+              Whether you&apos;re technical or not, {agentName} is ready. Use it
+              for quick help or go deep with workflows and automation. Everyone
+              can get started; power users can do more.
             </p>
             <ul className="space-y-3 text-sm text-foreground leading-relaxed">
               <li className="flex gap-3">

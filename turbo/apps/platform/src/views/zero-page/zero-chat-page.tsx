@@ -5,9 +5,6 @@ import { onRef } from "../../signals/utils.ts";
 import {
   IconSend,
   IconPaperclip,
-  IconMoodSmile,
-  IconMicrophone,
-  IconPlus,
   IconBriefcase,
   IconSettings,
   IconPlug,
@@ -21,7 +18,17 @@ import {
   IconChartLine,
   IconCalendar,
 } from "@tabler/icons-react";
-import { Button, Card, CardContent, cn } from "@vm0/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  cn,
+} from "@vm0/ui";
 import { ZERO_TEAM_JOBS } from "./zero-jobs-page";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 
@@ -50,7 +57,7 @@ function getActionButtons(agentName: string) {
     },
     {
       id: "connectors" as ActionId,
-      label: "Add connectors",
+      label: "Add skills",
       icon: IconPlug as NavIcon,
     },
   ] as const;
@@ -129,6 +136,12 @@ function getLandingTaglines(agentName: string) {
   ] as const;
 }
 const CAROUSEL_INTERVAL_MS = 4000;
+
+const COMPOSER_MODEL_OPTIONS = [
+  { value: "default", label: "Default" },
+  { value: "fast", label: "Fast" },
+  { value: "smart", label: "Smart" },
+] as const;
 
 interface StreamedScenario {
   id: DemoScenarioId;
@@ -714,6 +727,11 @@ export function ZeroChatPage({
   );
   const carouselRef$ = onRef(carouselCommand$);
   const carouselRef = useSet(carouselRef$);
+  const selectedModel$ = useCCState<
+    (typeof COMPOSER_MODEL_OPTIONS)[number]["value"]
+  >(COMPOSER_MODEL_OPTIONS[0].value);
+  const selectedModel = useGet(selectedModel$);
+  const setSelectedModel = useSet(selectedModel$);
 
   // Stream tick — schedules the next streamed message after a delay
   const streamTimeoutId$ = useCCState<number | null>(null);
@@ -1021,33 +1039,35 @@ export function ZeroChatPage({
                       <button
                         type="button"
                         className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                        aria-label="Add"
-                      >
-                        <IconPlus size={18} stroke={1.5} />
-                      </button>
-                      <button
-                        type="button"
-                        className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         aria-label="Attach"
                       >
                         <IconPaperclip size={18} stroke={1.5} />
                       </button>
-                      <button
-                        type="button"
-                        className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                        aria-label="Emoji"
-                      >
-                        <IconMoodSmile size={18} stroke={1.5} />
-                      </button>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        className="p-2 rounded-lg text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                        aria-label="Voice input"
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={selectedModel}
+                        onValueChange={(value) =>
+                          setSelectedModel(
+                            value as (typeof COMPOSER_MODEL_OPTIONS)[number]["value"],
+                          )
+                        }
                       >
-                        <IconMicrophone size={18} stroke={1.5} />
-                      </button>
+                        <SelectTrigger className="h-9 min-w-[140px] rounded-lg border-border/70 bg-transparent text-sm text-muted-foreground">
+                          <SelectValue placeholder="Model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {COMPOSER_MODEL_OPTIONS.map((opt) => (
+                            <SelectItem
+                              key={opt.value}
+                              value={opt.value}
+                              className="text-sm"
+                            >
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <Button
                         size="sm"
                         className="rounded-lg h-9 w-9 p-0 shrink-0"
@@ -1120,33 +1140,35 @@ export function ZeroChatPage({
                     <button
                       type="button"
                       className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors"
-                      aria-label="Add"
-                    >
-                      <IconPlus size={18} stroke={1.5} />
-                    </button>
-                    <button
-                      type="button"
-                      className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors"
                       aria-label="Attach"
                     >
                       <IconPaperclip size={18} stroke={1.5} />
                     </button>
-                    <button
-                      type="button"
-                      className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors"
-                      aria-label="Emoji"
-                    >
-                      <IconMoodSmile size={18} stroke={1.5} />
-                    </button>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      className="p-2 rounded-lg text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
-                      aria-label="Voice input"
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={selectedModel}
+                      onValueChange={(value) =>
+                        setSelectedModel(
+                          value as (typeof COMPOSER_MODEL_OPTIONS)[number]["value"],
+                        )
+                      }
                     >
-                      <IconMicrophone size={18} stroke={1.5} />
-                    </button>
+                      <SelectTrigger className="h-9 min-w-[140px] rounded-lg border-border/70 bg-transparent text-sm text-muted-foreground">
+                        <SelectValue placeholder="Model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {COMPOSER_MODEL_OPTIONS.map((opt) => (
+                          <SelectItem
+                            key={opt.value}
+                            value={opt.value}
+                            className="text-sm"
+                          >
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <Button
                       size="sm"
                       className="rounded-lg h-9 w-9 p-0 shrink-0"
