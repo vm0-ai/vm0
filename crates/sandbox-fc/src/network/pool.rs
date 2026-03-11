@@ -725,13 +725,20 @@ impl NetnsPool {
                     self.maybe_replenish_plain();
                     return Ok(ns);
                 }
-                Ok(Err(e)) => error!(error = %e, "pending namespace creation failed"),
-                Err(e) => error!(error = %e, "pending namespace task panicked"),
+                Ok(Err(e)) => {
+                    self.created_plain = self.created_plain.saturating_sub(1);
+                    error!(error = %e, "pending namespace creation failed");
+                }
+                Err(e) => {
+                    self.created_plain = self.created_plain.saturating_sub(1);
+                    error!(error = %e, "pending namespace task panicked");
+                }
             }
         }
         // Tier 3: on-demand.
         info!("pool exhausted, creating namespace on-demand");
         let ns = self.create_on_demand(None).await?;
+        self.created_plain += 1;
         self.maybe_replenish_plain();
         Ok(ns)
     }
@@ -759,13 +766,20 @@ impl NetnsPool {
                     self.maybe_replenish_proxy();
                     return Ok(ns);
                 }
-                Ok(Err(e)) => error!(error = %e, "pending proxy namespace creation failed"),
-                Err(e) => error!(error = %e, "pending proxy namespace task panicked"),
+                Ok(Err(e)) => {
+                    self.created_proxy = self.created_proxy.saturating_sub(1);
+                    error!(error = %e, "pending proxy namespace creation failed");
+                }
+                Err(e) => {
+                    self.created_proxy = self.created_proxy.saturating_sub(1);
+                    error!(error = %e, "pending proxy namespace task panicked");
+                }
             }
         }
         // Tier 3: on-demand.
         info!("proxy pool exhausted, creating namespace on-demand");
         let ns = self.create_on_demand(self.proxy_port).await?;
+        self.created_proxy += 1;
         self.maybe_replenish_proxy();
         Ok(ns)
     }
@@ -791,20 +805,33 @@ impl NetnsPool {
     /// Move completed background tasks into their respective queues.
     ///
     /// Uses `try_join_next()` to avoid blocking — only drains tasks that
-    /// have already finished.
+    /// have already finished. Decrements the created counter on failure so
+    /// the slot can be retried on the next replenishment cycle.
     fn drain_completed(&mut self) {
         while let Some(result) = self.pending_plain.try_join_next() {
             match result {
                 Ok(Ok(ns)) => self.plain_queue.push_back(ns),
-                Ok(Err(e)) => error!(error = %e, "background namespace creation failed"),
-                Err(e) => error!(error = %e, "background namespace creation panicked"),
+                Ok(Err(e)) => {
+                    self.created_plain = self.created_plain.saturating_sub(1);
+                    error!(error = %e, "background namespace creation failed");
+                }
+                Err(e) => {
+                    self.created_plain = self.created_plain.saturating_sub(1);
+                    error!(error = %e, "background namespace creation panicked");
+                }
             }
         }
         while let Some(result) = self.pending_proxy.try_join_next() {
             match result {
                 Ok(Ok(ns)) => self.proxy_queue.push_back(ns),
-                Ok(Err(e)) => error!(error = %e, "background proxy namespace creation failed"),
-                Err(e) => error!(error = %e, "background proxy namespace creation panicked"),
+                Ok(Err(e)) => {
+                    self.created_proxy = self.created_proxy.saturating_sub(1);
+                    error!(error = %e, "background proxy namespace creation failed");
+                }
+                Err(e) => {
+                    self.created_proxy = self.created_proxy.saturating_sub(1);
+                    error!(error = %e, "background proxy namespace creation panicked");
+                }
             }
         }
     }
