@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { clerkClient } from "@clerk/nextjs/server";
 import { PUT } from "../route";
 import {
   createTestRequest,
@@ -84,6 +85,35 @@ describe("PUT /api/scopes/default-agent", () => {
       "00000000-0000-0000-0000-000000000000",
     );
     expect(response.status).toBe(404);
+  });
+
+  it("should dual-write default agent to Clerk org metadata", async () => {
+    await context.setupUser();
+    const compose = await createTestCompose("test-agent");
+
+    await putDefaultAgent(undefined, compose.composeId);
+
+    const client = await vi.mocked(clerkClient)();
+    expect(
+      client.organizations.updateOrganizationMetadata,
+    ).toHaveBeenCalledWith(expect.any(String), {
+      publicMetadata: { default_agent_compose_id: compose.composeId },
+    });
+  });
+
+  it("should dual-write null to Clerk org metadata when unsetting", async () => {
+    await context.setupUser();
+    const compose = await createTestCompose("test-agent");
+
+    await putDefaultAgent(undefined, compose.composeId);
+    await putDefaultAgent(undefined, null);
+
+    const client = await vi.mocked(clerkClient)();
+    expect(
+      client.organizations.updateOrganizationMetadata,
+    ).toHaveBeenLastCalledWith(expect.any(String), {
+      publicMetadata: { default_agent_compose_id: null },
+    });
   });
 
   it("should return 200 when setting same agent twice", async () => {

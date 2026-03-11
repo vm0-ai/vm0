@@ -6,6 +6,10 @@ import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { scopes } from "../../../../src/db/schema/scope";
 import { eq, and } from "drizzle-orm";
+import { clerkClient } from "@clerk/nextjs/server";
+import { logger } from "../../../../src/lib/logger";
+
+const log = logger("api:scopes:default-agent");
 
 const router = tsr.router(scopeDefaultAgentContract, {
   setDefaultAgent: async ({ query, body, headers }) => {
@@ -73,6 +77,19 @@ const router = tsr.router(scopeDefaultAgentContract, {
       .update(scopes)
       .set({ defaultAgentComposeId: agentComposeId })
       .where(eq(scopes.id, scope.id));
+
+    // Dual-write to Clerk org publicMetadata (fire-and-forget)
+    try {
+      const client = await clerkClient();
+      await client.organizations.updateOrganizationMetadata(scope.clerkOrgId, {
+        publicMetadata: { default_agent_compose_id: agentComposeId },
+      });
+    } catch (err) {
+      log.error("Failed to write default agent to Clerk metadata", {
+        error: err,
+        clerkOrgId: scope.clerkOrgId,
+      });
+    }
 
     return {
       status: 200 as const,
