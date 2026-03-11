@@ -184,3 +184,4 @@ __pycache__/
 debug-*.png
 
 .claude/scheduled_tasks.lock
+tmp/

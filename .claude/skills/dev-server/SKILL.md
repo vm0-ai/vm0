@@ -112,12 +112,24 @@ Also save the output file path:
 echo "/tmp/claude/-workspaces-vm01/tasks/<shell_id>.output" > /tmp/dev-server-output-file
 ```
 
-### Step 5: Confirm Startup
+### Step 5: Wait for Startup and Confirm
 
-Display the shell ID for monitoring:
+Wait a few seconds, then read the dev server logs. Look for the **Caddy proxy** output lines to determine the correct URLs. Ignore any tunnel URLs (e.g., `tunnel-*.vm7.ai`). The correct URLs are the ones reported by the Caddy proxy:
+
+- **Web**: `https://www.vm7.ai:8443`
+- **Docs**: `https://docs.vm7.ai:8443`
+- **Platform**: `https://platform.vm7.ai:8443`
+
+These `vm7.ai` domains are mapped to `127.0.0.1` locally.
+
+Display the shell ID and URLs:
 
 ```
 ✅ Dev server started in background (shell_id: <id>)
+
+- Web:      https://www.vm7.ai:8443
+- Platform: https://platform.vm7.ai:8443
+- Docs:     https://docs.vm7.ai:8443
 
 Next steps:
 - Use `/dev-logs` to view server output
