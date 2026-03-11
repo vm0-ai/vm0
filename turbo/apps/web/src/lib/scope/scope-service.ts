@@ -238,50 +238,72 @@ function isValidSlug(slug: string): boolean {
 }
 
 /**
- * Discover an existing Clerk org for a user and create a local scope bound to it.
- * Queries the Clerk API for the user's org memberships, finds the first org
- * without a matching local scope, and creates a scope record.
+ * Resolve the first Clerk org membership for a user that has no matching local scope.
+ * Fetches the user's Clerk org memberships, batch-queries existing scopes, and
+ * returns the first unmatched membership (or null if all orgs are already bound).
  */
-async function discoverAndCreateScope(clerkUserId: string) {
+export async function resolveUnmatchedClerkOrg(clerkUserId: string) {
   const client = await clerkClient();
   const memberships = await client.users.getOrganizationMembershipList({
     userId: clerkUserId,
   });
 
-  for (const membership of memberships.data) {
-    const clerkOrgId = membership.organization.id;
-    const existingScope = await getScopeByClerkOrgId(clerkOrgId);
-    if (existingScope) continue;
-
-    // Prefer Clerk org slug, fall back to deterministic user-{hash}
-    const clerkSlug = membership.organization.slug;
-    let slug: string;
-    if (clerkSlug && isValidSlug(clerkSlug)) {
-      const taken = await getScopeBySlug(clerkSlug);
-      slug = taken ? generateDefaultScopeSlug(clerkUserId) : clerkSlug;
-    } else {
-      slug = generateDefaultScopeSlug(clerkUserId);
-    }
-
-    try {
-      return await createScope(clerkUserId, slug, { clerkOrgId });
-    } catch (error) {
-      if (isBadRequest(error) && error.message.includes("already exists")) {
-        // Re-check: another concurrent request may have created this scope
-        const raceScope = await getScopeByClerkOrgId(clerkOrgId);
-        if (raceScope) return raceScope;
-
-        // Slug collision with unrelated scope — retry with random slug
-        const fallbackSlug = `user-${randomBytes(4).toString("hex")}`;
-        return await createScope(clerkUserId, fallbackSlug, { clerkOrgId });
-      }
-      throw error;
-    }
+  if (memberships.data.length === 0) {
+    return null;
   }
 
-  throw notFound(
-    "No organization found. Please sign up again to create an organization.",
+  const orgIds = memberships.data.map((m) => m.organization.id);
+  const matchedScopes = await globalThis.services.db
+    .select({ clerkOrgId: scopes.clerkOrgId })
+    .from(scopes)
+    .where(inArray(scopes.clerkOrgId, orgIds));
+  const existingOrgIds = new Set(matchedScopes.map((s) => s.clerkOrgId));
+
+  return (
+    memberships.data.find((m) => !existingOrgIds.has(m.organization.id)) ?? null
   );
+}
+
+/**
+ * Discover an existing Clerk org for a user and create a local scope bound to it.
+ * Queries the Clerk API for the user's org memberships, finds the first org
+ * without a matching local scope, and creates a scope record.
+ */
+async function discoverAndCreateScope(clerkUserId: string) {
+  const unmatchedMembership = await resolveUnmatchedClerkOrg(clerkUserId);
+
+  if (!unmatchedMembership) {
+    throw notFound(
+      "No organization found. Please sign up again to create an organization.",
+    );
+  }
+
+  const clerkOrgId = unmatchedMembership.organization.id;
+
+  // Prefer Clerk org slug, fall back to deterministic user-{hash}
+  const clerkSlug = unmatchedMembership.organization.slug;
+  let slug: string;
+  if (clerkSlug && isValidSlug(clerkSlug)) {
+    const taken = await getScopeBySlug(clerkSlug);
+    slug = taken ? generateDefaultScopeSlug(clerkUserId) : clerkSlug;
+  } else {
+    slug = generateDefaultScopeSlug(clerkUserId);
+  }
+
+  try {
+    return await createScope(clerkUserId, slug, { clerkOrgId });
+  } catch (error) {
+    if (isBadRequest(error) && error.message.includes("already exists")) {
+      // Re-check: another concurrent request may have created this scope
+      const raceScope = await getScopeByClerkOrgId(clerkOrgId);
+      if (raceScope) return raceScope;
+
+      // Slug collision with unrelated scope — retry with random slug
+      const fallbackSlug = `user-${randomBytes(4).toString("hex")}`;
+      return await createScope(clerkUserId, fallbackSlug, { clerkOrgId });
+    }
+    throw error;
+  }
 }
 
 /**

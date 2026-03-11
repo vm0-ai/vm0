@@ -491,7 +491,12 @@ describe("/api/scope", () => {
 
     it("should fall through to default when clerkOrgId has no matching scope", async () => {
       const userId = `no-match-org-${Date.now()}`;
-      mockClerk({ userId });
+      const clerkOrgs = [
+        { id: `org_mock_${userId}`, slug: `default-org`, name: "Default Org" },
+      ];
+
+      // Set up Clerk org BEFORE creating scope so POST resolves correct clerkOrgId
+      mockClerk({ userId, clerkOrgs });
 
       // Create a default scope
       const slug = `default-org-${Date.now()}`;
@@ -506,7 +511,7 @@ describe("/api/scope", () => {
       mockClerk({
         userId,
         orgId: "org_nonexistent_xyz",
-        clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
+        clerkOrgs,
       });
 
       const request = createTestRequest("http://localhost:3000/api/scope");

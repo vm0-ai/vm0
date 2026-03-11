@@ -11,14 +11,12 @@ import {
   updateScopeSlug,
   isVm0Admin,
   ensureDefaultScope,
+  resolveUnmatchedClerkOrg,
 } from "../../../src/lib/scope/scope-service";
 import { getUserEmail } from "../../../src/lib/auth/get-user-email";
 import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
-import { clerkClient } from "@clerk/nextjs/server";
-import { inArray } from "drizzle-orm";
-import { scopes } from "../../../src/db/schema/scope";
 
 const log = logger("api:scope");
 
@@ -106,28 +104,7 @@ const router = tsr.router(scopeContract, {
       }
 
       // Resolve clerkOrgId from user's Clerk org memberships
-      const client = await clerkClient();
-      const memberships = await client.users.getOrganizationMembershipList({
-        userId,
-      });
-
-      if (memberships.data.length === 0) {
-        return createErrorResponse(
-          "BAD_REQUEST",
-          "No available Clerk organization to associate with this scope",
-        );
-      }
-
-      const orgIds = memberships.data.map((m) => m.organization.id);
-      const matchedScopes = await globalThis.services.db
-        .select({ clerkOrgId: scopes.clerkOrgId })
-        .from(scopes)
-        .where(inArray(scopes.clerkOrgId, orgIds));
-      const existingOrgIds = new Set(matchedScopes.map((s) => s.clerkOrgId));
-
-      const unmatchedOrg = memberships.data.find(
-        (m) => !existingOrgIds.has(m.organization.id),
-      );
+      const unmatchedOrg = await resolveUnmatchedClerkOrg(userId);
 
       if (!unmatchedOrg) {
         return createErrorResponse(
