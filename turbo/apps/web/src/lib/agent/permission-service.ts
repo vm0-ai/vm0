@@ -194,26 +194,31 @@ export async function getEmailSharedAgents(
     .where(and(...conditions))
     .orderBy(desc(agentComposes.createdAt));
 
-  // Resolve scope slugs via org cache
+  // Resolve scope slugs via org cache (skip orgs that fail lookup)
   const uniqueClerkOrgIds = [...new Set(rows.map((r) => r.clerkOrgId))];
   const orgDataResults = await Promise.all(
     uniqueClerkOrgIds.map(async (id) => {
-      const orgData = await getOrgData(id).catch(() => null);
-      return [id, orgData] as const;
+      try {
+        return [id, await getOrgData(id)] as const;
+      } catch (err) {
+        log.warn("failed to resolve org data for shared agent", {
+          clerkOrgId: id,
+          error: err,
+        });
+        return [id, null] as const;
+      }
     }),
   );
-  const orgDataMap = new Map(orgDataResults);
+  const orgDataMap = new Map(orgDataResults.filter(([, v]) => v !== null));
 
-  return rows
-    .filter((row) => orgDataMap.get(row.clerkOrgId) !== null)
-    .map((row) => ({
-      id: row.id,
-      name: row.name,
-      headVersionId: row.headVersionId,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      scopeSlug: orgDataMap.get(row.clerkOrgId)?.slug ?? "",
-    }));
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    headVersionId: row.headVersionId,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    scopeSlug: orgDataMap.get(row.clerkOrgId)?.slug ?? "",
+  }));
 }
 
 /**
