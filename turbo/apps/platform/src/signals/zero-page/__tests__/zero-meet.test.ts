@@ -164,6 +164,9 @@ describe("zero-meet signals", () => {
             },
           });
         }),
+        http.put("/api/scopes/default-agent", () => {
+          return HttpResponse.json({ ok: true });
+        }),
       );
 
       await setup();
