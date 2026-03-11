@@ -28,7 +28,8 @@
 //! ```
 //!
 //! Design:
-//! - Pool creates fixed number of namespaces at init (parallel)
+//! - Pool lazily pre-warms a small number of namespaces at init, then
+//!   replenishes in the background on each [`NetnsPool::acquire`]
 //! - [`NetnsPool::acquire`] returns a namespace from pool, or creates on-demand as fallback
 //! - [`NetnsPool::release`] returns the namespace to the pool
 //! - Pool index (0–63) is auto-allocated via flock on `/var/lock`
