@@ -1611,6 +1611,29 @@ const CONNECTOR_TYPES_DEF = {
       SIMILARWEB_TOKEN: "$secrets.SIMILARWEB_API_KEY",
     } as Record<string, string>,
   },
+  perplexity: {
+    label: "Perplexity",
+    helpText:
+      "Connect your Perplexity account to access AI-powered search and research capabilities via the Sonar API",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Perplexity](https://www.perplexity.ai)\n2. Go to **Settings → API**\n3. Generate a new API key\n4. Copy the key",
+        secrets: {
+          PERPLEXITY_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "pplx-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {
+      PERPLEXITY_TOKEN: "$secrets.PERPLEXITY_TOKEN",
+    } as Record<string, string>,
+  },
   plausible: {
     label: "Plausible",
     helpText:
@@ -1929,6 +1952,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       }),
     ],
   },
+  perplexity: {
+    services: [
+      service("https://api.perplexity.ai", bearerAuth("PERPLEXITY_TOKEN")),
+    ],
+  },
   plausible: {
     services: [
       service("https://plausible.io/api", bearerAuth("PLAUSIBLE_TOKEN")),
@@ -2071,6 +2099,7 @@ export const connectorTypeSchema = z.enum([
   "stripe",
   "similarweb",
   "mailchimp",
+  "perplexity",
   "plausible",
   "productlane",
   "resend",
