@@ -6,7 +6,8 @@ import {
   agentComposeVersions,
   agentComposes,
 } from "../../../../src/db/schema/agent-compose";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, lt } from "drizzle-orm";
+import { composeJobs } from "../../../../src/db/schema/compose-job";
 import {
   cleanupExpiredQueueEntries,
   drainStaleQueues,
@@ -23,6 +24,8 @@ const HEARTBEAT_TIMEOUT_MS = 2 * 60 * 1000;
 const DEBUG_HEARTBEAT_TIMEOUT_MS = 60 * 60 * 1000;
 // Pending timeout: 5 minutes (for runs stuck in pending state)
 const PENDING_TIMEOUT_MS = 5 * 60 * 1000;
+// Compose job timeout: 10 minutes (2x the 5-minute sandbox timeout)
+const COMPOSE_JOB_TIMEOUT_MS = 10 * 60 * 1000;
 // Compose names starting with this prefix use debug timeout
 const DEBUG_COMPOSE_PREFIX = "debug-";
 
@@ -112,64 +115,113 @@ const router = tsr.router(cronCleanupSandboxesContract, {
       );
     }
 
-    if (expiredRuns.length === 0) {
-      log.debug("No expired sandboxes found");
-      return {
-        status: 200 as const,
-        body: {
-          cleaned: 0,
-          errors: 0,
-          results: [],
-        },
-      };
-    }
-
-    log.debug(`Found ${expiredRuns.length} expired sandboxes to cleanup`);
-
     const results: CleanupResult[] = [];
 
-    for (const run of expiredRuns) {
-      try {
-        // Determine error message based on status
-        const timeoutReason =
-          run.status === "pending"
-            ? "Run timed out while pending (never started)"
-            : "Run timed out (no heartbeat)";
+    if (expiredRuns.length === 0) {
+      log.debug("No expired sandboxes found");
+    } else {
+      log.debug(`Found ${expiredRuns.length} expired sandboxes to cleanup`);
 
-        // Update run status to timeout
-        await globalThis.services.db
-          .update(agentRuns)
-          .set({
-            status: "timeout",
-            completedAt: new Date(),
-            error: timeoutReason,
-          })
-          .where(eq(agentRuns.id, run.id));
+      for (const run of expiredRuns) {
+        try {
+          // Determine error message based on status
+          const timeoutReason =
+            run.status === "pending"
+              ? "Run timed out while pending (never started)"
+              : "Run timed out (no heartbeat)";
 
-        const isDebug =
-          run.composeName?.startsWith(DEBUG_COMPOSE_PREFIX) ?? false;
-        const referenceTime = run.lastHeartbeatAt ?? run.createdAt;
-        log.debug(
-          `Cleaned up expired run ${run.id} (status: ${run.status}, sandbox: ${run.sandboxId}, compose: ${run.composeName ?? "unknown"}, debug: ${isDebug}, reference time: ${referenceTime.toISOString()})`,
-        );
+          // Update run status to timeout
+          await globalThis.services.db
+            .update(agentRuns)
+            .set({
+              status: "timeout",
+              completedAt: new Date(),
+              error: timeoutReason,
+            })
+            .where(eq(agentRuns.id, run.id));
 
-        results.push({
-          runId: run.id,
-          sandboxId: run.sandboxId,
-          status: "cleaned",
-          reason: timeoutReason,
-        });
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error";
-        log.error(`Failed to cleanup run ${run.id}: ${errorMessage}`);
+          const isDebug =
+            run.composeName?.startsWith(DEBUG_COMPOSE_PREFIX) ?? false;
+          const referenceTime = run.lastHeartbeatAt ?? run.createdAt;
+          log.debug(
+            `Cleaned up expired run ${run.id} (status: ${run.status}, sandbox: ${run.sandboxId}, compose: ${run.composeName ?? "unknown"}, debug: ${isDebug}, reference time: ${referenceTime.toISOString()})`,
+          );
 
-        results.push({
-          runId: run.id,
-          sandboxId: run.sandboxId,
-          status: "error",
-          error: errorMessage,
-        });
+          results.push({
+            runId: run.id,
+            sandboxId: run.sandboxId,
+            status: "cleaned",
+            reason: timeoutReason,
+          });
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error";
+          log.error(`Failed to cleanup run ${run.id}: ${errorMessage}`);
+
+          results.push({
+            runId: run.id,
+            sandboxId: run.sandboxId,
+            status: "error",
+            error: errorMessage,
+          });
+        }
+      }
+    }
+
+    // Compose job cleanup: fail stuck compose jobs that exceeded the timeout.
+    // Compose jobs rely on a webhook callback from E2B sandbox to update status.
+    // When the webhook fails, jobs get stuck in pending/running and block the
+    // user from creating new jobs (partial unique index: one active job per user).
+    const composeJobCutoffTime = new Date(now - COMPOSE_JOB_TIMEOUT_MS);
+    const staleComposeJobs = await globalThis.services.db
+      .select({
+        id: composeJobs.id,
+        status: composeJobs.status,
+        createdAt: composeJobs.createdAt,
+      })
+      .from(composeJobs)
+      .where(
+        and(
+          inArray(composeJobs.status, ["pending", "running"]),
+          lt(composeJobs.createdAt, composeJobCutoffTime),
+        ),
+      );
+
+    let composeJobsCleaned = 0;
+    let composeJobErrors = 0;
+    if (staleComposeJobs.length > 0) {
+      log.debug(
+        `Found ${staleComposeJobs.length} stale compose jobs to cleanup`,
+      );
+
+      for (const job of staleComposeJobs) {
+        try {
+          await globalThis.services.db
+            .update(composeJobs)
+            .set({
+              status: "failed",
+              completedAt: new Date(),
+              error: "Compose job timed out (no completion callback received)",
+            })
+            .where(
+              and(
+                eq(composeJobs.id, job.id),
+                inArray(composeJobs.status, ["pending", "running"]),
+              ),
+            );
+
+          log.debug(
+            `Cleaned up stale compose job ${job.id} (status: ${job.status}, created: ${job.createdAt.toISOString()})`,
+          );
+          composeJobsCleaned++;
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error";
+          log.error(
+            `Failed to cleanup compose job ${job.id}: ${errorMessage}`,
+          );
+          composeJobErrors++;
+        }
       }
     }
 
@@ -179,6 +231,8 @@ const router = tsr.router(cronCleanupSandboxesContract, {
         cleaned: results.filter((r) => r.status === "cleaned").length,
         errors: results.filter((r) => r.status === "error").length,
         results,
+        composeJobsCleaned,
+        composeJobErrors,
       },
     };
   },

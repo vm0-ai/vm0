@@ -12,10 +12,6 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/cleanup-compose-jobs",
-      "schedule": "0 0 * * *"
-    },
-    {
       "path": "/api/cron/aggregate-usage",
       "schedule": "5 0 * * *"
     },
