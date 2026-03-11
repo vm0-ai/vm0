@@ -58,6 +58,7 @@ import perplexityIcon from "./icons/perplexity.svg";
 import plausibleIcon from "./icons/plausible.svg";
 import podchaserIcon from "./icons/podchaser.svg";
 import posthogIcon from "./icons/posthog.svg";
+import prismaPostgresIcon from "./icons/prisma-postgres.svg";
 import productlaneIcon from "./icons/productlane.svg";
 import pushinatorIcon from "./icons/pushinator.svg";
 import qdrantIcon from "./icons/qdrant.svg";
@@ -150,6 +151,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   plausible: plausibleIcon,
   podchaser: podchaserIcon,
   posthog: posthogIcon,
+  "prisma-postgres": prismaPostgresIcon,
   productlane: productlaneIcon,
   pushinator: pushinatorIcon,
   qdrant: qdrantIcon,

@@ -2585,6 +2585,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  "prisma-postgres": {
+    label: "Prisma Postgres",
+    helpText:
+      "Connect your Prisma Postgres database to manage schemas, run queries, and access data through Prisma's serverless database platform",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Prisma Console](https://console.prisma.io/)\n2. Select your project and Prisma Postgres database\n3. Go to **Setup** and copy the API key from the connection string",
+        secrets: {
+          PRISMA_POSTGRES_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "eyJhbGci...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
 } satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
@@ -3240,6 +3260,7 @@ export const connectorTypeSchema = z.enum([
   "wrike",
   "zapsign",
   "zendesk",
+  "prisma-postgres",
 ]);
 
 /**

@@ -78,6 +78,7 @@ import { outlookCalendarHandler } from "./providers/outlook-calendar-handler";
 import { outlookMailHandler } from "./providers/outlook-mail-handler";
 import { metaAdsHandler } from "./providers/meta-ads-handler";
 import { posthogHandler } from "./providers/posthog-handler";
+import { prismaPostgresHandler } from "./providers/prisma-postgres-handler";
 import { pdf4meHandler } from "./providers/pdf4me-handler";
 import { pdfcoHandler } from "./providers/pdfco-handler";
 import { perplexityHandler } from "./providers/perplexity-handler";
@@ -164,6 +165,7 @@ export const PROVIDER_HANDLERS: Record<
   supabase: supabaseHandler,
   "meta-ads": metaAdsHandler,
   posthog: posthogHandler,
+  "prisma-postgres": prismaPostgresHandler,
   pdf4me: pdf4meHandler,
   pdfco: pdfcoHandler,
   perplexity: perplexityHandler,
