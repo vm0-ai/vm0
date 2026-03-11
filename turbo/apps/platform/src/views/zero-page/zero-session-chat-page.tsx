@@ -1,9 +1,17 @@
+import type { KeyboardEvent } from "react";
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
-import { IconSend, IconLoader2, IconAlertCircle } from "@tabler/icons-react";
-import { Button } from "@vm0/ui";
+import {
+  IconSend,
+  IconPlus,
+  IconPaperclip,
+  IconMoodSmile,
+  IconMicrophone,
+  IconAlertCircle,
+  IconLoader2,
+} from "@tabler/icons-react";
+import { Button, Card, CardContent } from "@vm0/ui";
 import { Markdown } from "../components/markdown.tsx";
-import { StatusDot } from "../logs-page/components/status-dot.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
@@ -20,7 +28,15 @@ import {
 // ZeroSessionChatPage — real conversation backed by agent runs
 // ---------------------------------------------------------------------------
 
-export function ZeroSessionChatPage() {
+interface ZeroSessionChatPageProps {
+  zeroAvatarSrc?: string;
+  onAvatarClick?: () => void;
+}
+
+export function ZeroSessionChatPage({
+  zeroAvatarSrc = "/zero-avatar.png",
+  onAvatarClick,
+}: ZeroSessionChatPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
@@ -49,7 +65,7 @@ export function ZeroSessionChatPage() {
     detach(send(trimmed), Reason.DomCallback);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -57,10 +73,10 @@ export function ZeroSessionChatPage() {
   };
 
   return (
-    <div className="flex flex-1 flex-col min-h-0">
+    <div className="flex flex-1 flex-col min-h-0 bg-transparent">
       {/* Message list */}
-      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4">
-        <div className="mx-auto max-w-[720px] flex flex-col gap-1">
+      <main className="flex-1 overflow-auto px-4 sm:px-6 py-4">
+        <div className="mx-auto max-w-[900px] flex flex-col gap-6 pb-4">
           {messages.length === 0 && (
             <div className="flex-1 flex items-center justify-center py-16">
               <p className="text-sm text-muted-foreground">
@@ -69,40 +85,85 @@ export function ZeroSessionChatPage() {
             </div>
           )}
           {messages.map((msg) => (
-            <ChatMessageRow key={msg.id} message={msg} />
+            <ChatMessageRow
+              key={msg.id}
+              message={msg}
+              zeroAvatarSrc={zeroAvatarSrc}
+              onAvatarClick={onAvatarClick}
+            />
           ))}
           <div ref={setMessagesEndEl} />
         </div>
-      </div>
+      </main>
 
-      {/* Input */}
-      <div className="shrink-0 px-4 sm:px-6 pb-4 sm:pb-6">
-        <div className="mx-auto max-w-[720px]">
-          <div className="flex items-end gap-2 md:gap-2.5 rounded-xl border border-border bg-card p-3 md:p-4 shadow-sm">
-            <textarea
-              className="flex-1 resize-none bg-transparent text-sm text-secondary-foreground placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-              rows={2}
-              placeholder={`Message ${agentName}...`}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={sending}
-            />
-            <Button
-              onClick={handleSend}
-              disabled={!input.trim() || sending}
-              size="icon"
-              className="shrink-0 rounded-lg h-9 w-9"
-            >
-              {sending ? (
-                <IconLoader2 size={16} className="animate-spin" />
-              ) : (
-                <IconSend size={16} />
-              )}
-            </Button>
-          </div>
+      {/* Composer */}
+      <footer className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-8">
+        <div className="mx-auto max-w-[900px] grid grid-cols-[48px_1fr] gap-3">
+          <div className="w-9 shrink-0" />
+          <Card className="zero-composer w-full min-w-0 overflow-hidden transition-colors duration-200">
+            <CardContent className="p-0">
+              <div className="flex flex-col">
+                <textarea
+                  className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
+                  rows={3}
+                  placeholder={`Message ${agentName}...`}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={sending}
+                />
+                <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border/50">
+                  <div className="flex items-center gap-1 text-muted-foreground">
+                    <button
+                      type="button"
+                      className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      aria-label="Add"
+                    >
+                      <IconPlus size={18} stroke={1.5} />
+                    </button>
+                    <button
+                      type="button"
+                      className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      aria-label="Attach"
+                    >
+                      <IconPaperclip size={18} stroke={1.5} />
+                    </button>
+                    <button
+                      type="button"
+                      className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      aria-label="Emoji"
+                    >
+                      <IconMoodSmile size={18} stroke={1.5} />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="p-2 rounded-lg text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      aria-label="Voice input"
+                    >
+                      <IconMicrophone size={18} stroke={1.5} />
+                    </button>
+                    <Button
+                      size="sm"
+                      className="rounded-lg h-9 w-9 p-0 shrink-0"
+                      onClick={handleSend}
+                      disabled={!input.trim() || sending}
+                      aria-label="Send"
+                    >
+                      {sending ? (
+                        <IconLoader2 size={16} className="animate-spin" />
+                      ) : (
+                        <IconSend size={16} stroke={2} />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      </div>
+      </footer>
     </div>
   );
 }
@@ -111,36 +172,77 @@ export function ZeroSessionChatPage() {
 // Chat message components
 // ---------------------------------------------------------------------------
 
-function ChatMessageRow({ message }: { message: ZeroChatMessage }) {
+interface ChatMessageRowProps {
+  message: ZeroChatMessage;
+  zeroAvatarSrc: string;
+  onAvatarClick?: () => void;
+}
+
+function ChatMessageRow({
+  message,
+  zeroAvatarSrc,
+  onAvatarClick,
+}: ChatMessageRowProps) {
   if (message.role === "user") {
     return <UserMessage content={message.content} />;
   }
-  return <AssistantMessage message={message} />;
+  return (
+    <AssistantMessage
+      message={message}
+      zeroAvatarSrc={zeroAvatarSrc}
+      onAvatarClick={onAvatarClick}
+    />
+  );
 }
 
 function UserMessage({ content }: { content: string }) {
   return (
-    <div className="py-2">
-      <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-lg bg-primary px-3 py-2 [&_*]:!text-primary-foreground">
-          <Markdown source={content} />
+    <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="w-9 h-9 shrink-0" />
+      <div className="flex min-w-0 justify-end">
+        <div className="zero-chat-bubble-user rounded-2xl px-4 py-3 max-w-[85%] text-sm leading-relaxed">
+          {content}
         </div>
       </div>
     </div>
   );
 }
 
-function AssistantMessage({ message }: { message: ZeroChatMessage }) {
+interface AssistantMessageProps {
+  message: ZeroChatMessage;
+  zeroAvatarSrc: string;
+  onAvatarClick?: () => void;
+}
+
+function AssistantMessage({
+  message,
+  zeroAvatarSrc,
+  onAvatarClick,
+}: AssistantMessageProps) {
+  const avatarButton = (
+    <button
+      type="button"
+      onClick={onAvatarClick}
+      className="h-9 w-9 shrink-0 mt-0.5 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      aria-label="Switch Zero avatar"
+    >
+      <img
+        src={zeroAvatarSrc}
+        alt=""
+        role="presentation"
+        className="h-9 w-9 rounded-full object-cover object-top"
+      />
+    </button>
+  );
+
   if (message.error) {
     return (
-      <div className="py-2">
-        <div className="flex gap-2 items-start">
-          <StatusDot variant="error" className="mt-1.5" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start gap-1.5 text-sm text-destructive">
-              <IconAlertCircle size={14} className="shrink-0 mt-0.5" />
-              <span>{message.error}</span>
-            </div>
+      <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+        {avatarButton}
+        <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0">
+          <div className="flex items-start gap-1.5 text-destructive">
+            <IconAlertCircle size={14} className="shrink-0 mt-0.5" />
+            <span>{message.error}</span>
           </div>
         </div>
       </div>
@@ -149,22 +251,27 @@ function AssistantMessage({ message }: { message: ZeroChatMessage }) {
 
   if (message.content) {
     return (
-      <div className="py-2">
-        <div className="flex gap-2 items-start">
-          <StatusDot variant="success" className="mt-1.5" />
-          <div className="flex-1 min-w-0">
-            <Markdown source={message.content} />
-          </div>
+      <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+        {avatarButton}
+        <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0">
+          <Markdown source={message.content} />
         </div>
       </div>
     );
   }
 
+  // Thinking / loading state
   return (
-    <div className="py-2">
-      <div className="flex gap-2 items-center">
-        <StatusDot variant="pending" className="animate-pulse" />
-        <span className="text-sm text-muted-foreground">Thinking...</span>
+    <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+      {avatarButton}
+      <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0">
+        <div className="flex items-center gap-2">
+          <IconLoader2
+            size={14}
+            className="animate-spin text-muted-foreground"
+          />
+          <span className="text-muted-foreground">Thinking...</span>
+        </div>
       </div>
     </div>
   );

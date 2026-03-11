@@ -59,7 +59,12 @@ export function ZeroContent({
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
   if (sectionId === "chat") {
     if (inSession) {
-      return <ZeroSessionChatPage />;
+      return (
+        <ZeroSessionChatPage
+          zeroAvatarSrc={zeroAvatarSrc}
+          onAvatarClick={onAvatarClick}
+        />
+      );
     }
     return (
       <ZeroChatPage
