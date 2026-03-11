@@ -1960,6 +1960,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  podchaser: {
+    label: "Podchaser",
+    helpText:
+      "Connect your Podchaser account to search podcasts, episodes, creators, and access podcast industry data",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Podchaser](https://www.podchaser.com)\n2. Go to **Account Settings → API**\n3. Use your client ID and secret to request an access token via the `requestAccessToken` mutation\n4. Copy the access token",
+        secrets: {
+          PODCHASER_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-podchaser-access-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   qiita: {
     label: "Qiita",
     helpText:
@@ -2387,6 +2407,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   fal: {
     services: [service("https://fal.run", bearerAuth("FAL_KEY"))],
   },
+  podchaser: {
+    services: [
+      service("https://api.podchaser.com", bearerAuth("PODCHASER_TOKEN")),
+    ],
+  },
   qiita: {
     services: [service("https://qiita.com/api/v2", bearerAuth("QIITA_TOKEN"))],
   },
@@ -2453,6 +2478,7 @@ export const connectorTypeSchema = z.enum([
   "elevenlabs",
   "devto",
   "fal",
+  "podchaser",
   "qiita",
 ]);
 
