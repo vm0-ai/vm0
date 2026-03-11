@@ -29,7 +29,7 @@ const nextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src *; script-src 'self' 'unsafe-inline' https://plausible.io https://*.clerk.accounts.dev https://*.sentry.io https://app.termly.io https://api.dashboard.instatus.com; frame-ancestors 'none';",
+              "default-src *; script-src 'self' 'unsafe-inline' https://plausible.io https://*.clerk.accounts.dev https://*.clerk.com https://*.sentry.io https://app.termly.io https://api.dashboard.instatus.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' *; frame-ancestors 'none';",
           },
         ],
       },

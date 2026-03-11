@@ -75,9 +75,19 @@ describe("Security Response Headers", () => {
       expect(csp).toContain("'unsafe-inline'");
       expect(csp).toContain("https://plausible.io");
       expect(csp).toContain("https://*.clerk.accounts.dev");
+      expect(csp).toContain("https://*.clerk.com");
       expect(csp).toContain("https://*.sentry.io");
       expect(csp).toContain("https://app.termly.io");
       expect(csp).toContain("https://api.dashboard.instatus.com");
+      expect(csp).toContain("https://challenges.cloudflare.com");
+    });
+
+    it("should allow inline styles via style-src", async () => {
+      const headers = await getSecurityHeaders();
+      const csp = findHeader(headers, "Content-Security-Policy");
+
+      expect(csp).toContain("style-src");
+      expect(csp).toContain("'unsafe-inline'");
     });
 
     it("should not allow unsafe-eval", async () => {
