@@ -5,8 +5,12 @@ import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import { isNotFound } from "../../../../src/lib/errors";
 import { modelProviders } from "../../../../src/db/schema/model-provider";
-import { agentComposes } from "../../../../src/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
+import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 
 const router = tsr.router(onboardingStatusContract, {
   getStatus: async ({ headers }) => {
@@ -28,6 +32,8 @@ const router = tsr.router(onboardingStatusContract, {
     let hasDefaultAgent = false;
     let defaultAgentName: string | null = null;
     let defaultAgentComposeId: string | null = null;
+    let defaultAgentMetadata: { displayName?: string; sound?: string } | null =
+      null;
 
     try {
       const { scope } = await resolveScope(userId);
@@ -42,11 +48,19 @@ const router = tsr.router(onboardingStatusContract, {
 
       hasModelProvider = provider !== undefined;
 
-      // Check default agent and get its name
+      // Check default agent and get its name + metadata
       if (scope.defaultAgentComposeId) {
         const [compose] = await globalThis.services.db
-          .select({ name: agentComposes.name })
+          .select({
+            name: agentComposes.name,
+            headVersionId: agentComposes.headVersionId,
+            content: agentComposeVersions.content,
+          })
           .from(agentComposes)
+          .leftJoin(
+            agentComposeVersions,
+            eq(agentComposes.headVersionId, agentComposeVersions.id),
+          )
           .where(eq(agentComposes.id, scope.defaultAgentComposeId))
           .limit(1);
 
@@ -54,6 +68,16 @@ const router = tsr.router(onboardingStatusContract, {
           hasDefaultAgent = true;
           defaultAgentName = compose.name;
           defaultAgentComposeId = scope.defaultAgentComposeId;
+
+          // Extract metadata from compose content
+          const content = compose.content as AgentComposeYaml | null;
+          if (content) {
+            const agentKey = Object.keys(content.agents)[0];
+            const agentDef = agentKey ? content.agents[agentKey] : undefined;
+            if (agentDef) {
+              defaultAgentMetadata = agentDef.metadata ?? null;
+            }
+          }
         }
       }
     } catch (error) {
@@ -74,6 +98,7 @@ const router = tsr.router(onboardingStatusContract, {
         hasDefaultAgent,
         defaultAgentName,
         defaultAgentComposeId,
+        defaultAgentMetadata,
       },
     };
   },

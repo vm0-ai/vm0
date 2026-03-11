@@ -47,6 +47,7 @@ describe("GET /api/onboarding/status", () => {
       hasDefaultAgent: false,
       defaultAgentName: null,
       defaultAgentComposeId: null,
+      defaultAgentMetadata: null,
     });
   });
 
@@ -115,6 +116,7 @@ describe("GET /api/onboarding/status", () => {
       hasDefaultAgent: true,
       defaultAgentName: "test-agent",
       defaultAgentComposeId: compose.composeId,
+      defaultAgentMetadata: null,
     });
   });
 });

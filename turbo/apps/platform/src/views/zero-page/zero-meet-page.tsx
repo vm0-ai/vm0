@@ -31,7 +31,10 @@ import {
   cn,
 } from "@vm0/ui";
 import { ZeroScheduleCard, type ScheduleEntry } from "./zero-schedule-card";
-import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import {
+  agentDisplayName$,
+  defaultAgentMetadata$,
+} from "../../signals/zero-page/zero-agent-name.ts";
 import {
   fetchZeroSchedules$,
   zeroScheduleEntries$,
@@ -78,39 +81,43 @@ import {
   removeZeroSkill$,
 } from "../../signals/zero-page/zero-meet.ts";
 
+/** Stored as lowercase in metadata.sound. */
 const TONE_OPTIONS = [
-  "Professional",
-  "Friendly",
-  "Direct",
-  "Supportive",
+  "professional",
+  "friendly",
+  "direct",
+  "supportive",
 ] as const;
 
-const TONE_HINT: Readonly<Record<(typeof TONE_OPTIONS)[number], string>> = {
-  Professional: "Clear and polished",
-  Friendly: "Warm and approachable",
-  Direct: "To the point",
-  Supportive: "In your corner",
+type Tone = (typeof TONE_OPTIONS)[number];
+
+function toneLabel(t: Tone) {
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+const TONE_HINT: Readonly<Record<Tone, string>> = {
+  professional: "Clear and polished",
+  friendly: "Warm and approachable",
+  direct: "To the point",
+  supportive: "In your corner",
 };
 
 const TONE_SAMPLES: Readonly<
-  Record<
-    (typeof TONE_OPTIONS)[number],
-    Readonly<{ user: string; zero: string }>
-  >
+  Record<Tone, Readonly<{ user: string; zero: string }>>
 > = {
-  Professional: {
+  professional: {
     user: "I need the Q3 report by Friday.",
     zero: "I'll have the Q3 report ready by Friday. I'll send a draft by Thursday for your review.",
   },
-  Friendly: {
+  friendly: {
     user: "I need the Q3 report by Friday.",
     zero: "Sure thing! I'll get that Q3 report to you by Friday—I'll send over a draft Thursday so you can take a look.",
   },
-  Direct: {
+  direct: {
     user: "I need the Q3 report by Friday.",
     zero: "Friday. I'll send a draft Thursday.",
   },
-  Supportive: {
+  supportive: {
     user: "I need the Q3 report by Friday.",
     zero: "I'll make sure you have the Q3 report by Friday. I'll send a draft on Thursday so you have time to review—let me know if you'd like anything else.",
   },
@@ -620,18 +627,20 @@ function ZeroInstructionsTab() {
 
 function ZeroSettingsTab({
   agentName: resolvedAgentName,
+  sound: initialSound,
 }: {
   agentName: string;
+  sound: Tone;
 }) {
   const agentName$ = useCCState(resolvedAgentName);
   const agentName = useGet(agentName$);
   const setAgentName = useSet(agentName$);
-  const tone$ = useCCState<string>("Professional");
+  const tone$ = useCCState<Tone>(initialSound);
   const tone = useGet(tone$);
   const setTone = useSet(tone$);
-  const savedSettings$ = useCCState<{ name: string; tone: string }>({
+  const savedSettings$ = useCCState<{ name: string; tone: Tone }>({
     name: resolvedAgentName,
-    tone: "Professional",
+    tone: initialSound,
   });
   const savedSettings = useGet(savedSettings$);
   const saving = useGet(zeroSettingsSaving$);
@@ -644,11 +653,14 @@ function ZeroSettingsTab({
     setTone(savedSettings.tone);
   };
 
-  const handleSaveSettings$ = useCommand(async ({ set }) => {
-    if (agentName !== savedSettings.name) {
-      await set(zeroUpdateSettings$, agentName);
-    }
-    set(savedSettings$, { name: agentName, tone });
+  const handleSaveSettings$ = useCommand(async ({ get, set }) => {
+    const currentName = get(agentName$);
+    const currentTone = get(tone$);
+    await set(zeroUpdateSettings$, {
+      displayName: currentName,
+      sound: currentTone,
+    });
+    set(savedSettings$, { name: currentName, tone: currentTone });
   });
   const handleSaveSettings = useSet(handleSaveSettings$);
 
@@ -698,7 +710,7 @@ function ZeroSettingsTab({
                           : "zero-chip text-muted-foreground hover:text-foreground",
                       )}
                     >
-                      {opt}
+                      {toneLabel(opt)}
                     </button>
                   ))}
                 </div>
@@ -707,24 +719,18 @@ function ZeroSettingsTab({
                   key={tone}
                 >
                   <p className="text-xs text-muted-foreground italic min-h-[1.25rem] leading-relaxed">
-                    {TONE_HINT[tone as (typeof TONE_OPTIONS)[number]]}
+                    {TONE_HINT[tone]}
                   </p>
                   <div className="my-2 border-t border-border/30" />
                   <div className="flex flex-col gap-1.5 pb-1.5">
                     <div className="flex justify-end">
                       <div className="zero-bubble-cool max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200">
-                        {
-                          TONE_SAMPLES[tone as (typeof TONE_OPTIONS)[number]]
-                            .user
-                        }
+                        {TONE_SAMPLES[tone].user}
                       </div>
                     </div>
                     <div className="flex justify-start">
                       <div className="zero-chat-bubble-assistant max-w-[85%] rounded-2xl border px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200">
-                        {
-                          TONE_SAMPLES[tone as (typeof TONE_OPTIONS)[number]]
-                            .zero
-                        }
+                        {TONE_SAMPLES[tone].zero}
                       </div>
                     </div>
                   </div>
@@ -799,9 +805,30 @@ export function ZeroMeetPage({
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const resolvedAgentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-  const activeTab$ = useCCState("skills");
+  const metadataLoadable = useLoadable(defaultAgentMetadata$);
+  const resolvedSound = (
+    metadataLoadable.state === "hasData"
+      ? (metadataLoadable.data?.sound ?? "professional")
+      : "professional"
+  ) as Tone;
+  const VALID_TABS = ["skills", "schedule", "settings", "instructions"];
+  const params = new URLSearchParams(window.location.search);
+  const initialTab = VALID_TABS.includes(params.get("tab") ?? "")
+    ? params.get("tab")!
+    : "skills";
+  const activeTab$ = useCCState(initialTab);
   const activeTab = useGet(activeTab$);
-  const setActiveTab = useSet(activeTab$);
+  const rawSetActiveTab = useSet(activeTab$);
+  const setActiveTab = (tab: string) => {
+    rawSetActiveTab(tab);
+    const url = new URL(window.location.href);
+    if (tab === "skills") {
+      url.searchParams.delete("tab");
+    } else {
+      url.searchParams.set("tab", tab);
+    }
+    window.history.replaceState(null, "", url.toString());
+  };
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
@@ -898,7 +925,10 @@ export function ZeroMeetPage({
         )}
 
         {activeTab === "settings" && (
-          <ZeroSettingsTab agentName={resolvedAgentName} />
+          <ZeroSettingsTab
+            agentName={resolvedAgentName}
+            sound={resolvedSound}
+          />
         )}
 
         {activeTab === "instructions" && <ZeroInstructionsTab />}

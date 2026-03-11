@@ -47,9 +47,15 @@ const zeroComposeId$ = computed(async (get) => {
   return status.defaultAgentComposeId;
 });
 
+interface ZeroAgentMetadata {
+  displayName?: string;
+  sound?: string;
+}
+
 interface ZeroAgentDef {
   framework: string;
   skills?: string[];
+  metadata?: ZeroAgentMetadata;
   [key: string]: unknown;
 }
 
@@ -393,31 +399,49 @@ const syncSkillsToCompose$ = command(
 // Settings: update agent name via compose content
 // ---------------------------------------------------------------------------
 
+interface ZeroSettingsUpdate {
+  displayName?: string;
+  sound?: string;
+}
+
 export const zeroUpdateSettings$ = command(
-  async ({ get, set }, newName: string) => {
+  async ({ get, set }, update: ZeroSettingsUpdate) => {
     const compose = await get(zeroCompose$);
     if (!compose?.content) {
       throw new Error("No compose content found");
     }
 
     const content = compose.content;
-    const oldName = Object.keys(content.agents)[0];
-    if (!oldName) {
+    const agentKey = Object.keys(content.agents)[0];
+    if (!agentKey) {
       throw new Error("No agent found in compose");
     }
 
-    // Only update if name actually changed
-    const nameChanged = oldName !== newName.toLowerCase();
-    if (!nameChanged) {
+    const agentConfig = content.agents[agentKey];
+    const currentMetadata = agentConfig.metadata ?? {};
+    const newMetadata: ZeroAgentMetadata = { ...currentMetadata };
+    if (update.displayName !== undefined) {
+      newMetadata.displayName = update.displayName;
+    }
+    if (update.sound !== undefined) {
+      newMetadata.sound = update.sound;
+    }
+
+    // Skip if nothing changed
+    if (
+      newMetadata.displayName === currentMetadata.displayName &&
+      newMetadata.sound === currentMetadata.sound
+    ) {
       return;
     }
 
     set(internalSaving$, true);
     try {
-      const agentConfig = content.agents[oldName];
       const newContent: ZeroComposeContent = {
         ...content,
-        agents: { [newName.toLowerCase()]: agentConfig },
+        agents: {
+          [agentKey]: { ...agentConfig, metadata: newMetadata },
+        },
       };
 
       const fetchFn = get(fetch$);

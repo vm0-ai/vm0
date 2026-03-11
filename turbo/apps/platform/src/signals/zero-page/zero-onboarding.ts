@@ -281,13 +281,20 @@ export const completeZeroOnboarding$ = command(
     set(internalSaving$, true);
 
     try {
-      const agentName = get(internalAgentName$);
+      const displayName = get(internalAgentName$);
       const selectedSkills = get(internalSelectedSkills$);
       const fetchFn = get(fetch$);
 
-      // Build agent definition with optional skills
+      // Use a UUID as the agent identifier; the user-facing name goes into metadata
+      const agentId = crypto.randomUUID();
+
+      // Build agent definition with optional skills and metadata
       const agentDef: Record<string, unknown> = {
         framework: "claude-code",
+        metadata: {
+          displayName,
+          sound: "professional",
+        },
       };
       if (selectedSkills.length > 0) {
         agentDef.skills = selectedSkills.map(skillValueToUrl);
@@ -301,7 +308,7 @@ export const completeZeroOnboarding$ = command(
           content: {
             version: "1",
             agents: {
-              [agentName]: agentDef,
+              [agentId]: agentDef,
             },
           },
         }),

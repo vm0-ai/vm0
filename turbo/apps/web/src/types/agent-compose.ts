@@ -87,6 +87,13 @@ interface AgentDefinition {
    * Requires experimental_runner to be configured.
    */
   experimental_connectors?: string[];
+  /**
+   * Agent metadata for display and personalization.
+   */
+  metadata?: {
+    displayName?: string;
+    sound?: string;
+  };
 }
 
 export interface AgentComposeYaml {

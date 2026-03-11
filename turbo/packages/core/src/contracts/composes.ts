@@ -100,6 +100,17 @@ const agentDefinitionSchema = z.object({
    */
   experimental_connectors: z.array(z.string()).optional(),
   /**
+   * Agent metadata for display and personalization.
+   * - displayName: Human-readable name shown in the UI (preserves original casing).
+   * - sound: Communication tone (e.g., "professional", "friendly").
+   */
+  metadata: z
+    .object({
+      displayName: z.string().optional(),
+      sound: z.string().optional(),
+    })
+    .optional(),
+  /**
    * @deprecated Server-resolved field. User input is ignored.
    * @internal
    */
