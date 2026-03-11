@@ -32,6 +32,7 @@ import { figmaHandler } from "./providers/figma-handler";
 import { firecrawlHandler } from "./providers/firecrawl-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
 import { githubHandler } from "./providers/github-handler";
+import { heygenHandler } from "./providers/heygen-handler";
 import { hubspotHandler } from "./providers/hubspot-handler";
 import { gmailHandler } from "./providers/gmail-handler";
 import { googleCalendarHandler } from "./providers/google-calendar-handler";
@@ -125,6 +126,7 @@ export const PROVIDER_HANDLERS: Record<
   "garmin-connect": garminConnectHandler,
   github: githubHandler,
   gmail: gmailHandler,
+  heygen: heygenHandler,
   hubspot: hubspotHandler,
   "google-calendar": googleCalendarHandler,
   "google-docs": googleDocsHandler,

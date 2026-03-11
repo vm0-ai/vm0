@@ -434,6 +434,26 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as ConnectorOAuthConfig,
   },
+  heygen: {
+    label: "HeyGen",
+    helpText:
+      "Connect your HeyGen account to create AI-generated videos, manage avatars, and automate video production",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [HeyGen](https://app.heygen.com)\n2. Go to **Settings → API**\n3. Copy your API key",
+        secrets: {
+          HEYGEN_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-heygen-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   hubspot: {
     label: "HubSpot",
     helpText:
@@ -2606,6 +2626,13 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       ),
     ],
   },
+  heygen: {
+    services: [
+      service("https://api.heygen.com", {
+        headers: { "x-api-key": "${secrets.HEYGEN_TOKEN}" },
+      }),
+    ],
+  },
   hubspot: {
     services: [service("https://api.hubapi.com", bearerAuth("HUBSPOT_TOKEN"))],
   },
@@ -3044,6 +3071,7 @@ export const connectorTypeSchema = z.enum([
   "github",
   "gmail",
   "google-sheets",
+  "heygen",
   "hubspot",
   "google-docs",
   "google-drive",
