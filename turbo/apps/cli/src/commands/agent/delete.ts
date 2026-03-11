@@ -15,18 +15,15 @@ export const deleteCommand = new Command()
       // 1. Resolve agent name to compose
       const compose = await getComposeByName(name);
       if (!compose) {
-        console.error(chalk.red(`✗ Agent '${name}' not found`));
-        console.error(chalk.dim("  Run: vm0 agent list"));
-        process.exit(1);
+        throw new Error(`Agent '${name}' not found`, {
+          cause: new Error("Run: vm0 agent list"),
+        });
       }
 
       // 2. Confirm deletion
       if (!options.yes) {
         if (!isInteractive()) {
-          console.error(
-            chalk.red("✗ --yes flag is required in non-interactive mode"),
-          );
-          process.exit(1);
+          throw new Error("--yes flag is required in non-interactive mode");
         }
         const confirmed = await promptConfirm(`Delete agent '${name}'?`, false);
         if (!confirmed) {

@@ -149,9 +149,9 @@ export const statusCommand = new Command()
         const compose = await getComposeByName(name);
 
         if (!compose) {
-          console.error(chalk.red(`✗ Agent compose not found: ${name}`));
-          console.error(chalk.dim("  Run: vm0 agent list"));
-          process.exit(1);
+          throw new Error(`Agent compose not found: ${name}`, {
+            cause: new Error("Run: vm0 agent list"),
+          });
         }
 
         // Resolve version if not "latest" or full hash
@@ -169,13 +169,11 @@ export const statusCommand = new Command()
                 error instanceof Error &&
                 error.message.includes("not found")
               ) {
-                console.error(chalk.red(`✗ Version not found: ${version}`));
-                console.error(
-                  chalk.dim(
-                    `  HEAD version: ${compose.headVersionId?.slice(0, 8)}`,
+                throw new Error(`Version not found: ${version}`, {
+                  cause: new Error(
+                    `HEAD version: ${compose.headVersionId?.slice(0, 8)}`,
                   ),
-                );
-                process.exit(1);
+                });
               }
               throw error;
             }
@@ -185,8 +183,7 @@ export const statusCommand = new Command()
         }
 
         if (!resolvedVersionId || !compose.content) {
-          console.error(chalk.red(`✗ No version found for: ${name}`));
-          process.exit(1);
+          throw new Error(`No version found for: ${name}`);
         }
 
         const content = compose.content as AgentComposeContent;
