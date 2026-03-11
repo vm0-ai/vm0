@@ -473,7 +473,7 @@ export async function deleteConnector(
  */
 export async function upsertConnectorSecret(
   orgId: string,
-  scopeId: string,
+  scopeId: string | null,
   userId: string,
   secretName: string,
   secretValue: string,

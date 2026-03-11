@@ -180,7 +180,7 @@ export async function getSecretValues(
  */
 export async function upsertSecretByScope(
   orgId: string,
-  scopeId: string,
+  scopeId: string | null,
   userId: string,
   name: string,
   value: string,

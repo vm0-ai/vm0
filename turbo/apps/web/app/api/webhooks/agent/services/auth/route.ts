@@ -57,7 +57,7 @@ async function refreshConnectorToken(
   connectorSecrets: Record<string, string>,
   accessTokenName: string,
   orgId: string,
-  scopeId: string,
+  scopeId: string | null,
   userId: string,
   runId: string,
 ): Promise<Response | null> {

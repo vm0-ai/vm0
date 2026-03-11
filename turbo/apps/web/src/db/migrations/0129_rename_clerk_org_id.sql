@@ -27,4 +27,6 @@ ALTER INDEX "idx_secrets_clerk_org_user_name_type" RENAME TO "idx_secrets_org_us
 ALTER INDEX "idx_storages_clerk_org" RENAME TO "idx_storages_org";--> statement-breakpoint
 ALTER INDEX "idx_storages_clerk_org_user_name_type" RENAME TO "idx_storages_org_user_name_type";--> statement-breakpoint
 ALTER INDEX "idx_variables_clerk_org" RENAME TO "idx_variables_org";--> statement-breakpoint
-ALTER INDEX "idx_variables_clerk_org_user_name" RENAME TO "idx_variables_org_user_name";
+ALTER INDEX "idx_variables_clerk_org_user_name" RENAME TO "idx_variables_org_user_name";--> statement-breakpoint
+-- Rename primary key constraint index
+ALTER INDEX "org_members_cache_clerk_org_id_user_id_pk" RENAME TO "org_members_cache_org_id_user_id_pk";
