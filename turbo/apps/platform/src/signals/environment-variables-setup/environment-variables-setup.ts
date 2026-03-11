@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import {
   CONNECTOR_TYPES,
+  getConnectorEnvironmentMapping,
   type ConnectorType,
   type SecretListResponse,
   type VariableListResponse,
@@ -59,8 +60,10 @@ interface MissingItem {
 
 function buildEnvVarToConnectorMap(): Readonly<Record<string, ConnectorType>> {
   const map: Record<string, ConnectorType> = {};
-  for (const [type, config] of Object.entries(CONNECTOR_TYPES)) {
-    for (const envVar of Object.keys(config.environmentMapping ?? {})) {
+  for (const type of Object.keys(CONNECTOR_TYPES)) {
+    for (const envVar of Object.keys(
+      getConnectorEnvironmentMapping(type as ConnectorType),
+    )) {
       map[envVar] = type as ConnectorType;
     }
   }

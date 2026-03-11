@@ -2,6 +2,10 @@ import type { ConnectorType } from "@vm0/core";
 
 import agentmailIcon from "./icons/agentmail.svg";
 import ahrefsIcon from "./icons/ahrefs.svg";
+import apifyIcon from "./icons/apify.svg";
+import brightDataIcon from "./icons/bright-data.svg";
+import browserbaseIcon from "./icons/browserbase.svg";
+import browserlessIcon from "./icons/browserless.svg";
 import airtableIcon from "./icons/airtable.svg";
 import axiomIcon from "./icons/axiom.svg";
 import asanaIcon from "./icons/asana.svg";
@@ -10,11 +14,13 @@ import chatwootIcon from "./icons/chatwoot.svg";
 import closeIcon from "./icons/close.svg";
 import computerIcon from "./icons/computer.svg";
 import deelIcon from "./icons/deel.svg";
+import devtoIcon from "./icons/devto.svg";
 import docusignIcon from "./icons/docusign.svg";
 import dropboxIcon from "./icons/dropbox.svg";
 import elevenlabsIcon from "./icons/elevenlabs.svg";
 import falIcon from "./icons/fal.svg";
 import figmaIcon from "./icons/figma.svg";
+import firecrawlIcon from "./icons/firecrawl.svg";
 import garminConnectIcon from "./icons/garmin-connect.svg";
 import githubIcon from "./icons/github.svg";
 import hubspotIcon from "./icons/hubspot.svg";
@@ -35,12 +41,16 @@ import notionIcon from "./icons/notion.svg";
 import openaiIcon from "./icons/openai.svg";
 import outlookCalendarIcon from "./icons/outlook-calendar.svg";
 import outlookMailIcon from "./icons/outlook-mail.svg";
+import pdf4meIcon from "./icons/pdf4me.svg";
 import perplexityIcon from "./icons/perplexity.svg";
 import plausibleIcon from "./icons/plausible.svg";
+import podchaserIcon from "./icons/podchaser.svg";
 import posthogIcon from "./icons/posthog.svg";
 import productlaneIcon from "./icons/productlane.svg";
+import qdrantIcon from "./icons/qdrant.svg";
 import redditIcon from "./icons/reddit.svg";
 import resendIcon from "./icons/resend.svg";
+import scrapeninja from "./icons/scrapeninja.svg";
 import sentryIcon from "./icons/sentry.svg";
 import similarwebIcon from "./icons/similarweb.svg";
 import slackIcon from "./icons/slack.svg";
@@ -58,18 +68,24 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   agentmail: agentmailIcon,
   ahrefs: ahrefsIcon,
   airtable: airtableIcon,
+  apify: apifyIcon,
   axiom: axiomIcon,
   asana: asanaIcon,
+  "bright-data": brightDataIcon,
+  browserbase: browserbaseIcon,
+  browserless: browserlessIcon,
   canva: canvaIcon,
   chatwoot: chatwootIcon,
   close: closeIcon,
   computer: computerIcon,
   deel: deelIcon,
+  devto: devtoIcon,
   docusign: docusignIcon,
   dropbox: dropboxIcon,
   elevenlabs: elevenlabsIcon,
   fal: falIcon,
   figma: figmaIcon,
+  firecrawl: firecrawlIcon,
   "garmin-connect": garminConnectIcon,
   github: githubIcon,
   gmail: gmailIcon,
@@ -90,12 +106,16 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   openai: openaiIcon,
   "outlook-calendar": outlookCalendarIcon,
   "outlook-mail": outlookMailIcon,
+  pdf4me: pdf4meIcon,
   perplexity: perplexityIcon,
   plausible: plausibleIcon,
+  podchaser: podchaserIcon,
   posthog: posthogIcon,
   productlane: productlaneIcon,
+  qdrant: qdrantIcon,
   reddit: redditIcon,
   resend: resendIcon,
+  scrapeninja: scrapeninja,
   sentry: sentryIcon,
   similarweb: similarwebIcon,
   slack: slackIcon,

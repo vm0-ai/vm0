@@ -3,6 +3,7 @@ import {
   extractVariableReferences,
   groupVariablesBySource,
   getConnectorProvidedSecretNames,
+  getConnectorEnvironmentMapping,
   CONNECTOR_TYPES,
   type ConnectorType,
   type SecretResponse,
@@ -98,7 +99,7 @@ export const agentRequiredConnectorTypes$ = computed(
         if (type === "computer") {
           continue;
         }
-        const mapping = CONNECTOR_TYPES[type].environmentMapping ?? {};
+        const mapping = getConnectorEnvironmentMapping(type);
         for (const envKey of Object.keys(mapping)) {
           if (envVarNames.has(envKey)) {
             required.add(type);
