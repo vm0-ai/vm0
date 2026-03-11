@@ -41,11 +41,16 @@ export async function getOrgData(clerkOrgId: string): Promise<OrgData> {
     organizationId: clerkOrgId,
   });
 
-  const slug = org.slug ?? clerkOrgId;
+  if (!org.slug) {
+    throw new Error(
+      `Clerk organization ${clerkOrgId} has no slug — cannot cache`,
+    );
+  }
+  const slug = org.slug;
+  const metadata = org.publicMetadata as Record<string, unknown> | undefined;
+  const rawTier = metadata?.tier;
   const tier =
-    ((org.publicMetadata as Record<string, unknown> | undefined)?.tier as
-      | string
-      | undefined) ?? "free";
+    typeof rawTier === "string" && rawTier.length > 0 ? rawTier : "free";
 
   // 3. Upsert cache
   const now = new Date();
