@@ -15,6 +15,7 @@ import { closeHandler } from "./providers/close-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
+import { elevenlabsHandler } from "./providers/elevenlabs-handler";
 import { figmaHandler } from "./providers/figma-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
 import { githubHandler } from "./providers/github-handler";
@@ -67,6 +68,7 @@ export const PROVIDER_HANDLERS: Record<
   deel: deelHandler,
   docusign: docusignHandler,
   dropbox: dropboxHandler,
+  elevenlabs: elevenlabsHandler,
   figma: figmaHandler,
   "garmin-connect": garminConnectHandler,
   github: githubHandler,

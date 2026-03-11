@@ -1687,6 +1687,27 @@ const CONNECTOR_TYPES_DEF = {
       RESEND_API_KEY: "$secrets.RESEND_API_KEY",
     } as Record<string, string>,
   },
+  elevenlabs: {
+    label: "ElevenLabs",
+    helpText:
+      "Connect your ElevenLabs account to generate speech, clone voices, manage audio projects, and access sound effects",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [ElevenLabs](https://elevenlabs.io)\n2. Click your profile icon → **Profile + API key**\n3. Copy your API key",
+        secrets: {
+          ELEVENLABS_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-elevenlabs-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {} as Record<string, string>,
+  },
 } satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
@@ -2025,6 +2046,13 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   resend: {
     services: [service("https://api.resend.com", bearerAuth("RESEND_API_KEY"))],
   },
+  elevenlabs: {
+    services: [
+      service("https://api.elevenlabs.io", {
+        headers: { "xi-api-key": "${secrets.ELEVENLABS_TOKEN}" },
+      }),
+    ],
+  },
 };
 
 export const connectorTypeSchema = z.enum([
@@ -2074,6 +2102,7 @@ export const connectorTypeSchema = z.enum([
   "plausible",
   "productlane",
   "resend",
+  "elevenlabs",
 ]);
 
 /**
