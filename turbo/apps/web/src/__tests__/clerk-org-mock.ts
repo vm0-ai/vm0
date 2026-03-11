@@ -45,6 +45,7 @@ export function setupClerkOrgMock(options: {
               id: orgId,
               slug: orgSlug,
               name: orgSlug,
+              createdAt: Date.now(),
               publicMetadata: {},
             });
           }

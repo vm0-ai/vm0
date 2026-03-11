@@ -132,10 +132,13 @@ export async function getScopeMembers(
   userId: string,
   orgId: string,
   scopeSlug: string,
-  createdAt: Date,
 ) {
-  // Get members from Clerk
+  // Get members and org info from Clerk
   const client = await clerkClient();
+  const org = await client.organizations.getOrganization({
+    organizationId: orgId,
+  });
+  const createdAt = new Date(org.createdAt);
   const memberships = await client.organizations.getOrganizationMembershipList({
     organizationId: orgId,
   });

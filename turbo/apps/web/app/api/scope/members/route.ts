@@ -34,12 +34,7 @@ export async function GET(request: Request) {
       userId,
       tokenOrgId,
     );
-    const status = await getScopeMembers(
-      userId,
-      scope.orgId,
-      scope.slug,
-      new Date(), // TODO: 5b-5 — createdAt no longer available from ResolvedScope
-    );
+    const status = await getScopeMembers(userId, scope.orgId, scope.slug);
     return NextResponse.json(status);
   } catch (error) {
     if (isBadRequest(error)) {
