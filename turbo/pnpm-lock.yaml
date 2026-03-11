@@ -356,9 +356,6 @@ importers:
       '@vm0/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@vm0/sandbox-scripts':
-        specifier: workspace:*
-        version: link:../../packages/sandbox-scripts
       '@vm0/ui':
         specifier: workspace:*
         version: link:../../packages/ui
