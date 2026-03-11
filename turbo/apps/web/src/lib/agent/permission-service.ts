@@ -33,14 +33,14 @@ export async function canAccessCompose(
   }
 
   // Clerk API fallback for cross-org or non-session contexts (e.g. email webhooks)
+  // Query by user (not by org) to avoid pagination issues with large orgs
   if (!compose.clerkOrgId.startsWith("pending_")) {
     const client = await clerkClient();
-    const memberships =
-      await client.organizations.getOrganizationMembershipList({
-        organizationId: compose.clerkOrgId,
-      });
+    const memberships = await client.users.getOrganizationMembershipList({
+      userId,
+    });
     const isMember = memberships.data.some(
-      (m) => m.publicUserData?.userId === userId,
+      (m) => m.organization.id === compose.clerkOrgId,
     );
     if (isMember) return true;
   }
