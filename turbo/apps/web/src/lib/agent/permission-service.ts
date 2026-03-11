@@ -2,10 +2,14 @@ import { eq, and, or, ne, desc } from "drizzle-orm";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { agentPermissions } from "../../db/schema/agent-permission";
+import { orgMembersCache } from "../../db/schema/org-members-cache";
 import { scopes } from "../../db/schema/scope";
 import { logger } from "../logger";
 
 const log = logger("agent:permission");
+
+/** Cache TTL aligned with Clerk JWT TTL */
+const CACHE_TTL_MS = 60_000; // 1 minute
 
 /**
  * Check if a user can access an agent compose
@@ -32,9 +36,25 @@ export async function canAccessCompose(
     return true;
   }
 
-  // Clerk API fallback for cross-org or non-session contexts (e.g. email webhooks)
-  // Query by user (not by org) to avoid pagination issues with large orgs
+  // Cache-backed Clerk API fallback for cross-org or non-session contexts
   if (!compose.clerkOrgId.startsWith("pending_")) {
+    // Check org_members_cache first (DB read, no Clerk API call)
+    const [cached] = await globalThis.services.db
+      .select({ cachedAt: orgMembersCache.cachedAt })
+      .from(orgMembersCache)
+      .where(
+        and(
+          eq(orgMembersCache.clerkOrgId, compose.clerkOrgId),
+          eq(orgMembersCache.userId, userId),
+        ),
+      )
+      .limit(1);
+
+    if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
+      return true;
+    }
+
+    // Cache miss or stale — call Clerk API and update cache
     const client = await clerkClient();
     const memberships = await client.users.getOrganizationMembershipList({
       userId,
@@ -42,7 +62,20 @@ export async function canAccessCompose(
     const isMember = memberships.data.some(
       (m) => m.organization.id === compose.clerkOrgId,
     );
-    if (isMember) return true;
+    if (isMember) {
+      await globalThis.services.db
+        .insert(orgMembersCache)
+        .values({
+          clerkOrgId: compose.clerkOrgId,
+          userId,
+          cachedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [orgMembersCache.clerkOrgId, orgMembersCache.userId],
+          set: { cachedAt: new Date() },
+        });
+      return true;
+    }
   }
 
   // 3. Check ACL
