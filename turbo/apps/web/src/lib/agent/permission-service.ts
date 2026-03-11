@@ -58,6 +58,7 @@ export async function canAccessCompose(
     const client = await clerkClient();
     const memberships = await client.users.getOrganizationMembershipList({
       userId,
+      limit: 100,
     });
     const isMember = memberships.data.some(
       (m) => m.organization.id === compose.clerkOrgId,
@@ -65,7 +66,7 @@ export async function canAccessCompose(
     if (isMember) {
       // Fire-and-forget: cache write is non-critical, don't block access
       const now = new Date();
-      globalThis.services.db
+      void globalThis.services.db
         .insert(orgMembersCache)
         .values({
           clerkOrgId: compose.clerkOrgId,
