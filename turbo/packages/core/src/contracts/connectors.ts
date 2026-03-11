@@ -1706,9 +1706,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      FAL_TOKEN: "$secrets.FAL_KEY",
-    } as Record<string, string>,
   },
 } satisfies Record<string, ConnectorConfig>;
 
