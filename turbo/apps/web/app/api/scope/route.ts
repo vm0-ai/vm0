@@ -17,6 +17,7 @@ import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
 import { clerkClient } from "@clerk/nextjs/server";
+import { inArray } from "drizzle-orm";
 import { scopes } from "../../../src/db/schema/scope";
 
 const log = logger("api:scope");
@@ -110,10 +111,12 @@ const router = tsr.router(scopeContract, {
         userId,
       });
 
-      const existingScopes = await globalThis.services.db
+      const orgIds = memberships.data.map((m) => m.organization.id);
+      const matchedScopes = await globalThis.services.db
         .select({ clerkOrgId: scopes.clerkOrgId })
-        .from(scopes);
-      const existingOrgIds = new Set(existingScopes.map((s) => s.clerkOrgId));
+        .from(scopes)
+        .where(inArray(scopes.clerkOrgId, orgIds));
+      const existingOrgIds = new Set(matchedScopes.map((s) => s.clerkOrgId));
 
       const unmatchedOrg = memberships.data.find(
         (m) => !existingOrgIds.has(m.organization.id),
