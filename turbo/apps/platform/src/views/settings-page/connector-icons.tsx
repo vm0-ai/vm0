@@ -14,6 +14,7 @@ import chatwootIcon from "./icons/chatwoot.svg";
 import closeIcon from "./icons/close.svg";
 import computerIcon from "./icons/computer.svg";
 import deelIcon from "./icons/deel.svg";
+import deepseekIcon from "./icons/deepseek.svg";
 import devtoIcon from "./icons/devto.svg";
 import docusignIcon from "./icons/docusign.svg";
 import dropboxIcon from "./icons/dropbox.svg";
@@ -42,6 +43,7 @@ import openaiIcon from "./icons/openai.svg";
 import outlookCalendarIcon from "./icons/outlook-calendar.svg";
 import outlookMailIcon from "./icons/outlook-mail.svg";
 import pdf4meIcon from "./icons/pdf4me.svg";
+import pdfcoIcon from "./icons/pdfco.svg";
 import perplexityIcon from "./icons/perplexity.svg";
 import plausibleIcon from "./icons/plausible.svg";
 import podchaserIcon from "./icons/podchaser.svg";
@@ -49,6 +51,7 @@ import posthogIcon from "./icons/posthog.svg";
 import productlaneIcon from "./icons/productlane.svg";
 import pushinatorIcon from "./icons/pushinator.svg";
 import qdrantIcon from "./icons/qdrant.svg";
+import qiitaIcon from "./icons/qiita.svg";
 import redditIcon from "./icons/reddit.svg";
 import shortioIcon from "./icons/shortio.svg";
 import resendIcon from "./icons/resend.svg";
@@ -64,6 +67,7 @@ import vercelIcon from "./icons/vercel.svg";
 import webflowIcon from "./icons/webflow.svg";
 import xIcon from "./icons/x.svg";
 import xeroIcon from "./icons/xero.svg";
+import zeptomailIcon from "./icons/zeptomail.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   agentmail: agentmailIcon,
@@ -80,6 +84,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   close: closeIcon,
   computer: computerIcon,
   deel: deelIcon,
+  deepseek: deepseekIcon,
   devto: devtoIcon,
   docusign: docusignIcon,
   dropbox: dropboxIcon,
@@ -108,6 +113,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   "outlook-calendar": outlookCalendarIcon,
   "outlook-mail": outlookMailIcon,
   pdf4me: pdf4meIcon,
+  pdfco: pdfcoIcon,
   perplexity: perplexityIcon,
   plausible: plausibleIcon,
   podchaser: podchaserIcon,
@@ -115,6 +121,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   productlane: productlaneIcon,
   pushinator: pushinatorIcon,
   qdrant: qdrantIcon,
+  qiita: qiitaIcon,
   reddit: redditIcon,
   shortio: shortioIcon,
   resend: resendIcon,
@@ -130,6 +137,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   webflow: webflowIcon,
   x: xIcon,
   xero: xeroIcon,
+  zeptomail: zeptomailIcon,
 });
 
 export function ConnectorIcon({
