@@ -2100,6 +2100,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  zapsign: {
+    label: "ZapSign",
+    helpText:
+      "Connect your ZapSign account to create documents for electronic signature and track signing status",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [ZapSign](https://app.zapsign.com.br/)\n2. Go to **Settings → Integrations → API**\n3. Copy your API token",
+        secrets: {
+          ZAPSIGN_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-zapsign-api-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   zeptomail: {
     label: "ZeptoMail",
     helpText:
@@ -2564,6 +2584,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       service("https://app.reportei.com/api/v1", bearerAuth("REPORTEI_TOKEN")),
     ],
   },
+  zapsign: {
+    services: [
+      service("https://api.zapsign.com.br/api/v1", bearerAuth("ZAPSIGN_TOKEN")),
+    ],
+  },
   zeptomail: {
     services: [
       service("https://api.zeptomail.com/v1.1", {
@@ -2643,6 +2668,7 @@ export const connectorTypeSchema = z.enum([
   "qdrant",
   "qiita",
   "reportei",
+  "zapsign",
   "zeptomail",
 ]);
 
