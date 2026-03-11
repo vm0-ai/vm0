@@ -39,7 +39,7 @@ import { telegramMessages } from "../db/schema/telegram-message";
 import { telegramUserLinks } from "../db/schema/telegram-user-link";
 import { orgCache } from "../db/schema/org-cache";
 import { orgMembersCache } from "../db/schema/org-members-cache";
-import { and, eq, inArray, like, sql } from "drizzle-orm";
+import { and, eq, inArray, like, or, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
 import { encryptSecrets } from "../lib/crypto/secrets-encryption";
@@ -2722,7 +2722,12 @@ export async function markRunningRunsAsCompleted(userId: string) {
   await globalThis.services.db
     .update(agentRuns)
     .set({ status: "completed", completedAt: new Date() })
-    .where(and(eq(agentRuns.userId, userId), eq(agentRuns.status, "running")));
+    .where(
+      and(
+        eq(agentRuns.userId, userId),
+        or(eq(agentRuns.status, "running"), eq(agentRuns.status, "pending")),
+      ),
+    );
 }
 
 export async function expireQueueEntry(runId: string) {

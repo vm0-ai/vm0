@@ -7,7 +7,6 @@ import {
   agentComposes,
 } from "../../../../src/db/schema/agent-compose";
 import { eq, inArray } from "drizzle-orm";
-import { killSandbox } from "../../../../src/lib/sandbox/sandbox-service";
 import {
   cleanupExpiredQueueEntries,
   drainStaleQueues,
@@ -131,11 +130,6 @@ const router = tsr.router(cronCleanupSandboxesContract, {
 
     for (const run of expiredRuns) {
       try {
-        // Kill the E2B sandbox only if it exists (pending runs may not have one)
-        if (run.sandboxId) {
-          await killSandbox(run.sandboxId);
-        }
-
         // Determine error message based on status
         const timeoutReason =
           run.status === "pending"

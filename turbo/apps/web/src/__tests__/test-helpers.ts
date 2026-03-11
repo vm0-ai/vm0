@@ -9,7 +9,7 @@
  *   const context = testContext();
  *
  *   test("my test", async () => {
- *     context.setupMocks();  // Setup E2B, S3, Axiom mocks
+ *     context.setupMocks();  // Setup S3, Axiom mocks
  *     const user = await context.setupUser();
  *     // user.userId and user.scopeId are unique to this test
  *     // No cleanup needed - data is isolated by unique IDs
@@ -37,7 +37,6 @@ export function uniqueId(prefix: string): string {
 }
 
 import { eq } from "drizzle-orm";
-import { Sandbox } from "@e2b/code-interpreter";
 import { Axiom } from "@axiomhq/js";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
 import { initServices } from "../lib/init-services";
@@ -52,19 +51,6 @@ import { scopes } from "../db/schema/scope";
 import { scopeMembers } from "../db/schema/scope-member";
 import { encryptSecretValue } from "../lib/crypto/secrets-encryption";
 import { env } from "../env";
-
-/**
- * E2B Sandbox mock structure
- */
-interface E2bMocks {
-  sandbox: {
-    sandboxId: string;
-    getHostname: Mock;
-    files: { write: Mock };
-    commands: { run: Mock };
-    kill: Mock;
-  };
-}
 
 /**
  * S3 client mock structure
@@ -151,10 +137,9 @@ interface DateMocks {
 }
 
 /**
- * Combined mock helpers for E2B, S3, Axiom, and Date
+ * Combined mock helpers for S3, Axiom, and Date
  */
 interface MockHelpers {
-  e2b: E2bMocks;
   s3: S3Mocks;
   axiom: AxiomMocks;
   /** @deprecated Use context.mocks.date.setSystemTime() instead */
@@ -229,7 +214,7 @@ export interface UserContext {
  *
  * The returned context provides:
  * - signal: AbortSignal for cleanup handlers
- * - mocks: Lazy getter for E2B and S3 mocks
+ * - mocks: Lazy getter for S3 and Axiom mocks
  * - setupMocks(): Explicit setup method (same effect as mocks getter)
  * - setupUser(): Create isolated user context for the test
  *
@@ -256,29 +241,6 @@ export function testContext(): TestContext {
    */
   function createMocks(): MockHelpers {
     if (mockHelpers) return mockHelpers;
-
-    // E2B sandbox mock - use unique sandboxId per test to avoid state pollution
-    const mockSandbox = {
-      sandboxId: uniqueId("test-sandbox"),
-      getHostname: vi.fn().mockReturnValue("test-sandbox.e2b.dev"),
-      files: {
-        write: vi.fn().mockResolvedValue(undefined),
-      },
-      commands: {
-        run: vi.fn().mockResolvedValue({
-          stdout: "Mock output",
-          stderr: "",
-          exitCode: 0,
-        }),
-      },
-      kill: vi.fn().mockResolvedValue(undefined),
-    };
-    vi.mocked(Sandbox.create).mockResolvedValue(
-      mockSandbox as unknown as Sandbox,
-    );
-    vi.mocked(Sandbox.connect).mockResolvedValue(
-      mockSandbox as unknown as Sandbox,
-    );
 
     // S3 mocks with in-memory blob storage for testing session history
     // Tracks blob uploads so downloads can return the correct content
@@ -409,7 +371,6 @@ export function testContext(): TestContext {
     };
 
     const helpers: MockHelpers = {
-      e2b: { sandbox: mockSandbox },
       s3: s3Mocks,
       axiom: axiomMocks,
       dateNow: dateNowMock,

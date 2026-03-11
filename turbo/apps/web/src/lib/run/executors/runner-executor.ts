@@ -12,8 +12,7 @@ const log = logger("executor:runner");
 /**
  * Queue an agent run for execution by a self-hosted runner
  *
- * Unlike E2B executor which executes immediately, this function
- * stores the job in the runner_job_queue for later polling.
+ * Stores the job in the runner_job_queue for later polling by runners.
  *
  * @param context PreparedContext with all necessary information
  * @returns ExecutorResult with status "pending"
@@ -88,7 +87,6 @@ export async function executeRunnerJob(
     log.debug(`Job notification published for run ${context.runId}`);
   }
 
-  // Return pending status - run will be picked up by runner via realtime notification or polling
   return {
     runId: context.runId,
     status: "pending",

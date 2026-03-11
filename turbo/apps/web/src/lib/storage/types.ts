@@ -79,19 +79,6 @@ export interface AgentVolumeConfig {
 }
 
 /**
- * Prepared artifact with local path and mount information (VAS only)
- */
-export interface PreparedArtifact {
-  driver: StorageDriver;
-  localPath?: string;
-  mountPath: string;
-  vasStorageName: string;
-  vasVersionId: string;
-  /** Presigned URL for manifest.json (for incremental upload) */
-  manifestUrl?: string;
-}
-
-/**
  * Storage entry in manifest
  */
 export interface ManifestStorage {

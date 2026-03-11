@@ -46,7 +46,6 @@ export interface ResumeSession {
 
 /**
  * Unified execution context for both new runs and resumed runs
- * This abstraction allows e2b-service to be agnostic about run type
  */
 export interface ExecutionContext {
   runId: string;

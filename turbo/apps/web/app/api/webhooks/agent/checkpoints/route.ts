@@ -54,7 +54,7 @@ const router = tsr.router(webhookCheckpointsContract, {
     }
 
     // Note: We don't check run status here because the checkpoint is called from within
-    // the sandbox before the E2B service updates the run status to "completed"
+    // the sandbox before the complete webhook updates the run status to "completed"
 
     // Create checkpoint
     const result = await createCheckpoint(body);

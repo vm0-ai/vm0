@@ -22,7 +22,6 @@ import type { AgentComposeSnapshot } from "../checkpoint/types";
 import type { AgentComposeYaml } from "../../types/agent-compose";
 import { getAgentSessionWithConversation } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
-import { executeE2bRun } from "./executors/e2b-executor";
 import { executeRunnerJob } from "./executors/runner-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
 import { buildExecutionContext as buildContext } from "./build-context";
@@ -238,9 +237,7 @@ export async function validateAgentSession(
  * Dispatch prepared context to appropriate executor.
  *
  * Routing:
- * - Runner Group: explicit runner config in compose
- * - E2B: cloud mode, requires E2B_API_KEY
- * - Docker: local mode, requires DOCKER_SANDBOX_IMAGE
+ * - Runner Group: explicit runner config in compose or RUNNER_DEFAULT_GROUP
  *
  */
 async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
@@ -260,14 +257,7 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
     return await executeRunnerJob({ ...context, runnerGroup: defaultGroup });
   }
 
-  if (env().E2B_API_KEY) {
-    log.debug(`Dispatching run ${context.runId} to E2B executor`);
-    return await executeE2bRun(context);
-  }
-
-  throw new Error(
-    "No executor configured: set E2B_API_KEY or RUNNER_DEFAULT_GROUP",
-  );
+  throw new Error("No executor configured: set RUNNER_DEFAULT_GROUP");
 }
 
 // ============================================================================

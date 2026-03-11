@@ -131,11 +131,11 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       // Record the time when run is created
       const runCreationTime = Date.now();
 
-      // Create a run - it will have lastHeartbeatAt ≈ runCreationTime
+      // Create a run - it will be in "pending" status
       const { runId } = await createTestRun(testComposeId, "Test prompt");
 
-      // Mock Date.now to return time 3 minutes in the future (past heartbeat timeout)
-      context.mocks.dateNow.mockReturnValue(runCreationTime + 3 * 60 * 1000);
+      // Mock Date.now to return time 6 minutes in the future (past pending timeout of 5 minutes)
+      context.mocks.dateNow.mockReturnValue(runCreationTime + 6 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
@@ -213,8 +213,8 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         "Test prompt 2",
       );
 
-      // Mock Date.now to return time 5 minutes in the future
-      context.mocks.dateNow.mockReturnValue(runCreationTime + 5 * 60 * 1000);
+      // Mock Date.now to return time 6 minutes in the future (past pending timeout of 5 minutes)
+      context.mocks.dateNow.mockReturnValue(runCreationTime + 6 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
@@ -242,11 +242,11 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       // Record the time when run is created
       const runCreationTime = Date.now();
 
-      // Create a run
+      // Create a run - it will be in "pending" status
       const { runId } = await createTestRun(testComposeId, "Test prompt");
 
-      // Mock Date.now to return time 3 minutes in the future
-      context.mocks.dateNow.mockReturnValue(runCreationTime + 3 * 60 * 1000);
+      // Mock Date.now to return time 6 minutes in the future (past pending timeout of 5 minutes)
+      context.mocks.dateNow.mockReturnValue(runCreationTime + 6 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
@@ -267,32 +267,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         (r: { runId: string }) => r.runId === runId,
       );
       expect(cleanedResult).toBeDefined();
-      expect(cleanedResult.reason).toBe("Run timed out (no heartbeat)");
-    });
-
-    it("should call sandbox.kill for expired runs with sandboxId", async () => {
-      // Record the time when run is created
-      const runCreationTime = Date.now();
-
-      // Create a run (will have sandboxId from the mock)
-      await createTestRun(testComposeId, "Test prompt");
-
-      // Mock Date.now to return time 3 minutes in the future
-      context.mocks.dateNow.mockReturnValue(runCreationTime + 3 * 60 * 1000);
-
-      const request = createTestRequest(
-        "http://localhost:3000/api/cron/cleanup-sandboxes",
-        {
-          headers: {
-            Authorization: `Bearer ${cronSecret}`,
-          },
-        },
+      expect(cleanedResult.reason).toBe(
+        "Run timed out while pending (never started)",
       );
-
-      await GET(request);
-
-      // Verify sandbox.kill was called (via the mock from setupMocks)
-      expect(context.mocks.e2b.sandbox.kill).toHaveBeenCalled();
     });
   });
 });

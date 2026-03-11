@@ -12,6 +12,17 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 import { Sandbox } from "@e2b/code-interpreter";
 
+vi.mock("@e2b/code-interpreter", () => ({
+  Sandbox: {
+    create: vi.fn().mockResolvedValue({
+      sandboxId: "mock-sandbox-id",
+      files: { write: vi.fn().mockResolvedValue(undefined) },
+      commands: { run: vi.fn().mockResolvedValue({ exitCode: 0 }) },
+    }),
+    connect: vi.fn(),
+  },
+}));
+
 const context = testContext();
 
 // Shared CLI token for authenticated requests

@@ -139,7 +139,7 @@ function verifyJwt(token: string): SandboxTokenPayload | null {
 }
 
 /**
- * Generate a JWT token for E2B sandbox
+ * Generate a JWT token for sandbox authentication
  * Token is valid for 2 hours (longer than typical sandbox timeout)
  *
  * The token encodes userId and runId, allowing webhook endpoints to:

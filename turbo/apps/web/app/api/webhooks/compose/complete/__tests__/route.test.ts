@@ -20,6 +20,17 @@ import { Sandbox } from "@e2b/code-interpreter";
 import { randomUUID } from "crypto";
 import { WebClient } from "@slack/web-api";
 
+vi.mock("@e2b/code-interpreter", () => ({
+  Sandbox: {
+    create: vi.fn().mockResolvedValue({
+      sandboxId: "mock-sandbox-id",
+      files: { write: vi.fn().mockResolvedValue(undefined) },
+      commands: { run: vi.fn().mockResolvedValue({ exitCode: 0 }) },
+    }),
+    connect: vi.fn(),
+  },
+}));
+
 const context = testContext();
 
 /**

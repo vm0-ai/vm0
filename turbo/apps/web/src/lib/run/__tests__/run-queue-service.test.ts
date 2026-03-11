@@ -89,7 +89,7 @@ describe("run-queue-service", () => {
 
       // First run succeeds normally
       const run1 = await createRun(baseParams({ prompt: "Run 1" }));
-      expect(run1.status).toBe("running");
+      expect(run1.status).toBe("pending");
 
       // Second run gets queued
       const run2 = await createRun(baseParams({ prompt: "Run 2" }));
@@ -122,9 +122,9 @@ describe("run-queue-service", () => {
       // Drain queue
       await drainUserQueue(user.userId, executeQueuedRun);
 
-      // Queued run should now be dispatched (running)
+      // Queued run should now be dispatched (pending)
       const run = await findTestRunRecord(queued.runId);
-      expect(run!.status).toBe("running");
+      expect(run!.status).toBe("pending");
 
       // Queue entry should be deleted
       const queueEntry = await findTestQueueEntry(queued.runId);

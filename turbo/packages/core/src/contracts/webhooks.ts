@@ -52,7 +52,7 @@ const volumeVersionsSnapshotSchema = z.object({
 export const webhookEventsContract = c.router({
   /**
    * POST /api/webhooks/agent/events
-   * Receive agent events from E2B sandbox
+   * Receive agent events from sandbox
    */
   send: {
     method: "POST",
@@ -155,7 +155,7 @@ export const webhookCheckpointsContract = c.router({
 export const webhookHeartbeatContract = c.router({
   /**
    * POST /api/webhooks/agent/heartbeat
-   * Receive heartbeat signals from E2B sandbox
+   * Receive heartbeat signals from sandbox
    */
   send: {
     method: "POST",

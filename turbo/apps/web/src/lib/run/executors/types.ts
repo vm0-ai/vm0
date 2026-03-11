@@ -6,7 +6,7 @@ import type { ExperimentalFirewall, ExperimentalConnectors } from "@vm0/core";
 /**
  * Prepared execution context for executors
  *
- * This is the unified context that both E2B and Runner executors receive.
+ * This is the unified context that executors receive.
  * All preparation (storage manifest, working dir extraction, etc.) is done
  * before this context is created.
  */
@@ -48,7 +48,7 @@ export interface PreparedContext {
   // Experimental connectors for proxy-side token replacement
   experimentalConnectors: ExperimentalConnectors | null;
 
-  // Routing hint (null = E2B, string = runner group)
+  // Routing hint (runner group name)
   runnerGroup: string | null;
 
   // Metadata for vm0_start event
@@ -77,5 +77,5 @@ export interface ExecutorResult {
   sandboxId?: string;
   createdAt: string;
   error?: string;
-  sandboxType: "runner" | "e2b" | "docker";
+  sandboxType: "runner" | "docker";
 }

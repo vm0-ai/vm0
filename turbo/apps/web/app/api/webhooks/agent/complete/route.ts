@@ -10,7 +10,6 @@ import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
 import { eq, and, inArray } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
-import { killSandbox } from "../../../../../src/lib/sandbox/sandbox-service";
 import type {
   ArtifactSnapshot,
   MemorySnapshot,
@@ -148,8 +147,6 @@ const router = tsr.router(webhookCompleteContract, {
       };
     }
 
-    const sandboxId = run.sandboxId ?? undefined;
-
     // Idempotency check: if run is already completed/failed, return early
     if (run.status === "completed" || run.status === "failed") {
       log.debug(
@@ -180,10 +177,6 @@ const router = tsr.router(webhookCompleteContract, {
           completedAt: new Date(),
           error: "Checkpoint for run not found",
         });
-
-        if (sandboxId) {
-          await killSandbox(sandboxId);
-        }
 
         // Dispatch callbacks so the user gets notified about the failure
         // (previously this path returned without dispatching)
@@ -227,9 +220,6 @@ const router = tsr.router(webhookCompleteContract, {
         log.debug(
           `Run ${body.runId} already transitioned, skipping duplicate completion`,
         );
-        if (sandboxId) {
-          await killSandbox(sandboxId);
-        }
         return {
           status: 200 as const,
           body: { success: true, status: "completed" as const },
@@ -253,9 +243,6 @@ const router = tsr.router(webhookCompleteContract, {
         log.debug(
           `Run ${body.runId} already transitioned, skipping duplicate failure`,
         );
-        if (sandboxId) {
-          await killSandbox(sandboxId);
-        }
         return {
           status: 200 as const,
           body: { success: true, status: "failed" as const },
@@ -272,11 +259,6 @@ const router = tsr.router(webhookCompleteContract, {
         ? (body.error ?? `Agent exited with code ${body.exitCode}`)
         : undefined;
     scheduleCallbackDispatch(body.runId, finalStatus, userId, errorMsg);
-
-    // Kill sandbox (wait for completion to ensure cleanup before response)
-    if (sandboxId) {
-      await killSandbox(sandboxId);
-    }
 
     return {
       status: 200 as const,

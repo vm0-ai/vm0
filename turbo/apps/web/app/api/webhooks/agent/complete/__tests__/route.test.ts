@@ -663,7 +663,7 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       // First run claims the slot
       const run1 = await createTestRun(composeId, "First run");
-      expect(run1.status).toBe("running");
+      expect(run1.status).toBe("pending");
 
       // Second run gets queued
       const run2 = await createTestRun(composeId, "Queued run");
@@ -698,9 +698,9 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Flush the after() callback which triggers drainUserQueue
       await context.mocks.flushAfter();
 
-      // Queued run should now be dispatched (running)
+      // Queued run should now be dispatched (pending)
       const run2After = await findTestRunRecord(run2.runId);
-      expect(run2After!.status).toBe("running");
+      expect(run2After!.status).toBe("pending");
 
       // Queue entry should be deleted
       const queueAfter = await findTestQueueEntry(run2.runId);

@@ -2,13 +2,13 @@
  * Lightweight structured logging system with VM0_DEBUG environment variable support.
  *
  * Usage:
- *   const log = logger('service:e2b')
- *   log.debug('sandbox created', { id: '123' })  // Only when VM0_DEBUG matches
+ *   const log = logger('service:runner')
+ *   log.debug('job queued', { id: '123' })        // Only when VM0_DEBUG matches
  *   log.warn('slow response')                     // Always output
  *   log.error('failed', error)                    // Always output
  *
  * Environment:
- *   VM0_DEBUG=service:e2b     - Enable specific logger
+ *   VM0_DEBUG=service:runner  - Enable specific logger
  *   VM0_DEBUG=service:*       - Enable all service loggers (wildcard)
  *   VM0_DEBUG=*               - Enable all debug output
  *   VM0_DEBUG=a,b,c           - Enable multiple loggers

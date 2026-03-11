@@ -5,6 +5,7 @@ import {
   createTestCompose,
   createTestRun,
   completeTestRun,
+  failTestRun,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -12,6 +13,17 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
+
+vi.mock("@e2b/code-interpreter", () => ({
+  Sandbox: {
+    create: vi.fn().mockResolvedValue({
+      sandboxId: "mock-sandbox-id",
+      filesystemWrite: vi.fn().mockResolvedValue(undefined),
+      commands: { run: vi.fn().mockResolvedValue({ exitCode: 0 }) },
+    }),
+    connect: vi.fn(),
+  },
+}));
 
 const context = testContext();
 
@@ -122,8 +134,8 @@ describe("GET /api/platform/logs/[id]", () => {
     // Create run but don't complete it (stays in running status)
     const { runId, status } = await createTestRun(testComposeId, "Test prompt");
 
-    // Run should be in running state
-    expect(status).toBe("running");
+    // Run should be in pending state
+    expect(status).toBe("pending");
 
     const request = createTestRequest(
       `http://localhost:3000/api/platform/logs/${runId}`,
@@ -133,21 +145,15 @@ describe("GET /api/platform/logs/[id]", () => {
 
     expect(response.status).toBe(200);
     expect(data.id).toBe(runId);
-    expect(data.status).toBe("running");
+    expect(data.status).toBe("pending");
     expect(data.sessionId).toBeNull();
     expect(data.completedAt).toBeNull();
   });
 
   it("should handle failed run with error message", async () => {
-    // Make sandbox creation fail to create a failed run
-    vi.mocked(
-      (await import("@e2b/code-interpreter")).Sandbox.create,
-    ).mockRejectedValueOnce(new Error("Sandbox creation failed"));
-
-    const { runId, status } = await createTestRun(testComposeId, "Test prompt");
-
-    // Run should be in failed state
-    expect(status).toBe("failed");
+    // Create a run and then fail it via the complete webhook
+    const { runId } = await createTestRun(testComposeId, "Test prompt");
+    await failTestRun(user.userId, runId, "Sandbox creation failed");
 
     const request = createTestRequest(
       `http://localhost:3000/api/platform/logs/${runId}`,

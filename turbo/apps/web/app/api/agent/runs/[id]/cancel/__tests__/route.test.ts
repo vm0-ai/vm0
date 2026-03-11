@@ -47,24 +47,6 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       expect(data.status).toBe("cancelled");
       expect(data.message).toBe("Run cancelled successfully");
     });
-
-    it("should kill E2B sandbox when cancelling", async () => {
-      const run = await createTestRun(testComposeId, "Run with sandbox");
-
-      context.mocks.e2b.sandbox.kill.mockClear();
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${run.runId}/cancel`,
-        { method: "POST" },
-      );
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.status).toBe("cancelled");
-      expect(context.mocks.e2b.sandbox.kill).toHaveBeenCalled();
-    });
   });
 
   describe("Cancel Queued Run", () => {
@@ -105,7 +87,7 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
 
       // Create a running run (claims the slot)
       const running = await createTestRun(testComposeId, "Running run");
-      expect(running.status).toBe("running");
+      expect(running.status).toBe("pending");
 
       // Create a second run that gets queued
       const queued = await createTestRun(testComposeId, "Queued run");
@@ -122,9 +104,9 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       // Flush the after() callback which triggers drainUserQueue
       await context.mocks.flushAfter();
 
-      // Queued run should now be dispatched (running)
+      // Queued run should now be dispatched (pending)
       const run = await findTestRunRecord(queued.runId);
-      expect(run!.status).toBe("running");
+      expect(run!.status).toBe("pending");
 
       // Queue entry should be deleted
       const queueEntry = await findTestQueueEntry(queued.runId);

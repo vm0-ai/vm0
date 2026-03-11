@@ -4,7 +4,6 @@ import { POST as createComposeRoute } from "../../composes/route";
 import { PUT as putSecret } from "../../../secrets/route";
 import { PUT as setVariableRoute } from "../../../variables/route";
 import { randomUUID } from "crypto";
-import { Sandbox } from "@e2b/code-interpreter";
 import {
   createTestRequest,
   createTestCompose,
@@ -44,42 +43,25 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
   });
 
   describe("Fire-and-Forget Execution", () => {
-    it("should return immediately with running status", async () => {
+    it("should return immediately with pending status", async () => {
       const startTime = Date.now();
       const data = await createTestRun(testComposeId, "Test prompt");
       const responseTime = Date.now() - startTime;
 
-      // Should return quickly (sandbox prep only, not agent execution)
+      // Should return quickly (run prep only, not agent execution)
       expect(responseTime).toBeLessThan(5000);
       expect(data.runId).toBeDefined();
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
     });
 
-    it("should create run with running status", async () => {
+    it("should create run with pending status", async () => {
       const data = await createTestRun(testComposeId, "Test run creation");
 
       // Verify via API
       const run = await getTestRun(data.runId);
 
-      expect(run.status).toBe("running");
+      expect(run.status).toBe("pending");
       expect(run.completedAt).toBeNull();
-    });
-
-    it("should return failed status if sandbox preparation fails", async () => {
-      vi.mocked(Sandbox.create).mockRejectedValueOnce(
-        new Error("Sandbox creation failed"),
-      );
-
-      const data = await createTestRun(testComposeId, "Test failure");
-
-      expect(data.status).toBe("failed");
-
-      // Verify via API
-      const run = await getTestRun(data.runId);
-
-      expect(run.status).toBe("failed");
-      expect(run.error).toContain("Sandbox creation failed");
-      expect(run.completedAt).toBeDefined();
     });
 
     it("should accept memoryName parameter", async () => {
@@ -88,7 +70,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       });
 
       expect(data.runId).toBeDefined();
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
     });
   });
 
@@ -202,8 +184,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         secrets: { MY_SECRET: "secret-value" },
       });
 
-      // Should succeed (running, not failed)
-      expect(data.status).toBe("running");
+      // Should succeed (pending, not failed)
+      expect(data.status).toBe("pending");
     });
 
     it("should auto-fetch secrets from database when secrets.* is referenced", async () => {
@@ -238,8 +220,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Run WITHOUT passing the secret via CLI - should auto-fetch from DB
       const data = await createTestRun(composeId, "Test DB secret auto-fetch");
 
-      // Should succeed (running, not failed)
-      expect(data.status).toBe("running");
+      // Should succeed (pending, not failed)
+      expect(data.status).toBe("pending");
     });
 
     it("should prefer CLI secrets over DB secrets", async () => {
@@ -277,7 +259,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       });
 
       // Should succeed
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
     });
 
     it("should reject run when only some vars are provided with checkEnv", async () => {
@@ -340,8 +322,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         vars: { MY_VAR: "var-value" },
       });
 
-      // Should succeed (running, not failed)
-      expect(data.status).toBe("running");
+      // Should succeed (pending, not failed)
+      expect(data.status).toBe("pending");
     });
   });
 
@@ -357,7 +339,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // User B should be able to run the public agent
       const data = await createTestRun(testComposeId, "Run public agent");
 
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
 
       // Switch back to owner for cleanup
       mockClerk({ userId: ownerUser.userId });
@@ -375,7 +357,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // User B should be able to run the shared agent
       const data = await createTestRun(testComposeId, "Run email-shared agent");
 
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
 
       // Switch back to owner for cleanup
       mockClerk({ userId: ownerUser.userId });
@@ -434,7 +416,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         sharedComposeId,
         "Run with runner model provider",
       );
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
 
       // Switch back to owner for cleanup
       mockClerk({ userId: ownerUser.userId });
@@ -583,7 +565,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       expect(response.status).toBe(201);
       expect(data.runId).toBeDefined();
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
     });
 
     it("should reject expired CLI token", async () => {
@@ -622,7 +604,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     it("should enqueue run when concurrent run limit is reached", async () => {
       // Free tier (default) allows only 1 concurrent run
       const run1 = await createTestRun(testComposeId, "First run");
-      expect(run1.status).toBe("running");
+      expect(run1.status).toBe("pending");
 
       // Second run should be queued
       const request = createTestRequest(
@@ -652,20 +634,20 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const run2 = await createTestRun(testComposeId, "Run 2");
       const run3 = await createTestRun(testComposeId, "Run 3");
 
-      expect(run1.status).toBe("running");
-      expect(run2.status).toBe("running");
-      expect(run3.status).toBe("running");
+      expect(run1.status).toBe("pending");
+      expect(run2.status).toBe("pending");
+      expect(run3.status).toBe("pending");
     });
 
     it("should only count pending and running statuses", async () => {
       // Free tier limit is 1; completed runs should not count
       const run1 = await createTestRun(testComposeId, "First run");
-      expect(run1.status).toBe("running");
+      expect(run1.status).toBe("pending");
       await completeTestRun(user.userId, run1.runId);
 
       // Second run should succeed since first is completed
       const run2 = await createTestRun(testComposeId, "Second run");
-      expect(run2.status).toBe("running");
+      expect(run2.status).toBe("pending");
     });
 
     it("should allow 2 concurrent runs for pro tier scopes", async () => {
@@ -675,8 +657,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const run1 = await createTestRun(testComposeId, "Run 1");
       const run2 = await createTestRun(testComposeId, "Run 2");
 
-      expect(run1.status).toBe("running");
-      expect(run2.status).toBe("running");
+      expect(run1.status).toBe("pending");
+      expect(run2.status).toBe("pending");
     });
 
     it("should queue 3rd concurrent run for pro tier scopes", async () => {
@@ -687,8 +669,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const run2 = await createTestRun(testComposeId, "Run 2");
       const run3 = await createTestRun(testComposeId, "Run 3");
 
-      expect(run1.status).toBe("running");
-      expect(run2.status).toBe("running");
+      expect(run1.status).toBe("pending");
+      expect(run2.status).toBe("pending");
       expect(run3.status).toBe("queued");
     });
 
@@ -702,23 +684,22 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       // New run should succeed because the stale pending run (>15min) is excluded
       const run = await createTestRun(testComposeId, "Should not be blocked");
-      expect(run.status).toBe("running");
+      expect(run.status).toBe("pending");
     });
 
-    it("should still count running runs older than TTL toward concurrency limit", async () => {
-      // Free tier limit is 1; running runs always count regardless of age
+    it("should not count pending runs older than TTL toward concurrency limit", async () => {
+      // Free tier limit is 1; stale pending runs (older than TTL) are excluded
       const runCreationTime = Date.now();
 
-      // First run should succeed and stay running
+      // First run should succeed and stay pending
       const run1 = await createTestRun(testComposeId, "Long running task");
-      expect(run1.status).toBe("running");
+      expect(run1.status).toBe("pending");
 
       // Advance time past the pending TTL (16 minutes)
-      // Running runs should STILL count regardless of age
+      // The first run is now stale and should be excluded from concurrency count
       context.mocks.dateNow.mockReturnValue(runCreationTime + 16 * 60 * 1000);
 
-      // Second run should be queued because the first run is "running"
-      // (running runs are always counted, even if older than TTL)
+      // Second run should succeed because the stale pending run is excluded
       const request = createTestRequest(
         "http://localhost:3000/api/agent/runs",
         {
@@ -726,7 +707,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             agentComposeId: testComposeId,
-            prompt: "Should be queued",
+            prompt: "Should succeed",
           }),
         },
       );
@@ -735,7 +716,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await response.json();
 
       expect(response.status).toBe(201);
-      expect(data.status).toBe("queued");
+      expect(data.status).toBe("pending");
     });
   });
 
@@ -751,7 +732,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       const data = await createTestRun(composeId, "Test with model provider");
 
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
     });
 
     it("should fail run when no model provider and no API key in compose", async () => {
@@ -778,7 +759,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Compose with default API key should work without model provider
       const data = await createTestRun(testComposeId, "Test with explicit key");
 
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
     });
 
     it("should use specified model provider when passed", async () => {
@@ -798,7 +779,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         },
       );
 
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
     });
 
     it("should skip injection when compose has explicit OPENAI_API_KEY (codex)", async () => {
@@ -812,7 +793,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       const data = await createTestRun(composeId, "Test codex with key");
 
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
     });
 
     it("should skip injection when compose has CLAUDE_CODE_USE_FOUNDRY", async () => {
@@ -826,7 +807,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       const data = await createTestRun(composeId, "Test with Foundry auth");
 
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
     });
 
     it("should fail when specified model provider type is invalid", async () => {
@@ -872,7 +853,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         "Test auto-inject no env block",
       );
 
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
     });
 
     it("should succeed when aws-bedrock provider is configured and no API key in compose", async () => {
@@ -893,14 +874,12 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await createTestRun(composeId, "Test with bedrock provider");
 
       // Should succeed (not fail due to missing model provider)
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
     });
   });
 
   describe("Connector Injection", () => {
     it("should satisfy ${{ secrets.GH_TOKEN }} from connector when user has no GH_TOKEN secret", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
       // Create a GitHub connector for the test user
       await createTestConnector(user.scopeId, {
         accessToken: "ghp-test-connector-token",
@@ -917,19 +896,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       });
 
       const data = await createTestRun(composeId, "Test with GitHub connector");
-      expect(data.status).toBe("running");
-
-      // Verify Sandbox.create was called with the connector's token as GH_TOKEN
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      expect(envs?.GH_TOKEN).toBe("ghp-test-connector-token");
+      expect(data.status).toBe("pending");
     });
 
     it("should not override user-provided GH_TOKEN secret with connector token", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
       // Create a GitHub connector
       await createTestConnector(user.scopeId, {
         accessToken: "ghp-connector-token",
@@ -949,19 +919,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await createTestRun(composeId, "Test GH_TOKEN precedence", {
         secrets: { GH_TOKEN: "user-provided-token" },
       });
-      expect(data.status).toBe("running");
-
-      // Verify user-provided secret takes precedence
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      expect(envs?.GH_TOKEN).toBe("user-provided-token");
+      expect(data.status).toBe("pending");
     });
 
     it("should not inject connector secrets when compose does not reference them", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
       // Create a GitHub connector
       await createTestConnector(user.scopeId, {
         accessToken: "ghp-should-not-appear",
@@ -971,15 +932,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const { composeId } = await createTestCompose(uniqueId("gh-no-ref"));
 
       const data = await createTestRun(composeId, "Test no GH_TOKEN ref");
-      expect(data.status).toBe("running");
-
-      // Verify GH_TOKEN is NOT in sandbox envs
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      expect(envs?.GH_TOKEN).toBeUndefined();
-      expect(envs?.GITHUB_TOKEN).toBeUndefined();
+      expect(data.status).toBe("pending");
     });
 
     it("should work when no connectors are connected", async () => {
@@ -988,12 +941,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         testComposeId,
         "Test without connectors",
       );
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
     });
 
     it("should satisfy ${{ secrets.SLACK_TOKEN }} from Slack connector when user has no SLACK_TOKEN secret", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
       // Create a Slack connector for the test user
       await createTestConnector(user.scopeId, {
         type: "slack",
@@ -1014,19 +965,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
 
       const data = await createTestRun(composeId, "Test with Slack connector");
-      expect(data.status).toBe("running");
-
-      // Verify Sandbox.create was called with the connector's token as SLACK_TOKEN
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      expect(envs?.SLACK_TOKEN).toBe("xoxp-test-slack-connector-token");
+      expect(data.status).toBe("pending");
     });
 
     it("should not override user-provided SLACK_TOKEN secret with Slack connector token", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
       // Create a Slack connector
       await createTestConnector(user.scopeId, {
         type: "slack",
@@ -1054,14 +996,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
           secrets: { SLACK_TOKEN: "user-provided-slack-token" },
         },
       );
-      expect(data.status).toBe("running");
-
-      // Verify user-provided secret takes precedence
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      expect(envs?.SLACK_TOKEN).toBe("user-provided-slack-token");
+      expect(data.status).toBe("pending");
     });
   });
 
@@ -1185,40 +1120,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Returns 404 for security (don't leak checkpoint existence)
       expect(response.status).toBe(404);
       expect(data.error.message).toMatch(/checkpoint/i);
-    });
-
-    it("should write session history to claude-code path format for claude-code framework", async () => {
-      // Create and complete a run to get a checkpoint
-      const { composeId } = await createTestCompose(
-        `claude-code-resume-path-${Date.now()}`,
-        { overrides: { framework: "claude-code" } },
-      );
-
-      const { runId: initialRunId } = await createTestRun(
-        composeId,
-        "Initial run",
-      );
-      const { checkpointId } = await completeTestRun(user.userId, initialRunId);
-
-      // Clear mocks before resume run
-      context.mocks.e2b.sandbox.files.write.mockClear();
-
-      // Create a resume run using checkpointId
-      await createTestRun(composeId, "Resume run", { checkpointId });
-
-      // Find the session history write call (ends with .jsonl)
-      const writeCalls = context.mocks.e2b.sandbox.files.write.mock.calls;
-      const sessionHistoryCall = writeCalls.find((call) => {
-        const path = call?.[0] as string;
-        return path?.endsWith(".jsonl");
-      });
-
-      expect(sessionHistoryCall).toBeDefined();
-      const writePath = sessionHistoryCall?.[0] as string;
-
-      // Claude-code path format: /home/user/.claude/projects/-{workingDir}/session-id.jsonl
-      expect(writePath).toMatch(/^\/home\/user\/\.claude\/projects\/-/);
-      expect(writePath).toMatch(/\.jsonl$/);
     });
 
     // Note: "Missing required secrets" validation is tested in the Validation
@@ -1406,12 +1307,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         "Test with server-stored var",
       );
 
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
     });
 
     it("should use CLI vars over server-stored vars when both exist", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
       // Create compose that requires a template variable
       const { composeId } = await createTestCompose(uniqueId("cli-override"), {
         overrides: {
@@ -1430,14 +1329,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         vars: { MY_VAR: "cli-value" },
       });
 
-      expect(data.status).toBe("running");
-
-      // Verify Sandbox.create was called with CLI value (not server value)
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      expect(envs?.MY_VAR).toBe("cli-value");
+      expect(data.status).toBe("pending");
     });
 
     it("should still fail when required var is neither on server nor CLI with checkEnv", async () => {
@@ -1493,8 +1385,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // This should succeed because validation is opt-in
       const data = await createTestRun(composeId, "Test without vars");
 
-      // Should succeed (running, not failed) - validation is skipped
-      expect(data.status).toBe("running");
+      // Should succeed (pending, not failed) - validation is skipped
+      expect(data.status).toBe("pending");
     });
 
     it("should reject run with missing vars when checkEnv is true", async () => {
@@ -1560,7 +1452,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         },
       );
 
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
     });
   });
 });

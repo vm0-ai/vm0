@@ -148,7 +148,7 @@ describe("GET /api/agent/runs/:id/events", () => {
       expect(data.nextSequence).toBe(-1);
       // Verify run state is included
       expect(data.run).toBeDefined();
-      expect(data.run.status).toBe("running");
+      expect(data.run.status).toBe("pending");
     });
 
     it("should return all events when they exist", async () => {
@@ -422,7 +422,7 @@ describe("GET /api/agent/runs/:id/events", () => {
   // ============================================
 
   describe("Run State", () => {
-    it("should return run state with status 'running' for running run", async () => {
+    it("should return run state with status 'pending' for pending run", async () => {
       context.mocks.axiom.queryAxiom.mockResolvedValue([]);
 
       const request = createTestRequest(
@@ -434,7 +434,7 @@ describe("GET /api/agent/runs/:id/events", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.run).toBeDefined();
-      expect(data.run.status).toBe("running");
+      expect(data.run.status).toBe("pending");
       expect(data.run.result).toBeUndefined();
       expect(data.run.error).toBeUndefined();
     });

@@ -42,7 +42,7 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
       expect(response.status).toBe(200);
       expect(data.runId).toBe(run.runId);
       expect(data.prompt).toBe("Test prompt");
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("pending");
       expect(data.completedAt).toBeUndefined();
       expect(data).toHaveProperty("agentComposeVersionId");
       expect(data).toHaveProperty("createdAt");

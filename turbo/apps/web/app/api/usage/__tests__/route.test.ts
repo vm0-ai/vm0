@@ -20,13 +20,15 @@ const context = testContext();
 describe("GET /api/usage", () => {
   let user: UserContext;
   let testComposeId: string;
+  let testVersionId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
 
-    const { composeId } = await createTestCompose(uniqueId("usage"));
+    const { composeId, versionId } = await createTestCompose(uniqueId("usage"));
     testComposeId = composeId;
+    testVersionId = versionId;
   });
 
   it("should require authentication", async () => {
@@ -169,35 +171,32 @@ describe("GET /api/usage", () => {
     expect(typeof data.summary.total_run_time_ms).toBe("number");
   });
 
-  it("should calculate run times correctly with mocked dates", async () => {
-    // Note: createdAt is set by PostgreSQL defaultNow() and cannot be mocked.
-    // We mock startedAt/completedAt to test run_time_ms calculation.
-    // startedAt is set during createTestRun, completedAt during completeTestRun.
+  it("should calculate run times correctly with explicit timestamps", async () => {
+    // Use createCompletedTestRun to insert runs with explicit startedAt/completedAt.
+    // Runs created via createTestRun have startedAt=null (set later by runner claim),
+    // so we must insert directly to test run_time_ms calculation.
 
-    // Run 1: mock time before creating run (startedAt), then advance for completion
-    const startTime1 = new Date("2024-06-13T12:00:00.000Z");
-    context.mocks.date.setSystemTime(startTime1);
-    const { runId: runId1 } = await createTestRun(testComposeId, "Prompt 1");
+    const now = new Date();
 
-    // Advance time by 1 minute before completing
-    context.mocks.date.setSystemTime(
-      new Date(startTime1.getTime() + 60 * 1000),
-    );
-    await completeTestRun(user.userId, runId1);
+    // Run 1: 1 minute duration
+    const startTime1 = new Date(now.getTime() - 3600000); // 1 hour ago
+    await createCompletedTestRun({
+      composeVersionId: testVersionId,
+      userId: user.userId,
+      createdAt: startTime1,
+      startedAt: startTime1,
+      completedAt: new Date(startTime1.getTime() + 60 * 1000),
+    });
 
-    // Run 2: same pattern - mock time, create, advance, complete
-    const startTime2 = new Date("2024-06-12T12:00:00.000Z");
-    context.mocks.date.setSystemTime(startTime2);
-    const { runId: runId2 } = await createTestRun(testComposeId, "Prompt 2");
-
-    // Advance time by 2 minutes before completing
-    context.mocks.date.setSystemTime(
-      new Date(startTime2.getTime() + 2 * 60 * 1000),
-    );
-    await completeTestRun(user.userId, runId2);
-
-    // Restore real time and query with default range (uses real createdAt)
-    context.mocks.date.useRealTime();
+    // Run 2: 2 minute duration
+    const startTime2 = new Date(now.getTime() - 1800000); // 30 min ago
+    await createCompletedTestRun({
+      composeVersionId: testVersionId,
+      userId: user.userId,
+      createdAt: startTime2,
+      startedAt: startTime2,
+      completedAt: new Date(startTime2.getTime() + 2 * 60 * 1000),
+    });
 
     const request = createTestRequest("http://localhost:3000/api/usage");
     const response = await GET(request);

@@ -426,12 +426,11 @@ describe("POST /api/webhooks/agent/telemetry", () => {
     });
   });
 
-  describe("Sandbox type detection", () => {
-    it("should detect E2B sandbox type when run has sandboxId", async () => {
-      // E2B runs have sandboxId set by E2B executor (mock returns unique sandboxId per test)
+  describe("Sandbox operations", () => {
+    it("should record sandbox operations with runner type", async () => {
       const { runId } = await createRunForWebhook(
         testComposeId,
-        "Test E2B run",
+        "Test runner run",
       );
       const testToken = await createTestSandboxToken(user.userId, runId);
 
@@ -462,17 +461,11 @@ describe("POST /api/webhooks/agent/telemetry", () => {
 
       expect(recordSandboxInternalOperationSpy).toHaveBeenCalledWith({
         actionType: "api_to_agent_start",
-        sandboxType: "e2b",
+        sandboxType: "runner",
         durationMs: 1500,
         success: true,
       });
     });
-
-    // NOTE: Runner sandbox type detection test removed during refactoring.
-    // The sandbox type is determined by whether sandboxId is set (E2B) or null (Runner).
-    // Testing this through the API is complex because the E2B mock always sets sandboxId.
-    // The E2B path is covered by the test above, and the logic for runner detection
-    // (sandboxId === null) is a simple conditional in the route handler.
   });
 
   describe("DB fallback (Axiom not configured)", () => {
