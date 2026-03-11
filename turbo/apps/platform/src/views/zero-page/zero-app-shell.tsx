@@ -23,6 +23,7 @@ import { updateSearchParams$ } from "../../signals/route.ts";
 import {
   zeroSessionList$,
   zeroSessionListLoading$,
+  zeroSessionListError$,
   zeroCurrentSessionId$,
   fetchZeroSessionList$,
   switchZeroSession$,
@@ -144,6 +145,7 @@ function useSessionLifecycle(
 ) {
   const recentSessions = useGet(zeroSessionList$);
   const recentSessionsLoading = useGet(zeroSessionListLoading$);
+  const recentSessionsError = useGet(zeroSessionListError$);
   const fetchSessionList = useSet(fetchZeroSessionList$);
   const sendIntro = useSet(sendZeroIntroMessage$);
 
@@ -170,7 +172,7 @@ function useSessionLifecycle(
     }
   }
 
-  return { recentSessions, recentSessionsLoading };
+  return { recentSessions, recentSessionsLoading, recentSessionsError };
 }
 
 export function ZeroAppShell() {
@@ -211,11 +213,8 @@ export function ZeroAppShell() {
   const startNewSession = useSet(startNewZeroSession$);
   const sendMessage = useSet(sendZeroChatMessage$);
 
-  const { recentSessions, recentSessionsLoading } = useSessionLifecycle(
-    isLoggedIn,
-    onboardingReady,
-    needsOnboarding,
-  );
+  const { recentSessions, recentSessionsLoading, recentSessionsError } =
+    useSessionLifecycle(isLoggedIn, onboardingReady, needsOnboarding);
 
   const handleRecentSelect$ = useCommand(({ set }, sessionId: string) => {
     set(setZeroActiveId$, "chat");
@@ -287,6 +286,7 @@ export function ZeroAppShell() {
         onAccountAction={handleAccountAction}
         recentSessions={recentSessions}
         recentSessionsLoading={recentSessionsLoading}
+        recentSessionsError={recentSessionsError}
         onNewChat={handleNewChat}
         onResetAgent={() => detach(resetDefaultAgent(), Reason.DomCallback)}
       />

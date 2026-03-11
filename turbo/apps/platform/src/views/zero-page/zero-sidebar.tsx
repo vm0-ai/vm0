@@ -85,6 +85,7 @@ interface ZeroSidebarProps {
   onAccountAction?: (action: ZeroAccountAction) => void;
   recentSessions?: SessionListItem[];
   recentSessionsLoading?: boolean;
+  recentSessionsError?: string | null;
   onNewChat?: () => void;
   onResetAgent?: () => void;
 }
@@ -356,6 +357,7 @@ export function ZeroSidebar({
   onAccountAction,
   recentSessions = [],
   recentSessionsLoading = false,
+  recentSessionsError = null,
   onNewChat,
   onResetAgent,
 }: ZeroSidebarProps) {
@@ -424,6 +426,10 @@ export function ZeroSidebar({
                     className="animate-spin text-muted-foreground"
                   />
                 </div>
+              ) : recentSessionsError ? (
+                <p className="px-2 py-2 text-xs text-destructive">
+                  {recentSessionsError}
+                </p>
               ) : recentSessions.length === 0 ? (
                 <p className="px-2 py-2 text-xs text-muted-foreground">
                   No recent chats

@@ -3,10 +3,6 @@ import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconSend,
-  IconPlus,
-  IconPaperclip,
-  IconMoodSmile,
-  IconMicrophone,
   IconAlertCircle,
   IconLoader2,
   IconArrowLeft,
@@ -21,6 +17,7 @@ import {
   zeroChatMessages$,
   zeroChatSending$,
   zeroChatInput$,
+  zeroSessionError$,
   setZeroChatInput$,
   clearZeroChatInput$,
   sendZeroChatMessage$,
@@ -51,6 +48,7 @@ export function ZeroSessionChatPage({
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
   const messages = useGet(zeroChatMessages$);
   const sending = useGet(zeroChatSending$);
+  const sessionError = useGet(zeroSessionError$);
   const input = useGet(zeroChatInput$);
   const setInput = useSet(setZeroChatInput$);
   const clearInput = useSet(clearZeroChatInput$);
@@ -135,7 +133,15 @@ export function ZeroSessionChatPage({
       {/* Message list */}
       <main className="flex-1 overflow-auto px-4 sm:px-6 py-4">
         <div className="mx-auto max-w-[900px] flex flex-col gap-6 pb-4">
-          {messages.length === 0 && (
+          {sessionError && (
+            <div className="flex-1 flex items-center justify-center py-16">
+              <div className="flex items-center gap-2 text-destructive">
+                <IconAlertCircle size={16} />
+                <p className="text-sm">{sessionError}</p>
+              </div>
+            </div>
+          )}
+          {!sessionError && messages.length === 0 && (
             <div className="flex-1 flex items-center justify-center py-16">
               <p className="text-sm text-muted-foreground">
                 Send a message to start the conversation
@@ -170,52 +176,20 @@ export function ZeroSessionChatPage({
                   onKeyDown={handleKeyDown}
                   disabled={sending}
                 />
-                <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border/50">
-                  <div className="flex items-center gap-1 text-muted-foreground">
-                    <button
-                      type="button"
-                      className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      aria-label="Add"
-                    >
-                      <IconPlus size={18} stroke={1.5} />
-                    </button>
-                    <button
-                      type="button"
-                      className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      aria-label="Attach"
-                    >
-                      <IconPaperclip size={18} stroke={1.5} />
-                    </button>
-                    <button
-                      type="button"
-                      className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      aria-label="Emoji"
-                    >
-                      <IconMoodSmile size={18} stroke={1.5} />
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      className="p-2 rounded-lg text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      aria-label="Voice input"
-                    >
-                      <IconMicrophone size={18} stroke={1.5} />
-                    </button>
-                    <Button
-                      size="sm"
-                      className="rounded-lg h-9 w-9 p-0 shrink-0"
-                      onClick={handleSend}
-                      disabled={!input.trim() || sending}
-                      aria-label="Send"
-                    >
-                      {sending ? (
-                        <IconLoader2 size={16} className="animate-spin" />
-                      ) : (
-                        <IconSend size={16} stroke={2} />
-                      )}
-                    </Button>
-                  </div>
+                <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border/50">
+                  <Button
+                    size="sm"
+                    className="rounded-lg h-9 w-9 p-0 shrink-0"
+                    onClick={handleSend}
+                    disabled={!input.trim() || sending}
+                    aria-label="Send"
+                  >
+                    {sending ? (
+                      <IconLoader2 size={16} className="animate-spin" />
+                    ) : (
+                      <IconSend size={16} stroke={2} />
+                    )}
+                  </Button>
                 </div>
               </div>
             </CardContent>

@@ -13,6 +13,16 @@ const L = logger("ZeroChat");
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Type guard for event data containing a result string. */
+function isResultEventData(data: unknown): data is { result: string } {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "result" in data &&
+    typeof (data as { result: unknown }).result === "string"
+  );
+}
+
 /** Scan telemetry event pages for the last "result" event content. */
 async function extractResultFromEvents(
   pages: Computed<Promise<PageResult>>[],
@@ -22,11 +32,8 @@ async function extractResultFromEvents(
   for (const page$ of pages) {
     const page = await get(page$);
     for (const event of page.events) {
-      if (event.eventType === "result") {
-        const data = event.eventData as { result?: string };
-        if (data.result) {
-          result = data.result;
-        }
+      if (event.eventType === "result" && isResultEventData(event.eventData)) {
+        result = event.eventData.result;
       }
     }
   }
@@ -75,6 +82,14 @@ export const zeroSessionListLoading$ = computed((get) =>
   get(internalSessionListLoading$),
 );
 
+const internalSessionListError$ = state<string | null>(null);
+export const zeroSessionListError$ = computed((get) =>
+  get(internalSessionListError$),
+);
+
+const internalSessionError$ = state<string | null>(null);
+export const zeroSessionError$ = computed((get) => get(internalSessionError$));
+
 // Chat input
 const internalChatInput$ = state("");
 export const zeroChatInput$ = computed((get) => get(internalChatInput$));
@@ -99,17 +114,26 @@ export const fetchZeroSessionList$ = command(async ({ get, set }) => {
   }
 
   set(internalSessionListLoading$, true);
+  set(internalSessionListError$, null);
   try {
     const fetchFn = get(fetch$);
     const res = await fetchFn(
       `/api/agent/sessions?agentComposeId=${encodeURIComponent(composeId)}`,
     );
-    if (res.ok) {
-      const data = (await res.json()) as { sessions: SessionListItem[] };
-      set(internalSessionList$, data.sessions);
+    if (!res.ok) {
+      set(
+        internalSessionListError$,
+        `Failed to load sessions: ${res.statusText}`,
+      );
+      return;
     }
+    const data = (await res.json()) as { sessions: SessionListItem[] };
+    set(internalSessionList$, data.sessions);
   } catch (error) {
     throwIfAbort(error);
+    const msg =
+      error instanceof Error ? error.message : "Failed to load sessions";
+    set(internalSessionListError$, msg);
     L.error("Failed to fetch session list:", error);
   } finally {
     set(internalSessionListLoading$, false);
@@ -126,12 +150,13 @@ export const switchZeroSession$ = command(
     set(internalRunStatus$, null);
     set(internalRunError$, null);
     set(internalSending$, false);
+    set(internalSessionError$, null);
 
     try {
       const fetchFn = get(fetch$);
       const res = await fetchFn(`/api/agent/sessions/${sessionId}`);
       if (!res.ok) {
-        L.error("Failed to fetch session:", res.statusText);
+        set(internalSessionError$, `Failed to load session: ${res.statusText}`);
         return;
       }
 
@@ -156,6 +181,9 @@ export const switchZeroSession$ = command(
       set(internalMessages$, messages);
     } catch (error) {
       throwIfAbort(error);
+      const msg =
+        error instanceof Error ? error.message : "Failed to load session";
+      set(internalSessionError$, msg);
       L.error("Failed to switch session:", error);
     }
   },
@@ -384,8 +412,9 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
       assistantIdx > 0 ? currentMessages[assistantIdx] : undefined;
 
     if (sessionId && userMsg?.role === "user" && assistantMsg) {
-      try {
-        await fetchFn(`/api/agent/sessions/${sessionId}/messages`, {
+      const persistRes = await fetchFn(
+        `/api/agent/sessions/${sessionId}/messages`,
+        {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -394,10 +423,10 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
               { role: "assistant", content: assistantMsg.content, runId },
             ],
           }),
-        });
-      } catch (error) {
-        throwIfAbort(error);
-        L.error("Failed to persist messages:", error);
+        },
+      );
+      if (!persistRes.ok) {
+        L.error("Failed to persist messages:", persistRes.statusText);
       }
 
       // Refresh session list
