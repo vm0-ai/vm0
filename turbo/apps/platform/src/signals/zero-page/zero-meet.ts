@@ -9,39 +9,10 @@ import { triggerAndPollComposeJob } from "../agent-detail/compose-job.ts";
 import type { AgentInstructions } from "../agent-detail/types.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
-import { getInstructionsFilename } from "@vm0/core";
+import { getInstructionsFilename, stripMetadataFrontmatter } from "@vm0/core";
 import { skillValueToUrl, skillUrlToValue } from "../../data/skills.ts";
 
 const L = logger("ZeroMeet");
-
-const METADATA_FRONTMATTER_KEYS = new Set(["name", "tone"]);
-
-/**
- * Strip only our metadata keys (name, tone) from frontmatter.
- * User-defined frontmatter fields are preserved.
- */
-function stripMetadataFrontmatter(content: string): string {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/);
-  if (!match) {
-    return content;
-  }
-  const rawYaml = match[1] ?? "";
-  const body = content.slice(match[0].length);
-
-  const remaining = rawYaml
-    .split("\n")
-    .filter((line) => {
-      const key = line.split(":")[0]?.trim();
-      return !key || !METADATA_FRONTMATTER_KEYS.has(key);
-    })
-    .join("\n")
-    .trim();
-
-  if (!remaining) {
-    return body.replace(/^\n/, "");
-  }
-  return `---\n${remaining}\n---${body}`;
-}
 
 // ---------------------------------------------------------------------------
 // Instructions state
@@ -384,6 +355,9 @@ async function resolveInstructionsContent(
   }
   const resp = await fetchFn(`/api/agent/composes/${composeId}/instructions`);
   if (!resp.ok) {
+    L.warn(
+      `Failed to fetch instructions for compose ${composeId}: ${resp.status} ${resp.statusText}`,
+    );
     return undefined;
   }
   const data = (await resp.json()) as AgentInstructions;

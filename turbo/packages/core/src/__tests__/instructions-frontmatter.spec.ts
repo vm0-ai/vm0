@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { injectMetadataFrontmatter } from "../instructions-frontmatter";
+import {
+  injectMetadataFrontmatter,
+  stripMetadataFrontmatter,
+} from "../instructions-frontmatter";
 
 describe("injectMetadataFrontmatter", () => {
   it("should return content unchanged when metadata is undefined", () => {
@@ -80,5 +83,54 @@ describe("injectMetadataFrontmatter", () => {
       displayName: "Aria",
     });
     expect(result).toBe("---\nkey: value\nname: Aria\n---\n");
+  });
+});
+
+describe("stripMetadataFrontmatter", () => {
+  it("should return content unchanged when no frontmatter", () => {
+    const content = "# Instructions\nDo stuff.";
+    expect(stripMetadataFrontmatter(content)).toBe(content);
+  });
+
+  it("should strip name and tone from frontmatter", () => {
+    const content =
+      "---\nname: Aria\ntone: professional\n---\n\n# Instructions";
+    expect(stripMetadataFrontmatter(content)).toBe("# Instructions");
+  });
+
+  it("should preserve non-metadata frontmatter fields", () => {
+    const content =
+      "---\nname: Aria\nvm0_secrets:\n  - API_KEY\ntone: friendly\n---\n\n# Instructions";
+    expect(stripMetadataFrontmatter(content)).toBe(
+      "---\nvm0_secrets:\n  - API_KEY\n---\n# Instructions",
+    );
+  });
+
+  it("should strip only metadata keys and keep the rest intact", () => {
+    const content = "---\ncustom: value\nname: Aria\n---\n\nBody text here.";
+    expect(stripMetadataFrontmatter(content)).toBe(
+      "---\ncustom: value\n---\nBody text here.",
+    );
+  });
+
+  it("should handle frontmatter with only non-metadata keys", () => {
+    const content = "---\nvm0_secrets:\n  - KEY\n---\n\n# Instructions";
+    expect(stripMetadataFrontmatter(content)).toBe(
+      "---\nvm0_secrets:\n  - KEY\n---\n# Instructions",
+    );
+  });
+
+  it("should handle CRLF line endings in frontmatter delimiter", () => {
+    const content = "---\r\nname: Aria\r\n---\r\n\n# Instructions";
+    expect(stripMetadataFrontmatter(content)).toBe("# Instructions");
+  });
+
+  it("should be the inverse of injectMetadataFrontmatter for simple cases", () => {
+    const original = "# Instructions\nDo stuff.";
+    const injected = injectMetadataFrontmatter(original, {
+      displayName: "Aria",
+      sound: "professional",
+    });
+    expect(stripMetadataFrontmatter(injected)).toBe(original);
   });
 });

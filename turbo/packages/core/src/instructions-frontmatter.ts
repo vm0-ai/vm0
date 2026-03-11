@@ -54,3 +54,35 @@ export function injectMetadataFrontmatter(
   const yaml = stringifyYaml(fields).trimEnd();
   return `---\n${yaml}\n---\n\n${content}`;
 }
+
+/** Frontmatter keys injected by {@link injectMetadataFrontmatter}. */
+const METADATA_FRONTMATTER_KEYS: ReadonlySet<string> = Object.freeze(
+  new Set(Object.values(METADATA_KEY_MAP)),
+);
+
+/**
+ * Strip only our metadata keys (name, tone) from frontmatter.
+ * User-defined frontmatter fields are preserved.
+ */
+export function stripMetadataFrontmatter(content: string): string {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/);
+  if (!match) {
+    return content;
+  }
+  const rawYaml = match[1] ?? "";
+  const body = content.slice(match[0].length);
+
+  const remaining = rawYaml
+    .split("\n")
+    .filter((line) => {
+      const key = line.split(":")[0]?.trim();
+      return !key || !METADATA_FRONTMATTER_KEYS.has(key);
+    })
+    .join("\n")
+    .trim();
+
+  if (!remaining) {
+    return body.replace(/^\n/, "");
+  }
+  return `---\n${remaining}\n---${body}`;
+}

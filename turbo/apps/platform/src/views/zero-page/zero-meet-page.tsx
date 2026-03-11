@@ -13,7 +13,11 @@ import {
   IconCrown,
   IconDotsVertical,
 } from "@tabler/icons-react";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+  stripMetadataFrontmatter,
+} from "@vm0/core";
 import { skills$ } from "../../data/skills.ts";
 import { ConnectorIcon } from "../settings-page/connector-icons.tsx";
 import {
@@ -492,39 +496,6 @@ function ZeroSkillsTab() {
       )}
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Frontmatter parser — splits YAML frontmatter from body content
-// ---------------------------------------------------------------------------
-
-const METADATA_FRONTMATTER_KEYS = new Set(["name", "tone"]);
-
-/**
- * Strip only our metadata keys (name, tone) from frontmatter.
- * User-defined frontmatter fields are preserved.
- */
-function stripMetadataFrontmatter(content: string): string {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/);
-  if (!match) {
-    return content;
-  }
-  const rawYaml = match[1] ?? "";
-  const body = content.slice(match[0].length);
-
-  const remaining = rawYaml
-    .split("\n")
-    .filter((line) => {
-      const key = line.split(":")[0]?.trim();
-      return !key || !METADATA_FRONTMATTER_KEYS.has(key);
-    })
-    .join("\n")
-    .trim();
-
-  if (!remaining) {
-    return body.replace(/^\n/, "");
-  }
-  return `---\n${remaining}\n---${body}`;
 }
 
 // ---------------------------------------------------------------------------
