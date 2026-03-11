@@ -37,6 +37,7 @@ import googleDriveIcon from "./icons/google-drive.svg";
 import googleSheetsIcon from "./icons/google-sheets.svg";
 import lineIcon from "./icons/line.svg";
 import linearIcon from "./icons/linear.svg";
+import makeIcon from "./icons/make.svg";
 import mailchimpIcon from "./icons/mailchimp.svg";
 import mercuryIcon from "./icons/mercury.svg";
 import metaAdsIcon from "./icons/meta-ads.svg";
@@ -122,6 +123,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   "intervals-icu": intervalsIcuIcon,
   line: lineIcon,
   linear: linearIcon,
+  make: makeIcon,
   mailchimp: mailchimpIcon,
   mercury: mercuryIcon,
   "meta-ads": metaAdsIcon,

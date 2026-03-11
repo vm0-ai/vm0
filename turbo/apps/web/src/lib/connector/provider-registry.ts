@@ -40,6 +40,7 @@ import { googleDriveHandler } from "./providers/google-drive-handler";
 import { googleSheetsHandler } from "./providers/google-sheets-handler";
 import { lineHandler } from "./providers/line-handler";
 import { linearHandler } from "./providers/linear-handler";
+import { makeHandler } from "./providers/make-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
 import { minimaxHandler } from "./providers/minimax-handler";
 import { mondayHandler } from "./providers/monday-handler";
@@ -129,6 +130,7 @@ export const PROVIDER_HANDLERS: Record<
   "google-sheets": googleSheetsHandler,
   line: lineHandler,
   linear: linearHandler,
+  make: makeHandler,
   mailchimp: mailchimpHandler,
   mercury: mercuryHandler,
   minimax: minimaxHandler,

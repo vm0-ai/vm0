@@ -666,6 +666,25 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  make: {
+    label: "Make",
+    helpText:
+      "Connect your Make account to manage scenarios, organizations, and automation workflows",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Make](https://www.make.com)\n2. Click your profile icon and go to **Profile**\n3. Scroll to the **API** section\n4. Click **Add token** and select the required scopes\n5. Copy the generated token",
+        secrets: {
+          MAKE_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   deel: {
     label: "Deel",
     featureFlag: FeatureSwitchKey.DeelConnector,
@@ -2582,6 +2601,30 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   line: {
     services: [service("https://api.line.me", bearerAuth("LINE_TOKEN"))],
   },
+  make: {
+    services: [
+      service("https://eu1.make.com/api/v2", {
+        headers: {
+          Authorization: "Token ${secrets.MAKE_TOKEN}",
+        },
+      }),
+      service("https://eu2.make.com/api/v2", {
+        headers: {
+          Authorization: "Token ${secrets.MAKE_TOKEN}",
+        },
+      }),
+      service("https://us1.make.com/api/v2", {
+        headers: {
+          Authorization: "Token ${secrets.MAKE_TOKEN}",
+        },
+      }),
+      service("https://us2.make.com/api/v2", {
+        headers: {
+          Authorization: "Token ${secrets.MAKE_TOKEN}",
+        },
+      }),
+    ],
+  },
   clickup: {
     services: [
       service("https://api.clickup.com/api/v2", bearerAuth("CLICKUP_TOKEN")),
@@ -2965,6 +3008,7 @@ export const connectorTypeSchema = z.enum([
   "dropbox",
   "linear",
   "line",
+  "make",
   "figma",
   "mercury",
   "minimax",
