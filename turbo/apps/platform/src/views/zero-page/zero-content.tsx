@@ -1,6 +1,6 @@
 import { useLoadable } from "ccstate-react";
 import type { ZeroNavId, ZeroAccountSubId } from "./zero-sidebar.tsx";
-import { ZeroChatPage } from "./zero-chat-page.tsx";
+import { ZeroChatPage, type DemoScenarioId } from "./zero-chat-page.tsx";
 import { ZeroAccountPage } from "./zero-account-page.tsx";
 import { ZeroJobsPage } from "./zero-jobs-page.tsx";
 import { ZeroMeetPage } from "./zero-meet-page.tsx";
@@ -10,9 +10,20 @@ import { ZeroWorksPage } from "./zero-works-page.tsx";
 import { ZeroSchedulePage } from "./zero-schedule-page.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 
+const RECENT_ID_TO_SCENARIO: Readonly<Record<string, DemoScenarioId>> = {
+  hello: "hello-from-zero",
+  "1": "rich-summary",
+  "2": "connect-connector",
+  "3": "agent-operations",
+  "4": "approve",
+};
+
 interface ZeroContentProps {
   sectionId: ZeroNavId;
   accountSubId?: ZeroAccountSubId | null;
+  recentLabel?: string | null;
+  recentId?: string | null;
+  onClearRecent?: () => void;
   onNavigateToActivity?: () => void;
   onNavigateToSchedule?: () => void;
   onNavigateToJob?: () => void;
@@ -40,7 +51,14 @@ function getSectionTitles(
 export function ZeroContent({
   sectionId,
   accountSubId = null,
+  recentLabel,
+  recentId,
+  onClearRecent,
+  onNavigateToActivity,
+  onNavigateToSchedule,
+  onNavigateToJob,
   onNavigateToChat,
+  onNavigateToMeet,
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroContentProps) {
@@ -48,8 +66,17 @@ export function ZeroContent({
   const agentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
   if (sectionId === "chat") {
+    const initialScenarioId = recentId
+      ? (RECENT_ID_TO_SCENARIO[recentId] ?? undefined)
+      : undefined;
     return (
       <ZeroChatPage
+        initialScenarioId={initialScenarioId}
+        onClearScenario={onClearRecent}
+        onNavigateToActivity={onNavigateToActivity}
+        onNavigateToSchedule={onNavigateToSchedule}
+        onNavigateToJob={onNavigateToJob}
+        onNavigateToMeet={onNavigateToMeet}
         zeroAvatarSrc={zeroAvatarSrc}
         onAvatarClick={onAvatarClick}
       />
@@ -82,7 +109,7 @@ export function ZeroContent({
     return <ZeroAccountPage accountSubId={accountSubId ?? null} />;
   }
 
-  const title = getSectionTitles(agentName)[sectionId];
+  const title = recentLabel ?? getSectionTitles(agentName)[sectionId];
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -91,14 +118,16 @@ export function ZeroContent({
           {title}
         </h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          {agentName} — your AI assistant
+          {recentLabel
+            ? `Continue your dialogue with ${agentName}`
+            : `${agentName} — your AI assistant`}
         </p>
       </header>
       <main className="flex-1 overflow-auto px-4 sm:px-6 pb-8">
         <div className="mx-auto max-w-[900px]">
           <div className="zero-card p-6">
             <p className="text-sm text-muted-foreground">
-              Content for &quot;{title}&quot; will appear here.
+              Content for “{title}” will appear here.
             </p>
           </div>
         </div>
