@@ -9,6 +9,7 @@ import { triggerAndPollComposeJob } from "../agent-detail/compose-job.ts";
 import type { AgentInstructions } from "../agent-detail/types.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
+import { getInstructionsFilename } from "@vm0/core";
 import { skillValueToUrl, skillUrlToValue } from "../../data/skills.ts";
 
 const L = logger("ZeroMeet");
@@ -163,7 +164,51 @@ export const buildZeroInstructions$ = command(async ({ get, set }) => {
 
   try {
     const fetchFn = get(fetch$);
-    await triggerAndPollComposeJob(fetchFn, compose.content, edited);
+
+    // Ensure compose content includes instructions field so the CLI uploads it
+    const agentKey = Object.keys(compose.content.agents)[0];
+    const agent = agentKey ? compose.content.agents[agentKey] : undefined;
+    const contentWithInstructions: ZeroComposeContent =
+      agentKey && agent
+        ? {
+            ...compose.content,
+            agents: {
+              ...compose.content.agents,
+              [agentKey]: {
+                ...agent,
+                instructions: getInstructionsFilename(agent.framework),
+              },
+            },
+          }
+        : compose.content;
+
+    const job = await triggerAndPollComposeJob(
+      fetchFn,
+      contentWithInstructions,
+      edited,
+    );
+    if (!job.result) {
+      throw new Error("Build completed without result");
+    }
+
+    // Update default agent to point to the new compose
+    const resp = await fetchFn("/api/scopes/default-agent", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentComposeId: job.result.composeId }),
+    });
+    if (!resp.ok) {
+      const err = (await resp.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      throw new Error(
+        err?.error?.message ?? `Failed to update: ${resp.statusText}`,
+      );
+    }
+
+    // Reload onboarding status so composeId is up-to-date on next fetch
+    await set(reloadOnboardingStatus$);
+    set(internalComposeReload$, (x) => x + 1);
 
     // Optimistically update instructions state
     const current = get(instructionsState$).instructions;

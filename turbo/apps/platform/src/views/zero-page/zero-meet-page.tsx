@@ -462,61 +462,64 @@ function ZeroInstructionsTab() {
                 disabled={isBuilding}
                 placeholder="Write instructions for your agent..."
               />
-              <div className="flex items-center justify-between pt-5 mt-5 border-t border-border/60">
-                <div className="flex items-center gap-2">
-                  {isDirty ? (
-                    <span className="text-xs font-medium text-amber-500">
-                      Unsaved
-                    </span>
-                  ) : (
-                    <p className="text-muted-foreground text-xs">
-                      Edit the instructions directly to customize your
-                      agent&apos;s behavior.
-                    </p>
-                  )}
-                  {buildError && (
-                    <span className="text-xs font-medium text-destructive">
-                      {buildError}
-                    </span>
-                  )}
-                </div>
-                {isDirty && (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      onClick={discard}
-                      disabled={isBuilding}
-                    >
-                      Discard
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="h-9 rounded-lg px-4"
-                      onClick={() => detach(build(), Reason.DomCallback)}
-                      disabled={isBuilding}
-                    >
-                      {isBuilding ? (
-                        <>
-                          <IconLoader2
-                            size={14}
-                            stroke={1.5}
-                            className="animate-spin mr-1.5"
-                          />
-                          Building…
-                        </>
-                      ) : (
-                        "Build"
-                      )}
-                    </Button>
-                  </div>
+              <div className="flex items-center gap-2 pt-5 mt-5 border-t border-border/60">
+                <p className="text-muted-foreground text-xs">
+                  Edit the instructions directly to customize your agent&apos;s
+                  behavior.
+                </p>
+                {buildError && (
+                  <span className="text-xs font-medium text-destructive">
+                    {buildError}
+                  </span>
                 )}
               </div>
             </>
           )}
         </CardContent>
       </Card>
+
+      {isDirty &&
+        createPortal(
+          <div className="zero-app fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 sm:left-[255px]">
+            <div className="zero-card flex max-w-md items-center justify-between gap-4 rounded-xl border border-border bg-card px-5 py-4 shadow-lg">
+              <div className="flex items-center gap-2 text-sm text-foreground">
+                <IconPencil
+                  size={18}
+                  stroke={1.5}
+                  className="shrink-0 text-muted-foreground"
+                />
+                <span>You have unsaved changes</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={discard}
+                  disabled={isBuilding}
+                >
+                  Discard
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={() => detach(build(), Reason.DomCallback)}
+                  disabled={isBuilding}
+                >
+                  {isBuilding ? (
+                    <IconLoader2
+                      size={14}
+                      stroke={1.5}
+                      className="animate-spin mr-1.5"
+                    />
+                  ) : null}
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
