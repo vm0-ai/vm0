@@ -28,7 +28,8 @@
 //! ```
 //!
 //! Design:
-//! - Pool creates fixed number of namespaces at init (parallel)
+//! - Pool lazily pre-warms a small number of namespaces at init, then
+//!   replenishes in the background on each [`NetnsPool::acquire`]
 //! - [`NetnsPool::acquire`] returns a namespace from pool, or creates on-demand as fallback
 //! - [`NetnsPool::release`] returns the namespace to the pool
 //! - Pool index (0–63) is auto-allocated via flock on `/var/lock`
@@ -62,6 +63,9 @@ const IP_PREFIX: &str = "10.200";
 const MAX_POOLS: u32 = 64;
 /// Maximum namespaces a single pool can own (index 0x00–0xff).
 const MAX_NAMESPACES: u32 = 256;
+/// Number of namespaces to pre-warm per queue at startup.
+/// Remaining namespaces are created lazily via background replenishment.
+const INITIAL_POOL_SIZE: usize = 4;
 
 // Compile-time check: all /30 subnets fit within `10.200.0.0/16`.
 // 64 pools × 256 ns × 4 addresses per /30 = 65536 = exactly 2^16.
@@ -527,21 +531,42 @@ fn acquire_pool_lock(locks: &LockPaths) -> Result<(u32, Flock<File>)> {
 // ---------------------------------------------------------------------------
 
 /// Pre-warmed pool of network namespaces for Firecracker VMs.
+///
+/// Uses lazy initialization: only [`INITIAL_POOL_SIZE`] namespaces are
+/// pre-warmed at startup. Additional namespaces are created in the
+/// background on each [`acquire`](Self::acquire) call until `target_size`
+/// is reached. After that, namespaces are recycled via
+/// [`release`](Self::release) with no further background creation.
 pub struct NetnsPool {
     active: bool,
     plain_queue: VecDeque<PooledNetns>,
     proxy_queue: VecDeque<PooledNetns>,
+    /// In-flight background namespace creation tasks (plain).
+    pending_plain: tokio::task::JoinSet<Result<PooledNetns>>,
+    /// In-flight background namespace creation tasks (proxy).
+    pending_proxy: tokio::task::JoinSet<Result<PooledNetns>>,
     next_ns_index: u32,
     pool_index: u32,
     proxy_port: Option<u16>,
     default_iface: String,
+    /// Target pool size per queue (from config).
+    target_size: usize,
+    /// Plain namespaces successfully created or in-flight (decremented on
+    /// failure). Compared against `target_size` to gate background replenishment.
+    created_plain: usize,
+    /// Proxy namespaces successfully created or in-flight (decremented on
+    /// failure). Compared against `target_size` to gate background replenishment.
+    created_proxy: usize,
     /// Held for the lifetime of the pool to reserve the pool index.
     _lock: Flock<File>,
 }
 
 impl NetnsPool {
-    /// Create a new pool, pre-warming `config.size` plain namespaces (and
-    /// `config.size` proxy namespaces when `proxy_port` is set).
+    /// Create a new pool with lazy initialization.
+    ///
+    /// Only [`INITIAL_POOL_SIZE`] namespaces are pre-warmed per queue at
+    /// startup. The remaining namespaces (up to `config.size`) are created
+    /// lazily via background replenishment on each [`acquire`](Self::acquire).
     ///
     /// Automatically acquires a unique pool index (0–63) via flock. Enables
     /// host IP forwarding and cleans up orphaned resources from the acquired
@@ -550,7 +575,13 @@ impl NetnsPool {
         let lock_paths = LockPaths::new();
         let (index, lock) = acquire_pool_lock(&lock_paths)?;
 
-        info!(index, size = config.size, "initializing namespace pool");
+        let initial = config.size.min(INITIAL_POOL_SIZE);
+        info!(
+            index,
+            size = config.size,
+            initial,
+            "initializing namespace pool"
+        );
 
         // Enable host-level IP forwarding (idempotent, needed once per host).
         exec("sysctl", &["-w", "net.ipv4.ip_forward=1"], Privilege::Sudo).await?;
@@ -568,20 +599,26 @@ impl NetnsPool {
             } else {
                 0
             }),
+            pending_plain: tokio::task::JoinSet::new(),
+            pending_proxy: tokio::task::JoinSet::new(),
             next_ns_index: 0,
             pool_index: index,
             proxy_port: config.proxy_port,
             default_iface,
+            target_size: config.size,
+            created_plain: 0,
+            created_proxy: 0,
             _lock: lock,
         };
 
-        // Pre-warm both queues in parallel via JoinSet.
-        if config.size > 0 {
+        // Pre-warm only `initial` namespaces per queue (not all `size`).
+        // The rest are created lazily via background replenishment.
+        if initial > 0 {
             let mut plain_set = tokio::task::JoinSet::new();
             let mut proxy_set = tokio::task::JoinSet::new();
 
             // Plain namespaces (connectivity only).
-            for _ in 0..config.size {
+            for _ in 0..initial {
                 let ns_index = pool.next_ns_index;
                 pool.next_ns_index += 1;
                 let pool_index = pool.pool_index;
@@ -596,7 +633,7 @@ impl NetnsPool {
 
             // Proxy namespaces (connectivity + REDIRECT rules).
             if let Some(proxy_port) = pool.proxy_port {
-                for _ in 0..config.size {
+                for _ in 0..initial {
                     let ns_index = pool.next_ns_index;
                     pool.next_ns_index += 1;
                     let pool_index = pool.pool_index;
@@ -626,24 +663,13 @@ impl NetnsPool {
             }
         }
 
-        let expected = config.size
-            + if pool.proxy_port.is_some() {
-                config.size
-            } else {
-                0
-            };
-        let actual = pool.plain_queue.len() + pool.proxy_queue.len();
-        if actual < expected {
-            warn!(
-                requested = expected,
-                created = actual,
-                "namespace pool initialized with fewer namespaces than requested"
-            );
-        }
+        pool.created_plain = pool.plain_queue.len();
+        pool.created_proxy = pool.proxy_queue.len();
 
         info!(
             plain = pool.plain_queue.len(),
             proxy = pool.proxy_queue.len(),
+            target = pool.target_size,
             "namespace pool initialized"
         );
         Ok(pool)
@@ -651,9 +677,20 @@ impl NetnsPool {
 
     /// Acquire a namespace from the pool, or create one on-demand if empty.
     ///
+    /// Uses a three-tier strategy:
+    /// 1. Pop from pre-warmed queue (instant)
+    /// 2. Await in-flight background creation (if any)
+    /// 3. Create on-demand as fallback
+    ///
+    /// After acquisition, spawns a background replenishment task if the
+    /// total created count hasn't reached `target_size`.
+    ///
     /// The two queues are completely independent — `use_proxy=true` only
     /// touches the proxy queue, `use_proxy=false` only touches the plain queue.
     pub async fn acquire(&mut self, use_proxy: bool) -> Result<PooledNetns> {
+        // Move completed background tasks into queues before checking.
+        self.drain_completed();
+
         // Intentional graceful degradation: when `use_proxy=true` but no
         // proxy port is configured, fall back to the plain queue.  Callers
         // (e.g. executor) always set `use_proxy=true` without knowing
@@ -669,31 +706,85 @@ impl NetnsPool {
     }
 
     /// Acquire from the plain (non-proxy) queue.
+    ///
+    /// Tries three tiers: queue → pending → on-demand.
+    /// Spawns a background replenishment task after success.
     async fn acquire_plain(&mut self) -> Result<PooledNetns> {
+        // Tier 1: pre-warmed queue.
         if let Some(pooled) = self.plain_queue.pop_front() {
             info!(
                 name = %pooled.name,
                 remaining = self.plain_queue.len(),
                 "acquired namespace"
             );
+            self.maybe_replenish_plain();
             return Ok(pooled);
         }
+        // Tier 2: await in-flight background task.
+        while let Some(result) = self.pending_plain.join_next().await {
+            match result {
+                Ok(Ok(ns)) => {
+                    info!(name = %ns.name, "acquired namespace from pending");
+                    self.maybe_replenish_plain();
+                    return Ok(ns);
+                }
+                Ok(Err(e)) => {
+                    self.created_plain = self.created_plain.saturating_sub(1);
+                    error!(error = %e, "pending namespace creation failed");
+                }
+                Err(e) => {
+                    self.created_plain = self.created_plain.saturating_sub(1);
+                    error!(error = %e, "pending namespace task panicked");
+                }
+            }
+        }
+        // Tier 3: on-demand.
         info!("pool exhausted, creating namespace on-demand");
-        self.create_on_demand(None).await
+        let ns = self.create_on_demand(None).await?;
+        self.created_plain += 1;
+        self.maybe_replenish_plain();
+        Ok(ns)
     }
 
     /// Acquire from the proxy queue.
+    ///
+    /// Tries three tiers: queue → pending → on-demand.
+    /// Spawns a background replenishment task after success.
     async fn acquire_proxy(&mut self) -> Result<PooledNetns> {
+        // Tier 1: pre-warmed queue.
         if let Some(pooled) = self.proxy_queue.pop_front() {
             info!(
                 name = %pooled.name,
                 remaining = self.proxy_queue.len(),
                 "acquired namespace (proxy)"
             );
+            self.maybe_replenish_proxy();
             return Ok(pooled);
         }
+        // Tier 2: await in-flight background task.
+        while let Some(result) = self.pending_proxy.join_next().await {
+            match result {
+                Ok(Ok(ns)) => {
+                    info!(name = %ns.name, "acquired namespace (proxy) from pending");
+                    self.maybe_replenish_proxy();
+                    return Ok(ns);
+                }
+                Ok(Err(e)) => {
+                    self.created_proxy = self.created_proxy.saturating_sub(1);
+                    error!(error = %e, "pending proxy namespace creation failed");
+                }
+                Err(e) => {
+                    self.created_proxy = self.created_proxy.saturating_sub(1);
+                    error!(error = %e, "pending proxy namespace task panicked");
+                }
+            }
+        }
+        // Tier 3: on-demand.
         info!("proxy pool exhausted, creating namespace on-demand");
-        self.create_on_demand(self.proxy_port).await
+        let ns = self.create_on_demand(self.proxy_port).await?;
+        self.created_proxy += 1;
+        self.maybe_replenish_proxy();
+        Ok(ns)
     }
 
     /// Create a new namespace on-demand, allocating the next index.
@@ -712,6 +803,91 @@ impl NetnsPool {
             proxy_port,
         )
         .await
+    }
+
+    /// Move completed background tasks into their respective queues.
+    ///
+    /// Uses `try_join_next()` to avoid blocking — only drains tasks that
+    /// have already finished. Decrements the created counter on failure so
+    /// the slot can be retried on the next replenishment cycle.
+    fn drain_completed(&mut self) {
+        while let Some(result) = self.pending_plain.try_join_next() {
+            match result {
+                Ok(Ok(ns)) => self.plain_queue.push_back(ns),
+                Ok(Err(e)) => {
+                    self.created_plain = self.created_plain.saturating_sub(1);
+                    error!(error = %e, "background namespace creation failed");
+                }
+                Err(e) => {
+                    self.created_plain = self.created_plain.saturating_sub(1);
+                    error!(error = %e, "background namespace creation panicked");
+                }
+            }
+        }
+        while let Some(result) = self.pending_proxy.try_join_next() {
+            match result {
+                Ok(Ok(ns)) => self.proxy_queue.push_back(ns),
+                Ok(Err(e)) => {
+                    self.created_proxy = self.created_proxy.saturating_sub(1);
+                    error!(error = %e, "background proxy namespace creation failed");
+                }
+                Err(e) => {
+                    self.created_proxy = self.created_proxy.saturating_sub(1);
+                    error!(error = %e, "background proxy namespace creation panicked");
+                }
+            }
+        }
+    }
+
+    /// Spawn a background plain namespace creation task if needed.
+    ///
+    /// Skips if: total created already reached target, a task is already
+    /// in-flight, or namespace index limit reached.
+    fn maybe_replenish_plain(&mut self) {
+        if self.created_plain >= self.target_size
+            || !self.pending_plain.is_empty()
+            || self.next_ns_index >= MAX_NAMESPACES
+        {
+            return;
+        }
+        let ns_index = self.next_ns_index;
+        self.next_ns_index += 1;
+        self.created_plain += 1;
+        let pool_index = self.pool_index;
+        let default_iface = self.default_iface.clone();
+        self.pending_plain.spawn(create_single_namespace(
+            pool_index,
+            ns_index,
+            default_iface,
+            None,
+        ));
+    }
+
+    /// Spawn a background proxy namespace creation task if needed.
+    ///
+    /// Skips if: no proxy port configured, total created already reached
+    /// target, a task is already in-flight, or namespace index limit reached.
+    fn maybe_replenish_proxy(&mut self) {
+        let Some(proxy_port) = self.proxy_port else {
+            return;
+        };
+        if self.created_proxy >= self.target_size
+            || !self.pending_proxy.is_empty()
+            || self.next_ns_index >= MAX_NAMESPACES
+        {
+            return;
+        }
+        let ns_index = self.next_ns_index;
+        self.next_ns_index += 1;
+        self.created_proxy += 1;
+        let pool_index = self.pool_index;
+        let default_iface = self.default_iface.clone();
+        self.pending_proxy.spawn(create_single_namespace(
+            pool_index,
+            ns_index,
+            default_iface,
+            Some(proxy_port),
+        ));
     }
 
     /// Return a namespace to the pool, or delete it if the pool is inactive.
@@ -749,7 +925,8 @@ impl NetnsPool {
         Ok(())
     }
 
-    /// Delete all namespaces currently in the pool queue.
+    /// Delete all namespaces currently in the pool queue and cancel
+    /// in-flight background creation tasks.
     ///
     /// Namespaces that have been acquired but not yet released are **not**
     /// cleaned up here — they will be caught by orphan cleanup on the next
@@ -759,6 +936,22 @@ impl NetnsPool {
             return Ok(());
         }
         self.active = false;
+
+        // Cancel in-flight background creation tasks.
+        self.pending_plain.abort_all();
+        self.pending_proxy.abort_all();
+
+        // Drain any tasks that completed before abort into queues for cleanup.
+        while let Some(result) = self.pending_plain.join_next().await {
+            if let Ok(Ok(ns)) = result {
+                self.plain_queue.push_back(ns);
+            }
+        }
+        while let Some(result) = self.pending_proxy.join_next().await {
+            if let Ok(Ok(ns)) = result {
+                self.proxy_queue.push_back(ns);
+            }
+        }
 
         let count = self.plain_queue.len() + self.proxy_queue.len();
         info!(count, "cleaning up namespace pool");
@@ -792,6 +985,7 @@ impl Drop for NetnsPool {
         if self.active {
             warn!(
                 queued = self.plain_queue.len() + self.proxy_queue.len(),
+                pending = self.pending_plain.len() + self.pending_proxy.len(),
                 "NetnsPool dropped without calling cleanup()"
             );
         }

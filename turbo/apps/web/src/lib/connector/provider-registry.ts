@@ -19,6 +19,7 @@ import { closeHandler } from "./providers/close-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
+import { elevenlabsHandler } from "./providers/elevenlabs-handler";
 import { figmaHandler } from "./providers/figma-handler";
 import { firecrawlHandler } from "./providers/firecrawl-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
@@ -31,9 +32,11 @@ import { googleDriveHandler } from "./providers/google-drive-handler";
 import { googleSheetsHandler } from "./providers/google-sheets-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
+import { minimaxHandler } from "./providers/minimax-handler";
 import { mondayHandler } from "./providers/monday-handler";
 import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
+import { openaiHandler } from "./providers/openai-handler";
 import { redditHandler } from "./providers/reddit-handler";
 import { slackHandler } from "./providers/slack-handler";
 import { stravaHandler } from "./providers/strava-handler";
@@ -50,6 +53,7 @@ import { outlookCalendarHandler } from "./providers/outlook-calendar-handler";
 import { outlookMailHandler } from "./providers/outlook-mail-handler";
 import { metaAdsHandler } from "./providers/meta-ads-handler";
 import { posthogHandler } from "./providers/posthog-handler";
+import { perplexityHandler } from "./providers/perplexity-handler";
 import { plausibleHandler } from "./providers/plausible-handler";
 import { productlaneHandler } from "./providers/productlane-handler";
 import { resendHandler } from "./providers/resend-handler";
@@ -77,6 +81,7 @@ export const PROVIDER_HANDLERS: Record<
   deel: deelHandler,
   docusign: docusignHandler,
   dropbox: dropboxHandler,
+  elevenlabs: elevenlabsHandler,
   figma: figmaHandler,
   firecrawl: firecrawlHandler,
   "garmin-connect": garminConnectHandler,
@@ -90,9 +95,11 @@ export const PROVIDER_HANDLERS: Record<
   linear: linearHandler,
   mailchimp: mailchimpHandler,
   mercury: mercuryHandler,
+  minimax: minimaxHandler,
   monday: mondayHandler,
   neon: neonHandler,
   notion: notionHandler,
+  openai: openaiHandler,
   "outlook-calendar": outlookCalendarHandler,
   "outlook-mail": outlookMailHandler,
   reddit: redditHandler,
@@ -107,6 +114,7 @@ export const PROVIDER_HANDLERS: Record<
   supabase: supabaseHandler,
   "meta-ads": metaAdsHandler,
   posthog: posthogHandler,
+  perplexity: perplexityHandler,
   plausible: plausibleHandler,
   productlane: productlaneHandler,
   resend: resendHandler,

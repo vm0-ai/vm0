@@ -15,6 +15,7 @@ import computerIcon from "./icons/computer.svg";
 import deelIcon from "./icons/deel.svg";
 import docusignIcon from "./icons/docusign.svg";
 import dropboxIcon from "./icons/dropbox.svg";
+import elevenlabsIcon from "./icons/elevenlabs.svg";
 import figmaIcon from "./icons/figma.svg";
 import firecrawlIcon from "./icons/firecrawl.svg";
 import garminConnectIcon from "./icons/garmin-connect.svg";
@@ -30,11 +31,14 @@ import linearIcon from "./icons/linear.svg";
 import mailchimpIcon from "./icons/mailchimp.svg";
 import mercuryIcon from "./icons/mercury.svg";
 import metaAdsIcon from "./icons/meta-ads.svg";
+import minimaxIcon from "./icons/minimax.svg";
 import mondayIcon from "./icons/monday.svg";
 import neonIcon from "./icons/neon.svg";
 import notionIcon from "./icons/notion.svg";
+import openaiIcon from "./icons/openai.svg";
 import outlookCalendarIcon from "./icons/outlook-calendar.svg";
 import outlookMailIcon from "./icons/outlook-mail.svg";
+import perplexityIcon from "./icons/perplexity.svg";
 import plausibleIcon from "./icons/plausible.svg";
 import posthogIcon from "./icons/posthog.svg";
 import productlaneIcon from "./icons/productlane.svg";
@@ -69,6 +73,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   deel: deelIcon,
   docusign: docusignIcon,
   dropbox: dropboxIcon,
+  elevenlabs: elevenlabsIcon,
   figma: figmaIcon,
   firecrawl: firecrawlIcon,
   "garmin-connect": garminConnectIcon,
@@ -84,11 +89,14 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   mailchimp: mailchimpIcon,
   mercury: mercuryIcon,
   "meta-ads": metaAdsIcon,
+  minimax: minimaxIcon,
   monday: mondayIcon,
   neon: neonIcon,
   notion: notionIcon,
+  openai: openaiIcon,
   "outlook-calendar": outlookCalendarIcon,
   "outlook-mail": outlookMailIcon,
+  perplexity: perplexityIcon,
   plausible: plausibleIcon,
   posthog: posthogIcon,
   productlane: productlaneIcon,
