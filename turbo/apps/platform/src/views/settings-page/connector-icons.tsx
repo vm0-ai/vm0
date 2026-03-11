@@ -2,6 +2,10 @@ import type { ConnectorType } from "@vm0/core";
 
 import agentmailIcon from "./icons/agentmail.svg";
 import ahrefsIcon from "./icons/ahrefs.svg";
+import apifyIcon from "./icons/apify.svg";
+import brightDataIcon from "./icons/bright-data.svg";
+import browserbaseIcon from "./icons/browserbase.svg";
+import browserlessIcon from "./icons/browserless.svg";
 import airtableIcon from "./icons/airtable.svg";
 import axiomIcon from "./icons/axiom.svg";
 import asanaIcon from "./icons/asana.svg";
@@ -12,6 +16,7 @@ import deelIcon from "./icons/deel.svg";
 import docusignIcon from "./icons/docusign.svg";
 import dropboxIcon from "./icons/dropbox.svg";
 import figmaIcon from "./icons/figma.svg";
+import firecrawlIcon from "./icons/firecrawl.svg";
 import garminConnectIcon from "./icons/garmin-connect.svg";
 import githubIcon from "./icons/github.svg";
 import hubspotIcon from "./icons/hubspot.svg";
@@ -35,6 +40,7 @@ import posthogIcon from "./icons/posthog.svg";
 import productlaneIcon from "./icons/productlane.svg";
 import redditIcon from "./icons/reddit.svg";
 import resendIcon from "./icons/resend.svg";
+import scrapeninja from "./icons/scrapeninja.svg";
 import sentryIcon from "./icons/sentry.svg";
 import similarwebIcon from "./icons/similarweb.svg";
 import slackIcon from "./icons/slack.svg";
@@ -51,8 +57,12 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   agentmail: agentmailIcon,
   ahrefs: ahrefsIcon,
   airtable: airtableIcon,
+  apify: apifyIcon,
   axiom: axiomIcon,
   asana: asanaIcon,
+  "bright-data": brightDataIcon,
+  browserbase: browserbaseIcon,
+  browserless: browserlessIcon,
   canva: canvaIcon,
   close: closeIcon,
   computer: computerIcon,
@@ -60,6 +70,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   docusign: docusignIcon,
   dropbox: dropboxIcon,
   figma: figmaIcon,
+  firecrawl: firecrawlIcon,
   "garmin-connect": garminConnectIcon,
   github: githubIcon,
   gmail: gmailIcon,
@@ -83,6 +94,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   productlane: productlaneIcon,
   reddit: redditIcon,
   resend: resendIcon,
+  scrapeninja: scrapeninja,
   sentry: sentryIcon,
   similarweb: similarwebIcon,
   slack: slackIcon,

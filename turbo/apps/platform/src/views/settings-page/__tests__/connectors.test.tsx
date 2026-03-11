@@ -204,4 +204,208 @@ describe("add connection via api token", () => {
       ).toBeGreaterThan(0);
     });
   });
+
+  it("connects browserbase with one secret and one variable", async () => {
+    const capturedRequests: {
+      endpoint: string;
+      body: { name: string; value: string };
+    }[] = [];
+    let browserbaseConnected = false;
+
+    server.use(
+      http.get("/api/connectors", () => {
+        return HttpResponse.json({
+          connectors: browserbaseConnected
+            ? [
+                {
+                  id: null,
+                  type: "browserbase",
+                  authMethod: "api-token",
+                  externalId: null,
+                  externalUsername: null,
+                  externalEmail: null,
+                  oauthScopes: null,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                },
+              ]
+            : [],
+          configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
+          connectorProvidedSecretNames: [],
+        });
+      }),
+      http.put("/api/secrets", async ({ request }) => {
+        const body = (await request.json()) as { name: string; value: string };
+        capturedRequests.push({ endpoint: "/api/secrets", body });
+        browserbaseConnected = capturedRequests.length === 2;
+        return HttpResponse.json({
+          id: crypto.randomUUID(),
+          name: body.name,
+          description: null,
+          type: "user",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }),
+      http.put("/api/variables", async ({ request }) => {
+        const body = (await request.json()) as { name: string; value: string };
+        capturedRequests.push({ endpoint: "/api/variables", body });
+        browserbaseConnected = capturedRequests.length === 2;
+        return HttpResponse.json({
+          id: crypto.randomUUID(),
+          name: body.name,
+          value: body.value,
+          description: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/settings?tab=connections",
+    });
+
+    // Open Add Connection dialog
+    await user.click(screen.getByRole("button", { name: /add connection/i }));
+    const addDialog = await screen.findByRole("dialog", {
+      name: /add connection/i,
+    });
+
+    // Find Browserbase card and click Connect
+    const bbCard = within(addDialog)
+      .getByText("Browserbase")
+      .closest('[class*="rounded-xl"]') as HTMLElement;
+    await user.click(within(bbCard).getByRole("button", { name: /connect/i }));
+
+    // Connect modal should have two input fields (labeled "API Token" and "Project ID")
+    const connectModal = await screen.findByRole("dialog", {
+      name: /^browserbase$/i,
+    });
+    const allInputs = within(connectModal).getAllByDisplayValue("");
+    // Browserbase has two fields: API Token + Project ID
+    expect(allInputs).toHaveLength(2);
+    // First input is API Token, second is Project ID (rendered in config order)
+    const [tokenInput, projectIdInput] = allInputs;
+    await user.click(tokenInput);
+    await user.paste("bb-test-token-123");
+    await user.click(projectIdInput);
+    await user.paste("proj-abc-456");
+
+    // Submit
+    await user.click(
+      within(connectModal).getByRole("button", { name: /^save$/i }),
+    );
+
+    // Verify: one call to /api/secrets, one call to /api/variables
+    await vi.waitFor(() => {
+      expect(capturedRequests).toHaveLength(2);
+      const secretReq = capturedRequests.find(
+        (r) => r.endpoint === "/api/secrets",
+      );
+      const variableReq = capturedRequests.find(
+        (r) => r.endpoint === "/api/variables",
+      );
+      expect(secretReq?.body).toStrictEqual({
+        name: "BROWSERBASE_TOKEN",
+        value: "bb-test-token-123",
+      });
+      expect(variableReq?.body).toStrictEqual({
+        name: "BROWSERBASE_PROJECT_ID",
+        value: "proj-abc-456",
+      });
+      expect(
+        screen.getAllByText("Connected via API Token").length,
+      ).toBeGreaterThan(0);
+    });
+  });
+
+  it("shows browserbase as not connected when only one of two fields is present", async () => {
+    // Browserbase has BROWSERBASE_TOKEN (secret) + BROWSERBASE_PROJECT_ID (variable).
+    // If only the secret exists, the connector should NOT appear as connected.
+    server.use(
+      http.get("/api/connectors", () => {
+        return HttpResponse.json({
+          connectors: [],
+          configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
+          connectorProvidedSecretNames: [],
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/settings?tab=connections",
+    });
+
+    // Open Add Connection dialog and find Browserbase
+    await user.click(screen.getByRole("button", { name: /add connection/i }));
+    const addDialog = await screen.findByRole("dialog", {
+      name: /add connection/i,
+    });
+    const bbCard = within(addDialog)
+      .getByText("Browserbase")
+      .closest('[class*="rounded-xl"]') as HTMLElement;
+
+    // Browserbase should show Connect button (not connected)
+    expect(
+      within(bbCard).getByRole("button", { name: /connect/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("disconnects browserbase and deletes both secret and variable", async () => {
+    let deletedType: string | null = null;
+
+    setMockConnectors([
+      {
+        id: null,
+        type: "browserbase",
+        authMethod: "api-token",
+        externalId: null,
+        externalUsername: null,
+        externalEmail: null,
+        oauthScopes: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
+
+    server.use(
+      http.delete("/api/connectors/:type", ({ params }) => {
+        deletedType = params.type as string;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await setupPage({ context, path: "/settings?tab=connections" });
+
+    // Verify Browserbase shows as connected
+    expect(screen.getByText("Connected via API Token")).toBeInTheDocument();
+
+    // Open kebab menu and disconnect
+    const optionsButton = screen.getByRole("button", {
+      name: /connector options/i,
+    });
+    await user.click(optionsButton);
+    const disconnectButton = await screen.findByText("Disconnect");
+    await user.click(disconnectButton);
+
+    // Confirm in dialog
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(
+        /are you sure you want to uninstall browserbase/i,
+      ),
+    ).toBeInTheDocument();
+    await user.click(
+      within(dialog).getByRole("button", { name: /^uninstall$/i }),
+    );
+
+    // Verify DELETE /api/connectors/browserbase was called
+    await vi.waitFor(() => {
+      expect(deletedType).toBe("browserbase");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
 });

@@ -13,6 +13,8 @@ export interface ConnectorSecretConfig {
   required: boolean;
   placeholder?: string;
   helpText?: string;
+  /** Storage type: "secret" (default, encrypted) or "variable" (plain text). */
+  type?: "secret" | "variable";
 }
 
 /**
@@ -1687,6 +1689,127 @@ const CONNECTOR_TYPES_DEF = {
       RESEND_API_KEY: "$secrets.RESEND_API_KEY",
     } as Record<string, string>,
   },
+  apify: {
+    label: "Apify",
+    helpText:
+      "Connect your Apify account to run web scraping actors, manage datasets, and automate browser tasks",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Apify Console](https://console.apify.com)\n2. Go to **Settings > Integrations**\n3. Copy your **Personal API token**",
+        secrets: {
+          APIFY_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "apify_api_xxxxxxxx",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  "bright-data": {
+    label: "Bright Data",
+    helpText:
+      "Connect your Bright Data account to scrape websites, manage proxies, and access web data",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Bright Data](https://brightdata.com/cp)\n2. Go to **Settings > Users**\n3. Copy your **API token**",
+        secrets: {
+          BRIGHTDATA_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  browserbase: {
+    label: "Browserbase",
+    helpText:
+      "Connect your Browserbase account to create browser sessions, persist contexts, and automate cloud browsers",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Browserbase](https://www.browserbase.com)\n2. Go to **Dashboard > Settings**\n3. Copy your **API Key** and **Project ID**",
+        secrets: {
+          BROWSERBASE_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+          BROWSERBASE_PROJECT_ID: {
+            label: "Project ID",
+            required: true,
+            type: "variable",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  browserless: {
+    label: "Browserless",
+    helpText:
+      "Connect your Browserless account to take screenshots, generate PDFs, scrape pages, and automate headless browsers",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Browserless](https://account.browserless.io)\n2. Copy your **API Token** from the dashboard",
+        secrets: {
+          BROWSERLESS_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  firecrawl: {
+    label: "Firecrawl",
+    helpText:
+      "Connect your Firecrawl account to scrape webpages, crawl websites, and extract structured data",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Firecrawl](https://www.firecrawl.dev)\n2. Go to your **Dashboard**\n3. Copy your **API Key**",
+        secrets: {
+          FIRECRAWL_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "fc-xxxxxxxx",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  scrapeninja: {
+    label: "ScrapeNinja",
+    helpText:
+      "Connect your ScrapeNinja account to scrape web pages with Chrome TLS fingerprint and JS rendering",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Sign up at [RapidAPI](https://rapidapi.com/restyler/api/scrapeninja) or [APIRoad](https://apiroad.net/marketplace/apis/scrapeninja)\n2. Subscribe to the ScrapeNinja API\n3. Copy your **API Key**",
+        secrets: {
+          SCRAPENINJA_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
 } satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
@@ -2025,6 +2148,33 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   resend: {
     services: [service("https://api.resend.com", bearerAuth("RESEND_API_KEY"))],
   },
+  apify: {
+    services: [service("https://api.apify.com/v2", bearerAuth("APIFY_TOKEN"))],
+  },
+  "bright-data": {
+    services: [
+      service("https://api.brightdata.com", bearerAuth("BRIGHTDATA_TOKEN")),
+    ],
+  },
+  browserbase: {
+    services: [
+      service("https://api.browserbase.com/v1", {
+        headers: { "X-BB-API-Key": "${secrets.BROWSERBASE_TOKEN}" },
+      }),
+    ],
+  },
+  firecrawl: {
+    services: [
+      service("https://api.firecrawl.dev/v1", bearerAuth("FIRECRAWL_TOKEN")),
+    ],
+  },
+  scrapeninja: {
+    services: [
+      service("https://scrapeninja.p.rapidapi.com", {
+        headers: { "X-RapidAPI-Key": "${secrets.SCRAPENINJA_TOKEN}" },
+      }),
+    ],
+  },
 };
 
 export const connectorTypeSchema = z.enum([
@@ -2074,6 +2224,12 @@ export const connectorTypeSchema = z.enum([
   "plausible",
   "productlane",
   "resend",
+  "apify",
+  "bright-data",
+  "browserbase",
+  "browserless",
+  "firecrawl",
+  "scrapeninja",
 ]);
 
 /**
@@ -2238,6 +2394,7 @@ export function hasRequiredScopes(
 /**
  * Get required secret names for a connector's api-token auth method.
  * Returns null if the connector type does not support api-token auth.
+ * Note: Returns ALL required field names regardless of storage type (secret or variable).
  */
 export function getApiTokenRequiredSecretNames(
   type: ConnectorType,
@@ -2254,19 +2411,51 @@ export function getApiTokenRequiredSecretNames(
 }
 
 /**
- * Derive which connector types are "connected" via api-token based on present user secret names.
- * A connector type is considered connected if all its required api-token secrets exist.
+ * Get required field names grouped by storage type for a connector's api-token auth method.
+ * Returns null if the connector type does not support api-token auth.
+ */
+export function getApiTokenFieldsByType(
+  type: ConnectorType,
+): { secrets: string[]; variables: string[] } | null {
+  const config = CONNECTOR_TYPES[type];
+  const apiTokenConfig = config.authMethods["api-token"] as
+    | ConnectorAuthMethodConfig
+    | undefined;
+  if (!apiTokenConfig) return null;
+
+  const secretNames: string[] = [];
+  const variableNames: string[] = [];
+  for (const [name, cfg] of Object.entries(apiTokenConfig.secrets)) {
+    if (!cfg.required) continue;
+    if (cfg.type === "variable") {
+      variableNames.push(name);
+    } else {
+      secretNames.push(name);
+    }
+  }
+  return { secrets: secretNames, variables: variableNames };
+}
+
+/**
+ * Derive which connector types are "connected" via api-token based on present user secret and variable names.
+ * A connector type is considered connected if all its required api-token fields exist
+ * (secrets checked against userSecretNames, variables checked against userVariableNames).
  */
 export function deriveApiTokenConnectedTypes(
   userSecretNames: Set<string>,
+  userVariableNames?: Set<string>,
 ): ConnectorType[] {
   const allTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
   const connected: ConnectorType[] = [];
+  const varNames = userVariableNames ?? new Set<string>();
 
   for (const type of allTypes) {
-    const requiredNames = getApiTokenRequiredSecretNames(type);
-    if (!requiredNames || requiredNames.length === 0) continue;
-    if (requiredNames.every((name) => userSecretNames.has(name))) {
+    const fields = getApiTokenFieldsByType(type);
+    if (!fields) continue;
+    if (fields.secrets.length === 0 && fields.variables.length === 0) continue;
+    const secretsOk = fields.secrets.every((name) => userSecretNames.has(name));
+    const variablesOk = fields.variables.every((name) => varNames.has(name));
+    if (secretsOk && variablesOk) {
       connected.push(type);
     }
   }
