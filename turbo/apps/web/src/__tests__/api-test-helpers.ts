@@ -38,6 +38,7 @@ import { telegramInstallations } from "../db/schema/telegram-installation";
 import { telegramMessages } from "../db/schema/telegram-message";
 import { telegramUserLinks } from "../db/schema/telegram-user-link";
 import { orgCache } from "../db/schema/org-cache";
+import { orgMembersCache } from "../db/schema/org-members-cache";
 import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
@@ -2988,4 +2989,20 @@ export async function getOrgCacheEntry(clerkOrgId: string) {
     .where(eq(orgCache.clerkOrgId, clerkOrgId))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * Insert an org_members_cache entry for testing cache behavior.
+ */
+export async function insertOrgMembersCacheEntry(entry: {
+  clerkOrgId: string;
+  userId: string;
+  cachedAt?: Date;
+}): Promise<void> {
+  initServices();
+  await globalThis.services.db.insert(orgMembersCache).values({
+    clerkOrgId: entry.clerkOrgId,
+    userId: entry.userId,
+    cachedAt: entry.cachedAt ?? new Date(),
+  });
 }

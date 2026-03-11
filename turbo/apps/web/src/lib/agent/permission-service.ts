@@ -63,16 +63,21 @@ export async function canAccessCompose(
       (m) => m.organization.id === compose.clerkOrgId,
     );
     if (isMember) {
-      await globalThis.services.db
+      // Fire-and-forget: cache write is non-critical, don't block access
+      const now = new Date();
+      globalThis.services.db
         .insert(orgMembersCache)
         .values({
           clerkOrgId: compose.clerkOrgId,
           userId,
-          cachedAt: new Date(),
+          cachedAt: now,
         })
         .onConflictDoUpdate({
           target: [orgMembersCache.clerkOrgId, orgMembersCache.userId],
-          set: { cachedAt: new Date() },
+          set: { cachedAt: now },
+        })
+        .catch((err: unknown) => {
+          log.warn("Failed to update org_members_cache", { err });
         });
       return true;
     }
