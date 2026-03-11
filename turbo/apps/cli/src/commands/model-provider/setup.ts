@@ -37,13 +37,10 @@ interface SetupInput {
 
 function validateProviderType(typeStr: string): ModelProviderType {
   if (!Object.keys(MODEL_PROVIDER_TYPES).includes(typeStr)) {
-    console.error(chalk.red(`✗ Invalid type "${typeStr}"`));
-    console.error();
-    console.error("Valid types:");
-    for (const [t, config] of Object.entries(MODEL_PROVIDER_TYPES)) {
-      console.error(`  ${chalk.cyan(t)} - ${config.label}`);
-    }
-    process.exit(1);
+    const validTypes = Object.keys(MODEL_PROVIDER_TYPES).join(", ");
+    throw new Error(`Invalid type "${typeStr}"`, {
+      cause: new Error(`Valid types: ${validTypes}`),
+    });
   }
   return typeStr as ModelProviderType;
 }
@@ -60,13 +57,9 @@ function validateModel(
   }
 
   if (models && !models.includes(modelStr)) {
-    console.error(chalk.red(`✗ Invalid model "${modelStr}"`));
-    console.error();
-    console.error("Valid models:");
-    for (const m of models) {
-      console.error(`  ${chalk.cyan(m)}`);
-    }
-    process.exit(1);
+    throw new Error(`Invalid model "${modelStr}"`, {
+      cause: new Error(`Valid models: ${models.join(", ")}`),
+    });
   }
   return modelStr;
 }
@@ -77,15 +70,12 @@ function validateAuthMethod(
 ): string | never {
   const authMethods = getAuthMethodsForType(type);
   if (!authMethods || !(authMethodStr in authMethods)) {
-    console.error(chalk.red(`✗ Invalid auth method "${authMethodStr}"`));
-    console.error();
-    console.error("Valid auth methods:");
-    if (authMethods) {
-      for (const [method, config] of Object.entries(authMethods)) {
-        console.error(`  ${chalk.cyan(method)} - ${config.label}`);
-      }
-    }
-    process.exit(1);
+    const validMethods = authMethods
+      ? Object.keys(authMethods).join(", ")
+      : "none";
+    throw new Error(`Invalid auth method "${authMethodStr}"`, {
+      cause: new Error(`Valid auth methods: ${validMethods}`),
+    });
   }
   return authMethodStr;
 }
@@ -103,8 +93,7 @@ function parseSecrets(
 ): Record<string, string> {
   const secretsConfig = getSecretsForAuthMethod(type, authMethod);
   if (!secretsConfig) {
-    console.error(chalk.red(`✗ Invalid auth method "${authMethod}"`));
-    process.exit(1);
+    throw new Error(`Invalid auth method "${authMethod}"`);
   }
 
   const secretNames = Object.keys(secretsConfig);
@@ -113,21 +102,14 @@ function parseSecrets(
   const firstArg = secretArgs[0];
   if (secretArgs.length === 1 && firstArg && !firstArg.includes("=")) {
     if (secretNames.length !== 1) {
-      console.error(
-        chalk.red("✗ Must use KEY=VALUE format for multi-secret auth methods"),
+      throw new Error(
+        "Must use KEY=VALUE format for multi-secret auth methods",
+        { cause: new Error(`Required secrets: ${secretNames.join(", ")}`) },
       );
-      console.error();
-      console.error("Required secrets:");
-      for (const [name, fieldConfig] of Object.entries(secretsConfig)) {
-        const requiredNote = fieldConfig.required ? " (required)" : "";
-        console.error(`  ${chalk.cyan(name)}${requiredNote}`);
-      }
-      process.exit(1);
     }
     const firstSecretName = secretNames[0];
     if (!firstSecretName) {
-      console.error(chalk.red("✗ No secrets defined for this auth method"));
-      process.exit(1);
+      throw new Error("No secrets defined for this auth method");
     }
     return { [firstSecretName]: firstArg };
   }
@@ -137,10 +119,9 @@ function parseSecrets(
   for (const arg of secretArgs) {
     const eqIndex = arg.indexOf("=");
     if (eqIndex === -1) {
-      console.error(chalk.red(`✗ Invalid secret format "${arg}"`));
-      console.error();
-      console.error("Use KEY=VALUE format (e.g., AWS_REGION=us-east-1)");
-      process.exit(1);
+      throw new Error(`Invalid secret format "${arg}"`, {
+        cause: new Error("Use KEY=VALUE format (e.g., AWS_REGION=us-east-1)"),
+      });
     }
     const key = arg.slice(0, eqIndex);
     const value = arg.slice(eqIndex + 1);
@@ -159,36 +140,29 @@ function validateSecrets(
 ): void {
   const secretsConfig = getSecretsForAuthMethod(type, authMethod);
   if (!secretsConfig) {
-    console.error(chalk.red(`✗ Invalid auth method "${authMethod}"`));
-    process.exit(1);
+    throw new Error(`Invalid auth method "${authMethod}"`);
   }
 
   // Check required fields
   for (const [name, fieldConfig] of Object.entries(secretsConfig)) {
     if (fieldConfig.required && !secrets[name]) {
-      console.error(chalk.red(`✗ Missing required secret: ${name}`));
-      console.error();
-      console.error("Required secrets:");
-      for (const [n, fc] of Object.entries(secretsConfig)) {
-        if (fc.required) {
-          console.error(`  ${chalk.cyan(n)} - ${fc.label}`);
-        }
-      }
-      process.exit(1);
+      const requiredNames = Object.entries(secretsConfig)
+        .filter(([, fc]) => fc.required)
+        .map(([n]) => n)
+        .join(", ");
+      throw new Error(`Missing required secret: ${name}`, {
+        cause: new Error(`Required secrets: ${requiredNames}`),
+      });
     }
   }
 
   // Check for unknown fields
   for (const name of Object.keys(secrets)) {
     if (!(name in secretsConfig)) {
-      console.error(chalk.red(`✗ Unknown secret: ${name}`));
-      console.error();
-      console.error("Valid secrets:");
-      for (const [n, fc] of Object.entries(secretsConfig)) {
-        const requiredNote = fc.required ? " (required)" : " (optional)";
-        console.error(`  ${chalk.cyan(n)}${requiredNote}`);
-      }
-      process.exit(1);
+      const validNames = Object.keys(secretsConfig).join(", ");
+      throw new Error(`Unknown secret: ${name}`, {
+        cause: new Error(`Valid secrets: ${validNames}`),
+      });
     }
   }
 }
@@ -221,35 +195,22 @@ function handleNonInteractiveMode(options: {
       const defaultAuthMethod = getDefaultAuthMethod(type);
       const authMethods = getAuthMethodsForType(type);
       if (!defaultAuthMethod || !authMethods) {
-        console.error(chalk.red(`✗ Provider "${type}" requires --auth-method`));
-        process.exit(1);
+        throw new Error(`Provider "${type}" requires --auth-method`);
       }
       // If there's only one auth method, use it; otherwise require explicit selection
       const authMethodNames = Object.keys(authMethods);
       if (authMethodNames.length === 1) {
         authMethod = authMethodNames[0]!;
       } else {
-        console.error(
-          chalk.red(
-            `✗ --auth-method is required for "${type}" (multiple auth methods available)`,
-          ),
+        const methods = authMethodNames.join(", ");
+        throw new Error(
+          `--auth-method is required for "${type}" (multiple auth methods available)`,
+          {
+            cause: new Error(
+              `Available: ${methods}. Example: vm0 model-provider setup --type ${type} --auth-method ${authMethodNames[0]} --secret KEY=VALUE`,
+            ),
+          },
         );
-        console.error();
-        console.error("Available auth methods:");
-        for (const [method, config] of Object.entries(authMethods)) {
-          const defaultNote = method === defaultAuthMethod ? " (default)" : "";
-          console.error(
-            `  ${chalk.cyan(method)} - ${config.label}${defaultNote}`,
-          );
-        }
-        console.error();
-        console.error("Example:");
-        console.error(
-          chalk.cyan(
-            `  vm0 model-provider setup --type ${type} --auth-method ${authMethodNames[0]} --secret KEY=VALUE`,
-          ),
-        );
-        process.exit(1);
       }
     }
 
@@ -271,8 +232,7 @@ function handleNonInteractiveMode(options: {
   const secretArgs = options.secret;
   const firstArg = secretArgs[0];
   if (!firstArg) {
-    console.error(chalk.red("✗ Secret is required"));
-    process.exit(1);
+    throw new Error("Secret is required");
   }
 
   // If KEY=VALUE format, extract the value
@@ -410,8 +370,7 @@ async function promptForSecrets(
   const secretsConfig = getSecretsForAuthMethod(type, authMethod);
 
   if (!secretsConfig) {
-    console.error(chalk.red(`✗ Invalid auth method "${authMethod}"`));
-    process.exit(1);
+    throw new Error(`Invalid auth method "${authMethod}"`);
   }
 
   const secrets: Record<string, string> = {};
@@ -460,13 +419,11 @@ async function promptForSecrets(
 
 async function handleInteractiveMode(): Promise<SetupInput | null> {
   if (!isInteractive()) {
-    console.error(chalk.red("✗ Interactive mode requires a TTY"));
-    console.error();
-    console.error("Use non-interactive mode:");
-    console.error(
-      chalk.cyan('  vm0 model-provider setup --type <type> --secret "<value>"'),
-    );
-    process.exit(1);
+    throw new Error("Interactive mode requires a TTY", {
+      cause: new Error(
+        'Use non-interactive mode: vm0 model-provider setup --type <type> --secret "<value>"',
+      ),
+    });
   }
 
   // Fetch configured providers to annotate choices
@@ -644,8 +601,7 @@ export const setupCommand = new Command()
             model: options.model,
           });
         } else if (options.type || secretArgs.length > 0) {
-          console.error(chalk.red("✗ Both --type and --secret are required"));
-          process.exit(1);
+          throw new Error("Both --type and --secret are required");
         } else {
           const result = await handleInteractiveMode();
           if (result === null) {
