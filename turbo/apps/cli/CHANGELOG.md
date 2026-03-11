@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.56.1](https://github.com/vm0-ai/vm0/compare/cli-v9.56.0...cli-v9.56.1) (2026-03-11)
+
+
+### Bug Fixes
+
+* resolve 6 high dependency vulnerabilities ([#4428](https://github.com/vm0-ai/vm0/issues/4428)) ([052a1e6](https://github.com/vm0-ai/vm0/commit/052a1e6eba0205a3b3a67ef5be6cdeab727a1765)), closes [#4392](https://github.com/vm0-ai/vm0/issues/4392)
+
 ## [9.56.0](https://github.com/vm0-ai/vm0/compare/cli-v9.55.5...cli-v9.56.0) (2026-03-11)
 
 

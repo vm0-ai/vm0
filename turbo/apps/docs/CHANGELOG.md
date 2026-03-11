@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.2](https://github.com/vm0-ai/vm0/compare/docs-v2.16.1...docs-v2.16.2) (2026-03-11)
+
+
+### Bug Fixes
+
+* resolve 6 high dependency vulnerabilities ([#4428](https://github.com/vm0-ai/vm0/issues/4428)) ([052a1e6](https://github.com/vm0-ai/vm0/commit/052a1e6eba0205a3b3a67ef5be6cdeab727a1765)), closes [#4392](https://github.com/vm0-ai/vm0/issues/4392)
+
 ## [2.16.1](https://github.com/vm0-ai/vm0/compare/docs-v2.16.0...docs-v2.16.1) (2026-03-11)
 
 

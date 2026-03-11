@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.99.1](https://github.com/vm0-ai/vm0/compare/web-v12.99.0...web-v12.99.1) (2026-03-11)
+
+
+### Bug Fixes
+
+* resolve 6 high dependency vulnerabilities ([#4428](https://github.com/vm0-ai/vm0/issues/4428)) ([052a1e6](https://github.com/vm0-ai/vm0/commit/052a1e6eba0205a3b3a67ef5be6cdeab727a1765)), closes [#4392](https://github.com/vm0-ai/vm0/issues/4392)
+* sanitize api error responses to prevent information leakage ([#4426](https://github.com/vm0-ai/vm0/issues/4426)) ([916f9b8](https://github.com/vm0-ai/vm0/commit/916f9b83e387359a9c1246d57ecf250e9bb1ff55))
+
+
+### Refactoring
+
+* remove redundant experimental_runner from e2e tests ([#4431](https://github.com/vm0-ai/vm0/issues/4431)) ([e09c02b](https://github.com/vm0-ai/vm0/commit/e09c02bb55d2b30fe58f47e5d8b88775a986ed17))
+* rename clerk identity fields to provider-agnostic names ([#4412](https://github.com/vm0-ai/vm0/issues/4412)) ([5595b54](https://github.com/vm0-ai/vm0/commit/5595b5447af0346c36094130e54dd060091f1600))
+* stop populating scope_id in INSERT operations (5b-3) ([#4427](https://github.com/vm0-ai/vm0/issues/4427)) ([cba12ad](https://github.com/vm0-ai/vm0/commit/cba12ade6da8d6cdc4e8284a9607ae6bdb8a68d6))
+* **web:** remove defensive try-catch in axiom client query ([#4433](https://github.com/vm0-ai/vm0/issues/4433)) ([b2a38c0](https://github.com/vm0-ai/vm0/commit/b2a38c0701309791fc68d60955939cff266487e5)), closes [#4432](https://github.com/vm0-ai/vm0/issues/4432)
+* **web:** remove defensive try-catch in runner group token generation ([#4448](https://github.com/vm0-ai/vm0/issues/4448)) ([0a207b6](https://github.com/vm0-ai/vm0/commit/0a207b606cfe8b6aff587b80e46c5f1aec10082c)), closes [#4434](https://github.com/vm0-ai/vm0/issues/4434)
+
 ## [12.99.0](https://github.com/vm0-ai/vm0/compare/web-v12.98.0...web-v12.99.0) (2026-03-11)
 
 
