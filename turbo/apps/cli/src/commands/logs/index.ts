@@ -172,12 +172,9 @@ function getLogType(options: {
   ].filter(Boolean).length;
 
   if (selected > 1) {
-    console.error(
-      chalk.red(
-        "Options --agent, --system, --metrics, and --network are mutually exclusive",
-      ),
+    throw new Error(
+      "Options --agent, --system, --metrics, and --network are mutually exclusive",
     );
-    process.exit(1);
   }
 
   if (options.system) return "system";
@@ -231,12 +228,9 @@ export const logsCommand = new Command()
           options.all === true,
         ].filter(Boolean).length;
         if (countModes > 1) {
-          console.error(
-            chalk.red(
-              "Options --tail, --head, and --all are mutually exclusive",
-            ),
+          throw new Error(
+            "Options --tail, --head, and --all are mutually exclusive",
           );
-          process.exit(1);
         }
 
         // Parse since option

@@ -63,12 +63,10 @@ function parseContextOptions(options: SearchOptions): {
     : contextN;
 
   if (isNaN(before) || before < 0 || before > 10) {
-    console.error(chalk.red("✗ --before-context must be between 0 and 10"));
-    process.exit(1);
+    throw new Error("--before-context must be between 0 and 10");
   }
   if (isNaN(after) || after < 0 || after > 10) {
-    console.error(chalk.red("✗ --after-context must be between 0 and 10"));
-    process.exit(1);
+    throw new Error("--after-context must be between 0 and 10");
   }
 
   return { before, after };
@@ -81,8 +79,7 @@ function parseLimit(value: string | undefined): number | undefined {
   if (!value) return undefined;
   const limit = parseInt(value, 10);
   if (isNaN(limit) || limit < 1 || limit > 50) {
-    console.error(chalk.red("✗ --limit must be between 1 and 50"));
-    process.exit(1);
+    throw new Error("--limit must be between 1 and 50");
   }
   return limit;
 }
