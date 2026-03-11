@@ -406,7 +406,6 @@ export {
   getConnectorDerivedNames,
   getConnectorProvidedSecretNames,
   getConnectorOAuthConfig,
-  getServiceConfig,
   hasRequiredScopes,
   getApiTokenRequiredSecretNames,
   getApiTokenFieldsByType,
@@ -425,13 +424,14 @@ export {
   type ConnectorSecretConfig,
   type ConnectorAuthMethodConfig,
   type ConnectorOAuthConfig,
-  type ServiceConfig,
   // Computer connector
   computerConnectorContract,
   computerConnectorCreateResponseSchema,
   type ComputerConnectorContract,
   type ComputerConnectorCreateResponse,
 } from "./connectors";
+
+export { getServiceConfig, type ServiceConfig } from "./services";
 
 export {
   userPreferencesContract,

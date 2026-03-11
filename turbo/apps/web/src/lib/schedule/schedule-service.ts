@@ -837,7 +837,7 @@ async function executeSchedule(
   }
 
   // Load org tier and slug from org_cache (Clerk as source of truth)
-  const orgData = await getOrgData(schedule.clerkOrgId).catch(() => null);
+  const orgData = await getOrgData(schedule.clerkOrgId);
 
   // Build callbacks for run completion notifications
   const callbacks: Array<{ url: string; secret: string; payload: unknown }> =
@@ -849,9 +849,7 @@ async function executeSchedule(
     userId: schedule.userId,
   };
 
-  const prefs = orgData
-    ? await getUserPreferences(orgData.clerkOrgId, schedule.userId)
-    : { timezone: null, notifyEmail: false, notifySlack: true };
+  const prefs = await getUserPreferences(orgData.clerkOrgId, schedule.userId);
 
   // Email schedule notification callback (only if Resend is configured AND user opted in)
   if (globalThis.services.env.RESEND_API_KEY && prefs.notifyEmail) {
@@ -898,9 +896,9 @@ async function executeSchedule(
       agentName: compose.name,
       callbacks,
       scopeId: schedule.scopeId,
-      scopeSlug: orgData?.slug,
-      clerkOrgId: orgData?.clerkOrgId,
-      scopeTier: orgData ? scopeTierSchema.parse(orgData.tier) : undefined,
+      scopeSlug: orgData.slug,
+      clerkOrgId: orgData.clerkOrgId,
+      scopeTier: scopeTierSchema.parse(orgData.tier),
     });
     runId = result.runId;
   } catch (error) {

@@ -220,12 +220,10 @@ export async function prepareForExecution(
     throw badRequest("Agent compose not found");
   }
 
-  const agentOrgData = await getOrgData(agentComposeInfo.clerkOrgId).catch(
-    () => null,
-  );
+  const agentOrgData = await getOrgData(agentComposeInfo.clerkOrgId);
   const agentScopeInfo = {
     clerkOrgId: agentComposeInfo.clerkOrgId,
-    scopeSlug: agentOrgData?.slug ?? "",
+    scopeSlug: agentOrgData.slug,
   };
 
   // Auto-create artifact and memory storages if they don't exist yet

@@ -23,6 +23,7 @@ import devtoIcon from "./icons/devto.svg";
 import docusignIcon from "./icons/docusign.svg";
 import dropboxIcon from "./icons/dropbox.svg";
 import elevenlabsIcon from "./icons/elevenlabs.svg";
+import exploriumIcon from "./icons/explorium.svg";
 import falIcon from "./icons/fal.svg";
 import figmaIcon from "./icons/figma.svg";
 import firefliesIcon from "./icons/fireflies.svg";
@@ -121,6 +122,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   docusign: docusignIcon,
   dropbox: dropboxIcon,
   elevenlabs: elevenlabsIcon,
+  explorium: exploriumIcon,
   fal: falIcon,
   figma: figmaIcon,
   fireflies: firefliesIcon,

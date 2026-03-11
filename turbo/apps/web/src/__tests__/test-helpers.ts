@@ -403,6 +403,10 @@ export function testContext(): TestContext {
     // Create new controller for next test
     controller = new AbortController();
 
+    // Restore any stubbed globals (e.g. Date from setSystemTime) so the
+    // next test's beforeEach runs with the real clock.
+    vi.unstubAllGlobals();
+
     // Reset mocks and cached user for next test
     mockHelpers = null;
     mockUser = null;
