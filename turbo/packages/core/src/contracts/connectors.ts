@@ -3072,9 +3072,7 @@ const SERVICE_CONFIGS: Partial<Record<ConnectorType, ServiceConfig>> = {
     apis: [api("https://www.wrike.com/api/v4", bearerAuth("WRIKE_TOKEN"))],
   },
   zapier: {
-    services: [
-      service("https://actions.zapier.com", bearerAuth("ZAPIER_TOKEN")),
-    ],
+    apis: [api("https://actions.zapier.com", bearerAuth("ZAPIER_TOKEN"))],
   },
   zapsign: {
     apis: [
