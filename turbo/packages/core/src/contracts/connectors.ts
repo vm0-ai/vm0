@@ -853,6 +853,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  serpapi: {
+    label: "SerpApi",
+    helpText:
+      "Connect your SerpApi account to search Google, Bing, YouTube and other search engines programmatically",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [SerpApi](https://serpapi.com/)\n2. Go to **Manage API Key** in the dashboard\n3. Copy your API key",
+        secrets: {
+          SERPAPI_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-serpapi-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   twenty: {
     label: "Twenty",
     helpText:
@@ -2666,6 +2686,7 @@ export const connectorTypeSchema = z.enum([
   "qdrant",
   "qiita",
   "reportei",
+  "serpapi",
   "twenty",
   "zeptomail",
 ]);

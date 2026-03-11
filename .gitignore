@@ -182,3 +182,5 @@ __pycache__/
 
 # Debug screenshots
 debug-*.png
+
+.claude/scheduled_tasks.lock
