@@ -483,9 +483,10 @@ export function ZeroOnboarding({
       {selectedConnectorType && (
         <ConnectModal
           onClose={() => {
-            // Select the skill after successful connect
-            toggleSkill(selectedConnectorType);
             setSelected(null);
+          }}
+          onSuccess={() => {
+            toggleSkill(selectedConnectorType);
           }}
         />
       )}
