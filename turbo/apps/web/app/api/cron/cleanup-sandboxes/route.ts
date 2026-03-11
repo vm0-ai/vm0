@@ -217,9 +217,7 @@ const router = tsr.router(cronCleanupSandboxesContract, {
         } catch (error) {
           const errorMessage =
             error instanceof Error ? error.message : "Unknown error";
-          log.error(
-            `Failed to cleanup compose job ${job.id}: ${errorMessage}`,
-          );
+          log.error(`Failed to cleanup compose job ${job.id}: ${errorMessage}`);
           composeJobErrors++;
         }
       }
