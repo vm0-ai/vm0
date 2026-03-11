@@ -151,6 +151,7 @@ function otherSkills(): ComboboxOption[] {
 function productivitySkills(): ComboboxOption[] {
   return [
     s("bitrix", "bitrix", "https://vm0.ai/skills/bitrix.svg"),
+    s("clickup", "clickup", "https://cdn.simpleicons.org/clickup"),
     s("figma", "figma", "https://cdn.simpleicons.org/figma"),
     s(
       "google-sheets",

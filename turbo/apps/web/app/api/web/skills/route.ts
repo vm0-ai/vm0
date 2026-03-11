@@ -276,6 +276,12 @@ const SKILL_CATEGORIES: Record<
     description:
       "Access design files, comments, components, and projects in Figma workspaces via REST API",
   },
+  clickup: {
+    category: "Productivity",
+    logo: "https://cdn.simpleicons.org/clickup",
+    description:
+      "Manage tasks, lists, folders, spaces, and workspaces in ClickUp for project management",
+  },
   jira: {
     category: "Productivity",
     logo: "https://cdn.simpleicons.org/jira",
@@ -606,6 +612,7 @@ const SKILLS_WITH_DOCS = new Set([
   "browserbase",
   "browserless",
   "chatwoot",
+  "clickup",
   "cloudflare-tunnel",
   "cloudinary",
   "cronlytic",
