@@ -1666,7 +1666,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {} as Record<string, string>,
   },
   plausible: {
     label: "Plausible",
