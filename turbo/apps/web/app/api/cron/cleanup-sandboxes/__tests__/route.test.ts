@@ -3,8 +3,7 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestRun,
-  completeTestRun,
+  createTestRunInDb,
   createTestComposeJob,
   findTestComposeJob,
   deleteStaleTestComposeJobs,
@@ -108,8 +107,8 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should NOT cleanup sandbox with recent heartbeat", async () => {
-      // Create a run that will be in running state
-      const { runId } = await createTestRun(testComposeId, "Test prompt");
+      // Create a run directly in pending state
+      const { runId } = await createTestRunInDb(user.userId, testComposeId);
 
       // Run cleanup immediately (heartbeat is recent)
       const request = createTestRequest(
@@ -137,8 +136,8 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       // Record the time when run is created
       const runCreationTime = Date.now();
 
-      // Create a run - it will be in "pending" status
-      const { runId } = await createTestRun(testComposeId, "Test prompt");
+      // Create a run directly in pending state
+      const { runId } = await createTestRunInDb(user.userId, testComposeId);
 
       // Mock Date.now to return time 6 minutes in the future (past pending timeout of 5 minutes)
       context.mocks.dateNow.mockReturnValue(runCreationTime + 6 * 60 * 1000);
@@ -169,9 +168,10 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       // Record the time when run is created
       const runCreationTime = Date.now();
 
-      // Create and complete a run
-      const { runId } = await createTestRun(testComposeId, "Test prompt");
-      await completeTestRun(user.userId, runId);
+      // Create a run directly in completed state
+      const { runId } = await createTestRunInDb(user.userId, testComposeId, {
+        status: "completed",
+      });
 
       // Mock Date.now to return time 10 minutes in the future
       context.mocks.dateNow.mockReturnValue(runCreationTime + 10 * 60 * 1000);
@@ -201,22 +201,22 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       // Record start time
       const runCreationTime = Date.now();
 
-      // Create run for first user
-      const { runId: runId1 } = await createTestRun(
+      // Create run for first user directly in pending state
+      const { runId: runId1 } = await createTestRunInDb(
+        user.userId,
         testComposeId,
-        "Test prompt 1",
       );
 
       // Create another user and their compose
-      await context.setupUser({ prefix: "other" });
+      const otherUser = await context.setupUser({ prefix: "other" });
       const { composeId: otherComposeId } = await createTestCompose(
         `cleanup-other-${Date.now()}`,
       );
 
-      // Create run for second user
-      const { runId: runId2 } = await createTestRun(
+      // Create run for second user directly in pending state
+      const { runId: runId2 } = await createTestRunInDb(
+        otherUser.userId,
         otherComposeId,
-        "Test prompt 2",
       );
 
       // Mock Date.now to return time 6 minutes in the future (past pending timeout of 5 minutes)
@@ -248,8 +248,8 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       // Record the time when run is created
       const runCreationTime = Date.now();
 
-      // Create a run - it will be in "pending" status
-      const { runId } = await createTestRun(testComposeId, "Test prompt");
+      // Create a run directly in pending state
+      const { runId } = await createTestRunInDb(user.userId, testComposeId);
 
       // Mock Date.now to return time 6 minutes in the future (past pending timeout of 5 minutes)
       context.mocks.dateNow.mockReturnValue(runCreationTime + 6 * 60 * 1000);

@@ -611,6 +611,39 @@ export async function createTestSessionWithConversation(
   return session!;
 }
 
+/**
+ * Create a run record directly in the database, bypassing the API route and dispatch.
+ * Use this when you need a run in a specific status without triggering dispatch logic
+ * (e.g., for cron cleanup tests that need runs in pending/running state).
+ */
+export async function createTestRunInDb(
+  userId: string,
+  agentComposeId: string,
+  options?: {
+    status?: string;
+    prompt?: string;
+  },
+): Promise<{ runId: string }> {
+  // Look up scopeId via compose
+  const [compose] = await globalThis.services.db
+    .select({ scopeId: scopes.id })
+    .from(agentComposes)
+    .innerJoin(scopes, eq(agentComposes.clerkOrgId, scopes.clerkOrgId))
+    .where(eq(agentComposes.id, agentComposeId))
+    .limit(1);
+  if (!compose) {
+    throw new Error(`Compose ${agentComposeId} not found`);
+  }
+  // Create a version for the run
+  const versionId = await createTestComposeVersion(agentComposeId, userId);
+  // Create run directly
+  const run = await createTestRunDirect(userId, versionId, compose.scopeId, {
+    status: options?.status ?? "pending",
+    prompt: options?.prompt ?? "test prompt",
+  });
+  return { runId: run.id };
+}
+
 export async function createTestRun(
   agentComposeId: string,
   prompt: string,
