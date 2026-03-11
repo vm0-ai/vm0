@@ -19,6 +19,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { isNotNull, asc } from "drizzle-orm";
 import postgres from "postgres";
 
+import { createClerkClient } from "@clerk/backend";
 import { scopes } from "../../../src/db/schema/scope";
 
 // ---------------------------------------------------------------------------
@@ -186,7 +187,6 @@ async function main() {
     if (!clerkSecretKey) {
       throw new Error("CLERK_SECRET_KEY is required for --migrate");
     }
-    const { createClerkClient } = await import("@clerk/backend");
     client = createClerkClient({ secretKey: clerkSecretKey });
   }
 
