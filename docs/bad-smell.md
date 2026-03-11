@@ -99,15 +99,15 @@ function generateToken() {
 
 // ❌ Bad: Dynamic import for "lazy loading"
 async function handleClick() {
-  const { E2BExecutor } = await import("./e2b-executor");
-  await E2BExecutor.doSomething();
+  const { RunService } = await import("./run-service");
+  await RunService.doSomething();
 }
 
 // ✅ Good: Static import
-import { E2BExecutor } from "./e2b-executor";
+import { RunService } from "./run-service";
 
 async function handleClick() {
-  await E2BExecutor.doSomething();
+  await RunService.doSomething();
 }
 ```
 

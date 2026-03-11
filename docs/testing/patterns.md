@@ -23,7 +23,6 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 // ========== MOCKS SECTION ==========
 // Only mock EXTERNAL third-party packages
 vi.mock("@clerk/nextjs/server");
-vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
@@ -43,10 +42,10 @@ describe("POST /api/agent/runs", () => {
     testComposeId = composeId;
   });
 
-  it("should create a run with running status", async () => {
+  it("should create a run with pending status", async () => {
     const data = await createTestRun(testComposeId, "Test prompt");
 
-    expect(data.status).toBe("running");
+    expect(data.status).toBe("pending");
     expect(data.runId).toBeDefined();
   });
 });
@@ -56,7 +55,7 @@ The key points:
 
 1. **Mocks at the top, before imports**. Vitest hoists `vi.mock()` calls, so putting them at the top makes the hoisting explicit.
 
-2. **Only mock external dependencies**. Clerk, E2B, S3, Axiom are third-party SaaS requiring API keys. Our internal services use real implementations.
+2. **Only mock external dependencies**. Clerk, S3, Axiom are third-party SaaS requiring API keys. Our internal services use real implementations.
 
 3. **`testContext()` outside describe blocks**. This provides `setupMocks()` for external service mocks and `setupUser()` for isolated user context.
 
@@ -568,7 +567,6 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 // ========== MOCKS SECTION ==========
 // Only mock EXTERNAL third-party packages
 vi.mock("@clerk/nextjs/server");
-vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
@@ -589,14 +587,14 @@ describe("POST /api/agent/runs", () => {
   });
 
   // ========== TEST CASES ==========
-  it("should create a run with running status", async () => {
+  it("should create a run with pending status", async () => {
     // Given - fixtures prepared in beforeEach
 
     // When - execute behavior under test
     const data = await createTestRun(testComposeId, "Test prompt");
 
     // Then - assert the HTTP response
-    expect(data.status).toBe("running");
+    expect(data.status).toBe("pending");
     expect(data.runId).toBeDefined();
   });
 
@@ -631,7 +629,6 @@ Note what's absent compared to older patterns:
 
 - `@clerk/nextjs` - Authentication service
 - `@aws-sdk/client-s3` - Cloud storage
-- `@e2b/code-interpreter` - Sandbox service
 - `@anthropic-ai/sdk` - AI API
 - `@axiomhq/js` - Logging SaaS
 - `@stripe/stripe-js` - Payment API

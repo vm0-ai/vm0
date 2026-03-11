@@ -526,7 +526,7 @@ it("should display schedule details", async () => {
 | Aspect | Web | CLI |
 |--------|-----|-----|
 | **Entry Point** | API route handler | `command.parseAsync()` |
-| **External (Mock)** | Clerk, AWS, E2B | Web API (MSW), Ably |
+| **External (Mock)** | Clerk, AWS | Web API (MSW), Ably |
 | **Internal (Real)** | Database, services | Filesystem, config, validators |
 | **State Storage** | Database | Filesystem (temp dirs) |
 | **User Interface** | HTTP response | Console output + exit codes |

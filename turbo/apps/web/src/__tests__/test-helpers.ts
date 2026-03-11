@@ -48,7 +48,6 @@ import { slackUserLinks } from "../db/schema/slack-user-link";
 import { agentComposes } from "../db/schema/agent-compose";
 import { connectors } from "../db/schema/connector";
 import { scopes } from "../db/schema/scope";
-import { scopeMembers } from "../db/schema/scope-member";
 import { userCache } from "../db/schema/user-cache";
 import { encryptSecretValue } from "../lib/crypto/secrets-encryption";
 import { env } from "../env";
@@ -199,7 +198,7 @@ interface TestContext {
   ): Promise<{ id: string; name: string; scopeId: string; clerkOrgId: string }>;
   createConnector(
     scopeId: string,
-    options?: { type?: string; authMethod?: string },
+    options: { userId: string; type?: string; authMethod?: string },
   ): Promise<{ id: string; type: string }>;
 }
 
@@ -510,12 +509,6 @@ export function testContext(): TestContext {
       // Pre-populate org cache for getOrgData()
       await insertOrgCacheEntry({ clerkOrgId, slug: scopeSlug });
 
-      await globalThis.services.db.insert(scopeMembers).values({
-        scopeId: scopeData.id,
-        userId: adminUserId,
-        role: "admin",
-      });
-
       const [compose] = await globalThis.services.db
         .insert(agentComposes)
         .values({
@@ -624,12 +617,6 @@ export function testContext(): TestContext {
     // Pre-populate org cache for getOrgData()
     await insertOrgCacheEntry({ clerkOrgId, slug: scopeSlug });
 
-    await globalThis.services.db.insert(scopeMembers).values({
-      scopeId: scopeData.id,
-      userId: vm0UserId,
-      role: "admin",
-    });
-
     // Create a compose for this user
     const [compose] = await globalThis.services.db
       .insert(agentComposes)
@@ -659,21 +646,12 @@ export function testContext(): TestContext {
    */
   async function createConnector(
     scopeId: string,
-    options: { type?: string; authMethod?: string } = {},
+    options: { userId: string; type?: string; authMethod?: string },
   ): Promise<{ id: string; type: string }> {
-    const { type = "github", authMethod = "oauth" } = options;
+    const { userId, type = "github", authMethod = "oauth" } = options;
 
     initServices();
 
-    // Look up userId and clerkOrgId from scope_members + scopes
-    const [member] = await globalThis.services.db
-      .select({ userId: scopeMembers.userId })
-      .from(scopeMembers)
-      .where(eq(scopeMembers.scopeId, scopeId))
-      .limit(1);
-    if (!member) {
-      throw new Error(`No scope member found for scope ${scopeId}`);
-    }
     const [scope] = await globalThis.services.db
       .select({ clerkOrgId: scopes.clerkOrgId })
       .from(scopes)
@@ -684,7 +662,7 @@ export function testContext(): TestContext {
       .insert(connectors)
       .values({
         scopeId,
-        userId: member.userId,
+        userId,
         clerkOrgId: scope!.clerkOrgId,
         type,
         authMethod,

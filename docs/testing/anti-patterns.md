@@ -137,7 +137,6 @@ What should you mock? Only external third-party packages:
 // These are correct
 vi.mock("@clerk/nextjs");
 vi.mock("@aws-sdk/client-s3");
-vi.mock("@e2b/code-interpreter");
 vi.mock("@anthropic-ai/sdk");
 ```
 

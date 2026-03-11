@@ -8,7 +8,6 @@
   - [Storage](#storage)
   - [Orchestration](#orchestration)
 - [Infrastructure](#infrastructure)
-  - [E2B Sandbox Backend](#e2b-sandbox-backend)
   - [Firecracker Sandbox Backend](#firecracker-sandbox-backend)
   - [Cloudflare R2 Object Storage](#cloudflare-r2-object-storage)
 - [References](#references)
@@ -19,7 +18,7 @@
 
 VM0 is a platform for running AI agent workflows in isolated sandbox environments. The platform consists of three core subsystems:
 
-1. **Compute**: Sandbox execution (E2B or Firecracker microVMs)
+1. **Compute**: Sandbox execution (Firecracker microVMs)
 2. **Storage**: User data persistence (Cloudflare R2)
 3. **Orchestration**: Job queue and runner coordination (PostgreSQL)
 
@@ -31,9 +30,9 @@ User CLI/API Request
   ↓
 Web API (Next.js)
   ↓
-Executor Selection (E2B or Runner)
+Runner Executor (job queue)
   ↓
-Compute Layer (Sandbox)
+Compute Layer (Firecracker microVM)
   ↓ (downloads from)
 Storage Layer (R2)
   ↓ (reports via webhooks)
@@ -50,31 +49,13 @@ User receives results
 
 The compute layer executes agent workflows in isolated sandbox environments.
 
-#### Two Execution Backends
+#### Execution Backend: Firecracker
 
-**1. E2B (Default)**
-- Third-party managed sandbox service (e2b.dev)
-- Container-based isolation
-- Template system for environment configuration
-- 2-hour timeout (production), 1-hour (development)
-- Fire-and-forget execution with webhook callbacks
-
-**2. Firecracker (Experimental)**
 - Self-hosted microVMs on bare metal Linux
 - Hardware-level isolation via KVM
 - 3-5 second boot time
 - Network namespace isolation per VM
-- Requires runner infrastructure
-
-#### Executor Selection
-
-```
-if experimental_runner.group specified:
-  → Queue job in runner_job_queue
-  → Firecracker runner polls and executes
-else:
-  → Execute immediately via E2B
-```
+- Jobs queued in `runner_job_queue`, runners poll and execute
 
 ---
 
@@ -143,27 +124,6 @@ The orchestration layer coordinates job execution between web API and runners.
 ---
 
 ## Infrastructure
-
-### E2B Sandbox Backend
-
-E2B (e2b.dev) is a third-party managed sandbox service that provides containerized execution environments.
-
-#### Integration
-
-- SDK: `@e2b/code-interpreter`
-- Template: Specified via `agent.image` in `vm0.yaml` (defaults to `vm0/claude-code`)
-- Authentication: `E2B_API_KEY`
-
-#### Execution Flow
-
-1. Create sandbox with environment variables
-2. Upload Python/Node.js scripts via tar bundle
-3. Download storages from R2 via presigned URLs
-4. Restore session history (for resume)
-5. Start agent CLI in background (nohup)
-6. Webhook reports progress and completion
-
----
 
 ### Firecracker Sandbox Backend
 
@@ -282,7 +242,6 @@ Sandboxes download directly from R2 (no proxy through VM0 API):
 ### External
 
 - [Firecracker](https://github.com/firecracker-microvm/firecracker)
-- [E2B](https://e2b.dev)
 - [Cloudflare R2](https://developers.cloudflare.com/r2/)
 - [mitmproxy](https://mitmproxy.org/)
 

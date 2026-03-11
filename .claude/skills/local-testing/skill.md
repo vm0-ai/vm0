@@ -23,7 +23,7 @@ cd turbo && pnpm vitest run
 ### CLI E2E Tests
 
 ```bash
-# 1. Start dev server with tunnel (required for E2B webhooks)
+# 1. Start dev server with tunnel (required for webhooks)
 /dev-start
 
 # 2. Wait for server to be ready, then authenticate CLI
@@ -47,7 +47,6 @@ Ensure the following are set in `turbo/apps/web/.env.local`:
 | `USE_MOCK_CLAUDE` | Enable mock Claude for testing (set to `true`) | Yes for E2E |
 | `CONCURRENT_RUN_LIMIT` | Set to `0` to disable run limits during testing | Yes for E2E |
 | `SECRETS_ENCRYPTION_KEY` | Encryption key for secrets | Yes |
-| `E2B_API_KEY` | E2B sandbox API key | Yes for E2E |
 | `CLERK_SECRET_KEY` | Clerk authentication | Yes |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk authentication | Yes |
 
@@ -81,7 +80,7 @@ This will:
 - Start the Turbo dev server in background
 - Automatically start a Cloudflare tunnel for the web app
 - Set `VM0_API_URL` to the tunnel URL
-- Enable E2B webhooks to reach your local server
+- Enable webhooks to reach your local server
 
 ### Manual Start
 
@@ -96,7 +95,7 @@ Check for these indicators in the logs (`/dev-logs`):
 - `Ready in XXXms` for each app
 - No fatal errors
 
-**Important**: The tunnel URL changes each time you restart. E2B sandbox webhooks use this URL to send events back to your local server.
+**Important**: The tunnel URL changes each time you restart. Sandbox webhooks use this URL to send events back to your local server.
 
 ---
 
@@ -204,12 +203,10 @@ BATS_TEST_TIMEOUT=60 \
 
 When `USE_MOCK_CLAUDE=true`:
 
-1. The web server passes this to E2B sandbox via environment variable
+1. The web server passes this to the sandbox via environment variable
 2. Inside sandbox, `run-agent.ts` checks for `USE_MOCK_CLAUDE`
-3. Instead of running real `claude` CLI, it runs `/usr/local/bin/vm0-agent/mock-claude.mjs`
+3. Instead of running real `claude` CLI, it runs the mock Claude script
 4. Mock Claude executes the prompt as a bash command and outputs Claude-compatible JSONL
-
-Mock Claude location: `turbo/packages/sandbox-scripts/src/scripts/mock-claude.ts`
 
 ---
 
@@ -240,7 +237,7 @@ cd turbo && pnpm vitest run
 
 ### Problem: "Failed to fetch events" or Run Hangs
 
-**Cause**: E2B sandbox cannot reach the tunnel URL (webhooks fail)
+**Cause**: Sandbox cannot reach the tunnel URL (webhooks fail)
 
 **Solution**:
 1. Check if tunnel is active: `/dev-logs tunnel`
@@ -271,7 +268,7 @@ echo "CONCURRENT_RUN_LIMIT=0" >> turbo/apps/web/.env.local
 **Solution**:
 - Ensure `BATS_TEST_TIMEOUT` is set appropriately (60s for parallel tests)
 - Check server logs for errors: `/dev-logs error`
-- Verify E2B sandbox is starting: `/dev-logs sandbox`
+- Verify sandbox is starting: `/dev-logs sandbox`
 
 ### Problem: "SECRETS_ENCRYPTION_KEY" Missing or Other Environment Variables Missing
 
@@ -365,5 +362,4 @@ vm0 run <agent-name> --artifact-name <artifact> "echo hello"
 
 - CLI E2E Testing Patterns: `.claude/skills/cli-e2e-testing/skill.md`
 - Dev Server Management: `.claude/skills/dev-server/skill.md`
-- Mock Claude Source: `turbo/packages/sandbox-scripts/src/scripts/mock-claude.ts`
-- E2B Executor: `turbo/apps/web/src/lib/run/executors/e2b-executor.ts`
+- Runner Executor: `turbo/apps/web/src/lib/run/executors/runner-executor.ts`

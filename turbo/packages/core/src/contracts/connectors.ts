@@ -2293,6 +2293,24 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  granola: {
+    label: "Granola",
+    helpText:
+      "Connect your Granola account to access meeting notes, transcripts, summaries, and calendar event details",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        secrets: {
+          GRANOLA_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-granola-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   podchaser: {
     label: "Podchaser",
     helpText:
@@ -2707,6 +2725,7 @@ export const connectorTypeSchema = z.enum([
   "explorium",
   "devto",
   "fal",
+  "granola",
   "podchaser",
   "pushinator",
   "qdrant",

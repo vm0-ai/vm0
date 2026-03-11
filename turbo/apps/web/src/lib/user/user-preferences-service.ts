@@ -1,10 +1,7 @@
 import { eq, and } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
-import { scopeMembers } from "../../db/schema/scope-member";
-import { scopes } from "../../db/schema/scope";
 import { orgMembersCache } from "../../db/schema/org-members-cache";
 import { badRequest } from "../errors";
-import { getPrimaryAdminMembership } from "../scope/scope-member-service";
 import { logger } from "../logger";
 
 const log = logger("service:user-preferences");
@@ -164,40 +161,6 @@ function buildClerkMetadata(prefs: {
 }
 
 /**
- * Dual-write preferences to Clerk metadata + local cache (fire-and-forget).
- */
-async function dualWriteToClerk(
-  scopeId: string,
-  userId: string,
-  prefs: { timezone?: string; notifyEmail?: boolean; notifySlack?: boolean },
-  result: UserPreferences,
-): Promise<void> {
-  try {
-    const [scope] = await globalThis.services.db
-      .select({ clerkOrgId: scopes.clerkOrgId })
-      .from(scopes)
-      .where(eq(scopes.id, scopeId))
-      .limit(1);
-
-    if (scope) {
-      const client = await clerkClient();
-      await client.organizations.updateOrganizationMembershipMetadata({
-        organizationId: scope.clerkOrgId,
-        userId,
-        publicMetadata: buildClerkMetadata(prefs),
-      });
-
-      await upsertMemberCache(scope.clerkOrgId, userId, result);
-    }
-  } catch (err) {
-    log.error("Failed to write preferences to Clerk metadata", {
-      error: err,
-      userId,
-    });
-  }
-}
-
-/**
  * Get user preferences from Clerk membership metadata.
  *
  * Fast path: when sessionClaims are provided (JWT context), reads from
@@ -230,9 +193,10 @@ export async function getUserPreferences(
 }
 
 /**
- * Update user preferences on scope_members (primary admin membership)
+ * Update user preferences in Clerk membership metadata and local cache.
  */
 export async function updateUserPreferences(
+  clerkOrgId: string,
   userId: string,
   prefs: { timezone?: string; notifyEmail?: boolean; notifySlack?: boolean },
 ): Promise<UserPreferences> {
@@ -242,46 +206,38 @@ export async function updateUserPreferences(
     }
   }
 
-  const memberRecord = await getPrimaryAdminMembership(userId);
+  // Read existing preferences to merge with partial update
+  const existing = await getCachedMemberPreferences(clerkOrgId, userId);
 
-  if (!memberRecord) {
-    throw badRequest("User has no scope membership");
-  }
-
-  const setValues: Record<string, unknown> = { updatedAt: new Date() };
-  if (prefs.timezone !== undefined) {
-    setValues.timezone = prefs.timezone;
-  }
-  if (prefs.notifyEmail !== undefined) {
-    setValues.notifyEmail = prefs.notifyEmail;
-  }
-  if (prefs.notifySlack !== undefined) {
-    setValues.notifySlack = prefs.notifySlack;
-  }
-
-  const [updated] = await globalThis.services.db
-    .update(scopeMembers)
-    .set(setValues)
-    .where(eq(scopeMembers.id, memberRecord.id))
-    .returning({
-      timezone: scopeMembers.timezone,
-      notifyEmail: scopeMembers.notifyEmail,
-      notifySlack: scopeMembers.notifySlack,
-    });
-
-  const result: UserPreferences = {
-    timezone: updated?.timezone ?? null,
-    notifyEmail: updated?.notifyEmail ?? false,
-    notifySlack: updated?.notifySlack ?? true,
+  const merged: UserPreferences = {
+    timezone: prefs.timezone !== undefined ? prefs.timezone : existing.timezone,
+    notifyEmail:
+      prefs.notifyEmail !== undefined
+        ? prefs.notifyEmail
+        : existing.notifyEmail,
+    notifySlack:
+      prefs.notifySlack !== undefined
+        ? prefs.notifySlack
+        : existing.notifySlack,
   };
 
-  await dualWriteToClerk(memberRecord.scopeId, userId, prefs, result);
+  // Write to Clerk membership metadata
+  const client = await clerkClient();
+  await client.organizations.updateOrganizationMembershipMetadata({
+    organizationId: clerkOrgId,
+    userId,
+    publicMetadata: buildClerkMetadata(prefs),
+  });
 
-  return result;
+  // Update local cache with merged result
+  await upsertMemberCache(clerkOrgId, userId, merged);
+
+  return merged;
 }
 
 /**
- * Set user timezone if not already set (for auto-detection on first login)
+ * Set user timezone if not already set (for auto-detection on first login).
+ * Writes to Clerk membership metadata and local cache.
  */
 export async function setTimezoneIfNotSet(
   clerkOrgId: string,
@@ -300,33 +256,20 @@ export async function setTimezoneIfNotSet(
   );
 
   if (existingTimezone === null) {
-    const memberRecord = await getPrimaryAdminMembership(userId);
+    try {
+      const client = await clerkClient();
+      await client.organizations.updateOrganizationMembershipMetadata({
+        organizationId: clerkOrgId,
+        userId,
+        publicMetadata: { timezone },
+      });
 
-    if (memberRecord) {
-      await globalThis.services.db
-        .update(scopeMembers)
-        .set({
-          timezone,
-          updatedAt: new Date(),
-        })
-        .where(eq(scopeMembers.id, memberRecord.id));
-
-      // Dual-write timezone to Clerk membership publicMetadata + local cache
-      try {
-        const client = await clerkClient();
-        await client.organizations.updateOrganizationMembershipMetadata({
-          organizationId: clerkOrgId,
-          userId,
-          publicMetadata: { timezone },
-        });
-
-        await upsertMemberCache(clerkOrgId, userId, { timezone });
-      } catch (err) {
-        log.error("Failed to write timezone to Clerk metadata", {
-          error: err,
-          userId,
-        });
-      }
+      await upsertMemberCache(clerkOrgId, userId, { timezone });
+    } catch (err) {
+      log.error("Failed to write timezone to Clerk metadata", {
+        error: err,
+        userId,
+      });
     }
   }
 }

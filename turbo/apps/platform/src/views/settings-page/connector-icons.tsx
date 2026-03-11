@@ -29,6 +29,7 @@ import figmaIcon from "./icons/figma.svg";
 import firefliesIcon from "./icons/fireflies.svg";
 import firecrawlIcon from "./icons/firecrawl.svg";
 import garminConnectIcon from "./icons/garmin-connect.svg";
+import granolaIcon from "./icons/granola.svg";
 import githubIcon from "./icons/github.svg";
 import heygenIcon from "./icons/heygen.svg";
 import huggingFaceIcon from "./icons/hugging-face.svg";
@@ -128,6 +129,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   fireflies: firefliesIcon,
   firecrawl: firecrawlIcon,
   "garmin-connect": garminConnectIcon,
+  granola: granolaIcon,
   github: githubIcon,
   gmail: gmailIcon,
   heygen: heygenIcon,

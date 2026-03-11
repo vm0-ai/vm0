@@ -62,7 +62,7 @@ Our rule is simple: **mock at the system boundary, nowhere else.**
 
 ```
 External (MOCK):
-├── Third-party services (Clerk, E2B, AWS, Anthropic)
+├── Third-party services (Clerk, AWS, Anthropic)
 ├── External APIs (via MSW)
 └── Node.js built-ins when necessary (child_process)
 
@@ -212,7 +212,6 @@ Test route handlers directly, mock only external services:
 
 ```typescript
 vi.mock("@clerk/nextjs/server");
-vi.mock("@e2b/code-interpreter");
 
 it("should create a run", async () => {
   mockAuth({ userId: "user-123" });
@@ -220,7 +219,7 @@ it("should create a run", async () => {
   const response = await POST(request);
   const data = await response.json();
 
-  expect(data.status).toBe("running");
+  expect(data.status).toBe("pending");
 });
 ```
 
