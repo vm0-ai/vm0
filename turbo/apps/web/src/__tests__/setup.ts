@@ -149,6 +149,9 @@ vi.mock("@slack/web-api", () => {
       add: vi.fn().mockResolvedValue({ ok: true }),
       remove: vi.fn().mockResolvedValue({ ok: true }),
     },
+    users: {
+      info: vi.fn().mockResolvedValue({ ok: true, user: undefined }),
+    },
     assistant: {
       threads: {
         setStatus: vi.fn().mockResolvedValue({ ok: true }),
