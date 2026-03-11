@@ -46,7 +46,7 @@ export async function GET(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, scopeId: tokenScopeId } = authCtx;
+  const { userId, orgId: tokenOrgId } = authCtx;
 
   const db = globalThis.services.db;
 
@@ -122,7 +122,7 @@ export async function GET(request: Request) {
   }
 
   // Resolve user's scope for resource queries
-  const { scope } = await resolveScope(userId, null, null, tokenScopeId);
+  const { scope } = await resolveScope(userId, null, null, tokenOrgId);
 
   // Get user's existing secrets, vars, connectors
   const [userSecrets, userVars, userConnectors] = await Promise.all([

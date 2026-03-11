@@ -87,7 +87,7 @@ const router = tsr.router(runnersJobClaimContract, {
         await validateRunnerGroupScope(
           auth.userId,
           jobWithRun.job.runnerGroup,
-          auth.scopeId,
+          auth.orgId,
         );
       } catch (error) {
         return createErrorResponse(

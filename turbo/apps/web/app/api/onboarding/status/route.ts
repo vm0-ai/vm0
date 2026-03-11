@@ -3,6 +3,7 @@ import { onboardingStatusContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { getScopeByOrgId } from "../../../../src/lib/scope/scope-service";
 import { isNotFound } from "../../../../src/lib/errors";
 import { modelProviders } from "../../../../src/db/schema/model-provider";
 import {
@@ -36,20 +37,23 @@ const router = tsr.router(onboardingStatusContract, {
       null;
 
     try {
-      const { scope } = await resolveScope(userId);
+      const { scope: resolvedScope } = await resolveScope(userId);
       hasScope = true;
 
       // Check model provider
       const [provider] = await globalThis.services.db
         .select({ id: modelProviders.id })
         .from(modelProviders)
-        .where(eq(modelProviders.orgId, scope.orgId))
+        .where(eq(modelProviders.orgId, resolvedScope.orgId))
         .limit(1);
 
       hasModelProvider = provider !== undefined;
 
+      // Query the scope record to get defaultAgentComposeId
+      const scopeRecord = await getScopeByOrgId(resolvedScope.orgId);
+
       // Check default agent and get its name + metadata
-      if (scope.defaultAgentComposeId) {
+      if (scopeRecord?.defaultAgentComposeId) {
         const [compose] = await globalThis.services.db
           .select({
             name: agentComposes.name,
@@ -61,13 +65,13 @@ const router = tsr.router(onboardingStatusContract, {
             agentComposeVersions,
             eq(agentComposes.headVersionId, agentComposeVersions.id),
           )
-          .where(eq(agentComposes.id, scope.defaultAgentComposeId))
+          .where(eq(agentComposes.id, scopeRecord.defaultAgentComposeId))
           .limit(1);
 
         if (compose) {
           hasDefaultAgent = true;
           defaultAgentName = compose.name;
-          defaultAgentComposeId = scope.defaultAgentComposeId;
+          defaultAgentComposeId = scopeRecord.defaultAgentComposeId;
 
           // Extract metadata from compose content
           const parsed = agentComposeContentSchema.safeParse(compose.content);

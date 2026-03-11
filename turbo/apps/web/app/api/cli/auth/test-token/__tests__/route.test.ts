@@ -8,6 +8,7 @@ import { reloadEnv } from "../../../../../../src/env";
 const mockGetUserList = vi.fn();
 const mockGetOrganizationMembershipList = vi.fn();
 const mockCreateOrganization = vi.fn();
+const mockGetOrganization = vi.fn();
 vi.mock("@clerk/nextjs/server", () => ({
   clerkClient: vi.fn(async () => ({
     users: {
@@ -16,6 +17,7 @@ vi.mock("@clerk/nextjs/server", () => ({
     },
     organizations: {
       createOrganization: mockCreateOrganization,
+      getOrganization: mockGetOrganization,
     },
   })),
   auth: vi.fn(async () => ({ userId: null, orgId: null, orgRole: null })),
@@ -31,6 +33,7 @@ describe("/api/cli/auth/test-token", () => {
     mockGetUserList.mockReset();
     mockGetOrganizationMembershipList.mockReset();
     mockCreateOrganization.mockReset();
+    mockGetOrganization.mockReset();
     mockGetUserList.mockResolvedValue({
       data: [{ id: "user_test123" }],
     });
@@ -49,6 +52,20 @@ describe("/api/cli/auth/test-token", () => {
       ],
     });
     mockCreateOrganization.mockResolvedValue({ id: "org_mock_test" });
+    mockGetOrganization.mockImplementation(
+      (params: { organizationId?: string; slug?: string }) => {
+        const orgId = params.organizationId;
+        if (orgId === "org_test_token") {
+          return Promise.resolve({
+            id: "org_test_token",
+            slug: "test-token-org",
+            name: "test-token-org",
+            publicMetadata: {},
+          });
+        }
+        return Promise.reject(new Error(`Organization ${orgId} not found`));
+      },
+    );
   });
 
   describe("environment-based access control", () => {

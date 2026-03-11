@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, scopeId: tokenScopeId } = authCtx;
+  const { userId, orgId: tokenOrgId } = authCtx;
 
   const body = (await request.json()) as { email: string };
   if (!body.email) {
@@ -37,9 +37,9 @@ export async function POST(request: Request) {
     const { scope, member } = await requireScopeFromRequest(
       request,
       userId,
-      tokenScopeId,
+      tokenOrgId,
     );
-    await inviteMember(userId, scope.id, member.role, body.email);
+    await inviteMember(userId, scope.orgId, member.role, body.email);
     return NextResponse.json({ message: `Invitation sent to ${body.email}` });
   } catch (error) {
     if (isBadRequest(error)) {

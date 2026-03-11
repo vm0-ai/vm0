@@ -3,6 +3,7 @@ import { eq, inArray } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { scopes } from "../../db/schema/scope";
 import { requireScopeMember, getDefaultScope } from "./scope-member-service";
+import { getOrgData } from "./org-cache-service";
 import {
   badRequest,
   notFound,
@@ -63,7 +64,7 @@ function validateScopeSlug(slug: string): void {
 /**
  * Get a scope by its ID
  */
-export async function getScopeById(id: string) {
+async function getScopeById(id: string) {
   const result = await globalThis.services.db
     .select()
     .from(scopes)
@@ -97,21 +98,6 @@ export async function getScopeByOrgId(orgId: string) {
     .limit(1);
 
   return result[0] ?? null;
-}
-
-/**
- * Get scopes by multiple Clerk organization IDs in a single query.
- * Returns a Map from orgId to scope record.
- */
-export async function getScopesByOrgIds(
-  orgIds: string[],
-): Promise<Map<string, typeof scopes.$inferSelect>> {
-  if (orgIds.length === 0) return new Map();
-  const results = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(inArray(scopes.orgId, orgIds));
-  return new Map(results.map((s) => [s.orgId, s]));
 }
 
 /**
@@ -187,7 +173,11 @@ export async function getDefaultScopeByUserId(userId: string) {
  */
 export async function ensureDefaultScope(userId: string) {
   const existing = await getDefaultScopeByUserId(userId);
-  if (existing) return existing;
+  if (existing) {
+    // org_cache found the org, look up DB record for full scope data
+    const scopeRecord = await getScopeByOrgId(existing.orgId);
+    if (scopeRecord) return scopeRecord;
+  }
 
   return await discoverAndCreateScope(userId);
 }
@@ -369,7 +359,7 @@ export function isOfficialRunnerGroup(group: string): boolean {
 export async function validateRunnerGroupScope(
   userId: string,
   group: string,
-  tokenScopeId?: string | null,
+  tokenOrgId?: string | null,
 ): Promise<void> {
   const scopeSlug = group.split("/")[0];
   if (!scopeSlug) {
@@ -381,10 +371,10 @@ export async function validateRunnerGroupScope(
     return;
   }
 
-  // CLI token with stored scope_id — verify slug matches directly
-  if (tokenScopeId) {
-    const scope = await getScopeById(tokenScopeId);
-    if (scope && scope.slug === scopeSlug) {
+  // CLI token with stored org_id — resolve slug from org_cache
+  if (tokenOrgId) {
+    const orgData = await getOrgData(tokenOrgId);
+    if (orgData.slug === scopeSlug) {
       return;
     }
     throw forbidden(

@@ -3,7 +3,6 @@ import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { userPreferencesContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { getScopeById } from "../../../../src/lib/scope/scope-service";
 import {
   getUserPreferences,
   updateUserPreferences,
@@ -24,11 +23,10 @@ const router = tsr.router(userPreferencesContract, {
 
     const { sessionClaims, orgId: authOrgId } = await auth();
 
-    // Clerk session → orgId from JWT; CLI token → look up from scopeId
+    // Clerk session → orgId from JWT; CLI token → use orgId from token
     let orgId = authOrgId;
-    if (!orgId && ctx.scopeId) {
-      const scope = await getScopeById(ctx.scopeId);
-      orgId = scope?.orgId ?? null;
+    if (!orgId && ctx.orgId) {
+      orgId = ctx.orgId;
     }
     if (!orgId) {
       return createErrorResponse("BAD_REQUEST", "No organization context");
@@ -61,12 +59,11 @@ const router = tsr.router(userPreferencesContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    // Clerk session → orgId from JWT; CLI token → look up from scopeId
+    // Clerk session → orgId from JWT; CLI token → use orgId from token
     const { orgId } = await auth();
     let resolvedOrgId = orgId;
-    if (!resolvedOrgId && ctx.scopeId) {
-      const scope = await getScopeById(ctx.scopeId);
-      resolvedOrgId = scope?.orgId ?? null;
+    if (!resolvedOrgId && ctx.orgId) {
+      resolvedOrgId = ctx.orgId;
     }
     if (!resolvedOrgId) {
       return createErrorResponse("BAD_REQUEST", "No organization context");

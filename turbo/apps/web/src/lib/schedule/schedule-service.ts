@@ -348,7 +348,6 @@ function resolveTrigger(request: DeployScheduleRequest): {
 export async function deploySchedule(
   userId: string,
   orgId: string,
-  scopeId: string,
   request: DeployScheduleRequest,
 ): Promise<{ schedule: ScheduleResponse; created: boolean }> {
   log.debug(
@@ -890,7 +889,6 @@ async function executeSchedule(
       volumeVersions: schedule.volumeVersions ?? undefined,
       agentName: compose.name,
       callbacks,
-      scopeId: schedule.scopeId ?? undefined,
       scopeSlug: orgData.slug,
       orgId: orgData.orgId,
       scopeTier: scopeTierSchema.parse(orgData.tier),

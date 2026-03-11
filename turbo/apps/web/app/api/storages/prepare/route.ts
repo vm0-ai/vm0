@@ -96,7 +96,7 @@ const router = tsr.router(storagesPrepareContract, {
         },
       };
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     // Resolve user's default scope
     const scopeSlug = new URL(request.url).searchParams.get("scope");
@@ -105,7 +105,7 @@ const router = tsr.router(storagesPrepareContract, {
       userId,
       scopeSlug,
       orgParam,
-      tokenScopeId,
+      tokenOrgId,
     );
 
     const {
@@ -149,7 +149,6 @@ const router = tsr.router(storagesPrepareContract, {
       .insert(storages)
       .values({
         userId: storageUserId,
-        scopeId: runtimeScope.id,
         orgId: runtimeScope.orgId,
         name: storageName,
         type: storageType,

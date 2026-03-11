@@ -57,7 +57,6 @@ async function refreshConnectorToken(
   connectorSecrets: Record<string, string>,
   accessTokenName: string,
   orgId: string,
-  scopeId: string | null,
   userId: string,
   runId: string,
 ): Promise<Response | null> {
@@ -94,7 +93,6 @@ async function refreshConnectorToken(
     );
     await upsertConnectorSecret(
       orgId,
-      scopeId,
       userId,
       accessTokenName,
       result.accessToken,
@@ -102,7 +100,6 @@ async function refreshConnectorToken(
     if (result.refreshToken) {
       await upsertConnectorSecret(
         orgId,
-        scopeId,
         userId,
         refreshTokenName,
         result.refreshToken,
@@ -235,9 +232,9 @@ export async function POST(request: Request) {
   }
   const { connectorType, api: matchedApi } = match;
 
-  // Look up run to get scopeId
+  // Look up run to get orgId
   const [run] = await globalThis.services.db
-    .select({ scopeId: agentRuns.scopeId, orgId: agentRuns.orgId })
+    .select({ orgId: agentRuns.orgId })
     .from(agentRuns)
     .where(and(eq(agentRuns.id, body.runId), eq(agentRuns.userId, auth.userId)))
     .limit(1);
@@ -293,7 +290,6 @@ export async function POST(request: Request) {
       connectorSecrets,
       accessTokenName,
       run.orgId,
-      run.scopeId,
       auth.userId,
       body.runId,
     );

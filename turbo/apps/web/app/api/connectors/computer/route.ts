@@ -25,7 +25,7 @@ const router = tsr.router(computerConnectorContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     try {
       const scopeSlug = new URL(request.url).searchParams.get("scope");
@@ -34,13 +34,9 @@ const router = tsr.router(computerConnectorContract, {
         userId,
         scopeSlug,
         orgParam,
-        tokenScopeId,
+        tokenOrgId,
       );
-      const result = await createComputerConnector(
-        scope.orgId,
-        scope.id,
-        userId,
-      );
+      const result = await createComputerConnector(scope.orgId, userId);
       return { status: 200 as const, body: result };
     } catch (error) {
       if (isBadRequest(error)) {
@@ -63,7 +59,7 @@ const router = tsr.router(computerConnectorContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     const scopeSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
@@ -71,7 +67,7 @@ const router = tsr.router(computerConnectorContract, {
       userId,
       scopeSlug,
       orgParam,
-      tokenScopeId,
+      tokenOrgId,
     );
     const connector = await getConnector(scope.orgId, userId, "computer");
     if (!connector) {
@@ -91,7 +87,7 @@ const router = tsr.router(computerConnectorContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     try {
       const scopeSlug = new URL(request.url).searchParams.get("scope");
@@ -100,7 +96,7 @@ const router = tsr.router(computerConnectorContract, {
         userId,
         scopeSlug,
         orgParam,
-        tokenScopeId,
+        tokenOrgId,
       );
       await deleteComputerConnector(scope.orgId, userId);
       return { status: 204 as const, body: undefined };

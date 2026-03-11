@@ -24,13 +24,13 @@ const router = tsr.router(scopeDefaultAgentContract, {
         },
       };
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     const { scope, member } = await resolveScope(
       userId,
       query.scope,
       query.org,
-      tokenScopeId,
+      tokenOrgId,
     );
 
     if (member.role !== "admin") {
@@ -76,7 +76,7 @@ const router = tsr.router(scopeDefaultAgentContract, {
     await globalThis.services.db
       .update(scopes)
       .set({ defaultAgentComposeId: agentComposeId })
-      .where(eq(scopes.id, scope.id));
+      .where(eq(scopes.orgId, scope.orgId));
 
     // Dual-write to Clerk org publicMetadata (fire-and-forget)
     try {

@@ -40,7 +40,7 @@ export async function enqueueRun(
 
   // Resolve orgId (caller should have already resolved it, but fall back)
   let orgId: string;
-  if (params.scopeId && params.orgId) {
+  if (params.orgId) {
     orgId = params.orgId;
   } else {
     const { scope } = await getDefaultScope(userId);

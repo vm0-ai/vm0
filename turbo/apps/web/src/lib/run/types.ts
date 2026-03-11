@@ -106,7 +106,6 @@ export interface ExecutionContext {
  * Resolved once in buildExecutionContext to avoid redundant DB lookups.
  */
 export interface RuntimeScope {
-  id: string;
   slug: string;
   orgId: string;
 }

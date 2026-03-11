@@ -438,6 +438,15 @@ export function testContext(): TestContext {
       // Mock Clerk for this user
       mockClerk({ userId });
 
+      // Pre-populate org_cache for the default Clerk org so that
+      // getOrgData() works without hitting the Clerk API mock.
+      const defaultOrgId = `org_mock_${userId}`;
+      const defaultOrgSlug = `org-${userId}`
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .slice(0, 64);
+      await insertOrgCacheEntry({ orgId: defaultOrgId, slug: defaultOrgSlug });
+
       // Create scope via API (uses same suffix for derivability)
       const scopeData = await createTestScope(`scope-${suffix}`);
       controller.signal.throwIfAborted();

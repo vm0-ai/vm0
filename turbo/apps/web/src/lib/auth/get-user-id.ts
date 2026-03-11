@@ -8,11 +8,13 @@ const log = logger("auth:user");
 
 /**
  * Authentication context returned by getAuthContext.
- * - scopeId: present when auth is via a CLI token that has a stored scope
+ * - scopeId: present when auth is via a CLI token that has a stored scope (legacy, prefer orgId)
+ * - orgId: present when auth is via a CLI token that has a stored org
  */
 type AuthContext = {
   userId: string;
   scopeId: string | null;
+  orgId: string | null;
 };
 
 /**
@@ -31,7 +33,7 @@ export async function getAuthContext(
   // Session auth via Clerk
   const { userId } = await auth();
   if (userId) {
-    return { userId, scopeId: null };
+    return { userId, scopeId: null, orgId: null };
   }
 
   if (!authHeader?.startsWith("Bearer ")) {
@@ -68,7 +70,11 @@ export async function getAuthContext(
     .where(eq(cliTokens.token, token))
     .catch((err) => log.error("Failed to update token lastUsedAt:", err));
 
-  return { userId: tokenRecord.userId, scopeId: tokenRecord.scopeId };
+  return {
+    userId: tokenRecord.userId,
+    scopeId: tokenRecord.scopeId,
+    orgId: tokenRecord.orgId,
+  };
 }
 
 /**

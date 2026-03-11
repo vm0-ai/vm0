@@ -41,7 +41,7 @@ const router = tsr.router(composesMainContract, {
         },
       };
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     // Resolve scope: for cross-scope lookups (shared agents), skip membership
     // check and rely on canAccessCompose for authorization instead.
@@ -82,7 +82,7 @@ const router = tsr.router(composesMainContract, {
         userId,
         null,
         null,
-        tokenScopeId,
+        tokenOrgId,
       );
       orgId = resolvedScope.orgId;
     }
@@ -163,7 +163,7 @@ const router = tsr.router(composesMainContract, {
         },
       };
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     const { content } = body;
 
@@ -275,7 +275,7 @@ const router = tsr.router(composesMainContract, {
     const versionId = computeComposeVersionId(resolvedContent);
 
     // Get user's scope (required for compose creation)
-    const { scope } = await resolveScope(userId, null, null, tokenScopeId);
+    const { scope } = await resolveScope(userId, null, null, tokenOrgId);
 
     // Check compose and version existence in parallel
     const [existingComposes, existingVersions] = await Promise.all([

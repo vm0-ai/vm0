@@ -180,7 +180,6 @@ export async function getSecretValues(
  */
 export async function upsertSecretByScope(
   orgId: string,
-  scopeId: string | null,
   userId: string,
   name: string,
   value: string,
@@ -225,7 +224,6 @@ export async function upsertSecretByScope(
  */
 export async function setSecret(
   orgId: string,
-  scopeId: string,
   userId: string,
   name: string,
   value: string,

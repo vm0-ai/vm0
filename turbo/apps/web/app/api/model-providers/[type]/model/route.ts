@@ -23,7 +23,7 @@ const router = tsr.router(modelProvidersUpdateModelContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     log.debug("updating model provider model", {
       userId,
@@ -38,7 +38,7 @@ const router = tsr.router(modelProvidersUpdateModelContract, {
         userId,
         scopeSlug,
         orgParam,
-        tokenScopeId,
+        tokenOrgId,
       );
       const provider = await updateModelProviderModel(
         scope.orgId,

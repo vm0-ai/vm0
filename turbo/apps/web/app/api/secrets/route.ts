@@ -24,7 +24,7 @@ const router = tsr.router(secretsMainContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     const scopeSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
@@ -32,7 +32,7 @@ const router = tsr.router(secretsMainContract, {
       userId,
       scopeSlug,
       orgParam,
-      tokenScopeId,
+      tokenOrgId,
     );
     const secrets = await listSecrets(scope.orgId, userId);
 
@@ -61,7 +61,7 @@ const router = tsr.router(secretsMainContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     const { name, value, description } = body;
 
@@ -74,11 +74,10 @@ const router = tsr.router(secretsMainContract, {
         userId,
         scopeSlug,
         orgParam,
-        tokenScopeId,
+        tokenOrgId,
       );
       const secret = await setSecret(
         scope.orgId,
-        scope.id,
         userId,
         name,
         value,

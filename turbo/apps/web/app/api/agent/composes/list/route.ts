@@ -22,7 +22,7 @@ const router = tsr.router(composesListContract, {
         },
       };
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     // Resolve scope: use ?scope= query param or default scope
     let orgId: string;
@@ -31,7 +31,7 @@ const router = tsr.router(composesListContract, {
         userId,
         query.scope,
         query.org,
-        tokenScopeId,
+        tokenOrgId,
       );
       orgId = resolvedScope.orgId;
     } catch (error) {

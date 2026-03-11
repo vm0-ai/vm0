@@ -21,7 +21,7 @@ const router = tsr.router(connectorsMainContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     const scopeSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
@@ -29,7 +29,7 @@ const router = tsr.router(connectorsMainContract, {
       userId,
       scopeSlug,
       orgParam,
-      tokenScopeId,
+      tokenOrgId,
     );
     const connectorList = await listConnectors(scope.orgId, userId);
     const configuredTypes = getConfiguredConnectorTypes(

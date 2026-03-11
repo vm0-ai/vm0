@@ -31,7 +31,7 @@ describe("GET /api/onboarding/status", () => {
 
   it("should return needsOnboarding=true when user has no scope", async () => {
     const userId = `no-scope-user-${Date.now()}`;
-    mockClerk({ userId });
+    mockClerk({ userId, clerkOrgs: [] });
 
     const request = createTestRequest(
       "http://localhost:3000/api/onboarding/status",

@@ -12,8 +12,7 @@ import {
 } from "../../../../../src/lib/schedule";
 import { logger } from "../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../src/lib/errors";
-import { resolveScopeId } from "../../../../../src/lib/scope/scope-member-service";
-import { getScopeById } from "../../../../../src/lib/scope/scope-service";
+import { resolveOrgId } from "../../../../../src/lib/scope/scope-member-service";
 
 const log = logger("api:schedules:name");
 
@@ -30,25 +29,16 @@ const router = tsr.router(schedulesByNameContract, {
         },
       };
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     log.debug(`Getting schedule ${params.name} for compose ${query.composeId}`);
 
     try {
-      const scopeId = await resolveScopeId(userId, query.scopeId, tokenScopeId);
-      const scope = await getScopeById(scopeId);
-      if (!scope) {
-        return {
-          status: 404 as const,
-          body: {
-            error: { message: "Scope not found", code: "NOT_FOUND" },
-          },
-        };
-      }
+      const orgId = await resolveOrgId(userId, undefined, tokenOrgId);
 
       const schedule = await getScheduleByName(
         userId,
-        scope.orgId,
+        orgId,
         query.composeId,
         params.name,
       );
@@ -82,25 +72,16 @@ const router = tsr.router(schedulesByNameContract, {
         },
       };
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     log.debug(
       `Deleting schedule ${params.name} for compose ${query.composeId}`,
     );
 
     try {
-      const scopeId = await resolveScopeId(userId, query.scopeId, tokenScopeId);
-      const scope = await getScopeById(scopeId);
-      if (!scope) {
-        return {
-          status: 404 as const,
-          body: {
-            error: { message: "Scope not found", code: "NOT_FOUND" },
-          },
-        };
-      }
+      const orgId = await resolveOrgId(userId, undefined, tokenOrgId);
 
-      await deleteSchedule(userId, scope.orgId, query.composeId, params.name);
+      await deleteSchedule(userId, orgId, query.composeId, params.name);
 
       return {
         status: 204 as const,

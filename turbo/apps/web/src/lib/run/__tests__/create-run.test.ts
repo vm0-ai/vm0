@@ -677,7 +677,6 @@ describe("createRun()", () => {
       const orgCompose = await context.createAgentCompose(user.userId, {
         name: uniqueId("org-agent"),
       });
-      const orgScopeId = orgCompose.scopeId;
       const orgClerkOrgId = orgCompose.orgId;
 
       // Use the default compose but pass org scope for storage resolution
@@ -685,7 +684,7 @@ describe("createRun()", () => {
         baseParams({
           artifactName: "artifact",
           memoryName: "memory",
-          scopeId: orgScopeId,
+          orgId: orgClerkOrgId,
           scopeSlug: uniqueId("org"), // slug used for S3 prefix (mocked in tests)
         }),
       );

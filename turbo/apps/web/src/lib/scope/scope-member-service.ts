@@ -3,8 +3,9 @@ import { eq } from "drizzle-orm";
 import { scopes } from "../../db/schema/scope";
 import { badRequest, forbidden, notFound } from "../errors";
 import { logger } from "../logger";
-import { getScopeByOrgId, getScopesByOrgIds } from "./scope-service";
+import { getOrgData } from "./org-cache-service";
 import type { ScopeRole } from "@vm0/core";
+import type { ResolvedScope, ResolvedMember } from "./resolve-scope";
 
 const log = logger("service:scope-member");
 
@@ -43,28 +44,31 @@ export async function requireScopeMember(scopeId: string, userId: string) {
 }
 
 /**
- * Get user's default scope.
+ * Get user's default scope using org_cache (never queries scopes table).
  *
- * Fast path: if the JWT session contains an orgId, look up the scope directly
- * from the database — no Clerk API call needed.
+ * Fast path: if the JWT session contains an orgId, look up via org_cache
+ * — no Clerk API call needed.
  *
- * Slow path: for CLI tokens (no JWT) or when the JWT org has no local scope,
+ * Slow path: for CLI tokens (no JWT) or when the JWT org has no cache entry,
  * fall back to Clerk Backend API to discover the user's org memberships.
  */
-export async function getDefaultScope(userId: string) {
+export async function getDefaultScope(
+  userId: string,
+): Promise<{ scope: ResolvedScope; member: ResolvedMember }> {
   // JWT fast path: use active org from session token
   const authResult = await auth();
   if (authResult.orgId) {
-    const scope = await getScopeByOrgId(authResult.orgId);
-    if (scope) {
+    try {
+      const orgData = await getOrgData(authResult.orgId);
       return {
-        scope,
+        scope: orgData,
         member: {
           role: mapClerkRole(authResult.orgRole ?? "org:member"),
           userId,
-          scopeId: scope.id,
         },
       };
+    } catch {
+      // JWT orgId not found in Clerk — fall through to slow path
     }
   }
 
@@ -83,43 +87,34 @@ export async function getDefaultScope(userId: string) {
       ]
     : memberships.data;
 
-  // Batch-fetch all scopes by Clerk org IDs in a single query
-  const orgIds = candidates.map((m) => m.organization.id);
-  const scopeMap = await getScopesByOrgIds(orgIds);
-
   for (const membership of candidates) {
-    const scope = scopeMap.get(membership.organization.id);
-    if (scope) {
-      return {
-        scope,
-        member: {
-          role: mapClerkRole(membership.role),
-          userId,
-          scopeId: scope.id,
-        },
-      };
-    }
+    const orgId = membership.organization.id;
+    const orgData = await getOrgData(orgId);
+    return {
+      scope: orgData,
+      member: {
+        role: mapClerkRole(membership.role),
+        userId,
+      },
+    };
   }
 
   throw notFound("No scope found for user");
 }
 
 /**
- * Resolve scope ID: use the provided value or fall back to the user's default scope.
+ * Resolve org ID: use the provided value or fall back to the user's default scope.
+ * Replaces the old resolveScopeId() which returned a scope UUID.
  */
-export async function resolveScopeId(
+export async function resolveOrgId(
   userId: string,
-  scopeId: string | undefined,
-  tokenScopeId?: string | null,
+  orgId?: string | null,
+  tokenOrgId?: string | null,
 ): Promise<string> {
-  if (scopeId) {
-    return scopeId;
-  }
-  if (tokenScopeId) {
-    return tokenScopeId;
-  }
+  if (orgId) return orgId;
+  if (tokenOrgId) return tokenOrgId;
   const { scope } = await getDefaultScope(userId);
-  return scope.id;
+  return scope.orgId;
 }
 
 /**
@@ -127,24 +122,6 @@ export async function resolveScopeId(
  */
 function mapClerkRole(clerkRole: string): ScopeRole {
   return clerkRole === "org:admin" ? "admin" : "member";
-}
-
-/**
- * Lookup a scope by ID and verify it has a Clerk org link.
- * Throws notFound if the scope doesn't exist or isn't linked.
- */
-async function getScopeWithClerkOrg(scopeId: string) {
-  const [scope] = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(eq(scopes.id, scopeId))
-    .limit(1);
-
-  if (!scope?.orgId) {
-    throw notFound("Scope not found");
-  }
-
-  return scope as typeof scope & { orgId: string };
 }
 
 /**
@@ -213,7 +190,7 @@ export async function getScopeMembers(
  */
 export async function inviteMember(
   callerUserId: string,
-  scopeId: string,
+  orgId: string,
   role: ScopeRole,
   email: string,
 ) {
@@ -221,17 +198,15 @@ export async function inviteMember(
     throw forbidden("Only admins can invite members");
   }
 
-  const scope = await getScopeWithClerkOrg(scopeId);
-
   const client = await clerkClient();
   await client.organizations.createOrganizationInvitation({
-    organizationId: scope.orgId,
+    organizationId: orgId,
     emailAddress: email,
     inviterUserId: callerUserId,
     role: "org:member",
   });
 
-  log.debug("Invitation sent", { scopeId, email });
+  log.debug("Invitation sent", { orgId, email });
 }
 
 /**
@@ -240,15 +215,13 @@ export async function inviteMember(
  */
 export async function removeMember(
   callerUserId: string,
-  scopeId: string,
+  orgId: string,
   role: ScopeRole,
   email: string,
 ) {
   if (role !== "admin") {
     throw forbidden("Only admins can remove members");
   }
-
-  const scope = await getScopeWithClerkOrg(scopeId);
 
   // Resolve email to Clerk user ID
   const client = await clerkClient();
@@ -267,7 +240,7 @@ export async function removeMember(
 
   // Find membership to get membershipId
   const memberships = await client.organizations.getOrganizationMembershipList({
-    organizationId: scope.orgId,
+    organizationId: orgId,
   });
 
   const membership = memberships.data.find(
@@ -280,11 +253,11 @@ export async function removeMember(
 
   // Remove from Clerk
   await client.organizations.deleteOrganizationMembership({
-    organizationId: scope.orgId,
+    organizationId: orgId,
     userId: targetUserId,
   });
 
-  log.debug("Member removed", { scopeId, targetUserId, email });
+  log.debug("Member removed", { orgId, targetUserId, email });
 }
 
 /**
@@ -293,7 +266,7 @@ export async function removeMember(
  */
 export async function leaveScope(
   userId: string,
-  scopeId: string,
+  orgId: string,
   role: ScopeRole,
 ) {
   if (role === "admin") {
@@ -302,16 +275,14 @@ export async function leaveScope(
     );
   }
 
-  const scope = await getScopeWithClerkOrg(scopeId);
-
   // Remove own membership from Clerk
   const client = await clerkClient();
   await client.organizations.deleteOrganizationMembership({
-    organizationId: scope.orgId,
+    organizationId: orgId,
     userId: userId,
   });
 
-  log.debug("User left scope", { scopeId, userId });
+  log.debug("User left scope", { orgId, userId });
 }
 
 /**

@@ -20,7 +20,6 @@ import {
 import { agentComposeVersions } from "../../db/schema/agent-compose";
 import { badRequest, notFound } from "../errors";
 import { getOrgData } from "../scope/org-cache-service";
-import { getScopeById } from "../scope/scope-service";
 import { logger } from "../logger";
 import type { ExecutionContext, ResumeSession, RuntimeScope } from "./types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
@@ -318,7 +317,6 @@ async function resolveModelProviderSecrets(
 async function refreshConnectorAccessToken(
   connectorType: string,
   orgId: string,
-  scopeId: string,
   userId: string,
   connectorSecrets: Record<string, string>,
 ): Promise<string | null> {
@@ -358,7 +356,6 @@ async function refreshConnectorAccessToken(
     // Persist new tokens to database
     await upsertConnectorSecret(
       orgId,
-      scopeId,
       userId,
       accessTokenSecret,
       result.accessToken,
@@ -366,7 +363,6 @@ async function refreshConnectorAccessToken(
     if (result.refreshToken) {
       await upsertConnectorSecret(
         orgId,
-        scopeId,
         userId,
         refreshTokenSecret,
         result.refreshToken,
@@ -407,7 +403,6 @@ interface ConnectorSecretResult {
  */
 async function resolveConnectorSecrets(
   orgId: string,
-  scopeId: string,
   userId: string,
 ): Promise<ConnectorSecretResult> {
   // Query connected connectors (need type for environmentMapping, authMethod for refresh filter)
@@ -456,13 +451,7 @@ async function resolveConnectorSecrets(
         return handler?.refreshToken;
       })
       .map(({ type }) =>
-        refreshConnectorAccessToken(
-          type,
-          orgId,
-          scopeId,
-          userId,
-          connectorSecrets,
-        ),
+        refreshConnectorAccessToken(type, orgId, userId, connectorSecrets),
       ),
   );
 
@@ -688,10 +677,9 @@ interface BuildContextParams {
   checkEnv?: boolean;
   // API start time for E2E timing metrics
   apiStartTime?: number;
-  // Caller-resolved scope ID and slug for secret/variable/storage resolution.
+  // Caller-resolved scope slug and orgId for secret/variable/storage resolution.
   // When provided, used for both secrets and storage (artifacts/memory).
   // When not provided, resolved via getDefaultScope fallback.
-  scopeId?: string;
   scopeSlug?: string;
   orgId?: string;
 }
@@ -750,7 +738,6 @@ async function loadAgentComposeForNewRun(
  */
 async function resolveSecretsAndEnvironment(
   orgId: string,
-  scopeId: string,
   agentCompose: unknown,
   firstAgent:
     | { environment?: Record<string, string>; framework?: string }
@@ -785,7 +772,7 @@ async function resolveSecretsAndEnvironment(
         hasExplicitModelProviderConfig,
         modelProvider,
       ),
-      resolveConnectorSecrets(orgId, scopeId, userId),
+      resolveConnectorSecrets(orgId, userId),
       fetchAndMergeVariables(orgId, userId, vars),
     ]);
 
@@ -900,61 +887,41 @@ function applyResolutionDefaults(
 /**
  * Resolve the Runtime Scope for this execution.
  *
- * The Runtime Scope (scopeId + userId) determines secrets, variables,
+ * The Runtime Scope (orgId + userId) determines secrets, variables,
  * connectors, model providers, artifacts, and memories.
  * See docs/resource-model.md for the full resource model.
  *
- * When params.scopeId is not provided, the user's default scope is used.
+ * When params.orgId is not provided, the user's default scope is used.
  */
 async function resolveScopes(params: BuildContextParams): Promise<{
-  runtimeScopeId: string;
   runtimeClerkOrgId: string;
-  pendingRuntimeScope:
-    | Promise<{ id: string; slug: string; orgId: string }>
-    | { id: string; slug: string; orgId: string };
+  pendingRuntimeScope: Promise<RuntimeScope> | RuntimeScope;
 }> {
-  if (params.scopeId) {
-    if (params.scopeSlug && params.orgId) {
+  if (params.orgId) {
+    if (params.scopeSlug) {
       return {
-        runtimeScopeId: params.scopeId,
         runtimeClerkOrgId: params.orgId,
         pendingRuntimeScope: {
-          id: params.scopeId,
           slug: params.scopeSlug,
           orgId: params.orgId,
         },
       };
     }
-    // Fallback: resolve orgId from scopeId, then slug from org cache
-    const scope = await getScopeById(params.scopeId);
-    let resolved;
-    if (scope) {
-      const orgData = await getOrgData(scope.orgId);
-      resolved = {
-        id: params.scopeId,
-        slug: orgData.slug,
-        orgId: scope.orgId,
-      };
-    } else {
-      resolved = {
-        id: params.scopeId,
-        slug: "",
-        orgId: "",
-      };
-    }
+    // Have orgId but no slug — resolve slug from org cache
+    const orgData = await getOrgData(params.orgId);
     return {
-      runtimeScopeId: params.scopeId,
-      runtimeClerkOrgId: resolved.orgId,
-      pendingRuntimeScope: resolved,
+      runtimeClerkOrgId: params.orgId,
+      pendingRuntimeScope: {
+        slug: orgData.slug,
+        orgId: params.orgId,
+      },
     };
   }
   // No explicit scope — default scope is used
   const { scope } = await getDefaultScope(params.userId);
   return {
-    runtimeScopeId: scope.id,
     runtimeClerkOrgId: scope.orgId,
     pendingRuntimeScope: {
-      id: scope.id,
       slug: scope.slug,
       orgId: scope.orgId,
     },
@@ -1052,10 +1019,8 @@ export async function buildExecutionContext(
   // resolveSource loads checkpoint/session/conversation data.
   // resolveScopes resolves the runtime scope for secrets and storage.
   const resolveStart = Date.now();
-  const [
-    resolution,
-    { runtimeScopeId, runtimeClerkOrgId, pendingRuntimeScope },
-  ] = await Promise.all([resolveSource(params), resolveScopes(params)]);
+  const [resolution, { runtimeClerkOrgId, pendingRuntimeScope }] =
+    await Promise.all([resolveSource(params), resolveScopes(params)]);
   const resolveEnd = Date.now();
 
   // Step 2: Apply resolution defaults and build resumeSession (unified path)
@@ -1117,7 +1082,6 @@ export async function buildExecutionContext(
   const [secretsResult, userPrefs, runtimeScope] = await Promise.all([
     resolveSecretsAndEnvironment(
       runtimeClerkOrgId,
-      runtimeScopeId,
       agentCompose,
       firstAgent,
       vars,

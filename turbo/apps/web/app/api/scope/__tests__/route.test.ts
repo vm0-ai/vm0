@@ -455,8 +455,15 @@ describe("/api/scope", () => {
       });
       await POST(req2);
 
-      // Set active org to second scope's orgId
-      mockClerk({ userId, orgId: org2Id });
+      // Set active org to second scope's orgId (must re-pass clerkOrgs for getOrganization)
+      mockClerk({
+        userId,
+        orgId: org2Id,
+        clerkOrgs: [
+          { id: org1Id, slug: `first-org`, name: "First Org" },
+          { id: org2Id, slug: `second-org`, name: "Second Org" },
+        ],
+      });
 
       const request = createTestRequest("http://localhost:3000/api/scope");
       const response = await GET(request);

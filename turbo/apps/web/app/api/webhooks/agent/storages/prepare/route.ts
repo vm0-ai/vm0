@@ -15,7 +15,10 @@ import {
 } from "../../../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
-import { getDefaultScopeByUserId } from "../../../../../../src/lib/scope/scope-service";
+import {
+  getDefaultScopeByUserId,
+  getScopeByOrgId,
+} from "../../../../../../src/lib/scope/scope-service";
 import {
   generatePresignedPutUrl,
   downloadManifest,
@@ -78,13 +81,27 @@ const router = tsr.router(webhookStoragesPrepareContract, {
     }
 
     // Resolve Runtime Scope (user's default scope)
-    const runtimeScope = await getDefaultScopeByUserId(userId);
-    if (!runtimeScope) {
+    const resolvedScope = await getDefaultScopeByUserId(userId);
+    if (!resolvedScope) {
       return {
         status: 400 as const,
         body: {
           error: {
             message: "User's default scope not found",
+            code: "BAD_REQUEST",
+          },
+        },
+      };
+    }
+
+    // Look up full scope record for scopeId (needed for storage upsert)
+    const runtimeScope = await getScopeByOrgId(resolvedScope.orgId);
+    if (!runtimeScope) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: "Scope record not found",
             code: "BAD_REQUEST",
           },
         },
@@ -104,7 +121,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
         orgId: runtimeScope.orgId,
         name: storageName,
         type: storageType,
-        s3Prefix: `${runtimeScope.slug}/${storageType}/${storageName}`,
+        s3Prefix: `${resolvedScope.slug}/${storageType}/${storageName}`,
         size: 0,
         fileCount: 0,
       })
@@ -256,7 +273,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
     }
 
     // Generate presigned URLs for archive and manifest
-    const s3Key = `${runtimeScope.slug}/${storageType}/${storageName}/${versionId}`;
+    const s3Key = `${resolvedScope.slug}/${storageType}/${storageName}/${versionId}`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const manifestKey = `${s3Key}/manifest.json`;
 

@@ -31,7 +31,7 @@ const router = tsr.router(variablesByNameContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     const scopeSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
@@ -39,7 +39,7 @@ const router = tsr.router(variablesByNameContract, {
       userId,
       scopeSlug,
       orgParam,
-      tokenScopeId,
+      tokenOrgId,
     );
     const variable = await getVariable(scope.orgId, userId, params.name);
     if (!variable) {
@@ -72,7 +72,7 @@ const router = tsr.router(variablesByNameContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     log.debug("deleting variable", { userId, name: params.name });
 
@@ -83,7 +83,7 @@ const router = tsr.router(variablesByNameContract, {
         userId,
         scopeSlug,
         orgParam,
-        tokenScopeId,
+        tokenOrgId,
       );
       await deleteVariable(scope.orgId, userId, params.name);
 

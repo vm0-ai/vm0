@@ -227,7 +227,6 @@ interface ExternalUserInfo {
  */
 export async function upsertOAuthConnector(
   orgId: string,
-  scopeId: string,
   userId: string,
   type: ConnectorType,
   accessToken: string,
@@ -264,7 +263,6 @@ export async function upsertOAuthConnector(
   // Upsert access token secret
   await upsertSecretByScope(
     orgId,
-    scopeId,
     userId,
     secretName,
     accessToken,
@@ -276,7 +274,6 @@ export async function upsertOAuthConnector(
   if (options?.refreshToken && options.refreshSecretName) {
     await upsertSecretByScope(
       orgId,
-      scopeId,
       userId,
       options.refreshSecretName,
       options.refreshToken,
@@ -472,14 +469,12 @@ export async function deleteConnector(
  */
 export async function upsertConnectorSecret(
   orgId: string,
-  scopeId: string | null,
   userId: string,
   secretName: string,
   secretValue: string,
 ): Promise<void> {
   await upsertSecretByScope(
     orgId,
-    scopeId,
     userId,
     secretName,
     secretValue,

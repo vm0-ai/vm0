@@ -405,7 +405,7 @@ const router = tsr.router(runsMainContract, {
         },
       };
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     // Validate mutually exclusive shortcuts
     if (body.checkpointId && body.sessionId) {
@@ -459,7 +459,7 @@ const router = tsr.router(runsMainContract, {
       userId,
       scopeSlug,
       orgParam,
-      tokenScopeId,
+      tokenOrgId,
     );
 
     // Delegate run creation, validation, and dispatch to createRun()
@@ -483,7 +483,6 @@ const router = tsr.router(runsMainContract, {
         debugNoMockClaude: body.debugNoMockClaude,
         modelProvider: body.modelProvider,
         checkEnv: body.checkEnv,
-        scopeId: scope.id,
         scopeSlug: scope.slug,
         orgId: scope.orgId,
         scopeTier: scopeTierSchema.parse(scope.tier),

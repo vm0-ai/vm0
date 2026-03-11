@@ -11,6 +11,7 @@ import {
   updateScopeSlug,
   ensureDefaultScope,
   resolveUnmatchedClerkOrg,
+  getScopeByOrgId,
 } from "../../../src/lib/scope/scope-service";
 import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import { logger } from "../../../src/lib/logger";
@@ -48,11 +49,27 @@ const router = tsr.router(scopeContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     try {
-      const { scope } = await resolveScope(userId, null, null, tokenScopeId);
+      const { scope: resolvedScope } = await resolveScope(
+        userId,
+        null,
+        null,
+        tokenOrgId,
+      );
 
+      // TODO: 5b-5 — remove scopes table query, change API response
+      const scopeRecord = await getScopeByOrgId(resolvedScope.orgId);
+      if (scopeRecord) {
+        return {
+          status: 200 as const,
+          body: scopeToResponseBody(scopeRecord),
+        };
+      }
+
+      // Fallback: no scope record yet — auto-create
+      const scope = await ensureDefaultScope(userId);
       return { status: 200 as const, body: scopeToResponseBody(scope) };
     } catch (error) {
       if (isNotFound(error)) {
@@ -124,19 +141,19 @@ const router = tsr.router(scopeContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     const { slug, force } = body;
 
     log.debug("updating scope", { userId, slug, force });
 
-    let existingScope;
+    let resolvedScope;
     try {
-      ({ scope: existingScope } = await resolveScope(
+      ({ scope: resolvedScope } = await resolveScope(
         userId,
         null,
         null,
-        tokenScopeId,
+        tokenOrgId,
       ));
     } catch (error) {
       if (isNotFound(error)) {
@@ -148,13 +165,14 @@ const router = tsr.router(scopeContract, {
       throw error;
     }
 
+    // TODO: 5b-5 — updateScopeSlug still needs scope UUID, query scopes table
+    const scopeRecord = await getScopeByOrgId(resolvedScope.orgId);
+    if (!scopeRecord) {
+      return createErrorResponse("NOT_FOUND", "Scope not found");
+    }
+
     try {
-      const scope = await updateScopeSlug(
-        existingScope.id,
-        slug,
-        userId,
-        force,
-      );
+      const scope = await updateScopeSlug(scopeRecord.id, slug, userId, force);
 
       return { status: 200 as const, body: scopeToResponseBody(scope) };
     } catch (error) {

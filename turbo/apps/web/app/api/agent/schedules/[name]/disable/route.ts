@@ -4,8 +4,7 @@ import { getAuthContext } from "../../../../../../src/lib/auth/get-user-id";
 import { disableSchedule } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../../src/lib/errors";
-import { resolveScopeId } from "../../../../../../src/lib/scope/scope-member-service";
-import { getScopeById } from "../../../../../../src/lib/scope/scope-service";
+import { resolveOrgId } from "../../../../../../src/lib/scope/scope-member-service";
 
 const log = logger("api:schedules:disable");
 
@@ -24,11 +23,11 @@ export async function POST(
       { status: 401 },
     );
   }
-  const { userId, scopeId: tokenScopeId } = authCtx;
+  const { userId, orgId: tokenOrgId } = authCtx;
 
   const { name } = await params;
 
-  let body: { composeId: string; scopeId?: string };
+  let body: { composeId: string };
   try {
     body = await request.json();
   } catch {
@@ -45,24 +44,12 @@ export async function POST(
     );
   }
 
-  const scopeId = await resolveScopeId(userId, body.scopeId, tokenScopeId);
-  const scope = await getScopeById(scopeId);
-  if (!scope) {
-    return NextResponse.json(
-      { error: { message: "Scope not found", code: "NOT_FOUND" } },
-      { status: 404 },
-    );
-  }
+  const orgId = await resolveOrgId(userId, undefined, tokenOrgId);
 
   log.debug(`Disabling schedule ${name} for compose ${body.composeId}`);
 
   try {
-    const schedule = await disableSchedule(
-      userId,
-      scope.orgId,
-      body.composeId,
-      name,
-    );
+    const schedule = await disableSchedule(userId, orgId, body.composeId, name);
 
     return NextResponse.json(schedule, { status: 200 });
   } catch (error) {

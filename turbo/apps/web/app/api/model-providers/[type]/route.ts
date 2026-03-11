@@ -20,7 +20,7 @@ const router = tsr.router(modelProvidersByTypeContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     log.debug("deleting model provider", { userId, type: params.type });
 
@@ -31,7 +31,7 @@ const router = tsr.router(modelProvidersByTypeContract, {
         userId,
         scopeSlug,
         orgParam,
-        tokenScopeId,
+        tokenOrgId,
       );
       await deleteModelProvider(scope.orgId, userId, params.type);
 

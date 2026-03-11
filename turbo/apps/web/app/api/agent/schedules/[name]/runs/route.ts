@@ -9,8 +9,7 @@ import { getAuthContext } from "../../../../../../src/lib/auth/get-user-id";
 import { getScheduleRecentRuns } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../../src/lib/errors";
-import { resolveScopeId } from "../../../../../../src/lib/scope/scope-member-service";
-import { getScopeById } from "../../../../../../src/lib/scope/scope-service";
+import { resolveOrgId } from "../../../../../../src/lib/scope/scope-member-service";
 
 const log = logger("api:schedules:runs");
 
@@ -27,27 +26,18 @@ const router = tsr.router(scheduleRunsContract, {
         },
       };
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     log.debug(
       `Listing runs for schedule ${params.name} (limit: ${query.limit})`,
     );
 
     try {
-      const scopeId = await resolveScopeId(userId, query.scopeId, tokenScopeId);
-      const scope = await getScopeById(scopeId);
-      if (!scope) {
-        return {
-          status: 404 as const,
-          body: {
-            error: { message: "Scope not found", code: "NOT_FOUND" },
-          },
-        };
-      }
+      const orgId = await resolveOrgId(userId, undefined, tokenOrgId);
 
       const runs = await getScheduleRecentRuns(
         userId,
-        scope.orgId,
+        orgId,
         query.composeId,
         params.name,
         query.limit,

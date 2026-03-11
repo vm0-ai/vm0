@@ -26,19 +26,19 @@ export async function GET(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, scopeId: tokenScopeId } = authCtx;
+  const { userId, orgId: tokenOrgId } = authCtx;
 
   try {
     const { scope } = await requireScopeFromRequest(
       request,
       userId,
-      tokenScopeId,
+      tokenOrgId,
     );
     const status = await getScopeMembers(
       userId,
       scope.orgId,
       scope.slug,
-      scope.createdAt,
+      new Date(), // TODO: 5b-5 — createdAt no longer available from ResolvedScope
     );
     return NextResponse.json(status);
   } catch (error) {
@@ -78,7 +78,7 @@ export async function DELETE(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, scopeId: tokenScopeId } = authCtx;
+  const { userId, orgId: tokenOrgId } = authCtx;
 
   const body = (await request.json()) as { email: string };
   if (!body.email) {
@@ -92,9 +92,9 @@ export async function DELETE(request: Request) {
     const { scope, member } = await requireScopeFromRequest(
       request,
       userId,
-      tokenScopeId,
+      tokenOrgId,
     );
-    await removeMember(userId, scope.id, member.role, body.email);
+    await removeMember(userId, scope.orgId, member.role, body.email);
     return NextResponse.json({
       message: `Removed ${body.email} from scope`,
     });

@@ -27,7 +27,7 @@ const router = tsr.router(storagesListContract, {
         },
       };
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     const { type: storageType } = query;
 
@@ -38,7 +38,7 @@ const router = tsr.router(storagesListContract, {
       userId,
       scopeSlug,
       orgParam,
-      tokenScopeId,
+      tokenOrgId,
     );
 
     // Volumes use sentinel userId (scope-shared); artifacts/memory use real userId

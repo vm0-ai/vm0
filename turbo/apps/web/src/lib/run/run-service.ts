@@ -31,7 +31,7 @@ import { canAccessCompose } from "../agent/permission-service";
 import { getUserEmail } from "../auth/get-user-email";
 import { extractTemplateVars } from "../config-validator";
 
-import { getDefaultScopeByUserId, getScopeById } from "../scope/scope-service";
+import { getDefaultScopeByUserId } from "../scope/scope-service";
 import { getDefaultScope } from "../scope/scope-member-service";
 import { getVariableValues } from "../variable/variable-service";
 import { encryptSecretValue } from "../crypto/secrets-encryption";
@@ -305,9 +305,8 @@ export interface CreateRunParams {
   modelProvider?: string;
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
-  // Caller-resolved scope ID and slug for variable/storage resolution (org-aware).
+  // Caller-resolved scope slug and orgId for variable/storage resolution (org-aware).
   // When provided, used instead of getDefaultScope fallback.
-  scopeId?: string;
   scopeSlug?: string;
   orgId?: string;
   // Caller-resolved scope tier for concurrency limit derivation.
@@ -512,7 +511,6 @@ async function buildAndDispatchRun(opts: {
   params: CreateRunParams;
   composeContent: AgentComposeYaml;
   apiStartTime: number;
-  scopeId: string | undefined;
   scopeSlug: string | undefined;
   orgId: string | undefined;
   authorizeTime: number;
@@ -524,7 +522,6 @@ async function buildAndDispatchRun(opts: {
     params,
     composeContent,
     apiStartTime,
-    scopeId,
     scopeSlug,
     orgId,
     authorizeTime,
@@ -570,7 +567,6 @@ async function buildAndDispatchRun(opts: {
       modelProvider: params.modelProvider,
       checkEnv: params.checkEnv,
       apiStartTime,
-      scopeId,
       scopeSlug,
       orgId,
     });
@@ -689,23 +685,14 @@ export async function createRun(
     );
   }
 
-  // Resolve scope ID and slug for the run record and storage
-  let scopeId: string;
+  // Resolve scope slug and orgId for the run record and storage
   let scopeSlug: string | undefined;
   let orgId: string;
-  if (params.scopeId) {
-    scopeId = params.scopeId;
+  if (params.orgId) {
+    orgId = params.orgId;
     scopeSlug = params.scopeSlug;
-    if (params.orgId) {
-      orgId = params.orgId;
-    } else {
-      const scope = await getScopeById(params.scopeId);
-      if (!scope) throw badRequest("Scope not found");
-      orgId = scope.orgId;
-    }
   } else {
     const { scope } = await getDefaultScope(userId);
-    scopeId = scope.id;
     scopeSlug = scope.slug;
     orgId = scope.orgId;
   }
@@ -749,7 +736,7 @@ export async function createRun(
     });
   } catch (error) {
     if (isConcurrentRunLimit(error)) {
-      return enqueueRun({ ...params, scopeId, scopeSlug, orgId });
+      return enqueueRun({ ...params, scopeSlug, orgId });
     }
     throw error;
   }
@@ -763,7 +750,6 @@ export async function createRun(
     params,
     composeContent,
     apiStartTime,
-    scopeId,
     scopeSlug,
     orgId,
     authorizeTime,
@@ -848,7 +834,6 @@ export async function executeQueuedRun(
     params,
     composeContent,
     apiStartTime,
-    scopeId: params.scopeId,
     scopeSlug: params.scopeSlug,
     orgId: params.orgId,
     authorizeTime,

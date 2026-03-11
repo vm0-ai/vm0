@@ -124,7 +124,6 @@ export async function getVariableValues(
  */
 export async function setVariable(
   orgId: string,
-  scopeId: string,
   userId: string,
   name: string,
   value: string,

@@ -370,6 +370,27 @@ export async function setScopeTier(
     .update(scopes)
     .set({ tier, updatedAt: new Date() })
     .where(eq(scopes.id, scopeId));
+
+  // Also update org_cache so getOrgData returns the correct tier
+  const [scope] = await globalThis.services.db
+    .select()
+    .from(scopes)
+    .where(eq(scopes.id, scopeId))
+    .limit(1);
+  if (scope?.orgId) {
+    await globalThis.services.db
+      .insert(orgCache)
+      .values({
+        orgId: scope.orgId,
+        slug: scope.slug,
+        tier,
+        cachedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: orgCache.orgId,
+        set: { tier, cachedAt: new Date() },
+      });
+  }
 }
 
 /**

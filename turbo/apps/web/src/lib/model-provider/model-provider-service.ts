@@ -205,7 +205,6 @@ export async function checkSecretExists(
  */
 export async function upsertModelProvider(
   orgId: string,
-  scopeId: string,
   userId: string,
   type: ModelProviderType,
   secret: string,
@@ -250,7 +249,6 @@ export async function upsertModelProvider(
   const [upsertedSecret] = await globalThis.services.db
     .insert(secrets)
     .values({
-      scopeId,
       userId,
       name: secretName,
       encryptedValue,
@@ -331,7 +329,6 @@ export async function upsertModelProvider(
  */
 async function upsertMultiAuthSecret(
   orgId: string,
-  scopeId: string,
   userId: string,
   name: string,
   value: string,
@@ -400,7 +397,6 @@ async function cleanupOldAuthMethodSecrets(
  */
 export async function upsertMultiAuthModelProvider(
   orgId: string,
-  scopeId: string,
   userId: string,
   type: ModelProviderType,
   authMethod: string,
@@ -483,7 +479,6 @@ export async function upsertMultiAuthModelProvider(
   for (const [name, value] of Object.entries(secretValues)) {
     await upsertMultiAuthSecret(
       orgId,
-      scopeId,
       userId,
       name,
       value,

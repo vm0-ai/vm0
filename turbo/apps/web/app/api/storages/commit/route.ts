@@ -34,7 +34,7 @@ const router = tsr.router(storagesCommitContract, {
         },
       };
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     // Resolve user's default scope
     const scopeSlug = new URL(request.url).searchParams.get("scope");
@@ -43,7 +43,7 @@ const router = tsr.router(storagesCommitContract, {
       userId,
       scopeSlug,
       orgParam,
-      tokenScopeId,
+      tokenOrgId,
     );
 
     const { storageName, storageType, versionId, files, runId, message } = body;

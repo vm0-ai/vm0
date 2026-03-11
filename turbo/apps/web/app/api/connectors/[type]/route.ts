@@ -20,7 +20,7 @@ const router = tsr.router(connectorsByTypeContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     const scopeSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
@@ -28,7 +28,7 @@ const router = tsr.router(connectorsByTypeContract, {
       userId,
       scopeSlug,
       orgParam,
-      tokenScopeId,
+      tokenOrgId,
     );
     const connector = await getConnector(scope.orgId, userId, params.type);
 
@@ -52,7 +52,7 @@ const router = tsr.router(connectorsByTypeContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, scopeId: tokenScopeId } = authCtx;
+    const { userId, orgId: tokenOrgId } = authCtx;
 
     try {
       const scopeSlug = new URL(request.url).searchParams.get("scope");
@@ -61,7 +61,7 @@ const router = tsr.router(connectorsByTypeContract, {
         userId,
         scopeSlug,
         orgParam,
-        tokenScopeId,
+        tokenOrgId,
       );
       await deleteConnector(scope.orgId, userId, params.type);
 

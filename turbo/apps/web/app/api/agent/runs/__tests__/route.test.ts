@@ -1229,6 +1229,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should fail run when volume definition is missing", async () => {
       // Create compose with volume that references an undefined volume
+      // Use unique agent name to avoid content-addressed version collision
+      // across tests (different users sharing the same version ID would
+      // cause prepareForExecution to resolve the wrong compose's orgId).
+      const agentName = uniqueId("vol-agent");
       const request = createTestRequest(
         "http://localhost:3000/api/agent/composes",
         {
@@ -1238,7 +1242,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
             content: {
               version: "1.0",
               agents: {
-                "test-agent": {
+                [agentName]: {
                   image: "vm0/claude-code:latest",
                   framework: "claude-code",
                   working_dir: "/home/user/workspace",

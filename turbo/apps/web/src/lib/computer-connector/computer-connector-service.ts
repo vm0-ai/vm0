@@ -39,7 +39,6 @@ const COMPUTER_SECRETS = [
  */
 export async function createComputerConnector(
   orgId: string,
-  scopeId: string,
   userId: string,
 ): Promise<ComputerConnectorCreateResponse> {
   // Check for existing connector
@@ -60,12 +59,12 @@ export async function createComputerConnector(
   }
 
   // Generate unique subdomain name for this user
-  // Truncate scope ID to keep subdomain short (ngrok has length limits)
-  const scopeIdShort = scopeId.substring(0, 8);
-  const subdomainName = `vm0-user-${scopeIdShort}`;
-  const endpointPrefix = `vm0-user-${scopeId}`;
+  // Truncate org ID to keep subdomain short (ngrok has length limits)
+  const orgIdShort = orgId.substring(0, 8);
+  const subdomainName = `vm0-user-${orgIdShort}`;
+  const endpointPrefix = `vm0-user-${orgId}`;
 
-  const botUserName = `vm0-user-${scopeId}`;
+  const botUserName = `vm0-user-${orgId}`;
 
   // Provision ngrok resources
   const botUser = await findOrCreateBotUser(apiKey, botUserName);
@@ -102,8 +101,8 @@ export async function createComputerConnector(
             type: "forward-internal",
             config: {
               // Extract service name from subdomain
-              // e.g., test.vm0-user-abc12345.ngrok-free.app → test.vm0-user-{fullScopeId}.internal
-              // The full endpointPrefix (vm0-user-{fullScopeId}) is used for ACL matching
+              // e.g., test.vm0-user-abc12345.ngrok-free.app → test.vm0-user-{orgId}.internal
+              // The full endpointPrefix (vm0-user-{orgId}) is used for ACL matching
               url: `https://$\{conn.server_name.split('.${domain}')[0]}.${endpointPrefix}.internal`,
               on_error: "continue",
             },
@@ -136,7 +135,6 @@ export async function createComputerConnector(
   const [connectorRow] = await db
     .insert(connectors)
     .values({
-      scopeId,
       userId,
       orgId,
       type: "computer",
@@ -156,7 +154,6 @@ export async function createComputerConnector(
   await Promise.all([
     upsertSecretByScope(
       orgId,
-      scopeId,
       userId,
       "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
       bridgeToken,
@@ -165,7 +162,6 @@ export async function createComputerConnector(
     ),
     upsertSecretByScope(
       orgId,
-      scopeId,
       userId,
       "COMPUTER_CONNECTOR_DOMAIN_ID",
       reservedDomain.id,
@@ -174,7 +170,6 @@ export async function createComputerConnector(
     ),
     upsertSecretByScope(
       orgId,
-      scopeId,
       userId,
       "COMPUTER_CONNECTOR_DOMAIN",
       domain,

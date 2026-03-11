@@ -23,15 +23,15 @@ export async function POST(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, scopeId: tokenScopeId } = authCtx;
+  const { userId, orgId: tokenOrgId } = authCtx;
 
   try {
     const { scope, member } = await requireScopeFromRequest(
       request,
       userId,
-      tokenScopeId,
+      tokenOrgId,
     );
-    await leaveScope(userId, scope.id, member.role);
+    await leaveScope(userId, scope.orgId, member.role);
     return NextResponse.json({ message: "Left scope" });
   } catch (error) {
     if (isBadRequest(error)) {

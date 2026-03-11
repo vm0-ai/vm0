@@ -25,7 +25,12 @@ const OFFICIAL_RUNNER_TOKEN_PREFIX = "vm0_official_";
  * - 'official-runner': Authenticated via official runner secret
  */
 type RunnerAuthContext =
-  | { type: "user"; userId: string; scopeId: string | null }
+  | {
+      type: "user";
+      userId: string;
+      scopeId: string | null;
+      orgId: string | null;
+    }
   | { type: "official-runner" };
 
 /**
@@ -124,6 +129,7 @@ export async function getRunnerAuth(
         type: "user",
         userId: tokenRecord.userId,
         scopeId: tokenRecord.scopeId,
+        orgId: tokenRecord.orgId,
       };
     }
 

@@ -54,7 +54,7 @@ export async function GET(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, scopeId: tokenScopeId } = authCtx;
+  const { userId, orgId: tokenOrgId } = authCtx;
 
   const db = globalThis.services.db;
 
@@ -124,7 +124,7 @@ export async function GET(request: Request) {
   }
 
   // Resolve user's default scope and get existing secrets, vars, connectors
-  const { scope } = await resolveScope(userId, null, null, tokenScopeId);
+  const { scope } = await resolveScope(userId, null, null, tokenOrgId);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(scope.orgId, userId),
     listVariables(scope.orgId, userId),
@@ -194,7 +194,7 @@ export async function PATCH(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, scopeId: tokenScopeId } = authCtx;
+  const { userId, orgId: tokenOrgId } = authCtx;
 
   const parseResult = patchBodySchema.safeParse(await request.json());
   if (!parseResult.success) {
@@ -273,7 +273,7 @@ export async function PATCH(request: Request) {
         userId,
         null,
         null,
-        tokenScopeId,
+        tokenOrgId,
       ));
     } catch (error) {
       if (isNotFound(error)) {

@@ -101,7 +101,6 @@ export async function POST(request: Request) {
 
   await upsertOAuthConnector(
     scope.orgId,
-    scope.id,
     userId,
     connectorType,
     body.accessToken,
@@ -116,6 +115,6 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     connectorType,
-    scopeId: scope.id,
+    orgId: scope.orgId,
   });
 }
