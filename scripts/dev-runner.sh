@@ -38,7 +38,13 @@ RUNNER_BIN="~/$REMOTE_BIN_DIR/runner"
 RUNNER_DIR="~/.vm0-runner/runners/$RUNNER_NAME"
 
 CF_SSH="$SCRIPT_DIR/cf-ssh.sh"
-ssh_cmd() { "$CF_SSH" "$HOST" -l "$SSH_USER" "$@"; }
+SSH_KEY="$PROJECT_ROOT/.certs/vm0-metal-local.pem"
+if [[ ! -f "$SSH_KEY" ]]; then
+  log "Error: SSH key not found at $SSH_KEY"
+  log "Run 'scripts/sync-env.sh' to provision it from 1Password."
+  exit 1
+fi
+ssh_cmd() { "$CF_SSH" "$HOST" -l "$SSH_USER" -i "$SSH_KEY" "$@"; }
 
 # --- Commands ---
 

@@ -103,6 +103,34 @@
             scrape_interval = "15s"
           }
 
+          // Count firecracker processes (separate pipeline, only keep num_procs)
+          prometheus.exporter.process "firecracker" {
+            matcher {
+              name = "firecracker"
+              comm = ["firecracker"]
+            }
+          }
+
+          prometheus.scrape "firecracker" {
+            targets         = prometheus.exporter.process.firecracker.targets
+            forward_to      = [prometheus.relabel.firecracker.receiver]
+            scrape_interval = "15s"
+          }
+
+          prometheus.relabel "firecracker" {
+            forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+            rule {
+              target_label = "instance"
+              replacement  = "{{ inventory_hostname }}"
+            }
+            rule {
+              source_labels = ["__name__"]
+              regex         = "namedprocess_namegroup_num_procs"
+              action        = "keep"
+            }
+          }
+
           prometheus.remote_write "grafana_cloud" {
             endpoint {
               url = "{{ grafana_cloud_prometheus_url }}"
