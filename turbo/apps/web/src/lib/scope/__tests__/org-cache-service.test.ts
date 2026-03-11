@@ -19,9 +19,11 @@ describe("getOrgData", () => {
   it("fetches from Clerk and caches on miss", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("scope");
-    mockClerk({ userId });
-
-    // Create a scope so Clerk mock has the org registered
+    // Set up Clerk org with slug-based ID BEFORE creating scope
+    mockClerk({
+      userId,
+      clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
+    });
     await createTestScope(slug);
     const clerkOrgId = `org_mock_${slug}`;
 
@@ -75,7 +77,11 @@ describe("getOrgData", () => {
   it("refetches from Clerk when cache is stale", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("scope");
-    mockClerk({ userId });
+    // Set up Clerk org with slug-based ID BEFORE creating scope
+    mockClerk({
+      userId,
+      clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
+    });
     await createTestScope(slug);
     const clerkOrgId = `org_mock_${slug}`;
 

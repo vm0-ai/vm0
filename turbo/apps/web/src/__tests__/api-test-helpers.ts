@@ -353,9 +353,14 @@ export async function setScopeTier(
  */
 export async function getTestScope(
   scopeId: string,
-): Promise<{ id: string; slug: string; tier: string }> {
+): Promise<{ id: string; slug: string; tier: string; clerkOrgId: string }> {
   const [scope] = await globalThis.services.db
-    .select({ id: scopes.id, slug: scopes.slug, tier: scopes.tier })
+    .select({
+      id: scopes.id,
+      slug: scopes.slug,
+      tier: scopes.tier,
+      clerkOrgId: scopes.clerkOrgId,
+    })
     .from(scopes)
     .where(eq(scopes.id, scopeId))
     .limit(1);

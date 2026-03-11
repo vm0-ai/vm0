@@ -226,7 +226,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
 
     // Get the owner's scope slug to derive clerkOrgId
     const ownerScope = await getTestScope(user.scopeId);
-    const ownerClerkOrgId = `org_mock_${ownerScope.slug}`;
+    const ownerClerkOrgId = ownerScope.clerkOrgId;
 
     // Grant email permission to the recipient
     const recipientEmail = "recipient-org@example.com";
@@ -258,7 +258,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
 
     // Get the owner's scope slug to derive clerkOrgId
     const ownerScope = await getTestScope(user.scopeId);
-    const ownerClerkOrgId = `org_mock_${ownerScope.slug}`;
+    const ownerClerkOrgId = ownerScope.clerkOrgId;
 
     // Switch to another user with no permission
     await context.setupUser({ prefix: "unauthorized-org" });
