@@ -19,8 +19,7 @@ export const onboardingStatusResponseSchema = z.object({
       displayName: z.string().optional(),
       sound: z.string().optional(),
     })
-    .nullable()
-    .optional(),
+    .nullable(),
 });
 
 export type OnboardingStatusResponse = z.infer<

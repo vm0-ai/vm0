@@ -815,9 +815,12 @@ export function ZeroMeetPage({
   )
     ? (rawSound as Tone)
     : "professional";
-  const VALID_TABS = ["skills", "schedule", "settings", "instructions"];
-  const params = new URLSearchParams(window.location.search);
-  const initialTab = VALID_TABS.includes(params.get("tab") ?? "")
+  const params =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search)
+      : new URLSearchParams();
+  const validTabs = ["skills", "schedule", "settings", "instructions"];
+  const initialTab = validTabs.includes(params.get("tab") ?? "")
     ? params.get("tab")!
     : "skills";
   const activeTab$ = useCCState(initialTab);
@@ -825,13 +828,15 @@ export function ZeroMeetPage({
   const rawSetActiveTab = useSet(activeTab$);
   const setActiveTab = (tab: string) => {
     rawSetActiveTab(tab);
-    const url = new URL(window.location.href);
-    if (tab === "skills") {
-      url.searchParams.delete("tab");
-    } else {
-      url.searchParams.set("tab", tab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (tab === "skills") {
+        url.searchParams.delete("tab");
+      } else {
+        url.searchParams.set("tab", tab);
+      }
+      window.history.replaceState(null, "", url.toString());
     }
-    window.history.replaceState(null, "", url.toString());
   };
 
   return (
