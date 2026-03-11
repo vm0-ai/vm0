@@ -1,6 +1,6 @@
 ---
 name: coding-loop
-description: Autonomous coding loop — merge existing PRs first, then implement one new issue. Runs on a 10-minute interval.
+description: Autonomous coding loop — merge existing PRs first, then implement one new issue.
 context: fork
 ---
 
@@ -275,45 +275,6 @@ rm -f .claude/scheduled_tasks.lock
 git checkout main
 git stash 2>/dev/null; git pull; git stash pop 2>/dev/null; true
 ```
-
----
-
-## Loop Behavior
-
-When the user runs `/coding-loop <LABEL>`, invoke `/loop` with a dynamic interval:
-
-### Default Interval: 1 minute
-
-```
-/loop 1m /coding-loop <LABEL>
-```
-
-### Adaptive Interval: 5 minutes (when waiting for deploy)
-
-At the end of each invocation, check if there is an open PR with this label and whether `deploy-web` is still running:
-
-```bash
-# For each open PR with the label
-gh pr checks <PR> --json name,state,conclusion \
-  --jq '.[] | select(.name | test("deploy-web")) | {name, state, conclusion}'
-```
-
-**If `deploy-web` exists (not skipped) AND is not yet complete (`state != "completed"`):**
-- The next interval should be **5 minutes** — write `5` to `/tmp/coding-loop-interval-<LABEL>.txt`
-
-**Otherwise (no PR, or `deploy-web` is skipped, or `deploy-web` is complete):**
-- The next interval should be **1 minute** — write `1` to `/tmp/coding-loop-interval-<LABEL>.txt`
-
-The `/loop` driver reads this file to adjust the interval between invocations.
-
-### Rationale
-
-- **1 minute** is the default — allows fast iteration when implementing issues or when CI checks are quick
-- **5 minutes** is used when `deploy-web` is running — this is the slowest check and typically takes 3-5 minutes, so polling every minute would be wasteful
-
-Each invocation is stateless — it discovers work by querying GitHub for current PR and issue state. This means:
-- Interrupted runs are safe — next invocation picks up where things are
-- No local state files needed between invocations (except the interval hint file)
 
 ---
 
