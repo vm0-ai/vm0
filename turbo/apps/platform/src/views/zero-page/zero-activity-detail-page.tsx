@@ -9,11 +9,9 @@ import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
   zeroActivityDetail$,
   zeroActivityEvents$,
-  setupZeroActivityEventPolling$,
   formatLogTime,
   formatDuration,
 } from "../../signals/zero-page/zero-activity.ts";
-import { Reason, detach } from "../../signals/utils.ts";
 
 // ---------------------------------------------------------------------------
 // Map AgentEvent to display step
@@ -104,18 +102,10 @@ export function ZeroActivityDetailPage({
 
   const detailLoadable = useLoadable(zeroActivityDetail$);
   const eventsLoadable = useLoadable(zeroActivityEvents$);
-  const setupPolling = useSet(setupZeroActivityEventPolling$);
 
   const stepSearch$ = useCCState("");
   const stepSearch = useGet(stepSearch$);
   const setStepSearch = useSet(stepSearch$);
-
-  // Start polling on mount (the logId is already set in the signal)
-  // We use a simple initialized flag via loadable state
-  if (eventsLoadable.state === "loading") {
-    const controller = new AbortController();
-    detach(setupPolling(controller.signal), Reason.DomCallback);
-  }
 
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;

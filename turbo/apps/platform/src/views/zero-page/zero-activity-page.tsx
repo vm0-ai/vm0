@@ -28,13 +28,20 @@ import { Reason, detach } from "../../signals/utils.ts";
 function activityStatusToLogStatus(
   status: "success" | "error" | "warning" | "running",
 ): LogStatus {
-  const map: Record<string, LogStatus> = {
-    success: "completed",
-    error: "failed",
-    warning: "timeout",
-    running: "running",
-  };
-  return map[status] ?? "running";
+  switch (status) {
+    case "success": {
+      return "completed";
+    }
+    case "error": {
+      return "failed";
+    }
+    case "warning": {
+      return "timeout";
+    }
+    case "running": {
+      return "running";
+    }
+  }
 }
 
 const ROW_GRID =
