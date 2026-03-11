@@ -23,7 +23,11 @@ import { updateSearchParams$ } from "../../signals/route.ts";
 import {
   zeroSessionList$,
   zeroSessionListLoading$,
+  zeroCurrentSessionId$,
   fetchZeroSessionList$,
+  switchZeroSession$,
+  startNewZeroSession$,
+  sendZeroChatMessage$,
   sendZeroIntroMessage$,
 } from "../../signals/zero-page/zero-chat.ts";
 
@@ -209,8 +213,12 @@ export function ZeroAppShell() {
   });
   const cycleAvatar = useSet(cycleAvatar$);
 
-  const recentId$ = useCCState<string | null>(null);
-  const recentId = useGet(recentId$);
+  const inSession$ = useCCState(false);
+  const inSession = useGet(inSession$);
+  const currentSessionId = useGet(zeroCurrentSessionId$);
+  const switchSession = useSet(switchZeroSession$);
+  const startNewSession = useSet(startNewZeroSession$);
+  const sendMessage = useSet(sendZeroChatMessage$);
 
   const { recentSessions, recentSessionsLoading } = useSessionLifecycle(
     isLoggedIn,
@@ -219,20 +227,29 @@ export function ZeroAppShell() {
   );
 
   const handleRecentSelect$ = useCommand(({ set }, sessionId: string) => {
-    set(recentId$, sessionId);
     set(setZeroActiveId$, "chat");
+    set(inSession$, true);
+    detach(switchSession(sessionId), Reason.DomCallback);
   });
   const handleRecentSelect = useSet(handleRecentSelect$);
 
   const handleNewChat$ = useCommand(({ set }) => {
-    set(recentId$, null);
     set(setZeroActiveId$, "chat");
+    set(inSession$, true);
+    startNewSession();
   });
   const handleNewChat = useSet(handleNewChat$);
 
+  const handleSendFromDemo$ = useCommand(({ set }, message: string) => {
+    set(inSession$, true);
+    startNewSession();
+    detach(sendMessage(message), Reason.DomCallback);
+  });
+  const handleSendFromDemo = useSet(handleSendFromDemo$);
+
   const handleNavSelect$ = useCommand(({ set }, id: ZeroNavId) => {
     set(setZeroActiveId$, id);
-    set(recentId$, null);
+    set(inSession$, false);
     set(showAboutPage$, false);
   });
   const handleNavSelect = useSet(handleNavSelect$);
@@ -248,17 +265,8 @@ export function ZeroAppShell() {
   );
   const handleAccountAction = useSet(handleAccountAction$);
 
-  const handleClearRecent$ = useCommand(({ set }) => {
-    set(recentId$, null);
-  });
-  const handleClearRecent = useSet(handleClearRecent$);
-
   const updateSearchParams = useSet(updateSearchParams$);
   const resetDefaultAgent = useSet(resetDefaultAgent$);
-
-  const recentLabel = recentId
-    ? (recentSessions.find((s) => s.id === recentId)?.preview ?? null)
-    : null;
 
   const dataReady = isLoggedIn && onboardingReady && agentNameReady;
   const showSkeleton = useSkeletonVisibility(isLoggedIn, dataReady);
@@ -277,7 +285,9 @@ export function ZeroAppShell() {
         agentName={agentDisplayName}
         onSelect={handleNavSelect}
         onRecentSelect={handleRecentSelect}
-        selectedRecentId={activeId === "chat" ? recentId : null}
+        selectedRecentId={
+          activeId === "chat" && inSession ? currentSessionId : null
+        }
         onAccountAction={handleAccountAction}
         recentSessions={recentSessions}
         recentSessionsLoading={recentSessionsLoading}
@@ -333,9 +343,8 @@ export function ZeroAppShell() {
           <ZeroContent
             sectionId={activeId}
             accountSubId={accountSubId}
-            recentLabel={recentLabel}
-            recentId={recentId}
-            onClearRecent={handleClearRecent}
+            inSession={inSession}
+            onSendMessage={handleSendFromDemo}
             onNavigateToActivity={() => setActiveId("activity")}
             onNavigateToSchedule={() => setActiveId("schedule")}
             onNavigateToJob={() => setActiveId("job")}

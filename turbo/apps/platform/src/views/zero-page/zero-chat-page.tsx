@@ -25,7 +25,7 @@ import { Button, Card, CardContent, cn } from "@vm0/ui";
 import { ZERO_TEAM_JOBS } from "./zero-jobs-page";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 
-export type DemoScenarioId =
+type DemoScenarioId =
   | "hello-from-zero"
   | "approve"
   | "ask-options"
@@ -650,6 +650,7 @@ interface ZeroChatPageProps {
   onNavigateToSchedule?: () => void;
   onNavigateToJob?: () => void;
   onNavigateToMeet?: (tab?: string) => void;
+  onSendMessage?: (message: string) => void;
   zeroAvatarSrc?: string;
   onAvatarClick?: () => void;
 }
@@ -661,6 +662,7 @@ export function ZeroChatPage({
   onNavigateToSchedule,
   onNavigateToJob,
   onNavigateToMeet,
+  onSendMessage,
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroChatPageProps) {
@@ -790,7 +792,7 @@ export function ZeroChatPage({
     if (!messageOverride) {
       setInput("");
     }
-    // TODO: send message
+    onSendMessage?.(text);
   };
 
   const LUCKY_PROMPTS = [
