@@ -1,6 +1,5 @@
 import { useCCState, useCommand } from "ccstate-react/experimental";
-import { useGet, useSet, useLoadable } from "ccstate-react";
-import { useRef } from "react";
+import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
   IconMessageCircle,
@@ -239,7 +238,7 @@ function ZeroSkillItem({
 // ---------------------------------------------------------------------------
 
 function ZeroSkillsTab() {
-  const allTypesLoadable = useLoadable(allConnectorTypes$);
+  const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
   const disconnect = useSet(deleteConnector$);
@@ -250,12 +249,9 @@ function ZeroSkillsTab() {
   const setSelected = useSet(setSelectedConnectorType$);
 
   // Skills list: auto-seeded from compose content, synced via compose jobs
-  const addedSkillsLoadable = useLoadable(zeroAddedSkills$);
-  const addedSkillsRef = useRef<string[]>([]);
-  if (addedSkillsLoadable.state === "hasData") {
-    addedSkillsRef.current = addedSkillsLoadable.data;
-  }
-  const addedSkills = addedSkillsRef.current;
+  const addedSkillsLoadable = useLastLoadable(zeroAddedSkills$);
+  const addedSkills =
+    addedSkillsLoadable.state === "hasData" ? addedSkillsLoadable.data : [];
   const allSkills = useGet(skills$);
   const addSkill = useSet(addZeroSkill$);
   const removeSkill = useSet(removeZeroSkill$);
@@ -266,15 +262,12 @@ function ZeroSkillsTab() {
   const clearOptimistic = useSet(clearJustConnectedTypes$);
 
   // Cache previous connector data so the list doesn't flash during refetch
-  const allConnectorsRef = useRef<ConnectorTypeWithStatus[]>([]);
-  if (allTypesLoadable.state === "hasData") {
-    allConnectorsRef.current = allTypesLoadable.data;
-    // Clear optimistic state once real data reflects the connection
-    if (optimisticConnected.size > 0) {
-      clearOptimistic();
-    }
+  const allConnectors =
+    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+  // Clear optimistic state once real data reflects the connection
+  if (allTypesLoadable.state === "hasData" && optimisticConnected.size > 0) {
+    clearOptimistic();
   }
-  const allConnectors = allConnectorsRef.current;
   const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
   const skillMap = new Map(allSkills.map((s) => [s.value, s]));
   const addedSet = new Set(addedSkills);
