@@ -38,7 +38,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
-import { throwIfAbort } from "../../signals/utils.ts";
+import { throwIfAbort, detach, Reason } from "../../signals/utils.ts";
 import {
   COMMON_TIMEZONES,
   getTodayDateLocal,
@@ -724,19 +724,24 @@ export function ZeroScheduleCard({
                             checked={entry.enabled !== false}
                             onCheckedChange={(checked) => {
                               const id = entry.id;
+                              const name = entry.name;
+                              if (name === undefined) {
+                                return;
+                              }
                               setTogglingIds((prev) => new Set([...prev, id]));
-                              onToggleEnabled({
-                                name: entry.name!,
-                                enabled: checked,
-                              })
-                                .finally(() => {
+                              detach(
+                                onToggleEnabled({
+                                  name,
+                                  enabled: checked,
+                                }).finally(() => {
                                   setTogglingIds((prev) => {
                                     const next = new Set(prev);
                                     next.delete(id);
                                     return next;
                                   });
-                                })
-                                .catch(() => undefined);
+                                }),
+                                Reason.DomCallback,
+                              );
                             }}
                             aria-label={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
                             className="shrink-0 h-5 w-9 data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted [&>span]:h-4 [&>span]:w-4 [&>span]:data-[state=checked]:translate-x-4"
