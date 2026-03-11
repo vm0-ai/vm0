@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.0...runner-rs-v0.22.1) (2026-03-11)
+
+
+### Bug Fixes
+
+* enable selective streaming in mitm proxy to avoid zliberror ([#4223](https://github.com/vm0-ai/vm0/issues/4223)) ([9d89bd3](https://github.com/vm0-ai/vm0/commit/9d89bd3c3a3f39f54a319bd81b040bd4081206aa))
+
 ## [0.22.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.21.1...runner-rs-v0.22.0) (2026-03-10)
 
 

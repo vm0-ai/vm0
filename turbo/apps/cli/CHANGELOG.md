@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.55.3](https://github.com/vm0-ai/vm0/compare/cli-v9.55.2...cli-v9.55.3) (2026-03-11)
+
+
+### Refactoring
+
+* **cli:** replace process.exit with throw in connector commands ([#4228](https://github.com/vm0-ai/vm0/issues/4228)) ([3d99fd0](https://github.com/vm0-ai/vm0/commit/3d99fd027e67cff3f69b7193440c53f2ae2824c4))
+
 ## [9.55.2](https://github.com/vm0-ai/vm0/compare/cli-v9.55.1...cli-v9.55.2) (2026-03-11)
 
 
