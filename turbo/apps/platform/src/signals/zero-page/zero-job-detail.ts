@@ -94,11 +94,13 @@ const fetchZeroJobDetail$ = command(async ({ get, set }) => {
 interface ZeroJobInstructionsState {
   instructions: AgentInstructions | null;
   loading: boolean;
+  error: string | null;
 }
 
 const instructionsState$ = state<ZeroJobInstructionsState>({
   instructions: null,
   loading: false,
+  error: null,
 });
 
 export const zeroJobInstructions$ = computed(
@@ -107,6 +109,9 @@ export const zeroJobInstructions$ = computed(
 export const zeroJobInstructionsLoading$ = computed(
   (get) => get(instructionsState$).loading,
 );
+export const zeroJobInstructionsError$ = computed(
+  (get) => get(instructionsState$).error,
+);
 
 const fetchZeroJobInstructions$ = command(async ({ get, set }) => {
   const detail = get(zeroJobDetail$);
@@ -114,7 +119,7 @@ const fetchZeroJobInstructions$ = command(async ({ get, set }) => {
     return;
   }
 
-  set(instructionsState$, { instructions: null, loading: true });
+  set(instructionsState$, { instructions: null, loading: true, error: null });
 
   try {
     const fetchFn = get(fetch$);
@@ -126,11 +131,20 @@ const fetchZeroJobInstructions$ = command(async ({ get, set }) => {
     }
 
     const data = (await response.json()) as AgentInstructions;
-    set(instructionsState$, { instructions: data, loading: false });
+    set(instructionsState$, {
+      instructions: data,
+      loading: false,
+      error: null,
+    });
   } catch (error) {
     throwIfAbort(error);
     L.error("Failed to fetch instructions:", error);
-    set(instructionsState$, { instructions: null, loading: false });
+    set(instructionsState$, {
+      instructions: null,
+      loading: false,
+      error:
+        error instanceof Error ? error.message : "Failed to load instructions",
+    });
   }
 });
 
@@ -149,8 +163,21 @@ interface ScheduleItem {
   prompt: string;
 }
 
-const scheduleState$ = state<ScheduleItem[]>([]);
-export const zeroJobSchedule$ = computed((get) => get(scheduleState$));
+interface ZeroJobScheduleState {
+  schedules: ScheduleItem[];
+  error: string | null;
+}
+
+const scheduleState$ = state<ZeroJobScheduleState>({
+  schedules: [],
+  error: null,
+});
+export const zeroJobSchedule$ = computed(
+  (get) => get(scheduleState$).schedules,
+);
+export const zeroJobScheduleError$ = computed(
+  (get) => get(scheduleState$).error,
+);
 
 const fetchZeroJobSchedule$ = command(async ({ get, set }) => {
   const name = get(internalAgentName$);
@@ -158,19 +185,26 @@ const fetchZeroJobSchedule$ = command(async ({ get, set }) => {
     return;
   }
 
+  set(scheduleState$, { schedules: [], error: null });
+
   try {
     const fetchFn = get(fetch$);
     const response = await fetchFn("/api/agent/schedules");
     if (!response.ok) {
-      return;
+      throw new Error(`Failed to fetch schedules: ${response.statusText}`);
     }
 
     const data = (await response.json()) as { schedules: ScheduleItem[] };
     const agentSchedules = data.schedules.filter((s) => s.composeName === name);
-    set(scheduleState$, agentSchedules);
+    set(scheduleState$, { schedules: agentSchedules, error: null });
   } catch (error) {
     throwIfAbort(error);
     L.error("Failed to fetch schedules:", error);
+    set(scheduleState$, {
+      schedules: [],
+      error:
+        error instanceof Error ? error.message : "Failed to load schedules",
+    });
   }
 });
 

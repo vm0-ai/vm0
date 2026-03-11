@@ -25,17 +25,15 @@ import {
   zeroJobDetailError$,
   zeroJobInstructions$,
   zeroJobInstructionsLoading$,
+  zeroJobInstructionsError$,
   zeroJobSchedule$,
+  zeroJobScheduleError$,
 } from "../../signals/zero-page/zero-job-detail.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
 
-const CONNECTOR_LIST: readonly ConnectorType[] = [
-  "github",
-  "linear",
-  "notion",
-  "gmail",
-  "slack",
-];
+function getConnectorTypes(): ConnectorType[] {
+  return Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+}
 
 interface ZeroJobDetailPageProps {
   agentName: string;
@@ -70,7 +68,7 @@ function ConnectorsTab() {
         </p>
       </div>
       <ul className="flex flex-col gap-3">
-        {CONNECTOR_LIST.map((type) => {
+        {getConnectorTypes().map((type) => {
           const config = CONNECTOR_TYPES[type];
           return (
             <li key={type}>
@@ -166,6 +164,7 @@ function SettingsTab({
 function InstructionsTab() {
   const instructions = useGet(zeroJobInstructions$);
   const instructionsLoading = useGet(zeroJobInstructionsLoading$);
+  const instructionsError = useGet(zeroJobInstructionsError$);
 
   return (
     <Card className="zero-card-white">
@@ -177,14 +176,19 @@ function InstructionsTab() {
             <div className="h-4 w-5/6 rounded bg-muted" />
           </div>
         )}
-        {!instructionsLoading && instructions?.content && (
-          <Markdown source={instructions.content} />
+        {!instructionsLoading && instructionsError && (
+          <p className="text-sm text-destructive">{instructionsError}</p>
         )}
-        {!instructionsLoading && !instructions?.content && (
-          <p className="text-sm text-muted-foreground">
-            No instructions configured for this agent.
-          </p>
-        )}
+        {!instructionsLoading &&
+          !instructionsError &&
+          instructions?.content && <Markdown source={instructions.content} />}
+        {!instructionsLoading &&
+          !instructionsError &&
+          !instructions?.content && (
+            <p className="text-sm text-muted-foreground">
+              No instructions configured for this agent.
+            </p>
+          )}
       </CardContent>
     </Card>
   );
@@ -248,6 +252,17 @@ function DetailError({
 function ScheduleTab({ agentName }: { agentName: string }) {
   const detail = useGet(zeroJobDetail$);
   const schedules = useGet(zeroJobSchedule$);
+  const scheduleError = useGet(zeroJobScheduleError$);
+
+  if (scheduleError) {
+    return (
+      <Card className="zero-card">
+        <CardContent className="px-6 py-6 text-center">
+          <p className="text-sm text-destructive">{scheduleError}</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const scheduleEntries = schedules.map((s) => ({
     id: s.id,
