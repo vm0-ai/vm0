@@ -718,6 +718,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  dify: {
+    label: "Dify",
+    helpText:
+      "Connect your Dify account to build and manage AI-powered workflows, chatbots, and agentic applications",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Dify](https://cloud.dify.ai)\n2. Open your application\n3. Go to **API Access** in the left sidebar\n4. Copy the API Key",
+        secrets: {
+          DIFY_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "app-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   figma: {
     label: "Figma",
     featureFlag: FeatureSwitchKey.FigmaConnector,
@@ -2454,6 +2474,9 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       service("https://api.deepseek.com", bearerAuth("DEEPSEEK_TOKEN")),
     ],
   },
+  dify: {
+    services: [service("https://api.dify.ai/v1", bearerAuth("DIFY_TOKEN"))],
+  },
   figma: {
     services: [service("https://api.figma.com", bearerAuth("FIGMA_TOKEN"))],
   },
@@ -2805,6 +2828,7 @@ export const connectorTypeSchema = z.enum([
   "slack",
   "deel",
   "deepseek",
+  "dify",
   "docusign",
   "dropbox",
   "linear",

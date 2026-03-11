@@ -19,6 +19,7 @@ import { chatwootHandler } from "./providers/chatwoot-handler";
 import { closeHandler } from "./providers/close-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { deepseekHandler } from "./providers/deepseek-handler";
+import { difyHandler } from "./providers/dify-handler";
 import { devtoHandler } from "./providers/devto-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
@@ -102,6 +103,7 @@ export const PROVIDER_HANDLERS: Record<
   close: closeHandler,
   deel: deelHandler,
   deepseek: deepseekHandler,
+  dify: difyHandler,
   devto: devtoHandler,
   docusign: docusignHandler,
   dropbox: dropboxHandler,
