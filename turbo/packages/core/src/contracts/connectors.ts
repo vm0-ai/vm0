@@ -1749,6 +1749,27 @@ const CONNECTOR_TYPES_DEF = {
     defaultAuthMethod: "api-token",
     environmentMapping: {} as Record<string, string>,
   },
+  devto: {
+    label: "Dev.to",
+    helpText:
+      "Connect your Dev.to account to publish articles, manage posts, and interact with the developer community",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Dev.to](https://dev.to)\n2. Go to **Settings → Extensions**\n3. Scroll to **DEV Community API Keys**\n4. Generate a new API key and copy it",
+        secrets: {
+          DEVTO_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-devto-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {} as Record<string, string>,
+  },
 } satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
@@ -2102,6 +2123,13 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       }),
     ],
   },
+  devto: {
+    services: [
+      service("https://dev.to/api", {
+        headers: { "api-key": "${secrets.DEVTO_TOKEN}" },
+      }),
+    ],
+  },
 };
 
 export const connectorTypeSchema = z.enum([
@@ -2154,6 +2182,7 @@ export const connectorTypeSchema = z.enum([
   "productlane",
   "resend",
   "elevenlabs",
+  "devto",
 ]);
 
 /**
