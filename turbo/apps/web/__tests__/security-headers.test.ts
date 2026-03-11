@@ -66,20 +66,12 @@ describe("Security Response Headers", () => {
   });
 
   describe("Content-Security-Policy", () => {
-    it("should restrict script-src to trusted domains", async () => {
+    it("should use permissive script-src with unsafe-inline for phase 1", async () => {
       const headers = await getSecurityHeaders();
       const csp = findHeader(headers, "Content-Security-Policy");
 
       expect(csp).toContain("script-src");
-      expect(csp).toContain("'self'");
       expect(csp).toContain("'unsafe-inline'");
-      expect(csp).toContain("https://plausible.io");
-      expect(csp).toContain("https://*.clerk.accounts.dev");
-      expect(csp).toContain("https://*.clerk.com");
-      expect(csp).toContain("https://*.sentry.io");
-      expect(csp).toContain("https://app.termly.io");
-      expect(csp).toContain("https://api.dashboard.instatus.com");
-      expect(csp).toContain("https://challenges.cloudflare.com");
     });
 
     it("should allow inline styles via style-src", async () => {
