@@ -62,7 +62,9 @@ describe("GET /api/scope/members - Scope Members", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error.message).toContain("scope query parameter is required");
+    expect(data.error.message).toContain(
+      "scope or org query parameter is required",
+    );
   });
 
   it("should return scope members", async () => {
