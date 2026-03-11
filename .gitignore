@@ -178,6 +178,7 @@ docs/tapes/*.gif
 # Python
 __pycache__/
 *.pyc
+*.egg-info/
 .pytest_cache/
 
 # Debug screenshots
