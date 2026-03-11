@@ -166,16 +166,14 @@ export async function createScope(
     throw badRequest(`Scope "${slug}" already exists`);
   }
 
-  const scope = newScope;
-
   log.debug("scope created", {
     clerkUserId,
-    scopeId: scope.id,
+    scopeId: newScope.id,
     slug,
     clerkOrgId,
   });
 
-  return scope;
+  return newScope;
 }
 
 /**
