@@ -1,10 +1,7 @@
 import { describe, it, expect } from "vitest";
-import {
-  hasRequiredScopes,
-  getServiceConfig,
-  CONNECTOR_TYPES,
-} from "../connectors";
+import { hasRequiredScopes, CONNECTOR_TYPES } from "../connectors";
 import type { ConnectorType } from "../connectors";
+import { getServiceConfig } from "../services";
 
 describe("hasRequiredScopes", () => {
   it("returns true for non-OAuth connector type", () => {
