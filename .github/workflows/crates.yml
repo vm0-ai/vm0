@@ -119,8 +119,8 @@ jobs:
 
       - name: Run mitm-addon tests
         run: |
-          pip install pytest mitmproxy
           cd crates/runner/mitm-addon
+          pip install ".[test]"
           python -m pytest tests/ -v
 
   runner-build:
