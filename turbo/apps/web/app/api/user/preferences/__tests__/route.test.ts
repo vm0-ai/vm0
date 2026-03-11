@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { clerkClient } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { GET, PUT } from "../route";
 import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
@@ -150,31 +150,21 @@ describe("GET /api/user/preferences (JWT claims)", () => {
   it("should read from Clerk API fallback with metadata values", async () => {
     const user = await context.setupUser();
 
-    // No JWT claims, but Clerk membership has metadata
+    // Set membership metadata in Clerk API (also sets JWT claims)
     mockClerk({
       userId: user.userId,
       orgId: user.clerkOrgId,
-      // No membershipTimezone etc in sessionClaims — but set in publicMetadata via mock
+      membershipTimezone: "America/Chicago",
+      membershipNotifyEmail: true,
+      membershipNotifySlack: false,
     });
 
-    // Override getOrganizationMembershipList to return metadata directly
-    const client = await vi.mocked(clerkClient)();
-    vi.mocked(
-      client.organizations.getOrganizationMembershipList,
-    ).mockResolvedValueOnce({
-      data: [
-        {
-          role: "org:admin",
-          publicUserData: { userId: user.userId },
-          publicMetadata: {
-            timezone: "America/Chicago",
-            notify_email: true,
-            notify_slack: false,
-          },
-          createdAt: Date.now(),
-        },
-      ],
-    } as never);
+    // Clear JWT claims so the code falls through to Clerk API path
+    vi.mocked(auth).mockResolvedValue({
+      userId: user.userId,
+      orgId: user.clerkOrgId,
+      sessionClaims: {},
+    } as Awaited<ReturnType<typeof auth>>);
 
     const request = createTestRequest(
       "http://localhost:3000/api/user/preferences",
@@ -186,6 +176,28 @@ describe("GET /api/user/preferences (JWT claims)", () => {
     expect(data.timezone).toBe("America/Chicago");
     expect(data.notifyEmail).toBe(true);
     expect(data.notifySlack).toBe(false);
+  });
+});
+
+describe("GET /api/user/preferences (error paths)", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should return BAD_REQUEST when no organization context is available", async () => {
+    const user = await context.setupUser();
+
+    // No orgId in session and no scopeId in auth context
+    mockClerk({ userId: user.userId });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error.message).toContain("No organization context");
   });
 });
 

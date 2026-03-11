@@ -873,10 +873,9 @@ async function executeSchedule(
     userId: schedule.userId,
   };
 
-  const prefs = await getUserPreferences(
-    scopeRecord!.clerkOrgId,
-    schedule.userId,
-  );
+  const prefs = scopeRecord
+    ? await getUserPreferences(scopeRecord.clerkOrgId, schedule.userId)
+    : { timezone: null, notifyEmail: false, notifySlack: true };
 
   // Email schedule notification callback (only if Resend is configured AND user opted in)
   if (globalThis.services.env.RESEND_API_KEY && prefs.notifyEmail) {
