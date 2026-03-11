@@ -6,6 +6,17 @@ import { defineConfig } from "vite";
 export default defineConfig({
   base: process.env.VITE_BASE_URL || "/",
   envPrefix: ["VITE_"],
+  optimizeDeps: {
+    // Pre-bundle Radix (and other heavy deps) so first load behind a proxy doesn't 504
+    include: [
+      "@radix-ui/react-dropdown-menu",
+      "@radix-ui/react-dialog",
+      "@radix-ui/react-popover",
+      "@radix-ui/react-select",
+      "@radix-ui/react-slot",
+      "@radix-ui/react-tooltip",
+    ],
+  },
   plugins: [
     tailwindcss(),
     react(),

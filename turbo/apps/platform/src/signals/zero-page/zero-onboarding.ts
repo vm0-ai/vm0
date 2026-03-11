@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import {
   type ModelProviderType,
+  type OnboardingStatusResponse,
   getDefaultAuthMethod,
   getDefaultModel,
   getInstructionsFilename,
@@ -17,6 +18,7 @@ import { skillValueToUrl } from "../../data/skills.ts";
 import { triggerAndPollComposeJob } from "../agent-detail/compose-job.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
+import { throwIfAbort } from "../utils.ts";
 
 const L = logger("ZeroOnboarding");
 
@@ -32,13 +34,30 @@ export const reloadOnboardingStatus$ = command(({ set }) => {
 });
 
 export const zeroOnboardingStatus$ = computed(async (get) => {
+  const FALLBACK: OnboardingStatusResponse = {
+    needsOnboarding: false,
+    hasScope: true,
+    hasModelProvider: true,
+    hasDefaultAgent: true,
+    defaultAgentName: "zero",
+    defaultAgentComposeId: null,
+  };
   get(internalReload$);
   const fetchFn = get(fetch$);
-  const resp = await fetchFn("/api/onboarding/status");
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch onboarding status: ${resp.status}`);
+  try {
+    const resp = await fetchFn("/api/onboarding/status");
+    if (!resp.ok) {
+      L.warn("Onboarding status request failed, using fallback", {
+        status: resp.status,
+      });
+      return FALLBACK;
+    }
+    return onboardingStatusResponseSchema.parse(await resp.json());
+  } catch (error) {
+    throwIfAbort(error);
+    L.warn("Onboarding status fetch error, using fallback", { error });
+    return FALLBACK;
   }
-  return onboardingStatusResponseSchema.parse(await resp.json());
 });
 
 export const zeroNeedsOnboarding$ = computed(async (get) => {
