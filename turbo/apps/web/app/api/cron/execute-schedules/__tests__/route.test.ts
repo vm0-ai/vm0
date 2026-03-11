@@ -10,7 +10,10 @@ import {
   getTestScheduleRuns,
   disableAllSchedules,
 } from "../../../../../src/__tests__/api-test-helpers";
-import { testContext } from "../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 
 const context = testContext();
@@ -22,9 +25,7 @@ describe("GET /api/cron/execute-schedules", () => {
     context.setupMocks();
     await context.setupUser();
 
-    const { composeId } = await createTestCompose(
-      `cron-test-agent-${Date.now()}`,
-    );
+    const { composeId } = await createTestCompose(uniqueId("cron-agent"));
     testComposeId = composeId;
   });
 

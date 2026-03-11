@@ -21,7 +21,10 @@ import {
   getOrgBySlug,
 } from "../../../../src/lib/scope/org-cache-service";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { logger } from "../../../../src/lib/logger";
 import { eq, and, desc, lt, or, ilike, count, type SQL } from "drizzle-orm";
+
+const log = logger("api:platform:logs");
 
 // Minimal type for extracting framework from compose content
 interface AgentComposeContent {
@@ -196,19 +199,24 @@ const router = tsr.router(platformLogsListContract, {
       .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
       .limit(limit + 1);
 
-    // Resolve scope slugs via org cache
+    // Resolve scope slugs via org cache (skip orgs that fail lookup)
     const uniqueClerkOrgIds = [
       ...new Set(runs.filter((r) => r.clerkOrgId).map((r) => r.clerkOrgId!)),
     ];
-    const orgDataEntries = await Promise.all(
-      uniqueClerkOrgIds.map(
-        async (id) => [id, await getOrgData(id).catch(() => null)] as const,
-      ),
-    );
     const slugMap = new Map<string, string>();
-    for (const [id, data] of orgDataEntries) {
-      if (data) slugMap.set(id, data.slug);
-    }
+    await Promise.all(
+      uniqueClerkOrgIds.map(async (id) => {
+        try {
+          const data = await getOrgData(id);
+          slugMap.set(id, data.slug);
+        } catch (err) {
+          log.warn("failed to resolve org slug for run", {
+            clerkOrgId: id,
+            error: err,
+          });
+        }
+      }),
+    );
 
     const totalCount = await getTotalCount(userId, query, scopeClerkOrgId);
     const totalPages = Math.max(1, Math.ceil(totalCount / limit));
