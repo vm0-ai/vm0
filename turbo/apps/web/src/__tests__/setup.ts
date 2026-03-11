@@ -145,6 +145,16 @@ vi.mock("@slack/web-api", () => {
       replies: vi.fn().mockResolvedValue({ ok: true, messages: [] }),
       history: vi.fn().mockResolvedValue({ ok: true, messages: [] }),
     },
+    users: {
+      info: vi.fn().mockResolvedValue({
+        ok: true,
+        user: {
+          id: "U-mock",
+          name: "mockuser",
+          profile: { display_name: "Mock User" },
+        },
+      }),
+    },
     reactions: {
       add: vi.fn().mockResolvedValue({ ok: true }),
       remove: vi.fn().mockResolvedValue({ ok: true }),

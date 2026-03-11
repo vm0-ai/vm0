@@ -123,12 +123,7 @@ export async function fetchSlackUserInfo(
   client: WebClient,
   userId: string,
 ): Promise<string | undefined> {
-  let result;
-  try {
-    result = await client.users.info({ user: userId });
-  } catch {
-    return undefined;
-  }
+  const result = await client.users.info({ user: userId });
   if (!result.ok || !result.user) return undefined;
 
   const u = result.user;

@@ -78,6 +78,18 @@ describe("Feature: Fetch Slack User Info", () => {
     expect(result).toBeUndefined();
   });
 
+  it("should propagate error when API call throws", async () => {
+    const client = {
+      users: {
+        info: vi.fn().mockRejectedValue(new Error("network_error")),
+      },
+    } as unknown as WebClient;
+
+    await expect(fetchSlackUserInfo(client, "U999")).rejects.toThrow(
+      "network_error",
+    );
+  });
+
   it("should omit name when no name fields are available", async () => {
     const client = createMockClient({
       ok: true,

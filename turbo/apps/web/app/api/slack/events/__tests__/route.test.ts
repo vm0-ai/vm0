@@ -555,7 +555,7 @@ describe("POST /api/slack/events", () => {
 
       // Then the message should be routed to the agent (runAgentForSlack called)
       expect(runAgentSpy).toHaveBeenCalledTimes(1);
-      expect(runAgentSpy.mock.calls[0]![0].prompt).toBe("hello");
+      expect(runAgentSpy.mock.calls[0]![0].prompt).toContain("hello");
 
       // And no immediate response should be posted (callback handles that)
       expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
