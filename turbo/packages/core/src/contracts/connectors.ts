@@ -434,6 +434,26 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as ConnectorOAuthConfig,
   },
+  "hugging-face": {
+    label: "Hugging Face",
+    helpText:
+      "Connect your Hugging Face account to access models, datasets, and inference APIs",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Hugging Face](https://huggingface.co)\n2. Go to **Settings → Access Tokens**\n3. Create a new token with the required permissions\n4. Copy the token",
+        secrets: {
+          HUGGING_FACE_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "hf_...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   heygen: {
     label: "HeyGen",
     helpText:
@@ -2642,6 +2662,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       ),
     ],
   },
+  "hugging-face": {
+    services: [
+      service("https://huggingface.co/api", bearerAuth("HUGGING_FACE_TOKEN")),
+    ],
+  },
   heygen: {
     services: [
       service("https://api.heygen.com", {
@@ -3087,6 +3112,7 @@ export const connectorTypeSchema = z.enum([
   "github",
   "gmail",
   "google-sheets",
+  "hugging-face",
   "heygen",
   "hubspot",
   "google-docs",
