@@ -59,6 +59,7 @@ import { posthogHandler } from "./providers/posthog-handler";
 import { pdf4meHandler } from "./providers/pdf4me-handler";
 import { perplexityHandler } from "./providers/perplexity-handler";
 import { plausibleHandler } from "./providers/plausible-handler";
+import { podchaserHandler } from "./providers/podchaser-handler";
 import { productlaneHandler } from "./providers/productlane-handler";
 import { qdrantHandler } from "./providers/qdrant-handler";
 import { resendHandler } from "./providers/resend-handler";
@@ -125,6 +126,7 @@ export const PROVIDER_HANDLERS: Record<
   pdf4me: pdf4meHandler,
   perplexity: perplexityHandler,
   plausible: plausibleHandler,
+  podchaser: podchaserHandler,
   productlane: productlaneHandler,
   qdrant: qdrantHandler,
   resend: resendHandler,
