@@ -158,7 +158,8 @@ function AccountDropdown({
 
   const handleAccountAction = (action: ZeroAccountAction) => {
     if (action === "signout") {
-      detach(clerk?.signOut(), Reason.DomCallback);
+      const sessionId = clerk?.session?.id;
+      detach(clerk?.signOut({ sessionId }), Reason.DomCallback);
       return;
     }
     if (action === "manage") {

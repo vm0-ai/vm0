@@ -18,6 +18,7 @@ import { canvaHandler } from "./providers/canva-handler";
 import { chatwootHandler } from "./providers/chatwoot-handler";
 import { closeHandler } from "./providers/close-handler";
 import { deelHandler } from "./providers/deel-handler";
+import { deepseekHandler } from "./providers/deepseek-handler";
 import { devtoHandler } from "./providers/devto-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
@@ -58,14 +59,18 @@ import { outlookMailHandler } from "./providers/outlook-mail-handler";
 import { metaAdsHandler } from "./providers/meta-ads-handler";
 import { posthogHandler } from "./providers/posthog-handler";
 import { pdf4meHandler } from "./providers/pdf4me-handler";
+import { pdfcoHandler } from "./providers/pdfco-handler";
 import { perplexityHandler } from "./providers/perplexity-handler";
+import { pushinatorHandler } from "./providers/pushinator-handler";
 import { plausibleHandler } from "./providers/plausible-handler";
 import { podchaserHandler } from "./providers/podchaser-handler";
 import { productlaneHandler } from "./providers/productlane-handler";
+import { qdrantHandler } from "./providers/qdrant-handler";
 import { resendHandler } from "./providers/resend-handler";
 import { scrapeninjaHandler } from "./providers/scrapeninja-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
 import { xeroHandler } from "./providers/xero-handler";
+import { zeptomailHandler } from "./providers/zeptomail-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
 
@@ -86,6 +91,7 @@ export const PROVIDER_HANDLERS: Record<
   chatwoot: chatwootHandler,
   close: closeHandler,
   deel: deelHandler,
+  deepseek: deepseekHandler,
   devto: devtoHandler,
   docusign: docusignHandler,
   dropbox: dropboxHandler,
@@ -125,15 +131,19 @@ export const PROVIDER_HANDLERS: Record<
   "meta-ads": metaAdsHandler,
   posthog: posthogHandler,
   pdf4me: pdf4meHandler,
+  pdfco: pdfcoHandler,
   perplexity: perplexityHandler,
   plausible: plausibleHandler,
   podchaser: podchaserHandler,
   productlane: productlaneHandler,
+  pushinator: pushinatorHandler,
+  qdrant: qdrantHandler,
   resend: resendHandler,
   scrapeninja: scrapeninjaHandler,
   similarweb: similarwebHandler,
   x: xHandler,
   xero: xeroHandler,
+  zeptomail: zeptomailHandler,
 };
 
 /**

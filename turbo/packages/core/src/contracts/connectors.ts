@@ -698,6 +698,26 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as ConnectorOAuthConfig,
   },
+  deepseek: {
+    label: "DeepSeek",
+    helpText:
+      "Connect your DeepSeek account to use DeepSeek AI models for chat completions, code generation, and reasoning tasks",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [DeepSeek Platform](https://platform.deepseek.com)\n2. Go to **API Keys**\n3. Create a new API key\n4. Copy the key",
+        secrets: {
+          DEEPSEEK_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "sk-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   figma: {
     label: "Figma",
     featureFlag: FeatureSwitchKey.FigmaConnector,
@@ -1920,6 +1940,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  pdfco: {
+    label: "PDF.co",
+    helpText:
+      "Connect your PDF.co account to convert, merge, split, and extract data from PDF documents via API",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [PDF.co](https://app.pdf.co)\n2. Find your API key on the dashboard\n3. Copy the key",
+        secrets: {
+          PDFCO_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-pdfco-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   elevenlabs: {
     label: "ElevenLabs",
     helpText:
@@ -1994,6 +2034,66 @@ const CONNECTOR_TYPES_DEF = {
             label: "API Token",
             required: true,
             placeholder: "your-podchaser-access-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  pushinator: {
+    label: "Pushinator",
+    helpText:
+      "Connect your Pushinator account to send push notifications to mobile devices",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Sign up at [Pushinator](https://pushinator.com/)\n2. Go to the [Console](https://console.pushinator.com/tokens)\n3. Generate an API token\n4. Copy the token",
+        secrets: {
+          PUSHINATOR_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-pushinator-api-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  qdrant: {
+    label: "Qdrant",
+    helpText:
+      "Connect your Qdrant account to store, search, and manage vector embeddings",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Qdrant Cloud](https://cloud.qdrant.io)\n2. Go to **Data Access Control → API Keys**\n3. Create a new API key\n4. Copy the key",
+        secrets: {
+          QDRANT_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-qdrant-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  zeptomail: {
+    label: "ZeptoMail",
+    helpText:
+      "Connect your ZeptoMail account to send transactional emails via Zoho's email delivery service",
+    authMethods: {
+      "api-token": {
+        label: "Send Mail Token",
+        helpText:
+          "1. Log in to [ZeptoMail](https://zeptomail.zoho.com)\n2. Go to **Agents → SMTP/API**\n3. Under **Send Mail Token**, click the copy icon",
+        secrets: {
+          ZEPTOMAIL_TOKEN: {
+            label: "Send Mail Token",
+            required: true,
+            placeholder: "your-zeptomail-send-mail-token",
           },
         },
       },
@@ -2148,6 +2248,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   },
   deel: {
     services: [service("https://api.deel.com", bearerAuth("DEEL_TOKEN"))],
+  },
+  deepseek: {
+    services: [
+      service("https://api.deepseek.com", bearerAuth("DEEPSEEK_TOKEN")),
+    ],
   },
   figma: {
     services: [service("https://api.figma.com", bearerAuth("FIGMA_TOKEN"))],
@@ -2363,6 +2468,13 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       }),
     ],
   },
+  pdfco: {
+    services: [
+      service("https://api.pdf.co/v1", {
+        headers: { "x-api-key": "${secrets.PDFCO_TOKEN}" },
+      }),
+    ],
+  },
   apify: {
     services: [service("https://api.apify.com/v2", bearerAuth("APIFY_TOKEN"))],
   },
@@ -2412,6 +2524,27 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       service("https://api.podchaser.com", bearerAuth("PODCHASER_TOKEN")),
     ],
   },
+  pushinator: {
+    services: [
+      service("https://api.pushinator.com", bearerAuth("PUSHINATOR_TOKEN")),
+    ],
+  },
+  qdrant: {
+    services: [
+      service("https://cloud.qdrant.io", {
+        headers: { "api-key": "${secrets.QDRANT_TOKEN}" },
+      }),
+    ],
+  },
+  zeptomail: {
+    services: [
+      service("https://api.zeptomail.com/v1.1", {
+        headers: {
+          Authorization: "Zoho-enczapikey ${secrets.ZEPTOMAIL_TOKEN}",
+        },
+      }),
+    ],
+  },
 };
 
 export const connectorTypeSchema = z.enum([
@@ -2433,6 +2566,7 @@ export const connectorTypeSchema = z.enum([
   "computer",
   "slack",
   "deel",
+  "deepseek",
   "docusign",
   "dropbox",
   "linear",
@@ -2461,6 +2595,7 @@ export const connectorTypeSchema = z.enum([
   "chatwoot",
   "similarweb",
   "mailchimp",
+  "pdfco",
   "perplexity",
   "plausible",
   "productlane",
@@ -2476,7 +2611,10 @@ export const connectorTypeSchema = z.enum([
   "devto",
   "fal",
   "podchaser",
+  "pushinator",
+  "qdrant",
   "serpapi",
+  "zeptomail",
 ]);
 
 /**

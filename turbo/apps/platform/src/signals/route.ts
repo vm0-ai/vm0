@@ -1,7 +1,9 @@
 import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
+import { FeatureSwitchKey } from "@vm0/core";
 import type { RoutePath } from "../types/route.ts";
-import { clerk$ } from "./auth.ts";
+import { clerk$, needsOrgSelection$ } from "./auth.ts";
+import { featureSwitch$ } from "./external/feature-switch.ts";
 import { pathname, pushState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
@@ -204,6 +206,7 @@ export const setupPageWrapper = (
 /**
  * Wraps a page setup function with authentication requirement.
  * Opens sign-in dialog if user is not authenticated.
+ * Also redirects to /select-org when the user needs to choose an organization.
  */
 export const setupAuthPageWrapper = (
   fn: Command<Promise<void> | void, [AbortSignal]>,
@@ -216,6 +219,23 @@ export const setupAuthPageWrapper = (
       await clerk.redirectToSignIn();
       signal.throwIfAborted();
       return;
+    }
+
+    // Redirect to org selection if needed (Zero feature flag + skip if already on /select-org)
+    if (pathname() !== "/select-org") {
+      const features = await get(featureSwitch$);
+      signal.throwIfAborted();
+
+      if (features[FeatureSwitchKey.Zero]) {
+        const needsSelection = await get(needsOrgSelection$);
+        signal.throwIfAborted();
+
+        if (needsSelection) {
+          L.debug("redirect to /select-org because org selection is needed");
+          set(navigateInReact$, "/select-org");
+          return;
+        }
+      }
     }
 
     await set(setupPageWrapper(fn), signal);
