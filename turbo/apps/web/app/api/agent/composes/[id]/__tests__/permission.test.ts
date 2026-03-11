@@ -142,12 +142,47 @@ describe("Agent Compose Permission Checks", () => {
       expect(data.error.message).toContain("not found");
     });
 
-    it("should allow access when user is a member of the same org", async () => {
-      // Switch to another user who is a member of the SAME Clerk org as the owner
+    it("should allow access when user is a member of the same org (JWT fast path)", async () => {
+      // Switch to another user whose active org matches the compose's org
+      // This exercises the JWT fast path (authResult.orgId === compose.clerkOrgId)
       mockClerk({
         userId: "other-user-123",
         orgId: ownerClerkOrgId,
         clerkOrgs: [
+          {
+            id: ownerClerkOrgId,
+            slug: "shared-org",
+            name: "Shared Org",
+          },
+        ],
+      });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/composes/${testComposeId}`,
+        { method: "GET" },
+      );
+
+      const response = await getCompose(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.id).toBe(testComposeId);
+    });
+
+    it("should allow access via Clerk API fallback when active org differs", async () => {
+      // Switch to another user who belongs to the owner's org but has a
+      // different active org in their session. This exercises the Clerk API
+      // fallback path (users.getOrganizationMembershipList).
+      const differentOrgId = "org_different_active";
+      mockClerk({
+        userId: "other-user-456",
+        orgId: differentOrgId,
+        clerkOrgs: [
+          {
+            id: differentOrgId,
+            slug: "different-org",
+            name: "Different Org",
+          },
           {
             id: ownerClerkOrgId,
             slug: "shared-org",
