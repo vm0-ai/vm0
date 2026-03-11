@@ -13,7 +13,7 @@ import {
   findTestTelegramInstallationById,
   findTestGitHubInstallationById,
 } from "../../__tests__/api-test-helpers";
-import { encryptCredentialValue } from "../../lib/crypto/secrets-encryption";
+import { encryptSecretValue } from "../../lib/crypto/secrets-encryption";
 import { env } from "../../env";
 
 const context = testContext();
@@ -58,7 +58,7 @@ describe("Scope deletion CASCADE", () => {
       uniqueId("agent"),
     );
 
-    const encryptedToken = encryptCredentialValue(
+    const encryptedToken = encryptSecretValue(
       "test-token",
       SECRETS_ENCRYPTION_KEY,
     );

@@ -313,14 +313,13 @@ export function toISODateTime(dateTimeStr: string): string {
 interface RequiredConfiguration {
   secrets: string[];
   vars: string[];
-  credentials: string[];
 }
 
 /**
- * Extract required secrets, vars, and credentials from compose content.
+ * Extract required secrets and vars from compose content.
  * Uses the same extraction logic as vm0 run command.
  * @param composeContent - The compose content from API (unknown type to handle various formats)
- * @returns Object with arrays of required secret, var, and credential names
+ * @returns Object with arrays of required secret and var names
  */
 export function extractRequiredConfiguration(
   composeContent: unknown,
@@ -328,7 +327,6 @@ export function extractRequiredConfiguration(
   const result: RequiredConfiguration = {
     secrets: [],
     vars: [],
-    credentials: [],
   };
 
   if (!composeContent) {
@@ -340,7 +338,6 @@ export function extractRequiredConfiguration(
 
   result.secrets = grouped.secrets.map((r) => r.name);
   result.vars = grouped.vars.map((r) => r.name);
-  result.credentials = grouped.credentials.map((r) => r.name);
 
   return result;
 }

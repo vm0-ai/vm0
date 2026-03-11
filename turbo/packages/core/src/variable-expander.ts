@@ -1,18 +1,14 @@
 /**
  * Unified variable expansion for agent compose configurations
- * Supports ${{ vars.xxx }}, ${{ secrets.xxx }}, and ${{ credentials.xxx }} syntax
+ * Supports ${{ vars.xxx }} and ${{ secrets.xxx }} syntax
  * Note: ${{ env.xxx }} is parsed but not currently used (reserved for future)
- *
- * Migration note: ${{ credentials.X }} can resolve from either credentials or secrets source.
- * The credentials source is checked first, then secrets as fallback. This allows existing
- * credential references to continue working while also enabling migration to secrets.
  */
 
 /**
  * Variable reference with source and name
  */
 export interface VariableReference {
-  source: "env" | "vars" | "secrets" | "credentials";
+  source: "env" | "vars" | "secrets";
   name: string;
   fullMatch: string;
 }
@@ -24,7 +20,6 @@ export interface VariableSources {
   env?: Record<string, string | undefined>;
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
-  credentials?: Record<string, string>;
 }
 
 /**
@@ -37,10 +32,10 @@ export interface ExpansionResult<T> {
 
 /**
  * Regex pattern for ${{ source.name }} syntax
- * Matches: ${{ env.VAR }}, ${{ vars.foo }}, ${{ secrets.key }}, ${{ credentials.KEY }}
+ * Matches: ${{ env.VAR }}, ${{ vars.foo }}, ${{ secrets.key }}
  */
 const VARIABLE_PATTERN =
-  /\$\{\{\s*(env|vars|secrets|credentials)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+  /\$\{\{\s*(env|vars|secrets)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 /**
  * Extract all variable references from a string
@@ -54,7 +49,7 @@ export function extractVariableReferencesFromString(
   const matches = value.matchAll(VARIABLE_PATTERN);
 
   for (const match of matches) {
-    const source = match[1] as "env" | "vars" | "secrets" | "credentials";
+    const source = match[1] as "env" | "vars" | "secrets";
     const name = match[2]!;
     refs.push({
       source,
@@ -114,16 +109,8 @@ export function expandVariablesInString(
   const seenMissing = new Set<string>();
 
   const result = value.replace(VARIABLE_PATTERN, (fullMatch, source, name) => {
-    const typedSource = source as "env" | "vars" | "secrets" | "credentials";
-
-    // For credentials, check credentials source first, then fall back to secrets
-    // This allows ${{ credentials.X }} to resolve from either source
-    let resolved: string | undefined;
-    if (typedSource === "credentials") {
-      resolved = sources.credentials?.[name] ?? sources.secrets?.[name];
-    } else {
-      resolved = sources[typedSource]?.[name];
-    }
+    const typedSource = source as "env" | "vars" | "secrets";
+    const resolved = sources[typedSource]?.[name];
 
     if (resolved === undefined) {
       const key = `${typedSource}.${name}`;
@@ -198,13 +185,7 @@ export function validateRequiredVariables(
   const missing: VariableReference[] = [];
 
   for (const ref of refs) {
-    // For credentials, check credentials source first, then fall back to secrets
-    let resolved: string | undefined;
-    if (ref.source === "credentials") {
-      resolved = sources.credentials?.[ref.name] ?? sources.secrets?.[ref.name];
-    } else {
-      resolved = sources[ref.source]?.[ref.name];
-    }
+    const resolved = sources[ref.source]?.[ref.name];
     if (resolved === undefined) {
       missing.push(ref);
     }
@@ -222,13 +203,11 @@ export function groupVariablesBySource(refs: VariableReference[]): {
   env: VariableReference[];
   vars: VariableReference[];
   secrets: VariableReference[];
-  credentials: VariableReference[];
 } {
   const groups = {
     env: [] as VariableReference[],
     vars: [] as VariableReference[],
     secrets: [] as VariableReference[],
-    credentials: [] as VariableReference[],
   };
 
   for (const ref of refs) {
@@ -260,11 +239,6 @@ export function formatMissingVariables(missing: VariableReference[]): string {
   if (grouped.secrets.length > 0) {
     const names = grouped.secrets.map((r) => r.name).join(", ");
     messages.push(`Secrets: ${names}`);
-  }
-
-  if (grouped.credentials.length > 0) {
-    const names = grouped.credentials.map((r) => r.name).join(", ");
-    messages.push(`Credentials: ${names}`);
   }
 
   return messages.join("\n");

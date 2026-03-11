@@ -12,7 +12,7 @@ import {
 } from "@vm0/core";
 import { modelProviders } from "../../db/schema/model-provider";
 import { secrets } from "../../db/schema/secret";
-import { encryptCredentialValue } from "../crypto";
+import { encryptSecretValue } from "../crypto";
 import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
 
@@ -227,7 +227,7 @@ export async function upsertModelProvider(
   }
   const framework = getFrameworkForType(type);
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  const encryptedValue = encryptCredentialValue(secret, encryptionKey);
+  const encryptedValue = encryptSecretValue(secret, encryptionKey);
 
   log.debug("upserting model provider", {
     clerkOrgId,
@@ -342,7 +342,7 @@ async function upsertMultiAuthSecret(
   description: string,
   encryptionKey: string,
 ): Promise<void> {
-  const encryptedValue = encryptCredentialValue(value, encryptionKey);
+  const encryptedValue = encryptSecretValue(value, encryptionKey);
 
   await globalThis.services.db
     .insert(secrets)

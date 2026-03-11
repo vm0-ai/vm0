@@ -9,7 +9,7 @@ import { eq, and } from "drizzle-orm";
 import type { ComputerConnectorCreateResponse } from "@vm0/core";
 import { connectors } from "../../db/schema/connector";
 import { secrets } from "../../db/schema/secret";
-import { decryptCredentialValue } from "../crypto";
+import { decryptSecretValue } from "../crypto";
 import { badRequest, conflict, notFound } from "../errors";
 import { logger } from "../logger";
 import { upsertSecretByScope } from "../secret/secret-service";
@@ -288,7 +288,7 @@ export async function deleteComputerConnector(
 
     if (domainIdSecret[0]) {
       const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-      const domainId = decryptCredentialValue(
+      const domainId = decryptSecretValue(
         domainIdSecret[0].encryptedValue,
         encryptionKey,
       );

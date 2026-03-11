@@ -10,7 +10,7 @@ import {
   ensureScopeAndArtifact,
   getWorkspaceAgent,
 } from "../../../../../src/lib/telegram/handlers/shared";
-import { decryptCredentialValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import {
   createTelegramClient,
   sendMessage,
@@ -198,7 +198,7 @@ export async function POST(request: Request) {
 
   // If telegramAuth is provided, verify and create a direct link
   if (body.telegramAuth) {
-    const botToken = decryptCredentialValue(
+    const botToken = decryptSecretValue(
       installation.encryptedBotToken,
       SECRETS_ENCRYPTION_KEY,
     );
@@ -241,7 +241,7 @@ export async function POST(request: Request) {
 
   // Connect via signed params from /connect command
   if (body.connectSignature) {
-    const botToken = decryptCredentialValue(
+    const botToken = decryptSecretValue(
       installation.encryptedBotToken,
       SECRETS_ENCRYPTION_KEY,
     );

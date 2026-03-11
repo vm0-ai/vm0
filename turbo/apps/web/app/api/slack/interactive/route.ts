@@ -10,7 +10,7 @@ import {
 import { slackInstallations } from "../../../../src/db/schema/slack-installation";
 import { slackUserLinks } from "../../../../src/db/schema/slack-user-link";
 import { slackPendingQuestions } from "../../../../src/db/schema/slack-pending-question";
-import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../../src/lib/crypto/secrets-encryption";
 import {
   createSlackClient,
   updateMessage,
@@ -205,7 +205,7 @@ async function handleHomeDisconnect(
     return;
   }
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );
@@ -253,7 +253,7 @@ async function validateSubmitter(
     .limit(1);
 
   if (installation) {
-    const botToken = decryptCredentialValue(
+    const botToken = decryptSecretValue(
       installation.encryptedBotToken,
       SECRETS_ENCRYPTION_KEY,
     );
@@ -416,7 +416,7 @@ async function updateCardWithError(
   if (!installation) {
     return;
   }
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );
@@ -534,7 +534,7 @@ async function finishSubmit(
     return;
   }
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );

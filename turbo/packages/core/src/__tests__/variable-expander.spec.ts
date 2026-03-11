@@ -40,16 +40,11 @@ describe("extractVariableReferencesFromString", () => {
     });
   });
 
-  test("extracts credentials variables", () => {
+  test("does not extract credentials variables (removed)", () => {
     const refs = extractVariableReferencesFromString(
       "${{ credentials.MY_API_KEY }}",
     );
-    expect(refs).toHaveLength(1);
-    expect(refs[0]).toEqual({
-      source: "credentials",
-      name: "MY_API_KEY",
-      fullMatch: "${{ credentials.MY_API_KEY }}",
-    });
+    expect(refs).toHaveLength(0);
   });
 
   test("extracts multiple variables from same string", () => {
@@ -172,14 +167,14 @@ describe("expandVariablesInString", () => {
     expect(result.missingVars).toHaveLength(0);
   });
 
-  test("expands credentials variables", () => {
+  test("does not expand credentials variables (removed)", () => {
     const result = expandVariablesInString(
       "Key: ${{ credentials.MY_API_KEY }}",
       {
-        credentials: { MY_API_KEY: "cred-value-123" },
+        secrets: { MY_API_KEY: "cred-value-123" },
       },
     );
-    expect(result.result).toBe("Key: cred-value-123");
+    expect(result.result).toBe("Key: ${{ credentials.MY_API_KEY }}");
     expect(result.missingVars).toHaveLength(0);
   });
 
@@ -341,14 +336,13 @@ describe("groupVariablesBySource", () => {
       { source: "env" as const, name: "A", fullMatch: "" },
       { source: "vars" as const, name: "B", fullMatch: "" },
       { source: "secrets" as const, name: "C", fullMatch: "" },
-      { source: "credentials" as const, name: "D", fullMatch: "" },
+      { source: "secrets" as const, name: "D", fullMatch: "" },
       { source: "env" as const, name: "E", fullMatch: "" },
     ];
     const grouped = groupVariablesBySource(refs);
     expect(grouped.env).toHaveLength(2);
     expect(grouped.vars).toHaveLength(1);
-    expect(grouped.secrets).toHaveLength(1);
-    expect(grouped.credentials).toHaveLength(1);
+    expect(grouped.secrets).toHaveLength(2);
   });
 });
 
@@ -358,13 +352,11 @@ describe("formatMissingVariables", () => {
       { source: "env" as const, name: "A", fullMatch: "" },
       { source: "vars" as const, name: "b", fullMatch: "" },
       { source: "secrets" as const, name: "c", fullMatch: "" },
-      { source: "credentials" as const, name: "MY_KEY", fullMatch: "" },
     ];
     const msg = formatMissingVariables(missing);
     expect(msg).toContain("Environment variables: A");
     expect(msg).toContain("CLI variables (--vars): b");
     expect(msg).toContain("Secrets: c");
-    expect(msg).toContain("Credentials: MY_KEY");
   });
 
   test("lists multiple vars per source", () => {
@@ -374,115 +366,5 @@ describe("formatMissingVariables", () => {
     ];
     const msg = formatMissingVariables(missing);
     expect(msg).toContain("Environment variables: A, B");
-  });
-});
-
-describe("credentials to secrets aliasing", () => {
-  describe("expandVariablesInString", () => {
-    test("resolves credentials from credentials source", () => {
-      const result = expandVariablesInString(
-        "Key: ${{ credentials.MY_API_KEY }}",
-        {
-          credentials: { MY_API_KEY: "from-credentials" },
-        },
-      );
-      expect(result.result).toBe("Key: from-credentials");
-      expect(result.missingVars).toHaveLength(0);
-    });
-
-    test("falls back to secrets source when not in credentials", () => {
-      const result = expandVariablesInString(
-        "Key: ${{ credentials.MY_API_KEY }}",
-        {
-          secrets: { MY_API_KEY: "from-secrets" },
-        },
-      );
-      expect(result.result).toBe("Key: from-secrets");
-      expect(result.missingVars).toHaveLength(0);
-    });
-
-    test("prefers credentials source over secrets source", () => {
-      const result = expandVariablesInString(
-        "Key: ${{ credentials.MY_API_KEY }}",
-        {
-          secrets: { MY_API_KEY: "from-secrets" },
-          credentials: { MY_API_KEY: "from-credentials" },
-        },
-      );
-      expect(result.result).toBe("Key: from-credentials");
-      expect(result.missingVars).toHaveLength(0);
-    });
-
-    test("resolves from secrets when credentials source exists but key missing", () => {
-      const result = expandVariablesInString(
-        "Key: ${{ credentials.MY_API_KEY }}",
-        {
-          secrets: { MY_API_KEY: "from-secrets" },
-          credentials: { OTHER_KEY: "other-value" },
-        },
-      );
-      expect(result.result).toBe("Key: from-secrets");
-      expect(result.missingVars).toHaveLength(0);
-    });
-
-    test("reports missing when credential not in secrets or credentials", () => {
-      const result = expandVariablesInString(
-        "Key: ${{ credentials.MY_API_KEY }}",
-        {
-          secrets: {},
-          credentials: {},
-        },
-      );
-      expect(result.result).toBe("Key: ${{ credentials.MY_API_KEY }}");
-      expect(result.missingVars).toHaveLength(1);
-      expect(result.missingVars[0]?.source).toBe("credentials");
-      expect(result.missingVars[0]?.name).toBe("MY_API_KEY");
-    });
-  });
-
-  describe("validateRequiredVariables", () => {
-    test("validates credentials against credentials source", () => {
-      const refs = [
-        {
-          source: "credentials" as const,
-          name: "MY_KEY",
-          fullMatch: "${{ credentials.MY_KEY }}",
-        },
-      ];
-      const missing = validateRequiredVariables(refs, {
-        credentials: { MY_KEY: "value" },
-      });
-      expect(missing).toHaveLength(0);
-    });
-
-    test("validates credentials against secrets source as fallback", () => {
-      const refs = [
-        {
-          source: "credentials" as const,
-          name: "MY_KEY",
-          fullMatch: "${{ credentials.MY_KEY }}",
-        },
-      ];
-      const missing = validateRequiredVariables(refs, {
-        secrets: { MY_KEY: "value" },
-      });
-      expect(missing).toHaveLength(0);
-    });
-
-    test("returns missing when credential not in secrets or credentials", () => {
-      const refs = [
-        {
-          source: "credentials" as const,
-          name: "MY_KEY",
-          fullMatch: "${{ credentials.MY_KEY }}",
-        },
-      ];
-      const missing = validateRequiredVariables(refs, {
-        secrets: {},
-        credentials: {},
-      });
-      expect(missing).toHaveLength(1);
-      expect(missing[0]?.name).toBe("MY_KEY");
-    });
   });
 });

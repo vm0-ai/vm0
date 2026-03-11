@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/callback";
-import { decryptCredentialValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
@@ -260,7 +260,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true });
   }
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );

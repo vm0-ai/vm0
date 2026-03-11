@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { telegramInstallations } from "../../../db/schema/telegram-installation";
-import { decryptCredentialValue } from "../../crypto/secrets-encryption";
+import { decryptSecretValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createTelegramClient, sendMessage, deleteMessage } from "../client";
 import {
@@ -63,7 +63,7 @@ export async function handleTelegramMention(
     return;
   }
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );

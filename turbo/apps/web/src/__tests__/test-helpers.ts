@@ -50,7 +50,7 @@ import { agentComposes } from "../db/schema/agent-compose";
 import { connectors } from "../db/schema/connector";
 import { scopes } from "../db/schema/scope";
 import { scopeMembers } from "../db/schema/scope-member";
-import { encryptCredentialValue } from "../lib/crypto/secrets-encryption";
+import { encryptSecretValue } from "../lib/crypto/secrets-encryption";
 import { env } from "../env";
 
 /**
@@ -558,7 +558,7 @@ export function testContext(): TestContext {
     }
 
     // Create installation
-    const encryptedBotToken = encryptCredentialValue(
+    const encryptedBotToken = encryptSecretValue(
       "xoxb-test-bot-token",
       SECRETS_ENCRYPTION_KEY,
     );

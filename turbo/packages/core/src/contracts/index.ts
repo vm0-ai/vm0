@@ -175,21 +175,6 @@ export {
   type UpdateScopeRequest,
 } from "./scopes";
 export {
-  credentialsMainContract,
-  credentialsByNameContract,
-  credentialNameSchema,
-  credentialTypeSchema,
-  credentialResponseSchema,
-  credentialListResponseSchema,
-  setCredentialRequestSchema,
-  type CredentialsMainContract,
-  type CredentialsByNameContract,
-  type CredentialResponse,
-  type CredentialListResponse,
-  type SetCredentialRequest,
-  type CredentialType,
-} from "./credentials";
-export {
   secretsMainContract,
   secretsByNameContract,
   secretNameSchema,

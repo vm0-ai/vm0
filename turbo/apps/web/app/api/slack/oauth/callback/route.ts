@@ -10,8 +10,8 @@ import {
   resolveDefaultAgentComposeId,
 } from "../../../../../src/lib/slack";
 import {
-  decryptCredentialValue,
-  encryptCredentialValue,
+  decryptSecretValue,
+  encryptSecretValue,
 } from "../../../../../src/lib/crypto/secrets-encryption";
 import { slackInstallations } from "../../../../../src/db/schema/slack-installation";
 import { slackUserLinks } from "../../../../../src/db/schema/slack-user-link";
@@ -170,7 +170,7 @@ export async function GET(request: Request) {
       effective = existingInstallation;
     } else {
       // First install — resolve default agent and create installation
-      const encryptedBotToken = encryptCredentialValue(
+      const encryptedBotToken = encryptSecretValue(
         oauthResult.accessToken,
         SECRETS_ENCRYPTION_KEY,
       );
@@ -293,7 +293,7 @@ async function createUserLink(
     .limit(1);
 
   if (installation) {
-    const botToken = decryptCredentialValue(
+    const botToken = decryptSecretValue(
       encryptedBotToken,
       secretsEncryptionKey,
     );

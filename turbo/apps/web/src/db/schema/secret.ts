@@ -9,7 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 /**
- * Secrets table (formerly "credentials")
+ * Secrets table
  * Stores encrypted third-party service secrets per user within a scope
  * Values encrypted with AES-256-GCM using SECRETS_ENCRYPTION_KEY
  */

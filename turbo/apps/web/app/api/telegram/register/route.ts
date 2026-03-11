@@ -11,7 +11,7 @@ import {
   setWebhook,
   setMyCommands,
 } from "../../../../src/lib/telegram/client";
-import { encryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
+import { encryptSecretValue } from "../../../../src/lib/crypto/secrets-encryption";
 import { generateCallbackSecret } from "../../../../src/lib/callback/hmac";
 import { resolveDefaultAgentComposeId } from "../../../../src/lib/agent-compose/resolve-default";
 import { logger } from "../../../../src/lib/logger";
@@ -141,7 +141,7 @@ export async function POST(request: Request) {
   }
 
   // 4. Encrypt token and generate webhook secret
-  const encryptedBotToken = encryptCredentialValue(
+  const encryptedBotToken = encryptSecretValue(
     body.botToken,
     SECRETS_ENCRYPTION_KEY,
   );

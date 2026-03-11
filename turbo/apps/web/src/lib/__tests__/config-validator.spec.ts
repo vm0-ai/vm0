@@ -28,12 +28,11 @@ describe("extractTemplateVars", () => {
     expect(vars).toContain("suffix");
   });
 
-  test("ignores env, secrets, and credentials variables", () => {
+  test("ignores env and secrets variables", () => {
     const config = {
       settings: {
         envVar: "${{ env.MY_ENV }}",
         secret: "${{ secrets.mySecret }}",
-        cred: "${{ credentials.MY_CRED }}",
         varsVar: "${{ vars.myVar }}",
       },
     };

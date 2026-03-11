@@ -20,7 +20,7 @@ import { listSecrets } from "../../../../src/lib/secret/secret-service";
 import { listVariables } from "../../../../src/lib/variable/variable-service";
 import { listConnectors } from "../../../../src/lib/connector/connector-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
-import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../../src/lib/crypto/secrets-encryption";
 import { deleteWebhook } from "../../../../src/lib/telegram/client";
 import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
@@ -358,7 +358,7 @@ export async function DELETE(request: Request) {
   }
 
   // Remove webhook from Telegram (non-blocking on failure)
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );

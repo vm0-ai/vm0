@@ -1,7 +1,7 @@
 import { eq, and } from "drizzle-orm";
 import { slackInstallations } from "../../../db/schema/slack-installation";
 import { slackUserLinks } from "../../../db/schema/slack-user-link";
-import { decryptCredentialValue } from "../../crypto/secrets-encryption";
+import { decryptSecretValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createSlackClient, postMessage, setThreadStatus } from "../client";
 import {
@@ -70,7 +70,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
   }
 
   // Decrypt bot token
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );

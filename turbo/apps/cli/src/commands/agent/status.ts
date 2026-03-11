@@ -43,7 +43,7 @@ function formatVolumes(
 }
 
 /**
- * Format secrets, vars, and credentials with source information
+ * Format secrets and vars with source information
  */
 function formatVariableSources(sources: AgentVariableSources): void {
   if (sources.secrets.length > 0) {
@@ -58,13 +58,6 @@ function formatVariableSources(sources: AgentVariableSources): void {
     for (const v of sources.vars) {
       const sourceInfo = chalk.dim(`(${v.source})`);
       console.log(`      - ${v.name.padEnd(20)} ${sourceInfo}`);
-    }
-  }
-  if (sources.credentials.length > 0) {
-    console.log(`    Credentials:`);
-    for (const cred of sources.credentials) {
-      const sourceInfo = chalk.dim(`(${cred.source})`);
-      console.log(`      - ${cred.name.padEnd(20)} ${sourceInfo}`);
     }
   }
 }

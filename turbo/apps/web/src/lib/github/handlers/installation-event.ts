@@ -2,7 +2,7 @@ import { z } from "zod";
 import { eq, and } from "drizzle-orm";
 import { githubInstallations } from "../../../db/schema/github-installation";
 import { getInstallationAccessToken } from "../github-app";
-import { encryptCredentialValue } from "../../crypto/secrets-encryption";
+import { encryptSecretValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { logger } from "../../logger";
 
@@ -87,7 +87,7 @@ export async function handleInstallationCreatedEvent(
     ghInstallationId,
   );
 
-  const encryptedAccessToken = encryptCredentialValue(
+  const encryptedAccessToken = encryptSecretValue(
     token,
     SECRETS_ENCRYPTION_KEY,
   );

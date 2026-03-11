@@ -7,7 +7,7 @@ import { telegramThreadSessions } from "../../../db/schema/telegram-thread-sessi
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { scopes } from "../../../db/schema/scope";
 import { scopeMembers } from "../../../db/schema/scope-member";
-import { encryptCredentialValue } from "../../crypto/secrets-encryption";
+import { encryptSecretValue } from "../../crypto/secrets-encryption";
 import { PENDING_TELEGRAM_USER_ID } from "../handlers/shared";
 import { uniqueId } from "../../../__tests__/test-helpers";
 
@@ -110,7 +110,7 @@ export async function createTelegramPendingLinkInstallation(
   initServices();
 
   const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
-  const encryptedBotToken = encryptCredentialValue(
+  const encryptedBotToken = encryptSecretValue(
     botToken,
     SECRETS_ENCRYPTION_KEY,
   );
@@ -161,7 +161,7 @@ export async function createTelegramCallbackInstallation(
   initServices();
 
   const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
-  const encryptedBotToken = encryptCredentialValue(
+  const encryptedBotToken = encryptSecretValue(
     botToken,
     SECRETS_ENCRYPTION_KEY,
   );

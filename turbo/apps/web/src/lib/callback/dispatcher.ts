@@ -1,7 +1,7 @@
 import { eq, and, or } from "drizzle-orm";
 import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
 import { agentRuns } from "../../db/schema/agent-run";
-import { decryptCredentialValue } from "../crypto/secrets-encryption";
+import { decryptSecretValue } from "../crypto/secrets-encryption";
 import { env } from "../../env";
 import { computeHmacSignature } from "./hmac";
 import { logger } from "../logger";
@@ -120,7 +120,7 @@ async function dispatchSingleCallback(
   const url = resolveCallbackUrl(callback.url);
 
   // Decrypt the callback secret
-  const secret = decryptCredentialValue(encryptedSecret, encryptionKey);
+  const secret = decryptSecretValue(encryptedSecret, encryptionKey);
 
   // Build callback body (callbackId enables PK-based secret lookup on receivers)
   const body = JSON.stringify({
@@ -244,7 +244,7 @@ export async function dispatchProgressCallbacks(runId: string): Promise<void> {
   await Promise.allSettled(
     callbacks.map((callback) => {
       const url = resolveCallbackUrl(callback.url);
-      const secret = decryptCredentialValue(
+      const secret = decryptSecretValue(
         callback.encryptedSecret,
         SECRETS_ENCRYPTION_KEY,
       );

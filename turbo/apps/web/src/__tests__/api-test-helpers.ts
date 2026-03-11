@@ -79,8 +79,8 @@ import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
 import {
-  encryptCredentialValue,
-  decryptCredentialValue,
+  encryptSecretValue,
+  decryptSecretValue,
 } from "../lib/crypto/secrets-encryption";
 import type { ConnectorType } from "@vm0/core";
 import { agentSessions } from "../db/schema/agent-session";
@@ -1745,7 +1745,7 @@ export async function findTestConnectorSecret(
 
   if (!storedSecret) return undefined;
 
-  return decryptCredentialValue(
+  return decryptSecretValue(
     storedSecret.encryptedValue,
     globalThis.services.env.SECRETS_ENCRYPTION_KEY,
   );
@@ -2183,10 +2183,7 @@ export async function createTestCallback(params: {
 }): Promise<{ callbackId: string; secret: string }> {
   const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
   const secret = generateCallbackSecret();
-  const encryptedSecret = encryptCredentialValue(
-    secret,
-    SECRETS_ENCRYPTION_KEY,
-  );
+  const encryptedSecret = encryptSecretValue(secret, SECRETS_ENCRYPTION_KEY);
 
   const [callback] = await globalThis.services.db
     .insert(agentRunCallbacks)
@@ -2426,7 +2423,7 @@ export async function insertTestGitHubInstallation(
   installationId?: string,
 ) {
   const id = installationId ?? uniqueId("gh-install");
-  const encryptedToken = encryptCredentialValue(
+  const encryptedToken = encryptSecretValue(
     "ghs_test_token",
     globalThis.services.env.SECRETS_ENCRYPTION_KEY,
   );
@@ -2660,7 +2657,7 @@ export async function createTestTelegramInstallation(options?: {
     .values({
       telegramBotId: options?.telegramBotId ?? suffix,
       botUsername: `bot_${options?.telegramBotId ?? suffix}`,
-      encryptedBotToken: encryptCredentialValue(
+      encryptedBotToken: encryptSecretValue(
         "test-bot-token",
         SECRETS_ENCRYPTION_KEY,
       ),

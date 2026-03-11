@@ -5,7 +5,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { getApiUrl } from "../../../../../src/lib/callback";
 import { getPlatformUrl } from "../../../../../src/lib/url";
-import { encryptCredentialValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import { encryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import { githubInstallations } from "../../../../../src/db/schema/github-installation";
 import {
   listAppInstallations,
@@ -227,10 +227,7 @@ async function tryLinkFromGitHubApi(
     privateKey,
     ghInstallationId,
   );
-  const encryptedAccessToken = encryptCredentialValue(
-    token,
-    secretsEncryptionKey,
-  );
+  const encryptedAccessToken = encryptSecretValue(token, secretsEncryptionKey);
 
   const adminGithubUserId =
     ghInstall.account.type === "User" ? String(ghInstall.account.id) : null;

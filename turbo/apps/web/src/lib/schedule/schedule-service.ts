@@ -102,12 +102,10 @@ function isValidTimezone(timezone: string): boolean {
 function extractRequiredConfiguration(composeContent: unknown): {
   secrets: string[];
   vars: string[];
-  credentials: string[];
 } {
   const result = {
     secrets: [] as string[],
     vars: [] as string[],
-    credentials: [] as string[],
   };
   if (!composeContent) return result;
 
@@ -116,7 +114,6 @@ function extractRequiredConfiguration(composeContent: unknown): {
 
   result.secrets = grouped.secrets.map((r) => r.name);
   result.vars = grouped.vars.map((r) => r.name);
-  result.credentials = grouped.credentials.map((r) => r.name);
 
   return result;
 }
@@ -127,7 +124,6 @@ function extractRequiredConfiguration(composeContent: unknown): {
 function buildMissingConfigError(missing: {
   secrets: string[];
   vars: string[];
-  credentials: string[];
 }): string {
   const parts: string[] = [];
 
@@ -136,9 +132,6 @@ function buildMissingConfigError(missing: {
   }
   if (missing.vars.length > 0) {
     parts.push(`Vars: ${missing.vars.join(", ")}`);
-  }
-  if (missing.credentials.length > 0) {
-    parts.push(`Credentials: ${missing.credentials.join(", ")}`);
   }
 
   return `Missing required configuration:\n  ${parts.join("\n  ")}`;
@@ -332,7 +325,6 @@ async function validateRequiredConfig(
       buildMissingConfigError({
         secrets: missingSecrets,
         vars: missingVars,
-        credentials: [],
       }),
     );
   }

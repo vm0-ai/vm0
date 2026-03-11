@@ -119,20 +119,20 @@ function resolveProviderType(
  */
 function resolveEnvironmentMapping(
   providerType: ModelProviderType,
-  credentialValue: string | undefined,
+  secretValue: string | undefined,
   selectedModel: string | undefined,
-  credentialsMap?: Record<string, string>,
+  secretsMap?: Record<string, string>,
 ): Record<string, string> {
   const mapping = getEnvironmentMapping(providerType);
 
   if (!mapping) {
-    // No mapping - return credential directly under its natural name
-    const credentialName = getSecretNameForType(providerType);
-    if (!credentialName || !credentialValue) {
+    // No mapping - return secret directly under its natural name
+    const secretName = getSecretNameForType(providerType);
+    if (!secretName || !secretValue) {
       // Multi-auth providers should have environmentMapping, this shouldn't happen
       return {};
     }
-    return { [credentialName]: credentialValue };
+    return { [secretName]: secretValue };
   }
 
   // Resolve model: use selected or fall back to default
@@ -142,8 +142,8 @@ function resolveEnvironmentMapping(
   for (const [key, value] of Object.entries(mapping)) {
     if (value === "$secret") {
       // Single secret value
-      if (credentialValue) {
-        result[key] = credentialValue;
+      if (secretValue) {
+        result[key] = secretValue;
       }
     } else if (value === "$model") {
       if (model) {
@@ -151,10 +151,10 @@ function resolveEnvironmentMapping(
       }
     } else if (value.startsWith("$secrets.")) {
       // Multi-auth: lookup secret from map
-      const credName = value.slice("$secrets.".length);
-      const credValue = credentialsMap?.[credName];
-      if (credValue) {
-        result[key] = credValue;
+      const lookupName = value.slice("$secrets.".length);
+      const lookupValue = secretsMap?.[lookupName];
+      if (lookupValue) {
+        result[key] = lookupValue;
       }
       // Skip if undefined (optional secret)
     } else {
@@ -167,35 +167,35 @@ function resolveEnvironmentMapping(
 }
 
 /**
- * Result of model provider credential resolution
+ * Result of model provider secret resolution
  */
-interface ModelProviderCredentialResult {
-  credentials: Record<string, string> | undefined;
+interface ModelProviderSecretResult {
+  secrets: Record<string, string> | undefined;
   /** Environment variables to inject (may be multiple for providers with mapping) */
   injectedEnvVars: Record<string, string> | undefined;
 }
 
 /**
- * Resolve and inject model provider credential if needed
+ * Resolve and inject model provider secret if needed
  * Only injects if no explicit model provider config in compose environment
  *
  * For providers with environment mapping (e.g., moonshot), resolves all env vars
  */
-async function resolveModelProviderCredential(
+async function resolveModelProviderSecrets(
   clerkOrgId: string,
   userId: string,
   framework: string,
   hasExplicitModelProviderConfig: boolean,
   explicitModelProvider?: string,
-): Promise<ModelProviderCredentialResult> {
-  let credentials: Record<string, string> | undefined;
+): Promise<ModelProviderSecretResult> {
+  let secrets: Record<string, string> | undefined;
 
   // Skip if explicit model provider config exists or framework doesn't use model providers
   if (
     hasExplicitModelProviderConfig ||
     (framework !== "claude-code" && framework !== "codex")
   ) {
-    return { credentials, injectedEnvVars: undefined };
+    return { secrets, injectedEnvVars: undefined };
   }
 
   // Fetch default provider once (used for type resolution, model selection, and auth method)
@@ -219,88 +219,83 @@ async function resolveModelProviderCredential(
       log.debug(
         `Multi-auth provider ${providerType} has no auth method configured`,
       );
-      return { credentials, injectedEnvVars: undefined };
+      return { secrets, injectedEnvVars: undefined };
     }
 
-    // Get credential names for this auth method
-    const credentialNames = getSecretNamesForAuthMethod(
-      providerType,
-      authMethod,
-    );
-    if (!credentialNames || credentialNames.length === 0) {
-      log.debug(`No credential names found for ${providerType}/${authMethod}`);
-      return { credentials, injectedEnvVars: undefined };
+    // Get secret names for this auth method
+    const secretNames = getSecretNamesForAuthMethod(providerType, authMethod);
+    if (!secretNames || secretNames.length === 0) {
+      log.debug(`No secret names found for ${providerType}/${authMethod}`);
+      return { secrets, injectedEnvVars: undefined };
     }
 
-    // Fetch all model-provider credentials by name
-    const allCredentialValues = await getSecretValues(
+    // Fetch all model-provider secrets by name
+    const allSecretValues = await getSecretValues(
       clerkOrgId,
       userId,
       "model-provider",
     );
-    const credentialsMap: Record<string, string> = {};
+    const secretsMap: Record<string, string> = {};
     let hasAllRequired = true;
 
-    for (const name of credentialNames) {
-      const value = allCredentialValues[name];
+    for (const name of secretNames) {
+      const value = allSecretValues[name];
       if (value) {
-        credentialsMap[name] = value;
+        secretsMap[name] = value;
       } else {
-        log.debug(
-          `Missing credential ${name} for ${providerType}/${authMethod}`,
-        );
+        log.debug(`Missing secret ${name} for ${providerType}/${authMethod}`);
         hasAllRequired = false;
       }
     }
 
     if (!hasAllRequired) {
-      return { credentials, injectedEnvVars: undefined };
+      return { secrets, injectedEnvVars: undefined };
     }
 
-    // Store credentials for masking
-    credentials = credentials || {};
-    Object.assign(credentials, credentialsMap);
+    // Store secrets for masking
+    secrets = secrets || {};
+    Object.assign(secrets, secretsMap);
 
-    // Resolve environment mapping with credentials map
+    // Resolve environment mapping with secrets map
     const injectedEnvVars = resolveEnvironmentMapping(
       providerType,
-      undefined, // No single credential for multi-auth
+      undefined, // No single secret for multi-auth
       selectedModel,
-      credentialsMap,
+      secretsMap,
     );
 
     log.debug(
       `Resolved multi-auth model provider env vars: ${Object.keys(injectedEnvVars).join(", ")}`,
     );
 
-    return { credentials, injectedEnvVars };
+    return { secrets, injectedEnvVars };
   }
 
-  // Handle legacy single-credential providers
-  const credentialName = getSecretNameForType(providerType);
-  if (!credentialName) {
-    return { credentials, injectedEnvVars: undefined };
+  // Handle single-secret providers
+  const secretName = getSecretNameForType(providerType);
+  if (!secretName) {
+    return { secrets, injectedEnvVars: undefined };
   }
 
-  const credentialValue = await getSecretValue(
+  const secretValue = await getSecretValue(
     clerkOrgId,
     userId,
-    credentialName,
+    secretName,
     "model-provider",
   );
 
-  if (!credentialValue) {
-    return { credentials, injectedEnvVars: undefined };
+  if (!secretValue) {
+    return { secrets, injectedEnvVars: undefined };
   }
 
-  // Store credential in credentials map for masking
-  credentials = credentials || {};
-  credentials[credentialName] = credentialValue;
+  // Store secret in secrets map for masking
+  secrets = secrets || {};
+  secrets[secretName] = secretValue;
 
-  // Resolve environment mapping (handles $credential and $model substitution)
+  // Resolve environment mapping (handles $secret and $model substitution)
   const injectedEnvVars = resolveEnvironmentMapping(
     providerType,
-    credentialValue,
+    secretValue,
     selectedModel,
   );
 
@@ -308,7 +303,7 @@ async function resolveModelProviderCredential(
     `Resolved model provider env vars: ${Object.keys(injectedEnvVars).join(", ")}`,
   );
 
-  return { credentials, injectedEnvVars };
+  return { secrets, injectedEnvVars };
 }
 
 /**
@@ -393,9 +388,9 @@ async function refreshConnectorAccessToken(
 }
 
 /**
- * Result of connector credential resolution
+ * Result of connector secret resolution
  */
-interface ConnectorCredentialResult {
+interface ConnectorSecretResult {
   /** All raw connector secrets (for masking and direct secret reference resolution) */
   connectorSecrets: Record<string, string> | undefined;
   /** Environment variables mapped from OAuth connectors via environmentMapping */
@@ -405,15 +400,15 @@ interface ConnectorCredentialResult {
 }
 
 /**
- * Resolve and inject connector credentials if any connectors are connected.
+ * Resolve and inject connector secrets if any connectors are connected.
  * For each connected connector, resolves its environmentMapping to produce
  * environment variables (e.g., GH_TOKEN, GITHUB_TOKEN for GitHub connector).
  */
-async function resolveConnectorCredentials(
+async function resolveConnectorSecrets(
   clerkOrgId: string,
   scopeId: string,
   userId: string,
-): Promise<ConnectorCredentialResult> {
+): Promise<ConnectorSecretResult> {
   // Query connected connectors (need type for environmentMapping, authMethod for refresh filter)
   const userConnectors = await globalThis.services.db
     .select({ type: connectors.type, authMethod: connectors.authMethod })
@@ -508,9 +503,9 @@ async function resolveConnectorCredentials(
 }
 
 /**
- * Fetch credentials referenced in compose environment
+ * Fetch secrets referenced in compose environment
  */
-async function fetchReferencedCredentials(
+async function fetchReferencedSecrets(
   clerkOrgId: string,
   userId: string,
   environment: Record<string, string> | undefined,
@@ -522,14 +517,11 @@ async function fetchReferencedCredentials(
   const refs = extractVariableReferences(environment);
   const grouped = groupVariablesBySource(refs);
 
-  if (grouped.credentials.length === 0 && grouped.secrets.length === 0) {
+  if (grouped.secrets.length === 0) {
     return undefined;
   }
 
-  const referencedNames = [
-    ...grouped.credentials.map((r) => r.name),
-    ...grouped.secrets.map((r) => r.name),
-  ];
+  const referencedNames = grouped.secrets.map((r) => r.name);
   log.debug(`Secrets referenced in environment: ${referencedNames.join(", ")}`);
 
   // Only fetch user secrets for variable expansion (model-provider secrets are isolated)
@@ -695,14 +687,14 @@ interface BuildContextParams {
   continuedFromSessionId?: string;
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude?: boolean;
-  // Model provider for automatic credential injection
+  // Model provider for automatic secret injection
   modelProvider?: string;
   // Environment validation flag - when true, validates secrets/vars before running
   checkEnv?: boolean;
   // API start time for E2E timing metrics
   apiStartTime?: number;
-  // Caller-resolved scope ID and slug for credential/variable/storage resolution.
-  // When provided, used for both credentials and storage (artifacts/memory).
+  // Caller-resolved scope ID and slug for secret/variable/storage resolution.
+  // When provided, used for both secrets and storage (artifacts/memory).
   // When not provided, resolved via getDefaultScope fallback.
   scopeId?: string;
   scopeSlug?: string;
@@ -758,10 +750,10 @@ async function loadAgentComposeForNewRun(
 }
 
 /**
- * Resolve all credentials (user, model provider, connector) and expand environment.
+ * Resolve all secrets (user, model provider, connector) and expand environment.
  * Extracted from buildExecutionContext to reduce complexity.
  */
-async function resolveCredentialsAndEnvironment(
+async function resolveSecretsAndEnvironment(
   clerkOrgId: string,
   scopeId: string,
   agentCompose: unknown,
@@ -776,42 +768,42 @@ async function resolveCredentialsAndEnvironment(
   userId: string,
 ): Promise<{
   secrets: Record<string, string> | undefined;
-  credentials: Record<string, string> | undefined;
+  platformSecrets: Record<string, string> | undefined;
   environment: Record<string, string> | undefined;
 }> {
-  // Model provider credential injection
+  // Model provider secret injection
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some(
     (v) => firstAgent?.environment?.[v] !== undefined,
   );
   const framework = firstAgent?.framework || "claude-code";
 
-  // Run all credential resolution and variable fetching in parallel.
+  // Run all secret resolution and variable fetching in parallel.
   // The three resolve functions have independent DB queries (different secret types),
   // so there is no data dependency between them.
   const [dbSecrets, modelProviderResult, connectorResult, mergedVars] =
     await Promise.all([
-      fetchReferencedCredentials(clerkOrgId, userId, firstAgent?.environment),
-      resolveModelProviderCredential(
+      fetchReferencedSecrets(clerkOrgId, userId, firstAgent?.environment),
+      resolveModelProviderSecrets(
         clerkOrgId,
         userId,
         framework,
         hasExplicitModelProviderConfig,
         modelProvider,
       ),
-      resolveConnectorCredentials(clerkOrgId, scopeId, userId),
+      resolveConnectorSecrets(clerkOrgId, scopeId, userId),
       fetchAndMergeVariables(clerkOrgId, userId, vars),
     ]);
 
-  // Merge credentials from all sources for masking.
+  // Merge platform secrets from all sources for masking.
   // All raw connector secrets are included (both OAuth intermediate and api-token target names).
-  const hasCredentials =
+  const hasPlatformSecrets =
     dbSecrets ||
-    modelProviderResult.credentials ||
+    modelProviderResult.secrets ||
     connectorResult.connectorSecrets;
-  const credentials: Record<string, string> | undefined = hasCredentials
+  const platformSecrets: Record<string, string> | undefined = hasPlatformSecrets
     ? {
         ...dbSecrets,
-        ...modelProviderResult.credentials,
+        ...modelProviderResult.secrets,
         ...connectorResult.connectorSecrets,
       }
     : undefined;
@@ -844,7 +836,6 @@ async function resolveCredentialsAndEnvironment(
     agentCompose,
     mergedVars,
     secrets,
-    credentials,
     userId,
     runId,
     checkEnv,
@@ -858,7 +849,7 @@ async function resolveCredentialsAndEnvironment(
     "model provider",
   );
 
-  return { secrets, credentials, environment };
+  return { secrets, platformSecrets, environment };
 }
 
 /**
@@ -971,7 +962,7 @@ async function resolveScopes(params: BuildContextParams): Promise<{
 
 interface BuildContextTimings {
   resolveSourceAndScope: number;
-  resolveCredentials: number;
+  resolveSecrets: number;
 }
 
 interface BuildContextResult {
@@ -1057,7 +1048,7 @@ export async function buildExecutionContext(
 
   // Step 1: Resolve source and scopes in parallel (independent operations).
   // resolveSource loads checkpoint/session/conversation data.
-  // resolveScopes resolves the runtime scope for credentials and storage.
+  // resolveScopes resolves the runtime scope for secrets and storage.
   const resolveStart = Date.now();
   const [
     resolution,
@@ -1118,11 +1109,11 @@ export async function buildExecutionContext(
     ? Object.values(compose.agents)[0]
     : undefined;
 
-  // Step 4: Resolve credentials, user preferences, and runtime scope in parallel.
+  // Step 4: Resolve secrets, user preferences, and runtime scope in parallel.
   // pendingRuntimeScope may already be resolved (when scopeId was not explicit).
-  const resolveCredentialsStart = Date.now();
-  const [credentialsResult, userPrefs, runtimeScope] = await Promise.all([
-    resolveCredentialsAndEnvironment(
+  const resolveSecretsStart = Date.now();
+  const [secretsResult, userPrefs, runtimeScope] = await Promise.all([
+    resolveSecretsAndEnvironment(
       runtimeClerkOrgId,
       runtimeScopeId,
       agentCompose,
@@ -1137,21 +1128,21 @@ export async function buildExecutionContext(
     params.userId ? getUserPreferences(params.userId) : Promise.resolve(null),
     Promise.resolve(pendingRuntimeScope),
   ]);
-  const resolveCredentialsEnd = Date.now();
+  const resolveSecretsEnd = Date.now();
 
   const {
     secrets: resolvedSecrets,
-    credentials: resolvedCredentials,
+    platformSecrets,
     environment,
-  } = credentialsResult;
+  } = secretsResult;
   secrets = resolvedSecrets;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
-  // Step 5: Merge credentials into secrets for client-side log masking
-  // Credentials are server-stored user-level secrets and must be masked like CLI secrets
-  // Priority: CLI --secrets > credentials (platform-stored)
-  const mergedSecrets = resolvedCredentials
-    ? { ...resolvedCredentials, ...secrets }
+  // Step 5: Merge platform secrets into secrets for client-side log masking
+  // Platform secrets are server-stored user-level secrets and must be masked like CLI secrets
+  // Priority: CLI --secrets > platform secrets
+  const mergedSecrets = platformSecrets
+    ? { ...platformSecrets, ...secrets }
     : secrets;
 
   // Build experimental connectors manifest (name + base entries for the runner)
@@ -1191,7 +1182,7 @@ export async function buildExecutionContext(
     },
     timings: {
       resolveSourceAndScope: resolveEnd - resolveStart,
-      resolveCredentials: resolveCredentialsEnd - resolveCredentialsStart,
+      resolveSecrets: resolveSecretsEnd - resolveSecretsStart,
     },
   };
 }

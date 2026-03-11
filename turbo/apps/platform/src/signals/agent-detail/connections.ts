@@ -41,10 +41,7 @@ const agentRequiredEnv$ = computed((get): AgentRequiredEnv => {
   const grouped = groupVariablesBySource(refs);
 
   return {
-    requiredSecrets: [
-      ...grouped.secrets.map((r) => r.name),
-      ...grouped.credentials.map((r) => r.name),
-    ],
+    requiredSecrets: grouped.secrets.map((r) => r.name),
     requiredVariables: grouped.vars.map((r) => r.name),
   };
 });
@@ -90,10 +87,7 @@ export const agentRequiredConnectorTypes$ = computed(
     if (firstAgent.environment) {
       const refs = extractVariableReferences(firstAgent.environment);
       const grouped = groupVariablesBySource(refs);
-      const envVarNames = new Set([
-        ...grouped.secrets.map((r) => r.name),
-        ...grouped.credentials.map((r) => r.name),
-      ]);
+      const envVarNames = new Set(grouped.secrets.map((r) => r.name));
 
       for (const type of Object.keys(CONNECTOR_TYPES) as ConnectorType[]) {
         if (type === "computer") {

@@ -2,7 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { slackInstallations } from "../../../db/schema/slack-installation";
 import { slackUserLinks } from "../../../db/schema/slack-user-link";
 import { agentComposes } from "../../../db/schema/agent-compose";
-import { decryptCredentialValue } from "../../crypto/secrets-encryption";
+import { decryptSecretValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { getUserEmail } from "../../auth/get-user-email";
 import { createSlackClient, publishAppHome, postMessage } from "../client";
@@ -36,7 +36,7 @@ export async function handleAppHomeOpened(
   }
 
   // Decrypt bot token
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );
@@ -172,7 +172,7 @@ export async function handleMessagesTabOpened(
     .limit(1);
 
   // 5. Send welcome message
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );

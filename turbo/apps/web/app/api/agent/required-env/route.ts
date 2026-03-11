@@ -71,10 +71,7 @@ export async function GET(request: Request) {
     const refs = extractVariableReferences(firstAgent.environment);
     const grouped = groupVariablesBySource(refs);
 
-    const requiredSecrets = [
-      ...grouped.secrets.map((r) => r.name),
-      ...grouped.credentials.map((r) => r.name),
-    ];
+    const requiredSecrets = grouped.secrets.map((r) => r.name);
     const requiredVariables = grouped.vars.map((r) => r.name);
 
     if (requiredSecrets.length === 0 && requiredVariables.length === 0) {

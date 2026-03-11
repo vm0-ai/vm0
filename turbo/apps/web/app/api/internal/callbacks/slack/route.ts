@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/callback";
-import { decryptCredentialValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import { slackInstallations } from "../../../../../src/db/schema/slack-installation";
 import { slackThreadSessions } from "../../../../../src/db/schema/slack-thread-session";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
@@ -260,7 +260,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .limit(1);
 
     if (inst) {
-      const token = decryptCredentialValue(
+      const token = decryptSecretValue(
         inst.encryptedBotToken,
         SECRETS_ENCRYPTION_KEY,
       );
@@ -294,7 +294,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return errorResponse("Slack installation not found", 404);
   }
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );

@@ -6,7 +6,7 @@ import { initServices } from "../../../src/lib/init-services";
 import { env } from "../../../src/env";
 import { slackUserLinks } from "../../../src/db/schema/slack-user-link";
 import { slackInstallations } from "../../../src/db/schema/slack-installation";
-import { decryptCredentialValue } from "../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../src/lib/crypto/secrets-encryption";
 import { createSlackClient, refreshAppHome } from "../../../src/lib/slack";
 import {
   ensureScopeAndArtifact,
@@ -179,7 +179,7 @@ export async function linkSlackAccount(
 
   // Refresh App Home to show linked state
   const { SECRETS_ENCRYPTION_KEY } = env();
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );
@@ -201,7 +201,7 @@ async function sendSuccessMessage(
   defaultComposeId: string,
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );

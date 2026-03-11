@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { slackComposeRequests } from "../../../db/schema/slack-compose-request";
 import { slackInstallations } from "../../../db/schema/slack-installation";
-import { decryptCredentialValue } from "../../crypto/secrets-encryption";
+import { decryptSecretValue } from "../../crypto/secrets-encryption";
 import { createSlackClient } from "../client";
 import { env } from "../../../env";
 import { logger } from "../../logger";
@@ -46,7 +46,7 @@ export async function notifySlackComposeComplete(
     return;
   }
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );

@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 import { uniqueId } from "../test-helpers";
 import { initServices } from "../../lib/init-services";
 import { env } from "../../env";
-import { encryptCredentialValue } from "../../lib/crypto/secrets-encryption";
+import { encryptSecretValue } from "../../lib/crypto/secrets-encryption";
 import { scopes } from "../../db/schema/scope";
 import { scopeMembers } from "../../db/schema/scope-member";
 import {
@@ -98,7 +98,7 @@ export async function givenGitHubInstallation(
     .where(eq(agentComposes.id, compose!.id));
 
   // Create installation (org-level, no userId)
-  const encryptedToken = encryptCredentialValue(
+  const encryptedToken = encryptSecretValue(
     "ghs_test_token",
     SECRETS_ENCRYPTION_KEY,
   );

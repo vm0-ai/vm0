@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { telegramInstallations } from "../../../db/schema/telegram-installation";
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
-import { decryptCredentialValue } from "../../crypto/secrets-encryption";
+import { decryptSecretValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createTelegramClient, sendMessage } from "../client";
 import { resolveUserLink, getWorkspaceAgent, buildConnectUrl } from "./shared";
@@ -39,7 +39,7 @@ export async function handleConnectCommand(
     return;
   }
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );
@@ -113,7 +113,7 @@ export async function handleDisconnectCommand(
     return;
   }
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );
@@ -180,7 +180,7 @@ export async function handleSettingsCommand(
     return;
   }
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );
@@ -255,7 +255,7 @@ export async function handleHelpCommand(
     return;
   }
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );

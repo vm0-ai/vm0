@@ -6,7 +6,6 @@ import {
   getConnectorEnvironmentMapping,
   getConnectorProxyConfig,
 } from "@vm0/core";
-import { env } from "../../../env";
 import { createProxyToken } from "../../proxy/token-service";
 import { badRequest } from "../../errors";
 import { logger } from "../../logger";
@@ -63,54 +62,6 @@ function processSecretValues(
 }
 
 /**
- * Process credential values: validate, optionally encrypt via proxy tokens.
- */
-function processCredentialValues(
-  credentialNames: string[],
-  credentials: Record<string, string> | undefined,
-  sealSecretsEnabled: boolean,
-  checkEnv: boolean | undefined,
-  runId: string,
-  userId: string,
-  connectorEnvVars?: Record<string, string>,
-): Record<string, string> | undefined {
-  if (credentialNames.length === 0) return undefined;
-
-  if (checkEnv) {
-    const missingCredentials = credentialNames.filter(
-      (name) => !credentials || !credentials[name],
-    );
-    if (missingCredentials.length > 0) {
-      const platformUrl = env().NEXT_PUBLIC_PLATFORM_URL;
-      const settingsUrl = `${platformUrl}/settings?tab=secrets-and-variables`;
-      throw badRequest(
-        `Missing required secrets: ${missingCredentials.join(", ")}. Use 'vm0 secret set ${missingCredentials[0]} <value>' or add them at: ${settingsUrl}`,
-      );
-    }
-  }
-
-  const processed: Record<string, string> = {};
-  for (const name of credentialNames) {
-    if (connectorEnvVars?.[name]) {
-      processed[name] = connectorEnvVars[name];
-    } else if (sealSecretsEnabled) {
-      const credentialValue = credentials?.[name];
-      if (credentialValue) {
-        processed[name] = createProxyToken(
-          runId,
-          userId,
-          name,
-          credentialValue,
-        );
-      }
-    } else {
-      processed[name] = credentials![name]!;
-    }
-  }
-  return Object.keys(processed).length > 0 ? processed : undefined;
-}
-
-/**
  * Build connector env var placeholders for experimental_connectors that are actually connected.
  * Returns a map of env var name → placeholder value, or undefined if no connectors qualify.
  */
@@ -143,7 +94,7 @@ function buildConnectorEnvVars(
 
 /**
  * Extract and expand environment variables from agent compose config
- * Expands ${{ vars.xxx }}, ${{ secrets.xxx }}, and ${{ credentials.xxx }} references
+ * Expands ${{ vars.xxx }} and ${{ secrets.xxx }} references
  *
  * When experimental_firewall.experimental_seal_secrets is enabled:
  * - Secrets are encrypted into proxy tokens (vm0_enc_xxx)
@@ -154,18 +105,15 @@ function buildConnectorEnvVars(
  * @param agentCompose Agent compose configuration
  * @param vars Variables for expansion (from --vars CLI param)
  * @param passedSecrets Secrets for expansion (from --secrets CLI param, already decrypted)
- * @param credentials Credentials for expansion (from platform credential store)
  * @param userId User ID for token binding
  * @param runId Run ID for token binding (required for seal_secrets)
  * @param checkEnv When true, validates that all required secrets/vars are provided
  * @returns Expanded environment variables
  */
-// eslint-disable-next-line complexity
 export function expandEnvironmentFromCompose(
   agentCompose: unknown,
   vars: Record<string, string> | undefined,
   passedSecrets: Record<string, string> | undefined,
-  credentials: Record<string, string> | undefined,
   userId: string,
   runId: string,
   checkEnv?: boolean,
@@ -222,32 +170,16 @@ export function expandEnvironmentFromCompose(
     connectorEnvVars,
   );
 
-  // Process credentials if needed
-  const credentialNames = grouped.credentials.map((r) => r.name);
-  const processedCredentials = processCredentialValues(
-    credentialNames,
-    credentials,
-    sealSecretsEnabled,
-    checkEnv,
-    runId,
-    userId,
-    connectorEnvVars,
-  );
-
   // Build sources for expansion
   const sources: {
     vars?: Record<string, string>;
     secrets?: Record<string, string>;
-    credentials?: Record<string, string>;
   } = {};
   if (vars && Object.keys(vars).length > 0) {
     sources.vars = vars;
   }
   if (secrets && Object.keys(secrets).length > 0) {
     sources.secrets = secrets;
-  }
-  if (processedCredentials && Object.keys(processedCredentials).length > 0) {
-    sources.credentials = processedCredentials;
   }
 
   // If no sources provided and there are vars references, warn

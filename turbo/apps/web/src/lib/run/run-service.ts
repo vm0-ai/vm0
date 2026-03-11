@@ -38,7 +38,7 @@ import {
 } from "../scope/scope-service";
 import { getDefaultScope } from "../scope/scope-member-service";
 import { getVariableValues } from "../variable/variable-service";
-import { encryptCredentialValue } from "../crypto/secrets-encryption";
+import { encryptSecretValue } from "../crypto/secrets-encryption";
 import type { ScopeTier } from "@vm0/core";
 
 const log = logger("service:run");
@@ -478,7 +478,7 @@ async function registerCallbacks(
     callbacks.map((callback) => ({
       runId,
       url: callback.url,
-      encryptedSecret: encryptCredentialValue(
+      encryptedSecret: encryptSecretValue(
         callback.secret,
         SECRETS_ENCRYPTION_KEY,
       ),
@@ -614,8 +614,8 @@ async function buildAndDispatchRun(opts: {
         ms: buildContextTimings.resolveSourceAndScope,
       },
       {
-        op: "api_build_resolve_credentials",
-        ms: buildContextTimings.resolveCredentials,
+        op: "api_build_resolve_secrets",
+        ms: buildContextTimings.resolveSecrets,
       },
       // Sub-step timings within prepareForExecution
       {

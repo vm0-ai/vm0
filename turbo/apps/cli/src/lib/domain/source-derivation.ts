@@ -56,7 +56,6 @@ interface VariableSource {
 export interface AgentVariableSources {
   secrets: VariableSource[];
   vars: VariableSource[];
-  credentials: VariableSource[];
 }
 
 /**
@@ -102,7 +101,6 @@ async function deriveAgentVariableSources(
   // Initialize all sources as "agent environment"
   const secretSources = new Map<string, VariableSource>();
   const varSources = new Map<string, VariableSource>();
-  const credentialSources = new Map<string, VariableSource>();
 
   for (const ref of grouped.secrets) {
     secretSources.set(ref.name, {
@@ -113,19 +111,12 @@ async function deriveAgentVariableSources(
   for (const ref of grouped.vars) {
     varSources.set(ref.name, { name: ref.name, source: "agent environment" });
   }
-  for (const ref of grouped.credentials) {
-    credentialSources.set(ref.name, {
-      name: ref.name,
-      source: "agent environment",
-    });
-  }
 
   // If no skills or skipping network, return early
   if (options?.skipNetwork || !agent.skills || agent.skills.length === 0) {
     return {
       secrets: Array.from(secretSources.values()),
       vars: Array.from(varSources.values()),
-      credentials: Array.from(credentialSources.values()),
     };
   }
 
@@ -180,7 +171,6 @@ async function deriveAgentVariableSources(
   return {
     secrets: Array.from(secretSources.values()),
     vars: Array.from(varSources.values()),
-    credentials: Array.from(credentialSources.values()),
   };
 }
 

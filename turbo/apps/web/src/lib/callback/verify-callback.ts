@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
-import { decryptCredentialValue } from "../crypto/secrets-encryption";
+import { decryptSecretValue } from "../crypto/secrets-encryption";
 import { env } from "../../env";
 import { verifyCallbackRequest } from "./verify-signature";
 
@@ -96,7 +96,7 @@ export async function verifyCallback<P = unknown>(
     };
   }
 
-  const callbackSecret = decryptCredentialValue(
+  const callbackSecret = decryptSecretValue(
     callback.encryptedSecret,
     SECRETS_ENCRYPTION_KEY,
   );
