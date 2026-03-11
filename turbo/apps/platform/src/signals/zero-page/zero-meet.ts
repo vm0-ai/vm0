@@ -14,6 +14,35 @@ import { skillValueToUrl, skillUrlToValue } from "../../data/skills.ts";
 
 const L = logger("ZeroMeet");
 
+const METADATA_FRONTMATTER_KEYS = new Set(["name", "tone"]);
+
+/**
+ * Strip only our metadata keys (name, tone) from frontmatter.
+ * User-defined frontmatter fields are preserved.
+ */
+function stripMetadataFrontmatter(content: string): string {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/);
+  if (!match) {
+    return content;
+  }
+  const rawYaml = match[1] ?? "";
+  const body = content.slice(match[0].length);
+
+  const remaining = rawYaml
+    .split("\n")
+    .filter((line) => {
+      const key = line.split(":")[0]?.trim();
+      return !key || !METADATA_FRONTMATTER_KEYS.has(key);
+    })
+    .join("\n")
+    .trim();
+
+  if (!remaining) {
+    return body.replace(/^\n/, "");
+  }
+  return `---\n${remaining}\n---${body}`;
+}
+
 // ---------------------------------------------------------------------------
 // Instructions state
 // ---------------------------------------------------------------------------
@@ -137,7 +166,8 @@ export const zeroEditedContent$ = computed((get) => get(editedContent$));
 export const zeroInstructionsDirty$ = computed((get) => {
   const edited = get(editedContent$);
   const instructions = get(instructionsState$).instructions;
-  return edited !== null && edited !== (instructions?.content ?? "");
+  const savedBody = stripMetadataFrontmatter(instructions?.content ?? "");
+  return edited !== null && edited !== savedBody;
 });
 
 export const setZeroEditedContent$ = command(({ set }, value: string) => {
@@ -333,14 +363,64 @@ export const removeZeroSkill$ = command(async ({ get, set }, name: string) => {
 });
 
 // ---------------------------------------------------------------------------
+// Shared helper: resolve current instructions content
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the current instructions content, fetching from API if not already loaded.
+ * This ensures compose jobs always include the instructions file when the
+ * compose content references one (e.g., instructions: "CLAUDE.md").
+ */
+async function resolveInstructionsContent(
+  fetchFn: typeof fetch,
+  composeId: string | undefined,
+  localContent: string | null | undefined,
+): Promise<string | undefined> {
+  if (localContent) {
+    return localContent;
+  }
+  if (!composeId) {
+    return undefined;
+  }
+  const resp = await fetchFn(`/api/agent/composes/${composeId}/instructions`);
+  if (!resp.ok) {
+    return undefined;
+  }
+  const data = (await resp.json()) as AgentInstructions;
+  return data.content ?? undefined;
+}
+
+// ---------------------------------------------------------------------------
 // Shared helper: build compose and update default agent reference
 // ---------------------------------------------------------------------------
 
 async function buildAndSetDefaultAgent(
   fetchFn: typeof fetch,
   newContent: ZeroComposeContent,
+  instructions?: string,
 ): Promise<void> {
-  const job = await triggerAndPollComposeJob(fetchFn, newContent);
+  // Ensure compose content includes instructions field so the CLI uploads it
+  const agentKey = Object.keys(newContent.agents)[0];
+  const agent = agentKey ? newContent.agents[agentKey] : undefined;
+  const contentWithInstructions: ZeroComposeContent =
+    agentKey && agent && !("instructions" in agent)
+      ? {
+          ...newContent,
+          agents: {
+            ...newContent.agents,
+            [agentKey]: {
+              ...agent,
+              instructions: getInstructionsFilename(agent.framework),
+            },
+          },
+        }
+      : newContent;
+
+  const job = await triggerAndPollComposeJob(
+    fetchFn,
+    contentWithInstructions,
+    instructions,
+  );
   if (!job.result) {
     throw new Error("Build completed without result");
   }
@@ -389,7 +469,12 @@ const syncSkillsToCompose$ = command(
     };
 
     const fetchFn = get(fetch$);
-    await buildAndSetDefaultAgent(fetchFn, newContent);
+    const instructions = await resolveInstructionsContent(
+      fetchFn,
+      compose.id,
+      get(instructionsState$).instructions?.content,
+    );
+    await buildAndSetDefaultAgent(fetchFn, newContent, instructions);
     await set(reloadOnboardingStatus$);
     set(internalComposeReload$, (x) => x + 1);
   },
@@ -445,7 +530,12 @@ export const zeroUpdateSettings$ = command(
       };
 
       const fetchFn = get(fetch$);
-      await buildAndSetDefaultAgent(fetchFn, newContent);
+      const instructions = await resolveInstructionsContent(
+        fetchFn,
+        compose.id,
+        get(instructionsState$).instructions?.content,
+      );
+      await buildAndSetDefaultAgent(fetchFn, newContent, instructions);
 
       await set(reloadOnboardingStatus$);
       set(internalComposeReload$, (x) => x + 1);
