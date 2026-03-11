@@ -20,6 +20,7 @@ interface ZeroContentProps {
   onNavigateToSchedule?: () => void;
   onNavigateToJob?: () => void;
   onNavigateToChat?: () => void;
+  selectedAgentName?: string | null;
   onNavigateToMeet?: (tab?: string) => void;
   onBackFromSession?: () => void;
   zeroAvatarSrc?: string;
@@ -49,6 +50,7 @@ export function ZeroContent({
   onNavigateToSchedule,
   onNavigateToJob,
   onNavigateToChat,
+  selectedAgentName,
   onNavigateToMeet,
   onBackFromSession,
   zeroAvatarSrc = "/zero-avatar.png",
@@ -93,7 +95,12 @@ export function ZeroContent({
     return <ZeroSchedulePage />;
   }
   if (sectionId === "job") {
-    return <ZeroJobsPage onNavigateToChat={onNavigateToChat} />;
+    return (
+      <ZeroJobsPage
+        onNavigateToChat={onNavigateToChat}
+        selectedAgentName={selectedAgentName}
+      />
+    );
   }
   if (sectionId === "activity") {
     return <ZeroActivityPage />;
@@ -124,7 +131,7 @@ export function ZeroContent({
         <div className="mx-auto max-w-[900px]">
           <div className="zero-card p-6">
             <p className="text-sm text-muted-foreground">
-              Content for “{title}” will appear here.
+              Content for &quot;{title}&quot; will appear here.
             </p>
           </div>
         </div>

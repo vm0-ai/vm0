@@ -24,7 +24,7 @@ import {
   IconCalendar,
 } from "@tabler/icons-react";
 import { Button, Card, CardContent, cn } from "@vm0/ui";
-import { ZERO_TEAM_JOBS } from "./zero-jobs-page";
+import { ZERO_TEAM_JOBS } from "./zero-mock-data";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 

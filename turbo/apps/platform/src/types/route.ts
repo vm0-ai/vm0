@@ -22,4 +22,5 @@ export type RoutePath =
   | "/settings/telegram"
   | "/telegram/connect"
   | "/telegram/connect/success"
+  | "/zero/job/:name"
   | `/projects/${string}`;
