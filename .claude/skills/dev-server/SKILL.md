@@ -16,7 +16,7 @@ Parse the args above to determine which operation to perform:
 - **stop**: Stop the background development server
 - **logs [pattern]**: View development server logs with optional filtering
 - **auth**: Authenticate with local development server and get CLI token
-- **tunnel**: Full setup with tunnel and CLI authentication (for E2B testing)
+- **tunnel**: Full setup with tunnel and CLI authentication
 
 **Note**: As of issue #1726, the web app automatically starts a Cloudflare tunnel when running `pnpm dev`. The tunnel URL is displayed during startup and `VM0_API_URL` is set automatically.
 
@@ -26,7 +26,7 @@ Parse the args above to determine which operation to perform:
 
 Start the Turbo development server in background with stream UI mode.
 
-**Note**: The web app now automatically starts a Cloudflare tunnel during dev startup. This means `VM0_API_URL` is set automatically and E2B webhooks will work out of the box. The web app takes ~15 seconds longer to start than other packages due to tunnel setup.
+**Note**: The web app now automatically starts a Cloudflare tunnel during dev startup. This means `VM0_API_URL` is set automatically and webhooks will work out of the box. The web app takes ~15 seconds longer to start than other packages due to tunnel setup.
 
 ## Workflow
 
@@ -444,7 +444,7 @@ If authentication fails:
 
 # Operation: tunnel
 
-Full development environment setup with Cloudflare tunnel and CLI authentication. Useful for E2B webhook testing.
+Full development environment setup with Cloudflare tunnel and CLI authentication. Useful for webhook testing.
 
 **Note**: Since issue #1726, the web app automatically starts a Cloudflare tunnel when running `pnpm dev`. This operation is useful when you need the **complete setup** including CLI authentication.
 
@@ -567,7 +567,7 @@ VM0_API_URL exported to: <tunnel-url>
 ✅ CLI authentication successful!
 Auth token saved to: ~/.vm0/config.json
 
-You can now test E2B webhooks locally:
+You can now test webhooks locally:
   vm0 run <agent-name> "<prompt>"
 
 Use `/dev-stop` to stop the server.

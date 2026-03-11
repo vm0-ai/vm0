@@ -33,7 +33,6 @@ import {
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 vi.mock("@clerk/nextjs/server");
-vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
@@ -51,14 +50,14 @@ describe("POST /api/agent/runs", () => {
     testComposeId = composeId;
   });
 
-  it("should create a run with running status", async () => {
+  it("should create a run with pending status", async () => {
     // Given - fixtures prepared in beforeEach
 
     // When - execute the behavior under test
     const data = await createTestRun(testComposeId, "Test prompt");
 
     // Then - assert the result
-    expect(data.status).toBe("running");
+    expect(data.status).toBe("pending");
     expect(data.runId).toBeDefined();
   });
 });
@@ -130,7 +129,6 @@ vi.mock("../../../lib/agent-session", () => ({
 ```typescript
 // Only mock external services
 vi.mock("@clerk/nextjs/server");
-vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
@@ -150,7 +148,7 @@ const context = testContext(); // Outside all describe blocks
 
 describe("...", () => {
   beforeEach(() => {
-    context.setupMocks(); // Set up default mock behavior for E2B, S3, Axiom, etc.
+    context.setupMocks(); // Set up default mock behavior for S3, Axiom, etc.
   });
 });
 ```
@@ -279,16 +277,11 @@ If you find yourself needing `initServices()`, it's a sign that you're accessing
 Run state transitions should be done via webhook helpers, not direct database modifications:
 
 ```typescript
-// Create run (status automatically set to running)
+// Create run (status automatically set to pending)
 const { runId } = await createTestRun(composeId, "test prompt");
 
 // Complete run (via checkpoint + complete webhook)
 await completeTestRun(user.userId, runId);
-
-// Test failure scenarios - mock Sandbox creation failure
-vi.mocked(Sandbox.create).mockRejectedValueOnce(new Error("Sandbox failed"));
-const data = await createTestRun(composeId, "test");
-expect(data.status).toBe("failed");
 ```
 
 ---
@@ -694,7 +687,7 @@ it("should run agent", async () => {
 
 ```typescript
 // ✅ Do this - mock only external services, verify behavior through response
-vi.mock("@e2b/code-interpreter"); // External service
+vi.mock("@clerk/nextjs/server"); // External service
 
 it("should run agent", async () => {
   const response = await POST(request);

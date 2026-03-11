@@ -55,7 +55,7 @@ npm install -g @vm0/cli && vm0 onboard
   </a>
 </p>
 
-- **[Architecture Documentation](./docs/architecture.md)** - Comprehensive technical reference covering sandbox technologies (E2B, Firecracker), infrastructure components and network architecture
+- **[Architecture Documentation](./docs/architecture.md)** - Comprehensive technical reference covering sandbox technologies (Firecracker microVMs), infrastructure components and network architecture
 
 For user-facing guides and tutorials, visit [docs.vm0.ai](https://docs.vm0.ai).
 

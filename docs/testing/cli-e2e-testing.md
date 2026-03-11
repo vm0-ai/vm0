@@ -32,7 +32,7 @@ E2E tests verify the system works end-to-end. Error cases belong in CLI Command 
 
 Each `vm0 run` call takes ~15 seconds due to:
 - API call to platform
-- E2B sandbox creation
+- Runner job queuing and sandbox creation
 - Volume/artifact mounting
 - Mock Claude execution
 - Checkpoint creation
