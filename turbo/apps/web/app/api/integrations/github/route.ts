@@ -113,10 +113,7 @@ export async function GET(request: Request) {
       const content = version.content as AgentComposeYaml;
       const refs = extractVariableReferences(content);
       const grouped = groupVariablesBySource(refs);
-      requiredSecrets = [
-        ...grouped.secrets.map((s) => s.name),
-        ...grouped.credentials.map((s) => s.name),
-      ];
+      requiredSecrets = grouped.secrets.map((s) => s.name);
       requiredVars = grouped.vars.map((v) => v.name);
     }
   }

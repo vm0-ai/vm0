@@ -304,18 +304,16 @@ agents:
       expect(extractRequiredConfiguration(null)).toEqual({
         secrets: [],
         vars: [],
-        credentials: [],
       });
       expect(extractRequiredConfiguration(undefined)).toEqual({
         secrets: [],
         vars: [],
-        credentials: [],
       });
     });
 
     it("should return empty arrays for empty compose content", () => {
       const result = extractRequiredConfiguration({});
-      expect(result).toEqual({ secrets: [], vars: [], credentials: [] });
+      expect(result).toEqual({ secrets: [], vars: [] });
     });
 
     it("should extract secrets from compose content", () => {
@@ -333,7 +331,6 @@ agents:
       expect(result.secrets).toContain("API_KEY");
       expect(result.secrets).toContain("DB_PASSWORD");
       expect(result.vars).toEqual([]);
-      expect(result.credentials).toEqual([]);
     });
 
     it("should extract vars from compose content", () => {
@@ -353,7 +350,7 @@ agents:
       expect(result.secrets).toEqual([]);
     });
 
-    it("should extract credentials from compose content", () => {
+    it("should not extract credentials references (removed concept)", () => {
       const composeContent = {
         agents: {
           "test-agent": {
@@ -364,17 +361,17 @@ agents:
         },
       };
       const result = extractRequiredConfiguration(composeContent);
-      expect(result.credentials).toContain("OAUTH_TOKEN");
+      expect(result.secrets).toEqual([]);
+      expect(result.vars).toEqual([]);
     });
 
-    it("should extract mixed secrets, vars, and credentials", () => {
+    it("should extract mixed secrets and vars", () => {
       const composeContent = {
         agents: {
           "test-agent": {
             environment: {
               API_KEY: "${{ secrets.API_KEY }}",
               API_URL: "${{ vars.API_URL }}",
-              OAUTH_TOKEN: "${{ credentials.OAUTH_TOKEN }}",
             },
           },
         },
@@ -382,7 +379,6 @@ agents:
       const result = extractRequiredConfiguration(composeContent);
       expect(result.secrets).toContain("API_KEY");
       expect(result.vars).toContain("API_URL");
-      expect(result.credentials).toContain("OAUTH_TOKEN");
     });
 
     it("should not duplicate variable names", () => {

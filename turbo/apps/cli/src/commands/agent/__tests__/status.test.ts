@@ -249,7 +249,7 @@ describe("agent status command", () => {
                     environment: {
                       API_KEY: "${{ secrets.OPENAI_API_KEY }}",
                       DEBUG_MODE: "${{ vars.DEBUG_MODE }}",
-                      GITHUB_CRED: "${{ credentials.GITHUB_APP }}",
+                      GITHUB_CRED: "${{ secrets.GITHUB_APP }}",
                     },
                   },
                 },
@@ -283,8 +283,7 @@ describe("agent status command", () => {
       expect(logCalls).toContain("Vars:");
       expect(logCalls).toContain("DEBUG_MODE");
 
-      // Should display credentials section
-      expect(logCalls).toContain("Credentials:");
+      // GITHUB_APP is now a secret (credentials concept removed)
       expect(logCalls).toContain("GITHUB_APP");
     });
 
