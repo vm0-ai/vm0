@@ -782,6 +782,25 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  metabase: {
+    label: "Metabase",
+    helpText:
+      "Connect your Metabase instance to query data, manage dashboards, and automate analytics workflows",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to your Metabase instance as an admin\n2. Go to **Admin** → **Settings** → **Authentication** → **API Keys**\n3. Click **Create API Key**\n4. Enter a name and select a group for the key\n5. Copy the generated API key",
+        secrets: {
+          METABASE_TOKEN: {
+            label: "API Key",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   deel: {
     label: "Deel",
     featureFlag: FeatureSwitchKey.DeelConnector,
@@ -2876,6 +2895,15 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       }),
     ],
   },
+  metabase: {
+    services: [
+      service("https://api.metabase.com", {
+        headers: {
+          "x-api-key": "${secrets.METABASE_TOKEN}",
+        },
+      }),
+    ],
+  },
   clickup: {
     services: [
       service("https://api.clickup.com/api/v2", bearerAuth("CLICKUP_TOKEN")),
@@ -3290,6 +3318,7 @@ export const connectorTypeSchema = z.enum([
   "jotform",
   "line",
   "make",
+  "metabase",
   "figma",
   "mercury",
   "minimax",
