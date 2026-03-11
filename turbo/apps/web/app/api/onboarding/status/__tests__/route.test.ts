@@ -119,4 +119,42 @@ describe("GET /api/onboarding/status", () => {
       defaultAgentMetadata: null,
     });
   });
+
+  it("should return defaultAgentMetadata when compose has metadata", async () => {
+    await context.setupUser();
+    await createTestModelProvider("anthropic-api-key", "test-secret-key");
+
+    // Create a compose with metadata
+    const compose = await createTestCompose("test-agent", {
+      metadata: { displayName: "My Agent", sound: "friendly" },
+    });
+
+    const setDefaultRequest = createTestRequest(
+      "http://localhost:3000/api/scopes/default-agent",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentComposeId: compose.composeId }),
+      },
+    );
+    const setDefaultResponse = await setDefaultAgent(setDefaultRequest);
+    expect(setDefaultResponse.status).toBe(200);
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/onboarding/status",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data).toEqual({
+      needsOnboarding: false,
+      hasScope: true,
+      hasModelProvider: true,
+      hasDefaultAgent: true,
+      defaultAgentName: "test-agent",
+      defaultAgentComposeId: compose.composeId,
+      defaultAgentMetadata: { displayName: "My Agent", sound: "friendly" },
+    });
+  });
 });
