@@ -264,7 +264,9 @@ function ZeroSkillsTab() {
   // Cache previous connector data so the list doesn't flash during refetch
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
-  // Clear optimistic state once real data reflects the connection
+  // Clear optimistic state once real data reflects the connection.
+  // This is a safe render-body side effect: after clearing, optimisticConnected
+  // becomes empty so the condition won't fire again (self-limiting, no loop).
   if (allTypesLoadable.state === "hasData" && optimisticConnected.size > 0) {
     clearOptimistic();
   }
@@ -368,7 +370,11 @@ function ZeroSkillsTab() {
                   pollingType={pollingType}
                   onConnect={() => {
                     const ct = connectorMap.get(name as ConnectorType);
-                    if (ct && ct.availableAuthMethods.includes("api-token")) {
+                    if (
+                      ct &&
+                      ct.availableAuthMethods.length === 1 &&
+                      ct.availableAuthMethods[0] === "api-token"
+                    ) {
                       setSelected(name as ConnectorType);
                     } else {
                       detach(
