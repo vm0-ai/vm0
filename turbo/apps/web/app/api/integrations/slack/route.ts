@@ -30,6 +30,9 @@ import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import { syncWorkspaceAgentPermissions } from "../../../../src/lib/slack/permission-sync";
+import { logger } from "../../../../src/lib/logger";
+
+const log = logger("api:slack");
 
 /**
  * GET /api/integrations/slack
@@ -228,7 +231,9 @@ export async function DELETE(request: Request) {
     );
     const client = createSlackClient(botToken);
     await refreshAppHome(client, installation, userLink.slackUserId).catch(
-      () => {},
+      (error) => {
+        log.warn("Failed to refresh App Home after disconnect", { error });
+      },
     );
   }
 
