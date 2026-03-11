@@ -1960,6 +1960,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  qiita: {
+    label: "Qiita",
+    helpText:
+      "Connect your Qiita account to search, read, and publish technical articles",
+    authMethods: {
+      "api-token": {
+        label: "Access Token",
+        helpText:
+          "1. Log in to [Qiita](https://qiita.com)\n2. Go to **Settings → Applications → Personal access tokens**\n3. Generate a new token with required scopes\n4. Copy the token",
+        secrets: {
+          QIITA_TOKEN: {
+            label: "Access Token",
+            required: true,
+            placeholder: "your-qiita-access-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
 } satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
@@ -2367,6 +2387,9 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   fal: {
     services: [service("https://fal.run", bearerAuth("FAL_KEY"))],
   },
+  qiita: {
+    services: [service("https://qiita.com/api/v2", bearerAuth("QIITA_TOKEN"))],
+  },
 };
 
 export const connectorTypeSchema = z.enum([
@@ -2430,6 +2453,7 @@ export const connectorTypeSchema = z.enum([
   "elevenlabs",
   "devto",
   "fal",
+  "qiita",
 ]);
 
 /**
