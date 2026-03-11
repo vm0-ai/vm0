@@ -724,8 +724,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Personal Access Token",
-        helpText:
-          "1. Log in to [Jam](https://jam.dev)\n2. Go to **Settings** → **API**\n3. Create a new **Personal Access Token**\n4. Copy the token (starts with `jam_pat_`)",
         secrets: {
           JAM_TOKEN: {
             label: "Personal Access Token",
@@ -2448,8 +2446,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Sign up at [Short.io](https://short.io/)\n2. Go to **Integrations & API** in Settings\n3. Copy your API key",
         secrets: {
           SHORTIO_TOKEN: {
             label: "API Key",
