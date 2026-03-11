@@ -791,6 +791,27 @@ const CONNECTOR_TYPES_DEF = {
       scopes: ["offline_access"],
     } as ConnectorOAuthConfig,
   },
+  minimax: {
+    label: "MiniMax",
+    helpText:
+      "Connect your MiniMax account to access AI model APIs for text, voice, and video generation",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to the [MiniMax Platform](https://platform.minimaxi.com)\n2. Go to **Account → API Keys**\n3. Create a new API key and copy it",
+        secrets: {
+          MINIMAX_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-minimax-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {} as Record<string, string>,
+  },
   reddit: {
     label: "Reddit",
     featureFlag: FeatureSwitchKey.RedditConnector,
@@ -1588,6 +1609,26 @@ const CONNECTOR_TYPES_DEF = {
       scopes: ["read_write"],
     } as ConnectorOAuthConfig,
   },
+  openai: {
+    label: "OpenAI",
+    helpText:
+      "Connect your OpenAI account to access GPT models, embeddings, image generation, and other AI capabilities",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [OpenAI](https://platform.openai.com)\n2. Go to **API keys** in the left sidebar\n3. Click **Create new secret key**\n4. Copy the key",
+        secrets: {
+          OPENAI_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "sk-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   similarweb: {
     label: "SimilarWeb",
     helpText:
@@ -1686,6 +1727,27 @@ const CONNECTOR_TYPES_DEF = {
     environmentMapping: {
       RESEND_API_KEY: "$secrets.RESEND_API_KEY",
     } as Record<string, string>,
+  },
+  elevenlabs: {
+    label: "ElevenLabs",
+    helpText:
+      "Connect your ElevenLabs account to generate speech, clone voices, manage audio projects, and access sound effects",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [ElevenLabs](https://elevenlabs.io)\n2. Click your profile icon → **Profile + API key**\n3. Copy your API key",
+        secrets: {
+          ELEVENLABS_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-elevenlabs-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {} as Record<string, string>,
   },
   fal: {
     label: "fal.ai",
@@ -1862,6 +1924,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   mercury: {
     services: [service("https://api.mercury.com", bearerAuth("MERCURY_TOKEN"))],
   },
+  minimax: {
+    services: [
+      service("https://api.minimaxi.com/v1", bearerAuth("MINIMAX_TOKEN")),
+    ],
+  },
   reddit: {
     services: [service("https://oauth.reddit.com", bearerAuth("REDDIT_TOKEN"))],
   },
@@ -1941,6 +2008,9 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
         bearerAuth("PRODUCTLANE_TOKEN"),
       ),
     ],
+  },
+  openai: {
+    services: [service("https://api.openai.com", bearerAuth("OPENAI_TOKEN"))],
   },
   similarweb: {
     services: [
@@ -2045,6 +2115,13 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   resend: {
     services: [service("https://api.resend.com", bearerAuth("RESEND_API_KEY"))],
   },
+  elevenlabs: {
+    services: [
+      service("https://api.elevenlabs.io", {
+        headers: { "xi-api-key": "${secrets.ELEVENLABS_TOKEN}" },
+      }),
+    ],
+  },
   fal: {
     services: [service("https://fal.run", bearerAuth("FAL_KEY"))],
   },
@@ -2074,6 +2151,7 @@ export const connectorTypeSchema = z.enum([
   "linear",
   "figma",
   "mercury",
+  "minimax",
   "reddit",
   "strava",
   "neon",
@@ -2092,11 +2170,13 @@ export const connectorTypeSchema = z.enum([
   "meta-ads",
   "posthog",
   "stripe",
+  "openai",
   "similarweb",
   "mailchimp",
   "plausible",
   "productlane",
   "resend",
+  "elevenlabs",
   "fal",
 ]);
 

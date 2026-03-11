@@ -75,20 +75,9 @@
             }
           }
 
-          // Count firecracker processes
-          prometheus.exporter.process "default" {
-            matcher {
-              name = "firecracker"
-              comm = ["firecracker"]
-            }
-          }
-
-          // Merge all exporter targets and override instance label
+          // Override instance label with inventory hostname
           discovery.relabel "default" {
-            targets = concat(
-              prometheus.exporter.unix.default.targets,
-              prometheus.exporter.process.default.targets,
-            )
+            targets = prometheus.exporter.unix.default.targets
 
             rule {
               target_label = "instance"
@@ -96,23 +85,15 @@
             }
           }
 
-          // Relabel and filter before remote write
+          // Rewrite nodename label to inventory hostname
           prometheus.relabel "default" {
             forward_to = [prometheus.remote_write.grafana_cloud.receiver]
 
-            // Rewrite nodename label to inventory hostname
             rule {
               source_labels = ["nodename"]
               regex         = ".+"
               target_label  = "nodename"
               replacement   = "{{ inventory_hostname }}"
-            }
-
-            // Drop all process exporter metrics except num_procs
-            rule {
-              source_labels = ["__name__"]
-              regex         = "namedprocess_(?!namegroup_num_procs).+"
-              action        = "drop"
             }
           }
 
@@ -120,6 +101,34 @@
             targets         = discovery.relabel.default.output
             forward_to      = [prometheus.relabel.default.receiver]
             scrape_interval = "15s"
+          }
+
+          // Count firecracker processes (separate pipeline, only keep num_procs)
+          prometheus.exporter.process "firecracker" {
+            matcher {
+              name = "firecracker"
+              comm = ["firecracker"]
+            }
+          }
+
+          prometheus.scrape "firecracker" {
+            targets         = prometheus.exporter.process.firecracker.targets
+            forward_to      = [prometheus.relabel.firecracker.receiver]
+            scrape_interval = "15s"
+          }
+
+          prometheus.relabel "firecracker" {
+            forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+            rule {
+              target_label = "instance"
+              replacement  = "{{ inventory_hostname }}"
+            }
+            rule {
+              source_labels = ["__name__"]
+              regex         = "namedprocess_namegroup_num_procs"
+              action        = "keep"
+            }
           }
 
           prometheus.remote_write "grafana_cloud" {
