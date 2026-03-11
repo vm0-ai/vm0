@@ -31,7 +31,7 @@ import {
 } from "../../signals/zero-page/zero-job-detail.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
 
-function getConnectorTypes(): ConnectorType[] {
+function getAllConnectorTypes(): readonly ConnectorType[] {
   return Object.keys(CONNECTOR_TYPES) as ConnectorType[];
 }
 
@@ -68,7 +68,7 @@ function ConnectorsTab() {
         </p>
       </div>
       <ul className="flex flex-col gap-3">
-        {getConnectorTypes().map((type) => {
+        {getAllConnectorTypes().map((type) => {
           const config = CONNECTOR_TYPES[type];
           return (
             <li key={type}>
