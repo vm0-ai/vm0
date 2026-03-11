@@ -2171,6 +2171,25 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  fireflies: {
+    label: "Fireflies",
+    helpText:
+      "Connect your Fireflies.ai account to transcribe and analyze meetings",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Fireflies.ai](https://app.fireflies.ai)\n2. Go to **Settings > Developer Settings**\n3. Copy your **API Key**",
+        secrets: {
+          FIREFLIES_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   firecrawl: {
     label: "Firecrawl",
     helpText:
@@ -3069,6 +3088,14 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       }),
     ],
   },
+  fireflies: {
+    services: [
+      service(
+        "https://api.fireflies.ai/graphql",
+        bearerAuth("FIREFLIES_TOKEN"),
+      ),
+    ],
+  },
   firecrawl: {
     services: [
       service("https://api.firecrawl.dev/v1", bearerAuth("FIRECRAWL_TOKEN")),
@@ -3238,6 +3265,7 @@ export const connectorTypeSchema = z.enum([
   "bright-data",
   "browserbase",
   "browserless",
+  "fireflies",
   "firecrawl",
   "scrapeninja",
   "elevenlabs",

@@ -29,6 +29,7 @@ import { dropboxHandler } from "./providers/dropbox-handler";
 import { elevenlabsHandler } from "./providers/elevenlabs-handler";
 import { falHandler } from "./providers/fal-handler";
 import { figmaHandler } from "./providers/figma-handler";
+import { firefliesHandler } from "./providers/fireflies-handler";
 import { firecrawlHandler } from "./providers/firecrawl-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
 import { githubHandler } from "./providers/github-handler";
@@ -126,6 +127,7 @@ export const PROVIDER_HANDLERS: Record<
   elevenlabs: elevenlabsHandler,
   fal: falHandler,
   figma: figmaHandler,
+  fireflies: firefliesHandler,
   firecrawl: firecrawlHandler,
   "garmin-connect": garminConnectHandler,
   github: githubHandler,
