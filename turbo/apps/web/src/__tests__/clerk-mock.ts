@@ -188,6 +188,26 @@ export function mockClerk(options: {
             return Promise.resolve({ data: [] });
           },
         ),
+      getOrganization: vi
+        .fn()
+        .mockImplementation(
+          ({ organizationId }: { organizationId: string }) => {
+            const created = createdOrgs.find((o) => o.id === organizationId);
+            const fromClerk = clerkOrgs.find((o) => o.id === organizationId);
+            const org = created ?? fromClerk;
+            if (!org) {
+              return Promise.reject(
+                new Error(`Organization ${organizationId} not found`),
+              );
+            }
+            return Promise.resolve({
+              id: org.id,
+              slug: org.slug,
+              name: org.name,
+              publicMetadata: {},
+            });
+          },
+        ),
       updateOrganization: vi.fn().mockResolvedValue({}),
       updateOrganizationMetadata: vi.fn().mockResolvedValue({}),
       updateOrganizationMembershipMetadata: vi.fn().mockResolvedValue({}),

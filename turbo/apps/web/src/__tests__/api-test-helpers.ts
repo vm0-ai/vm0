@@ -37,6 +37,7 @@ import type { EmailTemplate, PostSendAction } from "../lib/email/types";
 import { telegramInstallations } from "../db/schema/telegram-installation";
 import { telegramMessages } from "../db/schema/telegram-message";
 import { telegramUserLinks } from "../db/schema/telegram-user-link";
+import { orgCache } from "../db/schema/org-cache";
 import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
@@ -2950,6 +2951,39 @@ export async function findTestOutboxItemById(id: string) {
     .select()
     .from(emailOutbox)
     .where(eq(emailOutbox.id, id))
+    .limit(1);
+  return row ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// org_cache helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Insert a row into org_cache for testing cache behavior.
+ */
+export async function insertOrgCacheEntry(entry: {
+  clerkOrgId: string;
+  slug: string;
+  tier?: string;
+  cachedAt?: Date;
+}): Promise<void> {
+  await globalThis.services.db.insert(orgCache).values({
+    clerkOrgId: entry.clerkOrgId,
+    slug: entry.slug,
+    tier: entry.tier ?? "free",
+    cachedAt: entry.cachedAt ?? new Date(),
+  });
+}
+
+/**
+ * Read an org_cache row by clerkOrgId.
+ */
+export async function getOrgCacheEntry(clerkOrgId: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(orgCache)
+    .where(eq(orgCache.clerkOrgId, clerkOrgId))
     .limit(1);
   return row ?? null;
 }
