@@ -556,36 +556,6 @@ importers:
 
   packages/proxy: {}
 
-  packages/sandbox-scripts:
-    devDependencies:
-      '@types/node':
-        specifier: ^24.3.0
-        version: 24.3.0
-      '@vm0/eslint-config':
-        specifier: workspace:*
-        version: link:../eslint-config
-      '@vm0/typescript-config':
-        specifier: workspace:*
-        version: link:../typescript-config
-      esbuild:
-        specifier: ^0.27.3
-        version: 0.27.3
-      eslint:
-        specifier: ^9.34.0
-        version: 9.34.0(jiti@2.6.1)
-      oxlint:
-        specifier: ^1.14.0
-        version: 1.38.0
-      tsx:
-        specifier: ^4.20.6
-        version: 4.20.6
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^4.0.18
-        version: 4.0.18(@opentelemetry/api@1.9.0)(@types/node@24.3.0)(@vitest/ui@4.0.18)(happy-dom@20.1.0)(jiti@2.6.1)(lightningcss@1.30.2)(msw@2.12.7(@types/node@24.3.0)(typescript@5.9.3))(tsx@4.20.6)(yaml@2.8.1)
-
   packages/typescript-config: {}
 
   packages/ui:

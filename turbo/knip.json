@@ -56,15 +56,7 @@
       ],
       "project": ["src/**/*.ts"]
     },
-    "packages/sandbox-scripts": {
-      "entry": [
-        "src/**/__tests__/**/*.{test,spec}.ts",
-        "src/**/*.{test,spec}.ts"
-      ],
-      "project": ["src/**/*.ts", "scripts/**/*.ts"],
-      "ignore": ["src/scripts/**"]
-    },
-    "packages/ui": {
+"packages/ui": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.{ts,tsx}",
         "src/**/*.{test,spec}.{ts,tsx}"
