@@ -1761,6 +1761,22 @@ const CONNECTOR_TYPES_DEF = {
             required: true,
             placeholder: "your-api-token",
           },
+          ATLASSIAN_EMAIL: {
+            label: "Email",
+            required: true,
+            placeholder: "you@example.com",
+            helpText:
+              "The email address associated with your Atlassian account",
+            type: "variable",
+          },
+          ATLASSIAN_DOMAIN: {
+            label: "Domain",
+            required: true,
+            placeholder: "mycompany",
+            helpText:
+              "Your Atlassian domain (e.g. 'mycompany' from mycompany.atlassian.net)",
+            type: "variable",
+          },
         },
       },
     } as Record<string, ConnectorAuthMethodConfig>,
