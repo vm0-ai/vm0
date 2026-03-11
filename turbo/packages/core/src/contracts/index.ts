@@ -422,6 +422,7 @@ export {
   getConnectorProxyConfig,
   hasRequiredScopes,
   getApiTokenRequiredSecretNames,
+  getApiTokenFieldsByType,
   deriveApiTokenConnectedTypes,
   type ConnectorsMainContract,
   type ConnectorsByTypeContract,
