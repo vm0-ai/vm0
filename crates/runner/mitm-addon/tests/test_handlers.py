@@ -253,7 +253,7 @@ class TestResponseHandler:
         # Add response
         flow.response = MagicMock()
         flow.response.status_code = 200
-        flow.response.content = b"ok"
+        flow.response.headers = {"content-length": "256"}
 
         # Simulate tracked start time
         mitm_addon._request_start_times[flow.id] = __import__("time").time() - 0.1

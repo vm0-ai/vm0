@@ -577,7 +577,7 @@ def response(flow: http.HTTPFlow) -> None:
 
     # Calculate sizes
     request_size = len(flow.request.content) if flow.request.content else 0
-    response_size = len(flow.response.content) if flow.response and flow.response.content else 0
+    response_size = int(flow.response.headers.get("content-length", 0)) if flow.response else 0
     status_code = flow.response.status_code if flow.response else 0
 
     # Parse URL for host
