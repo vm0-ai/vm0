@@ -51,9 +51,9 @@ async function handleAuthentication(ctx: OnboardContext): Promise<void> {
     }
 
     if (!ctx.interactive) {
-      console.error(chalk.red("✗ Not authenticated"));
-      console.error("Run 'vm0 auth login' first or set VM0_TOKEN");
-      process.exit(1);
+      throw new Error("Not authenticated", {
+        cause: new Error("Run 'vm0 auth login' first or set VM0_TOKEN"),
+      });
     }
 
     await runAuthFlow({
@@ -72,11 +72,7 @@ async function handleAuthentication(ctx: OnboardContext): Promise<void> {
         // Will be shown as completed step
       },
       onError: (error) => {
-        console.error(chalk.red(`\n✗ ${error.message}`));
-        if (error.cause instanceof Error) {
-          console.error(chalk.dim(`  Cause: ${error.cause.message}`));
-        }
-        process.exit(1);
+        throw error;
       },
     });
   });
@@ -90,9 +86,9 @@ async function handleModelProvider(ctx: OnboardContext): Promise<void> {
     }
 
     if (!ctx.interactive) {
-      console.error(chalk.red("✗ No model provider configured"));
-      console.error("Run 'vm0 model-provider setup' first");
-      process.exit(1);
+      throw new Error("No model provider configured", {
+        cause: new Error("Run 'vm0 model-provider setup' first"),
+      });
     }
 
     const choices = getProviderChoices();
@@ -217,20 +213,17 @@ async function handleAgentCreation(ctx: OnboardContext): Promise<string> {
     } else {
       // Non-interactive mode: validate and fail if exists
       if (!validateAgentName(agentName)) {
-        console.error(
-          chalk.red(
-            "Invalid agent name: must be 3-64 chars, alphanumeric + hyphens",
-          ),
+        throw new Error(
+          "Invalid agent name: must be 3-64 chars, alphanumeric + hyphens",
         );
-        process.exit(1);
       }
 
       if (existsSync(agentName)) {
-        console.error(chalk.red(`✗ ${agentName}/ already exists`));
-        console.error();
-        console.error("Remove it first or choose a different name:");
-        console.error(chalk.cyan(`  rm -rf ${agentName}`));
-        process.exit(1);
+        throw new Error(`${agentName}/ already exists`, {
+          cause: new Error(
+            `Remove it first or choose a different name: rm -rf ${agentName}`,
+          ),
+        });
       }
     }
 

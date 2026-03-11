@@ -19,22 +19,16 @@ export const useCommand = new Command()
         }
 
         if (!slug) {
-          console.error(
-            chalk.red(
-              "✗ Scope slug is required. Use --personal to switch to default scope.",
-            ),
+          throw new Error(
+            "Scope slug is required. Use --personal to switch to default scope.",
           );
-          process.exit(1);
         }
 
         // Verify the scope exists and user has access
         const scopeList = await listScopes();
         const target = scopeList.scopes.find((s) => s.slug === slug);
         if (!target) {
-          console.error(
-            chalk.red(`✗ Scope '${slug}' not found or not accessible.`),
-          );
-          process.exit(1);
+          throw new Error(`Scope '${slug}' not found or not accessible.`);
         }
 
         await saveConfig({ activeScope: slug });
