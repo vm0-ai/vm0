@@ -11,6 +11,7 @@ import { airtableHandler } from "./providers/airtable-handler";
 import { apifyHandler } from "./providers/apify-handler";
 import { axiomHandler } from "./providers/axiom-handler";
 import { asanaHandler } from "./providers/asana-handler";
+import { atlassianHandler } from "./providers/atlassian-handler";
 import { brightDataHandler } from "./providers/bright-data-handler";
 import { browserbaseHandler } from "./providers/browserbase-handler";
 import { browserlessHandler } from "./providers/browserless-handler";
@@ -99,6 +100,7 @@ export const PROVIDER_HANDLERS: Record<
   apify: apifyHandler,
   axiom: axiomHandler,
   asana: asanaHandler,
+  atlassian: atlassianHandler,
   "bright-data": brightDataHandler,
   browserbase: browserbaseHandler,
   browserless: browserlessHandler,

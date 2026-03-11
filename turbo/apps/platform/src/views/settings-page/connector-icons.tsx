@@ -9,6 +9,7 @@ import browserlessIcon from "./icons/browserless.svg";
 import airtableIcon from "./icons/airtable.svg";
 import axiomIcon from "./icons/axiom.svg";
 import asanaIcon from "./icons/asana.svg";
+import atlassianIcon from "./icons/atlassian.svg";
 import canvaIcon from "./icons/canva.svg";
 import chatwootIcon from "./icons/chatwoot.svg";
 import clickupIcon from "./icons/clickup.svg";
@@ -90,6 +91,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   apify: apifyIcon,
   axiom: axiomIcon,
   asana: asanaIcon,
+  atlassian: atlassianIcon,
   "bright-data": brightDataIcon,
   browserbase: browserbaseIcon,
   browserless: browserlessIcon,

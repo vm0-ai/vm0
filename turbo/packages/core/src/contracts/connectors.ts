@@ -1689,6 +1689,26 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as ConnectorOAuthConfig,
   },
+  atlassian: {
+    label: "Atlassian (Jira/Confluence)",
+    helpText:
+      "Connect your Atlassian account to manage Jira issues, Confluence pages, and other Atlassian products",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Atlassian](https://id.atlassian.com/manage-profile/security/api-tokens)\n2. Click **Create API token**\n3. Give it a label and click **Create**\n4. Copy the generated token",
+        secrets: {
+          ATLASSIAN_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-api-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   "meta-ads": {
     label: "Meta Ads",
     featureFlag: FeatureSwitchKey.MetaAdsConnector,
@@ -2920,6 +2940,7 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
 export const connectorTypeSchema = z.enum([
   "agentmail",
   "ahrefs",
+  "atlassian",
   "axiom",
   "airtable",
   "asana",
