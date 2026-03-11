@@ -37,6 +37,7 @@ import * as telegramUserLinkSchema from "./schema/telegram-user-link";
 import * as telegramThreadSessionSchema from "./schema/telegram-thread-session";
 import * as telegramMessageSchema from "./schema/telegram-message";
 import * as orgCacheSchema from "./schema/org-cache";
+import * as orgMembersCacheSchema from "./schema/org-members-cache";
 
 export const schema = {
   ...userSchema,
@@ -78,4 +79,5 @@ export const schema = {
   ...telegramThreadSessionSchema,
   ...telegramMessageSchema,
   ...orgCacheSchema,
+  ...orgMembersCacheSchema,
 };
