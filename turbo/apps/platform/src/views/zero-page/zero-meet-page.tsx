@@ -1,5 +1,6 @@
 import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   IconMessageCircle,
@@ -41,6 +42,8 @@ import {
   selectedConnectorType$,
   setSelectedConnectorType$,
   pollingConnectorType$,
+  justConnectedTypes$,
+  clearJustConnectedTypes$,
 } from "../../signals/settings-page/connectors.ts";
 import { deleteConnector$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -153,7 +156,9 @@ function ZeroSkillItem({
             <span className="text-xs text-muted-foreground shrink-0">
               {connector.connector?.externalUsername
                 ? `Connected as @${connector.connector.externalUsername}`
-                : "Connected"}
+                : connector.connector?.authMethod === "api-token"
+                  ? "Connected via API key"
+                  : "Connected"}
             </span>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -184,7 +189,10 @@ function ZeroSkillItem({
               className="h-8 rounded-lg px-3 zero-btn-morandi border"
               onClick={onConnect}
             >
-              Connect
+              {connector.availableAuthMethods.length === 1 &&
+              connector.availableAuthMethods[0] === "api-token"
+                ? "Add API key"
+                : "Connect"}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -243,14 +251,30 @@ function ZeroSkillsTab() {
 
   // Skills list: auto-seeded from compose content, synced via compose jobs
   const addedSkillsLoadable = useLoadable(zeroAddedSkills$);
-  const addedSkills =
-    addedSkillsLoadable.state === "hasData" ? addedSkillsLoadable.data : [];
+  const addedSkillsRef = useRef<string[]>([]);
+  if (addedSkillsLoadable.state === "hasData") {
+    addedSkillsRef.current = addedSkillsLoadable.data;
+  }
+  const addedSkills = addedSkillsRef.current;
   const allSkills = useGet(skills$);
   const addSkill = useSet(addZeroSkill$);
   const removeSkill = useSet(removeZeroSkill$);
 
-  const allConnectors =
-    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+  // Optimistic connected state — set by connectConnector$/submitApiToken$
+  // so the skill shows "Connected" immediately without waiting for refetch.
+  const optimisticConnected = useGet(justConnectedTypes$);
+  const clearOptimistic = useSet(clearJustConnectedTypes$);
+
+  // Cache previous connector data so the list doesn't flash during refetch
+  const allConnectorsRef = useRef<ConnectorTypeWithStatus[]>([]);
+  if (allTypesLoadable.state === "hasData") {
+    allConnectorsRef.current = allTypesLoadable.data;
+    // Clear optimistic state once real data reflects the connection
+    if (optimisticConnected.size > 0) {
+      clearOptimistic();
+    }
+  }
+  const allConnectors = allConnectorsRef.current;
   const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
   const skillMap = new Map(allSkills.map((s) => [s.value, s]));
   const addedSet = new Set(addedSkills);
@@ -295,7 +319,7 @@ function ZeroSkillsTab() {
         </Button>
       </div>
 
-      {addedSkillsLoadable.state !== "hasData" ? (
+      {addedSkillsLoadable.state !== "hasData" && addedSkills.length === 0 ? (
         <Card className="zero-card">
           <CardContent className="p-0">
             {Array.from({ length: 3 }, (_, i) => (
@@ -334,20 +358,32 @@ function ZeroSkillsTab() {
           <CardContent className="p-0">
             {addedSkills.map((name, index) => {
               const skill = skillMap.get(name);
+              const connector = connectorMap.get(name as ConnectorType) ?? null;
+              const effectiveConnector =
+                optimisticConnected.has(name) &&
+                connector &&
+                !connector.connected
+                  ? { ...connector, connected: true }
+                  : connector;
               return (
                 <ZeroSkillItem
                   key={name}
                   name={name}
                   label={skill?.label ?? name}
                   iconUrl={skill?.icon}
-                  connector={connectorMap.get(name as ConnectorType) ?? null}
+                  connector={effectiveConnector}
                   pollingType={pollingType}
-                  onConnect={() =>
-                    detach(
-                      connect(name as ConnectorType, signal),
-                      Reason.DomCallback,
-                    )
-                  }
+                  onConnect={() => {
+                    const ct = connectorMap.get(name as ConnectorType);
+                    if (ct && ct.availableAuthMethods.includes("api-token")) {
+                      setSelected(name as ConnectorType);
+                    } else {
+                      detach(
+                        connect(name as ConnectorType, signal),
+                        Reason.DomCallback,
+                      );
+                    }
+                  }}
                   onDisconnect={() =>
                     detach(
                       disconnect(name as ConnectorType),

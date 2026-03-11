@@ -58,6 +58,10 @@ export const setupClerk$ = command(
       setSentryUser(clerk.user.id);
     }
 
+    // Track the user ID so we only trigger a reload on actual auth state
+    // changes (sign-in / sign-out), not on token refreshes which fire the
+    // Clerk listener but don't change the user.
+    let prevUserId = clerk.user?.id ?? null;
     const unsubscribe = clerk.addListener(() => {
       // Update Sentry user context on auth state change
       if (clerk.user) {
@@ -65,7 +69,11 @@ export const setupClerk$ = command(
       } else {
         clearSentryUser();
       }
-      set(reload$, (x) => x + 1);
+      const currentUserId = clerk.user?.id ?? null;
+      if (currentUserId !== prevUserId) {
+        prevUserId = currentUserId;
+        set(reload$, (x) => x + 1);
+      }
     });
     signal.addEventListener("abort", unsubscribe);
   },

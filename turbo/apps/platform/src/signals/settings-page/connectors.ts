@@ -289,6 +289,7 @@ export const submitApiToken$ = command(
       }
     }
     signal.throwIfAborted();
+    set(internalJustConnectedTypes$, (prev) => new Set([...prev, type]));
     set(reloadConnectors$);
     // Show in connections list
     const hidden = new Set(get(hiddenConnectorTypes$));
@@ -307,6 +308,22 @@ const internalPollingType$ = state<ConnectorType | null>(null);
 export const pollingConnectorType$ = computed((get) =>
   get(internalPollingType$),
 );
+
+// ---------------------------------------------------------------------------
+// Optimistic connected state — bridges the gap between connect success and
+// allConnectorTypes$ recomputation so the UI doesn't flash.
+// ---------------------------------------------------------------------------
+
+const internalJustConnectedTypes$ = state<Set<string>>(new Set());
+
+/** Types that were just connected but may not yet be reflected in allConnectorTypes$. */
+export const justConnectedTypes$ = computed((get) =>
+  get(internalJustConnectedTypes$),
+);
+
+export const clearJustConnectedTypes$ = command(({ set }) => {
+  set(internalJustConnectedTypes$, new Set());
+});
 
 // ---------------------------------------------------------------------------
 // Connect command
@@ -339,13 +356,18 @@ export const connectConnector$ = command(
       const { connectors: freshConnectors } = await get(connectors$);
       signal.throwIfAborted();
 
+      // Mark as optimistically connected before clearing polling so the UI
+      // transitions directly from "Connecting…" to "Connected" without flash.
+      const isConnected = freshConnectors.some((c) => c.type === type);
+      if (isConnected) {
+        set(internalJustConnectedTypes$, (prev) => new Set([...prev, type]));
+      }
       set(internalPollingType$, null);
       // Show in connections list again when user connects
       const hidden = new Set(get(hiddenConnectorTypes$));
       hidden.delete(type);
       set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
       // Close connect modal on OAuth success
-      const isConnected = freshConnectors.some((c) => c.type === type);
       if (isConnected) {
         set(internalSelectedConnectorType$, null);
       }
