@@ -49,6 +49,7 @@ import { agentComposes } from "../db/schema/agent-compose";
 import { connectors } from "../db/schema/connector";
 import { scopes } from "../db/schema/scope";
 import { scopeMembers } from "../db/schema/scope-member";
+import { userCache } from "../db/schema/user-cache";
 import { encryptSecretValue } from "../lib/crypto/secrets-encryption";
 import { env } from "../env";
 
@@ -385,9 +386,14 @@ export function testContext(): TestContext {
     return helpers;
   }
 
-  afterEach(() => {
+  afterEach(async () => {
     // Clear Clerk mock
     clearClerkMock();
+
+    // Clear user_cache to prevent cross-test contamination via shared emails
+    if (globalThis.services?.db) {
+      await globalThis.services.db.delete(userCache);
+    }
 
     // Abort the signal to trigger any cleanup handlers
     const error = new Error("Aborted due to finished test");
