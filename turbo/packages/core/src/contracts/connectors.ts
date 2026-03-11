@@ -122,7 +122,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   agentmail: {
     label: "AgentMail",
@@ -180,7 +180,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   github: {
     label: "GitHub",
@@ -207,7 +207,7 @@ const CONNECTOR_TYPES_DEF = {
         GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
         GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   notion: {
     label: "Notion",
@@ -236,7 +236,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         NOTION_TOKEN: "$secrets.NOTION_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   gmail: {
     label: "Gmail",
@@ -266,7 +266,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   "google-sheets": {
     label: "Google Sheets",
@@ -299,7 +299,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         GOOGLE_SHEETS_TOKEN: "$secrets.GOOGLE_SHEETS_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   "google-docs": {
     label: "Google Docs",
@@ -332,7 +332,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         GOOGLE_DOCS_TOKEN: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   "google-drive": {
     label: "Google Drive",
@@ -365,7 +365,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         GOOGLE_DRIVE_TOKEN: "$secrets.GOOGLE_DRIVE_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   "google-calendar": {
     label: "Google Calendar",
@@ -399,7 +399,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         GOOGLE_CALENDAR_TOKEN: "$secrets.GOOGLE_CALENDAR_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   close: {
     label: "Close",
@@ -430,7 +430,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         CLOSE_TOKEN: "$secrets.CLOSE_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   hubspot: {
     label: "HubSpot",
@@ -473,7 +473,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         HUBSPOT_TOKEN: "$secrets.HUBSPOT_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   computer: {
     label: "Computer",
@@ -537,7 +537,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   docusign: {
     label: "DocuSign",
@@ -568,7 +568,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         DOCUSIGN_TOKEN: "$secrets.DOCUSIGN_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   dropbox: {
     label: "Dropbox",
@@ -614,7 +614,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   linear: {
     label: "Linear",
@@ -643,7 +643,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         LINEAR_API_KEY: "$secrets.LINEAR_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   deel: {
     label: "Deel",
@@ -694,7 +694,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   figma: {
     label: "Figma",
@@ -746,7 +746,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         FIGMA_TOKEN: "$secrets.FIGMA_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   mercury: {
     label: "Mercury",
@@ -789,7 +789,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         MERCURY_TOKEN: "$secrets.MERCURY_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   reddit: {
     label: "Reddit",
@@ -820,7 +820,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   strava: {
     label: "Strava",
@@ -856,7 +856,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         STRAVA_TOKEN: "$secrets.STRAVA_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   x: {
     label: "X",
@@ -886,7 +886,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         X_ACCESS_TOKEN: "$secrets.X_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   neon: {
     label: "Neon",
@@ -936,7 +936,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         NEON_TOKEN: "$secrets.NEON_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   "garmin-connect": {
     label: "Garmin Connect",
@@ -967,7 +967,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         GARMIN_CONNECT_TOKEN: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   vercel: {
     label: "Vercel",
@@ -992,7 +992,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         VERCEL_TOKEN: "$secrets.VERCEL_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   sentry: {
     label: "Sentry",
@@ -1029,7 +1029,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         SENTRY_TOKEN: "$secrets.SENTRY_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   posthog: {
     label: "PostHog",
@@ -1097,7 +1097,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         POSTHOG_TOKEN: "$secrets.POSTHOG_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   productlane: {
     label: "Productlane",
@@ -1155,7 +1155,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         INTERVALS_ICU_TOKEN: "$secrets.INTERVALS_ICU_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   monday: {
     label: "Monday.com",
@@ -1200,7 +1200,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   canva: {
     label: "Canva",
@@ -1244,7 +1244,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   xero: {
     label: "Xero",
@@ -1297,7 +1297,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         XERO_TOKEN: "$secrets.XERO_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   supabase: {
     label: "Supabase",
@@ -1353,7 +1353,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   todoist: {
     label: "Todoist",
@@ -1379,7 +1379,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         TODOIST_TOKEN: "$secrets.TODOIST_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   webflow: {
     label: "Webflow",
@@ -1434,7 +1434,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         WEBFLOW_TOKEN: "$secrets.WEBFLOW_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   "outlook-mail": {
     label: "Outlook Mail",
@@ -1465,7 +1465,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   "outlook-calendar": {
     label: "Outlook Calendar",
@@ -1497,7 +1497,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   asana: {
     label: "Asana",
@@ -1527,7 +1527,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   "meta-ads": {
     label: "Meta Ads",
@@ -1554,7 +1554,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   stripe: {
     label: "Stripe",
@@ -1585,7 +1585,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         STRIPE_API_KEY: "$secrets.STRIPE_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   similarweb: {
     label: "SimilarWeb",
@@ -1654,7 +1654,7 @@ const CONNECTOR_TYPES_DEF = {
       environmentMapping: {
         MAILCHIMP_TOKEN: "$secrets.MAILCHIMP_ACCESS_TOKEN",
       },
-    },
+    } as ConnectorOAuthConfig,
   },
   resend: {
     label: "Resend",
