@@ -12,6 +12,7 @@ import asanaIcon from "./icons/asana.svg";
 import canvaIcon from "./icons/canva.svg";
 import chatwootIcon from "./icons/chatwoot.svg";
 import clickupIcon from "./icons/clickup.svg";
+import cloudflareIcon from "./icons/cloudflare.svg";
 import closeIcon from "./icons/close.svg";
 import computerIcon from "./icons/computer.svg";
 import deelIcon from "./icons/deel.svg";
@@ -94,6 +95,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   canva: canvaIcon,
   chatwoot: chatwootIcon,
   clickup: clickupIcon,
+  cloudflare: cloudflareIcon,
   close: closeIcon,
   computer: computerIcon,
   deel: deelIcon,

@@ -738,6 +738,25 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  cloudflare: {
+    label: "Cloudflare",
+    helpText:
+      "Connect your Cloudflare account to manage DNS, zones, workers, and other Cloudflare services",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to the [Cloudflare Dashboard](https://dash.cloudflare.com)\n2. Go to **My Profile** → **API Tokens**\n3. Click **Create Token** and configure the required permissions\n4. Copy the generated token",
+        secrets: {
+          CLOUDFLARE_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   dify: {
     label: "Dify",
     helpText:
@@ -2526,6 +2545,14 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       service("https://api.clickup.com/api/v2", bearerAuth("CLICKUP_TOKEN")),
     ],
   },
+  cloudflare: {
+    services: [
+      service(
+        "https://api.cloudflare.com/client/v4",
+        bearerAuth("CLOUDFLARE_TOKEN"),
+      ),
+    ],
+  },
   deel: {
     services: [service("https://api.deel.com", bearerAuth("DEEL_TOKEN"))],
   },
@@ -2876,6 +2903,7 @@ export const connectorTypeSchema = z.enum([
   "asana",
   "canva",
   "clickup",
+  "cloudflare",
   "close",
   "github",
   "gmail",
