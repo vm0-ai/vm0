@@ -696,6 +696,27 @@ const CONNECTOR_TYPES_DEF = {
       ],
     } as ConnectorOAuthConfig,
   },
+  deepseek: {
+    label: "DeepSeek",
+    helpText:
+      "Connect your DeepSeek account to use DeepSeek AI models for chat completions, code generation, and reasoning tasks",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [DeepSeek Platform](https://platform.deepseek.com)\n2. Go to **API Keys**\n3. Create a new API key\n4. Copy the key",
+        secrets: {
+          DEEPSEEK_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "sk-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {} as Record<string, string>,
+  },
   figma: {
     label: "Figma",
     featureFlag: FeatureSwitchKey.FigmaConnector,
@@ -1835,6 +1856,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   },
   deel: {
     services: [service("https://api.deel.com", bearerAuth("DEEL_TOKEN"))],
+  },
+  deepseek: {
+    services: [
+      service("https://api.deepseek.com", bearerAuth("DEEPSEEK_TOKEN")),
+    ],
   },
   figma: {
     services: [service("https://api.figma.com", bearerAuth("FIGMA_TOKEN"))],
