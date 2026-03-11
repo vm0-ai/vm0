@@ -268,11 +268,14 @@ export const submitApiToken$ = command(
     signal: AbortSignal,
   ) => {
     const fetchFn = get(fetch$);
+    const apiTokenConfig = CONNECTOR_TYPES[type].authMethods["api-token"];
     for (const [name, value] of Object.entries(inputSecrets)) {
       if (!value) {
         continue;
       }
-      const resp = await fetchFn("/api/secrets", {
+      const isVariable = apiTokenConfig?.secrets[name]?.type === "variable";
+      const endpoint = isVariable ? "/api/variables" : "/api/secrets";
+      const resp = await fetchFn(endpoint, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, value }),
@@ -281,8 +284,7 @@ export const submitApiToken$ = command(
       if (!resp.ok) {
         const data = (await resp.json()) as { error?: { message?: string } };
         throw new Error(
-          data?.error?.message ??
-            `Failed to save secret ${name} (${resp.status})`,
+          data?.error?.message ?? `Failed to save ${name} (${resp.status})`,
         );
       }
     }
