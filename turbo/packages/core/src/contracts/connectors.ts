@@ -2049,6 +2049,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  revenuecat: {
+    label: "RevenueCat",
+    helpText:
+      "Connect your RevenueCat account to manage in-app subscriptions, purchases, and customer data",
+    authMethods: {
+      "api-token": {
+        label: "Secret API Key",
+        helpText:
+          "1. Log in to [RevenueCat](https://app.revenuecat.com)\n2. Go to your project **Settings → API Keys**\n3. Copy your **Secret API key** (starts with `sk_`)",
+        secrets: {
+          REVENUECAT_TOKEN: {
+            label: "Secret API Key",
+            required: true,
+            placeholder: "sk_xxxxxxxxxxxxxxxx",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   pdf4me: {
     label: "PDF4me",
     helpText:
@@ -2995,6 +3015,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   resend: {
     services: [service("https://api.resend.com", bearerAuth("RESEND_API_KEY"))],
   },
+  revenuecat: {
+    services: [
+      service("https://api.revenuecat.com", bearerAuth("REVENUECAT_TOKEN")),
+    ],
+  },
   pdf4me: {
     services: [
       service("https://api.pdf4me.com", {
@@ -3187,6 +3212,7 @@ export const connectorTypeSchema = z.enum([
   "plausible",
   "productlane",
   "resend",
+  "revenuecat",
   "pdf4me",
   "apify",
   "bright-data",

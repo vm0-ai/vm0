@@ -75,6 +75,7 @@ import youtubeIcon from "./icons/youtube.svg";
 import zapsignIcon from "./icons/zapsign.svg";
 import zendeskIcon from "./icons/zendesk.svg";
 import resendIcon from "./icons/resend.svg";
+import revenuecatIcon from "./icons/revenuecat.svg";
 import scrapeninja from "./icons/scrapeninja.svg";
 import sentryIcon from "./icons/sentry.svg";
 import similarwebIcon from "./icons/similarweb.svg";
@@ -166,6 +167,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   zapsign: zapsignIcon,
   zendesk: zendeskIcon,
   resend: resendIcon,
+  revenuecat: revenuecatIcon,
   scrapeninja: scrapeninja,
   sentry: sentryIcon,
   similarweb: similarwebIcon,
