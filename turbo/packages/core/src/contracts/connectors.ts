@@ -2300,6 +2300,41 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  zendesk: {
+    label: "Zendesk",
+    helpText:
+      "Connect your Zendesk account to manage support tickets, users, organizations, and automate customer support workflows",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Zendesk Admin Center](https://www.zendesk.com/admin/)\n2. Go to **Apps and integrations → APIs → Zendesk API**\n3. Enable **Token Access** under the Settings tab\n4. Click **Add API token** and copy the token",
+        secrets: {
+          ZENDESK_API_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-zendesk-api-token",
+          },
+          ZENDESK_EMAIL: {
+            label: "Email",
+            required: true,
+            placeholder: "your-email@company.com",
+            helpText: "The email address associated with your Zendesk account",
+            type: "variable",
+          },
+          ZENDESK_SUBDOMAIN: {
+            label: "Subdomain",
+            required: true,
+            placeholder: "yourcompany",
+            helpText:
+              "Your Zendesk subdomain (e.g. 'yourcompany' from yourcompany.zendesk.com)",
+            type: "variable",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
 } satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
@@ -2863,6 +2898,7 @@ export const connectorTypeSchema = z.enum([
   "twenty",
   "youtube",
   "zapsign",
+  "zendesk",
 ]);
 
 /**

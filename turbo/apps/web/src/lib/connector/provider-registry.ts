@@ -52,6 +52,7 @@ import { tavilyHandler } from "./providers/tavily-handler";
 import { twentyHandler } from "./providers/twenty-handler";
 import { youtubeHandler } from "./providers/youtube-handler";
 import { zapsignHandler } from "./providers/zapsign-handler";
+import { zendeskHandler } from "./providers/zendesk-handler";
 import { slackHandler } from "./providers/slack-handler";
 import { stravaHandler } from "./providers/strava-handler";
 import { stripeHandler } from "./providers/stripe-handler";
@@ -164,6 +165,7 @@ export const PROVIDER_HANDLERS: Record<
   twenty: twentyHandler,
   youtube: youtubeHandler,
   zapsign: zapsignHandler,
+  zendesk: zendeskHandler,
 };
 
 /**
