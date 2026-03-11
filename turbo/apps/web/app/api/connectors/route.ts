@@ -24,7 +24,13 @@ const router = tsr.router(connectorsMainContract, {
     const { userId, scopeId: tokenScopeId } = authCtx;
 
     const scopeSlug = new URL(request.url).searchParams.get("scope");
-    const { scope } = await resolveScope(userId, scopeSlug, null, tokenScopeId);
+    const orgParam = new URL(request.url).searchParams.get("org");
+    const { scope } = await resolveScope(
+      userId,
+      scopeSlug,
+      orgParam,
+      tokenScopeId,
+    );
     const connectorList = await listConnectors(scope.clerkOrgId, userId);
     const configuredTypes = getConfiguredConnectorTypes(
       globalThis.services.env,

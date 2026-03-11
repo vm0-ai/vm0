@@ -31,7 +31,13 @@ const router = tsr.router(modelProvidersMainContract, {
     const { userId, scopeId: tokenScopeId } = authCtx;
 
     const scopeSlug = new URL(request.url).searchParams.get("scope");
-    const { scope } = await resolveScope(userId, scopeSlug, null, tokenScopeId);
+    const orgParam = new URL(request.url).searchParams.get("org");
+    const { scope } = await resolveScope(
+      userId,
+      scopeSlug,
+      orgParam,
+      tokenScopeId,
+    );
     const providers = await listModelProviders(scope.clerkOrgId, userId);
 
     return {
@@ -71,10 +77,11 @@ const router = tsr.router(modelProvidersMainContract, {
 
     try {
       const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const orgParam = new URL(request.url).searchParams.get("org");
       const { scope } = await resolveScope(
         userId,
         scopeSlug,
-        null,
+        orgParam,
         tokenScopeId,
       );
 

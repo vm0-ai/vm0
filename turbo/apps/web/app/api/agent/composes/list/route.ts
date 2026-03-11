@@ -31,7 +31,7 @@ const router = tsr.router(composesListContract, {
       const { scope: resolvedScope } = await resolveScope(
         userId,
         query.scope,
-        null,
+        query.org,
         tokenScopeId,
       );
       clerkOrgId = resolvedScope.clerkOrgId;
@@ -79,7 +79,7 @@ const router = tsr.router(composesListContract, {
       scopeSlug: string;
     }[] = [];
 
-    if (!query.scope) {
+    if (!query.scope && !query.org) {
       const userEmail = await getUserEmail(userId);
       const shared = await getEmailSharedAgents(userId, userEmail);
       sharedComposes = shared;

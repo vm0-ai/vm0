@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { testContext, uniqueId } from "../../../__tests__/test-helpers";
 import { createTestScope } from "../../../__tests__/api-test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
-import { resolveScope } from "../resolve-scope";
+import { resolveScope, requireScopeFromRequest } from "../resolve-scope";
 
 const context = testContext();
 
@@ -262,6 +262,125 @@ describe("resolveScope", () => {
 
     await expect(resolveScope(otherUserId, slug)).rejects.toThrow(
       "You are not a member of this scope",
+    );
+  });
+
+  it("?org= param resolves scope by clerkOrgId", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("scope");
+
+    mockClerk({ userId });
+    const created = await createTestScope(slug);
+
+    // Mock session — orgId is different from the explicit clerkOrgId
+    mockClerk({
+      userId,
+      orgId: "org_session_different",
+      clerkOrgs: scopeOrgs(slug),
+    });
+
+    // Pass clerkOrgId directly (simulates ?org= being passed as 3rd arg)
+    const result = await resolveScope(userId, null, `org_mock_${slug}`);
+
+    expect(result.scope.id).toBe(created.id);
+    expect(result.scope.slug).toBe(slug);
+  });
+
+  it("?scope= takes priority over ?org=", async () => {
+    const userId = uniqueId("test-user");
+    const slug1 = uniqueId("scope");
+    const slug2 = uniqueId("scope");
+
+    mockClerk({ userId });
+    const scope1 = await createTestScope(slug1);
+    await createTestScope(slug2);
+
+    mockClerk({
+      userId,
+      orgId: `org_mock_${slug1}`,
+      clerkOrgs: scopeOrgs(slug1, slug2),
+    });
+
+    // Pass both scopeSlug and clerkOrgId — scopeSlug should win
+    const result = await resolveScope(userId, slug1, `org_mock_${slug2}`);
+
+    expect(result.scope.id).toBe(scope1.id);
+    expect(result.scope.slug).toBe(slug1);
+  });
+});
+
+describe("requireScopeFromRequest", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("resolves scope via ?org= param", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("scope");
+
+    mockClerk({ userId });
+    const created = await createTestScope(slug);
+
+    mockClerk({
+      userId,
+      orgId: `org_mock_${slug}`,
+      clerkOrgs: scopeOrgs(slug),
+    });
+
+    const request = new Request(
+      `http://localhost/api/test?org=org_mock_${slug}`,
+    );
+    const result = await requireScopeFromRequest(request, userId);
+
+    expect(result.scope.id).toBe(created.id);
+    expect(result.scope.slug).toBe(slug);
+  });
+
+  it("?scope= takes priority over ?org=", async () => {
+    const userId = uniqueId("test-user");
+    const slug1 = uniqueId("scope");
+    const slug2 = uniqueId("scope");
+
+    mockClerk({ userId });
+    const scope1 = await createTestScope(slug1);
+    await createTestScope(slug2);
+
+    mockClerk({
+      userId,
+      orgId: `org_mock_${slug1}`,
+      clerkOrgs: scopeOrgs(slug1, slug2),
+    });
+
+    // Both ?scope= and ?org= provided — ?scope= should win
+    const request = new Request(
+      `http://localhost/api/test?scope=${slug1}&org=org_mock_${slug2}`,
+    );
+    const result = await requireScopeFromRequest(request, userId);
+
+    expect(result.scope.id).toBe(scope1.id);
+  });
+
+  it("throws 400 when neither ?scope= nor ?org= provided", async () => {
+    const userId = uniqueId("test-user");
+    mockClerk({ userId });
+
+    const request = new Request("http://localhost/api/test");
+
+    await expect(requireScopeFromRequest(request, userId)).rejects.toThrow(
+      "scope or org query parameter is required",
+    );
+  });
+
+  it("throws 404 for non-existent ?org= value", async () => {
+    const userId = uniqueId("test-user");
+    mockClerk({ userId });
+
+    const request = new Request(
+      "http://localhost/api/test?org=org_nonexistent",
+    );
+
+    await expect(requireScopeFromRequest(request, userId)).rejects.toThrow(
+      "Scope not found",
     );
   });
 });

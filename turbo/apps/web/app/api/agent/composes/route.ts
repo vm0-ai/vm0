@@ -22,7 +22,10 @@ import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
-import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
+import {
+  getScopeBySlug,
+  getScopeByClerkOrgId,
+} from "../../../../src/lib/scope/scope-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
@@ -48,6 +51,21 @@ const router = tsr.router(composesMainContract, {
     let defaultAgentComposeId: string | null = null;
     if (query.scope) {
       const scope = await getScopeBySlug(query.scope);
+      if (!scope) {
+        return {
+          status: 404 as const,
+          body: {
+            error: {
+              message: `Agent compose not found: ${query.name}`,
+              code: "NOT_FOUND",
+            },
+          },
+        };
+      }
+      clerkOrgId = scope.clerkOrgId;
+      defaultAgentComposeId = scope.defaultAgentComposeId;
+    } else if (query.org) {
+      const scope = await getScopeByClerkOrgId(query.org);
       if (!scope) {
         return {
           status: 404 as const,

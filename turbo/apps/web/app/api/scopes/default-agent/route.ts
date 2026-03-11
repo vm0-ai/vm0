@@ -29,7 +29,7 @@ const router = tsr.router(scopeDefaultAgentContract, {
     const { scope, member } = await resolveScope(
       userId,
       query.scope,
-      null,
+      query.org,
       tokenScopeId,
     );
 

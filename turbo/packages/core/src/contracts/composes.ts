@@ -161,6 +161,7 @@ export const composesMainContract = c.router({
     query: z.object({
       name: z.string().min(1, "Missing name query parameter"),
       scope: z.string().optional(),
+      org: z.string().optional(),
     }),
     responses: {
       200: composeResponseSchema,
@@ -295,6 +296,7 @@ export const composesListContract = c.router({
     headers: authHeadersSchema,
     query: z.object({
       scope: z.string().optional(),
+      org: z.string().optional(),
     }),
     responses: {
       200: z.object({

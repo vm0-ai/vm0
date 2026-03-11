@@ -132,6 +132,7 @@ export const scopeDefaultAgentContract = c.router({
     headers: authHeadersSchema,
     query: z.object({
       scope: z.string().optional(),
+      org: z.string().optional(),
     }),
     body: z.object({
       agentComposeId: z.string().uuid().nullable(),
