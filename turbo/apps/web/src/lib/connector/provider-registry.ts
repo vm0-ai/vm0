@@ -37,6 +37,7 @@ import { googleCalendarHandler } from "./providers/google-calendar-handler";
 import { googleDocsHandler } from "./providers/google-docs-handler";
 import { googleDriveHandler } from "./providers/google-drive-handler";
 import { googleSheetsHandler } from "./providers/google-sheets-handler";
+import { lineHandler } from "./providers/line-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
 import { minimaxHandler } from "./providers/minimax-handler";
@@ -124,6 +125,7 @@ export const PROVIDER_HANDLERS: Record<
   "google-docs": googleDocsHandler,
   "google-drive": googleDriveHandler,
   "google-sheets": googleSheetsHandler,
+  line: lineHandler,
   linear: linearHandler,
   mailchimp: mailchimpHandler,
   mercury: mercuryHandler,

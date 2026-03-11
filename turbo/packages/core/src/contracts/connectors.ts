@@ -647,6 +647,25 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as ConnectorOAuthConfig,
   },
+  line: {
+    label: "LINE",
+    helpText:
+      "Connect your LINE account to send messages, manage channels, and access the LINE Messaging API",
+    authMethods: {
+      "api-token": {
+        label: "Channel Access Token",
+        helpText:
+          "1. Log in to the [LINE Developers Console](https://developers.line.biz/console)\n2. Select your provider and channel\n3. Go to the **Messaging API** tab\n4. Issue or copy the **Channel access token (long-lived)**",
+        secrets: {
+          LINE_TOKEN: {
+            label: "Channel Access Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   deel: {
     label: "Deel",
     featureFlag: FeatureSwitchKey.DeelConnector,
@@ -2540,6 +2559,9 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   linear: {
     services: [service("https://api.linear.app", bearerAuth("LINEAR_API_KEY"))],
   },
+  line: {
+    services: [service("https://api.line.me", bearerAuth("LINE_TOKEN"))],
+  },
   clickup: {
     services: [
       service("https://api.clickup.com/api/v2", bearerAuth("CLICKUP_TOKEN")),
@@ -2921,6 +2943,7 @@ export const connectorTypeSchema = z.enum([
   "docusign",
   "dropbox",
   "linear",
+  "line",
   "figma",
   "mercury",
   "minimax",
