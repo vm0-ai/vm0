@@ -70,6 +70,7 @@ interface AgentConfig {
   framework?: string;
   skills?: string[];
   environment?: Record<string, string>;
+  metadata?: { displayName?: string; sound?: string };
 }
 
 interface LoadedConfig {
@@ -171,6 +172,7 @@ async function uploadAssets(
       agent.instructions,
       basePath,
       agent.framework,
+      agent.metadata,
     );
     if (!jsonMode) {
       console.log(
