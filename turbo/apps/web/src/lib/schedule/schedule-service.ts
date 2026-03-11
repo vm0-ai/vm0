@@ -22,6 +22,7 @@ import { getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { generateCallbackSecret, getApiUrl } from "../callback";
+import { getOrgData } from "../scope/org-cache-service";
 
 const log = logger("service:schedule");
 
@@ -852,16 +853,8 @@ async function executeSchedule(
     return;
   }
 
-  // Load scope tier and slug from schedule's scope (not compose's scope)
-  const [scopeRecord] = await globalThis.services.db
-    .select({
-      tier: scopes.tier,
-      slug: scopes.slug,
-      clerkOrgId: scopes.clerkOrgId,
-    })
-    .from(scopes)
-    .where(eq(scopes.id, schedule.scopeId))
-    .limit(1);
+  // Load org tier and slug from org_cache (Clerk as source of truth)
+  const orgData = await getOrgData(schedule.clerkOrgId);
 
   // Build callbacks for run completion notifications
   const callbacks: Array<{ url: string; secret: string; payload: unknown }> =
@@ -920,11 +913,9 @@ async function executeSchedule(
       agentName: compose.name,
       callbacks,
       scopeId: schedule.scopeId,
-      scopeSlug: scopeRecord?.slug,
-      clerkOrgId: scopeRecord?.clerkOrgId,
-      scopeTier: scopeRecord
-        ? scopeTierSchema.parse(scopeRecord.tier)
-        : undefined,
+      scopeSlug: orgData.slug,
+      clerkOrgId: schedule.clerkOrgId,
+      scopeTier: scopeTierSchema.parse(orgData.tier),
     });
     runId = result.runId;
   } catch (error) {
