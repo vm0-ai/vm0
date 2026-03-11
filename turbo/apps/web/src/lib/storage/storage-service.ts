@@ -36,7 +36,6 @@ function createEmptyTarGz(): Buffer {
  * @param storageName - Storage name
  * @param scopeSlug - Scope slug for S3 prefix construction
  * @param storageType - Storage type ("artifact" or "memory")
- * @param scopeId - Scope ID for INSERT only (removed in Phase 5)
  */
 export async function ensureStorageExists(
   orgId: string,
