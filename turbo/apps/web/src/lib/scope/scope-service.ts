@@ -141,29 +141,20 @@ export async function getScopesByClerkOrgIds(
 export async function createScope(
   clerkUserId: string,
   slug: string,
-  options?: { skipSlugValidation?: boolean; clerkOrgId?: string },
+  options: { skipSlugValidation?: boolean; clerkOrgId: string },
 ) {
   // Validate slug (unless explicitly skipped for vm0-admin)
-  if (!options?.skipSlugValidation) {
+  if (!options.skipSlugValidation) {
     validateScopeSlug(slug);
   }
 
-  // Pre-check slug availability for clear error before Clerk API call
+  // Pre-check slug availability for clear error
   const existingScope = await getScopeBySlug(slug);
   if (existingScope) {
     throw badRequest(`Scope "${slug}" already exists`);
   }
 
-  // Use provided Clerk org ID (JIT discovery path) or create a new one.
-  let clerkOrgId = options?.clerkOrgId;
-  if (!clerkOrgId) {
-    const client = await clerkClient();
-    const clerkOrg = await client.organizations.createOrganization({
-      name: slug,
-      createdBy: clerkUserId,
-    });
-    clerkOrgId = clerkOrg.id;
-  }
+  const { clerkOrgId } = options;
 
   // Create scope + admin membership atomically
   const scope = await globalThis.services.db.transaction(async (tx) => {

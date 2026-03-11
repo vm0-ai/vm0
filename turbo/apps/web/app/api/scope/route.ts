@@ -16,6 +16,8 @@ import { getUserEmail } from "../../../src/lib/auth/get-user-email";
 import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
+import { clerkClient } from "@clerk/nextjs/server";
+import { scopes } from "../../../src/db/schema/scope";
 
 const log = logger("api:scope");
 
@@ -102,7 +104,32 @@ const router = tsr.router(scopeContract, {
         skipSlugValidation = true;
       }
 
-      const scope = await createScope(userId, slug, { skipSlugValidation });
+      // Resolve clerkOrgId from user's Clerk org memberships
+      const client = await clerkClient();
+      const memberships = await client.users.getOrganizationMembershipList({
+        userId,
+      });
+
+      const existingScopes = await globalThis.services.db
+        .select({ clerkOrgId: scopes.clerkOrgId })
+        .from(scopes);
+      const existingOrgIds = new Set(existingScopes.map((s) => s.clerkOrgId));
+
+      const unmatchedOrg = memberships.data.find(
+        (m) => !existingOrgIds.has(m.organization.id),
+      );
+
+      if (!unmatchedOrg) {
+        return createErrorResponse(
+          "BAD_REQUEST",
+          "No available Clerk organization to associate with this scope",
+        );
+      }
+
+      const scope = await createScope(userId, slug, {
+        skipSlugValidation,
+        clerkOrgId: unmatchedOrg.organization.id,
+      });
 
       return { status: 201 as const, body: scopeToResponseBody(scope) };
     } catch (error) {
