@@ -1,24 +1,71 @@
 import { vi } from "vitest";
 
-let internalMockedUser: { id: string; fullName: string } | null = null;
+interface MockedUser {
+  id: string;
+  fullName: string;
+  organizationMemberships: { id: string }[];
+  getOrganizationInvitations: (params?: {
+    status?: string;
+  }) => Promise<{ data: { id: string }[]; total_count: number }>;
+}
+
+let internalMockedUser: MockedUser | null = null;
 let internalMockedSession: { token: string } | null = null;
+let internalMockedOrganization: { id: string; name: string } | null = null;
+let internalMockedInvitations: { id: string }[] = [];
+let internalMockedMemberships: { id: string }[] = [{ id: "org_default" }];
 
 export function mockUser(
   user: { id: string; fullName: string } | null,
   session: { token: string } | null,
 ) {
-  internalMockedUser = user;
+  if (user) {
+    internalMockedUser = {
+      ...user,
+      get organizationMemberships() {
+        return internalMockedMemberships;
+      },
+      getOrganizationInvitations: () =>
+        Promise.resolve({
+          data: internalMockedInvitations,
+          total_count: internalMockedInvitations.length,
+        }),
+    };
+  } else {
+    internalMockedUser = null;
+  }
   internalMockedSession = session;
+}
+
+/**
+ * Configure organization-related mock state for testing org selection.
+ */
+export function mockOrganization(options: {
+  activeOrg?: { id: string; name: string } | null;
+  memberships?: { id: string }[];
+  pendingInvitations?: { id: string }[];
+}) {
+  internalMockedOrganization = options.activeOrg ?? null;
+  if (options.memberships) {
+    internalMockedMemberships = options.memberships;
+  }
+  internalMockedInvitations = options.pendingInvitations ?? [];
 }
 
 export function clearMockedAuth() {
   internalMockedUser = null;
   internalMockedSession = null;
+  internalMockedOrganization = null;
+  internalMockedInvitations = [];
+  internalMockedMemberships = [{ id: "org_default" }];
 }
 
 export const mockedClerk = {
   get user() {
     return internalMockedUser;
+  },
+  get organization() {
+    return internalMockedOrganization;
   },
   get session() {
     return {
