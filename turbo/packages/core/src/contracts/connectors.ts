@@ -3017,8 +3017,8 @@ const SERVICE_CONFIGS: Partial<Record<ConnectorType, ServiceConfig>> = {
     ],
   },
   explorium: {
-    services: [
-      service("https://api.explorium.ai", {
+    apis: [
+      api("https://api.explorium.ai", {
         headers: { api_key: "${secrets.EXPLORIUM_TOKEN}" },
       }),
     ],
