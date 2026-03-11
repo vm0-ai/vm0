@@ -52,6 +52,7 @@ import { metaAdsHandler } from "./providers/meta-ads-handler";
 import { posthogHandler } from "./providers/posthog-handler";
 import { perplexityHandler } from "./providers/perplexity-handler";
 import { plausibleHandler } from "./providers/plausible-handler";
+import { podchaserHandler } from "./providers/podchaser-handler";
 import { productlaneHandler } from "./providers/productlane-handler";
 import { resendHandler } from "./providers/resend-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
@@ -109,6 +110,7 @@ export const PROVIDER_HANDLERS: Record<
   posthog: posthogHandler,
   perplexity: perplexityHandler,
   plausible: plausibleHandler,
+  podchaser: podchaserHandler,
   productlane: productlaneHandler,
   resend: resendHandler,
   similarweb: similarwebHandler,

@@ -37,6 +37,7 @@ import outlookCalendarIcon from "./icons/outlook-calendar.svg";
 import outlookMailIcon from "./icons/outlook-mail.svg";
 import perplexityIcon from "./icons/perplexity.svg";
 import plausibleIcon from "./icons/plausible.svg";
+import podchaserIcon from "./icons/podchaser.svg";
 import posthogIcon from "./icons/posthog.svg";
 import productlaneIcon from "./icons/productlane.svg";
 import redditIcon from "./icons/reddit.svg";
@@ -91,6 +92,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   "outlook-mail": outlookMailIcon,
   perplexity: perplexityIcon,
   plausible: plausibleIcon,
+  podchaser: podchaserIcon,
   posthog: posthogIcon,
   productlane: productlaneIcon,
   reddit: redditIcon,
