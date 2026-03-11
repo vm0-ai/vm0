@@ -833,6 +833,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  reportei: {
+    label: "Reportei",
+    helpText:
+      "Connect your Reportei account to generate and manage marketing reports with automated analytics",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Sign up at [Reportei](https://www.reportei.com/)\n2. Go to Dashboard → Generate API Token\n3. Copy the token",
+        secrets: {
+          REPORTEI_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-reportei-api-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   streak: {
     label: "Streak",
     helpText:
@@ -1940,6 +1960,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  pdfco: {
+    label: "PDF.co",
+    helpText:
+      "Connect your PDF.co account to convert, merge, split, and extract data from PDF documents via API",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [PDF.co](https://app.pdf.co)\n2. Find your API key on the dashboard\n3. Copy the key",
+        secrets: {
+          PDFCO_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-pdfco-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   elevenlabs: {
     label: "ElevenLabs",
     helpText:
@@ -2054,6 +2094,26 @@ const CONNECTOR_TYPES_DEF = {
             label: "API Key",
             required: true,
             placeholder: "your-qdrant-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  qiita: {
+    label: "Qiita",
+    helpText:
+      "Connect your Qiita account to search, read, and publish technical articles",
+    authMethods: {
+      "api-token": {
+        label: "Access Token",
+        helpText:
+          "1. Log in to [Qiita](https://qiita.com)\n2. Go to **Settings → Applications → Personal access tokens**\n3. Generate a new token with required scopes\n4. Copy the token",
+        secrets: {
+          QIITA_TOKEN: {
+            label: "Access Token",
+            required: true,
+            placeholder: "your-qiita-access-token",
           },
         },
       },
@@ -2448,6 +2508,13 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       }),
     ],
   },
+  pdfco: {
+    services: [
+      service("https://api.pdf.co/v1", {
+        headers: { "x-api-key": "${secrets.PDFCO_TOKEN}" },
+      }),
+    ],
+  },
   apify: {
     services: [service("https://api.apify.com/v2", bearerAuth("APIFY_TOKEN"))],
   },
@@ -2509,6 +2576,14 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       }),
     ],
   },
+  qiita: {
+    services: [service("https://qiita.com/api/v2", bearerAuth("QIITA_TOKEN"))],
+  },
+  reportei: {
+    services: [
+      service("https://app.reportei.com/api/v1", bearerAuth("REPORTEI_TOKEN")),
+    ],
+  },
   zeptomail: {
     services: [
       service("https://api.zeptomail.com/v1.1", {
@@ -2568,6 +2643,7 @@ export const connectorTypeSchema = z.enum([
   "chatwoot",
   "similarweb",
   "mailchimp",
+  "pdfco",
   "perplexity",
   "plausible",
   "productlane",
@@ -2585,6 +2661,8 @@ export const connectorTypeSchema = z.enum([
   "podchaser",
   "pushinator",
   "qdrant",
+  "qiita",
+  "reportei",
   "streak",
   "zeptomail",
 ]);

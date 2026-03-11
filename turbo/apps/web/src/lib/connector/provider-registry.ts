@@ -42,6 +42,7 @@ import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
 import { openaiHandler } from "./providers/openai-handler";
 import { redditHandler } from "./providers/reddit-handler";
+import { reporteiHandler } from "./providers/reportei-handler";
 import { streakHandler } from "./providers/streak-handler";
 import { slackHandler } from "./providers/slack-handler";
 import { stravaHandler } from "./providers/strava-handler";
@@ -59,12 +60,14 @@ import { outlookMailHandler } from "./providers/outlook-mail-handler";
 import { metaAdsHandler } from "./providers/meta-ads-handler";
 import { posthogHandler } from "./providers/posthog-handler";
 import { pdf4meHandler } from "./providers/pdf4me-handler";
+import { pdfcoHandler } from "./providers/pdfco-handler";
 import { perplexityHandler } from "./providers/perplexity-handler";
 import { pushinatorHandler } from "./providers/pushinator-handler";
 import { plausibleHandler } from "./providers/plausible-handler";
 import { podchaserHandler } from "./providers/podchaser-handler";
 import { productlaneHandler } from "./providers/productlane-handler";
 import { qdrantHandler } from "./providers/qdrant-handler";
+import { qiitaHandler } from "./providers/qiita-handler";
 import { resendHandler } from "./providers/resend-handler";
 import { scrapeninjaHandler } from "./providers/scrapeninja-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
@@ -117,6 +120,7 @@ export const PROVIDER_HANDLERS: Record<
   "outlook-calendar": outlookCalendarHandler,
   "outlook-mail": outlookMailHandler,
   reddit: redditHandler,
+  reportei: reporteiHandler,
   streak: streakHandler,
   "intervals-icu": intervalsIcuHandler,
   sentry: sentryHandler,
@@ -130,12 +134,14 @@ export const PROVIDER_HANDLERS: Record<
   "meta-ads": metaAdsHandler,
   posthog: posthogHandler,
   pdf4me: pdf4meHandler,
+  pdfco: pdfcoHandler,
   perplexity: perplexityHandler,
   plausible: plausibleHandler,
   podchaser: podchaserHandler,
   productlane: productlaneHandler,
   pushinator: pushinatorHandler,
   qdrant: qdrantHandler,
+  qiita: qiitaHandler,
   resend: resendHandler,
   scrapeninja: scrapeninjaHandler,
   similarweb: similarwebHandler,
