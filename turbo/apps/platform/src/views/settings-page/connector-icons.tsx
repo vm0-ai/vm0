@@ -9,6 +9,7 @@ import canvaIcon from "./icons/canva.svg";
 import closeIcon from "./icons/close.svg";
 import computerIcon from "./icons/computer.svg";
 import deelIcon from "./icons/deel.svg";
+import deepseekIcon from "./icons/deepseek.svg";
 import docusignIcon from "./icons/docusign.svg";
 import dropboxIcon from "./icons/dropbox.svg";
 import figmaIcon from "./icons/figma.svg";
@@ -57,6 +58,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   close: closeIcon,
   computer: computerIcon,
   deel: deelIcon,
+  deepseek: deepseekIcon,
   docusign: docusignIcon,
   dropbox: dropboxIcon,
   figma: figmaIcon,

@@ -13,6 +13,7 @@ import { asanaHandler } from "./providers/asana-handler";
 import { canvaHandler } from "./providers/canva-handler";
 import { closeHandler } from "./providers/close-handler";
 import { deelHandler } from "./providers/deel-handler";
+import { deepseekHandler } from "./providers/deepseek-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
 import { figmaHandler } from "./providers/figma-handler";
@@ -65,6 +66,7 @@ export const PROVIDER_HANDLERS: Record<
   canva: canvaHandler,
   close: closeHandler,
   deel: deelHandler,
+  deepseek: deepseekHandler,
   docusign: docusignHandler,
   dropbox: dropboxHandler,
   figma: figmaHandler,
