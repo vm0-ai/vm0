@@ -74,6 +74,8 @@ const deployScheduleRequestSchema = z
     composeId: z.string().uuid("Invalid compose ID"),
     // Caller's active scope ID for secrets/variables resolution
     scopeId: z.string().uuid("Invalid scope ID").optional(),
+    // Enable schedule immediately upon creation
+    enabled: z.boolean().optional(),
   })
   .refine(
     (data) => {

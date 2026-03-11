@@ -53,7 +53,7 @@ const router = tsr.router(schedulesMainContract, {
         intervalSeconds: body.intervalSeconds,
         timezone: body.timezone,
         prompt: body.prompt,
-        // vars and secrets removed - now managed via platform tables
+        enabled: body.enabled,
         artifactName: body.artifactName,
         artifactVersion: body.artifactVersion,
         volumeVersions: body.volumeVersions,

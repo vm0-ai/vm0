@@ -78,6 +78,7 @@ interface DeployScheduleRequest {
   intervalSeconds?: number;
   timezone: string;
   prompt: string;
+  enabled?: boolean;
   // vars and secrets removed - now managed via platform tables
   artifactName?: string;
   artifactVersion?: string;
@@ -354,8 +355,26 @@ function resolveTrigger(request: DeployScheduleRequest): {
   if (request.atTime) {
     return { triggerType: "once", nextRunAt: new Date(request.atTime) };
   }
-  // Loop schedules get nextRunAt set on enable, not deploy
-  return { triggerType: "loop", nextRunAt: null };
+  // Loop schedules: trigger immediately when created as enabled
+  return {
+    triggerType: "loop",
+    nextRunAt: request.enabled ? new Date() : null,
+  };
+}
+
+/**
+ * Reject enabled one-time schedules whose atTime is in the past.
+ */
+function validateAtTimeNotPast(request: DeployScheduleRequest): void {
+  if (!request.atTime || !request.enabled) {
+    return;
+  }
+  const atDate = new Date(request.atTime);
+  if (atDate <= new Date()) {
+    throw schedulePast(
+      `Cannot create enabled schedule: scheduled time ${atDate.toISOString()} has already passed`,
+    );
+  }
 }
 
 /**
@@ -380,6 +399,9 @@ export async function deploySchedule(
   if (!isValidTimezone(request.timezone)) {
     throw badRequest(`Invalid timezone: ${request.timezone}`);
   }
+
+  // Reject one-time schedules with past atTime when enabled
+  validateAtTimeNotPast(request);
 
   // Check for existing schedule with same name for this user on this compose
   const [existing] = await globalThis.services.db
@@ -456,7 +478,7 @@ export async function deploySchedule(
         artifactName: request.artifactName ?? null,
         artifactVersion: request.artifactVersion ?? null,
         volumeVersions: request.volumeVersions ?? null,
-        enabled: false,
+        enabled: request.enabled ?? false,
         nextRunAt,
         consecutiveFailures: 0,
         createdAt: now,

@@ -166,12 +166,6 @@ describe("zero-schedule signals", () => {
             return HttpResponse.json({ success: true });
           },
         ),
-        http.post(
-          "http://localhost:3000/api/agent/schedules/:name/enable",
-          () => {
-            return HttpResponse.json({ success: true });
-          },
-        ),
         http.get("http://localhost:3000/api/agent/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
@@ -185,7 +179,7 @@ describe("zero-schedule signals", () => {
         hour: 9,
         minute: 0,
         timezone: "UTC",
-        loopMinutes: 15,
+        intervalSeconds: 900,
       });
 
       expect(captured.body).not.toBeNull();
@@ -193,6 +187,7 @@ describe("zero-schedule signals", () => {
       expect(captured.body?.prompt).toBe("Daily standup summary");
       expect(captured.body?.cronExpression).toBe("0 9 * * *");
       expect(captured.body?.timezone).toBe("UTC");
+      expect(captured.body?.enabled).toBeTruthy();
     });
 
     it("should POST a loop schedule", async () => {
@@ -203,12 +198,6 @@ describe("zero-schedule signals", () => {
           "http://localhost:3000/api/agent/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ success: true });
-          },
-        ),
-        http.post(
-          "http://localhost:3000/api/agent/schedules/:name/enable",
-          () => {
             return HttpResponse.json({ success: true });
           },
         ),
@@ -225,7 +214,7 @@ describe("zero-schedule signals", () => {
         hour: 9,
         minute: 0,
         timezone: "UTC",
-        loopMinutes: 15,
+        intervalSeconds: 900,
       });
 
       expect(captured.body).not.toBeNull();
@@ -243,12 +232,6 @@ describe("zero-schedule signals", () => {
             return HttpResponse.json({ success: true });
           },
         ),
-        http.post(
-          "http://localhost:3000/api/agent/schedules/:name/enable",
-          () => {
-            return HttpResponse.json({ success: true });
-          },
-        ),
         http.get("http://localhost:3000/api/agent/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
@@ -262,7 +245,7 @@ describe("zero-schedule signals", () => {
         hour: 10,
         minute: 30,
         timezone: "America/New_York",
-        loopMinutes: 15,
+        intervalSeconds: 900,
         editName: "existing-schedule",
       });
 

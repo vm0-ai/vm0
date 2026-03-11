@@ -37,6 +37,7 @@ import {
   zeroScheduleEntries$,
   saveZeroSchedule$,
   deleteZeroSchedule$,
+  toggleZeroScheduleEnabled$,
   type ZeroScheduleSaveParams,
 } from "../../signals/zero-page/zero-schedule.ts";
 import {
@@ -57,6 +58,7 @@ import {
 } from "../settings-page/add-connection-dialog.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
+import { notificationPreferences$ } from "../../signals/settings-page/notification-settings.ts";
 import {
   zeroInstructions$,
   zeroInstructionsLoading$,
@@ -250,9 +252,13 @@ function ZeroSkillItem({
 
 function ZeroScheduleTab({ resolvedAgentName }: { resolvedAgentName: string }) {
   const entriesLoadable = useLoadable(zeroScheduleEntries$);
+  const prefsLoadable = useLoadable(notificationPreferences$);
+  const userTimezone =
+    prefsLoadable.state === "hasData" ? prefsLoadable.data.timezone : null;
   const fetchSchedules = useSet(fetchZeroSchedules$);
   const saveSchedule = useSet(saveZeroSchedule$);
   const deleteSchedule = useSet(deleteZeroSchedule$);
+  const toggleEnabled = useSet(toggleZeroScheduleEnabled$);
   const saving$ = useCCState(false);
   const saving = useGet(saving$);
   const setSaving = useSet(saving$);
@@ -286,7 +292,9 @@ function ZeroScheduleTab({ resolvedAgentName }: { resolvedAgentName: string }) {
         initialSchedule={entries}
         onSave={handleSave}
         onDelete={deleteSchedule}
+        onToggleEnabled={toggleEnabled}
         saving={saving}
+        defaultTimezone={userTimezone ?? undefined}
       />
     </div>
   );

@@ -40,11 +40,11 @@ import {
   SCHEDULE_LOOP_MINUTES,
   HOUR_OPTIONS,
   MINUTE_OPTIONS,
-  TIMEZONE_OPTIONS,
   type ScheduleEntry,
 } from "./zero-schedule-card";
 import { ZERO_TEAM_JOBS } from "./zero-jobs-page";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import { COMMON_TIMEZONES } from "../../signals/agent-detail/cron.ts";
 
 type CombinedEntry = ScheduleEntry & { agentLabel: string };
 
@@ -636,9 +636,9 @@ export function ZeroSchedulePage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {TIMEZONE_OPTIONS.map((tz) => (
+                    {COMMON_TIMEZONES.map((tz) => (
                       <SelectItem key={tz} value={tz}>
-                        {tz}
+                        {tz.replace(/_/g, " ")}
                       </SelectItem>
                     ))}
                   </SelectContent>

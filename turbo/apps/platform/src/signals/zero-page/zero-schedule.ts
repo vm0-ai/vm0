@@ -7,6 +7,7 @@ import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import {
   buildCronExpression,
   buildAtTime,
+  isAtTimePast,
   type ScheduleBody,
   type CronTimeOption,
 } from "../agent-detail/cron.ts";
@@ -48,8 +49,11 @@ const internalSchedules$ = state<ScheduleResponse[]>([]);
 
 function scheduleToTimeString(s: ScheduleResponse): string {
   if (s.triggerType === "loop" && s.intervalSeconds !== null) {
-    const minutes = Math.round(s.intervalSeconds / 60);
-    return `Every ${minutes} minutes`;
+    if (s.intervalSeconds % 60 === 0) {
+      const minutes = s.intervalSeconds / 60;
+      return `Every ${minutes} minutes`;
+    }
+    return `Every ${s.intervalSeconds} seconds`;
   }
 
   if (s.triggerType === "once" && s.atTime) {
@@ -84,9 +88,25 @@ function cronToTimeString(cron: string): string {
     return `Every weekday at ${timeStr}`;
   }
   if (dayOfMonth !== "*") {
-    return `Every month at ${timeStr}`;
+    return `Every month on day ${dayOfMonth} at ${timeStr}`;
   }
   if (dayOfWeek !== "*") {
+    const dayNames: Record<string, string> = {
+      "0": "Sunday",
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday",
+    };
+    const days = dayOfWeek
+      .split(",")
+      .map((d) => dayNames[d])
+      .filter(Boolean);
+    if (days.length > 0) {
+      return `Every week on ${days.join(", ")} at ${timeStr}`;
+    }
     return `Every week at ${timeStr}`;
   }
   return `Every day at ${timeStr}`;
@@ -103,6 +123,8 @@ interface ZeroScheduleEntry {
   enabled: boolean;
   /** Original schedule name for API operations */
   name: string;
+  /** Raw interval in seconds for loop schedules */
+  intervalSeconds: number | null;
 }
 
 export const zeroScheduleEntries$ = computed((get) => {
@@ -114,6 +136,7 @@ export const zeroScheduleEntries$ = computed((get) => {
       prompt: s.prompt,
       enabled: s.enabled,
       name: s.name,
+      intervalSeconds: s.intervalSeconds,
     }),
   );
 });
@@ -166,7 +189,9 @@ export interface ZeroScheduleSaveParams {
   hour: number;
   minute: number;
   timezone: string;
-  loopMinutes: number;
+  intervalSeconds: number;
+  dayOfWeek?: string;
+  dayOfMonth?: string;
   /** Schedule name when editing an existing schedule */
   editName?: string;
 }
@@ -187,13 +212,19 @@ export const saveZeroSchedule$ = command(
       name: scheduleName,
       timezone: params.timezone,
       prompt: params.prompt.trim(),
+      enabled: true,
     };
 
     let body: ScheduleBody;
 
     if (params.freq === "every_n_minutes") {
-      body = { ...base, intervalSeconds: params.loopMinutes * 60 };
+      body = { ...base, intervalSeconds: params.intervalSeconds };
     } else if (params.freq === "once") {
+      if (
+        isAtTimePast(params.date, String(params.hour), String(params.minute))
+      ) {
+        throw new Error("Scheduled time must be in the future");
+      }
       const atTime = buildAtTime(
         params.date,
         String(params.hour),
@@ -219,6 +250,8 @@ export const saveZeroSchedule$ = command(
         timeOption,
         hour: String(params.hour),
         minute: String(params.minute),
+        dayOfWeek: params.dayOfWeek,
+        dayOfMonth: params.dayOfMonth,
       });
       body = { ...base, cronExpression };
     }
@@ -238,9 +271,27 @@ export const saveZeroSchedule$ = command(
       );
     }
 
-    // Enable the schedule
-    const enableResponse = await fetchFn(
-      `/api/agent/schedules/${encodeURIComponent(scheduleName)}/enable`,
+    toast.success(params.editName ? "Schedule updated" : "Schedule created");
+    await set(fetchZeroSchedules$);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Toggle schedule enabled/disabled
+// ---------------------------------------------------------------------------
+
+export const toggleZeroScheduleEnabled$ = command(
+  async ({ get, set }, params: { name: string; enabled: boolean }) => {
+    const status = await get(zeroOnboardingStatus$);
+    const composeId = status.defaultAgentComposeId;
+    if (!composeId) {
+      throw new Error("No default agent configured");
+    }
+
+    const fetchFn = get(fetch$);
+    const action = params.enabled ? "enable" : "disable";
+    const response = await fetchFn(
+      `/api/agent/schedules/${encodeURIComponent(params.name)}/${action}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -248,13 +299,16 @@ export const saveZeroSchedule$ = command(
       },
     );
 
-    if (!enableResponse.ok) {
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
       throw new Error(
-        `Schedule saved but failed to enable: ${enableResponse.statusText}`,
+        errorData?.error?.message ??
+          `Failed to ${action} schedule: ${response.statusText}`,
       );
     }
 
-    toast.success(params.editName ? "Schedule updated" : "Schedule created");
     await set(fetchZeroSchedules$);
   },
 );
