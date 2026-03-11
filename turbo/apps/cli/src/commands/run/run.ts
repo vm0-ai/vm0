@@ -158,9 +158,10 @@ export const mainRunCommand = new Command()
           try {
             const versionInfo = await getComposeVersion(composeId, version);
             agentComposeVersionId = versionInfo.versionId;
-          } catch {
-            // Wrap version errors with specific message for better error handling
-            throw new Error(`Version not found: ${version}`);
+          } catch (error) {
+            throw new Error(`Version not found: ${version}`, {
+              cause: error instanceof Error ? error : undefined,
+            });
           }
         }
         // Note: "latest" version uses agentComposeId which resolves to HEAD
