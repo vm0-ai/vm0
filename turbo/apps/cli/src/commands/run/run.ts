@@ -1,5 +1,4 @@
 import { Command, Option } from "commander";
-import chalk from "chalk";
 import {
   getComposeById,
   getComposeByName,
@@ -17,13 +16,13 @@ import {
   parseIdentifier,
   pollEvents,
   showNextSteps,
-  handleRunError,
   renderRunCreated,
 } from "./shared";
 import {
   startSilentUpgrade,
   waitForSilentUpgrade,
 } from "../../lib/utils/update-checker";
+import { withErrorHandler } from "../../lib/command";
 
 declare const __CLI_VERSION__: string;
 
@@ -80,27 +79,27 @@ export const mainRunCommand = new Command()
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .addOption(new Option("--no-auto-update").hideHelp())
   .action(
-    async (
-      identifier: string,
-      prompt: string,
-      options: {
-        envFile?: string;
-        vars: Record<string, string>;
-        secrets: Record<string, string>;
-        artifactName?: string;
-        artifactVersion?: string;
-        memory?: string;
-        volumeVersion: Record<string, string>;
-        conversation?: string;
-        modelProvider?: string;
-        verbose?: boolean;
-        experimentalSharedAgent?: boolean;
-        checkEnv?: boolean;
-        debugNoMockClaude?: boolean;
-        autoUpdate?: boolean;
-      },
-    ) => {
-      try {
+    withErrorHandler(
+      async (
+        identifier: string,
+        prompt: string,
+        options: {
+          envFile?: string;
+          vars: Record<string, string>;
+          secrets: Record<string, string>;
+          artifactName?: string;
+          artifactVersion?: string;
+          memory?: string;
+          volumeVersion: Record<string, string>;
+          conversation?: string;
+          modelProvider?: string;
+          verbose?: boolean;
+          experimentalSharedAgent?: boolean;
+          checkEnv?: boolean;
+          debugNoMockClaude?: boolean;
+          autoUpdate?: boolean;
+        },
+      ) => {
         // Start upgrade in background at command start (runs in parallel)
         if (options.autoUpdate !== false) {
           await startSilentUpgrade(__CLI_VERSION__);
@@ -116,26 +115,14 @@ export const mainRunCommand = new Command()
           const isOwnScope = defaultScope.slug === scope;
 
           if (!isOwnScope) {
-            console.error(
-              chalk.red(
-                `✗ Running shared agents requires --experimental-shared-agent flag`,
-              ),
+            throw new Error(
+              "Running shared agents requires --experimental-shared-agent flag",
+              {
+                cause: new Error(
+                  `Use: vm0 run ${identifier} --experimental-shared-agent "your prompt"`,
+                ),
+              },
             );
-            console.error();
-            console.error(
-              chalk.dim(
-                "  Running agent from other users carries security risks.",
-              ),
-            );
-            console.error(chalk.dim("  Only run agents from users you trust"));
-            console.error();
-            console.error("Example:");
-            console.error(
-              chalk.cyan(
-                `  vm0 run ${identifier} --experimental-shared-agent "your prompt"`,
-              ),
-            );
-            process.exit(1);
           }
         }
 
@@ -152,13 +139,11 @@ export const mainRunCommand = new Command()
           // It's an agent name - resolve to compose ID
           const compose = await getComposeByName(name, scope);
           if (!compose) {
-            console.error(chalk.red(`✗ Agent not found: ${identifier}`));
-            console.error(
-              chalk.dim(
-                "  Make sure you've composed the agent with: vm0 compose",
+            throw new Error(`Agent not found: ${identifier}`, {
+              cause: new Error(
+                "Make sure you've composed the agent with: vm0 compose",
               ),
-            );
-            process.exit(1);
+            });
           }
 
           composeId = compose.id;
@@ -215,11 +200,10 @@ export const mainRunCommand = new Command()
 
         // 4. Check for immediate failure (e.g., missing secrets)
         if (response.status === "failed") {
-          console.error(chalk.red("✗ Run preparation failed"));
-          if (response.error) {
-            console.error(chalk.dim(`  ${response.error}`));
-          }
-          process.exit(1);
+          throw new Error(
+            "Run preparation failed",
+            response.error ? { cause: new Error(response.error) } : undefined,
+          );
         }
 
         // 5. Display run started/queued info
@@ -238,8 +222,6 @@ export const mainRunCommand = new Command()
         if (options.autoUpdate !== false) {
           await waitForSilentUpgrade();
         }
-      } catch (error) {
-        handleRunError(error, identifier);
-      }
-    },
+      },
+    ),
   );

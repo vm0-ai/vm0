@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Build, deploy, and manage a dev runner on a metal host via Cloudflare Tunnel.
+#
+# Reads RUNNER_LOCAL_HOST, RUNNER_DEFAULT_GROUP, and OFFICIAL_RUNNER_SECRET
+# from scripts/.env.local. Uses scripts/cf-ssh.sh for all remote operations.
+#
+# Usage:
+#   scripts/dev-runner.sh deploy   Build, upload, and start the runner
+#   scripts/dev-runner.sh remove   Stop and uninstall the runner
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+CRATES_DIR="$PROJECT_ROOT/crates"
+
+log() { echo "[runner] $1" >&2; }
+
+# --- Load config ---
+ENV_FILE="$SCRIPT_DIR/.env.local"
+if [[ ! -f "$ENV_FILE" ]]; then
+  log "Error: $ENV_FILE not found. Run scripts/sync-env.sh first."
+  exit 1
+fi
+# shellcheck source=/dev/null
+source "$ENV_FILE"
+
+HOST="${RUNNER_LOCAL_HOST:?RUNNER_LOCAL_HOST not set in $ENV_FILE}"
+SSH_USER="${RUNNER_LOCAL_USER:-ubuntu}"
+
+# --- Runner name from RUNNER_DEFAULT_GROUP ---
+RUNNER_GROUP="${RUNNER_DEFAULT_GROUP:?RUNNER_DEFAULT_GROUP not set in $ENV_FILE}"
+# vm0/local-alice-macbook -> alice-macbook
+RUNNER_NAME="${RUNNER_GROUP##*/}"
+
+REMOTE_BIN_DIR=".vm0-runner/bin/${RUNNER_NAME}"
+RUNNER_BIN="~/$REMOTE_BIN_DIR/runner"
+RUNNER_DIR="~/.vm0-runner/runners/$RUNNER_NAME"
+
+CF_SSH="$SCRIPT_DIR/cf-ssh.sh"
+ssh_cmd() { "$CF_SSH" "$HOST" -l "$SSH_USER" "$@"; }
+
+# --- Commands ---
+
+cmd_deploy() {
+  RUNNER_SECRET="${OFFICIAL_RUNNER_SECRET:?OFFICIAL_RUNNER_SECRET not set in $ENV_FILE}"
+  TARGET="aarch64-unknown-linux-musl"
+  # alice-macbook -> https://tunnel-alice-macbook-www.vm7.ai
+  API_URL="https://tunnel-${RUNNER_NAME#local-}-www.vm7.ai"
+  log "Runner: $RUNNER_NAME (group: $RUNNER_GROUP, api: $API_URL)"
+
+  # Build guests
+  log "Building guest binaries..."
+  cd "$CRATES_DIR"
+  cargo build --release --target "$TARGET" \
+    -p guest-agent -p guest-download -p guest-init -p guest-mock-claude
+
+  # Build runner
+  log "Building runner with embedded guests..."
+  GUEST_AGENT_PATH="target/$TARGET/release/guest-agent" \
+  GUEST_DOWNLOAD_PATH="target/$TARGET/release/guest-download" \
+  GUEST_INIT_PATH="target/$TARGET/release/guest-init" \
+  GUEST_MOCK_CLAUDE_PATH="target/$TARGET/release/guest-mock-claude" \
+  cargo build --release --target "$TARGET" -p runner
+
+  BINARY="$CRATES_DIR/target/$TARGET/release/runner"
+  log "Binary: $BINARY ($(du -h "$BINARY" | cut -f1))"
+
+  # Stop old service before uploading (avoids "Text file busy")
+  log "Stopping old service..."
+  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME 2>/dev/null || true"
+
+  # Upload
+  log "Deploying to $SSH_USER@$HOST..."
+  ssh_cmd "mkdir -p ~/$REMOTE_BIN_DIR"
+  cat "$BINARY" | ssh_cmd "cat > ~/$REMOTE_BIN_DIR/runner && chmod 755 ~/$REMOTE_BIN_DIR/runner"
+
+  # Setup (idempotent, downloads firecracker/kernel if missing)
+  log "Running setup..."
+  ssh_cmd "$RUNNER_BIN setup"
+
+  # Clean up old rootfs/snapshots
+  ssh_cmd "$RUNNER_BIN gc --keep-latest 2"
+
+  # Build rootfs + snapshot
+  log "Building rootfs and snapshot..."
+  BUILD_LOG=$(mktemp)
+  ssh_cmd "$RUNNER_BIN build" | tee "$BUILD_LOG"
+  ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG" | cut -d= -f2)
+  SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG" | cut -d= -f2)
+  rm -f "$BUILD_LOG"
+
+  if [[ -z "$ROOTFS_HASH" || -z "$SNAPSHOT_HASH" ]]; then
+    log "Error: failed to extract build hashes"
+    exit 1
+  fi
+  log "Hashes: rootfs=$ROOTFS_HASH snapshot=$SNAPSHOT_HASH"
+
+  # Generate config
+  log "Generating config..."
+  ssh_cmd "$RUNNER_BIN config \
+    --rootfs-hash $ROOTFS_HASH \
+    --snapshot-hash $SNAPSHOT_HASH \
+    --name $RUNNER_NAME \
+    --group $RUNNER_GROUP \
+    --runner-dirname $RUNNER_NAME \
+    --api-url $API_URL \
+    --token vm0_official_${RUNNER_SECRET}"
+
+  # Start service
+  log "Starting new service..."
+  ssh_cmd "$RUNNER_BIN service start --name $RUNNER_NAME \
+    --config $RUNNER_DIR/runner.yaml \
+    --balloon-reclaim"
+
+  log "Done! Runner $RUNNER_NAME deployed to $HOST"
+}
+
+cmd_remove() {
+  log "Removing runner $RUNNER_NAME from $HOST..."
+
+  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME 2>/dev/null || true"
+  ssh_cmd "rm -rf ~/$REMOTE_BIN_DIR $RUNNER_DIR"
+
+  log "Done! Runner $RUNNER_NAME removed from $HOST"
+}
+
+# --- Main ---
+COMMAND="${1:-}"
+case "$COMMAND" in
+  deploy) cmd_deploy ;;
+  remove) cmd_remove ;;
+  *)
+    log "Usage: $0 {deploy|remove}"
+    exit 1
+    ;;
+esac

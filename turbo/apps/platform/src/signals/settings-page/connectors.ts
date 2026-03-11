@@ -2,7 +2,6 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   CONNECTOR_TYPES,
-  FeatureSwitchKey,
   hasRequiredScopes,
   type ConnectorType,
   type ConnectorResponse,
@@ -44,37 +43,6 @@ export interface ConnectorTypeWithStatus {
   scopeMismatch: boolean;
 }
 
-/**
- * Maps connector types to their OAuth feature switch keys.
- * Controls whether the OAuth auth method is available for each connector.
- * Connectors not listed here have OAuth always available.
- */
-const CONNECTOR_FEATURE_FLAGS = Object.freeze<
-  Partial<Record<ConnectorType, FeatureSwitchKey>>
->({
-  canva: FeatureSwitchKey.CanvaConnector,
-  computer: FeatureSwitchKey.ComputerConnector,
-  deel: FeatureSwitchKey.DeelConnector,
-  docusign: FeatureSwitchKey.DocuSignConnector,
-  dropbox: FeatureSwitchKey.DropboxConnector,
-  figma: FeatureSwitchKey.FigmaConnector,
-  gmail: FeatureSwitchKey.GmailConnector,
-  "google-sheets": FeatureSwitchKey.GoogleSheetsConnector,
-  "google-docs": FeatureSwitchKey.GoogleDocsConnector,
-  "google-drive": FeatureSwitchKey.GoogleDriveConnector,
-  "google-calendar": FeatureSwitchKey.GoogleCalendarConnector,
-  mercury: FeatureSwitchKey.MercuryConnector,
-  neon: FeatureSwitchKey.NeonConnector,
-  strava: FeatureSwitchKey.StravaConnector,
-  "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
-  reddit: FeatureSwitchKey.RedditConnector,
-  "intervals-icu": FeatureSwitchKey.IntervalsIcuConnector,
-  supabase: FeatureSwitchKey.SupabaseConnector,
-  webflow: FeatureSwitchKey.WebflowConnector,
-  "meta-ads": FeatureSwitchKey.MetaAdsConnector,
-  stripe: FeatureSwitchKey.StripeConnector,
-});
-
 export const allConnectorTypes$ = computed(async (get) => {
   const { connectors } = await get(connectors$);
   const connectorMap = new Map(connectors.map((c) => [c.type, c]));
@@ -82,7 +50,7 @@ export const allConnectorTypes$ = computed(async (get) => {
 
   return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
-      const flag = CONNECTOR_FEATURE_FLAGS[type];
+      const flag = CONNECTOR_TYPES[type].featureFlag;
       const oauthEnabled = !flag || !!features?.[flag];
       const hasApiToken = "api-token" in CONNECTOR_TYPES[type].authMethods;
       // Connector visible if OAuth is enabled OR it has an api-token method
@@ -91,7 +59,7 @@ export const allConnectorTypes$ = computed(async (get) => {
     .map((type) => {
       const config = CONNECTOR_TYPES[type];
       const connector = connectorMap.get(type) ?? null;
-      const flag = CONNECTOR_FEATURE_FLAGS[type];
+      const flag = CONNECTOR_TYPES[type].featureFlag;
       const oauthEnabled = !flag || !!features?.[flag];
       const hasApiToken = "api-token" in config.authMethods;
       const availableAuthMethods: string[] = [];
@@ -302,17 +270,23 @@ export const submitApiToken$ = command(
     signal: AbortSignal,
   ) => {
     const fetchFn = get(fetch$);
-    const resp = await fetchFn(`/api/connectors/${type}/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ secrets: inputSecrets }),
-    });
-    signal.throwIfAborted();
-    if (!resp.ok) {
-      const data = (await resp.json()) as { error?: { message?: string } };
-      throw new Error(
-        data?.error?.message ?? `Failed to submit token (${resp.status})`,
-      );
+    for (const [name, value] of Object.entries(inputSecrets)) {
+      if (!value) {
+        continue;
+      }
+      const resp = await fetchFn("/api/secrets", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, value }),
+      });
+      signal.throwIfAborted();
+      if (!resp.ok) {
+        const data = (await resp.json()) as { error?: { message?: string } };
+        throw new Error(
+          data?.error?.message ??
+            `Failed to save secret ${name} (${resp.status})`,
+        );
+      }
     }
     signal.throwIfAborted();
     set(reloadConnectors$);

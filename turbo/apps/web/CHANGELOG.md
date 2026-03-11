@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.96.0](https://github.com/vm0-ai/vm0/compare/web-v12.95.0...web-v12.96.0) (2026-03-11)
+
+
+### Features
+
+* dual-write default agent compose id to clerk org metadata ([#4226](https://github.com/vm0-ai/vm0/issues/4226)) ([6c1814e](https://github.com/vm0-ai/vm0/commit/6c1814e3e404494a6a159381cf72466425d27676))
+
+## [12.95.0](https://github.com/vm0-ai/vm0/compare/web-v12.94.0...web-v12.95.0) (2026-03-10)
+
+
+### Features
+
+* add pnpm runner command for local build and deploy ([#4198](https://github.com/vm0-ai/vm0/issues/4198)) ([3e84a76](https://github.com/vm0-ai/vm0/commit/3e84a76e9e1e782fbd431d90ffbff2265fa8d726))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.54.1
+
 ## [12.94.0](https://github.com/vm0-ai/vm0/compare/web-v12.93.0...web-v12.94.0) (2026-03-10)
 
 

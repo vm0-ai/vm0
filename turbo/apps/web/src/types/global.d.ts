@@ -25,6 +25,7 @@ declare global {
   // Clerk custom JWT session claims (configured in Clerk Dashboard)
   interface CustomJwtSessionClaims {
     org_tier?: string;
+    org_default_agent_compose_id?: string | null;
     membership_timezone?: string;
     membership_notify_email?: boolean;
     membership_notify_slack?: boolean;

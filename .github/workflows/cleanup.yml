@@ -72,7 +72,7 @@ jobs:
   cleanup-database:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     steps:
       - uses: actions/checkout@v6
 

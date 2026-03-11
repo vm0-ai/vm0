@@ -111,8 +111,7 @@ export const cloneCommand = new Command()
       // Check if destination already exists and is non-empty
       const dirStatus = checkDirectoryStatus(targetDir);
       if (dirStatus.exists && !dirStatus.empty) {
-        console.error(chalk.red(`✗ Directory "${targetDir}" is not empty`));
-        process.exit(1);
+        throw new Error(`Directory "${targetDir}" is not empty`);
       }
 
       console.log(`Cloning agent compose: ${name}`);
@@ -121,13 +120,11 @@ export const cloneCommand = new Command()
       const compose = await getComposeByName(name);
 
       if (!compose) {
-        console.error(chalk.red(`✗ Agent compose not found: ${name}`));
-        process.exit(1);
+        throw new Error(`Agent compose not found: ${name}`);
       }
 
       if (!compose.content || !compose.headVersionId) {
-        console.error(chalk.red(`✗ Agent compose has no content: ${name}`));
-        process.exit(1);
+        throw new Error(`Agent compose has no content: ${name}`);
       }
 
       const content = compose.content as AgentComposeContent;

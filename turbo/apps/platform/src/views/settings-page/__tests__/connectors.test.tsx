@@ -6,7 +6,11 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
-import type { ConnectorResponse } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorResponse,
+  type ConnectorType,
+} from "@vm0/core";
 
 const context = testContext();
 const user = userEvent.setup();
@@ -105,5 +109,99 @@ describe("connections tab", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(screen.getByText("Notion")).toBeInTheDocument();
+  });
+});
+
+describe("add connection via api token", () => {
+  it("connects mercury via api token and shows connected status", async () => {
+    let capturedSecretBody: { name: string; value: string } | null = null;
+    let mercuryConnected = false;
+
+    server.use(
+      http.get("/api/connectors", () => {
+        return HttpResponse.json({
+          connectors: mercuryConnected
+            ? [
+                {
+                  id: null,
+                  type: "mercury",
+                  authMethod: "api-token",
+                  externalId: null,
+                  externalUsername: null,
+                  externalEmail: null,
+                  oauthScopes: null,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                },
+              ]
+            : [],
+          configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
+          connectorProvidedSecretNames: [],
+        });
+      }),
+      http.put("/api/secrets", async ({ request }) => {
+        capturedSecretBody = (await request.json()) as {
+          name: string;
+          value: string;
+        };
+        mercuryConnected = true;
+        return HttpResponse.json({
+          id: crypto.randomUUID(),
+          name: capturedSecretBody.name,
+          description: null,
+          type: "user",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/settings?tab=connections",
+      featureSwitches: { mercuryConnector: false },
+    });
+
+    // Click "Add connection" to open the dialog
+    await user.click(screen.getByRole("button", { name: /add connection/i }));
+
+    // In the Add Connection dialog, find the Mercury card and click Connect
+    const addDialog = await screen.findByRole("dialog", {
+      name: /add connection/i,
+    });
+    const mercuryCard = within(addDialog)
+      .getByText("Mercury")
+      .closest('[class*="rounded-xl"]') as HTMLElement;
+    await user.click(
+      within(mercuryCard).getByRole("button", { name: /connect/i }),
+    );
+
+    // The Connect modal for Mercury should open
+    const connectModal = await screen.findByRole("dialog", {
+      name: /^mercury$/i,
+    });
+
+    // Fill in the API Token field
+    const tokenInput = within(connectModal).getByPlaceholderText(
+      /secret-token:mercury_production_/i,
+    );
+    await user.click(tokenInput);
+    await user.paste("secret-token:mercury_production_test123");
+
+    // Submit
+    await user.click(
+      within(connectModal).getByRole("button", { name: /^save$/i }),
+    );
+
+    // Verify the correct secret was sent and Mercury is now shown as connected
+    await vi.waitFor(() => {
+      expect(capturedSecretBody).toStrictEqual({
+        name: "MERCURY_TOKEN",
+        value: "secret-token:mercury_production_test123",
+      });
+      expect(
+        screen.getAllByText("Connected via API Token").length,
+      ).toBeGreaterThan(0);
+    });
   });
 });

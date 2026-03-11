@@ -86,10 +86,10 @@ describe("init command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0.yaml already exists"),
+        expect.stringContaining("vm0.yaml, AGENTS.md already exists"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("AGENTS.md already exists"),
+        expect.stringContaining("vm0 init --force"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

@@ -13,13 +13,11 @@ export const createCommand = new Command()
       // Check if user already has a scope
       try {
         const existingScope = await getScope();
-        console.error(
-          chalk.yellow(`✗ You already have a scope: ${existingScope.slug}`),
-        );
-        console.error();
-        console.error("To rename your scope, use:");
-        console.error(chalk.cyan(`  vm0 scope set ${slug} --force`));
-        process.exit(1);
+        throw new Error(`You already have a scope: ${existingScope.slug}`, {
+          cause: new Error(
+            `To rename your scope, use: vm0 scope set ${slug} --force`,
+          ),
+        });
       } catch (error) {
         // 404 means user has no scope — proceed with creation
         if (!(error instanceof ApiRequestError) || error.status !== 404) {

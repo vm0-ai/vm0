@@ -30,10 +30,9 @@ export const membersCommand = new Command()
           error instanceof Error &&
           error.message.includes("Organization access token required")
         ) {
-          console.error(
-            chalk.red("✗ No active scope selected. Run: vm0 scope use <slug>"),
-          );
-          process.exit(1);
+          throw new Error("No active scope selected", {
+            cause: new Error("Run: vm0 scope use <slug>"),
+          });
         }
         throw error;
       }

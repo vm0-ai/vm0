@@ -6,7 +6,6 @@
  */
 
 import { FeatureSwitchKey } from "./feature-switch-key";
-import type { ConnectorType } from "./contracts/connectors";
 
 export interface FeatureSwitch {
   readonly maintainer: string;
@@ -220,44 +219,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },
-};
-
-/**
- * Maps connector types to their feature switch keys.
- * Connectors not listed here are always visible.
- */
-export const CONNECTOR_FEATURE_FLAGS: Partial<
-  Record<ConnectorType, FeatureSwitchKey>
-> = {
-  ahrefs: FeatureSwitchKey.AhrefsConnector,
-  canva: FeatureSwitchKey.CanvaConnector,
-  close: FeatureSwitchKey.CloseConnector,
-  computer: FeatureSwitchKey.ComputerConnector,
-  deel: FeatureSwitchKey.DeelConnector,
-  docusign: FeatureSwitchKey.DocuSignConnector,
-  dropbox: FeatureSwitchKey.DropboxConnector,
-  figma: FeatureSwitchKey.FigmaConnector,
-  gmail: FeatureSwitchKey.GmailConnector,
-  "google-sheets": FeatureSwitchKey.GoogleSheetsConnector,
-  "google-docs": FeatureSwitchKey.GoogleDocsConnector,
-  "google-drive": FeatureSwitchKey.GoogleDriveConnector,
-  "google-calendar": FeatureSwitchKey.GoogleCalendarConnector,
-  mercury: FeatureSwitchKey.MercuryConnector,
-  neon: FeatureSwitchKey.NeonConnector,
-  strava: FeatureSwitchKey.StravaConnector,
-  "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
-
-  reddit: FeatureSwitchKey.RedditConnector,
-  "intervals-icu": FeatureSwitchKey.IntervalsIcuConnector,
-  supabase: FeatureSwitchKey.SupabaseConnector,
-  webflow: FeatureSwitchKey.WebflowConnector,
-  "outlook-mail": FeatureSwitchKey.OutlookMailConnector,
-  "outlook-calendar": FeatureSwitchKey.OutlookCalendarConnector,
-  "meta-ads": FeatureSwitchKey.MetaAdsConnector,
-  stripe: FeatureSwitchKey.StripeConnector,
-  posthog: FeatureSwitchKey.PosthogConnector,
-  mailchimp: FeatureSwitchKey.MailchimpConnector,
-  resend: FeatureSwitchKey.ResendConnector,
 };
 
 /**

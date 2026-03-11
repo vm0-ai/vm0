@@ -14,19 +14,9 @@ export const setCommand = new Command()
         const existingScope = await getScope();
 
         if (!options.force) {
-          console.error(
-            chalk.yellow(`You already have a scope: ${existingScope.slug}`),
-          );
-          console.error();
-          console.error("To change your scope, use --force:");
-          console.error(chalk.cyan(`  vm0 scope set ${slug} --force`));
-          console.error();
-          console.error(
-            chalk.yellow(
-              "Warning: Changing your scope may break existing agent references.",
-            ),
-          );
-          process.exit(1);
+          throw new Error(`You already have a scope: ${existingScope.slug}`, {
+            cause: new Error(`To change, use: vm0 scope set ${slug} --force`),
+          });
         }
 
         const scope = await updateScope({ slug, force: true });
@@ -39,12 +29,9 @@ export const setCommand = new Command()
           error instanceof Error &&
           error.message.includes("already exists")
         ) {
-          console.error(
-            chalk.red(
-              `✗ Scope "${slug}" is already taken. Please choose a different slug.`,
-            ),
+          throw new Error(
+            `Scope "${slug}" is already taken. Please choose a different slug.`,
           );
-          process.exit(1);
         }
         throw error;
       }

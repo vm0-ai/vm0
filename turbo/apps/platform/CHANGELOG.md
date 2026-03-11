@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.101.1](https://github.com/vm0-ai/vm0/compare/platform-v0.101.0...platform-v0.101.1) (2026-03-10)
+
+
+### Bug Fixes
+
+* preserve line breaks in connection dialog help text ([#4205](https://github.com/vm0-ai/vm0/issues/4205)) ([9f08620](https://github.com/vm0-ai/vm0/commit/9f086209a40fd7d1297fb40673463f0eb9dd05e6))
+* resolve circular type reference in connector types ([#4207](https://github.com/vm0-ai/vm0/issues/4207)) ([37594f9](https://github.com/vm0-ai/vm0/commit/37594f901bf3fb26782d87427035b75149a1737c))
+
+
+### Refactoring
+
+* inline connector feature flags into connector types config ([#4203](https://github.com/vm0-ai/vm0/issues/4203)) ([99168e3](https://github.com/vm0-ai/vm0/commit/99168e3f8e253c3488112f822111c2e66af152dd))
+* update connector token submission to use secrets api ([#4201](https://github.com/vm0-ai/vm0/issues/4201)) ([a431829](https://github.com/vm0-ai/vm0/commit/a4318296f433c98aae9eccb063bdd6e01275eb13))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.54.1
+
 ## [0.101.0](https://github.com/vm0-ai/vm0/compare/platform-v0.100.0...platform-v0.101.0) (2026-03-10)
 
 

@@ -60,7 +60,7 @@ interface MissingItem {
 function buildEnvVarToConnectorMap(): Readonly<Record<string, ConnectorType>> {
   const map: Record<string, ConnectorType> = {};
   for (const [type, config] of Object.entries(CONNECTOR_TYPES)) {
-    for (const envVar of Object.keys(config.environmentMapping)) {
+    for (const envVar of Object.keys(config.environmentMapping ?? {})) {
       map[envVar] = type as ConnectorType;
     }
   }
