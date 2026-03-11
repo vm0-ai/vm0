@@ -1960,6 +1960,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  qdrant: {
+    label: "Qdrant",
+    helpText:
+      "Connect your Qdrant account to store, search, and manage vector embeddings",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Qdrant Cloud](https://cloud.qdrant.io)\n2. Go to **Data Access Control → API Keys**\n3. Create a new API key\n4. Copy the key",
+        secrets: {
+          QDRANT_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-qdrant-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
 } satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
@@ -2367,6 +2387,13 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   fal: {
     services: [service("https://fal.run", bearerAuth("FAL_KEY"))],
   },
+  qdrant: {
+    services: [
+      service("https://cloud.qdrant.io", {
+        headers: { "api-key": "${secrets.QDRANT_TOKEN}" },
+      }),
+    ],
+  },
 };
 
 export const connectorTypeSchema = z.enum([
@@ -2430,6 +2457,7 @@ export const connectorTypeSchema = z.enum([
   "elevenlabs",
   "devto",
   "fal",
+  "qdrant",
 ]);
 
 /**
