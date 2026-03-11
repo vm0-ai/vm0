@@ -9,5 +9,5 @@ export const resendHandler: ProviderHandler = {
   },
   getClientId: () => undefined,
   getClientSecret: () => undefined,
-  getSecretName: () => "RESEND_API_KEY",
+  getSecretName: () => "RESEND_TOKEN",
 };

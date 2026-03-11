@@ -9,7 +9,7 @@ description: Manage issues and projects in Linear
 
 | Name             | Type   | Description                                                     |
 | ---------------- | ------ | --------------------------------------------------------------- |
-| `LINEAR_API_KEY` | secret | API key from [Linear Settings](https://linear.app/settings/api) |
+| `LINEAR_TOKEN` | secret | API key from [Linear Settings](https://linear.app/settings/api) |
 
 ## Configuration
 
@@ -28,7 +28,7 @@ agents:
 Store your secret on the platform (recommended, one-time setup):
 
 ```bash
-vm0 secret set LINEAR_API_KEY your-linear-api-key
+vm0 secret set LINEAR_TOKEN your-linear-api-key
 ```
 
 Then run your agent - secret is automatically loaded:
@@ -38,7 +38,7 @@ vm0 run my-agent "create an issue"
 ```
 
 <Callout type="info">
-For CI/CD or temporary overrides, pass secrets at runtime: `--secrets LINEAR_API_KEY=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets LINEAR_TOKEN=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
 </Callout>
 
 ## Example Instructions

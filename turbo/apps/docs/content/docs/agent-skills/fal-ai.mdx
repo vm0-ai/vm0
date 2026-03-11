@@ -9,7 +9,7 @@ description: AI image generation from text prompts
 
 | Name      | Type   | Description                                      |
 | --------- | ------ | ------------------------------------------------ |
-| `FAL_KEY` | secret | API key from [fal.ai Dashboard](https://fal.ai/) |
+| `FAL_TOKEN` | secret | API key from [fal.ai Dashboard](https://fal.ai/) |
 
 ## Configuration
 
@@ -28,7 +28,7 @@ agents:
 Store your secret on the platform (recommended, one-time setup):
 
 ```bash
-vm0 secret set FAL_KEY your-fal-key
+vm0 secret set FAL_TOKEN your-fal-key
 ```
 
 Then run your agent - secret is automatically loaded:
@@ -38,7 +38,7 @@ vm0 run my-agent "generate an image of a sunset"
 ```
 
 <Callout type="info">
-For CI/CD or temporary overrides, pass secrets at runtime: `--secrets FAL_KEY=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets FAL_TOKEN=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
 </Callout>
 
 ## Example Instructions

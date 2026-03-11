@@ -9,7 +9,7 @@ description: Transactional email API
 
 | Name             | Type   | Description                                                  |
 | ---------------- | ------ | ------------------------------------------------------------ |
-| `RESEND_API_KEY` | secret | API key from [Resend Dashboard](https://resend.com/api-keys) |
+| `RESEND_TOKEN` | secret | API key from [Resend Dashboard](https://resend.com/api-keys) |
 
 ## Configuration
 
@@ -28,7 +28,7 @@ agents:
 Store your secret on the platform (recommended, one-time setup):
 
 ```bash
-vm0 secret set RESEND_API_KEY your-resend-api-key
+vm0 secret set RESEND_TOKEN your-resend-api-key
 ```
 
 Then run your agent - secret is automatically loaded:
@@ -38,7 +38,7 @@ vm0 run my-agent "send welcome email"
 ```
 
 <Callout type="info">
-For CI/CD or temporary overrides, pass secrets at runtime: `--secrets RESEND_API_KEY=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets RESEND_TOKEN=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
 </Callout>
 
 ## Example Instructions

@@ -702,7 +702,7 @@ const CONNECTOR_TYPES_DEF = {
       tokenUrl: "https://api.linear.app/oauth/token",
       scopes: ["read", "write"],
       environmentMapping: {
-        LINEAR_API_KEY: "$secrets.LINEAR_ACCESS_TOKEN",
+        LINEAR_TOKEN: "$secrets.LINEAR_ACCESS_TOKEN",
       },
     } as ConnectorOAuthConfig,
   },
@@ -1895,7 +1895,7 @@ const CONNECTOR_TYPES_DEF = {
       tokenUrl: "https://connect.stripe.com/oauth/token",
       scopes: ["read_write"],
       environmentMapping: {
-        STRIPE_API_KEY: "$secrets.STRIPE_ACCESS_TOKEN",
+        STRIPE_TOKEN: "$secrets.STRIPE_ACCESS_TOKEN",
       },
     } as ConnectorOAuthConfig,
   },
@@ -2039,7 +2039,7 @@ const CONNECTOR_TYPES_DEF = {
         helpText:
           "1. Log in to [Resend](https://resend.com)\n2. Go to **API Keys** in the sidebar\n3. Click **Create API Key**\n4. Choose permissions (Full access recommended) and copy the key",
         secrets: {
-          RESEND_API_KEY: {
+          RESEND_TOKEN: {
             label: "API Key",
             required: true,
             placeholder: "re_xxxxxxxxxx",
@@ -2673,10 +2673,10 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   Record<ConnectorType, ConnectorProxyConfig>
 > = {
   ahrefs: {
-    services: [service("https://api.ahrefs.com", bearerAuth("AHREFS_API_KEY"))],
+    services: [service("https://api.ahrefs.com", bearerAuth("AHREFS_TOKEN"))],
   },
   axiom: {
-    services: [service("https://api.axiom.co", bearerAuth("AXIOM_API_TOKEN"))],
+    services: [service("https://api.axiom.co", bearerAuth("AXIOM_TOKEN"))],
   },
   airtable: {
     services: [
@@ -2787,7 +2787,7 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
     ],
   },
   linear: {
-    services: [service("https://api.linear.app", bearerAuth("LINEAR_API_KEY"))],
+    services: [service("https://api.linear.app", bearerAuth("LINEAR_TOKEN"))],
   },
   intercom: {
     services: [
@@ -2871,7 +2871,7 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   },
   neon: {
     services: [
-      service("https://console.neon.tech/api/v2", bearerAuth("NEON_API_KEY")),
+      service("https://console.neon.tech/api/v2", bearerAuth("NEON_TOKEN")),
     ],
   },
   vercel: {
@@ -2928,7 +2928,7 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
     ],
   },
   stripe: {
-    services: [service("https://api.stripe.com", bearerAuth("STRIPE_API_KEY"))],
+    services: [service("https://api.stripe.com", bearerAuth("STRIPE_TOKEN"))],
   },
   productlane: {
     services: [
@@ -2962,87 +2962,87 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
     services: [
       service(
         "https://us1.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us2.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us3.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us4.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us5.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us6.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us7.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us8.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us9.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us10.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us11.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us12.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us13.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us14.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us15.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us16.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us17.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us18.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us19.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us20.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
       service(
         "https://us21.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_API_KEY"),
+        bearerAuth("MAILCHIMP_TOKEN"),
       ),
     ],
   },
@@ -3052,7 +3052,7 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
     ],
   },
   resend: {
-    services: [service("https://api.resend.com", bearerAuth("RESEND_API_KEY"))],
+    services: [service("https://api.resend.com", bearerAuth("RESEND_TOKEN"))],
   },
   revenuecat: {
     services: [
@@ -3123,7 +3123,7 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
     ],
   },
   fal: {
-    services: [service("https://fal.run", bearerAuth("FAL_KEY"))],
+    services: [service("https://fal.run", bearerAuth("FAL_TOKEN"))],
   },
   podchaser: {
     services: [

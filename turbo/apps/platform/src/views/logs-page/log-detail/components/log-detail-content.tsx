@@ -26,7 +26,7 @@ import { detach, Reason } from "../../../../signals/utils.ts";
 
 /**
  * Parse missing secrets from error message
- * Example: "Missing required secrets: FAL_KEY, BRIGHTDATA_API_KEY. Use '--secrets FAL_KEY=<value>' or '--env-file <path>' to provide them."
+ * Example: "Missing required secrets: FAL_TOKEN, BRIGHTDATA_TOKEN. Use '--secrets FAL_TOKEN=<value>' or '--env-file <path>' to provide them."
  */
 function parseMissingSecrets(errorMessage: string): string[] {
   const match = errorMessage.match(/Missing required secrets:\s*([^.]+)/i);
