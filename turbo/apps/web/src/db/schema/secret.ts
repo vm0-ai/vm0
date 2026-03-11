@@ -17,7 +17,7 @@ export const secrets = pgTable(
   "secrets",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    scopeId: uuid("scope_id").notNull(),
+    scopeId: uuid("scope_id"),
     name: varchar("name", { length: 255 }).notNull(),
     encryptedValue: text("encrypted_value").notNull(),
     description: text("description"),

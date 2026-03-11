@@ -895,7 +895,7 @@ async function executeSchedule(
       volumeVersions: schedule.volumeVersions ?? undefined,
       agentName: compose.name,
       callbacks,
-      scopeId: schedule.scopeId,
+      scopeId: schedule.scopeId ?? undefined,
       scopeSlug: orgData.slug,
       clerkOrgId: orgData.clerkOrgId,
       scopeTier: scopeTierSchema.parse(orgData.tier),

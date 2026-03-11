@@ -19,9 +19,9 @@ export const agentComposes = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(), // Clerk user ID
-    scopeId: uuid("scope_id")
-      .notNull()
-      .references(() => scopes.id, { onDelete: "cascade" }), // FK kept for cascade; Phase 5 drops column
+    scopeId: uuid("scope_id").references(() => scopes.id, {
+      onDelete: "cascade",
+    }), // FK kept for cascade; Phase 5 drops column
     name: varchar("name", { length: 64 }).notNull().default(""), // Agent name from compose
     headVersionId: varchar("head_version_id", { length: 64 }), // Points to latest version hash
     clerkOrgId: text("clerk_org_id").notNull(),

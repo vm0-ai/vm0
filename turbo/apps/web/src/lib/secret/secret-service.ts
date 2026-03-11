@@ -183,7 +183,7 @@ export async function getSecretValues(
  */
 export async function upsertSecretByScope(
   clerkOrgId: string,
-  scopeId: string,
+  scopeId: string | null,
   userId: string,
   name: string,
   value: string,

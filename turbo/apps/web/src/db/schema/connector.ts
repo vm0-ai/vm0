@@ -18,7 +18,7 @@ export const connectors = pgTable(
   "connectors",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    scopeId: uuid("scope_id").notNull(),
+    scopeId: uuid("scope_id"),
     type: varchar("type", { length: 50 }).notNull(), // "github"
     authMethod: varchar("auth_method", { length: 50 }).notNull(), // "oauth"
 

@@ -485,7 +485,7 @@ export async function deleteConnector(
  */
 export async function upsertConnectorSecret(
   clerkOrgId: string,
-  scopeId: string,
+  scopeId: string | null,
   userId: string,
   secretName: string,
   secretValue: string,

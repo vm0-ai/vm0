@@ -36,7 +36,7 @@ export const agentSchedules = pgTable(
     composeId: uuid("compose_id")
       .notNull()
       .references(() => agentComposes.id, { onDelete: "cascade" }),
-    scopeId: uuid("scope_id").notNull(),
+    scopeId: uuid("scope_id"),
     userId: text("user_id").notNull(),
     clerkOrgId: text("clerk_org_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),

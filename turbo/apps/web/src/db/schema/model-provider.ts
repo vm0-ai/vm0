@@ -22,7 +22,7 @@ export const modelProviders = pgTable(
   "model_providers",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    scopeId: uuid("scope_id").notNull(),
+    scopeId: uuid("scope_id"),
     type: varchar("type", { length: 50 }).notNull(),
     // Legacy single secret FK - null for multi-auth providers
     secretId: uuid("secret_id").references(() => secrets.id, {
