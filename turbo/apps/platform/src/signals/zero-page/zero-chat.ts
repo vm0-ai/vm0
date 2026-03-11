@@ -118,7 +118,15 @@ export const fetchZeroSessionList$ = command(async ({ get, set }) => {
 
 export const switchZeroSession$ = command(
   async ({ get, set }, sessionId: string) => {
-    set(internalSessionListLoading$, true);
+    // Set session immediately so the UI switches without loading delay
+    set(internalSessionId$, sessionId);
+    set(internalMessages$, []);
+    set(internalActiveRunId$, null);
+    set(internalRunEvents$, []);
+    set(internalRunStatus$, null);
+    set(internalRunError$, null);
+    set(internalSending$, false);
+
     try {
       const fetchFn = get(fetch$);
       const res = await fetchFn(`/api/agent/sessions/${sessionId}`);
@@ -146,17 +154,9 @@ export const switchZeroSession$ = command(
       );
 
       set(internalMessages$, messages);
-      set(internalSessionId$, sessionId);
-      set(internalActiveRunId$, null);
-      set(internalRunEvents$, []);
-      set(internalRunStatus$, null);
-      set(internalRunError$, null);
-      set(internalSending$, false);
     } catch (error) {
       throwIfAbort(error);
       L.error("Failed to switch session:", error);
-    } finally {
-      set(internalSessionListLoading$, false);
     }
   },
 );
