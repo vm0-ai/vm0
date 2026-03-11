@@ -8,9 +8,13 @@ import type {
   LogStatus,
 } from "../logs-page/types.ts";
 import { fetch$ } from "../fetch.ts";
-import { throwIfAbort, detach, Reason } from "../utils.ts";
+import { throwIfAbort } from "../utils.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import { delay } from "signal-timers";
+import { logger } from "../log.ts";
+
+const L = logger("ZeroActivity");
+
 const PAGE_LIMIT = 20;
 const EVENTS_PAGE_LIMIT = 30;
 const MAX_POLL_INTERVAL = 30_000;
@@ -72,7 +76,9 @@ export const fetchZeroActivityLogs$ = command(async ({ get, set }) => {
     const response = await fetchFn(`/api/platform/logs?${params.toString()}`);
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch logs: ${response.statusText}`);
+      set(internalLogs$, []);
+      set(internalHasMore$, false);
+      return;
     }
 
     const data = (await response.json()) as LogsListResponse;
@@ -84,6 +90,11 @@ export const fetchZeroActivityLogs$ = command(async ({ get, set }) => {
     }
     set(internalHasMore$, data.pagination.hasMore);
     set(internalNextCursor$, data.pagination.nextCursor);
+  } catch (error) {
+    throwIfAbort(error);
+    L.error("Failed to fetch zero activity logs:", error);
+    set(internalLogs$, []);
+    set(internalHasMore$, false);
   } finally {
     set(internalLoading$, false);
   }
@@ -102,31 +113,14 @@ export const loadMoreZeroActivityLogs$ = command(async ({ get, set }) => {
 // ---------------------------------------------------------------------------
 
 const internalSelectedLogId$ = state<string | null>(null);
-const internalPollingAbort$ = state<AbortController | null>(null);
 
 export const zeroActivitySelectedLogId$ = computed((get) =>
   get(internalSelectedLogId$),
 );
 
 export const setZeroActivitySelectedLogId$ = command(
-  ({ get, set }, logId: string | null) => {
-    // Abort any running polling before changing log
-    const prev = get(internalPollingAbort$);
-    if (prev) {
-      prev.abort();
-    }
-    set(internalPollingAbort$, null);
-    set(pagedEvents$, []);
+  ({ set }, logId: string | null) => {
     set(internalSelectedLogId$, logId);
-
-    if (logId) {
-      const controller = new AbortController();
-      set(internalPollingAbort$, controller);
-      detach(
-        set(setupZeroActivityEventPolling$, controller.signal),
-        Reason.Daemon,
-      );
-    }
   },
 );
 
@@ -226,7 +220,7 @@ const pollNewEvents$ = command(async ({ get, set }, runId: string) => {
   }
 });
 
-const setupZeroActivityEventPolling$ = command(
+export const setupZeroActivityEventPolling$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const logId = get(internalSelectedLogId$);
     if (!logId) {
@@ -311,10 +305,11 @@ export function logStatusToActivityStatus(
     case "cancelled": {
       return "warning";
     }
-    case "queued":
-    case "pending":
     case "running": {
       return "running";
+    }
+    default: {
+      return "warning";
     }
   }
 }
