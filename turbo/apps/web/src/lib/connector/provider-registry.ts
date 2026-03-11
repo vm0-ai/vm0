@@ -60,6 +60,7 @@ import { shortioHandler } from "./providers/shortio-handler";
 import { streakHandler } from "./providers/streak-handler";
 import { supadataHandler } from "./providers/supadata-handler";
 import { tavilyHandler } from "./providers/tavily-handler";
+import { tldvHandler } from "./providers/tldv-handler";
 import { twentyHandler } from "./providers/twenty-handler";
 import { youtubeHandler } from "./providers/youtube-handler";
 import { zapsignHandler } from "./providers/zapsign-handler";
@@ -190,6 +191,7 @@ export const PROVIDER_HANDLERS: Record<
   streak: streakHandler,
   supadata: supadataHandler,
   tavily: tavilyHandler,
+  tldv: tldvHandler,
   twenty: twentyHandler,
   youtube: youtubeHandler,
   zapsign: zapsignHandler,

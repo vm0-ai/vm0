@@ -2509,6 +2509,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  tldv: {
+    label: "tl;dv",
+    helpText:
+      "Connect your tl;dv account to access meeting recordings, transcripts, and AI-generated notes",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [tl;dv](https://tldv.io/)\n2. Go to **Settings → Personal Settings → API Keys**\n3. Generate a new API key and copy it",
+        secrets: {
+          TLDV_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-tldv-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   twenty: {
     label: "Twenty",
     helpText:
@@ -3181,6 +3201,13 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   tavily: {
     services: [service("https://api.tavily.com", bearerAuth("TAVILY_TOKEN"))],
   },
+  tldv: {
+    services: [
+      service("https://pasta.tldv.io", {
+        headers: { "x-api-key": "${secrets.TLDV_TOKEN}" },
+      }),
+    ],
+  },
   twenty: {
     services: [service("https://api.twenty.com", bearerAuth("TWENTY_TOKEN"))],
   },
@@ -3283,6 +3310,7 @@ export const connectorTypeSchema = z.enum([
   "streak",
   "supadata",
   "tavily",
+  "tldv",
   "twenty",
   "youtube",
   "wrike",

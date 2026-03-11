@@ -72,6 +72,7 @@ import shortioIcon from "./icons/shortio.svg";
 import streakIcon from "./icons/streak.svg";
 import supadataIcon from "./icons/supadata.svg";
 import tavilyIcon from "./icons/tavily.svg";
+import tldvIcon from "./icons/tldv.svg";
 import twentyIcon from "./icons/twenty.svg";
 import youtubeIcon from "./icons/youtube.svg";
 import zapsignIcon from "./icons/zapsign.svg";
@@ -166,6 +167,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   streak: streakIcon,
   supadata: supadataIcon,
   tavily: tavilyIcon,
+  tldv: tldvIcon,
   twenty: twentyIcon,
   youtube: youtubeIcon,
   zapsign: zapsignIcon,
