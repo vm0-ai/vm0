@@ -12,13 +12,10 @@ export const disconnectCommand = new Command()
     withErrorHandler(async (type: string) => {
       const parseResult = connectorTypeSchema.safeParse(type);
       if (!parseResult.success) {
-        console.error(chalk.red(`✗ Unknown connector type: ${type}`));
-        console.error();
-        console.error("Available connectors:");
-        for (const [t, config] of Object.entries(CONNECTOR_TYPES)) {
-          console.error(`  ${chalk.cyan(t)} - ${config.label}`);
-        }
-        process.exit(1);
+        const available = Object.keys(CONNECTOR_TYPES).join(", ");
+        throw new Error(`Unknown connector type: ${type}`, {
+          cause: new Error(`Available connectors: ${available}`),
+        });
       }
 
       const connectorType = parseResult.data;

@@ -69,10 +69,9 @@ async function connectViaApiToken(
   const config = CONNECTOR_TYPES[connectorType];
   const apiTokenConfig = config.authMethods["api-token"];
   if (!apiTokenConfig) {
-    console.error(
-      chalk.red(`✗ ${config.label} does not support API token authentication`),
+    throw new Error(
+      `${config.label} does not support API token authentication`,
     );
-    process.exit(1);
   }
 
   const secretEntries = Object.entries(apiTokenConfig.secrets);
@@ -98,8 +97,7 @@ async function connectViaApiToken(
       );
 
       if (!value) {
-        console.error(chalk.red("✗ Cancelled"));
-        process.exit(1);
+        throw new Error("Cancelled");
       }
 
       inputSecrets[secretName] = value;
@@ -140,10 +138,7 @@ async function connectComputer(
 
   if (createResult.status !== 200) {
     const errorBody = createResult.body as ApiErrorResponse;
-    console.error(
-      chalk.red(`✗ Failed to create connector: ${errorBody.error?.message}`),
-    );
-    process.exit(1);
+    throw new Error(`Failed to create connector: ${errorBody.error?.message}`);
   }
 
   const credentials = createResult.body as ComputerConnectorCreateResponse;
@@ -171,12 +166,9 @@ async function resolveAuthMethod(
 
   if (tokenFlag) {
     if (!apiTokenAvailable) {
-      console.error(
-        chalk.red(
-          `✗ ${config.label} does not support API token authentication`,
-        ),
+      throw new Error(
+        `${config.label} does not support API token authentication`,
       );
-      process.exit(1);
     }
     return "api-token";
   }
@@ -193,8 +185,7 @@ async function resolveAuthMethod(
       ],
     );
     if (!selected) {
-      console.error(chalk.red("✗ Cancelled"));
-      process.exit(1);
+      throw new Error("Cancelled");
     }
     return selected;
   }
@@ -202,12 +193,9 @@ async function resolveAuthMethod(
   if (apiTokenAvailable) return "api-token";
   if (oauthAvailable) return "oauth";
 
-  console.error(
-    chalk.red(
-      `✗ ${config.label} has no available auth methods. OAuth may not be enabled yet.`,
-    ),
+  throw new Error(
+    `${config.label} has no available auth methods. OAuth may not be enabled yet.`,
   );
-  process.exit(1);
 }
 
 /**
@@ -233,10 +221,7 @@ async function connectViaOAuth(
 
   if (createResult.status !== 200) {
     const errorBody = createResult.body as ApiErrorResponse;
-    console.error(
-      chalk.red(`✗ Failed to create session: ${errorBody.error?.message}`),
-    );
-    process.exit(1);
+    throw new Error(`Failed to create session: ${errorBody.error?.message}`);
   }
 
   const session = createResult.body;
@@ -272,10 +257,7 @@ async function connectViaOAuth(
 
     if (statusResult.status !== 200) {
       const errorBody = statusResult.body as ApiErrorResponse;
-      console.error(
-        chalk.red(`\n✗ Failed to check status: ${errorBody.error?.message}`),
-      );
-      process.exit(1);
+      throw new Error(`Failed to check status: ${errorBody.error?.message}`);
     }
 
     const status = statusResult.body;
@@ -287,25 +269,18 @@ async function connectViaOAuth(
         );
         return;
       case "expired":
-        console.error(chalk.red("\n✗ Session expired, please try again"));
-        process.exit(1);
-        break;
+        throw new Error("Session expired, please try again");
       case "error":
-        console.error(
-          chalk.red(
-            `\n✗ Connection failed: ${status.errorMessage || "Unknown error"}`,
-          ),
+        throw new Error(
+          `Connection failed: ${status.errorMessage || "Unknown error"}`,
         );
-        process.exit(1);
-        break;
       case "pending":
         process.stdout.write(chalk.dim("."));
         break;
     }
   }
 
-  console.error(chalk.red("\n✗ Session timed out, please try again"));
-  process.exit(1);
+  throw new Error("Session timed out, please try again");
 }
 
 export const connectCommand = new Command()
@@ -317,9 +292,9 @@ export const connectCommand = new Command()
     withErrorHandler(async (type: string, options: { token?: string }) => {
       const parseResult = connectorTypeSchema.safeParse(type);
       if (!parseResult.success) {
-        console.error(chalk.red(`✗ Unknown connector type: ${type}`));
-        console.error("Available connectors: github");
-        process.exit(1);
+        throw new Error(`Unknown connector type: ${type}`, {
+          cause: new Error("Available connectors: github"),
+        });
       }
 
       const connectorType = parseResult.data;
