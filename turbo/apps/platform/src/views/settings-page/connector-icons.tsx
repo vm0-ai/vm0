@@ -28,6 +28,7 @@ import metaAdsIcon from "./icons/meta-ads.svg";
 import mondayIcon from "./icons/monday.svg";
 import neonIcon from "./icons/neon.svg";
 import notionIcon from "./icons/notion.svg";
+import openaiIcon from "./icons/openai.svg";
 import outlookCalendarIcon from "./icons/outlook-calendar.svg";
 import outlookMailIcon from "./icons/outlook-mail.svg";
 import plausibleIcon from "./icons/plausible.svg";
@@ -76,6 +77,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   monday: mondayIcon,
   neon: neonIcon,
   notion: notionIcon,
+  openai: openaiIcon,
   "outlook-calendar": outlookCalendarIcon,
   "outlook-mail": outlookMailIcon,
   plausible: plausibleIcon,

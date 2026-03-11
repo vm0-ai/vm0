@@ -29,6 +29,7 @@ import { mercuryHandler } from "./providers/mercury-handler";
 import { mondayHandler } from "./providers/monday-handler";
 import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
+import { openaiHandler } from "./providers/openai-handler";
 import { redditHandler } from "./providers/reddit-handler";
 import { slackHandler } from "./providers/slack-handler";
 import { stravaHandler } from "./providers/strava-handler";
@@ -82,6 +83,7 @@ export const PROVIDER_HANDLERS: Record<
   monday: mondayHandler,
   neon: neonHandler,
   notion: notionHandler,
+  openai: openaiHandler,
   "outlook-calendar": outlookCalendarHandler,
   "outlook-mail": outlookMailHandler,
   reddit: redditHandler,

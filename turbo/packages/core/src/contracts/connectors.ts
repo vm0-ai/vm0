@@ -1588,6 +1588,26 @@ const CONNECTOR_TYPES_DEF = {
       scopes: ["read_write"],
     } as ConnectorOAuthConfig,
   },
+  openai: {
+    label: "OpenAI",
+    helpText:
+      "Connect your OpenAI account to access GPT models, embeddings, image generation, and other AI capabilities",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [OpenAI](https://platform.openai.com)\n2. Go to **API keys** in the left sidebar\n3. Click **Create new secret key**\n4. Copy the key",
+        secrets: {
+          OPENAI_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "sk-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   similarweb: {
     label: "SimilarWeb",
     helpText:
@@ -1922,6 +1942,9 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       ),
     ],
   },
+  openai: {
+    services: [service("https://api.openai.com", bearerAuth("OPENAI_TOKEN"))],
+  },
   similarweb: {
     services: [
       service("https://api.similarweb.com", {
@@ -2069,6 +2092,7 @@ export const connectorTypeSchema = z.enum([
   "meta-ads",
   "posthog",
   "stripe",
+  "openai",
   "similarweb",
   "mailchimp",
   "plausible",
