@@ -236,28 +236,13 @@ class TestResponseHeadersHandler:
 
         assert flow.response.stream is True
 
-    def test_chunked_without_content_length_enables_streaming(self):
-        """Chunked transfer without Content-Length should be streamed."""
+    def test_non_sse_not_streamed(self):
+        """Non-SSE responses should not be streamed (even if chunked)."""
         flow = _make_http_flow(host="api.example.com")
         flow.response = MagicMock()
         flow.response.headers = {
             "content-type": "application/json",
             "transfer-encoding": "chunked",
-        }
-        flow.response.stream = False
-
-        mitm_addon.responseheaders(flow)
-
-        assert flow.response.stream is True
-
-    def test_chunked_with_content_length_not_streamed(self):
-        """Chunked transfer WITH Content-Length should not be streamed."""
-        flow = _make_http_flow(host="api.example.com")
-        flow.response = MagicMock()
-        flow.response.headers = {
-            "content-type": "application/json",
-            "transfer-encoding": "chunked",
-            "content-length": "1234",
         }
         flow.response.stream = False
 

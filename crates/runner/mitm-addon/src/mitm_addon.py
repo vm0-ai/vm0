@@ -546,28 +546,21 @@ def request(flow: http.HTTPFlow) -> None:
 
 def responseheaders(flow: http.HTTPFlow) -> None:
     """
-    Enable streaming for SSE and chunked responses to avoid ZlibError.
+    Enable streaming for SSE responses to avoid ZlibError.
 
     Without streaming, mitmproxy buffers the entire response body and
-    decompresses/recompresses gzip content. For streaming responses
-    (SSE + gzip), this causes ZlibError because the gzip stream may be
-    incomplete when mitmproxy tries to decode it.
+    decompresses/recompresses gzip content. For SSE streaming responses
+    (e.g., api.anthropic.com with gzip + text/event-stream), this causes
+    ZlibError because the gzip stream may be incomplete when mitmproxy
+    tries to decode it.
 
-    Streaming is enabled when:
-    - Content-Type is text/event-stream (SSE), OR
-    - Transfer-Encoding is chunked without Content-Length (streaming)
-
-    Non-streaming responses remain buffered so the response() hook can
-    still access flow.response.content for future use cases.
+    Only SSE responses are streamed. Other responses remain buffered so
+    the response() hook can still access flow.response.content.
     """
     if not flow.response:
         return
     content_type = flow.response.headers.get("content-type", "").lower()
     if "text/event-stream" in content_type:
-        flow.response.stream = True
-        return
-    transfer_encoding = flow.response.headers.get("transfer-encoding", "").lower()
-    if "chunked" in transfer_encoding and "content-length" not in flow.response.headers:
         flow.response.stream = True
 
 
