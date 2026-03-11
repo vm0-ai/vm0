@@ -551,9 +551,11 @@ pub struct NetnsPool {
     default_iface: String,
     /// Target pool size per queue (from config).
     target_size: usize,
-    /// Total plain namespaces ever created (initial + background).
+    /// Plain namespaces successfully created or in-flight (decremented on
+    /// failure). Compared against `target_size` to gate background replenishment.
     created_plain: usize,
-    /// Total proxy namespaces ever created (initial + background).
+    /// Proxy namespaces successfully created or in-flight (decremented on
+    /// failure). Compared against `target_size` to gate background replenishment.
     created_proxy: usize,
     /// Held for the lifetime of the pool to reserve the pool index.
     _lock: Flock<File>,
