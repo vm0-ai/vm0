@@ -78,6 +78,20 @@ configure_runner_group() {
   echo "  ✓ RUNNER_DEFAULT_GROUP=${group_name}"
 }
 
+# --- SSH key provisioning ---
+provision_ssh_key() {
+  local key_ref="op://Team/vm0-metal-local/private_key"
+  local key_path="$PROJECT_ROOT/.certs/vm0-metal-local.pem"
+
+  echo ""
+  echo "Provisioning SSH key..."
+  mkdir -p "$PROJECT_ROOT/.certs"
+  op read "${key_ref}?ssh-format=openssh" -o "$key_path" --force
+  chmod 600 "$key_path"
+  echo "  ✓ SSH key written to ${key_path}"
+}
+
 # --- Main ---
 sync_with_1password
 configure_runner_group
+provision_ssh_key
