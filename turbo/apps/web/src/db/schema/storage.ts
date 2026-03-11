@@ -14,7 +14,7 @@ import {
 /**
  * Storages table
  * Main table for storage with HEAD pointer to current version.
- * Unique constraint: (clerkOrgId, userId, name, type)
+ * Unique constraint: (orgId, userId, name, type)
  * - Volumes use VOLUME_SCOPE_USER_ID ("__scope__") as userId (scope-level shared)
  * - Artifacts and Memory use real userId (per-user isolated)
  */
@@ -26,7 +26,7 @@ export const storages = pgTable(
     scopeId: uuid("scope_id"), // Kept for Phase 5 removal, no longer used for queries
     name: varchar("name", { length: 256 }).notNull(),
     type: varchar("type", { length: 16 }).notNull().default("volume"),
-    clerkOrgId: text("clerk_org_id").notNull(),
+    orgId: text("org_id").notNull(),
     s3Prefix: text("s3_prefix").notNull(),
     size: bigint("size", { mode: "number" }).notNull().default(0),
     fileCount: integer("file_count").notNull().default(0),
@@ -37,10 +37,13 @@ export const storages = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    clerkOrgIdx: index("idx_storages_clerk_org").on(table.clerkOrgId),
-    clerkOrgUserNameTypeIdx: uniqueIndex(
-      "idx_storages_clerk_org_user_name_type",
-    ).on(table.clerkOrgId, table.userId, table.name, table.type),
+    orgIdx: index("idx_storages_org").on(table.orgId),
+    orgUserNameTypeIdx: uniqueIndex("idx_storages_org_user_name_type").on(
+      table.orgId,
+      table.userId,
+      table.name,
+      table.type,
+    ),
   }),
 );
 

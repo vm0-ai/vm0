@@ -23,7 +23,7 @@ const CACHE_TTL_MS = 60_000; // 1 minute
 export async function canAccessCompose(
   userId: string,
   userEmail: string,
-  compose: { id: string; userId: string; clerkOrgId: string },
+  compose: { id: string; userId: string; orgId: string },
 ): Promise<boolean> {
   // 1. Owner always has access
   if (compose.userId === userId) return true;
@@ -32,19 +32,19 @@ export async function canAccessCompose(
   const authResult = await auth();
 
   // JWT fast path: active org matches → trust JWT, no API call
-  if (authResult.orgId === compose.clerkOrgId) {
+  if (authResult.orgId === compose.orgId) {
     return true;
   }
 
   // Cache-backed Clerk API fallback for cross-org or non-session contexts
-  if (!compose.clerkOrgId.startsWith("pending_")) {
+  if (!compose.orgId.startsWith("pending_")) {
     // Check org_members_cache first (DB read, no Clerk API call)
     const [cached] = await globalThis.services.db
       .select({ cachedAt: orgMembersCache.cachedAt })
       .from(orgMembersCache)
       .where(
         and(
-          eq(orgMembersCache.clerkOrgId, compose.clerkOrgId),
+          eq(orgMembersCache.orgId, compose.orgId),
           eq(orgMembersCache.userId, userId),
         ),
       )
@@ -61,7 +61,7 @@ export async function canAccessCompose(
       limit: 100,
     });
     const isMember = memberships.data.some(
-      (m) => m.organization.id === compose.clerkOrgId,
+      (m) => m.organization.id === compose.orgId,
     );
     if (isMember) {
       // Fire-and-forget: cache write is non-critical, don't block access
@@ -69,12 +69,12 @@ export async function canAccessCompose(
       void globalThis.services.db
         .insert(orgMembersCache)
         .values({
-          clerkOrgId: compose.clerkOrgId,
+          orgId: compose.orgId,
           userId,
           cachedAt: now,
         })
         .onConflictDoUpdate({
-          target: [orgMembersCache.clerkOrgId, orgMembersCache.userId],
+          target: [orgMembersCache.orgId, orgMembersCache.userId],
           set: { cachedAt: now },
         })
         .catch((err: unknown) => {
@@ -184,7 +184,7 @@ export async function getEmailSharedAgents(
       headVersionId: agentComposes.headVersionId,
       createdAt: agentComposes.createdAt,
       updatedAt: agentComposes.updatedAt,
-      clerkOrgId: agentComposes.clerkOrgId,
+      orgId: agentComposes.orgId,
     })
     .from(agentPermissions)
     .innerJoin(
@@ -195,14 +195,14 @@ export async function getEmailSharedAgents(
     .orderBy(desc(agentComposes.createdAt));
 
   // Resolve scope slugs via org cache (skip orgs that fail lookup)
-  const uniqueClerkOrgIds = [...new Set(rows.map((r) => r.clerkOrgId))];
+  const uniqueOrgIds = [...new Set(rows.map((r) => r.orgId))];
   const orgDataResults = await Promise.all(
-    uniqueClerkOrgIds.map(async (id) => {
+    uniqueOrgIds.map(async (id) => {
       try {
         return [id, await getOrgData(id)] as const;
       } catch (err) {
         log.warn("failed to resolve org data for shared agent", {
-          clerkOrgId: id,
+          orgId: id,
           error: err,
         });
         return [id, null] as const;
@@ -217,7 +217,7 @@ export async function getEmailSharedAgents(
     headVersionId: row.headVersionId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    scopeSlug: orgDataMap.get(row.clerkOrgId)?.slug ?? "",
+    scopeSlug: orgDataMap.get(row.orgId)?.slug ?? "",
   }));
 }
 

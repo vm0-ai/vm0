@@ -41,7 +41,7 @@ const router = tsr.router(variablesByNameContract, {
       orgParam,
       tokenScopeId,
     );
-    const variable = await getVariable(scope.clerkOrgId, userId, params.name);
+    const variable = await getVariable(scope.orgId, userId, params.name);
     if (!variable) {
       return createErrorResponse(
         "NOT_FOUND",
@@ -85,7 +85,7 @@ const router = tsr.router(variablesByNameContract, {
         orgParam,
         tokenScopeId,
       );
-      await deleteVariable(scope.clerkOrgId, userId, params.name);
+      await deleteVariable(scope.orgId, userId, params.name);
 
       return {
         status: 204 as const,

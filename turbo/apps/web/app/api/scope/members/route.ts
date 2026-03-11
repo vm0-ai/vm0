@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     );
     const status = await getScopeMembers(
       userId,
-      scope.clerkOrgId,
+      scope.orgId,
       scope.slug,
       scope.createdAt,
     );

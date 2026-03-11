@@ -46,14 +46,14 @@ interface LogsQuery {
  */
 function buildAgentFilterConditions(
   query: LogsQuery,
-  scopeClerkOrgId: string | null,
+  scopeOrgId: string | null,
 ): SQL[] {
   const conditions: SQL[] = [];
 
   if (query.name) {
     conditions.push(eq(agentComposes.name, query.name));
-    if (scopeClerkOrgId) {
-      conditions.push(eq(agentComposes.clerkOrgId, scopeClerkOrgId));
+    if (scopeOrgId) {
+      conditions.push(eq(agentComposes.orgId, scopeOrgId));
     }
   } else if (query.agent) {
     conditions.push(eq(agentComposes.name, query.agent));
@@ -88,10 +88,10 @@ function buildCursorCondition(cursor: string): SQL | null {
 async function getTotalCount(
   userId: string,
   query: LogsQuery,
-  scopeClerkOrgId: string | null,
+  scopeOrgId: string | null,
 ): Promise<number> {
   const conditions: SQL[] = [eq(agentRuns.userId, userId)];
-  conditions.push(...buildAgentFilterConditions(query, scopeClerkOrgId));
+  conditions.push(...buildAgentFilterConditions(query, scopeOrgId));
 
   const needsComposeJoin = !!(query.name || query.agent || query.search);
 
@@ -147,12 +147,12 @@ const router = tsr.router(platformLogsListContract, {
 
     const limit = query.limit ?? 20;
 
-    // Resolve scope slug to clerkOrgId for filtering
-    let scopeClerkOrgId: string | null = null;
+    // Resolve scope slug to orgId for filtering
+    let scopeOrgId: string | null = null;
     if (query.scope) {
       const orgData = await getOrgBySlug(query.scope);
-      scopeClerkOrgId = orgData?.clerkOrgId ?? null;
-      if (!scopeClerkOrgId) {
+      scopeOrgId = orgData?.orgId ?? null;
+      if (!scopeOrgId) {
         return {
           status: 200 as const,
           body: {
@@ -173,7 +173,7 @@ const router = tsr.router(platformLogsListContract, {
       }
     }
 
-    conditions.push(...buildAgentFilterConditions(query, scopeClerkOrgId));
+    conditions.push(...buildAgentFilterConditions(query, scopeOrgId));
 
     const runs = await globalThis.services.db
       .select({
@@ -181,7 +181,7 @@ const router = tsr.router(platformLogsListContract, {
         status: agentRuns.status,
         createdAt: agentRuns.createdAt,
         composeName: agentComposes.name,
-        clerkOrgId: agentComposes.clerkOrgId,
+        orgId: agentComposes.orgId,
         sessionId: conversations.cliAgentSessionId,
         composeContent: agentComposeVersions.content,
       })
@@ -200,25 +200,25 @@ const router = tsr.router(platformLogsListContract, {
       .limit(limit + 1);
 
     // Resolve scope slugs via org cache (skip orgs that fail lookup)
-    const uniqueClerkOrgIds = [
-      ...new Set(runs.filter((r) => r.clerkOrgId).map((r) => r.clerkOrgId!)),
+    const uniqueOrgIds = [
+      ...new Set(runs.filter((r) => r.orgId).map((r) => r.orgId!)),
     ];
     const slugMap = new Map<string, string>();
     await Promise.all(
-      uniqueClerkOrgIds.map(async (id) => {
+      uniqueOrgIds.map(async (id) => {
         try {
           const data = await getOrgData(id);
           slugMap.set(id, data.slug);
         } catch (err) {
           log.warn("failed to resolve org slug for run", {
-            clerkOrgId: id,
+            orgId: id,
             error: err,
           });
         }
       }),
     );
 
-    const totalCount = await getTotalCount(userId, query, scopeClerkOrgId);
+    const totalCount = await getTotalCount(userId, query, scopeOrgId);
     const totalPages = Math.max(1, Math.ceil(totalCount / limit));
 
     // Determine pagination info
@@ -239,9 +239,7 @@ const router = tsr.router(platformLogsListContract, {
           id: run.id,
           sessionId: run.sessionId ?? null,
           agentName: run.composeName ?? "unknown",
-          scopeSlug: run.clerkOrgId
-            ? (slugMap.get(run.clerkOrgId) ?? null)
-            : null,
+          scopeSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
           framework: extractFramework(run.composeContent),
           status: run.status as PlatformLogStatus,
           createdAt: run.createdAt.toISOString(),

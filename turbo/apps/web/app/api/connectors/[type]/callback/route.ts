@@ -202,7 +202,7 @@ export async function GET(
     // may append OAuth scopes as ?scope=... which would be mistaken for an app scope slug.
     const { scope } = await resolveScope(userId, null, null, tokenScopeId);
     const { created } = await upsertOAuthConnector(
-      scope.clerkOrgId,
+      scope.orgId,
       scope.id,
       userId,
       connectorType,

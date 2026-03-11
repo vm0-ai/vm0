@@ -29,15 +29,15 @@ export const connectors = pgTable(
     oauthScopes: text("oauth_scopes"), // JSON array of scopes
     tokenExpiresAt: timestamp("token_expires_at"), // null = non-expiring token
     userId: text("user_id").notNull(),
-    clerkOrgId: text("clerk_org_id").notNull(),
+    orgId: text("org_id").notNull(),
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    index("idx_connectors_clerk_org").on(table.clerkOrgId),
-    uniqueIndex("idx_connectors_clerk_org_user_type").on(
-      table.clerkOrgId,
+    index("idx_connectors_org").on(table.orgId),
+    uniqueIndex("idx_connectors_org_user_type").on(
+      table.orgId,
       table.userId,
       table.type,
     ),

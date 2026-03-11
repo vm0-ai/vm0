@@ -14,12 +14,12 @@ import {
 export const orgMembersCache = pgTable(
   "org_members_cache",
   {
-    clerkOrgId: text("clerk_org_id").notNull(),
+    orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     timezone: text("timezone"),
     notifyEmail: boolean("notify_email").notNull().default(false),
     notifySlack: boolean("notify_slack").notNull().default(true),
     cachedAt: timestamp("cached_at").defaultNow().notNull(),
   },
-  (table) => [primaryKey({ columns: [table.clerkOrgId, table.userId] })],
+  (table) => [primaryKey({ columns: [table.orgId, table.userId] })],
 );

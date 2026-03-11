@@ -26,28 +26,28 @@ describe("getOrgData", () => {
       clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
     });
     await createTestScope(slug);
-    const clerkOrgId = `org_mock_${slug}`;
+    const orgId = `org_mock_${slug}`;
 
     // Delete pre-populated orgCache to test cache-miss behavior
-    await deleteOrgCacheEntry(clerkOrgId);
+    await deleteOrgCacheEntry(orgId);
 
-    const result = await getOrgData(clerkOrgId);
+    const result = await getOrgData(orgId);
 
     expect(result).toEqual({
-      clerkOrgId,
+      orgId,
       slug,
       tier: "free",
     });
 
     // Verify cache row was created
-    const cached = await getOrgCacheEntry(clerkOrgId);
+    const cached = await getOrgCacheEntry(orgId);
     expect(cached).not.toBeNull();
     expect(cached!.slug).toBe(slug);
 
     // Verify Clerk API was called
     const client = await clerkClient();
     expect(client.organizations.getOrganization).toHaveBeenCalledWith({
-      organizationId: clerkOrgId,
+      organizationId: orgId,
     });
   });
 
@@ -56,19 +56,19 @@ describe("getOrgData", () => {
     const slug = uniqueId("scope");
     mockClerk({ userId });
     await createTestScope(slug);
-    const clerkOrgId = `org_mock_${slug}`;
+    const orgId = `org_mock_${slug}`;
 
     // Pre-populate cache with fresh entry
     await insertOrgCacheEntry({
-      clerkOrgId,
+      orgId,
       slug: "cached-slug",
       tier: "pro",
     });
 
-    const result = await getOrgData(clerkOrgId);
+    const result = await getOrgData(orgId);
 
     expect(result).toEqual({
-      clerkOrgId,
+      orgId,
       slug: "cached-slug",
       tier: "pro",
     });
@@ -87,31 +87,31 @@ describe("getOrgData", () => {
       clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
     });
     await createTestScope(slug);
-    const clerkOrgId = `org_mock_${slug}`;
+    const orgId = `org_mock_${slug}`;
 
     // Overwrite the fresh orgCache entry from createTestScope with a stale one
     const twoMinutesAgo = new Date(Date.now() - 120_000);
     await insertOrgCacheEntry({
-      clerkOrgId,
+      orgId,
       slug: "old-slug",
       tier: "free",
       cachedAt: twoMinutesAgo,
     });
 
-    const result = await getOrgData(clerkOrgId);
+    const result = await getOrgData(orgId);
 
     // Should have fresh data from Clerk mock (slug = scope name from createOrganization)
     expect(result.slug).toBe(slug);
-    expect(result.clerkOrgId).toBe(clerkOrgId);
+    expect(result.orgId).toBe(orgId);
 
     // Verify Clerk API was called
     const client = await clerkClient();
     expect(client.organizations.getOrganization).toHaveBeenCalledWith({
-      organizationId: clerkOrgId,
+      organizationId: orgId,
     });
 
     // Verify cache was updated
-    const cached = await getOrgCacheEntry(clerkOrgId);
+    const cached = await getOrgCacheEntry(orgId);
     expect(cached!.slug).toBe(slug);
     expect(cached!.cachedAt.getTime()).toBeGreaterThan(twoMinutesAgo.getTime());
   });
@@ -121,12 +121,12 @@ describe("getOrgData", () => {
     const slug = uniqueId("scope");
     mockClerk({ userId });
     await createTestScope(slug);
-    const clerkOrgId = `org_mock_${slug}`;
+    const orgId = `org_mock_${slug}`;
 
     // Override getOrganization to return tier in publicMetadata
     const client = await clerkClient();
     vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
-      id: clerkOrgId,
+      id: orgId,
       slug,
       name: slug,
       publicMetadata: { tier: "pro" },
@@ -134,7 +134,7 @@ describe("getOrgData", () => {
       ReturnType<typeof client.organizations.getOrganization>
     >);
 
-    const result = await getOrgData(clerkOrgId);
+    const result = await getOrgData(orgId);
 
     expect(result.tier).toBe("pro");
   });
@@ -144,12 +144,12 @@ describe("getOrgData", () => {
     const slug = uniqueId("scope");
     mockClerk({ userId });
     await createTestScope(slug);
-    const clerkOrgId = `org_mock_${slug}`;
+    const orgId = `org_mock_${slug}`;
 
     // Override getOrganization to return null slug
     const client = await clerkClient();
     vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
-      id: clerkOrgId,
+      id: orgId,
       slug: null,
       name: slug,
       publicMetadata: {},
@@ -157,8 +157,8 @@ describe("getOrgData", () => {
       ReturnType<typeof client.organizations.getOrganization>
     >);
 
-    await expect(getOrgData(clerkOrgId)).rejects.toThrow(
-      `Clerk organization ${clerkOrgId} has no slug`,
+    await expect(getOrgData(orgId)).rejects.toThrow(
+      `Clerk organization ${orgId} has no slug`,
     );
   });
 });
@@ -176,21 +176,21 @@ describe("getOrgBySlug", () => {
       clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
     });
     await createTestScope(slug);
-    const clerkOrgId = `org_mock_${slug}`;
+    const orgId = `org_mock_${slug}`;
 
     // Delete pre-populated orgCache to test cache-miss behavior
-    await deleteOrgCacheEntry(clerkOrgId);
+    await deleteOrgCacheEntry(orgId);
 
     const result = await getOrgBySlug(slug);
 
     expect(result).toEqual({
-      clerkOrgId,
+      orgId,
       slug,
       tier: "free",
     });
 
     // Verify cache row was created
-    const cached = await getOrgCacheEntry(clerkOrgId);
+    const cached = await getOrgCacheEntry(orgId);
     expect(cached).not.toBeNull();
     expect(cached!.slug).toBe(slug);
 
@@ -209,14 +209,14 @@ describe("getOrgBySlug", () => {
       clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
     });
     await createTestScope(slug);
-    const clerkOrgId = `org_mock_${slug}`;
+    const orgId = `org_mock_${slug}`;
 
     // Overwrite cache with custom tier
-    await insertOrgCacheEntry({ clerkOrgId, slug, tier: "pro" });
+    await insertOrgCacheEntry({ orgId, slug, tier: "pro" });
 
     const result = await getOrgBySlug(slug);
 
-    expect(result).toEqual({ clerkOrgId, slug, tier: "pro" });
+    expect(result).toEqual({ orgId, slug, tier: "pro" });
 
     // Clerk API should NOT have been called
     const client = await clerkClient();
@@ -240,12 +240,12 @@ describe("getOrgBySlug", () => {
       clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
     });
     await createTestScope(slug);
-    const clerkOrgId = `org_mock_${slug}`;
+    const orgId = `org_mock_${slug}`;
 
     // Overwrite with stale entry
     const twoMinutesAgo = new Date(Date.now() - 120_000);
     await insertOrgCacheEntry({
-      clerkOrgId,
+      orgId,
       slug,
       tier: "free",
       cachedAt: twoMinutesAgo,
@@ -254,7 +254,7 @@ describe("getOrgBySlug", () => {
     const result = await getOrgBySlug(slug);
 
     expect(result).not.toBeNull();
-    expect(result!.clerkOrgId).toBe(clerkOrgId);
+    expect(result!.orgId).toBe(orgId);
 
     // Verify Clerk API was called with slug param
     const client = await clerkClient();

@@ -151,7 +151,7 @@ async function processScope(
 
     const result = await db
       .update(scopes)
-      .set({ clerkOrgId: orgId, updatedAt: sql`NOW()` })
+      .set({ orgId, updatedAt: sql`NOW()` })
       .where(eq(scopes.id, scope.id))
       .returning({ id: scopes.id });
 
@@ -217,8 +217,8 @@ async function main() {
     // Note: scopes.ownerId was removed from the Drizzle schema (Phase 2),
     // so we use raw SQL column references for this legacy migration script.
     const whereClause = USER_ID
-      ? and(isNull(scopes.clerkOrgId), sql`"scopes"."owner_id" = ${USER_ID}`)
-      : isNull(scopes.clerkOrgId);
+      ? and(isNull(scopes.orgId), sql`"scopes"."owner_id" = ${USER_ID}`)
+      : isNull(scopes.orgId);
 
     const nullScopes: ScopeRow[] = await db
       .select({
@@ -260,7 +260,7 @@ async function main() {
     const [remaining] = await db
       .select({ count: sql<number>`count(*)` })
       .from(scopes)
-      .where(isNull(scopes.clerkOrgId));
+      .where(isNull(scopes.orgId));
 
     console.log("\n=== Summary ===");
     console.log(`Total:     ${stats.total}`);

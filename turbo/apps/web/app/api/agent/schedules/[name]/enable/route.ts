@@ -59,7 +59,7 @@ export async function POST(
   try {
     const schedule = await enableSchedule(
       userId,
-      scope.clerkOrgId,
+      scope.orgId,
       body.composeId,
       name,
     );

@@ -41,7 +41,7 @@ export const agentRuns = pgTable(
     sandboxId: varchar("sandbox_id", { length: 255 }),
     result: jsonb("result"),
     error: text("error"),
-    clerkOrgId: text("clerk_org_id").notNull(),
+    orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     startedAt: timestamp("started_at"),
     completedAt: timestamp("completed_at"),
@@ -53,7 +53,7 @@ export const agentRuns = pgTable(
       table.userId,
       table.createdAt.desc(),
     ),
-    index("idx_agent_runs_clerk_org").on(table.clerkOrgId),
+    index("idx_agent_runs_org").on(table.orgId),
     // Composite index for status-based heartbeat queries
     index("idx_agent_runs_status_heartbeat").on(
       table.status,

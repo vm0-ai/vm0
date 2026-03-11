@@ -93,15 +93,13 @@ export async function GET(request: Request) {
       id: agentComposes.id,
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
-      clerkOrgId: agentComposes.clerkOrgId,
+      orgId: agentComposes.orgId,
     })
     .from(agentComposes)
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
 
-  const scopeSlug = compose
-    ? (await getOrgData(compose.clerkOrgId)).slug
-    : null;
+  const scopeSlug = compose ? (await getOrgData(compose.orgId)).slug : null;
 
   // Extract required secrets/vars from agent compose
   let requiredSecrets: string[] = [];
@@ -128,9 +126,9 @@ export async function GET(request: Request) {
 
   // Get user's existing secrets, vars, connectors
   const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(scope.clerkOrgId, userId),
-    listVariables(scope.clerkOrgId, userId),
-    listConnectors(scope.clerkOrgId, userId),
+    listSecrets(scope.orgId, userId),
+    listVariables(scope.orgId, userId),
+    listConnectors(scope.orgId, userId),
   ]);
 
   const connectorProvided = getConnectorProvidedSecretNames(
@@ -331,7 +329,7 @@ export async function PATCH(request: Request) {
     slashIndex === -1 ? null : body.agentName.slice(0, slashIndex);
 
   // Resolve target scope
-  let targetClerkOrgId: string;
+  let targetOrgId: string;
   if (scopeSlug) {
     const targetOrg = await getOrgBySlug(scopeSlug);
     if (!targetOrg) {
@@ -340,10 +338,10 @@ export async function PATCH(request: Request) {
         { status: 400 },
       );
     }
-    targetClerkOrgId = targetOrg.clerkOrgId;
+    targetOrgId = targetOrg.orgId;
   } else {
     const { scope } = await resolveScope(userId);
-    targetClerkOrgId = scope.clerkOrgId;
+    targetOrgId = scope.orgId;
   }
 
   // Find agent compose by name in target scope
@@ -352,7 +350,7 @@ export async function PATCH(request: Request) {
     .from(agentComposes)
     .where(
       and(
-        eq(agentComposes.clerkOrgId, targetClerkOrgId),
+        eq(agentComposes.orgId, targetOrgId),
         eq(agentComposes.name, agentName),
       ),
     )

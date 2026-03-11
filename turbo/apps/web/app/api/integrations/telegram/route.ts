@@ -95,15 +95,13 @@ export async function GET(request: Request) {
       id: agentComposes.id,
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
-      clerkOrgId: agentComposes.clerkOrgId,
+      orgId: agentComposes.orgId,
     })
     .from(agentComposes)
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
 
-  const scopeSlug = compose
-    ? (await getOrgData(compose.clerkOrgId)).slug
-    : null;
+  const scopeSlug = compose ? (await getOrgData(compose.orgId)).slug : null;
 
   // Extract required secrets/vars from agent compose
   let requiredSecrets: string[] = [];
@@ -128,9 +126,9 @@ export async function GET(request: Request) {
   // Resolve user's default scope and get existing secrets, vars, connectors
   const { scope } = await resolveScope(userId, null, null, tokenScopeId);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(scope.clerkOrgId, userId),
-    listVariables(scope.clerkOrgId, userId),
-    listConnectors(scope.clerkOrgId, userId),
+    listSecrets(scope.orgId, userId),
+    listVariables(scope.orgId, userId),
+    listConnectors(scope.orgId, userId),
   ]);
 
   const connectorProvided = getConnectorProvidedSecretNames(
@@ -259,7 +257,7 @@ export async function PATCH(request: Request) {
     slashIndex === -1 ? null : body.agentName.slice(0, slashIndex);
 
   // Resolve target scope
-  let targetScope: { clerkOrgId: string };
+  let targetScope: { orgId: string };
   if (scopeSlug) {
     const targetOrg = await getOrgBySlug(scopeSlug);
     if (!targetOrg) {
@@ -294,7 +292,7 @@ export async function PATCH(request: Request) {
     .from(agentComposes)
     .where(
       and(
-        eq(agentComposes.clerkOrgId, targetScope.clerkOrgId),
+        eq(agentComposes.orgId, targetScope.orgId),
         eq(agentComposes.name, agentName),
       ),
     )

@@ -23,7 +23,7 @@ export async function createTelegramInstallation(): Promise<string> {
     .insert(scopes)
     .values({
       slug: suffix,
-      clerkOrgId: uniqueId("org"),
+      orgId: uniqueId("org"),
     })
     .returning();
 
@@ -32,7 +32,7 @@ export async function createTelegramInstallation(): Promise<string> {
     .values({
       userId: uniqueId("test-user"),
       scopeId: scope!.id,
-      clerkOrgId: scope!.clerkOrgId,
+      orgId: scope!.orgId,
       name: uniqueId("test-compose"),
     })
     .returning();

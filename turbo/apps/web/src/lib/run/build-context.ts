@@ -183,7 +183,7 @@ interface ModelProviderSecretResult {
  * For providers with environment mapping (e.g., moonshot), resolves all env vars
  */
 async function resolveModelProviderSecrets(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
   framework: string,
   hasExplicitModelProviderConfig: boolean,
@@ -201,7 +201,7 @@ async function resolveModelProviderSecrets(
 
   // Fetch default provider once (used for type resolution, model selection, and auth method)
   const defaultProvider = await getDefaultModelProvider(
-    clerkOrgId,
+    orgId,
     userId,
     framework as ModelProviderFramework,
   );
@@ -232,7 +232,7 @@ async function resolveModelProviderSecrets(
 
     // Fetch all model-provider secrets by name
     const allSecretValues = await getSecretValues(
-      clerkOrgId,
+      orgId,
       userId,
       "model-provider",
     );
@@ -279,7 +279,7 @@ async function resolveModelProviderSecrets(
   }
 
   const secretValue = await getSecretValue(
-    clerkOrgId,
+    orgId,
     userId,
     secretName,
     "model-provider",
@@ -317,7 +317,7 @@ async function resolveModelProviderSecrets(
  */
 async function refreshConnectorAccessToken(
   connectorType: string,
-  clerkOrgId: string,
+  orgId: string,
   scopeId: string,
   userId: string,
   connectorSecrets: Record<string, string>,
@@ -357,7 +357,7 @@ async function refreshConnectorAccessToken(
 
     // Persist new tokens to database
     await upsertConnectorSecret(
-      clerkOrgId,
+      orgId,
       scopeId,
       userId,
       accessTokenSecret,
@@ -365,7 +365,7 @@ async function refreshConnectorAccessToken(
     );
     if (result.refreshToken) {
       await upsertConnectorSecret(
-        clerkOrgId,
+        orgId,
         scopeId,
         userId,
         refreshTokenSecret,
@@ -406,7 +406,7 @@ interface ConnectorSecretResult {
  * environment variables (e.g., GH_TOKEN, GITHUB_TOKEN for GitHub connector).
  */
 async function resolveConnectorSecrets(
-  clerkOrgId: string,
+  orgId: string,
   scopeId: string,
   userId: string,
 ): Promise<ConnectorSecretResult> {
@@ -414,9 +414,7 @@ async function resolveConnectorSecrets(
   const userConnectors = await globalThis.services.db
     .select({ type: connectors.type, authMethod: connectors.authMethod })
     .from(connectors)
-    .where(
-      and(eq(connectors.clerkOrgId, clerkOrgId), eq(connectors.userId, userId)),
-    );
+    .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId)));
 
   if (userConnectors.length === 0) {
     return {
@@ -426,11 +424,7 @@ async function resolveConnectorSecrets(
     };
   }
 
-  const connectorSecrets = await getSecretValues(
-    clerkOrgId,
-    userId,
-    "connector",
-  );
+  const connectorSecrets = await getSecretValues(orgId, userId, "connector");
   if (Object.keys(connectorSecrets).length === 0) {
     return {
       connectorSecrets: undefined,
@@ -464,7 +458,7 @@ async function resolveConnectorSecrets(
       .map(({ type }) =>
         refreshConnectorAccessToken(
           type,
-          clerkOrgId,
+          orgId,
           scopeId,
           userId,
           connectorSecrets,
@@ -507,7 +501,7 @@ async function resolveConnectorSecrets(
  * Fetch secrets referenced in compose environment
  */
 async function fetchReferencedSecrets(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
   environment: Record<string, string> | undefined,
 ): Promise<Record<string, string> | undefined> {
@@ -526,9 +520,9 @@ async function fetchReferencedSecrets(
   log.debug(`Secrets referenced in environment: ${referencedNames.join(", ")}`);
 
   // Only fetch user secrets for variable expansion (model-provider secrets are isolated)
-  const userSecrets = await getSecretValues(clerkOrgId, userId, "user");
+  const userSecrets = await getSecretValues(orgId, userId, "user");
   log.debug(
-    `Fetched ${Object.keys(userSecrets).length} user secret(s) for org ${clerkOrgId}`,
+    `Fetched ${Object.keys(userSecrets).length} user secret(s) for org ${orgId}`,
   );
   return userSecrets;
 }
@@ -641,17 +635,17 @@ function mergeConnectorSecretsForReferences(
  * @returns Merged variables (CLI takes precedence)
  */
 async function fetchAndMergeVariables(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
   cliVars: Record<string, string> | undefined,
 ): Promise<Record<string, string> | undefined> {
-  const storedVars = await getVariableValues(clerkOrgId, userId);
+  const storedVars = await getVariableValues(orgId, userId);
   if (Object.keys(storedVars).length === 0) {
     return cliVars;
   }
 
   log.debug(
-    `Fetched ${Object.keys(storedVars).length} stored variable(s) for org ${clerkOrgId}`,
+    `Fetched ${Object.keys(storedVars).length} stored variable(s) for org ${orgId}`,
   );
 
   // Merge: CLI vars override stored vars
@@ -699,7 +693,7 @@ interface BuildContextParams {
   // When not provided, resolved via getDefaultScope fallback.
   scopeId?: string;
   scopeSlug?: string;
-  clerkOrgId?: string;
+  orgId?: string;
 }
 
 /**
@@ -755,7 +749,7 @@ async function loadAgentComposeForNewRun(
  * Extracted from buildExecutionContext to reduce complexity.
  */
 async function resolveSecretsAndEnvironment(
-  clerkOrgId: string,
+  orgId: string,
   scopeId: string,
   agentCompose: unknown,
   firstAgent:
@@ -783,16 +777,16 @@ async function resolveSecretsAndEnvironment(
   // so there is no data dependency between them.
   const [dbSecrets, modelProviderResult, connectorResult, mergedVars] =
     await Promise.all([
-      fetchReferencedSecrets(clerkOrgId, userId, firstAgent?.environment),
+      fetchReferencedSecrets(orgId, userId, firstAgent?.environment),
       resolveModelProviderSecrets(
-        clerkOrgId,
+        orgId,
         userId,
         framework,
         hasExplicitModelProviderConfig,
         modelProvider,
       ),
-      resolveConnectorSecrets(clerkOrgId, scopeId, userId),
-      fetchAndMergeVariables(clerkOrgId, userId, vars),
+      resolveConnectorSecrets(orgId, scopeId, userId),
+      fetchAndMergeVariables(orgId, userId, vars),
     ]);
 
   // Merge platform secrets from all sources for masking.
@@ -916,41 +910,41 @@ async function resolveScopes(params: BuildContextParams): Promise<{
   runtimeScopeId: string;
   runtimeClerkOrgId: string;
   pendingRuntimeScope:
-    | Promise<{ id: string; slug: string; clerkOrgId: string }>
-    | { id: string; slug: string; clerkOrgId: string };
+    | Promise<{ id: string; slug: string; orgId: string }>
+    | { id: string; slug: string; orgId: string };
 }> {
   if (params.scopeId) {
-    if (params.scopeSlug && params.clerkOrgId) {
+    if (params.scopeSlug && params.orgId) {
       return {
         runtimeScopeId: params.scopeId,
-        runtimeClerkOrgId: params.clerkOrgId,
+        runtimeClerkOrgId: params.orgId,
         pendingRuntimeScope: {
           id: params.scopeId,
           slug: params.scopeSlug,
-          clerkOrgId: params.clerkOrgId,
+          orgId: params.orgId,
         },
       };
     }
-    // Fallback: resolve clerkOrgId from scopeId, then slug from org cache
+    // Fallback: resolve orgId from scopeId, then slug from org cache
     const scope = await getScopeById(params.scopeId);
     let resolved;
     if (scope) {
-      const orgData = await getOrgData(scope.clerkOrgId);
+      const orgData = await getOrgData(scope.orgId);
       resolved = {
         id: params.scopeId,
         slug: orgData.slug,
-        clerkOrgId: scope.clerkOrgId,
+        orgId: scope.orgId,
       };
     } else {
       resolved = {
         id: params.scopeId,
         slug: "",
-        clerkOrgId: "",
+        orgId: "",
       };
     }
     return {
       runtimeScopeId: params.scopeId,
-      runtimeClerkOrgId: resolved.clerkOrgId,
+      runtimeClerkOrgId: resolved.orgId,
       pendingRuntimeScope: resolved,
     };
   }
@@ -958,11 +952,11 @@ async function resolveScopes(params: BuildContextParams): Promise<{
   const { scope } = await getDefaultScope(params.userId);
   return {
     runtimeScopeId: scope.id,
-    runtimeClerkOrgId: scope.clerkOrgId,
+    runtimeClerkOrgId: scope.orgId,
     pendingRuntimeScope: {
       id: scope.id,
       slug: scope.slug,
-      clerkOrgId: scope.clerkOrgId,
+      orgId: scope.orgId,
     },
   };
 }

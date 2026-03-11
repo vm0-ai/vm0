@@ -38,7 +38,7 @@ const router = tsr.router(modelProvidersMainContract, {
       orgParam,
       tokenScopeId,
     );
-    const providers = await listModelProviders(scope.clerkOrgId, userId);
+    const providers = await listModelProviders(scope.orgId, userId);
 
     return {
       status: 200 as const,
@@ -100,7 +100,7 @@ const router = tsr.router(modelProvidersMainContract, {
           );
         }
         const result = await upsertMultiAuthModelProvider(
-          scope.clerkOrgId,
+          scope.orgId,
           scope.id,
           userId,
           type,
@@ -119,7 +119,7 @@ const router = tsr.router(modelProvidersMainContract, {
           );
         }
         const result = await upsertModelProvider(
-          scope.clerkOrgId,
+          scope.orgId,
           scope.id,
           userId,
           type,

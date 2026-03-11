@@ -22,7 +22,7 @@ import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
-import { getScopeByClerkOrgId } from "../../../../src/lib/scope/scope-service";
+import { getScopeByOrgId } from "../../../../src/lib/scope/scope-service";
 import { getOrgBySlug } from "../../../../src/lib/scope/org-cache-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
@@ -48,7 +48,7 @@ const router = tsr.router(composesMainContract, {
     // isCrossScopeLookup is true when an explicit scope/org param is provided,
     // which requires canAccessCompose authorization below.
     const isCrossScopeLookup = Boolean(query.scope || query.org);
-    let clerkOrgId: string;
+    let orgId: string;
     if (query.scope) {
       const orgData = await getOrgBySlug(query.scope);
       if (!orgData) {
@@ -62,9 +62,9 @@ const router = tsr.router(composesMainContract, {
           },
         };
       }
-      clerkOrgId = orgData.clerkOrgId;
+      orgId = orgData.orgId;
     } else if (query.org) {
-      const scope = await getScopeByClerkOrgId(query.org);
+      const scope = await getScopeByOrgId(query.org);
       if (!scope) {
         return {
           status: 404 as const,
@@ -76,7 +76,7 @@ const router = tsr.router(composesMainContract, {
           },
         };
       }
-      clerkOrgId = scope.clerkOrgId;
+      orgId = scope.orgId;
     } else {
       const { scope: resolvedScope } = await resolveScope(
         userId,
@@ -84,7 +84,7 @@ const router = tsr.router(composesMainContract, {
         null,
         tokenScopeId,
       );
-      clerkOrgId = resolvedScope.clerkOrgId;
+      orgId = resolvedScope.orgId;
     }
 
     // JOIN compose + version in a single query
@@ -92,7 +92,7 @@ const router = tsr.router(composesMainContract, {
       .select({
         id: agentComposes.id,
         userId: agentComposes.userId,
-        clerkOrgId: agentComposes.clerkOrgId,
+        orgId: agentComposes.orgId,
         name: agentComposes.name,
         headVersionId: agentComposes.headVersionId,
         createdAt: agentComposes.createdAt,
@@ -105,10 +105,7 @@ const router = tsr.router(composesMainContract, {
         eq(agentComposes.headVersionId, agentComposeVersions.id),
       )
       .where(
-        and(
-          eq(agentComposes.clerkOrgId, clerkOrgId),
-          eq(agentComposes.name, query.name),
-        ),
+        and(eq(agentComposes.orgId, orgId), eq(agentComposes.name, query.name)),
       )
       .limit(1);
 
@@ -287,7 +284,7 @@ const router = tsr.router(composesMainContract, {
         .from(agentComposes)
         .where(
           and(
-            eq(agentComposes.clerkOrgId, scope.clerkOrgId),
+            eq(agentComposes.orgId, scope.orgId),
             eq(agentComposes.name, normalizedAgentName),
           ),
         )
@@ -315,7 +312,7 @@ const router = tsr.router(composesMainContract, {
           userId,
           scopeId: scope.id,
           name: normalizedAgentName,
-          clerkOrgId: scope.clerkOrgId,
+          orgId: scope.orgId,
         })
         .returning({ id: agentComposes.id });
 

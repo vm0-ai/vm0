@@ -12,7 +12,7 @@ import {
 } from "../../../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
-import { getDefaultScopeByClerkUserId } from "../../../../../../src/lib/scope/scope-service";
+import { getDefaultScopeByUserId } from "../../../../../../src/lib/scope/scope-service";
 import {
   s3ObjectExists,
   verifyS3FilesExist,
@@ -66,7 +66,7 @@ const router = tsr.router(webhookStoragesCommitContract, {
     }
 
     // Resolve Runtime Scope (user's default scope)
-    const runtimeScope = await getDefaultScopeByClerkUserId(userId);
+    const runtimeScope = await getDefaultScopeByUserId(userId);
     if (!runtimeScope) {
       return {
         status: 400 as const,
@@ -89,7 +89,7 @@ const router = tsr.router(webhookStoragesCommitContract, {
       .from(storages)
       .where(
         and(
-          eq(storages.clerkOrgId, runtimeScope.clerkOrgId),
+          eq(storages.orgId, runtimeScope.orgId),
           eq(storages.userId, storageUserId),
           eq(storages.name, storageName),
           eq(storages.type, storageType),

@@ -24,14 +24,14 @@ export const agentComposes = pgTable(
     }), // FK kept for cascade; Phase 5 drops column
     name: varchar("name", { length: 64 }).notNull().default(""), // Agent name from compose
     headVersionId: varchar("head_version_id", { length: 64 }), // Points to latest version hash
-    clerkOrgId: text("clerk_org_id").notNull(),
+    orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    clerkOrgIdx: index("idx_agent_composes_clerk_org").on(table.clerkOrgId),
-    clerkOrgNameIdx: uniqueIndex("idx_agent_composes_clerk_org_name").on(
-      table.clerkOrgId,
+    orgIdx: index("idx_agent_composes_org").on(table.orgId),
+    orgNameIdx: uniqueIndex("idx_agent_composes_org_name").on(
+      table.orgId,
       table.name,
     ),
   }),

@@ -48,7 +48,7 @@ const router = tsr.router(schedulesByNameContract, {
 
       const schedule = await getScheduleByName(
         userId,
-        scope.clerkOrgId,
+        scope.orgId,
         query.composeId,
         params.name,
       );
@@ -100,12 +100,7 @@ const router = tsr.router(schedulesByNameContract, {
         };
       }
 
-      await deleteSchedule(
-        userId,
-        scope.clerkOrgId,
-        query.composeId,
-        params.name,
-      );
+      await deleteSchedule(userId, scope.orgId, query.composeId, params.name);
 
       return {
         status: 204 as const,

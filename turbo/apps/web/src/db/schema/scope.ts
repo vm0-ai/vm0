@@ -21,7 +21,7 @@ export const scopes = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     slug: varchar("slug", { length: 64 }).notNull().unique(),
-    clerkOrgId: text("clerk_org_id").notNull(),
+    orgId: text("org_id").notNull(),
     tier: varchar("tier", { length: 16 }).default("free").notNull(),
     defaultAgentComposeId: uuid("default_agent_compose_id").references(
       (): AnyPgColumn => agentComposes.id,
@@ -31,7 +31,7 @@ export const scopes = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    clerkOrgIdx: index("idx_scopes_clerk_org").on(table.clerkOrgId),
+    orgIdx: index("idx_scopes_org").on(table.orgId),
     tierCheck: check(
       "scopes_tier_check",
       sql`${table.tier} IN ('free', 'pro', 'max')`,

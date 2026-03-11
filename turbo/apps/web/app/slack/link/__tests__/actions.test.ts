@@ -139,7 +139,7 @@ describe("Slack Link Actions", () => {
       expect(result.success).toBe(true);
 
       // Verify artifact storage was created with a HEAD version
-      const artifactResult = await findTestArtifactStorage(user.clerkOrgId);
+      const artifactResult = await findTestArtifactStorage(user.orgId);
 
       expect(artifactResult).not.toBeNull();
       expect(artifactResult!.storage.headVersionId).toBeTruthy();
@@ -173,7 +173,7 @@ describe("Slack Link Actions", () => {
       expect(result2.alreadyLinked).toBe(true);
 
       // Verify only one artifact storage exists with HEAD version
-      const artifactResult = await findTestArtifactStorage(user.clerkOrgId);
+      const artifactResult = await findTestArtifactStorage(user.orgId);
 
       expect(artifactResult).not.toBeNull();
       expect(artifactResult!.storage.headVersionId).toBeTruthy();

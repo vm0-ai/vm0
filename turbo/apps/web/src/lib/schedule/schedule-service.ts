@@ -219,8 +219,8 @@ async function loadCompose(
 /**
  * Load scope slug by ID
  */
-async function getScopeSlug(clerkOrgId: string): Promise<string> {
-  const orgData = await getOrgData(clerkOrgId);
+async function getScopeSlug(orgId: string): Promise<string> {
+  const orgData = await getOrgData(orgId);
   return orgData.slug;
 }
 
@@ -229,7 +229,7 @@ async function getScopeSlug(clerkOrgId: string): Promise<string> {
  */
 async function verifyScheduleOwnership(
   userId: string,
-  clerkOrgId: string,
+  orgId: string,
   composeId: string,
   name: string,
 ): Promise<{
@@ -244,7 +244,7 @@ async function verifyScheduleOwnership(
       and(
         eq(agentSchedules.composeId, composeId),
         eq(agentSchedules.name, name),
-        eq(agentSchedules.clerkOrgId, clerkOrgId),
+        eq(agentSchedules.orgId, orgId),
         eq(agentSchedules.userId, userId),
       ),
     )
@@ -255,7 +255,7 @@ async function verifyScheduleOwnership(
   }
 
   const compose = await loadCompose(composeId);
-  const scopeSlug = await getScopeSlug(clerkOrgId);
+  const scopeSlug = await getScopeSlug(orgId);
 
   return { schedule, compose, scopeSlug };
 }
@@ -266,7 +266,7 @@ async function verifyScheduleOwnership(
  */
 async function validateRequiredConfig(
   compose: typeof agentComposes.$inferSelect,
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
 ): Promise<void> {
   if (!compose.headVersionId) return;
@@ -282,13 +282,13 @@ async function validateRequiredConfig(
   const required = extractRequiredConfiguration(version.content);
 
   // Fetch platform-managed secrets and vars from schedule's scope + user
-  const platformSecrets = await getSecretValues(clerkOrgId, userId, "user");
+  const platformSecrets = await getSecretValues(orgId, userId, "user");
   const platformSecretNames = Object.keys(platformSecrets);
   log.debug(
     `Fetched ${platformSecretNames.length} platform secret(s) for validation`,
   );
 
-  const platformVars = await getVariableValues(clerkOrgId, userId);
+  const platformVars = await getVariableValues(orgId, userId);
   const platformVarNames = Object.keys(platformVars);
   log.debug(
     `Fetched ${platformVarNames.length} platform variable(s) for validation`,
@@ -298,9 +298,7 @@ async function validateRequiredConfig(
   const userConnectors = await globalThis.services.db
     .select({ type: connectors.type })
     .from(connectors)
-    .where(
-      and(eq(connectors.clerkOrgId, clerkOrgId), eq(connectors.userId, userId)),
-    );
+    .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId)));
   const connectorProvidedNames = getConnectorProvidedSecretNames(
     userConnectors.map((c) => c.type),
   );
@@ -349,7 +347,7 @@ function resolveTrigger(request: DeployScheduleRequest): {
  */
 export async function deploySchedule(
   userId: string,
-  clerkOrgId: string,
+  orgId: string,
   scopeId: string,
   request: DeployScheduleRequest,
 ): Promise<{ schedule: ScheduleResponse; created: boolean }> {
@@ -359,7 +357,7 @@ export async function deploySchedule(
 
   // Load compose (access control is handled by the caller/route layer)
   const compose = await loadCompose(request.composeId);
-  const scopeSlug = await getScopeSlug(clerkOrgId);
+  const scopeSlug = await getScopeSlug(orgId);
 
   // Validate timezone
   if (!isValidTimezone(request.timezone)) {
@@ -374,14 +372,14 @@ export async function deploySchedule(
       and(
         eq(agentSchedules.composeId, request.composeId),
         eq(agentSchedules.name, request.name),
-        eq(agentSchedules.clerkOrgId, clerkOrgId),
+        eq(agentSchedules.orgId, orgId),
         eq(agentSchedules.userId, userId),
       ),
     )
     .limit(1);
 
   // Validate required secrets/vars against schedule's scope + user
-  await validateRequiredConfig(compose, clerkOrgId, userId);
+  await validateRequiredConfig(compose, orgId, userId);
 
   const { triggerType, nextRunAt } = resolveTrigger(request);
 
@@ -428,7 +426,7 @@ export async function deploySchedule(
         composeId: request.composeId,
         scopeId,
         userId,
-        clerkOrgId,
+        orgId,
         name: request.name,
         triggerType,
         cronExpression: request.cronExpression ?? null,
@@ -488,10 +486,8 @@ export async function listSchedules(
     .where(inArray(agentComposes.id, composeIds));
   const composeMap = new Map(composeRows.map((c) => [c.id, c]));
 
-  // Load scope slugs via org cache (by clerkOrgId from schedule records)
-  const uniqueClerkOrgIds = [
-    ...new Set(userSchedules.map((s) => s.clerkOrgId)),
-  ];
+  // Load scope slugs via org cache (by orgId from schedule records)
+  const uniqueClerkOrgIds = [...new Set(userSchedules.map((s) => s.orgId))];
   const orgDataEntries = await Promise.all(
     uniqueClerkOrgIds.map(async (id) => [id, await getOrgData(id)] as const),
   );
@@ -505,7 +501,7 @@ export async function listSchedules(
     })
     .map((schedule) => {
       const compose = composeMap.get(schedule.composeId)!;
-      const scopeSlug = orgDataMap.get(schedule.clerkOrgId)?.slug ?? "";
+      const scopeSlug = orgDataMap.get(schedule.orgId)?.slug ?? "";
       return toResponse(schedule, compose.name, scopeSlug);
     });
 }
@@ -515,7 +511,7 @@ export async function listSchedules(
  */
 export async function getScheduleByName(
   userId: string,
-  clerkOrgId: string,
+  orgId: string,
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
@@ -523,7 +519,7 @@ export async function getScheduleByName(
 
   const { schedule, compose, scopeSlug } = await verifyScheduleOwnership(
     userId,
-    clerkOrgId,
+    orgId,
     composeId,
     name,
   );
@@ -536,7 +532,7 @@ export async function getScheduleByName(
  */
 export async function getScheduleRecentRuns(
   userId: string,
-  clerkOrgId: string,
+  orgId: string,
   composeId: string,
   scheduleName: string,
   limit: number,
@@ -547,7 +543,7 @@ export async function getScheduleRecentRuns(
 
   const { schedule } = await verifyScheduleOwnership(
     userId,
-    clerkOrgId,
+    orgId,
     composeId,
     scheduleName,
   );
@@ -580,7 +576,7 @@ export async function getScheduleRecentRuns(
  */
 export async function deleteSchedule(
   userId: string,
-  clerkOrgId: string,
+  orgId: string,
   composeId: string,
   name: string,
 ): Promise<void> {
@@ -588,7 +584,7 @@ export async function deleteSchedule(
 
   const { schedule } = await verifyScheduleOwnership(
     userId,
-    clerkOrgId,
+    orgId,
     composeId,
     name,
   );
@@ -605,7 +601,7 @@ export async function deleteSchedule(
  */
 export async function enableSchedule(
   userId: string,
-  clerkOrgId: string,
+  orgId: string,
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
@@ -613,7 +609,7 @@ export async function enableSchedule(
 
   const { schedule, compose, scopeSlug } = await verifyScheduleOwnership(
     userId,
-    clerkOrgId,
+    orgId,
     composeId,
     name,
   );
@@ -663,7 +659,7 @@ export async function enableSchedule(
  */
 export async function disableSchedule(
   userId: string,
-  clerkOrgId: string,
+  orgId: string,
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
@@ -671,7 +667,7 @@ export async function disableSchedule(
 
   const { schedule, compose, scopeSlug } = await verifyScheduleOwnership(
     userId,
-    clerkOrgId,
+    orgId,
     composeId,
     name,
   );
@@ -837,7 +833,7 @@ async function executeSchedule(
   }
 
   // Load org tier and slug from org_cache (Clerk as source of truth)
-  const orgData = await getOrgData(schedule.clerkOrgId);
+  const orgData = await getOrgData(schedule.orgId);
 
   // Build callbacks for run completion notifications
   const callbacks: Array<{ url: string; secret: string; payload: unknown }> =
@@ -849,7 +845,7 @@ async function executeSchedule(
     userId: schedule.userId,
   };
 
-  const prefs = await getUserPreferences(orgData.clerkOrgId, schedule.userId);
+  const prefs = await getUserPreferences(orgData.orgId, schedule.userId);
 
   // Email schedule notification callback (only if Resend is configured AND user opted in)
   if (globalThis.services.env.RESEND_API_KEY && prefs.notifyEmail) {
@@ -897,7 +893,7 @@ async function executeSchedule(
       callbacks,
       scopeId: schedule.scopeId ?? undefined,
       scopeSlug: orgData.slug,
-      clerkOrgId: orgData.clerkOrgId,
+      orgId: orgData.orgId,
       scopeTier: scopeTierSchema.parse(orgData.tier),
     });
     runId = result.runId;

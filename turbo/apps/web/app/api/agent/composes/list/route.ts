@@ -25,7 +25,7 @@ const router = tsr.router(composesListContract, {
     const { userId, scopeId: tokenScopeId } = authCtx;
 
     // Resolve scope: use ?scope= query param or default scope
-    let clerkOrgId: string;
+    let orgId: string;
     try {
       const { scope: resolvedScope } = await resolveScope(
         userId,
@@ -33,7 +33,7 @@ const router = tsr.router(composesListContract, {
         query.org,
         tokenScopeId,
       );
-      clerkOrgId = resolvedScope.clerkOrgId;
+      orgId = resolvedScope.orgId;
     } catch (error) {
       if (isNotFound(error)) {
         return {
@@ -66,7 +66,7 @@ const router = tsr.router(composesListContract, {
         updatedAt: agentComposes.updatedAt,
       })
       .from(agentComposes)
-      .where(eq(agentComposes.clerkOrgId, clerkOrgId))
+      .where(eq(agentComposes.orgId, orgId))
       .orderBy(desc(agentComposes.updatedAt));
 
     // When using default scope (no ?scope= param), also include email-shared agents

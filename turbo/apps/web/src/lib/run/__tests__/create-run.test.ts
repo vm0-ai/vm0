@@ -678,7 +678,7 @@ describe("createRun()", () => {
         name: uniqueId("org-agent"),
       });
       const orgScopeId = orgCompose.scopeId;
-      const orgClerkOrgId = orgCompose.clerkOrgId;
+      const orgClerkOrgId = orgCompose.orgId;
 
       // Use the default compose but pass org scope for storage resolution
       const result = await createRun(
@@ -726,7 +726,7 @@ describe("createRun()", () => {
 
       // Verify artifact storage was created in user's default scope
       const artifact = await findTestStorage(
-        user.clerkOrgId,
+        user.orgId,
         "artifact",
         "artifact",
       );
@@ -734,7 +734,7 @@ describe("createRun()", () => {
       expect(artifact!.userId).toBe(user.userId);
 
       // Verify memory storage was created in user's default scope
-      const memory = await findTestStorage(user.clerkOrgId, "memory", "memory");
+      const memory = await findTestStorage(user.orgId, "memory", "memory");
       expect(memory).toBeDefined();
       expect(memory!.userId).toBe(user.userId);
     });

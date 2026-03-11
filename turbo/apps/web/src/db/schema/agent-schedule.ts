@@ -38,7 +38,7 @@ export const agentSchedules = pgTable(
       .references(() => agentComposes.id, { onDelete: "cascade" }),
     scopeId: uuid("scope_id"),
     userId: text("user_id").notNull(),
-    clerkOrgId: text("clerk_org_id").notNull(),
+    orgId: text("org_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
 
     // Trigger type discriminator: 'cron' | 'once' | 'loop'
@@ -80,11 +80,11 @@ export const agentSchedules = pgTable(
   (table) => [
     // Index for finding schedules by compose
     index("idx_agent_schedules_compose").on(table.composeId),
-    index("idx_agent_schedules_clerk_org").on(table.clerkOrgId),
-    uniqueIndex("idx_agent_schedules_compose_name_clerk_org_user").on(
+    index("idx_agent_schedules_org").on(table.orgId),
+    uniqueIndex("idx_agent_schedules_compose_name_org_user").on(
       table.composeId,
       table.name,
-      table.clerkOrgId,
+      table.orgId,
       table.userId,
     ),
     // Partial index for efficient cron polling: enabled schedules with due next_run_at

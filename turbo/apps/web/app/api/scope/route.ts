@@ -38,7 +38,7 @@ const router = tsr.router(scopeContract, {
   /**
    * GET /api/scope - Get current user's default scope
    *
-   * Resolves the active scope via clerkOrgId from Clerk session,
+   * Resolves the active scope via orgId from Clerk session,
    * or falls back to the user's default scope (first admin membership).
    */
   get: async ({ headers }) => {
@@ -88,7 +88,7 @@ const router = tsr.router(scopeContract, {
     log.debug("creating scope", { userId, slug });
 
     try {
-      // Resolve clerkOrgId from user's Clerk org memberships
+      // Resolve orgId from user's Clerk org memberships
       const unmatchedOrg = await resolveUnmatchedClerkOrg(userId);
 
       if (!unmatchedOrg) {
@@ -99,7 +99,7 @@ const router = tsr.router(scopeContract, {
       }
 
       const scope = await createScope(userId, slug, {
-        clerkOrgId: unmatchedOrg.organization.id,
+        orgId: unmatchedOrg.organization.id,
       });
 
       return { status: 201 as const, body: scopeToResponseBody(scope) };
@@ -114,7 +114,7 @@ const router = tsr.router(scopeContract, {
   /**
    * PUT /api/scope - Update active scope slug
    *
-   * Resolves the active scope via clerkOrgId from Clerk session,
+   * Resolves the active scope via orgId from Clerk session,
    * or falls back to the user's default scope (first admin membership).
    */
   update: async ({ body, headers }) => {

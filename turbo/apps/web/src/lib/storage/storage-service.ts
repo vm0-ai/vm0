@@ -31,7 +31,7 @@ function createEmptyTarGz(): Buffer {
  * (both manifest.json and archive.tar.gz so download.ts can create the mount directory).
  * If it already has a HEAD version, this is a no-op.
  *
- * @param clerkOrgId - Clerk org ID for storage access
+ * @param orgId - Clerk org ID for storage access
  * @param userId - User ID for storage record ownership
  * @param storageName - Storage name
  * @param scopeSlug - Scope slug for S3 prefix construction
@@ -39,7 +39,7 @@ function createEmptyTarGz(): Buffer {
  * @param scopeId - Scope ID for INSERT only (removed in Phase 5)
  */
 export async function ensureStorageExists(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
   storageName: string,
   scopeSlug: string,
@@ -52,7 +52,7 @@ export async function ensureStorageExists(
     .from(storages)
     .where(
       and(
-        eq(storages.clerkOrgId, clerkOrgId),
+        eq(storages.orgId, orgId),
         eq(storages.userId, userId),
         eq(storages.name, storageName),
         eq(storages.type, storageType),
@@ -71,7 +71,7 @@ export async function ensureStorageExists(
         s3Prefix: `${scopeSlug}/${storageType}/${storageName}`,
         size: 0,
         fileCount: 0,
-        clerkOrgId,
+        orgId,
       })
       .onConflictDoNothing()
       .returning();
@@ -83,7 +83,7 @@ export async function ensureStorageExists(
         .from(storages)
         .where(
           and(
-            eq(storages.clerkOrgId, clerkOrgId),
+            eq(storages.orgId, orgId),
             eq(storages.userId, userId),
             eq(storages.name, storageName),
             eq(storages.type, storageType),
@@ -94,7 +94,7 @@ export async function ensureStorageExists(
     } else {
       storage = newStorage;
     }
-    log.info("Auto-created storage", { storageName, storageType, clerkOrgId });
+    log.info("Auto-created storage", { storageName, storageType, orgId });
   }
 
   if (!storage) {
@@ -179,7 +179,7 @@ export async function ensureStorageExists(
 
 /**
  * Resolve version ID from version string
- * @param clerkOrgId - Clerk org ID for storage access
+ * @param orgId - Clerk org ID for storage access
  * @param storageName - Storage name
  * @param storageType - Storage type ("volume", "artifact", or "memory")
  * @param version - Version string ("latest" or specific hash)
@@ -187,7 +187,7 @@ export async function ensureStorageExists(
  * @returns Version ID and S3 key
  */
 async function resolveVersion(
-  clerkOrgId: string,
+  orgId: string,
   storageName: string,
   storageType: "volume" | "artifact" | "memory",
   version: string,
@@ -205,7 +205,7 @@ async function resolveVersion(
       .leftJoin(storageVersions, eq(storages.headVersionId, storageVersions.id))
       .where(
         and(
-          eq(storages.clerkOrgId, clerkOrgId),
+          eq(storages.orgId, orgId),
           eq(storages.userId, userId),
           eq(storages.name, storageName),
           eq(storages.type, storageType),
@@ -234,7 +234,7 @@ async function resolveVersion(
     .from(storages)
     .where(
       and(
-        eq(storages.clerkOrgId, clerkOrgId),
+        eq(storages.orgId, orgId),
         eq(storages.userId, userId),
         eq(storages.name, storageName),
         eq(storages.type, storageType),

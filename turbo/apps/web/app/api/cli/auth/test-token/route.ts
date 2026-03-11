@@ -49,19 +49,19 @@ function isTestTokenAllowed(request: Request): boolean {
  */
 async function ensureTestScope(
   userId: string,
-): Promise<{ scopeId: string; clerkOrgId: string }> {
+): Promise<{ scopeId: string; orgId: string }> {
   let scope;
   try {
     scope = await ensureDefaultScope(userId);
   } catch (error) {
     if (!isNotFound(error)) throw error;
-    // User has no Clerk org — create a test scope with a sentinel clerkOrgId
+    // User has no Clerk org — create a test scope with a sentinel orgId
     const slug = generateDefaultScopeSlug(userId);
     scope = await createScope(userId, slug, {
-      clerkOrgId: `org_test_${userId}`,
+      orgId: `org_test_${userId}`,
     });
   }
-  return { scopeId: scope.id, clerkOrgId: scope.clerkOrgId };
+  return { scopeId: scope.id, orgId: scope.orgId };
 }
 
 /**
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
   }
 
   // Auto-create scope if user doesn't have one (creates real Clerk org)
-  const { scopeId, clerkOrgId } = await ensureTestScope(userId);
+  const { scopeId, orgId } = await ensureTestScope(userId);
 
   // Generate CLI token with scope binding
   const randomBytes = crypto.randomBytes(32);
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
     userId,
     name: "CI Test Token",
     scopeId,
-    clerkOrgId,
+    orgId,
     expiresAt,
     createdAt: now,
   });

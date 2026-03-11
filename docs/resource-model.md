@@ -172,7 +172,7 @@ Phase 2: Prepare for Execution (Agent Org + Runtime Org)
   └── Generate storage manifest with presigned URLs
 ```
 
-All Runtime Org queries use the **(clerkOrgId, userId)** key to locate the correct user-specific resources.
+All Runtime Org queries use the **(orgId, userId)** key to locate the correct user-specific resources.
 
 ---
 
@@ -192,4 +192,4 @@ Runtime Org = org-b, userId = User B
   → User B's artifacts and memories
 ```
 
-This pattern is also used by **scheduled runs**. A schedule carries its own `(clerkOrgId, userId)` pair, which becomes the Runtime Org when the schedule fires. This allows User B to schedule User A's agent while using User B's own credentials and producing User B's own artifacts.
+This pattern is also used by **scheduled runs**. A schedule carries its own `(orgId, userId)` pair, which becomes the Runtime Org when the schedule fires. This allows User B to schedule User A's agent while using User B's own credentials and producing User B's own artifacts.

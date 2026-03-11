@@ -22,20 +22,20 @@ const router = tsr.router(userPreferencesContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { sessionClaims, orgId } = await auth();
+    const { sessionClaims, orgId: authOrgId } = await auth();
 
     // Clerk session → orgId from JWT; CLI token → look up from scopeId
-    let clerkOrgId = orgId;
-    if (!clerkOrgId && ctx.scopeId) {
+    let orgId = authOrgId;
+    if (!orgId && ctx.scopeId) {
       const scope = await getScopeById(ctx.scopeId);
-      clerkOrgId = scope?.clerkOrgId ?? null;
+      orgId = scope?.orgId ?? null;
     }
-    if (!clerkOrgId) {
+    if (!orgId) {
       return createErrorResponse("BAD_REQUEST", "No organization context");
     }
 
     const prefs = await getUserPreferences(
-      clerkOrgId,
+      orgId,
       ctx.userId,
       sessionClaims ?? undefined,
     );
@@ -63,17 +63,17 @@ const router = tsr.router(userPreferencesContract, {
 
     // Clerk session → orgId from JWT; CLI token → look up from scopeId
     const { orgId } = await auth();
-    let clerkOrgId = orgId;
-    if (!clerkOrgId && ctx.scopeId) {
+    let resolvedOrgId = orgId;
+    if (!resolvedOrgId && ctx.scopeId) {
       const scope = await getScopeById(ctx.scopeId);
-      clerkOrgId = scope?.clerkOrgId ?? null;
+      resolvedOrgId = scope?.orgId ?? null;
     }
-    if (!clerkOrgId) {
+    if (!resolvedOrgId) {
       return createErrorResponse("BAD_REQUEST", "No organization context");
     }
 
     try {
-      const prefs = await updateUserPreferences(clerkOrgId, ctx.userId, {
+      const prefs = await updateUserPreferences(resolvedOrgId, ctx.userId, {
         timezone: body.timezone,
         notifyEmail: body.notifyEmail,
         notifySlack: body.notifySlack,

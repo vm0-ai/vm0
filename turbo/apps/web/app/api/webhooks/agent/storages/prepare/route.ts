@@ -15,7 +15,7 @@ import {
 } from "../../../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
-import { getDefaultScopeByClerkUserId } from "../../../../../../src/lib/scope/scope-service";
+import { getDefaultScopeByUserId } from "../../../../../../src/lib/scope/scope-service";
 import {
   generatePresignedPutUrl,
   downloadManifest,
@@ -78,7 +78,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
     }
 
     // Resolve Runtime Scope (user's default scope)
-    const runtimeScope = await getDefaultScopeByClerkUserId(userId);
+    const runtimeScope = await getDefaultScopeByUserId(userId);
     if (!runtimeScope) {
       return {
         status: 400 as const,
@@ -101,7 +101,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       .values({
         userId: storageUserId,
         scopeId: runtimeScope.id,
-        clerkOrgId: runtimeScope.clerkOrgId,
+        orgId: runtimeScope.orgId,
         name: storageName,
         type: storageType,
         s3Prefix: `${runtimeScope.slug}/${storageType}/${storageName}`,
@@ -109,12 +109,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
         fileCount: 0,
       })
       .onConflictDoUpdate({
-        target: [
-          storages.clerkOrgId,
-          storages.userId,
-          storages.name,
-          storages.type,
-        ],
+        target: [storages.orgId, storages.userId, storages.name, storages.type],
         set: { updatedAt: new Date() },
       })
       .returning();

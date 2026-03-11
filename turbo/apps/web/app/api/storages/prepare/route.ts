@@ -150,7 +150,7 @@ const router = tsr.router(storagesPrepareContract, {
       .values({
         userId: storageUserId,
         scopeId: runtimeScope.id,
-        clerkOrgId: runtimeScope.clerkOrgId,
+        orgId: runtimeScope.orgId,
         name: storageName,
         type: storageType,
         s3Prefix: `${runtimeScope.slug}/${storageType}/${storageName}`,
@@ -158,12 +158,7 @@ const router = tsr.router(storagesPrepareContract, {
         fileCount: 0,
       })
       .onConflictDoUpdate({
-        target: [
-          storages.clerkOrgId,
-          storages.userId,
-          storages.name,
-          storages.type,
-        ],
+        target: [storages.orgId, storages.userId, storages.name, storages.type],
         set: { updatedAt: new Date() },
       })
       .returning();

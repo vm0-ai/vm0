@@ -29,7 +29,7 @@ import { scopes } from "../../../src/db/schema/scope";
 interface ScopeRow {
   id: string;
   slug: string;
-  clerkOrgId: string;
+  orgId: string;
 }
 
 interface Stats {
@@ -102,10 +102,8 @@ function isSlugConflictError(err: unknown): boolean {
   return status === 422 || status === 400;
 }
 
-function isSentinelClerkOrgId(clerkOrgId: string): boolean {
-  return (
-    clerkOrgId.startsWith("org_backfill_") || clerkOrgId.startsWith("pending_")
-  );
+function isSentinelOrgId(orgId: string): boolean {
+  return orgId.startsWith("org_backfill_") || orgId.startsWith("pending_");
 }
 
 // ---------------------------------------------------------------------------
@@ -114,12 +112,12 @@ function isSentinelClerkOrgId(clerkOrgId: string): boolean {
 
 async function fetchClerkOrg(
   client: ClerkClient,
-  clerkOrgId: string,
+  orgId: string,
 ): Promise<{ slug: string } | null> {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       return await client.organizations.getOrganization({
-        organizationId: clerkOrgId,
+        organizationId: orgId,
       });
     } catch (err) {
       if (isNotFoundError(err)) return null;
@@ -139,12 +137,12 @@ async function fetchClerkOrg(
 
 async function updateClerkOrgSlug(
   client: ClerkClient,
-  clerkOrgId: string,
+  orgId: string,
   slug: string,
 ): Promise<"updated" | "conflict"> {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      await client.organizations.updateOrganization(clerkOrgId, { slug });
+      await client.organizations.updateOrganization(orgId, { slug });
       return "updated";
     } catch (err) {
       if (isSlugConflictError(err)) return "conflict";
@@ -173,15 +171,13 @@ async function processScope(
   scope: ScopeRow,
   idx: string,
 ): Promise<ProcessResult> {
-  if (isSentinelClerkOrgId(scope.clerkOrgId)) {
-    console.log(
-      `${idx} ⊘ SKIPPED: scope "${scope.slug}" — sentinel clerkOrgId`,
-    );
+  if (isSentinelOrgId(scope.orgId)) {
+    console.log(`${idx} ⊘ SKIPPED: scope "${scope.slug}" — sentinel orgId`);
     return "skipped";
   }
 
   try {
-    const org = await fetchClerkOrg(client, scope.clerkOrgId);
+    const org = await fetchClerkOrg(client, scope.orgId);
     await sleep(THROTTLE_MS);
 
     if (!org) {
@@ -203,11 +199,7 @@ async function processScope(
       return "mismatched";
     }
 
-    const result = await updateClerkOrgSlug(
-      client,
-      scope.clerkOrgId,
-      scope.slug,
-    );
+    const result = await updateClerkOrgSlug(client, scope.orgId, scope.slug);
     await sleep(THROTTLE_MS);
 
     if (result === "conflict") {
@@ -258,7 +250,7 @@ async function main() {
       .select({
         id: scopes.id,
         slug: scopes.slug,
-        clerkOrgId: scopes.clerkOrgId,
+        orgId: scopes.orgId,
       })
       .from(scopes)
       .orderBy(asc(scopes.createdAt));
@@ -293,7 +285,7 @@ async function main() {
     console.log(`Total:      ${stats.total}`);
     console.log(`Matched:    ${stats.matched}`);
     console.log(`Mismatched: ${stats.mismatched}`);
-    console.log(`Skipped:    ${stats.skipped} (sentinel clerkOrgId)`);
+    console.log(`Skipped:    ${stats.skipped} (sentinel orgId)`);
     console.log(`Not found:  ${stats.notFound} (Clerk org deleted)`);
     console.log(
       `Updated:    ${stats.updated}${DRY_RUN ? " (pass --migrate to sync)" : ""}`,

@@ -30,11 +30,7 @@ describe("Storage per-user isolation", () => {
 
     await createTestVolume("shared-vol");
 
-    const record = await findTestStorage(
-      user.clerkOrgId,
-      "shared-vol",
-      "volume",
-    );
+    const record = await findTestStorage(user.orgId, "shared-vol", "volume");
     expect(record).toBeDefined();
     expect(record!.userId).toBe(VOLUME_SCOPE_USER_ID);
   });
@@ -44,11 +40,7 @@ describe("Storage per-user isolation", () => {
 
     await createTestArtifact("my-artifact");
 
-    const record = await findTestStorage(
-      user.clerkOrgId,
-      "my-artifact",
-      "artifact",
-    );
+    const record = await findTestStorage(user.orgId, "my-artifact", "artifact");
     expect(record).toBeDefined();
     expect(record!.userId).toBe(user.userId);
   });
@@ -58,11 +50,7 @@ describe("Storage per-user isolation", () => {
 
     await createTestMemory("my-memory");
 
-    const record = await findTestStorage(
-      user.clerkOrgId,
-      "my-memory",
-      "memory",
-    );
+    const record = await findTestStorage(user.orgId, "my-memory", "memory");
     expect(record).toBeDefined();
     expect(record!.userId).toBe(user.userId);
   });
@@ -154,16 +142,8 @@ describe("Storage per-user isolation", () => {
     expect(userBVolumes[0].name).toBe("shared-data");
 
     // Both volumes use sentinel userId, not the real user
-    const recordA = await findTestStorage(
-      userA.clerkOrgId,
-      "shared-data",
-      "volume",
-    );
-    const recordB = await findTestStorage(
-      userB.clerkOrgId,
-      "shared-data",
-      "volume",
-    );
+    const recordA = await findTestStorage(userA.orgId, "shared-data", "volume");
+    const recordB = await findTestStorage(userB.orgId, "shared-data", "volume");
     expect(recordA!.userId).toBe(VOLUME_SCOPE_USER_ID);
     expect(recordB!.userId).toBe(VOLUME_SCOPE_USER_ID);
   });

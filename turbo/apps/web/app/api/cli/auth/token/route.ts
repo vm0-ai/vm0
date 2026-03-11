@@ -88,7 +88,7 @@ const router = tsr.router(cliAuthTokenContract, {
           userId,
           name: "CLI Device Flow Authentication",
           scopeId: scope.id,
-          clerkOrgId: scope.clerkOrgId,
+          orgId: scope.orgId,
           expiresAt,
           createdAt: now,
         });

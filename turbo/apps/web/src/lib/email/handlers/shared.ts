@@ -171,7 +171,7 @@ export function computeReplyRecipients(opts: {
 interface ResolvedAgent {
   composeId: string;
   userId: string;
-  clerkOrgId: string;
+  orgId: string;
   scopeSlug: string;
   headVersionId: string;
 }
@@ -188,18 +188,18 @@ export async function resolveAgentByAddress(
   const orgData = await getOrgBySlug(scopeSlug);
   if (!orgData) return null;
 
-  // 2. Find compose by clerkOrgId + name
+  // 2. Find compose by orgId + name
   const [compose] = await globalThis.services.db
     .select({
       id: agentComposes.id,
       userId: agentComposes.userId,
-      clerkOrgId: agentComposes.clerkOrgId,
+      orgId: agentComposes.orgId,
       headVersionId: agentComposes.headVersionId,
     })
     .from(agentComposes)
     .where(
       and(
-        eq(agentComposes.clerkOrgId, orgData.clerkOrgId),
+        eq(agentComposes.orgId, orgData.orgId),
         eq(agentComposes.name, agentName),
       ),
     )
@@ -213,7 +213,7 @@ export async function resolveAgentByAddress(
   return {
     composeId: compose.id,
     userId: compose.userId,
-    clerkOrgId: compose.clerkOrgId,
+    orgId: compose.orgId,
     scopeSlug,
     headVersionId: compose.headVersionId,
   };

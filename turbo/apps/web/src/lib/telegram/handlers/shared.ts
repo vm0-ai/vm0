@@ -245,7 +245,7 @@ export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
   const scope = await ensureDefaultScope(vm0UserId);
 
   await ensureStorageExists(
-    scope.clerkOrgId,
+    scope.orgId,
     vm0UserId,
     "artifact",
     scope.slug,

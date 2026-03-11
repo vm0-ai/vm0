@@ -125,7 +125,7 @@ async function backfillScopeTiers(
       id: scopes.id,
       slug: scopes.slug,
       tier: scopes.tier,
-      clerkOrgId: scopes.clerkOrgId,
+      orgId: scopes.orgId,
     })
     .from(scopes)
     .orderBy(asc(scopes.createdAt));
@@ -141,7 +141,7 @@ async function backfillScopeTiers(
 
     if (DRY_RUN) {
       console.log(
-        `${idx} (dry-run) scope "${scope.slug}" — would write tier="${scope.tier}" to Clerk org ${scope.clerkOrgId}`,
+        `${idx} (dry-run) scope "${scope.slug}" — would write tier="${scope.tier}" to Clerk org ${scope.orgId}`,
       );
       stats.success++;
       continue;
@@ -149,7 +149,7 @@ async function backfillScopeTiers(
 
     try {
       await withRetry(() =>
-        client!.organizations.updateOrganizationMetadata(scope.clerkOrgId, {
+        client!.organizations.updateOrganizationMetadata(scope.orgId, {
           publicMetadata: { tier: scope.tier },
         }),
       );
@@ -183,7 +183,7 @@ async function backfillMemberPreferences(
       timezone: scopeMembers.timezone,
       notifyEmail: scopeMembers.notifyEmail,
       notifySlack: scopeMembers.notifySlack,
-      clerkOrgId: scopes.clerkOrgId,
+      orgId: scopes.orgId,
       scopeSlug: scopes.slug,
     })
     .from(scopeMembers)
@@ -229,7 +229,7 @@ async function backfillMemberPreferences(
     try {
       await withRetry(() =>
         client!.organizations.updateOrganizationMembershipMetadata({
-          organizationId: member.clerkOrgId,
+          organizationId: member.orgId,
           userId: member.userId,
           publicMetadata: metadata,
         }),

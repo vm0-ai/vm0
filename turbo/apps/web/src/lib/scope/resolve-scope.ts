@@ -1,7 +1,7 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { forbidden, badRequest, notFound } from "../errors";
 import { logger } from "../logger";
-import { getScopeByClerkOrgId, getScopeById } from "./scope-service";
+import { getScopeByOrgId, getScopeById } from "./scope-service";
 import { getOrgBySlug } from "./org-cache-service";
 import { getDefaultScope } from "./scope-member-service";
 
@@ -30,7 +30,7 @@ function mapOrgRole(clerkRole: string | undefined | null): ScopeRole {
 /**
  * Verify a user's membership in a Clerk organization.
  *
- * Fast path: if the scope's clerkOrgId matches the JWT's active org,
+ * Fast path: if the scope's orgId matches the JWT's active org,
  * trust the JWT claims and skip the Clerk API call entirely.
  *
  * Slow path: for cross-org access (e.g. ?scope= pointing to a non-active org),
@@ -51,7 +51,7 @@ async function verifyMembership(
   }
 
   // JWT fast path: active org matches → trust JWT, no API call
-  if (scope.clerkOrgId === authResult.orgId) {
+  if (scope.orgId === authResult.orgId) {
     return {
       role: mapOrgRole(authResult.orgRole),
       userId,
@@ -59,7 +59,7 @@ async function verifyMembership(
     };
   }
 
-  if (scope.clerkOrgId.startsWith("pending_")) {
+  if (scope.orgId.startsWith("pending_")) {
     throw forbidden("You are not a member of this scope");
   }
 
@@ -68,7 +68,7 @@ async function verifyMembership(
     const client = await clerkClient();
     const memberships =
       await client.organizations.getOrganizationMembershipList({
-        organizationId: scope.clerkOrgId,
+        organizationId: scope.orgId,
       });
 
     const membership = memberships.data.find(
@@ -92,7 +92,7 @@ async function verifyMembership(
     log.error("verifyMembership failed", {
       scopeId: scope.id,
       userId,
-      clerkOrgId: scope.clerkOrgId,
+      orgId: scope.orgId,
       error,
     });
     throw forbidden("You are not a member of this scope");
@@ -107,10 +107,7 @@ function applyJwtTier(
   scope: Scope,
   authResult: Awaited<ReturnType<typeof auth>>,
 ): Scope {
-  if (
-    scope.clerkOrgId === authResult.orgId &&
-    authResult.sessionClaims?.org_tier
-  ) {
+  if (scope.orgId === authResult.orgId && authResult.sessionClaims?.org_tier) {
     return { ...scope, tier: authResult.sessionClaims.org_tier };
   }
   return scope;
@@ -125,7 +122,7 @@ function applyJwtTier(
  * Resolution order:
  * 1. tokenScopeId (from CLI token) -> direct scope lookup, trusted
  * 2. scopeSlug (?scope=<slug> query param) -> look up scope, verify membership
- * 3. clerkOrgId (from JWT session token) -> look up scope by org ID
+ * 3. orgId (from JWT session token) -> look up scope by org ID
  * 4. Fallback -> user's default scope
  *
  * When the resolved org matches the JWT's active org, `tier` is read from
@@ -134,7 +131,7 @@ function applyJwtTier(
 export async function resolveScope(
   userId: string,
   scopeSlug?: string | null,
-  clerkOrgId?: string | null,
+  orgId?: string | null,
   tokenScopeId?: string | null,
 ) {
   const authResult = await auth();
@@ -143,7 +140,7 @@ export async function resolveScope(
   if (scopeSlug) {
     const orgData = await getOrgBySlug(scopeSlug);
     if (!orgData) throw notFound("Scope not found");
-    const scope = await getScopeByClerkOrgId(orgData.clerkOrgId);
+    const scope = await getScopeByOrgId(orgData.orgId);
     if (!scope) throw notFound("Scope not found");
 
     const member = await verifyMembership(
@@ -169,9 +166,9 @@ export async function resolveScope(
   // 3. Clerk org ID — use provided value or auto-detect from JWT session token.
   // For CLI tokens, auth().orgId returns null (no Clerk session),
   // so this tier is skipped and we fall through to the default scope.
-  const effectiveOrgId = clerkOrgId ?? authResult.orgId ?? null;
+  const effectiveOrgId = orgId ?? authResult.orgId ?? null;
   if (effectiveOrgId) {
-    const scope = await getScopeByClerkOrgId(effectiveOrgId);
+    const scope = await getScopeByOrgId(effectiveOrgId);
     if (scope) {
       const member = await verifyMembership(
         scope,
@@ -181,7 +178,7 @@ export async function resolveScope(
       );
       return { scope: applyJwtTier(scope, authResult), member };
     }
-    // Scope not found for this clerkOrgId — fall through to default
+    // Scope not found for this orgId — fall through to default
     // (scope may not be created yet in the migration period)
   }
 
@@ -210,10 +207,10 @@ export async function requireScopeFromRequest(
   if (scopeSlug) {
     const orgData = await getOrgBySlug(scopeSlug);
     if (orgData) {
-      scope = await getScopeByClerkOrgId(orgData.clerkOrgId);
+      scope = await getScopeByOrgId(orgData.orgId);
     }
   } else if (orgParam) {
-    scope = await getScopeByClerkOrgId(orgParam);
+    scope = await getScopeByOrgId(orgParam);
   } else {
     throw badRequest("scope or org query parameter is required");
   }

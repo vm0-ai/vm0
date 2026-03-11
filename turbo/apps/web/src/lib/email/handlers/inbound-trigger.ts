@@ -15,7 +15,7 @@ import { createRun } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
-import { getDefaultScopeByClerkUserId } from "../../scope/scope-service";
+import { getDefaultScopeByUserId } from "../../scope/scope-service";
 import { canAccessCompose } from "../../agent/permission-service";
 import { getUserEmail } from "../../auth/get-user-email";
 import { logger } from "../../logger";
@@ -100,7 +100,7 @@ async function resolveTrigger(
     };
   }
 
-  const runtimeScope = await getDefaultScopeByClerkUserId(userId);
+  const runtimeScope = await getDefaultScopeByUserId(userId);
   if (!runtimeScope) {
     log.debug("Sender has no scope", { from: senderEmail, userId });
     return {
@@ -167,7 +167,7 @@ export async function handleInboundEmailTrigger(
   const hasAccess = await canAccessCompose(userId, userEmail, {
     id: compose.composeId,
     userId: compose.userId,
-    clerkOrgId: compose.clerkOrgId,
+    orgId: compose.orgId,
   });
 
   if (!hasAccess) {

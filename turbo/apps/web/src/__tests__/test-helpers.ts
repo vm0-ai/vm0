@@ -195,7 +195,7 @@ interface TestContext {
   createAgentCompose(
     vm0UserId: string,
     options?: { name?: string },
-  ): Promise<{ id: string; name: string; scopeId: string; clerkOrgId: string }>;
+  ): Promise<{ id: string; name: string; scopeId: string; orgId: string }>;
   createConnector(
     scopeId: string,
     options: { userId: string; type?: string; authMethod?: string },
@@ -205,7 +205,7 @@ interface TestContext {
 export interface UserContext {
   readonly userId: string;
   readonly scopeId: string;
-  readonly clerkOrgId: string;
+  readonly orgId: string;
 }
 
 /**
@@ -446,9 +446,9 @@ export function testContext(): TestContext {
       const scopeData = await createTestScope(`scope-${suffix}`);
       controller.signal.throwIfAborted();
 
-      // Look up clerkOrgId from the created scope
+      // Look up orgId from the created scope
       const [scope] = await globalThis.services.db
-        .select({ clerkOrgId: scopes.clerkOrgId })
+        .select({ orgId: scopes.orgId })
         .from(scopes)
         .where(eq(scopes.id, scopeData.id))
         .limit(1);
@@ -456,7 +456,7 @@ export function testContext(): TestContext {
       return {
         userId,
         scopeId: scopeData.id,
-        clerkOrgId: scope!.clerkOrgId,
+        orgId: scope!.orgId,
       };
     })();
 
@@ -493,12 +493,12 @@ export function testContext(): TestContext {
     let composeId = options.composeId;
     if (!composeId) {
       const scopeSlug = uniqueId("scope");
-      const clerkOrgId = uniqueId("org");
+      const orgId = uniqueId("org");
       const [scopeData] = await globalThis.services.db
         .insert(scopes)
         .values({
           slug: scopeSlug,
-          clerkOrgId,
+          orgId,
         })
         .returning();
 
@@ -507,14 +507,14 @@ export function testContext(): TestContext {
       }
 
       // Pre-populate org cache for getOrgData()
-      await insertOrgCacheEntry({ clerkOrgId, slug: scopeSlug });
+      await insertOrgCacheEntry({ orgId, slug: scopeSlug });
 
       const [compose] = await globalThis.services.db
         .insert(agentComposes)
         .values({
           userId: adminUserId,
           scopeId: scopeData.id,
-          clerkOrgId: scopeData.clerkOrgId,
+          orgId: scopeData.orgId,
           name: uniqueId("default-agent"),
         })
         .returning();
@@ -593,7 +593,7 @@ export function testContext(): TestContext {
     id: string;
     name: string;
     scopeId: string;
-    clerkOrgId: string;
+    orgId: string;
   }> {
     const { name = uniqueId("test-compose") } = options;
 
@@ -601,12 +601,12 @@ export function testContext(): TestContext {
 
     // Create a scope directly in the database (bypass API to avoid Clerk auth)
     const scopeSlug = uniqueId("scope");
-    const clerkOrgId = uniqueId("org");
+    const orgId = uniqueId("org");
     const [scopeData] = await globalThis.services.db
       .insert(scopes)
       .values({
         slug: scopeSlug,
-        clerkOrgId,
+        orgId,
       })
       .returning();
 
@@ -615,7 +615,7 @@ export function testContext(): TestContext {
     }
 
     // Pre-populate org cache for getOrgData()
-    await insertOrgCacheEntry({ clerkOrgId, slug: scopeSlug });
+    await insertOrgCacheEntry({ orgId, slug: scopeSlug });
 
     // Create a compose for this user
     const [compose] = await globalThis.services.db
@@ -623,7 +623,7 @@ export function testContext(): TestContext {
       .values({
         userId: vm0UserId,
         scopeId: scopeData.id,
-        clerkOrgId: scopeData.clerkOrgId,
+        orgId: scopeData.orgId,
         name,
       })
       .returning();
@@ -636,7 +636,7 @@ export function testContext(): TestContext {
       id: compose.id,
       name: compose.name,
       scopeId: scopeData.id,
-      clerkOrgId: scopeData.clerkOrgId,
+      orgId: scopeData.orgId,
     };
   }
 
@@ -653,7 +653,7 @@ export function testContext(): TestContext {
     initServices();
 
     const [scope] = await globalThis.services.db
-      .select({ clerkOrgId: scopes.clerkOrgId })
+      .select({ orgId: scopes.orgId })
       .from(scopes)
       .where(eq(scopes.id, scopeId))
       .limit(1);
@@ -663,7 +663,7 @@ export function testContext(): TestContext {
       .values({
         scopeId,
         userId,
-        clerkOrgId: scope!.clerkOrgId,
+        orgId: scope!.orgId,
         type,
         authMethod,
       })

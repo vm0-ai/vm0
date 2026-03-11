@@ -117,7 +117,7 @@ async function backfillDefaultAgents(
     .select({
       id: scopes.id,
       slug: scopes.slug,
-      clerkOrgId: scopes.clerkOrgId,
+      orgId: scopes.orgId,
       defaultAgentComposeId: scopes.defaultAgentComposeId,
     })
     .from(scopes)
@@ -135,7 +135,7 @@ async function backfillDefaultAgents(
 
     if (DRY_RUN) {
       console.log(
-        `${idx} (dry-run) scope "${scope.slug}" — would write default_agent_compose_id="${scope.defaultAgentComposeId}" to Clerk org ${scope.clerkOrgId}`,
+        `${idx} (dry-run) scope "${scope.slug}" — would write default_agent_compose_id="${scope.defaultAgentComposeId}" to Clerk org ${scope.orgId}`,
       );
       stats.success++;
       continue;
@@ -143,7 +143,7 @@ async function backfillDefaultAgents(
 
     try {
       await withRetry(() =>
-        client!.organizations.updateOrganizationMetadata(scope.clerkOrgId, {
+        client!.organizations.updateOrganizationMetadata(scope.orgId, {
           publicMetadata: {
             default_agent_compose_id: scope.defaultAgentComposeId,
           },

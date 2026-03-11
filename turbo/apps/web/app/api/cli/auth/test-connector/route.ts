@@ -7,7 +7,7 @@ import {
   resolveTestUserId,
   isTestVariant,
 } from "../../../../../src/lib/auth/test-user";
-import { getDefaultScopeByClerkUserId } from "../../../../../src/lib/scope/scope-service";
+import { getDefaultScopeByUserId } from "../../../../../src/lib/scope/scope-service";
 import { env } from "../../../../../src/env";
 
 const bodySchema = z.object({
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Test user not found" }, { status: 500 });
   }
 
-  const scope = await getDefaultScopeByClerkUserId(userId);
+  const scope = await getDefaultScopeByUserId(userId);
   if (!scope) {
     return NextResponse.json(
       { error: "Test user has no scope — run test-token first" },
@@ -100,7 +100,7 @@ export async function POST(request: Request) {
   }
 
   await upsertOAuthConnector(
-    scope.clerkOrgId,
+    scope.orgId,
     scope.id,
     userId,
     connectorType,

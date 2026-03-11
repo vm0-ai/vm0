@@ -224,9 +224,9 @@ describe("GET /api/agent/composes?name=<name>", () => {
     // Create compose as owner
     const { composeId } = await createTestCompose(agentName);
 
-    // Get the owner's scope slug to derive clerkOrgId
+    // Get the owner's scope slug to derive orgId
     const ownerScope = await getTestScope(user.scopeId);
-    const ownerClerkOrgId = ownerScope.clerkOrgId;
+    const ownerOrgId = ownerScope.orgId;
 
     // Grant email permission to the recipient
     const recipientEmail = "recipient-org@example.com";
@@ -238,7 +238,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
 
     // Access the agent via cross-scope lookup using ?org=
     const getRequest = createTestRequest(
-      `http://localhost:3000/api/agent/composes?name=${agentName}&org=${ownerClerkOrgId}`,
+      `http://localhost:3000/api/agent/composes?name=${agentName}&org=${ownerOrgId}`,
       { method: "GET" },
     );
 
@@ -256,16 +256,16 @@ describe("GET /api/agent/composes?name=<name>", () => {
     // Create compose as owner (no permission granted)
     await createTestCompose(agentName);
 
-    // Get the owner's scope slug to derive clerkOrgId
+    // Get the owner's scope slug to derive orgId
     const ownerScope = await getTestScope(user.scopeId);
-    const ownerClerkOrgId = ownerScope.clerkOrgId;
+    const ownerOrgId = ownerScope.orgId;
 
     // Switch to another user with no permission
     await context.setupUser({ prefix: "unauthorized-org" });
 
     // Try to access via cross-scope lookup using ?org=
     const getRequest = createTestRequest(
-      `http://localhost:3000/api/agent/composes?name=${agentName}&org=${ownerClerkOrgId}`,
+      `http://localhost:3000/api/agent/composes?name=${agentName}&org=${ownerOrgId}`,
       { method: "GET" },
     );
 

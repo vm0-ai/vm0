@@ -39,7 +39,7 @@ export async function resolveDefaultAgentComposeId(): Promise<string | null> {
     .from(agentComposes)
     .where(
       and(
-        eq(agentComposes.clerkOrgId, orgData.clerkOrgId),
+        eq(agentComposes.orgId, orgData.orgId),
         eq(agentComposes.name, agentName),
       ),
     )
@@ -49,7 +49,7 @@ export async function resolveDefaultAgentComposeId(): Promise<string | null> {
     log.warn("Agent compose not found for VM0_DEFAULT_AGENT", {
       scopeSlug,
       agentName,
-      clerkOrgId: orgData.clerkOrgId,
+      orgId: orgData.orgId,
     });
     return null;
   }

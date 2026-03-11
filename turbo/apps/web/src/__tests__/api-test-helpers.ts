@@ -334,7 +334,7 @@ export async function createTestScope(
   // organizations from previously created scopes invisible to Clerk mock.
   initServices();
   const [scope] = await globalThis.services.db
-    .select({ clerkOrgId: scopes.clerkOrgId })
+    .select({ orgId: scopes.orgId })
     .from(scopes)
     .where(eq(scopes.id, scopeData.id))
     .limit(1);
@@ -342,13 +342,13 @@ export async function createTestScope(
     await globalThis.services.db
       .insert(orgCache)
       .values({
-        clerkOrgId: scope.clerkOrgId,
+        orgId: scope.orgId,
         slug,
         tier: "free",
         cachedAt: new Date(),
       })
       .onConflictDoUpdate({
-        target: orgCache.clerkOrgId,
+        target: orgCache.orgId,
         set: { slug, tier: "free", cachedAt: new Date() },
       });
   }
@@ -380,13 +380,13 @@ export async function setScopeTier(
  */
 export async function getTestScope(
   scopeId: string,
-): Promise<{ id: string; slug: string; tier: string; clerkOrgId: string }> {
+): Promise<{ id: string; slug: string; tier: string; orgId: string }> {
   const [scope] = await globalThis.services.db
     .select({
       id: scopes.id,
       slug: scopes.slug,
       tier: scopes.tier,
-      clerkOrgId: scopes.clerkOrgId,
+      orgId: scopes.orgId,
     })
     .from(scopes)
     .where(eq(scopes.id, scopeId))
@@ -565,13 +565,13 @@ async function createTestRunDirect(
     continuedFromSessionId?: string;
   },
 ): Promise<{ id: string }> {
-  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
+  const orgId = await getOrgIdFromScope(scopeId);
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
       scopeId,
-      clerkOrgId,
+      orgId,
       agentComposeVersionId: versionId,
       status: options?.status ?? "running",
       prompt: options?.prompt ?? "test prompt",
@@ -607,11 +607,11 @@ export async function createTestSessionWithConversation(
   userId: string,
   agentComposeId: string,
 ): Promise<{ id: string }> {
-  // Look up scopeId via clerkOrgId from the compose
+  // Look up scopeId via orgId from the compose
   const [compose] = await globalThis.services.db
     .select({ scopeId: scopes.id })
     .from(agentComposes)
-    .innerJoin(scopes, eq(agentComposes.clerkOrgId, scopes.clerkOrgId))
+    .innerJoin(scopes, eq(agentComposes.orgId, scopes.orgId))
     .where(eq(agentComposes.id, agentComposeId))
     .limit(1);
   if (!compose) {
@@ -654,7 +654,7 @@ export async function createTestRunInDb(
   const [compose] = await globalThis.services.db
     .select({ scopeId: scopes.id })
     .from(agentComposes)
-    .innerJoin(scopes, eq(agentComposes.clerkOrgId, scopes.clerkOrgId))
+    .innerJoin(scopes, eq(agentComposes.orgId, scopes.orgId))
     .where(eq(agentComposes.id, agentComposeId))
     .limit(1);
   if (!compose) {
@@ -1475,7 +1475,7 @@ async function getScopeIdFromVersion(versionId: string): Promise<string> {
       agentComposes,
       eq(agentComposes.id, agentComposeVersions.composeId),
     )
-    .innerJoin(scopes, eq(agentComposes.clerkOrgId, scopes.clerkOrgId))
+    .innerJoin(scopes, eq(agentComposes.orgId, scopes.orgId))
     .where(eq(agentComposeVersions.id, versionId))
     .limit(1);
   if (!version) {
@@ -1485,19 +1485,19 @@ async function getScopeIdFromVersion(versionId: string): Promise<string> {
 }
 
 /**
- * Resolve clerkOrgId from a scopeId.
+ * Resolve orgId from a scopeId.
  * Shared by test helpers that insert records into scope-dependent tables.
  */
-async function getClerkOrgIdFromScope(scopeId: string): Promise<string> {
+async function getOrgIdFromScope(scopeId: string): Promise<string> {
   const [scope] = await globalThis.services.db
-    .select({ clerkOrgId: scopes.clerkOrgId })
+    .select({ orgId: scopes.orgId })
     .from(scopes)
     .where(eq(scopes.id, scopeId))
     .limit(1);
   if (!scope) {
     throw new Error(`Scope ${scopeId} not found`);
   }
-  return scope.clerkOrgId;
+  return scope.orgId;
 }
 
 /**
@@ -1517,7 +1517,7 @@ export async function insertStalePendingRun(
   ageMs: number = 20 * 60 * 1000,
 ): Promise<string> {
   const scopeId = await getScopeIdFromVersion(agentComposeVersionId);
-  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
+  const orgId = await getOrgIdFromScope(scopeId);
 
   const staleCreatedAt = new Date(Date.now() - ageMs);
   const [run] = await globalThis.services.db
@@ -1525,7 +1525,7 @@ export async function insertStalePendingRun(
     .values({
       userId,
       scopeId,
-      clerkOrgId,
+      orgId,
       agentComposeVersionId,
       status: "pending",
       prompt: "Stale pending run",
@@ -1790,13 +1790,13 @@ export async function findTestConnectorSecret(
   secretName: string,
   type: "connector" | "user" = "connector",
 ): Promise<string | undefined> {
-  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
+  const orgId = await getOrgIdFromScope(scopeId);
   const [storedSecret] = await globalThis.services.db
     .select()
     .from(secrets)
     .where(
       and(
-        eq(secrets.clerkOrgId, clerkOrgId),
+        eq(secrets.orgId, orgId),
         eq(secrets.name, secretName),
         eq(secrets.type, type),
       ),
@@ -1823,13 +1823,11 @@ export async function findTestConnectorTokenExpiresAt(
   scopeId: string,
   type: string,
 ): Promise<Date | null | undefined> {
-  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
+  const orgId = await getOrgIdFromScope(scopeId);
   const [row] = await globalThis.services.db
     .select({ tokenExpiresAt: connectors.tokenExpiresAt })
     .from(connectors)
-    .where(
-      and(eq(connectors.clerkOrgId, clerkOrgId), eq(connectors.type, type)),
-    )
+    .where(and(eq(connectors.orgId, orgId), eq(connectors.type, type)))
     .limit(1);
 
   if (!row) return undefined;
@@ -1954,14 +1952,14 @@ export async function createCompletedTestRun(options: {
   completedAt: Date;
 }): Promise<string> {
   const scopeId = await getScopeIdFromVersion(options.composeVersionId);
-  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
+  const orgId = await getOrgIdFromScope(scopeId);
 
   const [row] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId: options.userId,
       scopeId,
-      clerkOrgId,
+      orgId,
       agentComposeVersionId: options.composeVersionId,
       status: "completed",
       prompt: "test",
@@ -2012,13 +2010,13 @@ export async function createTestSlackComposeRequest(options: {
 /**
  * Find artifact storage for a scope, including its HEAD version details.
  */
-export async function findTestArtifactStorage(clerkOrgId: string) {
+export async function findTestArtifactStorage(orgId: string) {
   const [storage] = await globalThis.services.db
     .select()
     .from(storages)
     .where(
       and(
-        eq(storages.clerkOrgId, clerkOrgId),
+        eq(storages.orgId, orgId),
         eq(storages.name, "artifact"),
         eq(storages.type, "artifact"),
       ),
@@ -2046,7 +2044,7 @@ export async function findTestArtifactStorage(clerkOrgId: string) {
  * Returns the storage id and name, or undefined if not found.
  */
 export async function findTestStorageByName(
-  clerkOrgId: string,
+  orgId: string,
   name: string,
 ): Promise<{ id: string; name: string; s3Prefix: string } | undefined> {
   const [result] = await globalThis.services.db
@@ -2058,7 +2056,7 @@ export async function findTestStorageByName(
     .from(storages)
     .where(
       and(
-        eq(storages.clerkOrgId, clerkOrgId),
+        eq(storages.orgId, orgId),
         eq(storages.userId, VOLUME_SCOPE_USER_ID),
         eq(storages.name, name),
         eq(storages.type, "volume"),
@@ -2072,7 +2070,7 @@ export async function findTestStorageByName(
  * Returns the storage userId and other details for verification.
  */
 export async function findTestStorage(
-  clerkOrgId: string,
+  orgId: string,
   name: string,
   type: "volume" | "artifact" | "memory",
 ): Promise<
@@ -2088,7 +2086,7 @@ export async function findTestStorage(
     .from(storages)
     .where(
       and(
-        eq(storages.clerkOrgId, clerkOrgId),
+        eq(storages.orgId, orgId),
         eq(storages.name, name),
         eq(storages.type, type),
       ),
@@ -2378,7 +2376,7 @@ export async function findTestComposeWithScope(composeId: string) {
       scopeSlug: scopes.slug,
     })
     .from(agentComposes)
-    .innerJoin(scopes, eq(scopes.clerkOrgId, agentComposes.clerkOrgId))
+    .innerJoin(scopes, eq(scopes.orgId, agentComposes.orgId))
     .where(eq(agentComposes.id, composeId))
     .limit(1);
   return row;
@@ -2400,14 +2398,14 @@ export async function createTestRunnerJob(
   contextOverrides?: Partial<StoredExecutionContext>,
 ): Promise<{ runId: string }> {
   const scopeId = await getScopeIdFromVersion(versionId);
-  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
+  const orgId = await getOrgIdFromScope(scopeId);
 
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
       scopeId,
-      clerkOrgId,
+      orgId,
       agentComposeVersionId: versionId,
       status: "pending",
       prompt: "test prompt",
@@ -2689,21 +2687,21 @@ export async function createTestTelegramInstallation(options?: {
   const adminUserId = options?.adminUserId ?? uniqueId("test-admin");
 
   const scopeSlug = uniqueId("scope");
-  const clerkOrgId = uniqueId("org");
+  const orgId = uniqueId("org");
   const [scope] = await globalThis.services.db
     .insert(scopes)
     .values({
       slug: scopeSlug,
-      clerkOrgId,
+      orgId,
     })
     .returning();
 
   // Pre-populate org cache for getOrgData()
   await globalThis.services.db
     .insert(orgCache)
-    .values({ clerkOrgId, slug: scopeSlug, tier: "free", cachedAt: new Date() })
+    .values({ orgId, slug: scopeSlug, tier: "free", cachedAt: new Date() })
     .onConflictDoUpdate({
-      target: orgCache.clerkOrgId,
+      target: orgCache.orgId,
       set: { slug: scopeSlug, tier: "free", cachedAt: new Date() },
     });
 
@@ -2712,7 +2710,7 @@ export async function createTestTelegramInstallation(options?: {
     .values({
       userId: adminUserId,
       scopeId: scope!.id,
-      clerkOrgId: scope!.clerkOrgId,
+      orgId: scope!.orgId,
       name: uniqueId("compose"),
     })
     .returning();
@@ -2817,10 +2815,10 @@ export async function insertTestAgentCompose(
   scopeId: string,
   name: string,
 ) {
-  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
+  const orgId = await getOrgIdFromScope(scopeId);
   const [row] = await globalThis.services.db
     .insert(agentComposes)
-    .values({ userId, scopeId, clerkOrgId, name })
+    .values({ userId, scopeId, orgId, name })
     .returning();
   return row!;
 }
@@ -2836,13 +2834,13 @@ export async function insertTestAgentRun(
   scopeId: string,
   options?: { status?: string; prompt?: string },
 ) {
-  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
+  const orgId = await getOrgIdFromScope(scopeId);
   const [row] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
       scopeId,
-      clerkOrgId,
+      orgId,
       status: options?.status ?? "completed",
       prompt: options?.prompt ?? "test prompt",
     })
@@ -3035,7 +3033,7 @@ export async function findTestOutboxItemById(id: string) {
  * Insert a row into org_cache for testing cache behavior.
  */
 export async function insertOrgCacheEntry(entry: {
-  clerkOrgId: string;
+  orgId: string;
   slug: string;
   tier?: string;
   cachedAt?: Date;
@@ -3043,13 +3041,13 @@ export async function insertOrgCacheEntry(entry: {
   await globalThis.services.db
     .insert(orgCache)
     .values({
-      clerkOrgId: entry.clerkOrgId,
+      orgId: entry.orgId,
       slug: entry.slug,
       tier: entry.tier ?? "free",
       cachedAt: entry.cachedAt ?? new Date(),
     })
     .onConflictDoUpdate({
-      target: orgCache.clerkOrgId,
+      target: orgCache.orgId,
       set: {
         slug: entry.slug,
         tier: entry.tier ?? "free",
@@ -3059,23 +3057,23 @@ export async function insertOrgCacheEntry(entry: {
 }
 
 /**
- * Delete an org_cache row by clerkOrgId.
+ * Delete an org_cache row by orgId.
  * Useful for testing cache-miss behavior after createTestScope pre-populates cache.
  */
-export async function deleteOrgCacheEntry(clerkOrgId: string): Promise<void> {
+export async function deleteOrgCacheEntry(orgId: string): Promise<void> {
   await globalThis.services.db
     .delete(orgCache)
-    .where(eq(orgCache.clerkOrgId, clerkOrgId));
+    .where(eq(orgCache.orgId, orgId));
 }
 
 /**
- * Read an org_cache row by clerkOrgId.
+ * Read an org_cache row by orgId.
  */
-export async function getOrgCacheEntry(clerkOrgId: string) {
+export async function getOrgCacheEntry(orgId: string) {
   const [row] = await globalThis.services.db
     .select()
     .from(orgCache)
-    .where(eq(orgCache.clerkOrgId, clerkOrgId))
+    .where(eq(orgCache.orgId, orgId))
     .limit(1);
   return row ?? null;
 }
@@ -3084,13 +3082,13 @@ export async function getOrgCacheEntry(clerkOrgId: string) {
  * Insert an org_members_cache entry for testing cache behavior.
  */
 export async function insertOrgMembersCacheEntry(entry: {
-  clerkOrgId: string;
+  orgId: string;
   userId: string;
   cachedAt?: Date;
 }): Promise<void> {
   initServices();
   await globalThis.services.db.insert(orgMembersCache).values({
-    clerkOrgId: entry.clerkOrgId,
+    orgId: entry.orgId,
     userId: entry.userId,
     cachedAt: entry.cachedAt ?? new Date(),
   });

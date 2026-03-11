@@ -31,7 +31,7 @@ function isValidTimezone(timezone: string): boolean {
  * Read preferences from org_members_cache, falling back to Clerk API on miss/stale.
  */
 async function getCachedMemberPreferences(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
 ): Promise<UserPreferences> {
   const db = globalThis.services.db;
@@ -41,10 +41,7 @@ async function getCachedMemberPreferences(
     .select()
     .from(orgMembersCache)
     .where(
-      and(
-        eq(orgMembersCache.clerkOrgId, clerkOrgId),
-        eq(orgMembersCache.userId, userId),
-      ),
+      and(eq(orgMembersCache.orgId, orgId), eq(orgMembersCache.userId, userId)),
     )
     .limit(1);
 
@@ -59,7 +56,7 @@ async function getCachedMemberPreferences(
   // 2. Fetch from Clerk API (source of truth)
   const client = await clerkClient();
   const memberships = await client.organizations.getOrganizationMembershipList({
-    organizationId: clerkOrgId,
+    organizationId: orgId,
   });
 
   const membership = memberships.data.find(
@@ -83,7 +80,7 @@ async function getCachedMemberPreferences(
   await db
     .insert(orgMembersCache)
     .values({
-      clerkOrgId,
+      orgId,
       userId,
       timezone: prefs.timezone,
       notifyEmail: prefs.notifyEmail,
@@ -91,7 +88,7 @@ async function getCachedMemberPreferences(
       cachedAt: now,
     })
     .onConflictDoUpdate({
-      target: [orgMembersCache.clerkOrgId, orgMembersCache.userId],
+      target: [orgMembersCache.orgId, orgMembersCache.userId],
       set: {
         timezone: prefs.timezone,
         notifyEmail: prefs.notifyEmail,
@@ -100,7 +97,7 @@ async function getCachedMemberPreferences(
       },
     });
 
-  log.debug("org members cache refreshed", { clerkOrgId, userId });
+  log.debug("org members cache refreshed", { orgId, userId });
 
   return prefs;
 }
@@ -109,7 +106,7 @@ async function getCachedMemberPreferences(
  * Upsert preferences into org_members_cache.
  */
 async function upsertMemberCache(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
   prefs: Partial<UserPreferences>,
 ): Promise<void> {
@@ -119,7 +116,7 @@ async function upsertMemberCache(
   await db
     .insert(orgMembersCache)
     .values({
-      clerkOrgId,
+      orgId,
       userId,
       timezone: prefs.timezone ?? null,
       notifyEmail: prefs.notifyEmail ?? false,
@@ -127,7 +124,7 @@ async function upsertMemberCache(
       cachedAt: now,
     })
     .onConflictDoUpdate({
-      target: [orgMembersCache.clerkOrgId, orgMembersCache.userId],
+      target: [orgMembersCache.orgId, orgMembersCache.userId],
       set: {
         ...(prefs.timezone !== undefined && { timezone: prefs.timezone }),
         ...(prefs.notifyEmail !== undefined && {
@@ -170,7 +167,7 @@ function buildClerkMetadata(prefs: {
  * org_members_cache (DB-backed read-through cache of Clerk membership data).
  */
 export async function getUserPreferences(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
   sessionClaims?: CustomJwtSessionClaims,
 ): Promise<UserPreferences> {
@@ -189,14 +186,14 @@ export async function getUserPreferences(
   }
 
   // Cache-backed Clerk API fallback
-  return getCachedMemberPreferences(clerkOrgId, userId);
+  return getCachedMemberPreferences(orgId, userId);
 }
 
 /**
  * Update user preferences in Clerk membership metadata and local cache.
  */
 export async function updateUserPreferences(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
   prefs: { timezone?: string; notifyEmail?: boolean; notifySlack?: boolean },
 ): Promise<UserPreferences> {
@@ -207,7 +204,7 @@ export async function updateUserPreferences(
   }
 
   // Read existing preferences to merge with partial update
-  const existing = await getCachedMemberPreferences(clerkOrgId, userId);
+  const existing = await getCachedMemberPreferences(orgId, userId);
 
   const merged: UserPreferences = {
     timezone: prefs.timezone !== undefined ? prefs.timezone : existing.timezone,
@@ -224,13 +221,13 @@ export async function updateUserPreferences(
   // Write to Clerk membership metadata
   const client = await clerkClient();
   await client.organizations.updateOrganizationMembershipMetadata({
-    organizationId: clerkOrgId,
+    organizationId: orgId,
     userId,
     publicMetadata: buildClerkMetadata(prefs),
   });
 
   // Update local cache with merged result
-  await upsertMemberCache(clerkOrgId, userId, merged);
+  await upsertMemberCache(orgId, userId, merged);
 
   return merged;
 }
@@ -240,7 +237,7 @@ export async function updateUserPreferences(
  * Writes to Clerk membership metadata and local cache.
  */
 export async function setTimezoneIfNotSet(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
   timezone: string,
   sessionClaims?: CustomJwtSessionClaims,
@@ -250,7 +247,7 @@ export async function setTimezoneIfNotSet(
   }
 
   const { timezone: existingTimezone } = await getUserPreferences(
-    clerkOrgId,
+    orgId,
     userId,
     sessionClaims,
   );
@@ -259,12 +256,12 @@ export async function setTimezoneIfNotSet(
     try {
       const client = await clerkClient();
       await client.organizations.updateOrganizationMembershipMetadata({
-        organizationId: clerkOrgId,
+        organizationId: orgId,
         userId,
         publicMetadata: { timezone },
       });
 
-      await upsertMemberCache(clerkOrgId, userId, { timezone });
+      await upsertMemberCache(orgId, userId, { timezone });
     } catch (err) {
       log.error("Failed to write timezone to Clerk metadata", {
         error: err,

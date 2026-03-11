@@ -205,7 +205,7 @@ export async function prepareForExecution(
   const scopeStart = Date.now();
   const [agentComposeInfo] = await globalThis.services.db
     .select({
-      clerkOrgId: agentComposes.clerkOrgId,
+      orgId: agentComposes.orgId,
     })
     .from(agentComposeVersions)
     .innerJoin(
@@ -220,9 +220,9 @@ export async function prepareForExecution(
     throw badRequest("Agent compose not found");
   }
 
-  const agentOrgData = await getOrgData(agentComposeInfo.clerkOrgId);
+  const agentOrgData = await getOrgData(agentComposeInfo.orgId);
   const agentScopeInfo = {
-    clerkOrgId: agentComposeInfo.clerkOrgId,
+    orgId: agentComposeInfo.orgId,
     scopeSlug: agentOrgData.slug,
   };
 
@@ -231,7 +231,7 @@ export async function prepareForExecution(
   await Promise.all([
     context.artifactName
       ? ensureStorageExists(
-          runtimeScope.clerkOrgId,
+          runtimeScope.orgId,
           userId,
           context.artifactName,
           runtimeScope.slug,
@@ -241,7 +241,7 @@ export async function prepareForExecution(
       : null,
     context.memoryName
       ? ensureStorageExists(
-          runtimeScope.clerkOrgId,
+          runtimeScope.orgId,
           userId,
           context.memoryName,
           runtimeScope.slug,
@@ -259,8 +259,8 @@ export async function prepareForExecution(
   const storageManifest = await prepareStorageManifest(
     context.agentCompose as AgentComposeYaml,
     context.vars || {},
-    agentScopeInfo.clerkOrgId,
-    runtimeScope.clerkOrgId,
+    agentScopeInfo.orgId,
+    runtimeScope.orgId,
     userId,
     context.artifactName,
     context.artifactVersion,
@@ -272,7 +272,7 @@ export async function prepareForExecution(
   const storageEnd = Date.now();
 
   log.debug(
-    `Storage manifest prepared with dual scopes: agentClerkOrgId=${agentScopeInfo.clerkOrgId}, runtimeClerkOrgId=${runtimeScope.clerkOrgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared with dual scopes: agentClerkOrgId=${agentScopeInfo.orgId}, runtimeClerkOrgId=${runtimeScope.orgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
   );
 
   // Build PreparedContext

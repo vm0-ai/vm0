@@ -87,7 +87,7 @@ function getTypesForFramework(framework: ModelProviderFramework): string[] {
  * @returns true if isDefault was set, false if another default already exists
  */
 async function assignDefaultIfFirst(
-  clerkOrgId: string,
+  orgId: string,
   providerId: string,
   framework: ModelProviderFramework,
 ): Promise<boolean> {
@@ -105,7 +105,7 @@ async function assignDefaultIfFirst(
             .from(modelProviders)
             .where(
               and(
-                eq(modelProviders.clerkOrgId, clerkOrgId),
+                eq(modelProviders.orgId, orgId),
                 eq(modelProviders.isDefault, true),
                 ne(modelProviders.id, providerId),
                 inArray(modelProviders.type, frameworkTypes),
@@ -122,7 +122,7 @@ async function assignDefaultIfFirst(
  * List all model providers for a scope
  */
 export async function listModelProviders(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
 ): Promise<ModelProviderInfo[]> {
   // Use leftJoin to include multi-auth providers that don't have secretId
@@ -140,10 +140,7 @@ export async function listModelProviders(
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
     .where(
-      and(
-        eq(modelProviders.clerkOrgId, clerkOrgId),
-        eq(modelProviders.userId, userId),
-      ),
+      and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
     )
     .orderBy(modelProviders.type);
 
@@ -166,7 +163,7 @@ export async function listModelProviders(
  * Note: Multi-auth providers (like aws-bedrock) are not supported by this function
  */
 export async function checkSecretExists(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
   type: ModelProviderType,
 ): Promise<{ exists: boolean }> {
@@ -186,7 +183,7 @@ export async function checkSecretExists(
     .from(secrets)
     .where(
       and(
-        eq(secrets.clerkOrgId, clerkOrgId),
+        eq(secrets.orgId, orgId),
         eq(secrets.userId, userId),
         eq(secrets.name, secretName),
         eq(secrets.type, "model-provider"),
@@ -207,7 +204,7 @@ export async function checkSecretExists(
  * Note: User secrets and model-provider secrets are isolated by type, so no conflict detection needed
  */
 export async function upsertModelProvider(
-  clerkOrgId: string,
+  orgId: string,
   scopeId: string,
   userId: string,
   type: ModelProviderType,
@@ -230,7 +227,7 @@ export async function upsertModelProvider(
   const encryptedValue = encryptSecretValue(secret, encryptionKey);
 
   log.debug("upserting model provider", {
-    clerkOrgId,
+    orgId,
     type,
     secretName,
   });
@@ -242,7 +239,7 @@ export async function upsertModelProvider(
     .from(modelProviders)
     .where(
       and(
-        eq(modelProviders.clerkOrgId, clerkOrgId),
+        eq(modelProviders.orgId, orgId),
         eq(modelProviders.userId, userId),
         eq(modelProviders.type, type),
       ),
@@ -259,10 +256,10 @@ export async function upsertModelProvider(
       encryptedValue,
       type: "model-provider",
       description: `Model provider secret for ${MODEL_PROVIDER_TYPES[type].label}`,
-      clerkOrgId,
+      orgId,
     })
     .onConflictDoUpdate({
-      target: [secrets.clerkOrgId, secrets.userId, secrets.name, secrets.type],
+      target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
       set: { encryptedValue, updatedAt: new Date() },
     })
     .returning();
@@ -277,11 +274,11 @@ export async function upsertModelProvider(
       secretId: upsertedSecret!.id,
       isDefault: false,
       selectedModel: selectedModel ?? null,
-      clerkOrgId,
+      orgId,
     })
     .onConflictDoUpdate({
       target: [
-        modelProviders.clerkOrgId,
+        modelProviders.orgId,
         modelProviders.userId,
         modelProviders.type,
       ],
@@ -298,7 +295,7 @@ export async function upsertModelProvider(
   // Assign default if this is a new provider and no other default exists for the framework
   if (wasCreated) {
     const isDefault = await assignDefaultIfFirst(
-      clerkOrgId,
+      orgId,
       provider!.id,
       framework,
     );
@@ -334,7 +331,7 @@ export async function upsertModelProvider(
  * Note: Only targets model-provider type secrets (user secrets are independent)
  */
 async function upsertMultiAuthSecret(
-  clerkOrgId: string,
+  orgId: string,
   scopeId: string,
   userId: string,
   name: string,
@@ -353,10 +350,10 @@ async function upsertMultiAuthSecret(
       encryptedValue,
       type: "model-provider",
       description,
-      clerkOrgId,
+      orgId,
     })
     .onConflictDoUpdate({
-      target: [secrets.clerkOrgId, secrets.userId, secrets.name, secrets.type],
+      target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
       set: { encryptedValue, description, updatedAt: new Date() },
     });
 }
@@ -365,7 +362,7 @@ async function upsertMultiAuthSecret(
  * Clean up old secrets when switching auth methods
  */
 async function cleanupOldAuthMethodSecrets(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
   type: ModelProviderType,
   oldAuthMethod: string,
@@ -383,13 +380,13 @@ async function cleanupOldAuthMethodSecrets(
       .delete(secrets)
       .where(
         and(
-          eq(secrets.clerkOrgId, clerkOrgId),
+          eq(secrets.orgId, orgId),
           eq(secrets.userId, userId),
           inArray(secrets.name, secretsToDelete),
         ),
       );
     log.debug("old auth method secrets cleaned up", {
-      clerkOrgId,
+      orgId,
       type,
       oldAuthMethod,
       deletedSecrets: secretsToDelete,
@@ -404,7 +401,7 @@ async function cleanupOldAuthMethodSecrets(
  * @param selectedModel Optional selected model
  */
 export async function upsertMultiAuthModelProvider(
-  clerkOrgId: string,
+  orgId: string,
   scopeId: string,
   userId: string,
   type: ModelProviderType,
@@ -451,7 +448,7 @@ export async function upsertMultiAuthModelProvider(
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
   log.debug("upserting multi-auth model provider", {
-    clerkOrgId,
+    orgId,
     type,
     authMethod,
     secretNames: Object.keys(secretValues),
@@ -463,7 +460,7 @@ export async function upsertMultiAuthModelProvider(
     .from(modelProviders)
     .where(
       and(
-        eq(modelProviders.clerkOrgId, clerkOrgId),
+        eq(modelProviders.orgId, orgId),
         eq(modelProviders.userId, userId),
         eq(modelProviders.type, type),
       ),
@@ -473,7 +470,7 @@ export async function upsertMultiAuthModelProvider(
   // If switching auth methods, clean up old secrets that are no longer used
   if (existingProvider && existingProvider.authMethod !== authMethod) {
     await cleanupOldAuthMethodSecrets(
-      clerkOrgId,
+      orgId,
       userId,
       type,
       existingProvider.authMethod ?? "",
@@ -487,7 +484,7 @@ export async function upsertMultiAuthModelProvider(
 
   for (const [name, value] of Object.entries(secretValues)) {
     await upsertMultiAuthSecret(
-      clerkOrgId,
+      orgId,
       scopeId,
       userId,
       name,
@@ -507,11 +504,11 @@ export async function upsertMultiAuthModelProvider(
       authMethod,
       isDefault: false,
       selectedModel: selectedModel ?? null,
-      clerkOrgId,
+      orgId,
     })
     .onConflictDoUpdate({
       target: [
-        modelProviders.clerkOrgId,
+        modelProviders.orgId,
         modelProviders.userId,
         modelProviders.type,
       ],
@@ -528,7 +525,7 @@ export async function upsertMultiAuthModelProvider(
   // Assign default if this is a new provider and no other default exists for the framework
   if (wasCreated) {
     const isDefault = await assignDefaultIfFirst(
-      clerkOrgId,
+      orgId,
       provider!.id,
       framework,
     );
@@ -580,7 +577,7 @@ export async function convertSecretToModelProvider(): Promise<never> {
  * Delete a model provider and its secret
  */
 export async function deleteModelProvider(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
   type: ModelProviderType,
 ): Promise<void> {
@@ -592,7 +589,7 @@ export async function deleteModelProvider(
     .from(modelProviders)
     .where(
       and(
-        eq(modelProviders.clerkOrgId, clerkOrgId),
+        eq(modelProviders.orgId, orgId),
         eq(modelProviders.userId, userId),
         eq(modelProviders.type, type),
       ),
@@ -623,13 +620,13 @@ export async function deleteModelProvider(
           .delete(secrets)
           .where(
             and(
-              eq(secrets.clerkOrgId, clerkOrgId),
+              eq(secrets.orgId, orgId),
               eq(secrets.userId, userId),
               inArray(secrets.name, secretNames),
             ),
           );
         log.debug("multi-auth secrets deleted", {
-          clerkOrgId,
+          orgId,
           type,
           secretNames,
         });
@@ -641,7 +638,7 @@ export async function deleteModelProvider(
       .where(eq(modelProviders.id, provider.id));
   }
 
-  log.debug("model provider deleted", { clerkOrgId, type });
+  log.debug("model provider deleted", { orgId, type });
 
   // If it was default, assign new default for framework
   if (wasDefault) {
@@ -649,10 +646,7 @@ export async function deleteModelProvider(
       .select({ id: modelProviders.id, type: modelProviders.type })
       .from(modelProviders)
       .where(
-        and(
-          eq(modelProviders.clerkOrgId, clerkOrgId),
-          eq(modelProviders.userId, userId),
-        ),
+        and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
       )
       .orderBy(modelProviders.createdAt);
 
@@ -678,7 +672,7 @@ export async function deleteModelProvider(
  * Set a model provider as default for its framework
  */
 export async function setModelProviderDefault(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
   type: ModelProviderType,
 ): Promise<ModelProviderInfo> {
@@ -692,7 +686,7 @@ export async function setModelProviderDefault(
     .from(modelProviders)
     .where(
       and(
-        eq(modelProviders.clerkOrgId, clerkOrgId),
+        eq(modelProviders.orgId, orgId),
         eq(modelProviders.userId, userId),
         eq(modelProviders.type, type),
       ),
@@ -721,10 +715,7 @@ export async function setModelProviderDefault(
     .select({ id: modelProviders.id, type: modelProviders.type })
     .from(modelProviders)
     .where(
-      and(
-        eq(modelProviders.clerkOrgId, clerkOrgId),
-        eq(modelProviders.userId, userId),
-      ),
+      and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
     );
 
   const sameFrameworkIds = allProviders
@@ -768,7 +759,7 @@ export async function setModelProviderDefault(
  * Update model selection for an existing provider (keeps secret unchanged)
  */
 export async function updateModelProviderModel(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
   type: ModelProviderType,
   selectedModel?: string,
@@ -782,7 +773,7 @@ export async function updateModelProviderModel(
     .from(modelProviders)
     .where(
       and(
-        eq(modelProviders.clerkOrgId, clerkOrgId),
+        eq(modelProviders.orgId, orgId),
         eq(modelProviders.userId, userId),
         eq(modelProviders.type, type),
       ),
@@ -825,7 +816,7 @@ export async function updateModelProviderModel(
  * Supports both legacy single-secret and multi-auth providers
  */
 export async function getDefaultModelProvider(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
   framework: ModelProviderFramework,
 ): Promise<ModelProviderInfo | null> {
@@ -844,10 +835,7 @@ export async function getDefaultModelProvider(
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
     .where(
-      and(
-        eq(modelProviders.clerkOrgId, clerkOrgId),
-        eq(modelProviders.userId, userId),
-      ),
+      and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
     );
 
   const defaultProvider = allProviders.find(

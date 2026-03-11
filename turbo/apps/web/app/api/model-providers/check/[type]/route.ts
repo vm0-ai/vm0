@@ -30,11 +30,7 @@ const router = tsr.router(modelProvidersCheckContract, {
       orgParam,
       tokenScopeId,
     );
-    const result = await checkSecretExists(
-      scope.clerkOrgId,
-      userId,
-      params.type,
-    );
+    const result = await checkSecretExists(scope.orgId, userId, params.type);
 
     return {
       status: 200 as const,

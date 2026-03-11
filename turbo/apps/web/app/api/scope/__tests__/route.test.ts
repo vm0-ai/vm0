@@ -422,8 +422,8 @@ describe("/api/scope", () => {
     });
   });
 
-  describe("GET /api/scope (clerkOrgId resolution)", () => {
-    it("should resolve scope by clerkOrgId from session", async () => {
+  describe("GET /api/scope (orgId resolution)", () => {
+    it("should resolve scope by orgId from session", async () => {
       const userId = `clerk-org-test-${Date.now()}`;
       const org1Id = `org_first_${Date.now()}`;
       const org2Id = `org_second_${Date.now()}`;
@@ -455,7 +455,7 @@ describe("/api/scope", () => {
       });
       await POST(req2);
 
-      // Set active org to second scope's clerkOrgId
+      // Set active org to second scope's orgId
       mockClerk({ userId, orgId: org2Id });
 
       const request = createTestRequest("http://localhost:3000/api/scope");
@@ -466,13 +466,13 @@ describe("/api/scope", () => {
       expect(data.slug).toBe(slug2);
     });
 
-    it("should fall through to default when clerkOrgId has no matching scope", async () => {
+    it("should fall through to default when orgId has no matching scope", async () => {
       const userId = `no-match-org-${Date.now()}`;
       const clerkOrgs = [
         { id: `org_mock_${userId}`, slug: `default-org`, name: "Default Org" },
       ];
 
-      // Set up Clerk org BEFORE creating scope so POST resolves correct clerkOrgId
+      // Set up Clerk org BEFORE creating scope so POST resolves correct orgId
       mockClerk({ userId, clerkOrgs });
 
       // Create a default scope

@@ -37,7 +37,7 @@ const router = tsr.router(computerConnectorContract, {
         tokenScopeId,
       );
       const result = await createComputerConnector(
-        scope.clerkOrgId,
+        scope.orgId,
         scope.id,
         userId,
       );
@@ -73,7 +73,7 @@ const router = tsr.router(computerConnectorContract, {
       orgParam,
       tokenScopeId,
     );
-    const connector = await getConnector(scope.clerkOrgId, userId, "computer");
+    const connector = await getConnector(scope.orgId, userId, "computer");
     if (!connector) {
       return createErrorResponse("NOT_FOUND", "Computer connector not found");
     }
@@ -102,7 +102,7 @@ const router = tsr.router(computerConnectorContract, {
         orgParam,
         tokenScopeId,
       );
-      await deleteComputerConnector(scope.clerkOrgId, userId);
+      await deleteComputerConnector(scope.orgId, userId);
       return { status: 204 as const, body: undefined };
     } catch (error) {
       if (isNotFound(error)) {

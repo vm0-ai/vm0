@@ -56,8 +56,8 @@ async function refreshConnectorToken(
   connectorType: string,
   connectorSecrets: Record<string, string>,
   accessTokenName: string,
-  clerkOrgId: string,
-  scopeId: string | null,
+  orgId: string,
+  scopeId: string,
   userId: string,
   runId: string,
 ): Promise<Response | null> {
@@ -93,7 +93,7 @@ async function refreshConnectorToken(
       currentRefreshToken,
     );
     await upsertConnectorSecret(
-      clerkOrgId,
+      orgId,
       scopeId,
       userId,
       accessTokenName,
@@ -101,7 +101,7 @@ async function refreshConnectorToken(
     );
     if (result.refreshToken) {
       await upsertConnectorSecret(
-        clerkOrgId,
+        orgId,
         scopeId,
         userId,
         refreshTokenName,
@@ -237,7 +237,7 @@ export async function POST(request: Request) {
 
   // Look up run to get scopeId
   const [run] = await globalThis.services.db
-    .select({ scopeId: agentRuns.scopeId, clerkOrgId: agentRuns.clerkOrgId })
+    .select({ scopeId: agentRuns.scopeId, orgId: agentRuns.orgId })
     .from(agentRuns)
     .where(and(eq(agentRuns.id, body.runId), eq(agentRuns.userId, auth.userId)))
     .limit(1);
@@ -255,7 +255,7 @@ export async function POST(request: Request) {
     .from(connectors)
     .where(
       and(
-        eq(connectors.clerkOrgId, run.clerkOrgId),
+        eq(connectors.orgId, run.orgId),
         eq(connectors.userId, auth.userId),
         eq(connectors.type, connectorType),
       ),
@@ -276,7 +276,7 @@ export async function POST(request: Request) {
 
   // Get connector secrets and refresh if needed
   const connectorSecrets = await getSecretValues(
-    run.clerkOrgId,
+    run.orgId,
     auth.userId,
     "connector",
   );
@@ -292,7 +292,7 @@ export async function POST(request: Request) {
       connectorType,
       connectorSecrets,
       accessTokenName,
-      run.clerkOrgId,
+      run.orgId,
       run.scopeId,
       auth.userId,
       body.runId,

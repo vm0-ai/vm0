@@ -9,7 +9,7 @@ const context = testContext();
 /**
  * Build clerkOrgs array for scopes created in a test.
  * Must be used BEFORE calling createTestScope() so the POST route
- * resolves the correct clerkOrgId from the user's org memberships.
+ * resolves the correct orgId from the user's org memberships.
  */
 function scopeOrgs(...slugs: string[]) {
   return slugs.map((slug) => ({
@@ -63,11 +63,11 @@ describe("resolveScope", () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("scope");
 
-    // Set up Clerk org BEFORE creating scope so POST resolves correct clerkOrgId
+    // Set up Clerk org BEFORE creating scope so POST resolves correct orgId
     mockClerk({ userId, clerkOrgs: scopeOrgs(slug) });
     const created = await createTestScope(slug);
 
-    // Mock session with orgId matching the scope's clerkOrgId
+    // Mock session with orgId matching the scope's orgId
     mockClerk({
       userId,
       orgId: `org_mock_${slug}`,
@@ -81,7 +81,7 @@ describe("resolveScope", () => {
     expect(result.scope.slug).toBe(slug);
   });
 
-  it("tier 2: explicit clerkOrgId parameter takes precedence over session", async () => {
+  it("tier 2: explicit orgId parameter takes precedence over session", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("scope");
 
@@ -96,7 +96,7 @@ describe("resolveScope", () => {
       clerkOrgs: scopeOrgs(slug),
     });
 
-    // Pass explicit clerkOrgId matching the scope
+    // Pass explicit orgId matching the scope
     const result = await resolveScope(userId, null, `org_mock_${slug}`);
 
     expect(result.scope.id).toBe(created.id);
@@ -287,7 +287,7 @@ describe("resolveScope", () => {
     );
   });
 
-  it("?org= param resolves scope by clerkOrgId", async () => {
+  it("?org= param resolves scope by orgId", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("scope");
 
@@ -295,14 +295,14 @@ describe("resolveScope", () => {
     mockClerk({ userId, clerkOrgs: scopeOrgs(slug) });
     const created = await createTestScope(slug);
 
-    // Mock session — orgId is different from the explicit clerkOrgId
+    // Mock session — orgId is different from the explicit orgId
     mockClerk({
       userId,
       orgId: "org_session_different",
       clerkOrgs: scopeOrgs(slug),
     });
 
-    // Pass clerkOrgId directly (simulates ?org= being passed as 3rd arg)
+    // Pass orgId directly (simulates ?org= being passed as 3rd arg)
     const result = await resolveScope(userId, null, `org_mock_${slug}`);
 
     expect(result.scope.id).toBe(created.id);
@@ -325,7 +325,7 @@ describe("resolveScope", () => {
       clerkOrgs: scopeOrgs(slug1, slug2),
     });
 
-    // Pass both scopeSlug and clerkOrgId — scopeSlug should win
+    // Pass both scopeSlug and orgId — scopeSlug should win
     const result = await resolveScope(userId, slug1, `org_mock_${slug2}`);
 
     expect(result.scope.id).toBe(scope1.id);

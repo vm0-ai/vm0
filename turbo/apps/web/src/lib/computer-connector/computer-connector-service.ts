@@ -38,7 +38,7 @@ const COMPUTER_SECRETS = [
  * and its 4 secrets (AUTHTOKEN, TOKEN, ENDPOINT, DOMAIN).
  */
 export async function createComputerConnector(
-  clerkOrgId: string,
+  orgId: string,
   scopeId: string,
   userId: string,
 ): Promise<ComputerConnectorCreateResponse> {
@@ -46,12 +46,7 @@ export async function createComputerConnector(
   const [existing] = await globalThis.services.db
     .select({ id: connectors.id })
     .from(connectors)
-    .where(
-      and(
-        eq(connectors.clerkOrgId, clerkOrgId),
-        eq(connectors.type, "computer"),
-      ),
-    )
+    .where(and(eq(connectors.orgId, orgId), eq(connectors.type, "computer")))
     .limit(1);
 
   if (existing) {
@@ -143,7 +138,7 @@ export async function createComputerConnector(
     .values({
       scopeId,
       userId,
-      clerkOrgId,
+      orgId,
       type: "computer",
       authMethod: "api",
       externalId: botUser.id,
@@ -160,7 +155,7 @@ export async function createComputerConnector(
   // Store secrets (ngrok token is one-time use, returned to client only)
   await Promise.all([
     upsertSecretByScope(
-      clerkOrgId,
+      orgId,
       scopeId,
       userId,
       "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
@@ -169,7 +164,7 @@ export async function createComputerConnector(
       "Computer connector: COMPUTER_CONNECTOR_BRIDGE_TOKEN",
     ),
     upsertSecretByScope(
-      clerkOrgId,
+      orgId,
       scopeId,
       userId,
       "COMPUTER_CONNECTOR_DOMAIN_ID",
@@ -178,7 +173,7 @@ export async function createComputerConnector(
       "Computer connector: COMPUTER_CONNECTOR_DOMAIN_ID",
     ),
     upsertSecretByScope(
-      clerkOrgId,
+      orgId,
       scopeId,
       userId,
       "COMPUTER_CONNECTOR_DOMAIN",
@@ -226,7 +221,7 @@ async function safeDeleteNgrokResource(
  * Delete the computer connector and revoke ngrok credentials.
  */
 export async function deleteComputerConnector(
-  clerkOrgId: string,
+  orgId: string,
   userId: string,
 ): Promise<void> {
   const db = globalThis.services.db;
@@ -241,7 +236,7 @@ export async function deleteComputerConnector(
     .from(connectors)
     .where(
       and(
-        eq(connectors.clerkOrgId, clerkOrgId),
+        eq(connectors.orgId, orgId),
         eq(connectors.userId, userId),
         eq(connectors.type, "computer"),
       ),
@@ -278,7 +273,7 @@ export async function deleteComputerConnector(
       .from(secrets)
       .where(
         and(
-          eq(secrets.clerkOrgId, clerkOrgId),
+          eq(secrets.orgId, orgId),
           eq(secrets.userId, userId),
           eq(secrets.name, "COMPUTER_CONNECTOR_DOMAIN_ID"),
           eq(secrets.type, "connector"),
@@ -310,7 +305,7 @@ export async function deleteComputerConnector(
       .delete(secrets)
       .where(
         and(
-          eq(secrets.clerkOrgId, clerkOrgId),
+          eq(secrets.orgId, orgId),
           eq(secrets.userId, userId),
           eq(secrets.name, secretName),
           eq(secrets.type, "connector"),
@@ -318,5 +313,5 @@ export async function deleteComputerConnector(
       );
   }
 
-  log.debug("Computer connector deleted", { clerkOrgId });
+  log.debug("Computer connector deleted", { orgId });
 }

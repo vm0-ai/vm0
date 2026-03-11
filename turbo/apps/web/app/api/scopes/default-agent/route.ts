@@ -55,7 +55,7 @@ const router = tsr.router(scopeDefaultAgentContract, {
         .where(
           and(
             eq(agentComposes.id, agentComposeId),
-            eq(agentComposes.clerkOrgId, scope.clerkOrgId),
+            eq(agentComposes.orgId, scope.orgId),
           ),
         )
         .limit(1);
@@ -81,13 +81,13 @@ const router = tsr.router(scopeDefaultAgentContract, {
     // Dual-write to Clerk org publicMetadata (fire-and-forget)
     try {
       const client = await clerkClient();
-      await client.organizations.updateOrganizationMetadata(scope.clerkOrgId, {
+      await client.organizations.updateOrganizationMetadata(scope.orgId, {
         publicMetadata: { default_agent_compose_id: agentComposeId },
       });
     } catch (err) {
       log.error("Failed to write default agent to Clerk metadata", {
         error: err,
-        clerkOrgId: scope.clerkOrgId,
+        orgId: scope.orgId,
       });
     }
 

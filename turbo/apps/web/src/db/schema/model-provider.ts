@@ -33,15 +33,15 @@ export const modelProviders = pgTable(
     isDefault: boolean("is_default").notNull().default(false),
     selectedModel: varchar("selected_model", { length: 255 }),
     userId: text("user_id").notNull(),
-    clerkOrgId: text("clerk_org_id").notNull(),
+    orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
     index("idx_model_providers_secret").on(table.secretId),
-    index("idx_model_providers_clerk_org").on(table.clerkOrgId),
-    uniqueIndex("idx_model_providers_clerk_org_user_type").on(
-      table.clerkOrgId,
+    index("idx_model_providers_org").on(table.orgId),
+    uniqueIndex("idx_model_providers_org_user_type").on(
+      table.orgId,
       table.userId,
       table.type,
     ),

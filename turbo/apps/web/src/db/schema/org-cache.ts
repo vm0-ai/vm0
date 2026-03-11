@@ -8,7 +8,7 @@ import { pgTable, text, timestamp, index } from "drizzle-orm/pg-core";
 export const orgCache = pgTable(
   "org_cache",
   {
-    clerkOrgId: text("clerk_org_id").primaryKey(),
+    orgId: text("org_id").primaryKey(),
     slug: text("slug").notNull(),
     tier: text("tier").notNull().default("free"),
     cachedAt: timestamp("cached_at").defaultNow().notNull(),

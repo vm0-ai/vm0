@@ -34,7 +34,7 @@ const router = tsr.router(secretsMainContract, {
       orgParam,
       tokenScopeId,
     );
-    const secrets = await listSecrets(scope.clerkOrgId, userId);
+    const secrets = await listSecrets(scope.orgId, userId);
 
     return {
       status: 200 as const,
@@ -77,7 +77,7 @@ const router = tsr.router(secretsMainContract, {
         tokenScopeId,
       );
       const secret = await setSecret(
-        scope.clerkOrgId,
+        scope.orgId,
         scope.id,
         userId,
         name,

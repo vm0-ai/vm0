@@ -22,14 +22,14 @@ export const variables = pgTable(
     value: text("value").notNull(),
     description: text("description"),
     userId: text("user_id").notNull(),
-    clerkOrgId: text("clerk_org_id").notNull(),
+    orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    index("idx_variables_clerk_org").on(table.clerkOrgId),
-    uniqueIndex("idx_variables_clerk_org_user_name").on(
-      table.clerkOrgId,
+    index("idx_variables_org").on(table.orgId),
+    uniqueIndex("idx_variables_org_user_name").on(
+      table.orgId,
       table.userId,
       table.name,
     ),

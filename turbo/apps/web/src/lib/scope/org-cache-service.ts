@@ -9,7 +9,7 @@ const log = logger("service:org-cache");
 const CACHE_TTL_MS = 60_000; // 1 minute
 
 interface OrgData {
-  clerkOrgId: string;
+  orgId: string;
   slug: string;
   tier: string;
 }
@@ -17,34 +17,32 @@ interface OrgData {
 /**
  * Get org data from cache or Clerk API.
  *
- * 1. Check org_cache by clerkOrgId
+ * 1. Check org_cache by orgId
  * 2. If fresh (< 1 min): return cached data
  * 3. If miss or stale: call Clerk API, upsert cache, return
  */
-export async function getOrgData(clerkOrgId: string): Promise<OrgData> {
+export async function getOrgData(orgId: string): Promise<OrgData> {
   const db = globalThis.services.db;
 
   // 1. Check cache
   const [cached] = await db
     .select()
     .from(orgCache)
-    .where(eq(orgCache.clerkOrgId, clerkOrgId))
+    .where(eq(orgCache.orgId, orgId))
     .limit(1);
 
   if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
-    return { clerkOrgId, slug: cached.slug, tier: cached.tier };
+    return { orgId, slug: cached.slug, tier: cached.tier };
   }
 
   // 2. Fetch from Clerk (source of truth)
   const client = await clerkClient();
   const org = await client.organizations.getOrganization({
-    organizationId: clerkOrgId,
+    organizationId: orgId,
   });
 
   if (!org.slug) {
-    throw new Error(
-      `Clerk organization ${clerkOrgId} has no slug — cannot cache`,
-    );
+    throw new Error(`Clerk organization ${orgId} has no slug — cannot cache`);
   }
   const slug = org.slug;
   const metadata = org.publicMetadata as Record<string, unknown> | undefined;
@@ -56,15 +54,15 @@ export async function getOrgData(clerkOrgId: string): Promise<OrgData> {
   const now = new Date();
   await db
     .insert(orgCache)
-    .values({ clerkOrgId, slug, tier, cachedAt: now })
+    .values({ orgId, slug, tier, cachedAt: now })
     .onConflictDoUpdate({
-      target: orgCache.clerkOrgId,
+      target: orgCache.orgId,
       set: { slug, tier, cachedAt: now },
     });
 
-  log.debug("org cache refreshed", { clerkOrgId, slug, tier });
+  log.debug("org cache refreshed", { orgId, slug, tier });
 
-  return { clerkOrgId, slug, tier };
+  return { orgId, slug, tier };
 }
 
 /**
@@ -88,7 +86,7 @@ export async function getOrgBySlug(slug: string): Promise<OrgData | null> {
 
   if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
     return {
-      clerkOrgId: cached.clerkOrgId,
+      orgId: cached.orgId,
       slug: cached.slug,
       tier: cached.tier,
     };
@@ -117,17 +115,17 @@ export async function getOrgBySlug(slug: string): Promise<OrgData | null> {
   const now = new Date();
   await db
     .insert(orgCache)
-    .values({ clerkOrgId: org.id, slug: org.slug, tier, cachedAt: now })
+    .values({ orgId: org.id, slug: org.slug, tier, cachedAt: now })
     .onConflictDoUpdate({
-      target: orgCache.clerkOrgId,
+      target: orgCache.orgId,
       set: { slug: org.slug, tier, cachedAt: now },
     });
 
   log.debug("org cache refreshed (by slug)", {
-    clerkOrgId: org.id,
+    orgId: org.id,
     slug: org.slug,
     tier,
   });
 
-  return { clerkOrgId: org.id, slug: org.slug, tier };
+  return { orgId: org.id, slug: org.slug, tier };
 }

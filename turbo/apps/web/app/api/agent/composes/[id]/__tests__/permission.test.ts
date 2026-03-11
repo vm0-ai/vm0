@@ -16,12 +16,12 @@ const context = testContext();
 
 describe("Agent Compose Permission Checks", () => {
   let testComposeId: string;
-  let ownerClerkOrgId: string;
+  let ownerOrgId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
-    ownerClerkOrgId = user.clerkOrgId;
+    ownerOrgId = user.orgId;
 
     const { composeId } = await createTestCompose(uniqueId("agent"));
     testComposeId = composeId;
@@ -145,13 +145,13 @@ describe("Agent Compose Permission Checks", () => {
 
     it("should allow access when user is a member of the same org (JWT fast path)", async () => {
       // Switch to another user whose active org matches the compose's org
-      // This exercises the JWT fast path (authResult.orgId === compose.clerkOrgId)
+      // This exercises the JWT fast path (authResult.orgId === compose.orgId)
       mockClerk({
         userId: "other-user-123",
-        orgId: ownerClerkOrgId,
+        orgId: ownerOrgId,
         clerkOrgs: [
           {
-            id: ownerClerkOrgId,
+            id: ownerOrgId,
             slug: "shared-org",
             name: "Shared Org",
           },
@@ -185,7 +185,7 @@ describe("Agent Compose Permission Checks", () => {
             name: "Different Org",
           },
           {
-            id: ownerClerkOrgId,
+            id: ownerOrgId,
             slug: "shared-org",
             name: "Shared Org",
           },
@@ -209,7 +209,7 @@ describe("Agent Compose Permission Checks", () => {
       // If the cache is working, the user gets access without Clerk API finding membership.
       const cacheUserId = "cache-user-789";
       await insertOrgMembersCacheEntry({
-        clerkOrgId: ownerClerkOrgId,
+        orgId: ownerOrgId,
         userId: cacheUserId,
         cachedAt: new Date(), // fresh
       });
@@ -241,7 +241,7 @@ describe("Agent Compose Permission Checks", () => {
       const staleUserId = "stale-cache-user-101";
       const staleCachedAt = new Date(Date.now() - 120_000); // 2 minutes ago
       await insertOrgMembersCacheEntry({
-        clerkOrgId: ownerClerkOrgId,
+        orgId: ownerOrgId,
         userId: staleUserId,
         cachedAt: staleCachedAt,
       });
@@ -253,7 +253,7 @@ describe("Agent Compose Permission Checks", () => {
         orgId: "org_other_active",
         clerkOrgs: [
           { id: "org_other_active", slug: "other", name: "Other Org" },
-          { id: ownerClerkOrgId, slug: "shared-org", name: "Shared Org" },
+          { id: ownerOrgId, slug: "shared-org", name: "Shared Org" },
         ],
       });
 
@@ -275,7 +275,7 @@ describe("Agent Compose Permission Checks", () => {
       const nonMemberUserId = "non-member-user-202";
       const staleCachedAt = new Date(Date.now() - 120_000); // 2 minutes ago
       await insertOrgMembersCacheEntry({
-        clerkOrgId: ownerClerkOrgId,
+        orgId: ownerOrgId,
         userId: nonMemberUserId,
         cachedAt: staleCachedAt,
       });

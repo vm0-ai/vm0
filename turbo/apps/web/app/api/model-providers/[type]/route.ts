@@ -33,7 +33,7 @@ const router = tsr.router(modelProvidersByTypeContract, {
         orgParam,
         tokenScopeId,
       );
-      await deleteModelProvider(scope.clerkOrgId, userId, params.type);
+      await deleteModelProvider(scope.orgId, userId, params.type);
 
       return {
         status: 204 as const,

@@ -232,7 +232,7 @@ export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
   // Slack callers (server actions, OAuth callback) don't have error handling for this.
   try {
     await ensureStorageExists(
-      scope.clerkOrgId,
+      scope.orgId,
       vm0UserId,
       "artifact",
       scope.slug,

@@ -58,7 +58,7 @@ const router = tsr.router(storagesListContract, {
       .from(storages)
       .where(
         and(
-          eq(storages.clerkOrgId, runtimeScope.clerkOrgId),
+          eq(storages.orgId, runtimeScope.orgId),
           eq(storages.userId, storageUserId),
           eq(storages.type, storageType),
         ),

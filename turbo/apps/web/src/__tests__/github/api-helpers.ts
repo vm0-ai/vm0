@@ -53,18 +53,18 @@ export async function givenGitHubInstallation(
   const scopeSlug = uniqueId("scope");
 
   // Create scope
-  const clerkOrgId = uniqueId("org");
+  const orgId = uniqueId("org");
   const [scope] = await globalThis.services.db
     .insert(scopes)
-    .values({ slug: scopeSlug, clerkOrgId })
+    .values({ slug: scopeSlug, orgId })
     .returning();
 
   // Pre-populate org cache for getOrgData()
   await globalThis.services.db
     .insert(orgCache)
-    .values({ clerkOrgId, slug: scopeSlug, tier: "free", cachedAt: new Date() })
+    .values({ orgId, slug: scopeSlug, tier: "free", cachedAt: new Date() })
     .onConflictDoUpdate({
-      target: orgCache.clerkOrgId,
+      target: orgCache.orgId,
       set: { slug: scopeSlug, tier: "free", cachedAt: new Date() },
     });
 
@@ -74,7 +74,7 @@ export async function givenGitHubInstallation(
     .values({
       userId,
       scopeId: scope!.id,
-      clerkOrgId: scope!.clerkOrgId,
+      orgId: scope!.orgId,
       name: uniqueId("gh-agent"),
     })
     .returning();

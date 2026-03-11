@@ -55,7 +55,7 @@ export async function GET(
       id: agentComposes.id,
       userId: agentComposes.userId,
       scopeId: agentComposes.scopeId,
-      clerkOrgId: agentComposes.clerkOrgId,
+      orgId: agentComposes.orgId,
       name: agentComposes.name,
       content: agentComposeVersions.content,
     })
@@ -106,7 +106,7 @@ export async function GET(
     .from(storages)
     .where(
       and(
-        eq(storages.clerkOrgId, result.clerkOrgId),
+        eq(storages.orgId, result.orgId),
         eq(storages.name, storageName),
         eq(storages.type, "volume"),
       ),

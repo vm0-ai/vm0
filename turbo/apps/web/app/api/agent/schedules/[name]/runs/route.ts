@@ -47,7 +47,7 @@ const router = tsr.router(scheduleRunsContract, {
 
       const runs = await getScheduleRecentRuns(
         userId,
-        scope.clerkOrgId,
+        scope.orgId,
         query.composeId,
         params.name,
         query.limit,
