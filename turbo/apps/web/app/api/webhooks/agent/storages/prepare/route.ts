@@ -1,7 +1,7 @@
 import {
   createHandler,
   tsr,
-  TsRestResponse,
+  createSafeErrorHandler,
 } from "../../../../../../src/lib/ts-rest-handler";
 import {
   webhookStoragesPrepareContract,
@@ -139,7 +139,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       try {
         const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
         if (!bucketName) {
-          throw new Error("R2_USER_STORAGES_BUCKET_NAME not configured");
+          throw new Error("Storage service is not properly configured");
         }
 
         // Get base version
@@ -207,7 +207,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
         status: 500 as const,
         body: {
           error: {
-            message: "R2_USER_STORAGES_BUCKET_NAME not configured",
+            message: "Storage service is not properly configured",
             code: "INTERNAL_ERROR",
           },
         },
@@ -290,49 +290,8 @@ const router = tsr.router(webhookStoragesPrepareContract, {
   },
 });
 
-/**
- * Custom error handler to convert Zod validation errors to API error format
- */
-function errorHandler(err: unknown): TsRestResponse | void {
-  if (
-    err &&
-    typeof err === "object" &&
-    "bodyError" in err &&
-    "queryError" in err
-  ) {
-    const validationError = err as {
-      bodyError: { issues: Array<{ path: string[]; message: string }> } | null;
-      queryError: { issues: Array<{ path: string[]; message: string }> } | null;
-    };
-
-    if (validationError.bodyError) {
-      const issue = validationError.bodyError.issues[0];
-      if (issue) {
-        const path = issue.path.join(".");
-        const message = path ? `${path}: ${issue.message}` : issue.message;
-        return TsRestResponse.fromJson(
-          { error: { message, code: "BAD_REQUEST" } },
-          { status: 400 },
-        );
-      }
-    }
-  }
-
-  // Log unexpected errors
-  log.error("Prepare error:", err);
-  return TsRestResponse.fromJson(
-    {
-      error: {
-        message: err instanceof Error ? err.message : "Prepare failed",
-        code: "INTERNAL_ERROR",
-      },
-    },
-    { status: 500 },
-  );
-}
-
 const handler = createHandler(webhookStoragesPrepareContract, router, {
-  errorHandler,
+  errorHandler: createSafeErrorHandler("webhook:storages:prepare"),
 });
 
 export { handler as POST };

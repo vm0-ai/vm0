@@ -16,7 +16,7 @@ import { createNextHandler, tsr } from "@ts-rest/serverless/next";
 import { TsRestResponse } from "@ts-rest/serverless";
 import type { TsRestRequest } from "@ts-rest/serverless";
 import type { AppRouter } from "@ts-rest/core";
-import { flushLogs } from "./logger";
+import { flushLogs, logger } from "./logger";
 import { ingestRequestLog } from "./axiom";
 
 // Re-export tsr and TsRestResponse for convenience
@@ -27,6 +27,65 @@ export { tsr, TsRestResponse };
  * This is the return type of `tsr.router(contract, { ... })`.
  */
 type TsRestRouter<T extends AppRouter> = ReturnType<typeof tsr.router<T>>;
+
+/**
+ * Create a safe error handler that sanitizes error messages for API responses.
+ *
+ * - Zod validation errors (bodyError/queryError) are safe to return as-is
+ * - All other errors are logged server-side with full details but return
+ *   a generic message to the client (CWE-209, OWASP ASVS V7.4.1)
+ *
+ * @param routeName - Route identifier for server-side logging
+ */
+export function createSafeErrorHandler(
+  routeName: string,
+): (err: unknown) => TsRestResponse | void {
+  const log = logger(`api:${routeName}`);
+
+  return function safeErrorHandler(err: unknown): TsRestResponse | void {
+    // Zod validation errors are safe to return (field names + validation messages)
+    if (
+      err &&
+      typeof err === "object" &&
+      "bodyError" in err &&
+      "queryError" in err
+    ) {
+      const validationError = err as {
+        bodyError: {
+          issues: Array<{ path: string[]; message: string }>;
+        } | null;
+        queryError: {
+          issues: Array<{ path: string[]; message: string }>;
+        } | null;
+      };
+
+      const source = validationError.bodyError ?? validationError.queryError;
+      if (source) {
+        const issue = source.issues[0];
+        if (issue) {
+          const path = issue.path.join(".");
+          const message = path ? `${path}: ${issue.message}` : issue.message;
+          return TsRestResponse.fromJson(
+            { error: { message, code: "BAD_REQUEST" } },
+            { status: 400 },
+          );
+        }
+      }
+    }
+
+    // Non-validation errors: log full details server-side, return generic message
+    log.error(`${routeName} error:`, err);
+    return TsRestResponse.fromJson(
+      {
+        error: {
+          message: "An internal error occurred. Please try again later.",
+          code: "INTERNAL_ERROR",
+        },
+      },
+      { status: 500 },
+    );
+  };
+}
 
 /**
  * Options for createHandler.
@@ -54,12 +113,18 @@ export function createHandler<T extends AppRouter>(
   router: TsRestRouter<T>,
   options?: CreateHandlerOptions,
 ) {
+  const resolvedOptions = {
+    ...options,
+    errorHandler:
+      options?.errorHandler ?? createSafeErrorHandler("unknown-route"),
+  };
+
   return createNextHandler(contract, router, {
     handlerType: "app-router",
     // jsonQuery is intentionally disabled: JSON.parse() misinterprets hex strings
     // like "846e3519" as scientific notation, corrupting version query params (#2666)
     jsonQuery: false,
-    ...options,
+    ...resolvedOptions,
     requestMiddleware: [
       (request) => {
         // Record request start time

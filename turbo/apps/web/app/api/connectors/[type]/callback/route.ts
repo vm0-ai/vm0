@@ -257,25 +257,30 @@ export async function GET(
     );
     return response;
   } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : "OAuth failed";
+    const internalMessage = err instanceof Error ? err.message : "OAuth failed";
     log.error("OAuth callback error", {
       type,
-      error: errorMessage,
+      error: internalMessage,
       sessionId,
     });
 
-    // Mark session as error if present
+    // Mark session as error if present (store full error server-side only)
     if (sessionId) {
       await globalThis.services.db
         .update(connectorSessions)
         .set({
           status: "error",
-          errorMessage,
+          errorMessage: internalMessage,
         })
         .where(eq(connectorSessions.id, sessionId));
     }
 
-    return redirectWithError(origin, type, errorMessage, true);
+    return redirectWithError(
+      origin,
+      type,
+      "OAuth authorization failed. Please try again.",
+      true,
+    );
   }
 }
 

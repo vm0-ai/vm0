@@ -92,7 +92,7 @@ async function handleProxyRequest(request: Request) {
       return NextResponse.json(
         {
           error: {
-            message: err.message,
+            message: "Authentication token is invalid or expired",
             code: "UNAUTHORIZED",
             header: err.header,
           },
@@ -101,15 +101,15 @@ async function handleProxyRequest(request: Request) {
       );
     }
 
-    const message = err instanceof Error ? err.message : "Unknown error";
-    log.error(`Proxy request failed for ${targetUrl}: ${message}`);
+    const internalMessage =
+      err instanceof Error ? err.message : "Unknown error";
+    log.error(`Proxy request failed for ${targetUrl}: ${internalMessage}`);
 
     return NextResponse.json(
       {
         error: {
-          message: `Failed to reach target: ${message}`,
+          message: "Proxy request failed",
           code: "BAD_GATEWAY",
-          targetUrl,
         },
       },
       { status: 502 },

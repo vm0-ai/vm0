@@ -226,11 +226,9 @@ export async function GET(request: Request) {
     };
     return buildPostInstallRedirect(baseUrl, result, state);
   } catch (err) {
-    const errorMessage =
-      err instanceof Error ? err.message : "Failed to complete installation";
     console.error("Slack OAuth callback error:", err);
     return NextResponse.redirect(
-      `${baseUrl}/slack/failed?error=${encodeURIComponent(errorMessage)}`,
+      `${baseUrl}/slack/failed?error=${encodeURIComponent("Failed to complete Slack installation. Please try again.")}`,
     );
   }
 }
