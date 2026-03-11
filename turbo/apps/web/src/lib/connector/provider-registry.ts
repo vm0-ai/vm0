@@ -33,6 +33,7 @@ import { figmaHandler } from "./providers/figma-handler";
 import { firefliesHandler } from "./providers/fireflies-handler";
 import { firecrawlHandler } from "./providers/firecrawl-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
+import { granolaHandler } from "./providers/granola-handler";
 import { githubHandler } from "./providers/github-handler";
 import { heygenHandler } from "./providers/heygen-handler";
 import { huggingFaceHandler } from "./providers/hugging-face-handler";
@@ -136,6 +137,7 @@ export const PROVIDER_HANDLERS: Record<
   fireflies: firefliesHandler,
   firecrawl: firecrawlHandler,
   "garmin-connect": garminConnectHandler,
+  granola: granolaHandler,
   github: githubHandler,
   gmail: gmailHandler,
   heygen: heygenHandler,
