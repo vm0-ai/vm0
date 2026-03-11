@@ -128,4 +128,27 @@ describe("getOrgData", () => {
 
     expect(result.tier).toBe("pro");
   });
+
+  it("throws when Clerk org has no slug", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("scope");
+    mockClerk({ userId });
+    await createTestScope(slug);
+    const clerkOrgId = `org_mock_${slug}`;
+
+    // Override getOrganization to return null slug
+    const client = await clerkClient();
+    vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
+      id: clerkOrgId,
+      slug: null,
+      name: slug,
+      publicMetadata: {},
+    } as unknown as Awaited<
+      ReturnType<typeof client.organizations.getOrganization>
+    >);
+
+    await expect(getOrgData(clerkOrgId)).rejects.toThrow(
+      `Clerk organization ${clerkOrgId} has no slug`,
+    );
+  });
 });
