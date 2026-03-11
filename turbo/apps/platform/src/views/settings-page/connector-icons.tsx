@@ -67,6 +67,7 @@ import vercelIcon from "./icons/vercel.svg";
 import webflowIcon from "./icons/webflow.svg";
 import xIcon from "./icons/x.svg";
 import xeroIcon from "./icons/xero.svg";
+import youtubeIcon from "./icons/youtube.svg";
 import zeptomailIcon from "./icons/zeptomail.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
@@ -137,6 +138,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   webflow: webflowIcon,
   x: xIcon,
   xero: xeroIcon,
+  youtube: youtubeIcon,
   zeptomail: zeptomailIcon,
 });
 
