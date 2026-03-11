@@ -30,6 +30,7 @@ import garminConnectIcon from "./icons/garmin-connect.svg";
 import githubIcon from "./icons/github.svg";
 import heygenIcon from "./icons/heygen.svg";
 import huggingFaceIcon from "./icons/hugging-face.svg";
+import humeIcon from "./icons/hume.svg";
 import hubspotIcon from "./icons/hubspot.svg";
 import intercomIcon from "./icons/intercom.svg";
 import intervalsIcuIcon from "./icons/intervals-icu.svg";
@@ -121,6 +122,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   gmail: gmailIcon,
   heygen: heygenIcon,
   "hugging-face": huggingFaceIcon,
+  hume: humeIcon,
   hubspot: hubspotIcon,
   "google-calendar": googleCalendarIcon,
   "google-docs": googleDocsIcon,

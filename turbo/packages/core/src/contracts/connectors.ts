@@ -454,6 +454,25 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  hume: {
+    label: "Hume",
+    helpText:
+      "Connect your Hume account to access emotion AI, speech-to-speech, and expressive text-to-speech APIs",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to the [Hume Portal](https://platform.hume.ai)\n2. Navigate to the **API Keys** page\n3. Copy your API key",
+        secrets: {
+          HUME_TOKEN: {
+            label: "API Key",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   heygen: {
     label: "HeyGen",
     helpText:
@@ -2667,6 +2686,13 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       service("https://huggingface.co/api", bearerAuth("HUGGING_FACE_TOKEN")),
     ],
   },
+  hume: {
+    services: [
+      service("https://api.hume.ai", {
+        headers: { "X-Hume-Api-Key": "${secrets.HUME_TOKEN}" },
+      }),
+    ],
+  },
   heygen: {
     services: [
       service("https://api.heygen.com", {
@@ -3113,6 +3139,7 @@ export const connectorTypeSchema = z.enum([
   "gmail",
   "google-sheets",
   "hugging-face",
+  "hume",
   "heygen",
   "hubspot",
   "google-docs",

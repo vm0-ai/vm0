@@ -34,6 +34,7 @@ import { garminConnectHandler } from "./providers/garmin-connect-handler";
 import { githubHandler } from "./providers/github-handler";
 import { heygenHandler } from "./providers/heygen-handler";
 import { huggingFaceHandler } from "./providers/hugging-face-handler";
+import { humeHandler } from "./providers/hume-handler";
 import { hubspotHandler } from "./providers/hubspot-handler";
 import { gmailHandler } from "./providers/gmail-handler";
 import { googleCalendarHandler } from "./providers/google-calendar-handler";
@@ -129,6 +130,7 @@ export const PROVIDER_HANDLERS: Record<
   gmail: gmailHandler,
   heygen: heygenHandler,
   "hugging-face": huggingFaceHandler,
+  hume: humeHandler,
   hubspot: hubspotHandler,
   "google-calendar": googleCalendarHandler,
   "google-docs": googleDocsHandler,
