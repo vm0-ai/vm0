@@ -163,18 +163,6 @@ export const setAddConnectionDialogOpen$ = command(({ set }, open: boolean) => {
   set(internalAddConnectionDialogOpen$, open);
 });
 
-const internalAddConnectionDialogTab$ = state<"connectors" | "custom-api">(
-  "connectors",
-);
-export const addConnectionDialogTab$ = computed((get) =>
-  get(internalAddConnectionDialogTab$),
-);
-export const setAddConnectionDialogTab$ = command(
-  ({ set }, tab: "connectors" | "custom-api") => {
-    set(internalAddConnectionDialogTab$, tab);
-  },
-);
-
 /** Remove a connector type from the connections list (does not disconnect). */
 export const removeFromConnectionsList$ = command(
   ({ get, set }, type: ConnectorType) => {
@@ -349,7 +337,7 @@ export const connectConnector$ = command(
       if (isConnected) {
         set(internalSelectedConnectorType$, null);
       }
-      break;
+      return isConnected;
     }
   },
 );
