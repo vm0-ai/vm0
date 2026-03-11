@@ -13,7 +13,6 @@ import { env } from "../../env";
 import { encryptSecretValue } from "../../lib/crypto/secrets-encryption";
 import { scopes } from "../../db/schema/scope";
 import { orgCache } from "../../db/schema/org-cache";
-import { scopeMembers } from "../../db/schema/scope-member";
 import {
   agentComposes,
   agentComposeVersions,
@@ -68,12 +67,6 @@ export async function givenGitHubInstallation(
       target: orgCache.clerkOrgId,
       set: { slug: scopeSlug, tier: "free", cachedAt: new Date() },
     });
-
-  await globalThis.services.db.insert(scopeMembers).values({
-    scopeId: scope!.id,
-    userId,
-    role: "admin",
-  });
 
   // Create compose
   const [compose] = await globalThis.services.db
