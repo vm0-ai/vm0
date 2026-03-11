@@ -833,6 +833,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  tavily: {
+    label: "Tavily",
+    helpText:
+      "Connect your Tavily account to perform AI-optimized web searches and content extraction",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [Tavily](https://tavily.com/)\n2. Go to the dashboard and copy your API key",
+        secrets: {
+          TAVILY_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "tvly-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   reddit: {
     label: "Reddit",
     featureFlag: FeatureSwitchKey.RedditConnector,
@@ -2539,6 +2559,9 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   qiita: {
     services: [service("https://qiita.com/api/v2", bearerAuth("QIITA_TOKEN"))],
   },
+  tavily: {
+    services: [service("https://api.tavily.com", bearerAuth("TAVILY_TOKEN"))],
+  },
   zeptomail: {
     services: [
       service("https://api.zeptomail.com/v1.1", {
@@ -2617,6 +2640,7 @@ export const connectorTypeSchema = z.enum([
   "pushinator",
   "qdrant",
   "qiita",
+  "tavily",
   "zeptomail",
 ]);
 
