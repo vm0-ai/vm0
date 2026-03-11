@@ -87,6 +87,7 @@ import { qiitaHandler } from "./providers/qiita-handler";
 import { resendHandler } from "./providers/resend-handler";
 import { scrapeninjaHandler } from "./providers/scrapeninja-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
+import { wrikeHandler } from "./providers/wrike-handler";
 import { xeroHandler } from "./providers/xero-handler";
 import { zeptomailHandler } from "./providers/zeptomail-handler";
 
@@ -168,6 +169,7 @@ export const PROVIDER_HANDLERS: Record<
   resend: resendHandler,
   scrapeninja: scrapeninjaHandler,
   similarweb: similarwebHandler,
+  wrike: wrikeHandler,
   x: xHandler,
   xero: xeroHandler,
   zeptomail: zeptomailHandler,

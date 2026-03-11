@@ -1634,6 +1634,25 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as ConnectorOAuthConfig,
   },
+  wrike: {
+    label: "Wrike",
+    helpText:
+      "Connect your Wrike account to manage projects, tasks, folders, and workflows",
+    authMethods: {
+      "api-token": {
+        label: "Permanent Access Token",
+        helpText:
+          "1. Log in to your [Wrike account](https://www.wrike.com/)\n2. Navigate to **Apps & Integrations** → **API**\n3. Click **Create new** under **Permanent access tokens**\n4. Copy the generated token",
+        secrets: {
+          WRIKE_TOKEN: {
+            label: "Permanent Access Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   "outlook-mail": {
     label: "Outlook Mail",
     featureFlag: FeatureSwitchKey.OutlookMailConnector,
@@ -2999,6 +3018,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   twenty: {
     services: [service("https://api.twenty.com", bearerAuth("TWENTY_TOKEN"))],
   },
+  wrike: {
+    services: [
+      service("https://www.wrike.com/api/v4", bearerAuth("WRIKE_TOKEN")),
+    ],
+  },
   zapsign: {
     services: [
       service("https://api.zapsign.com.br/api/v1", bearerAuth("ZAPSIGN_TOKEN")),
@@ -3090,6 +3114,7 @@ export const connectorTypeSchema = z.enum([
   "tavily",
   "twenty",
   "youtube",
+  "wrike",
   "zapsign",
   "zendesk",
 ]);

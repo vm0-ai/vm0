@@ -82,6 +82,7 @@ import supabaseIcon from "./icons/supabase.svg";
 import todoistIcon from "./icons/todoist.svg";
 import vercelIcon from "./icons/vercel.svg";
 import webflowIcon from "./icons/webflow.svg";
+import wrikeIcon from "./icons/wrike.svg";
 import xIcon from "./icons/x.svg";
 import xeroIcon from "./icons/xero.svg";
 import zeptomailIcon from "./icons/zeptomail.svg";
@@ -169,6 +170,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   todoist: todoistIcon,
   vercel: vercelIcon,
   webflow: webflowIcon,
+  wrike: wrikeIcon,
   x: xIcon,
   xero: xeroIcon,
   zeptomail: zeptomailIcon,
