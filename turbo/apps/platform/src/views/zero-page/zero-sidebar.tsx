@@ -15,6 +15,7 @@ import {
   IconChevronRight,
   IconSwitchHorizontal,
   IconLoader2,
+  IconRefresh,
 } from "@tabler/icons-react";
 import type { SessionListItem } from "@vm0/core";
 import {
@@ -85,6 +86,7 @@ interface ZeroSidebarProps {
   recentSessions?: SessionListItem[];
   recentSessionsLoading?: boolean;
   onNewChat?: () => void;
+  onResetAgent?: () => void;
 }
 
 function AccountAvatar({
@@ -140,9 +142,11 @@ function useAccountSessions() {
 function AccountDropdown({
   activeId,
   onAccountAction,
+  onResetAgent,
 }: {
   activeId: ZeroNavId;
   onAccountAction?: (action: ZeroAccountAction) => void;
+  onResetAgent?: () => void;
 }) {
   const { user, clerk, accounts } = useAccountSessions();
   const accountName = user?.fullName ?? "User";
@@ -318,6 +322,18 @@ function AccountDropdown({
           <IconUser size={18} stroke={1.5} />
           <span>Manage account</span>
         </DropdownMenuItem>
+        {import.meta.env.DEV && onResetAgent && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={onResetAgent}
+              className="gap-3 px-3 py-2.5 text-amber-500"
+            >
+              <IconRefresh size={18} stroke={1.5} />
+              <span>Reset Default Agent</span>
+            </DropdownMenuItem>
+          </>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => handleAccountAction("signout")}
@@ -341,6 +357,7 @@ export function ZeroSidebar({
   recentSessions = [],
   recentSessionsLoading = false,
   onNewChat,
+  onResetAgent,
 }: ZeroSidebarProps) {
   const displayName = agentName || "Zero";
   const mainNav = MAIN_NAV.map((item) => ({
@@ -465,6 +482,7 @@ export function ZeroSidebar({
             <AccountDropdown
               activeId={activeId}
               onAccountAction={onAccountAction}
+              onResetAgent={onResetAgent}
             />
           </div>
         </div>

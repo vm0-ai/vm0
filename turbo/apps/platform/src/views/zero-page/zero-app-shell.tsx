@@ -288,19 +288,9 @@ export function ZeroAppShell() {
         recentSessions={recentSessions}
         recentSessionsLoading={recentSessionsLoading}
         onNewChat={handleNewChat}
+        onResetAgent={() => detach(resetDefaultAgent(), Reason.DomCallback)}
       />
       <div className="flex flex-1 flex-col min-w-0 zero-workspace-bg">
-        {import.meta.env.DEV && isLoggedIn && (
-          <div className="absolute right-6 top-6 z-10">
-            <button
-              type="button"
-              onClick={() => detach(resetDefaultAgent(), Reason.DomCallback)}
-              className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-500/20"
-            >
-              Reset Default Agent
-            </button>
-          </div>
-        )}
         {!isLoggedIn && (
           <nav
             className="pointer-events-none absolute right-6 top-6 z-10"
