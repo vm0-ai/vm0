@@ -820,8 +820,6 @@ jobs:
         env:
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
         run: |
-          pnpm e2b:build
-          pnpm e2b:codex:build
           pnpm e2b:cli:build
 
       - name: Build summary

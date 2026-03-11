@@ -58,10 +58,8 @@ Configure these in your GitHub repository settings (Settings → Secrets and var
   - Generate at: https://console.neon.tech/app/settings/api-keys
 - `CLERK_SECRET_KEY`: Your Clerk secret key (Required)
   - Get from: https://dashboard.clerk.com
-- `E2B_API_KEY`: Your E2B API key (Optional)
+- `E2B_API_KEY`: Your E2B API key (Required for compose jobs)
   - Get from: https://e2b.dev/dashboard
-- `E2B_TEMPLATE_NAME`: Custom E2B template name (Optional)
-  - Generate by running `cd turbo && pnpm e2b:build`
 
 ### Variables (Store as Repository Variables)
 
@@ -116,14 +114,12 @@ These must be configured for the application to work:
 - **CLERK_PUBLISHABLE_KEY**: Clerk publishable key (injected as NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY for web/site, VITE_CLERK_PUBLISHABLE_KEY for platform)
 - **DATABASE_URL**: Automatically injected by the workflow from Neon
 
-### Optional E2B Configuration
+### E2B Configuration (Compose Jobs)
 
-For running agent code in sandboxes:
+For running compose jobs in E2B sandboxes:
 
 - **E2B_API_KEY**: Your E2B API key for creating sandboxes
-- **E2B_TEMPLATE_NAME**: Custom template with Claude Code CLI pre-installed
-  - Build template: `cd turbo && pnpm e2b:build`
-  - Without this, the default E2B image is used (Claude Code must be manually installed)
+  - The vm0-cli template is built automatically by CI
 
 ### Anthropic-Compatible API Configuration
 

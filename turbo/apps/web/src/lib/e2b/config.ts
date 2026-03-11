@@ -1,5 +1,5 @@
 /**
- * E2B sandbox configuration
+ * E2B sandbox configuration for compose jobs
  *
  * Templates are built via CI and pushed to separate E2B accounts:
  * - Development: Uses repository-level E2B_API_KEY secret
@@ -10,8 +10,6 @@
 export const e2bConfig = {
   /** Sandbox timeout in ms. 0 = no timeout (indefinite execution) */
   defaultTimeout: 0,
-  /** Default E2B template for Claude Code CLI sandbox */
-  defaultTemplate: "vm0-claude-code",
   /** E2B template with vm0 CLI pre-installed for compose jobs */
   cliTemplate: "vm0-cli",
 } as const;
