@@ -788,6 +788,39 @@ describe("createRun()", () => {
       expect(sandboxOptions.envs?.FIGMA_TOKEN).toBe("figd_test_secret_123");
     });
 
+    it("should inject api-token-only connector secret (no environmentMapping) into sandbox environment", async () => {
+      // Productlane has empty environmentMapping — secret is resolved purely
+      // from user secrets, not via connector environmentMapping.
+      const compose = await createTestCompose(
+        uniqueId("api-token-only-agent"),
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-api-key",
+              PRODUCTLANE_TOKEN: "${{ secrets.PRODUCTLANE_TOKEN }}",
+            },
+          },
+        },
+      );
+
+      // Store secret as a user secret (api-token connector path)
+      await createTestConnector(user.scopeId, {
+        type: "productlane",
+        authMethod: "api-token",
+        secretName: "PRODUCTLANE_TOKEN",
+        accessToken: "pl_test_secret_789",
+      });
+
+      await createRun(baseParams({ agentComposeVersionId: compose.versionId }));
+
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      expect(createCall).toBeDefined();
+      const sandboxOptions = createCall![1] as {
+        envs?: Record<string, string>;
+      };
+      expect(sandboxOptions.envs?.PRODUCTLANE_TOKEN).toBe("pl_test_secret_789");
+    });
+
     it("should inject oauth connector secret via environmentMapping into sandbox environment", async () => {
       // Create a compose that references the mapped secret name
       const compose = await createTestCompose(uniqueId("oauth-agent"), {

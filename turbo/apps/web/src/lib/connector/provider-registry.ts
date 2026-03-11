@@ -8,8 +8,12 @@ import {
 import { agentmailHandler } from "./providers/agentmail-handler";
 import { ahrefsHandler } from "./providers/ahrefs-handler";
 import { airtableHandler } from "./providers/airtable-handler";
+import { apifyHandler } from "./providers/apify-handler";
 import { axiomHandler } from "./providers/axiom-handler";
 import { asanaHandler } from "./providers/asana-handler";
+import { brightDataHandler } from "./providers/bright-data-handler";
+import { browserbaseHandler } from "./providers/browserbase-handler";
+import { browserlessHandler } from "./providers/browserless-handler";
 import { canvaHandler } from "./providers/canva-handler";
 import { chatwootHandler } from "./providers/chatwoot-handler";
 import { closeHandler } from "./providers/close-handler";
@@ -19,6 +23,7 @@ import { dropboxHandler } from "./providers/dropbox-handler";
 import { elevenlabsHandler } from "./providers/elevenlabs-handler";
 import { falHandler } from "./providers/fal-handler";
 import { figmaHandler } from "./providers/figma-handler";
+import { firecrawlHandler } from "./providers/firecrawl-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
 import { githubHandler } from "./providers/github-handler";
 import { hubspotHandler } from "./providers/hubspot-handler";
@@ -55,6 +60,7 @@ import { plausibleHandler } from "./providers/plausible-handler";
 import { podchaserHandler } from "./providers/podchaser-handler";
 import { productlaneHandler } from "./providers/productlane-handler";
 import { resendHandler } from "./providers/resend-handler";
+import { scrapeninjaHandler } from "./providers/scrapeninja-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
 import { xeroHandler } from "./providers/xero-handler";
 
@@ -67,8 +73,12 @@ export const PROVIDER_HANDLERS: Record<
   agentmail: agentmailHandler,
   ahrefs: ahrefsHandler,
   airtable: airtableHandler,
+  apify: apifyHandler,
   axiom: axiomHandler,
   asana: asanaHandler,
+  "bright-data": brightDataHandler,
+  browserbase: browserbaseHandler,
+  browserless: browserlessHandler,
   canva: canvaHandler,
   chatwoot: chatwootHandler,
   close: closeHandler,
@@ -78,6 +88,7 @@ export const PROVIDER_HANDLERS: Record<
   elevenlabs: elevenlabsHandler,
   fal: falHandler,
   figma: figmaHandler,
+  firecrawl: firecrawlHandler,
   "garmin-connect": garminConnectHandler,
   github: githubHandler,
   gmail: gmailHandler,
@@ -113,6 +124,7 @@ export const PROVIDER_HANDLERS: Record<
   podchaser: podchaserHandler,
   productlane: productlaneHandler,
   resend: resendHandler,
+  scrapeninja: scrapeninjaHandler,
   similarweb: similarwebHandler,
   x: xHandler,
   xero: xeroHandler,
