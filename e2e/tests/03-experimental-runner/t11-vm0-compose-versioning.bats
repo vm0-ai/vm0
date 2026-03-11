@@ -31,8 +31,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent for version display"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -55,8 +53,6 @@ agents:
   $AGENT_NAME:
     description: "Initial description"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -74,8 +70,6 @@ agents:
   $AGENT_NAME:
     description: "Updated description"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -112,8 +106,6 @@ agents:
   $AGENT_NAME:
     description: "Version 1"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -131,8 +123,6 @@ agents:
   $AGENT_NAME:
     description: "Version 2"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -167,8 +157,6 @@ agents:
   $AGENT_NAME:
     description: "Latest version test"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -201,8 +189,6 @@ agents:
   $AGENT_NAME:
     description: "Backward compatibility test"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 

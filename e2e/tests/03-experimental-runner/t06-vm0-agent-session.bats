@@ -42,8 +42,6 @@ agents:
   ${AGENT_NAME}:
     description: "E2E test agent for session testing"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     volumes:
       - claude-files:/home/user/.claude
     working_dir: /home/user/workspace
@@ -248,8 +246,6 @@ agents:
   ${ENV_AGENT_NAME}:
     description: "Test agent for environment variable expansion"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
     environment:
       TEST_VAR: "\${{ vars.testVar }}"

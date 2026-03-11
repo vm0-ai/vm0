@@ -1447,7 +1447,7 @@ jobs:
           [ "$PARALLEL" -lt 1 ] && PARALLEL=1
           echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel, total capacity ${RUNNER_TOTAL_CAPACITY}) ==="
           echo "Files: ${{ matrix.files }}"
-          BATS_TEST_TIMEOUT=60 RUNNER_GROUP="vm0/development-${JOB_REF}" ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --no-parallelize-within-files ${{ matrix.files }}
+          BATS_TEST_TIMEOUT=60 ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --no-parallelize-within-files ${{ matrix.files }}
           echo "✅ Chunk ${{ matrix.index }} tests passed"
         env:
           RUNNER_TOTAL_CAPACITY: ${{ needs.deploy-runner-start.outputs.total-capacity }}
@@ -1456,7 +1456,6 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           CI_GITHUB_TOKEN: ${{ github.token }}
 
@@ -1541,8 +1540,6 @@ jobs:
             ${AGENT_NAME}:
               description: "Stress test agent"
               framework: claude-code
-              experimental_runner:
-                group: vm0/development-${JOB_REF}
           EOF
           vm0 compose /tmp/stress-agent.yaml
           echo "agent-name=${AGENT_NAME}" >> "$GITHUB_OUTPUT"

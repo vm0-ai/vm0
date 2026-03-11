@@ -63,13 +63,6 @@ function processFirewallConfig(
     firstAgent.experimental_firewall as ExperimentalFirewall;
   if (!firewallConfig.enabled) return null;
 
-  // Validate experimental_runner is configured (firewall requires runner)
-  if (!firstAgent.experimental_runner?.group) {
-    throw badRequest(
-      "experimental_firewall requires experimental_runner to be configured",
-    );
-  }
-
   // Validate experimental_seal_secrets requires experimental_mitm
   if (
     firewallConfig.experimental_seal_secrets &&

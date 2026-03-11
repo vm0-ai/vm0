@@ -38,8 +38,6 @@ agents:
   $AGENT_NAME:
     description: "Real Claude smoke test"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
     environment:
       ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}

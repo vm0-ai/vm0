@@ -17,10 +17,6 @@ setup() {
         fail "VM0_API_URL not set"
     fi
 
-    if [[ -z "$RUNNER_GROUP" ]]; then
-        fail "RUNNER_GROUP not set - runner was not started by workflow"
-    fi
-
     export TEST_DIR="$(mktemp -d)"
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export AGENT_NAME="e2e-sni-${UNIQUE_ID}"
@@ -52,8 +48,6 @@ agents:
     description: "SNI-only firewall test"
     framework: claude-code
     working_dir: /home/user/workspace
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     experimental_firewall:
       enabled: true
       experimental_mitm: false
@@ -76,8 +70,6 @@ agents:
     description: "SNI allow test"
     framework: claude-code
     working_dir: /home/user/workspace
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     experimental_firewall:
       enabled: true
       experimental_mitm: false
@@ -131,8 +123,6 @@ agents:
     description: "SNI block test"
     framework: claude-code
     working_dir: /home/user/workspace
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     experimental_firewall:
       enabled: true
       experimental_mitm: false

@@ -18,10 +18,6 @@ setup() {
         fail "VM0_API_URL not set"
     fi
 
-    if [[ -z "$RUNNER_GROUP" ]]; then
-        fail "RUNNER_GROUP not set - runner was not started by workflow"
-    fi
-
     export TEST_DIR="$(mktemp -d)"
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export AGENT_NAME="e2e-connector-${UNIQUE_ID}"
@@ -82,8 +78,6 @@ agents:
     description: "Connector placeholder test"
     framework: claude-code
     working_dir: /home/user/workspace
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     experimental_services:
       - github
 EOF
@@ -103,8 +97,6 @@ agents:
     description: "GitHub connector placeholder test"
     framework: claude-code
     working_dir: /home/user/workspace
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     experimental_services:
       - github
     environment:
@@ -145,8 +137,6 @@ agents:
     description: "Multi-connector placeholder test"
     framework: claude-code
     working_dir: /home/user/workspace
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     experimental_services:
       - github
       - slack
@@ -194,8 +184,6 @@ agents:
     description: "Token replacement test"
     framework: claude-code
     working_dir: /home/user/workspace
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     experimental_services:
       - github
     environment:

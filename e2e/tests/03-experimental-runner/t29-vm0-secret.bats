@@ -112,8 +112,6 @@ agents:
   ${agent_name}:
     description: "E2E test agent for secret masking"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
     environment:
       MY_SECRET: "\${{ secrets.MY_SECRET }}"
@@ -182,8 +180,6 @@ agents:
   ${agent_name}:
     description: "E2E test agent for multiple secrets"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
     environment:
       API_KEY: "\${{ secrets.API_KEY }}"

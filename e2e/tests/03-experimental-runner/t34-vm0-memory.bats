@@ -39,8 +39,6 @@ agents:
   ${AGENT_NAME}:
     description: "E2E test agent for memory flag testing"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     volumes:
       - claude-files:/home/user/.claude
     working_dir: /home/user/workspace

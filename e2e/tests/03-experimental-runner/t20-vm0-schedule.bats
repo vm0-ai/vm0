@@ -32,8 +32,6 @@ agents:
   ${AGENT_NAME}:
     description: "E2E schedule test agent"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -168,8 +166,6 @@ agents:
   ${LOOP_AGENT_NAME}:
     description: "E2E loop schedule test agent"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -252,8 +248,6 @@ agents:
   ${CONFIG_AGENT_NAME}:
     description: "Test agent with configuration requirements"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
     environment:
       SCHEDULE_TEST_API_KEY: "\${{ secrets.${SECRET_NAME} }}"

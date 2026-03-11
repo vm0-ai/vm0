@@ -48,8 +48,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent with --yes flag"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -69,8 +67,6 @@ agents:
   $AGENT_NAME_2:
     description: "Test agent with -y short flag"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -90,8 +86,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent in non-TTY"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
 EOF
 
     echo "# Step 2: Compose with --yes flag and piped input (non-TTY)"
@@ -115,8 +109,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent with skill and environment"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
     environment:
@@ -141,8 +133,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent with skill"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -172,8 +162,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent with skill upload"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -198,8 +186,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent with multiple skills"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
       - https://github.com/vm0-ai/vm0-skills/tree/main/axiom

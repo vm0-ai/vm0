@@ -118,8 +118,6 @@ agents:
   ${agent_name}:
     description: "E2E test agent for variable expansion"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
     environment:
       MY_VAR: "\${{ vars.$TEST_VAR_NAME }}"
@@ -189,8 +187,6 @@ agents:
   ${agent_name}:
     description: "E2E test agent for variable override"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
     environment:
       MY_VAR: "\${{ vars.$TEST_VAR_NAME }}"

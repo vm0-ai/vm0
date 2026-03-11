@@ -49,8 +49,6 @@ agents:
   ${AGENT_NAME}:
     description: "Test agent with optional volume"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     volumes:
       - optional-data:/home/user/optional-data
       - claude-files:/home/user/.config/claude
@@ -77,8 +75,6 @@ agents:
   ${AGENT_NAME}:
     description: "Test agent with optional volume"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     volumes:
       - optional-data:/home/user/optional-data
       - claude-files:/home/user/.config/claude
@@ -133,8 +129,6 @@ agents:
   ${AGENT_NAME}-mixed:
     description: "Test agent with mixed volumes"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     volumes:
       - required-data:/home/user/required-data
       - optional-data:/home/user/optional-data

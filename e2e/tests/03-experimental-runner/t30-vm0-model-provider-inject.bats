@@ -32,8 +32,6 @@ agents:
   ${AGENT_NAME}:
     description: "Test model-provider injection"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
     volumes:
       - claude-files:/home/user/.claude

@@ -28,8 +28,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent with provider auto-config"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
 EOF
 
     echo "# Running vm0 compose..."
@@ -49,8 +47,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent with explicit config"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /custom/path
 EOF
 
@@ -71,8 +67,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent with legacy apps field"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     apps:
       - github
 EOF
@@ -97,8 +91,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     instructions: AGENTS.md
 EOF
 
@@ -127,8 +119,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     instructions: AGENTS.md
 EOF
 
@@ -164,8 +154,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -188,8 +176,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -217,8 +203,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     instructions: AGENTS.md
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
@@ -253,8 +237,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     instructions: AGENTS.md
 EOF
 
@@ -297,8 +279,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     skills:
       - https://github.com/vm0-ai/vm0-skills/tree/main/github
 EOF
@@ -335,8 +315,6 @@ version: "1.0"
 agents:
   $AGENT_NAME:
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
 EOF
 
     echo "# Running vm0 compose..."

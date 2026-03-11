@@ -37,8 +37,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent for run instructions"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -76,8 +74,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent for scope/name run"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 
@@ -128,8 +124,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent for default file behavior"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     working_dir: /home/user/workspace
 EOF
 

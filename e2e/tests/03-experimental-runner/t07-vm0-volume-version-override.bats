@@ -44,8 +44,6 @@ agents:
   ${AGENT_NAME}:
     description: "Test agent with volume for override testing"
     framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
     volumes:
       - test-volume:/home/user/data
       - claude-files:/home/user/.config/claude
