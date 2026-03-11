@@ -833,6 +833,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  reportei: {
+    label: "Reportei",
+    helpText:
+      "Connect your Reportei account to generate and manage marketing reports with automated analytics",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Sign up at [Reportei](https://www.reportei.com/)\n2. Go to Dashboard → Generate API Token\n3. Copy the token",
+        secrets: {
+          REPORTEI_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-reportei-api-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   shortio: {
     label: "Short.io",
     helpText:
@@ -2559,6 +2579,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   qiita: {
     services: [service("https://qiita.com/api/v2", bearerAuth("QIITA_TOKEN"))],
   },
+  reportei: {
+    services: [
+      service("https://app.reportei.com/api/v1", bearerAuth("REPORTEI_TOKEN")),
+    ],
+  },
   shortio: {
     services: [
       service("https://api.short.io", {
@@ -2644,6 +2669,7 @@ export const connectorTypeSchema = z.enum([
   "pushinator",
   "qdrant",
   "qiita",
+  "reportei",
   "shortio",
   "zeptomail",
 ]);
