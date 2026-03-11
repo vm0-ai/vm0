@@ -833,6 +833,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  streak: {
+    label: "Streak",
+    helpText:
+      "Connect your Streak account to manage CRM pipelines, contacts, and deals inside Gmail",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Streak](https://streak.com/)\n2. Go to **Settings → Integrations & API**\n3. Copy your API key",
+        secrets: {
+          STREAK_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-streak-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   reddit: {
     label: "Reddit",
     featureFlag: FeatureSwitchKey.RedditConnector,
@@ -2565,6 +2585,7 @@ export const connectorTypeSchema = z.enum([
   "podchaser",
   "pushinator",
   "qdrant",
+  "streak",
   "zeptomail",
 ]);
 
