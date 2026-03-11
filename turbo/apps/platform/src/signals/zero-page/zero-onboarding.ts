@@ -23,6 +23,11 @@ const L = logger("ZeroOnboarding");
 
 const internalReload$ = state(0);
 
+/** Trigger a refresh of the onboarding status from the API. */
+export const reloadOnboardingStatus$ = command(({ set }) => {
+  set(internalReload$, (x) => x + 1);
+});
+
 export const zeroOnboardingStatus$ = computed(async (get) => {
   get(internalReload$);
   const fetchFn = get(fetch$);

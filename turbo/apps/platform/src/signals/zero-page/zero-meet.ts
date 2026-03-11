@@ -1,7 +1,10 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { fetch$ } from "../fetch.ts";
-import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
+import {
+  zeroOnboardingStatus$,
+  reloadOnboardingStatus$,
+} from "./zero-onboarding.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { triggerAndPollComposeJob } from "../agent-detail/compose-job.ts";
@@ -207,6 +210,7 @@ const syncSkillsToCompose$ = command(
 
     const fetchFn = get(fetch$);
     await buildAndSetDefaultAgent(fetchFn, newContent);
+    await set(reloadOnboardingStatus$);
     set(internalComposeReload$, (x) => x + 1);
   },
 );
@@ -245,6 +249,7 @@ export const zeroUpdateSettings$ = command(
       const fetchFn = get(fetch$);
       await buildAndSetDefaultAgent(fetchFn, newContent);
 
+      await set(reloadOnboardingStatus$);
       set(internalComposeReload$, (x) => x + 1);
       toast.success("Settings saved");
     } catch (error) {

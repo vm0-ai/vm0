@@ -1,9 +1,9 @@
 import { eq, and, or, ne, desc } from "drizzle-orm";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { agentPermissions } from "../../db/schema/agent-permission";
-import { scopeMembers } from "../../db/schema/scope-member";
 import { scopes } from "../../db/schema/scope";
 import { logger } from "../logger";
+import { resolveScope } from "../scope/resolve-scope";
 
 const log = logger("agent:permission");
 
@@ -12,8 +12,8 @@ const log = logger("agent:permission");
  *
  * Access is granted if:
  * 1. User is the owner of the compose
- * 2. Compose has a 'public' permission entry
- * 3. User's email matches an 'email' permission entry
+ * 2. User's resolved scope matches the compose's org (via Clerk org membership)
+ * 3. Compose has a 'public' or email-matched permission entry
  */
 export async function canAccessCompose(
   userId: string,
@@ -23,20 +23,13 @@ export async function canAccessCompose(
   // 1. Owner always has access
   if (compose.userId === userId) return true;
 
-  // 2. Check scope membership (members of the scope can access its agents)
-  const [member] = await globalThis.services.db
-    .select({ id: scopeMembers.id })
-    .from(scopeMembers)
-    .innerJoin(scopes, eq(scopes.id, scopeMembers.scopeId))
-    .where(
-      and(
-        eq(scopes.clerkOrgId, compose.clerkOrgId),
-        eq(scopeMembers.userId, userId),
-      ),
-    )
-    .limit(1);
-
-  if (member) return true;
+  // 2. Check org membership via scope resolution (trusts JWT + Clerk API)
+  try {
+    const { scope } = await resolveScope(userId);
+    if (scope.clerkOrgId === compose.clerkOrgId) return true;
+  } catch {
+    // Scope resolution failed — continue to ACL check
+  }
 
   // 3. Check ACL
   const permissionResult = await globalThis.services.db
