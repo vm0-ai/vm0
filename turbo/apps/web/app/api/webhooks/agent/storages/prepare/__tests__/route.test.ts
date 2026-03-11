@@ -12,7 +12,7 @@ import {
   uniqueId,
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
-import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+
 import { randomUUID } from "crypto";
 
 vi.hoisted(() => {
@@ -55,8 +55,6 @@ describe("POST /api/webhooks/agent/storages/prepare", () => {
     const { runId } = await createTestRun(composeId, "Test prompt");
     testRunId = runId;
     testToken = await createTestSandboxToken(user.userId, testRunId);
-
-    mockClerk({ userId: null });
   });
 
   it("should return 401 without authentication", async () => {
