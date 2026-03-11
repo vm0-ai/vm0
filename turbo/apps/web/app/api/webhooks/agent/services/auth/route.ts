@@ -29,16 +29,19 @@ type ProviderHandler =
 /**
  * Find the connector type and service config that contains an API entry matching the given base URL.
  */
-function findConnectorByBase(
-  base: string,
-): { connectorType: ConnectorType; config: ServiceConfig } | undefined {
+function findConnectorByBase(base: string):
+  | {
+      connectorType: ConnectorType;
+      api: ServiceConfig["apis"][number];
+    }
+  | undefined {
   const allTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
   for (const type of allTypes) {
     const config = getServiceConfig(type);
     if (!config) continue;
-    const matched = config.apis.find((api) => api.base === base);
-    if (matched) {
-      return { connectorType: type, config };
+    const api = config.apis.find((a) => a.base === base);
+    if (api) {
+      return { connectorType: type, api };
     }
   }
   return undefined;
@@ -230,7 +233,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const { connectorType, config } = match;
+  const { connectorType, api: matchedApi } = match;
 
   // Look up run to get scopeId
   const [run] = await globalThis.services.db
@@ -295,20 +298,6 @@ export async function POST(request: Request) {
       body.runId,
     );
     if (refreshError) return refreshError;
-  }
-
-  // Find the matching API entry by base URL
-  const matchedApi = config.apis.find((api) => api.base === body.base);
-  if (!matchedApi) {
-    return NextResponse.json(
-      {
-        error: {
-          message: `No API matching base "${body.base}"`,
-          code: "BAD_REQUEST",
-        },
-      },
-      { status: 400 },
-    );
   }
 
   // Resolve auth header templates with real secret values

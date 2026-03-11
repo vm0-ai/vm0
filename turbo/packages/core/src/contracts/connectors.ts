@@ -2624,16 +2624,11 @@ function bearerAuth(secretName: string) {
 }
 
 /** Shorthand: single-base API entry with bearer auth. */
-function api(
-  base: string,
-  auth: ServiceApi["auth"],
-): ServiceApi {
+function api(base: string, auth: ServiceApi["auth"]): ServiceApi {
   return { base, auth };
 }
 
-const SERVICE_CONFIGS: Partial<
-  Record<ConnectorType, ServiceConfig>
-> = {
+const SERVICE_CONFIGS: Partial<Record<ConnectorType, ServiceConfig>> = {
   ahrefs: {
     apis: [api("https://api.ahrefs.com", bearerAuth("AHREFS_TOKEN"))],
   },
@@ -2641,9 +2636,7 @@ const SERVICE_CONFIGS: Partial<
     apis: [api("https://api.axiom.co", bearerAuth("AXIOM_TOKEN"))],
   },
   airtable: {
-    apis: [
-      api("https://api.airtable.com", bearerAuth("AIRTABLE_TOKEN")),
-    ],
+    apis: [api("https://api.airtable.com", bearerAuth("AIRTABLE_TOKEN"))],
   },
   github: {
     apis: [api("https://api.github.com", bearerAuth("GITHUB_TOKEN"))],
@@ -2703,9 +2696,7 @@ const SERVICE_CONFIGS: Partial<
     ],
   },
   "hugging-face": {
-    apis: [
-      api("https://huggingface.co/api", bearerAuth("HUGGING_FACE_TOKEN")),
-    ],
+    apis: [api("https://huggingface.co/api", bearerAuth("HUGGING_FACE_TOKEN"))],
   },
   hume: {
     apis: [
@@ -2735,10 +2726,7 @@ const SERVICE_CONFIGS: Partial<
   },
   docusign: {
     apis: [
-      api(
-        "https://demo.docusign.net/restapi",
-        bearerAuth("DOCUSIGN_TOKEN"),
-      ),
+      api("https://demo.docusign.net/restapi", bearerAuth("DOCUSIGN_TOKEN")),
       api("https://na1.docusign.net/restapi", bearerAuth("DOCUSIGN_TOKEN")),
     ],
   },
@@ -2809,9 +2797,7 @@ const SERVICE_CONFIGS: Partial<
     ],
   },
   clickup: {
-    apis: [
-      api("https://api.clickup.com/api/v2", bearerAuth("CLICKUP_TOKEN")),
-    ],
+    apis: [api("https://api.clickup.com/api/v2", bearerAuth("CLICKUP_TOKEN"))],
   },
   cloudflare: {
     apis: [
@@ -2825,9 +2811,7 @@ const SERVICE_CONFIGS: Partial<
     apis: [api("https://api.deel.com", bearerAuth("DEEL_TOKEN"))],
   },
   deepseek: {
-    apis: [
-      api("https://api.deepseek.com", bearerAuth("DEEPSEEK_TOKEN")),
-    ],
+    apis: [api("https://api.deepseek.com", bearerAuth("DEEPSEEK_TOKEN"))],
   },
   dify: {
     apis: [api("https://api.dify.ai/v1", bearerAuth("DIFY_TOKEN"))],
@@ -2839,25 +2823,19 @@ const SERVICE_CONFIGS: Partial<
     apis: [api("https://api.mercury.com", bearerAuth("MERCURY_TOKEN"))],
   },
   minimax: {
-    apis: [
-      api("https://api.minimaxi.com/v1", bearerAuth("MINIMAX_TOKEN")),
-    ],
+    apis: [api("https://api.minimaxi.com/v1", bearerAuth("MINIMAX_TOKEN"))],
   },
   reddit: {
     apis: [api("https://oauth.reddit.com", bearerAuth("REDDIT_TOKEN"))],
   },
   strava: {
-    apis: [
-      api("https://www.strava.com/api/v3", bearerAuth("STRAVA_TOKEN")),
-    ],
+    apis: [api("https://www.strava.com/api/v3", bearerAuth("STRAVA_TOKEN"))],
   },
   x: {
     apis: [api("https://api.x.com/2", bearerAuth("X_ACCESS_TOKEN"))],
   },
   neon: {
-    apis: [
-      api("https://console.neon.tech/api/v2", bearerAuth("NEON_TOKEN")),
-    ],
+    apis: [api("https://console.neon.tech/api/v2", bearerAuth("NEON_TOKEN"))],
   },
   vercel: {
     apis: [api("https://api.vercel.com", bearerAuth("VERCEL_TOKEN"))],
@@ -2866,50 +2844,33 @@ const SERVICE_CONFIGS: Partial<
     apis: [api("https://sentry.io/api", bearerAuth("SENTRY_TOKEN"))],
   },
   monday: {
-    apis: [
-      api("https://api.monday.com/v2", bearerAuth("MONDAY_TOKEN")),
-    ],
+    apis: [api("https://api.monday.com/v2", bearerAuth("MONDAY_TOKEN"))],
   },
   canva: {
-    apis: [
-      api("https://api.canva.com/rest/v1", bearerAuth("CANVA_TOKEN")),
-    ],
+    apis: [api("https://api.canva.com/rest/v1", bearerAuth("CANVA_TOKEN"))],
   },
   xero: {
     apis: [api("https://api.xero.com", bearerAuth("XERO_TOKEN"))],
   },
   supabase: {
-    apis: [
-      api("https://api.supabase.com/v1", bearerAuth("SUPABASE_TOKEN")),
-    ],
+    apis: [api("https://api.supabase.com/v1", bearerAuth("SUPABASE_TOKEN"))],
   },
   todoist: {
-    apis: [
-      api("https://api.todoist.com/rest/v2", bearerAuth("TODOIST_TOKEN")),
-    ],
+    apis: [api("https://api.todoist.com/rest/v2", bearerAuth("TODOIST_TOKEN"))],
   },
   webflow: {
-    apis: [
-      api("https://api.webflow.com/v2", bearerAuth("WEBFLOW_TOKEN")),
-    ],
+    apis: [api("https://api.webflow.com/v2", bearerAuth("WEBFLOW_TOKEN"))],
   },
   asana: {
-    apis: [
-      api("https://app.asana.com/api/1.0", bearerAuth("ASANA_TOKEN")),
-    ],
+    apis: [api("https://app.asana.com/api/1.0", bearerAuth("ASANA_TOKEN"))],
   },
   "meta-ads": {
-    apis: [
-      api("https://graph.facebook.com", bearerAuth("META_ADS_TOKEN")),
-    ],
+    apis: [api("https://graph.facebook.com", bearerAuth("META_ADS_TOKEN"))],
   },
   posthog: {
     apis: [
       api("https://us.posthog.com/api", bearerAuth("POSTHOG_ACCESS_TOKEN")),
-      api(
-        "https://app.posthog.com/api",
-        bearerAuth("POSTHOG_ACCESS_TOKEN"),
-      ),
+      api("https://app.posthog.com/api", bearerAuth("POSTHOG_ACCESS_TOKEN")),
     ],
   },
   stripe: {
@@ -2917,10 +2878,7 @@ const SERVICE_CONFIGS: Partial<
   },
   productlane: {
     apis: [
-      api(
-        "https://productlane.com/api/v1",
-        bearerAuth("PRODUCTLANE_TOKEN"),
-      ),
+      api("https://productlane.com/api/v1", bearerAuth("PRODUCTLANE_TOKEN")),
     ],
   },
   openai: {
@@ -2934,115 +2892,44 @@ const SERVICE_CONFIGS: Partial<
     ],
   },
   perplexity: {
-    apis: [
-      api("https://api.perplexity.ai", bearerAuth("PERPLEXITY_TOKEN")),
-    ],
+    apis: [api("https://api.perplexity.ai", bearerAuth("PERPLEXITY_TOKEN"))],
   },
   plausible: {
-    apis: [
-      api("https://plausible.io/api", bearerAuth("PLAUSIBLE_TOKEN")),
-    ],
+    apis: [api("https://plausible.io/api", bearerAuth("PLAUSIBLE_TOKEN"))],
   },
   mailchimp: {
     apis: [
-      api(
-        "https://us1.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us2.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us3.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us4.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us5.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us6.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us7.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us8.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us9.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us10.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us11.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us12.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us13.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us14.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us15.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us16.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us17.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us18.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us19.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us20.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
-      api(
-        "https://us21.api.mailchimp.com/3.0",
-        bearerAuth("MAILCHIMP_TOKEN"),
-      ),
+      api("https://us1.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us2.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us3.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us4.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us5.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us6.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us7.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us8.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us9.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us10.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us11.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us12.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us13.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us14.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us15.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us16.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us17.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us18.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us19.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us20.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
+      api("https://us21.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
     ],
   },
   chatwoot: {
-    apis: [
-      api("https://app.chatwoot.com", bearerAuth("CHATWOOT_TOKEN")),
-    ],
+    apis: [api("https://app.chatwoot.com", bearerAuth("CHATWOOT_TOKEN"))],
   },
   resend: {
     apis: [api("https://api.resend.com", bearerAuth("RESEND_TOKEN"))],
   },
   revenuecat: {
-    apis: [
-      api("https://api.revenuecat.com", bearerAuth("REVENUECAT_TOKEN")),
-    ],
+    apis: [api("https://api.revenuecat.com", bearerAuth("REVENUECAT_TOKEN"))],
   },
   pdf4me: {
     apis: [
@@ -3062,9 +2949,7 @@ const SERVICE_CONFIGS: Partial<
     apis: [api("https://api.apify.com/v2", bearerAuth("APIFY_TOKEN"))],
   },
   "bright-data": {
-    apis: [
-      api("https://api.brightdata.com", bearerAuth("BRIGHTDATA_TOKEN")),
-    ],
+    apis: [api("https://api.brightdata.com", bearerAuth("BRIGHTDATA_TOKEN"))],
   },
   browserbase: {
     apis: [
@@ -3075,16 +2960,11 @@ const SERVICE_CONFIGS: Partial<
   },
   fireflies: {
     apis: [
-      api(
-        "https://api.fireflies.ai/graphql",
-        bearerAuth("FIREFLIES_TOKEN"),
-      ),
+      api("https://api.fireflies.ai/graphql", bearerAuth("FIREFLIES_TOKEN")),
     ],
   },
   firecrawl: {
-    apis: [
-      api("https://api.firecrawl.dev/v1", bearerAuth("FIRECRAWL_TOKEN")),
-    ],
+    apis: [api("https://api.firecrawl.dev/v1", bearerAuth("FIRECRAWL_TOKEN"))],
   },
   scrapeninja: {
     apis: [
@@ -3111,14 +2991,10 @@ const SERVICE_CONFIGS: Partial<
     apis: [api("https://fal.run", bearerAuth("FAL_TOKEN"))],
   },
   podchaser: {
-    apis: [
-      api("https://api.podchaser.com", bearerAuth("PODCHASER_TOKEN")),
-    ],
+    apis: [api("https://api.podchaser.com", bearerAuth("PODCHASER_TOKEN"))],
   },
   pushinator: {
-    apis: [
-      api("https://api.pushinator.com", bearerAuth("PUSHINATOR_TOKEN")),
-    ],
+    apis: [api("https://api.pushinator.com", bearerAuth("PUSHINATOR_TOKEN"))],
   },
   qdrant: {
     apis: [
@@ -3145,9 +3021,7 @@ const SERVICE_CONFIGS: Partial<
     ],
   },
   runway: {
-    apis: [
-      api("https://api.dev.runwayml.com/v1", bearerAuth("RUNWAY_TOKEN")),
-    ],
+    apis: [api("https://api.dev.runwayml.com/v1", bearerAuth("RUNWAY_TOKEN"))],
   },
   shortio: {
     apis: [
@@ -3177,9 +3051,7 @@ const SERVICE_CONFIGS: Partial<
     apis: [api("https://api.twenty.com", bearerAuth("TWENTY_TOKEN"))],
   },
   wrike: {
-    apis: [
-      api("https://www.wrike.com/api/v4", bearerAuth("WRIKE_TOKEN")),
-    ],
+    apis: [api("https://www.wrike.com/api/v4", bearerAuth("WRIKE_TOKEN"))],
   },
   zapsign: {
     apis: [
