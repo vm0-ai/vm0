@@ -30,8 +30,15 @@ import {
   DropdownMenuItem,
   cn,
 } from "@vm0/ui";
-import { ZeroScheduleCard, DEFAULT_SCHEDULE } from "./zero-schedule-card";
+import { ZeroScheduleCard, type ScheduleEntry } from "./zero-schedule-card";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import {
+  fetchZeroSchedules$,
+  zeroScheduleEntries$,
+  saveZeroSchedule$,
+  deleteZeroSchedule$,
+  type ZeroScheduleSaveParams,
+} from "../../signals/zero-page/zero-schedule.ts";
 import {
   type ConnectorTypeWithStatus,
   allConnectorTypes$,
@@ -51,6 +58,17 @@ import {
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
+  zeroInstructions$,
+  zeroInstructionsLoading$,
+  zeroEditedContent$,
+  zeroInstructionsDirty$,
+  zeroBuildingInstructions$,
+  zeroBuildError$,
+  zeroFetchError$,
+  fetchZeroInstructions$,
+  setZeroEditedContent$,
+  discardZeroEdit$,
+  buildZeroInstructions$,
   zeroUpdateSettings$,
   zeroSettingsSaving$,
   zeroAddedSkills$,
@@ -227,6 +245,54 @@ function ZeroSkillItem({
 }
 
 // ---------------------------------------------------------------------------
+// Schedule tab — real schedule CRUD
+// ---------------------------------------------------------------------------
+
+function ZeroScheduleTab({ resolvedAgentName }: { resolvedAgentName: string }) {
+  const entriesLoadable = useLoadable(zeroScheduleEntries$);
+  const fetchSchedules = useSet(fetchZeroSchedules$);
+  const saveSchedule = useSet(saveZeroSchedule$);
+  const deleteSchedule = useSet(deleteZeroSchedule$);
+  const saving$ = useCCState(false);
+  const saving = useGet(saving$);
+  const setSaving = useSet(saving$);
+
+  // Fetch schedules on mount
+  const initialized$ = useCCState(false);
+  const initialized = useGet(initialized$);
+  const setInitialized = useSet(initialized$);
+  if (!initialized) {
+    setInitialized(true);
+    detach(fetchSchedules(), Reason.DomCallback);
+  }
+
+  const entries: ScheduleEntry[] =
+    entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
+
+  const handleSave = async (params: ZeroScheduleSaveParams) => {
+    setSaving(true);
+    try {
+      await saveSchedule(params);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-[900px] px-7">
+      <ZeroScheduleCard
+        title={`${resolvedAgentName}'s schedule`}
+        subtitle={`Set a time and prompt for ${resolvedAgentName} to run automatically.`}
+        initialSchedule={entries}
+        onSave={handleSave}
+        onDelete={deleteSchedule}
+        saving={saving}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Skills tab — merged skills + connector management
 // ---------------------------------------------------------------------------
 
@@ -382,6 +448,133 @@ function ZeroSkillsTab() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Instructions tab — editable textarea with build
+// ---------------------------------------------------------------------------
+
+function ZeroInstructionsTab() {
+  const instructionsLoadable = useLoadable(zeroInstructions$);
+  const loadingLoadable = useLoadable(zeroInstructionsLoading$);
+  const editedLoadable = useLoadable(zeroEditedContent$);
+  const dirtyLoadable = useLoadable(zeroInstructionsDirty$);
+  const buildingLoadable = useLoadable(zeroBuildingInstructions$);
+  const buildErrorLoadable = useLoadable(zeroBuildError$);
+  const fetchErrorLoadable = useLoadable(zeroFetchError$);
+
+  const instructions =
+    instructionsLoadable.state === "hasData" ? instructionsLoadable.data : null;
+  const loading =
+    loadingLoadable.state === "hasData" && loadingLoadable.data === true;
+  const edited =
+    editedLoadable.state === "hasData" ? editedLoadable.data : null;
+  const isDirty =
+    dirtyLoadable.state === "hasData" && dirtyLoadable.data === true;
+  const isBuilding =
+    buildingLoadable.state === "hasData" && buildingLoadable.data === true;
+  const buildError =
+    buildErrorLoadable.state === "hasData" ? buildErrorLoadable.data : null;
+  const fetchError =
+    fetchErrorLoadable.state === "hasData" ? fetchErrorLoadable.data : null;
+
+  const setEdited = useSet(setZeroEditedContent$);
+  const discard = useSet(discardZeroEdit$);
+  const build = useSet(buildZeroInstructions$);
+  const fetchInstructions = useSet(fetchZeroInstructions$);
+
+  const fetched$ = useCCState(false);
+  const fetched = useGet(fetched$);
+  const setFetched = useSet(fetched$);
+  if (!fetched && !loading) {
+    setFetched(true);
+    detach(fetchInstructions(), Reason.DomCallback);
+  }
+
+  const displayContent = edited ?? instructions?.content ?? "";
+
+  return (
+    <div className="mx-auto max-w-[900px] px-7">
+      <Card className="zero-card-white">
+        <CardContent className="py-7">
+          {loading ? (
+            <div className="space-y-4 animate-pulse">
+              <div className="h-5 w-40 rounded bg-muted/50" />
+              <div className="h-64 w-full rounded bg-muted/30" />
+            </div>
+          ) : fetchError ? (
+            <p className="text-sm text-destructive">{fetchError}</p>
+          ) : (
+            <>
+              <textarea
+                aria-label="Agent instructions editor"
+                className="px-1 text-sm font-mono text-foreground w-full min-h-[200px] bg-transparent border-none outline-none resize-none whitespace-pre-wrap leading-relaxed"
+                value={displayContent}
+                onChange={(e) => setEdited(e.target.value)}
+                rows={Math.max(10, displayContent.split("\n").length + 2)}
+                disabled={isBuilding}
+                placeholder="Write instructions for your agent..."
+              />
+              <div className="flex items-center gap-2 pt-5 mt-5 border-t border-border/60">
+                <p className="text-muted-foreground text-xs">
+                  Edit the instructions directly to customize your agent&apos;s
+                  behavior.
+                </p>
+                {buildError && (
+                  <span className="text-xs font-medium text-destructive">
+                    {buildError}
+                  </span>
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {isDirty &&
+        createPortal(
+          <div className="zero-app fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 sm:left-[255px]">
+            <div className="zero-card flex max-w-md items-center justify-between gap-4 rounded-xl border border-border bg-card px-5 py-4 shadow-lg">
+              <div className="flex items-center gap-2 text-sm text-foreground">
+                <IconPencil
+                  size={18}
+                  stroke={1.5}
+                  className="shrink-0 text-muted-foreground"
+                />
+                <span>You have unsaved changes</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={discard}
+                  disabled={isBuilding}
+                >
+                  Discard
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={() => detach(build(), Reason.DomCallback)}
+                  disabled={isBuilding}
+                >
+                  {isBuilding ? (
+                    <IconLoader2
+                      size={14}
+                      stroke={1.5}
+                      className="animate-spin mr-1.5"
+                    />
+                  ) : null}
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -666,88 +859,14 @@ export function ZeroMeetPage({
         {activeTab === "skills" && <ZeroSkillsTab />}
 
         {activeTab === "schedule" && (
-          <div className="mx-auto max-w-[900px] px-7">
-            <ZeroScheduleCard
-              title={`${resolvedAgentName}'s schedule`}
-              subtitle={`Set a time and prompt for ${resolvedAgentName} to run automatically.`}
-              initialSchedule={DEFAULT_SCHEDULE}
-            />
-          </div>
+          <ZeroScheduleTab resolvedAgentName={resolvedAgentName} />
         )}
 
         {activeTab === "settings" && (
           <ZeroSettingsTab agentName={resolvedAgentName} />
         )}
 
-        {activeTab === "instructions" && (
-          <div className="mx-auto max-w-[900px] px-7">
-            <Card className="zero-card-white">
-              <CardContent className="py-7">
-                <div className="flex flex-col sm:flex-row gap-6 sm:gap-8 sm:items-end">
-                  <div className="space-y-5 text-sm text-foreground leading-relaxed flex-1 min-w-0">
-                    <div>
-                      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                        Expertise
-                      </h2>
-                      <p>
-                        {resolvedAgentName} is an intelligent Super agent
-                        designed to help teams with automation, data analysis,
-                        and workflow orchestration.
-                      </p>
-                    </div>
-                    <div>
-                      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                        Communication Style
-                      </h2>
-                      <p>
-                        Professional and clear communication, with a focus on
-                        actionable insights.
-                      </p>
-                    </div>
-                    <div>
-                      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                        Core Capabilities
-                      </h2>
-                      <ul className="list-disc pl-4 space-y-0.5">
-                        <li>Web research and information gathering</li>
-                        <li>Code execution and analysis</li>
-                        <li>File processing and data analysis</li>
-                        <li>Workflow automation</li>
-                      </ul>
-                    </div>
-                    <div>
-                      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                        Behavior Guidelines
-                      </h2>
-                      <ul className="list-disc pl-4 space-y-0.5">
-                        <li>Provide concise, actionable responses</li>
-                        <li>Ask clarifying questions when needed</li>
-                        <li>Present information in a structured format</li>
-                        <li>Maintain context across conversations</li>
-                      </ul>
-                    </div>
-                    <div>
-                      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                        Response Format
-                      </h2>
-                      <p className="mb-1">When responding:</p>
-                      <ol className="list-decimal pl-4 space-y-0.5">
-                        <li>Acknowledge the request</li>
-                        <li>Provide relevant information or analysis</li>
-                        <li>Suggest next steps when appropriate</li>
-                        <li>Ask for clarification if needed</li>
-                      </ol>
-                    </div>
-                  </div>
-                </div>
-                <p className="text-muted-foreground text-xs pt-5 mt-5 border-t border-border/60">
-                  Edit the instructions directly to customize your agent&apos;s
-                  behavior.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+        {activeTab === "instructions" && <ZeroInstructionsTab />}
       </main>
     </div>
   );

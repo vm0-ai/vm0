@@ -68,7 +68,7 @@ describe("model-provider set-default command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining('Invalid type "invalid-type"'),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Valid types:"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);

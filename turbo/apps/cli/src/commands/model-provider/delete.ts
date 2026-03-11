@@ -11,13 +11,10 @@ export const deleteCommand = new Command()
   .action(
     withErrorHandler(async (type: string) => {
       if (!Object.keys(MODEL_PROVIDER_TYPES).includes(type)) {
-        console.error(chalk.red(`✗ Invalid type "${type}"`));
-        console.log();
-        console.log("Valid types:");
-        for (const [t, config] of Object.entries(MODEL_PROVIDER_TYPES)) {
-          console.log(`  ${chalk.cyan(t)} - ${config.label}`);
-        }
-        process.exit(1);
+        const validTypes = Object.keys(MODEL_PROVIDER_TYPES).join(", ");
+        throw new Error(`Invalid type "${type}"`, {
+          cause: new Error(`Valid types: ${validTypes}`),
+        });
       }
 
       await deleteModelProvider(type as ModelProviderType);

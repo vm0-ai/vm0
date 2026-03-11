@@ -1420,14 +1420,14 @@ function RunEditorContent({
           {"      "}
           <span className="text-[#827d77]">-</span>{" "}
           <span className="text-[#06b6d4]">
-            https://github.com/vm0-ai/vm0-skills/tree/main/fal.ai
+            https://github.com/vm0-ai/vm0-skills/tree/main/fal
           </span>
         </p>
         <p className="m-0">
           {"      "}
           <span className="text-[#827d77]">-</span>{" "}
           <span className="text-[#06b6d4]">
-            https://github.com/vm0-ai/vm0-skills/tree/main/dev.to
+            https://github.com/vm0-ai/vm0-skills/tree/main/devto
           </span>
         </p>
       </div>
