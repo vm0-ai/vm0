@@ -146,21 +146,32 @@ function useSessionLifecycle(
   // "init" → "onboarding" → "ready" lifecycle
   const lifecycleRef$ = useCCState<"init" | "onboarding" | "ready">("init");
   const lifecycle = useGet(lifecycleRef$);
-  const setLifecycle = useSet(lifecycleRef$);
+
+  const triggerLifecycle$ = useCommand(({ set }) => {
+    if (isLoggedIn && onboardingReady) {
+      if (needsOnboarding && lifecycle === "init") {
+        set(lifecycleRef$, "onboarding");
+      } else if (!needsOnboarding && lifecycle !== "ready") {
+        const wasOnboarding = lifecycle === "onboarding";
+        set(lifecycleRef$, "ready");
+        detach(fetchSessionList(), Reason.DomCallback);
+        if (wasOnboarding) {
+          detach(
+            sendIntro("Who are you and what can you do?"),
+            Reason.DomCallback,
+          );
+        }
+      }
+    }
+  });
+  const triggerLifecycle = useSet(triggerLifecycle$);
 
   if (isLoggedIn && onboardingReady) {
-    if (needsOnboarding && lifecycle === "init") {
-      setLifecycle("onboarding");
-    } else if (!needsOnboarding && lifecycle !== "ready") {
-      const wasOnboarding = lifecycle === "onboarding";
-      setLifecycle("ready");
-      detach(fetchSessionList(), Reason.DomCallback);
-      if (wasOnboarding) {
-        detach(
-          sendIntro("Who are you and what can you do?"),
-          Reason.DomCallback,
-        );
-      }
+    if (
+      (needsOnboarding && lifecycle === "init") ||
+      (!needsOnboarding && lifecycle !== "ready")
+    ) {
+      queueMicrotask(triggerLifecycle);
     }
   }
 
