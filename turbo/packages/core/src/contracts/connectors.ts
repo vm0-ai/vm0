@@ -1758,6 +1758,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  pdf4me: {
+    label: "PDF4me",
+    helpText:
+      "Connect your PDF4me account to convert, merge, split, compress, and manipulate PDF documents",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [PDF4me](https://dev.pdf4me.com)\n2. Go to your **Dashboard → API Keys**\n3. Copy your API key",
+        secrets: {
+          PDF4ME_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-pdf4me-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   elevenlabs: {
     label: "ElevenLabs",
     helpText:
@@ -2154,6 +2174,13 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   resend: {
     services: [service("https://api.resend.com", bearerAuth("RESEND_API_KEY"))],
   },
+  pdf4me: {
+    services: [
+      service("https://api.pdf4me.com", {
+        headers: { Authorization: "${secrets.PDF4ME_TOKEN}" },
+      }),
+    ],
+  },
   elevenlabs: {
     services: [
       service("https://api.elevenlabs.io", {
@@ -2217,6 +2244,7 @@ export const connectorTypeSchema = z.enum([
   "plausible",
   "productlane",
   "resend",
+  "pdf4me",
   "elevenlabs",
   "fal",
 ]);
