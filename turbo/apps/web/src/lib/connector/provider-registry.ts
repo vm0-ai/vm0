@@ -27,6 +27,7 @@ import { devtoHandler } from "./providers/devto-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
 import { elevenlabsHandler } from "./providers/elevenlabs-handler";
+import { exploriumHandler } from "./providers/explorium-handler";
 import { falHandler } from "./providers/fal-handler";
 import { figmaHandler } from "./providers/figma-handler";
 import { firefliesHandler } from "./providers/fireflies-handler";
@@ -129,6 +130,7 @@ export const PROVIDER_HANDLERS: Record<
   docusign: docusignHandler,
   dropbox: dropboxHandler,
   elevenlabs: elevenlabsHandler,
+  explorium: exploriumHandler,
   fal: falHandler,
   figma: figmaHandler,
   fireflies: firefliesHandler,
