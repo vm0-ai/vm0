@@ -220,13 +220,22 @@ export function mockClerk(options: {
       getOrganization: vi
         .fn()
         .mockImplementation(
-          ({ organizationId }: { organizationId: string }) => {
-            const created = createdOrgs.find((o) => o.id === organizationId);
-            const fromClerk = clerkOrgs.find((o) => o.id === organizationId);
-            const org = created ?? fromClerk;
+          (params: { organizationId?: string; slug?: string }) => {
+            let org;
+            if (params.organizationId) {
+              org =
+                createdOrgs.find((o) => o.id === params.organizationId) ??
+                clerkOrgs.find((o) => o.id === params.organizationId);
+            } else if (params.slug) {
+              org =
+                createdOrgs.find((o) => o.slug === params.slug) ??
+                clerkOrgs.find((o) => o.slug === params.slug);
+            }
             if (!org) {
               return Promise.reject(
-                new Error(`Organization ${organizationId} not found`),
+                new Error(
+                  `Organization ${params.organizationId ?? params.slug} not found`,
+                ),
               );
             }
             return Promise.resolve({

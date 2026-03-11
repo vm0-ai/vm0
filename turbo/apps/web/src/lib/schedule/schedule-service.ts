@@ -900,9 +900,7 @@ async function executeSchedule(
       scopeId: schedule.scopeId,
       scopeSlug: orgData?.slug,
       clerkOrgId: orgData?.clerkOrgId,
-      scopeTier: orgData
-        ? scopeTierSchema.parse(orgData.tier)
-        : undefined,
+      scopeTier: orgData ? scopeTierSchema.parse(orgData.tier) : undefined,
     });
     runId = result.runId;
   } catch (error) {

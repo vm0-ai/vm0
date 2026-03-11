@@ -8,7 +8,7 @@ import {
   deleteOrgCacheEntry,
   getOrgCacheEntry,
 } from "../../../__tests__/api-test-helpers";
-import { getOrgData } from "../org-cache-service";
+import { getOrgData, getOrgBySlug } from "../org-cache-service";
 
 const context = testContext();
 
@@ -160,5 +160,106 @@ describe("getOrgData", () => {
     await expect(getOrgData(clerkOrgId)).rejects.toThrow(
       `Clerk organization ${clerkOrgId} has no slug`,
     );
+  });
+});
+
+describe("getOrgBySlug", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("fetches from Clerk by slug and caches on miss", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("scope");
+    mockClerk({
+      userId,
+      clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
+    });
+    await createTestScope(slug);
+    const clerkOrgId = `org_mock_${slug}`;
+
+    // Delete pre-populated orgCache to test cache-miss behavior
+    await deleteOrgCacheEntry(clerkOrgId);
+
+    const result = await getOrgBySlug(slug);
+
+    expect(result).toEqual({
+      clerkOrgId,
+      slug,
+      tier: "free",
+    });
+
+    // Verify cache row was created
+    const cached = await getOrgCacheEntry(clerkOrgId);
+    expect(cached).not.toBeNull();
+    expect(cached!.slug).toBe(slug);
+
+    // Verify Clerk API was called with slug param
+    const client = await clerkClient();
+    expect(client.organizations.getOrganization).toHaveBeenCalledWith({
+      slug,
+    });
+  });
+
+  it("returns cached data without Clerk call when fresh", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("scope");
+    mockClerk({
+      userId,
+      clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
+    });
+    await createTestScope(slug);
+    const clerkOrgId = `org_mock_${slug}`;
+
+    // Overwrite cache with custom tier
+    await insertOrgCacheEntry({ clerkOrgId, slug, tier: "pro" });
+
+    const result = await getOrgBySlug(slug);
+
+    expect(result).toEqual({ clerkOrgId, slug, tier: "pro" });
+
+    // Clerk API should NOT have been called
+    const client = await clerkClient();
+    expect(client.organizations.getOrganization).not.toHaveBeenCalled();
+  });
+
+  it("returns null when slug not found in Clerk", async () => {
+    const userId = uniqueId("test-user");
+    mockClerk({ userId });
+
+    const result = await getOrgBySlug("nonexistent-slug");
+
+    expect(result).toBeNull();
+  });
+
+  it("refetches from Clerk when cache is stale", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("scope");
+    mockClerk({
+      userId,
+      clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
+    });
+    await createTestScope(slug);
+    const clerkOrgId = `org_mock_${slug}`;
+
+    // Overwrite with stale entry
+    const twoMinutesAgo = new Date(Date.now() - 120_000);
+    await insertOrgCacheEntry({
+      clerkOrgId,
+      slug,
+      tier: "free",
+      cachedAt: twoMinutesAgo,
+    });
+
+    const result = await getOrgBySlug(slug);
+
+    expect(result).not.toBeNull();
+    expect(result!.clerkOrgId).toBe(clerkOrgId);
+
+    // Verify Clerk API was called with slug param
+    const client = await clerkClient();
+    expect(client.organizations.getOrganization).toHaveBeenCalledWith({
+      slug,
+    });
   });
 });

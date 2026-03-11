@@ -16,11 +16,13 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { listSecrets } from "../../../../src/lib/secret/secret-service";
-import { getOrgData } from "../../../../src/lib/scope/org-cache-service";
+import {
+  getOrgData,
+  getOrgBySlug,
+} from "../../../../src/lib/scope/org-cache-service";
 import { listVariables } from "../../../../src/lib/variable/variable-service";
 import { listConnectors } from "../../../../src/lib/connector/connector-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
-import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import { deleteInstallation } from "../../../../src/lib/github/github-app";
 import { logger } from "../../../../src/lib/logger";
@@ -331,14 +333,14 @@ export async function PATCH(request: Request) {
   // Resolve target scope
   let targetClerkOrgId: string;
   if (scopeSlug) {
-    const targetScope = await getScopeBySlug(scopeSlug);
-    if (!targetScope) {
+    const targetOrg = await getOrgBySlug(scopeSlug);
+    if (!targetOrg) {
       return NextResponse.json(
         { error: { message: "Scope not found", code: "BAD_REQUEST" } },
         { status: 400 },
       );
     }
-    targetClerkOrgId = targetScope.clerkOrgId;
+    targetClerkOrgId = targetOrg.clerkOrgId;
   } else {
     const { scope } = await resolveScope(userId);
     targetClerkOrgId = scope.clerkOrgId;

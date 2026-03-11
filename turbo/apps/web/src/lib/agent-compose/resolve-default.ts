@@ -1,7 +1,7 @@
 import { eq, and } from "drizzle-orm";
 import { env } from "../../env";
 import { agentComposes } from "../../db/schema/agent-compose";
-import { scopes } from "../../db/schema/scope";
+import { getOrgBySlug } from "../scope/org-cache-service";
 import { logger } from "../logger";
 
 const log = logger("agent-compose:resolve-default");
@@ -27,13 +27,9 @@ export async function resolveDefaultAgentComposeId(): Promise<string | null> {
     return null;
   }
 
-  const [scope] = await globalThis.services.db
-    .select({ clerkOrgId: scopes.clerkOrgId })
-    .from(scopes)
-    .where(eq(scopes.slug, scopeSlug))
-    .limit(1);
+  const orgData = await getOrgBySlug(scopeSlug);
 
-  if (!scope) {
+  if (!orgData) {
     log.warn("Scope not found for VM0_DEFAULT_AGENT", { scopeSlug });
     return null;
   }
@@ -43,7 +39,7 @@ export async function resolveDefaultAgentComposeId(): Promise<string | null> {
     .from(agentComposes)
     .where(
       and(
-        eq(agentComposes.clerkOrgId, scope.clerkOrgId),
+        eq(agentComposes.clerkOrgId, orgData.clerkOrgId),
         eq(agentComposes.name, agentName),
       ),
     )
@@ -53,7 +49,7 @@ export async function resolveDefaultAgentComposeId(): Promise<string | null> {
     log.warn("Agent compose not found for VM0_DEFAULT_AGENT", {
       scopeSlug,
       agentName,
-      clerkOrgId: scope.clerkOrgId,
+      clerkOrgId: orgData.clerkOrgId,
     });
     return null;
   }

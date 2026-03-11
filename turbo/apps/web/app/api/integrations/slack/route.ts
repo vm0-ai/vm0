@@ -15,7 +15,10 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { listSecrets } from "../../../../src/lib/secret/secret-service";
-import { getOrgData } from "../../../../src/lib/scope/org-cache-service";
+import {
+  getOrgData,
+  getOrgBySlug,
+} from "../../../../src/lib/scope/org-cache-service";
 import { listVariables } from "../../../../src/lib/variable/variable-service";
 import { listConnectors } from "../../../../src/lib/connector/connector-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
@@ -27,7 +30,6 @@ import {
 import { decryptSecretValue } from "../../../../src/lib/crypto/secrets-encryption";
 import { removePermission } from "../../../../src/lib/agent/permission-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
-import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import { syncWorkspaceAgentPermissions } from "../../../../src/lib/slack/permission-sync";
 
@@ -318,14 +320,14 @@ export async function PATCH(request: Request) {
   // Resolve target scope (no membership check - admin can select any agent)
   let targetClerkOrgId: string;
   if (scopeSlug) {
-    const targetScope = await getScopeBySlug(scopeSlug);
-    if (!targetScope) {
+    const targetOrg = await getOrgBySlug(scopeSlug);
+    if (!targetOrg) {
       return NextResponse.json(
         { error: { message: "Scope not found", code: "BAD_REQUEST" } },
         { status: 400 },
       );
     }
-    targetClerkOrgId = targetScope.clerkOrgId;
+    targetClerkOrgId = targetOrg.clerkOrgId;
   } else {
     const { scope } = await resolveScope(userId, null, null, tokenScopeId);
     targetClerkOrgId = scope.clerkOrgId;

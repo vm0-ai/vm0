@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { eq, and } from "drizzle-orm";
 import { emailThreadSessions } from "../../../db/schema/email-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
-import { scopes } from "../../../db/schema/scope";
+import { getOrgBySlug } from "../../scope/org-cache-service";
 import { env } from "../../../env";
 import { getPlatformUrl } from "../../url";
 import { enqueueEmail } from "../outbox-service";
@@ -184,14 +184,9 @@ export async function resolveAgentByAddress(
   scopeSlug: string,
   agentName: string,
 ): Promise<ResolvedAgent | null> {
-  // 1. Find scope by slug
-  const [scope] = await globalThis.services.db
-    .select({ clerkOrgId: scopes.clerkOrgId })
-    .from(scopes)
-    .where(eq(scopes.slug, scopeSlug))
-    .limit(1);
-
-  if (!scope) return null;
+  // 1. Resolve org by slug via org cache
+  const orgData = await getOrgBySlug(scopeSlug);
+  if (!orgData) return null;
 
   // 2. Find compose by clerkOrgId + name
   const [compose] = await globalThis.services.db
@@ -204,7 +199,7 @@ export async function resolveAgentByAddress(
     .from(agentComposes)
     .where(
       and(
-        eq(agentComposes.clerkOrgId, scope.clerkOrgId),
+        eq(agentComposes.clerkOrgId, orgData.clerkOrgId),
         eq(agentComposes.name, agentName),
       ),
     )

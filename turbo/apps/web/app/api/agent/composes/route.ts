@@ -22,10 +22,8 @@ import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
-import {
-  getScopeBySlug,
-  getScopeByClerkOrgId,
-} from "../../../../src/lib/scope/scope-service";
+import { getScopeByClerkOrgId } from "../../../../src/lib/scope/scope-service";
+import { getOrgBySlug } from "../../../../src/lib/scope/org-cache-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
@@ -52,8 +50,8 @@ const router = tsr.router(composesMainContract, {
     const isCrossScopeLookup = Boolean(query.scope || query.org);
     let clerkOrgId: string;
     if (query.scope) {
-      const scope = await getScopeBySlug(query.scope);
-      if (!scope) {
+      const orgData = await getOrgBySlug(query.scope);
+      if (!orgData) {
         return {
           status: 404 as const,
           body: {
@@ -64,7 +62,7 @@ const router = tsr.router(composesMainContract, {
           },
         };
       }
-      clerkOrgId = scope.clerkOrgId;
+      clerkOrgId = orgData.clerkOrgId;
     } else if (query.org) {
       const scope = await getScopeByClerkOrgId(query.org);
       if (!scope) {
