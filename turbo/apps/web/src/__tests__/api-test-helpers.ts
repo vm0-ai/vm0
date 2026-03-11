@@ -3143,15 +3143,3 @@ export async function insertUserCacheEntry(entry: {
     cachedAt: entry.cachedAt ?? new Date(),
   });
 }
-
-/**
- * Read a user_cache row by userId.
- */
-export async function getUserCacheEntry(userId: string) {
-  const [row] = await globalThis.services.db
-    .select()
-    .from(userCache)
-    .where(eq(userCache.userId, userId))
-    .limit(1);
-  return row ?? null;
-}

@@ -5,7 +5,6 @@ import { mockClerk } from "../../../__tests__/clerk-mock";
 import {
   createTestScope,
   insertUserCacheEntry,
-  getUserCacheEntry,
 } from "../../../__tests__/api-test-helpers";
 import { getCachedUser, getCachedUserIdByEmail } from "../user-cache-service";
 
@@ -27,14 +26,15 @@ describe("getCachedUser", () => {
 
     expect(result).toEqual({ userId, email });
 
-    // Verify cache row was created
-    const cached = await getUserCacheEntry(userId);
-    expect(cached).not.toBeNull();
-    expect(cached!.email).toBe(email);
-
     // Verify Clerk API was called
     const client = await clerkClient();
     expect(client.users.getUser).toHaveBeenCalledWith(userId);
+
+    // Verify cache was populated: second call should NOT hit Clerk again
+    vi.mocked(client.users.getUser).mockClear();
+    const cached = await getCachedUser(userId);
+    expect(cached).toEqual({ userId, email });
+    expect(client.users.getUser).not.toHaveBeenCalled();
   });
 
   it("returns cached data without Clerk call when fresh", async () => {
@@ -78,10 +78,11 @@ describe("getCachedUser", () => {
     const client = await clerkClient();
     expect(client.users.getUser).toHaveBeenCalledWith(userId);
 
-    // Verify cache was updated
-    const cached = await getUserCacheEntry(userId);
-    expect(cached!.email).toBe(freshEmail);
-    expect(cached!.cachedAt.getTime()).toBeGreaterThan(twoMinutesAgo.getTime());
+    // Verify cache was updated: second call should use fresh cache
+    vi.mocked(client.users.getUser).mockClear();
+    const cached = await getCachedUser(userId);
+    expect(cached.email).toBe(freshEmail);
+    expect(client.users.getUser).not.toHaveBeenCalled();
   });
 
   it("throws when user has no primary email", async () => {
@@ -135,13 +136,15 @@ describe("getCachedUserIdByEmail", () => {
 
     expect(result).toBe(userId);
 
-    // Verify cache was populated
-    const cached = await getUserCacheEntry(userId);
-    expect(cached).not.toBeNull();
-
     // Verify Clerk API was called
     const client = await clerkClient();
     expect(client.users.getUserList).toHaveBeenCalled();
+
+    // Verify cache was populated: second call should NOT hit Clerk again
+    vi.mocked(client.users.getUserList).mockClear();
+    const cached = await getCachedUserIdByEmail(email);
+    expect(cached).toBe(userId);
+    expect(client.users.getUserList).not.toHaveBeenCalled();
   });
 
   it("returns null when user not found", async () => {
