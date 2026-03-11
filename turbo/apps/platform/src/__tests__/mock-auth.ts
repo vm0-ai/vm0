@@ -58,7 +58,10 @@ export function clearMockedAuth() {
   internalMockedOrganization = null;
   internalMockedInvitations = [];
   internalMockedMemberships = [{ id: "org_default" }];
+  clerkListeners.length = 0;
 }
+
+const clerkListeners: (() => void)[] = [];
 
 export const mockedClerk = {
   get user() {
@@ -73,6 +76,21 @@ export const mockedClerk = {
     };
   },
   load: () => Promise.resolve(),
-  addListener: () => () => {},
+  addListener: (cb: () => void) => {
+    clerkListeners.push(cb);
+    return () => {
+      const idx = clerkListeners.indexOf(cb);
+      if (idx !== -1) {
+        clerkListeners.splice(idx, 1);
+      }
+    };
+  },
   redirectToSignIn: vi.fn(),
 };
+
+/** Fire all registered Clerk listeners (simulates token refresh / auth change). */
+export function fireClerkListeners() {
+  for (const cb of clerkListeners) {
+    cb();
+  }
+}

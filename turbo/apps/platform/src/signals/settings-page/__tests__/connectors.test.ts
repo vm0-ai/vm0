@@ -6,6 +6,9 @@ import {
   openDisconnectDialog$,
   confirmDisconnect$,
   disconnectDialogState$,
+  justConnectedTypes$,
+  clearJustConnectedTypes$,
+  submitApiToken$,
 } from "../connectors";
 import { server } from "../../../mocks/server";
 import { http, HttpResponse } from "msw";
@@ -334,5 +337,70 @@ describe("disconnect dialog", () => {
     await store.set(openDisconnectDialog$, "github");
 
     await expect(store.set(confirmDisconnect$, signal)).rejects.toThrow();
+  });
+});
+
+describe("optimistic connected state", () => {
+  it("should mark type as optimistically connected after api token submit", async () => {
+    const { store, signal } = context;
+
+    server.use(
+      http.put("/api/secrets", () => {
+        return HttpResponse.json({ success: true });
+      }),
+      http.get("/api/connectors", () => {
+        return HttpResponse.json({
+          connectors: [],
+          configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
+        });
+      }),
+    );
+
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    await store.set(
+      submitApiToken$,
+      "serpapi" as ConnectorType,
+      { SERPAPI_API_KEY: "test-key" },
+      signal,
+    );
+
+    const optimistic = await store.get(justConnectedTypes$);
+    expect(optimistic.has("serpapi")).toBeTruthy();
+  });
+
+  it("should clear optimistic state via clearJustConnectedTypes$", async () => {
+    const { store, signal } = context;
+
+    server.use(
+      http.put("/api/secrets", () => {
+        return HttpResponse.json({ success: true });
+      }),
+      http.get("/api/connectors", () => {
+        return HttpResponse.json({
+          connectors: [],
+          configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
+        });
+      }),
+    );
+
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    await store.set(
+      submitApiToken$,
+      "serpapi" as ConnectorType,
+      { SERPAPI_API_KEY: "test-key" },
+      signal,
+    );
+
+    // Verify it's set
+    const before = await store.get(justConnectedTypes$);
+    expect(before.has("serpapi")).toBeTruthy();
+
+    // Clear it
+    store.set(clearJustConnectedTypes$);
+
+    const after = await store.get(justConnectedTypes$);
+    expect(after.size).toBe(0);
   });
 });
