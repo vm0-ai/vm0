@@ -2140,6 +2140,166 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  runway: {
+    label: "Runway",
+    helpText:
+      "Connect your Runway account to generate AI videos from images, text, or video inputs",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [Runway Developer Portal](https://dev.runwayml.com/)\n2. Purchase credits and create an API key in the dashboard\n3. Copy the API key",
+        secrets: {
+          RUNWAY_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-runway-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  shortio: {
+    label: "Short.io",
+    helpText:
+      "Connect your Short.io account to create and manage short links and track click analytics",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [Short.io](https://short.io/)\n2. Go to **Integrations & API** in Settings\n3. Copy your API key",
+        secrets: {
+          SHORTIO_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-shortio-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  streak: {
+    label: "Streak",
+    helpText:
+      "Connect your Streak account to manage CRM pipelines, contacts, and deals inside Gmail",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Streak](https://streak.com/)\n2. Go to **Settings → Integrations & API**\n3. Copy your API key",
+        secrets: {
+          STREAK_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-streak-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  supadata: {
+    label: "Supadata",
+    helpText:
+      "Connect your Supadata account to extract YouTube transcripts, channel data, and video metadata",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [Supadata](https://supadata.ai/)\n2. Go to the dashboard and copy your API key",
+        secrets: {
+          SUPADATA_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-supadata-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  tavily: {
+    label: "Tavily",
+    helpText:
+      "Connect your Tavily account to perform AI-optimized web searches and content extraction",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [Tavily](https://tavily.com/)\n2. Go to the dashboard and copy your API key",
+        secrets: {
+          TAVILY_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "tvly-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  twenty: {
+    label: "Twenty",
+    helpText:
+      "Connect your Twenty CRM account to manage contacts, companies, and deals",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Twenty](https://twenty.com/)\n2. Go to **Settings → APIs & Webhooks**\n3. Generate an API key and copy it",
+        secrets: {
+          TWENTY_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-twenty-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  youtube: {
+    label: "YouTube",
+    helpText:
+      "Connect your YouTube account to search videos, get channel info, and fetch comments via the Data API",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Go to [Google Cloud Console](https://console.cloud.google.com/)\n2. Enable **YouTube Data API v3**\n3. Go to **Credentials** → **Create Credentials** → **API Key**\n4. Copy the API key",
+        secrets: {
+          YOUTUBE_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "AIzaSy...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  zapsign: {
+    label: "ZapSign",
+    helpText:
+      "Connect your ZapSign account to create documents for electronic signature and track signing status",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [ZapSign](https://app.zapsign.com.br/)\n2. Go to **Settings → Integrations → API**\n3. Copy your API token",
+        secrets: {
+          ZAPSIGN_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-zapsign-api-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
 } satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
@@ -2593,6 +2753,36 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       }),
     ],
   },
+  runway: {
+    services: [
+      service("https://api.dev.runwayml.com/v1", bearerAuth("RUNWAY_TOKEN")),
+    ],
+  },
+  shortio: {
+    services: [
+      service("https://api.short.io", {
+        headers: { Authorization: "${secrets.SHORTIO_TOKEN}" },
+      }),
+    ],
+  },
+  supadata: {
+    services: [
+      service("https://api.supadata.ai/v1", {
+        headers: { "x-api-key": "${secrets.SUPADATA_TOKEN}" },
+      }),
+    ],
+  },
+  tavily: {
+    services: [service("https://api.tavily.com", bearerAuth("TAVILY_TOKEN"))],
+  },
+  twenty: {
+    services: [service("https://api.twenty.com", bearerAuth("TWENTY_TOKEN"))],
+  },
+  zapsign: {
+    services: [
+      service("https://api.zapsign.com.br/api/v1", bearerAuth("ZAPSIGN_TOKEN")),
+    ],
+  },
 };
 
 export const connectorTypeSchema = z.enum([
@@ -2665,6 +2855,14 @@ export const connectorTypeSchema = z.enum([
   "reportei",
   "serpapi",
   "zeptomail",
+  "runway",
+  "shortio",
+  "streak",
+  "supadata",
+  "tavily",
+  "twenty",
+  "youtube",
+  "zapsign",
 ]);
 
 /**

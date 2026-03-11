@@ -55,6 +55,14 @@ import qiitaIcon from "./icons/qiita.svg";
 import redditIcon from "./icons/reddit.svg";
 import reporteiIcon from "./icons/reportei.svg";
 import serpapiIcon from "./icons/serpapi.svg";
+import runwayIcon from "./icons/runway.svg";
+import shortioIcon from "./icons/shortio.svg";
+import streakIcon from "./icons/streak.svg";
+import supadataIcon from "./icons/supadata.svg";
+import tavilyIcon from "./icons/tavily.svg";
+import twentyIcon from "./icons/twenty.svg";
+import youtubeIcon from "./icons/youtube.svg";
+import zapsignIcon from "./icons/zapsign.svg";
 import resendIcon from "./icons/resend.svg";
 import scrapeninja from "./icons/scrapeninja.svg";
 import sentryIcon from "./icons/sentry.svg";
@@ -126,6 +134,14 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   reddit: redditIcon,
   reportei: reporteiIcon,
   serpapi: serpapiIcon,
+  runway: runwayIcon,
+  shortio: shortioIcon,
+  streak: streakIcon,
+  supadata: supadataIcon,
+  tavily: tavilyIcon,
+  twenty: twentyIcon,
+  youtube: youtubeIcon,
+  zapsign: zapsignIcon,
   resend: resendIcon,
   scrapeninja: scrapeninja,
   sentry: sentryIcon,

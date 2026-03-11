@@ -44,6 +44,14 @@ import { openaiHandler } from "./providers/openai-handler";
 import { redditHandler } from "./providers/reddit-handler";
 import { reporteiHandler } from "./providers/reportei-handler";
 import { serpapiHandler } from "./providers/serpapi-handler";
+import { runwayHandler } from "./providers/runway-handler";
+import { shortioHandler } from "./providers/shortio-handler";
+import { streakHandler } from "./providers/streak-handler";
+import { supadataHandler } from "./providers/supadata-handler";
+import { tavilyHandler } from "./providers/tavily-handler";
+import { twentyHandler } from "./providers/twenty-handler";
+import { youtubeHandler } from "./providers/youtube-handler";
+import { zapsignHandler } from "./providers/zapsign-handler";
 import { slackHandler } from "./providers/slack-handler";
 import { stravaHandler } from "./providers/strava-handler";
 import { stripeHandler } from "./providers/stripe-handler";
@@ -148,6 +156,14 @@ export const PROVIDER_HANDLERS: Record<
   x: xHandler,
   xero: xeroHandler,
   zeptomail: zeptomailHandler,
+  runway: runwayHandler,
+  shortio: shortioHandler,
+  streak: streakHandler,
+  supadata: supadataHandler,
+  tavily: tavilyHandler,
+  twenty: twentyHandler,
+  youtube: youtubeHandler,
+  zapsign: zapsignHandler,
 };
 
 /**
