@@ -25,12 +25,21 @@ export interface ConnectorAuthMethodConfig {
 }
 
 /**
- * OAuth configuration for connectors that support OAuth flow
+ * OAuth configuration for connectors that support OAuth flow.
+ *
+ * `environmentMapping` lives here because it only applies to the OAuth path:
+ * OAuth stores secrets under internal names (e.g. `FIGMA_ACCESS_TOKEN`) that
+ * need to be mapped to the env var names skills expect (e.g. `FIGMA_TOKEN`).
+ * API-token connectors store secrets directly under the target name, so they
+ * don't need any mapping.
+ *
+ * `$secrets.X` in mapping values looks up secret X from the connector's secrets.
  */
 export interface ConnectorOAuthConfig {
   authorizationUrl?: string;
   tokenUrl: string;
   scopes: string[];
+  environmentMapping: Record<string, string>;
 }
 
 /**
@@ -42,17 +51,14 @@ export interface ConnectorConfig {
   readonly featureFlag?: FeatureSwitchKey;
   readonly authMethods: Record<string, ConnectorAuthMethodConfig>;
   readonly defaultAuthMethod?: string;
-  readonly environmentMapping?: Record<string, string>;
+  /** Non-OAuth environment mapping (e.g. computer connector bridge credentials). */
+  readonly bridgeMapping?: Record<string, string>;
   readonly oauth?: ConnectorOAuthConfig;
 }
 
 /**
  * Connector type configuration
- * Maps type to display info, auth methods, and environment mapping
- *
- * For connectors with `environmentMapping`, secrets are mapped to environment variables:
- * - `$secrets.X` - lookup secret X from the connector's secrets
- * - Other values are passed through as literals
+ * Maps type to display info, auth methods, and OAuth environment mapping.
  */
 const CONNECTOR_TYPES_DEF = {
   axiom: {
@@ -74,9 +80,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      AXIOM_TOKEN: "$secrets.AXIOM_API_TOKEN",
-    } as Record<string, string>,
   },
   ahrefs: {
     label: "Ahrefs",
@@ -112,14 +115,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://app.ahrefs.com/api/auth",
       tokenUrl: "https://app.ahrefs.com/api/token",
       scopes: ["api"],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
+      },
+    },
   },
   agentmail: {
     label: "AgentMail",
@@ -140,9 +143,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      AGENTMAIL_TOKEN: "$secrets.AGENTMAIL_API_KEY",
-    } as Record<string, string>,
   },
   airtable: {
     label: "Airtable",
@@ -165,9 +165,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://airtable.com/oauth2/v1/authorize",
       tokenUrl: "https://airtable.com/oauth2/v1/token",
@@ -180,7 +177,10 @@ const CONNECTOR_TYPES_DEF = {
         "schema.bases:write",
         "user.email:read",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
+      },
+    },
   },
   github: {
     label: "GitHub",
@@ -199,15 +199,15 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
-      GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://github.com/login/oauth/authorize",
       tokenUrl: "https://github.com/login/oauth/access_token",
       scopes: ["repo", "project"],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
+        GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
+      },
+    },
   },
   notion: {
     label: "Notion",
@@ -229,14 +229,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      NOTION_TOKEN: "$secrets.NOTION_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://api.notion.com/v1/oauth/authorize",
       tokenUrl: "https://api.notion.com/v1/oauth/token",
       scopes: [],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        NOTION_TOKEN: "$secrets.NOTION_ACCESS_TOKEN",
+      },
+    },
   },
   gmail: {
     label: "Gmail",
@@ -259,14 +259,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
       scopes: ["https://www.googleapis.com/auth/gmail.modify"],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
+      },
+    },
   },
   "google-sheets": {
     label: "Google Sheets",
@@ -289,9 +289,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      GOOGLE_SHEETS_TOKEN: "$secrets.GOOGLE_SHEETS_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
@@ -299,7 +296,10 @@ const CONNECTOR_TYPES_DEF = {
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        GOOGLE_SHEETS_TOKEN: "$secrets.GOOGLE_SHEETS_ACCESS_TOKEN",
+      },
+    },
   },
   "google-docs": {
     label: "Google Docs",
@@ -322,9 +322,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      GOOGLE_DOCS_TOKEN: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
@@ -332,7 +329,10 @@ const CONNECTOR_TYPES_DEF = {
         "https://www.googleapis.com/auth/documents",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        GOOGLE_DOCS_TOKEN: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
+      },
+    },
   },
   "google-drive": {
     label: "Google Drive",
@@ -355,9 +355,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      GOOGLE_DRIVE_TOKEN: "$secrets.GOOGLE_DRIVE_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
@@ -365,7 +362,10 @@ const CONNECTOR_TYPES_DEF = {
         "https://www.googleapis.com/auth/drive",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        GOOGLE_DRIVE_TOKEN: "$secrets.GOOGLE_DRIVE_ACCESS_TOKEN",
+      },
+    },
   },
   "google-calendar": {
     label: "Google Calendar",
@@ -389,9 +389,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      GOOGLE_CALENDAR_TOKEN: "$secrets.GOOGLE_CALENDAR_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
@@ -399,7 +396,10 @@ const CONNECTOR_TYPES_DEF = {
         "https://www.googleapis.com/auth/calendar",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        GOOGLE_CALENDAR_TOKEN: "$secrets.GOOGLE_CALENDAR_ACCESS_TOKEN",
+      },
+    },
   },
   close: {
     label: "Close",
@@ -423,14 +423,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      CLOSE_TOKEN: "$secrets.CLOSE_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://app.close.com/oauth2/authorize/",
       tokenUrl: "https://api.close.com/oauth2/token/",
       scopes: ["all.full_access", "offline_access"],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        CLOSE_TOKEN: "$secrets.CLOSE_ACCESS_TOKEN",
+      },
+    },
   },
   hubspot: {
     label: "HubSpot",
@@ -453,9 +453,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      HUBSPOT_TOKEN: "$secrets.HUBSPOT_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://app.hubspot.com/oauth/authorize",
       tokenUrl: "https://api.hubapi.com/oauth/v1/token",
@@ -473,7 +470,10 @@ const CONNECTOR_TYPES_DEF = {
         "crm.schemas.contacts.read",
         "settings.users.read",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        HUBSPOT_TOKEN: "$secrets.HUBSPOT_ACCESS_TOKEN",
+      },
+    },
   },
   computer: {
     label: "Computer",
@@ -501,11 +501,11 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api",
-    environmentMapping: {
+    bridgeMapping: {
       COMPUTER_CONNECTOR_BRIDGE_TOKEN:
         "$secrets.COMPUTER_CONNECTOR_BRIDGE_TOKEN",
       COMPUTER_CONNECTOR_DOMAIN: "$secrets.COMPUTER_CONNECTOR_DOMAIN",
-    } as Record<string, string>,
+    },
   },
   slack: {
     label: "Slack",
@@ -523,9 +523,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://slack.com/oauth/v2/authorize",
       tokenUrl: "https://slack.com/api/oauth.v2.access",
@@ -537,7 +534,10 @@ const CONNECTOR_TYPES_DEF = {
         "users:read.email",
         "files:read",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",
+      },
+    },
   },
   docusign: {
     label: "DocuSign",
@@ -561,14 +561,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      DOCUSIGN_TOKEN: "$secrets.DOCUSIGN_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://account.docusign.com/oauth/auth",
       tokenUrl: "https://account.docusign.com/oauth/token",
       scopes: ["signature", "extended", "openid"],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        DOCUSIGN_TOKEN: "$secrets.DOCUSIGN_ACCESS_TOKEN",
+      },
+    },
   },
   dropbox: {
     label: "Dropbox",
@@ -603,9 +603,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://www.dropbox.com/oauth2/authorize",
       tokenUrl: "https://api.dropboxapi.com/oauth2/token",
@@ -614,7 +611,10 @@ const CONNECTOR_TYPES_DEF = {
         "files.metadata.read",
         "files.content.read",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
+      },
+    },
   },
   linear: {
     label: "Linear",
@@ -636,14 +636,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      LINEAR_API_KEY: "$secrets.LINEAR_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://linear.app/oauth/authorize",
       tokenUrl: "https://api.linear.app/oauth/token",
       scopes: ["read", "write"],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        LINEAR_API_KEY: "$secrets.LINEAR_ACCESS_TOKEN",
+      },
+    },
   },
   deel: {
     label: "Deel",
@@ -678,9 +678,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://app.deel.com/oauth2/authorize",
       tokenUrl: "https://app.deel.com/oauth2/tokens",
@@ -694,7 +691,10 @@ const CONNECTOR_TYPES_DEF = {
         "invoice-adjustments:read",
         "invoice-adjustments:write",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
+      },
+    },
   },
   figma: {
     label: "Figma",
@@ -729,9 +729,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      FIGMA_TOKEN: "$secrets.FIGMA_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://www.figma.com/oauth",
       tokenUrl: "https://api.figma.com/v1/oauth/token",
@@ -746,7 +743,10 @@ const CONNECTOR_TYPES_DEF = {
         "library_assets:read",
         "library_content:read",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        FIGMA_TOKEN: "$secrets.FIGMA_ACCESS_TOKEN",
+      },
+    },
   },
   mercury: {
     label: "Mercury",
@@ -782,14 +782,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      MERCURY_TOKEN: "$secrets.MERCURY_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://oauth2.mercury.com/oauth2/auth",
       tokenUrl: "https://oauth2.mercury.com/oauth2/token",
       scopes: ["offline_access"],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        MERCURY_TOKEN: "$secrets.MERCURY_ACCESS_TOKEN",
+      },
+    },
   },
   reddit: {
     label: "Reddit",
@@ -813,14 +813,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://www.reddit.com/api/v1/authorize",
       tokenUrl: "https://www.reddit.com/api/v1/access_token",
       scopes: ["identity", "read"],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
+      },
+    },
   },
   strava: {
     label: "Strava",
@@ -844,9 +844,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      STRAVA_TOKEN: "$secrets.STRAVA_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://www.strava.com/oauth/authorize",
       tokenUrl: "https://www.strava.com/oauth/token",
@@ -856,7 +853,10 @@ const CONNECTOR_TYPES_DEF = {
         "activity:read_all",
         "activity:write",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        STRAVA_TOKEN: "$secrets.STRAVA_ACCESS_TOKEN",
+      },
+    },
   },
   x: {
     label: "X",
@@ -879,14 +879,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      X_ACCESS_TOKEN: "$secrets.X_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://twitter.com/i/oauth2/authorize",
       tokenUrl: "https://api.twitter.com/2/oauth2/token",
       scopes: ["tweet.read", "users.read", "follows.read", "offline.access"],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        X_ACCESS_TOKEN: "$secrets.X_ACCESS_TOKEN",
+      },
+    },
   },
   neon: {
     label: "Neon",
@@ -922,9 +922,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      NEON_TOKEN: "$secrets.NEON_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://oauth2.neon.tech/oauth2/auth",
       tokenUrl: "https://oauth2.neon.tech/oauth2/token",
@@ -936,7 +933,10 @@ const CONNECTOR_TYPES_DEF = {
         "urn:neoncloud:projects:update",
         "urn:neoncloud:projects:delete",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        NEON_TOKEN: "$secrets.NEON_ACCESS_TOKEN",
+      },
+    },
   },
   "garmin-connect": {
     label: "Garmin Connect",
@@ -960,14 +960,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      GARMIN_CONNECT_TOKEN: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://connect.garmin.com/oauth2Confirm",
       tokenUrl: "https://diauth.garmin.com/di-oauth2-service/oauth/token",
       scopes: [],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        GARMIN_CONNECT_TOKEN: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
+      },
+    },
   },
   vercel: {
     label: "Vercel",
@@ -986,13 +986,13 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      VERCEL_TOKEN: "$secrets.VERCEL_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       tokenUrl: "https://api.vercel.com/v2/oauth/access_token",
       scopes: [],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        VERCEL_TOKEN: "$secrets.VERCEL_ACCESS_TOKEN",
+      },
+    },
   },
   sentry: {
     label: "Sentry",
@@ -1015,9 +1015,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      SENTRY_TOKEN: "$secrets.SENTRY_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://sentry.io/oauth/authorize/",
       tokenUrl: "https://sentry.io/oauth/token/",
@@ -1029,7 +1026,10 @@ const CONNECTOR_TYPES_DEF = {
         "event:read",
         "event:write",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        SENTRY_TOKEN: "$secrets.SENTRY_ACCESS_TOKEN",
+      },
+    },
   },
   posthog: {
     label: "PostHog",
@@ -1065,9 +1065,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      POSTHOG_TOKEN: "$secrets.POSTHOG_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://us.posthog.com/oauth/authorize",
       tokenUrl: "https://us.posthog.com/oauth/token",
@@ -1097,7 +1094,10 @@ const CONNECTOR_TYPES_DEF = {
         "survey:write",
         "error_tracking:read",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        POSTHOG_TOKEN: "$secrets.POSTHOG_ACCESS_TOKEN",
+      },
+    },
   },
   productlane: {
     label: "Productlane",
@@ -1118,7 +1118,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {} as Record<string, string>,
   },
   "intervals-icu": {
     label: "Intervals.icu",
@@ -1149,14 +1148,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      INTERVALS_ICU_TOKEN: "$secrets.INTERVALS_ICU_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://intervals.icu/oauth/authorize",
       tokenUrl: "https://intervals.icu/api/oauth/token",
       scopes: ["ACTIVITY", "WELLNESS", "CALENDAR", "SETTINGS", "LIBRARY"],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        INTERVALS_ICU_TOKEN: "$secrets.INTERVALS_ICU_ACCESS_TOKEN",
+      },
+    },
   },
   monday: {
     label: "Monday.com",
@@ -1179,9 +1178,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://auth.monday.com/oauth2/authorize",
       tokenUrl: "https://auth.monday.com/oauth2/token",
@@ -1201,7 +1197,10 @@ const CONNECTOR_TYPES_DEF = {
         "tags:read",
         "teams:read",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
+      },
+    },
   },
   canva: {
     label: "Canva",
@@ -1225,9 +1224,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://www.canva.com/api/oauth/authorize",
       tokenUrl: "https://api.canva.com/rest/v1/oauth/token",
@@ -1245,7 +1241,10 @@ const CONNECTOR_TYPES_DEF = {
         "folder:write",
         "profile:read",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
+      },
+    },
   },
   xero: {
     label: "Xero",
@@ -1268,9 +1267,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      XERO_TOKEN: "$secrets.XERO_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://login.xero.com/identity/connect/authorize",
       tokenUrl: "https://identity.xero.com/connect/token",
@@ -1298,7 +1294,10 @@ const CONNECTOR_TYPES_DEF = {
         "assets",
         "projects",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        XERO_TOKEN: "$secrets.XERO_ACCESS_TOKEN",
+      },
+    },
   },
   supabase: {
     label: "Supabase",
@@ -1334,9 +1333,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://api.supabase.com/v1/oauth/authorize",
       tokenUrl: "https://api.supabase.com/v1/oauth/token",
@@ -1354,7 +1350,10 @@ const CONNECTOR_TYPES_DEF = {
         "environment:read",
         "domains:read",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
+      },
+    },
   },
   todoist: {
     label: "Todoist",
@@ -1373,14 +1372,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      TODOIST_TOKEN: "$secrets.TODOIST_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://todoist.com/oauth/authorize",
       tokenUrl: "https://todoist.com/oauth/access_token",
       scopes: ["data:read_write", "data:delete", "project:delete"],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        TODOIST_TOKEN: "$secrets.TODOIST_ACCESS_TOKEN",
+      },
+    },
   },
   webflow: {
     label: "Webflow",
@@ -1411,9 +1410,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      WEBFLOW_TOKEN: "$secrets.WEBFLOW_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://webflow.com/oauth/authorize",
       tokenUrl: "https://api.webflow.com/oauth/access_token",
@@ -1435,7 +1431,10 @@ const CONNECTOR_TYPES_DEF = {
         "custom_code:read",
         "custom_code:write",
       ],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        WEBFLOW_TOKEN: "$secrets.WEBFLOW_ACCESS_TOKEN",
+      },
+    },
   },
   "outlook-mail": {
     label: "Outlook Mail",
@@ -1458,15 +1457,15 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl:
         "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
       scopes: ["Mail.ReadWrite", "Mail.Send", "User.Read", "offline_access"],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
+      },
+    },
   },
   "outlook-calendar": {
     label: "Outlook Calendar",
@@ -1490,15 +1489,15 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl:
         "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
       scopes: ["Calendars.ReadWrite", "User.Read", "offline_access"],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
+      },
+    },
   },
   asana: {
     label: "Asana",
@@ -1521,14 +1520,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://app.asana.com/-/oauth_authorize",
       tokenUrl: "https://app.asana.com/-/oauth_token",
       scopes: [],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
+      },
+    },
   },
   "meta-ads": {
     label: "Meta Ads",
@@ -1548,14 +1547,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://www.facebook.com/v22.0/dialog/oauth",
       tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
       scopes: ["ads_management", "ads_read", "business_management"],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
+      },
+    },
   },
   stripe: {
     label: "Stripe",
@@ -1579,14 +1578,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      STRIPE_API_KEY: "$secrets.STRIPE_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://connect.stripe.com/oauth/authorize",
       tokenUrl: "https://connect.stripe.com/oauth/token",
       scopes: ["read_write"],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        STRIPE_API_KEY: "$secrets.STRIPE_ACCESS_TOKEN",
+      },
+    },
   },
   similarweb: {
     label: "SimilarWeb",
@@ -1607,9 +1606,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      SIMILARWEB_TOKEN: "$secrets.SIMILARWEB_API_KEY",
-    } as Record<string, string>,
   },
   plausible: {
     label: "Plausible",
@@ -1630,9 +1626,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      PLAUSIBLE_TOKEN: "$secrets.PLAUSIBLE_TOKEN",
-    } as Record<string, string>,
   },
   mailchimp: {
     label: "Mailchimp",
@@ -1654,14 +1647,14 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      MAILCHIMP_TOKEN: "$secrets.MAILCHIMP_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://login.mailchimp.com/oauth2/authorize",
       tokenUrl: "https://login.mailchimp.com/oauth2/token",
       scopes: [],
-    } as ConnectorOAuthConfig,
+      environmentMapping: {
+        MAILCHIMP_TOKEN: "$secrets.MAILCHIMP_ACCESS_TOKEN",
+      },
+    },
   },
   resend: {
     label: "Resend",
@@ -1683,9 +1676,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      RESEND_API_KEY: "$secrets.RESEND_API_KEY",
-    } as Record<string, string>,
   },
 } satisfies Record<string, ConnectorConfig>;
 
@@ -2117,12 +2107,16 @@ export function getConnectorSecretNames(
 }
 
 /**
- * Get environment mapping for a connector type
+ * Get environment mapping for a connector type.
+ *
+ * For OAuth connectors, reads from `oauth.environmentMapping`.
+ * For special connectors (e.g. computer), reads from `bridgeMapping`.
  */
 export function getConnectorEnvironmentMapping(
   type: ConnectorType,
 ): Record<string, string> {
-  return CONNECTOR_TYPES[type].environmentMapping ?? {};
+  const config = CONNECTOR_TYPES[type];
+  return config.oauth?.environmentMapping ?? config.bridgeMapping ?? {};
 }
 
 /**
@@ -2169,7 +2163,7 @@ export function getConnectorDerivedNames(
     }
 
     // Find all env var names that reference this secret
-    const mapping = config.environmentMapping as Record<string, string>;
+    const mapping = getConnectorEnvironmentMapping(type);
     const envVarNames = Object.entries(mapping)
       .filter(([, valueRef]) => valueRef === `$secrets.${secretName}`)
       .map(([envVar]) => envVar);

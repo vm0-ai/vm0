@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   CONNECTOR_TYPES,
+  getConnectorEnvironmentMapping,
   hasRequiredScopes,
   type ConnectorType,
   type ConnectorResponse,
@@ -110,11 +111,8 @@ const connectorTypesUsedByAgents$ = computed(
       if (type === "computer") {
         continue;
       }
-      const config = CONNECTOR_TYPES[type];
-      const mapping = config.environmentMapping as
-        | Record<string, string>
-        | undefined;
-      if (!mapping) {
+      const mapping = getConnectorEnvironmentMapping(type);
+      if (Object.keys(mapping).length === 0) {
         continue;
       }
       for (const [envVar, ref] of Object.entries(mapping)) {
