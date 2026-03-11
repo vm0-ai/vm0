@@ -238,6 +238,11 @@ export function ZeroAppShell() {
   });
   const handleSendFromDemo = useSet(handleSendFromDemo$);
 
+  const handleBackFromSession$ = useCommand(({ set }) => {
+    set(inSession$, false);
+  });
+  const handleBackFromSession = useSet(handleBackFromSession$);
+
   const handleNavSelect$ = useCommand(({ set }, id: ZeroNavId) => {
     set(setZeroActiveId$, id);
     set(inSession$, false);
@@ -348,6 +353,7 @@ export function ZeroAppShell() {
                 updateSearchParams(next);
               }
             }}
+            onBackFromSession={handleBackFromSession}
             zeroAvatarSrc={zeroAvatarSrc}
             onAvatarClick={cycleAvatar}
           />

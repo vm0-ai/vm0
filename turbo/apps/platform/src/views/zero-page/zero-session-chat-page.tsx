@@ -9,6 +9,7 @@ import {
   IconMicrophone,
   IconAlertCircle,
   IconLoader2,
+  IconArrowLeft,
 } from "@tabler/icons-react";
 import { Button, Card, CardContent } from "@vm0/ui";
 import { Markdown } from "../components/markdown.tsx";
@@ -31,11 +32,13 @@ import {
 interface ZeroSessionChatPageProps {
   zeroAvatarSrc?: string;
   onAvatarClick?: () => void;
+  onBack?: () => void;
 }
 
 export function ZeroSessionChatPage({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
+  onBack,
 }: ZeroSessionChatPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
@@ -74,6 +77,35 @@ export function ZeroSessionChatPage({
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
+      {/* Header */}
+      <header className="shrink-0 bg-transparent px-4 sm:px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 -ml-2"
+            onClick={onBack}
+            aria-label="Back to chat home"
+          >
+            <IconArrowLeft size={20} stroke={1.5} />
+          </Button>
+          <button
+            type="button"
+            onClick={onAvatarClick}
+            className="h-8 w-8 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            aria-label="Switch Zero avatar"
+          >
+            <img
+              src={zeroAvatarSrc}
+              alt=""
+              role="presentation"
+              className="h-8 w-8 rounded-full object-cover object-top"
+            />
+          </button>
+          <span className="font-semibold text-foreground">{agentName}</span>
+        </div>
+      </header>
+
       {/* Message list */}
       <main className="flex-1 overflow-auto px-4 sm:px-6 py-4">
         <div className="mx-auto max-w-[900px] flex flex-col gap-6 pb-4">
@@ -106,7 +138,7 @@ export function ZeroSessionChatPage({
                 <textarea
                   className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
                   rows={3}
-                  placeholder={`Message ${agentName}...`}
+                  placeholder="Ask me to automate workflows, manage tasks..."
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}

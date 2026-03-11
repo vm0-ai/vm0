@@ -22,6 +22,7 @@ interface ZeroContentProps {
   onNavigateToJob?: () => void;
   onNavigateToChat?: () => void;
   onNavigateToMeet?: (tab?: string) => void;
+  onBackFromSession?: () => void;
   zeroAvatarSrc?: string;
   onAvatarClick?: () => void;
 }
@@ -51,6 +52,7 @@ export function ZeroContent({
   onNavigateToJob,
   onNavigateToChat,
   onNavigateToMeet,
+  onBackFromSession,
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroContentProps) {
@@ -63,6 +65,7 @@ export function ZeroContent({
         <ZeroSessionChatPage
           zeroAvatarSrc={zeroAvatarSrc}
           onAvatarClick={onAvatarClick}
+          onBack={onBackFromSession}
         />
       );
     }
