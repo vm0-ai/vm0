@@ -190,7 +190,7 @@ export async function getRunResultData(
   }
 
   const events = await queryAxiom<ResultEvent>(apl);
-  if (!events || events.length === 0) {
+  if (events.length === 0) {
     return undefined;
   }
 

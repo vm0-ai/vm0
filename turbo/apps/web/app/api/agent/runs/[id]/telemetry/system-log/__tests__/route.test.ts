@@ -165,8 +165,8 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
       expect(data.hasMore).toBe(false);
     });
 
-    it("should return empty when Axiom returns null and no DB data exists", async () => {
-      context.mocks.axiom.queryAxiom.mockResolvedValue(null);
+    it("should return empty when Axiom is not configured and no DB data exists", async () => {
+      context.mocks.axiom.queryAxiom.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/system-log?limit=10`,

@@ -114,7 +114,7 @@ async function searchEventsInAxiom(
   runIdFilter: string,
   keyword: string,
   limit: number,
-): Promise<AxiomAgentEvent[] | null> {
+): Promise<AxiomAgentEvent[]> {
   const apl = `['${dataset}']
 | where _time > datetime("${sinceISO}")
 ${runIdFilter}
@@ -148,10 +148,8 @@ async function fetchContextEvents(
 | order by runId asc, sequenceNumber asc`;
 
   const contextEvents = await queryAxiom<AxiomAgentEvent>(apl);
-  if (contextEvents) {
-    for (const event of contextEvents) {
-      contextMap.set(`${event.runId}:${event.sequenceNumber}`, event);
-    }
+  for (const event of contextEvents) {
+    contextMap.set(`${event.runId}:${event.sequenceNumber}`, event);
   }
 
   return contextMap;
@@ -222,7 +220,7 @@ const router = tsr.router(logsSearchContract, {
       limit,
     );
 
-    if (matchedEvents === null || matchedEvents.length === 0) {
+    if (matchedEvents.length === 0) {
       return {
         status: 200 as const,
         body: { results: [], hasMore: false },

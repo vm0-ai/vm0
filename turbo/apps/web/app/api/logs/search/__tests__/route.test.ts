@@ -82,7 +82,7 @@ describe("GET /api/logs/search", () => {
   });
 
   it("should return empty results when Axiom is not configured", async () => {
-    context.mocks.axiom.queryAxiom.mockResolvedValue(null);
+    context.mocks.axiom.queryAxiom.mockResolvedValue([]);
 
     const request = createTestRequest(
       "http://localhost:3000/api/logs/search?keyword=test",

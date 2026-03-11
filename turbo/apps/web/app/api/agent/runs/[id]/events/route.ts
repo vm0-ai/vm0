@@ -79,13 +79,7 @@ const router = tsr.router(runEventsContract, {
 | limit ${limit}`;
 
     // Query Axiom for agent events
-    const axiomEvents = await queryAxiom<AxiomAgentEvent>(apl);
-
-    if (!axiomEvents) {
-      throw new Error(`Axiom returned null for run ${params.id}`);
-    }
-
-    const rawEvents: AxiomAgentEvent[] = axiomEvents;
+    const rawEvents = await queryAxiom<AxiomAgentEvent>(apl);
 
     // Filter to only consecutive events to handle Axiom's eventual consistency.
     const events = filterConsecutiveEvents(rawEvents, since);

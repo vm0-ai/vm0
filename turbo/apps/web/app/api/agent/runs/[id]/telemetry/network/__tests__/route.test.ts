@@ -138,7 +138,7 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
     });
 
     it("should return empty network logs when Axiom is not configured", async () => {
-      context.mocks.axiom.queryAxiom.mockResolvedValue(null);
+      context.mocks.axiom.queryAxiom.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/network`,
@@ -332,7 +332,7 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
 
   describe("DB fallback (Axiom not configured)", () => {
     it("should return empty network logs from DB fallback when Axiom is not configured", async () => {
-      context.mocks.axiom.queryAxiom.mockResolvedValue(null);
+      context.mocks.axiom.queryAxiom.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/network`,

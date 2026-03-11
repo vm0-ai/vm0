@@ -105,30 +105,25 @@ export async function ingestToAxiom(
 /**
  * Query events from Axiom dataset using APL.
  * Automatically routes to the correct client based on the dataset in the APL query.
- * Returns null if Axiom is not configured or query fails.
+ * Returns empty array if Axiom is not configured.
  */
 export async function queryAxiom<T = Record<string, unknown>>(
   apl: string,
-): Promise<T[] | null> {
+): Promise<T[]> {
   const dataset = extractDatasetFromApl(apl);
   // If we can't determine the dataset, default to telemetry client (broader scope)
   const client = dataset ? getClientForDataset(dataset) : getTelemetryClient();
   if (!client) {
     log.debug("Axiom not configured, skipping query");
-    return null;
+    return [];
   }
 
-  try {
-    const result = await client.query(apl);
-    // Axiom stores _time separately from data, merge them for the response
-    return (
-      result.matches?.map((m: Entry) => ({ _time: m._time, ...m.data }) as T) ??
-      []
-    );
-  } catch (error) {
-    log.error("Axiom query failed:", error);
-    return null;
-  }
+  const result = await client.query(apl);
+  // Axiom stores _time separately from data, merge them for the response
+  return (
+    result.matches?.map((m: Entry) => ({ _time: m._time, ...m.data }) as T) ??
+    []
+  );
 }
 
 interface RequestLogEntry {

@@ -311,14 +311,10 @@ export function testContext(): TestContext {
       query: vi.fn().mockResolvedValue({ matches: [] }),
       ingest: vi.fn(),
       flush: vi.fn().mockResolvedValue(undefined),
-      queryAxiom: vi
-        .spyOn(axiomClient, "queryAxiom")
-        .mockResolvedValue([]) as MockInstance<typeof axiomClient.queryAxiom>,
+      queryAxiom: vi.spyOn(axiomClient, "queryAxiom").mockResolvedValue([]),
       ingestToAxiom: vi
         .spyOn(axiomClient, "ingestToAxiom")
-        .mockResolvedValue(true) as MockInstance<
-        typeof axiomClient.ingestToAxiom
-      >,
+        .mockResolvedValue(true),
     };
     // Use try/catch since Axiom may not be mocked in all test files
     try {

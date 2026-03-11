@@ -83,13 +83,9 @@ ${sinceFilter}
     // Query Axiom for agent events
     const events = await queryAxiom<AxiomAgentEvent>(apl);
 
-    const resolvedEvents = events ?? [];
-
     // Check if there are more events
-    const hasMore = resolvedEvents.length > limit;
-    const resultEvents = hasMore
-      ? resolvedEvents.slice(0, limit)
-      : resolvedEvents;
+    const hasMore = events.length > limit;
+    const resultEvents = hasMore ? events.slice(0, limit) : events;
 
     return {
       status: 200 as const,

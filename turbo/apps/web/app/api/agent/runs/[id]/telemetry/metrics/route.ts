@@ -70,11 +70,9 @@ ${sinceFilter}
     // Query Axiom for metrics
     const events = await queryAxiom<AxiomMetricEvent>(apl);
 
-    const resolvedEvents = events ?? [];
-
     // Check if there are more records
-    const hasMore = resolvedEvents.length > limit;
-    const records = hasMore ? resolvedEvents.slice(0, limit) : resolvedEvents;
+    const hasMore = events.length > limit;
+    const records = hasMore ? events.slice(0, limit) : events;
 
     // Transform to API response format
     const metrics = records.map((e) => ({

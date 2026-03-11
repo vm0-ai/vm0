@@ -66,11 +66,9 @@ ${sinceFilter}
     // Query Axiom for system logs
     const events = await queryAxiom<AxiomSystemLogEvent>(apl);
 
-    const resolvedEvents = events ?? [];
-
     // Check if there are more records
-    const hasMore = resolvedEvents.length > limit;
-    const records = hasMore ? resolvedEvents.slice(0, limit) : resolvedEvents;
+    const hasMore = events.length > limit;
+    const records = hasMore ? events.slice(0, limit) : events;
 
     // Aggregate system logs from records
     const aggregatedSystemLog = records.map((r) => r.log).join("");
