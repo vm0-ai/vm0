@@ -837,15 +837,38 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
-      - name: Generate SBOM
+      - name: Generate Node.js SBOM
         working-directory: turbo
-        run: npx @cyclonedx/cdxgen -o sbom.json --spec-version 1.5
+        run: npx @cyclonedx/cdxgen -o sbom-node.json --spec-version 1.5
+
+      - name: Generate Rust SBOM
+        working-directory: crates
+        run: npx @cyclonedx/cdxgen -o sbom-rust.json --spec-version 1.5
+
+      - name: Merge SBOMs
+        run: |
+          node <<'MERGE_SCRIPT'
+          const fs = require("fs");
+          const node = JSON.parse(fs.readFileSync("turbo/sbom-node.json", "utf8"));
+          const rust = JSON.parse(fs.readFileSync("crates/sbom-rust.json", "utf8"));
+          const seen = new Set();
+          const components = [];
+          for (const c of [...(node.components || []), ...(rust.components || [])]) {
+            const key = c.purl || c["bom-ref"] || JSON.stringify(c);
+            if (!seen.has(key)) { seen.add(key); components.push(c); }
+          }
+          const merged = { ...node, components };
+          const deps = [...(node.dependencies || []), ...(rust.dependencies || [])];
+          if (deps.length) merged.dependencies = deps;
+          fs.writeFileSync("sbom.json", JSON.stringify(merged, null, 2));
+          console.log("Merged SBOM: " + components.length + " components (" + (node.components || []).length + " Node.js + " + (rust.components || []).length + " Rust)");
+          MERGE_SCRIPT
 
       - name: Upload SBOM as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: sbom
-          path: turbo/sbom.json
+          path: sbom.json
 
       - name: Attach SBOM to GitHub releases
         env:
@@ -857,7 +880,7 @@ jobs:
             CREATED=$(gh release view "$tag" --json createdAt --jq '.createdAt[:10]')
             TODAY=$(date -u +%Y-%m-%d)
             if [ "$CREATED" = "$TODAY" ]; then
-              gh release upload "$tag" turbo/sbom.json --clobber
+              gh release upload "$tag" sbom.json --clobber
             fi
           done
 
