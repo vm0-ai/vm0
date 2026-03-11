@@ -11,10 +11,9 @@ export const setTierCommand = new Command()
   .action(
     withErrorHandler(async (slug: string, tier: string) => {
       if (tier !== "free" && tier !== "pro" && tier !== "max") {
-        console.error(
-          chalk.red(`Invalid tier: ${tier}. Must be "free", "pro", or "max"`),
+        throw new Error(
+          `Invalid tier: ${tier}. Must be "free", "pro", or "max"`,
         );
-        process.exit(1);
       }
 
       const response = await httpPut("/api/admin/scope/tier", { slug, tier });

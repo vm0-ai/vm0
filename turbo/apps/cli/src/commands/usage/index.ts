@@ -112,12 +112,9 @@ export const usageCommand = new Command()
           const untilMs = parseTime(options.until);
           endDate = new Date(untilMs);
         } catch {
-          console.error(
-            chalk.red(
-              "✗ Invalid --until format. Use ISO (2026-01-01) or relative (7d, 30d)",
-            ),
+          throw new Error(
+            "Invalid --until format. Use ISO (2026-01-01) or relative (7d, 30d)",
           );
-          process.exit(1);
         }
       } else {
         endDate = now;
@@ -128,12 +125,9 @@ export const usageCommand = new Command()
           const sinceMs = parseTime(options.since);
           startDate = new Date(sinceMs);
         } catch {
-          console.error(
-            chalk.red(
-              "✗ Invalid --since format. Use ISO (2026-01-01) or relative (7d, 30d)",
-            ),
+          throw new Error(
+            "Invalid --since format. Use ISO (2026-01-01) or relative (7d, 30d)",
           );
-          process.exit(1);
         }
       } else {
         startDate = new Date(endDate.getTime() - DEFAULT_RANGE_MS);
@@ -141,18 +135,14 @@ export const usageCommand = new Command()
 
       // Validate date range
       if (startDate >= endDate) {
-        console.error(chalk.red("✗ --since must be before --until"));
-        process.exit(1);
+        throw new Error("--since must be before --until");
       }
 
       const rangeMs = endDate.getTime() - startDate.getTime();
       if (rangeMs > MAX_RANGE_MS) {
-        console.error(
-          chalk.red(
-            "✗ Time range exceeds maximum of 30 days. Use --until to specify an end date",
-          ),
+        throw new Error(
+          "Time range exceeds maximum of 30 days. Use --until to specify an end date",
         );
-        process.exit(1);
       }
 
       // Fetch usage data
