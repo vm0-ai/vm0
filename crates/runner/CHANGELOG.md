@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.1...runner-rs-v0.22.2) (2026-03-11)
+
+
+### Bug Fixes
+
+* **mitm-addon:** stream all responses to prevent zlib error ([#4350](https://github.com/vm0-ai/vm0/issues/4350)) ([fd72f46](https://github.com/vm0-ai/vm0/commit/fd72f46af290c13cba9f655995265eb6269776ac))
+
 ## [0.22.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.0...runner-rs-v0.22.1) (2026-03-11)
 
 

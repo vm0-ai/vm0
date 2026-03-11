@@ -1,5 +1,28 @@
 # Changelog
 
+## [8.56.0](https://github.com/vm0-ai/vm0/compare/core-v8.55.0...core-v8.56.0) (2026-03-11)
+
+
+### Features
+
+* add atlassian api-token connector ([#4326](https://github.com/vm0-ai/vm0/issues/4326)) ([8bc6ee2](https://github.com/vm0-ai/vm0/commit/8bc6ee27d66094c1ac18dacf82b2b721b8d49b4f))
+* add clickup api-token connector ([#4322](https://github.com/vm0-ai/vm0/issues/4322)) ([583127c](https://github.com/vm0-ai/vm0/commit/583127cd041eecb0aabba535aeba0e2af08e6778))
+* add cloudflare api-token connector ([#4324](https://github.com/vm0-ai/vm0/issues/4324)) ([614123b](https://github.com/vm0-ai/vm0/commit/614123badce9868ffce2e83c22452314a401e2c6))
+* add domain and email variables to atlassian connector ([#4353](https://github.com/vm0-ai/vm0/issues/4353)) ([07bf564](https://github.com/vm0-ai/vm0/commit/07bf56464de196c0a7b5f905df42ec52615fb4cb)), closes [#4349](https://github.com/vm0-ai/vm0/issues/4349)
+* add heygen api-token connector ([#4346](https://github.com/vm0-ai/vm0/issues/4346)) ([230d6f5](https://github.com/vm0-ai/vm0/commit/230d6f5331b04931f55f893d87aee095d2c4e345))
+* add hugging-face api-token connector ([#4362](https://github.com/vm0-ai/vm0/issues/4362)) ([d1e9a14](https://github.com/vm0-ai/vm0/commit/d1e9a14e38997f4522ba00519618241945d02632))
+* add intercom api-token connector ([#4332](https://github.com/vm0-ai/vm0/issues/4332)) ([a29e8dd](https://github.com/vm0-ai/vm0/commit/a29e8ddb957bf1a49e927a372ecb13eff3d4863c))
+* add line api-token connector ([#4325](https://github.com/vm0-ai/vm0/issues/4325)) ([b5d65e6](https://github.com/vm0-ai/vm0/commit/b5d65e652552ee33115fd51a8e5ca4b2e384d2e6))
+* add make api-token connector ([#4329](https://github.com/vm0-ai/vm0/issues/4329)) ([2d619dc](https://github.com/vm0-ai/vm0/commit/2d619dce7b7afc11620a876c4fb84cf442597d80))
+* add wrike api-token connector ([#4340](https://github.com/vm0-ai/vm0/issues/4340)) ([ddd3785](https://github.com/vm0-ai/vm0/commit/ddd3785fc219ce6711ac246597b7880d3558f61d))
+* support org query param as alternative to scope slug ([#4237](https://github.com/vm0-ai/vm0/issues/4237)) ([f06a15b](https://github.com/vm0-ai/vm0/commit/f06a15b833d40b7b4066ad89365bf25bfab36655))
+
+
+### Refactoring
+
+* remove legacy credential concept entirely ([#4345](https://github.com/vm0-ai/vm0/issues/4345)) ([13919fe](https://github.com/vm0-ai/vm0/commit/13919fe66518807d6598a202033af74a562fbf0b))
+* remove unused default flag from agent compose response ([#4348](https://github.com/vm0-ai/vm0/issues/4348)) ([bb36686](https://github.com/vm0-ai/vm0/commit/bb36686d533dd8fce1c51d364cd9705a60ab1898)), closes [#4337](https://github.com/vm0-ai/vm0/issues/4337)
+
 ## [8.55.0](https://github.com/vm0-ai/vm0/compare/core-v8.54.1...core-v8.55.0) (2026-03-11)
 
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.55.5](https://github.com/vm0-ai/vm0/compare/cli-v9.55.4...cli-v9.55.5) (2026-03-11)
+
+
+### Refactoring
+
+* **cli:** clean up defensive try/catch in cook commands ([#4355](https://github.com/vm0-ai/vm0/issues/4355)) ([a2f48d4](https://github.com/vm0-ai/vm0/commit/a2f48d4ed3be053365bd09b64165dd16eed64d36)), closes [#4155](https://github.com/vm0-ai/vm0/issues/4155)
+* **cli:** replace process.exit with throw in logs commands ([#4327](https://github.com/vm0-ai/vm0/issues/4327)) ([6c36f64](https://github.com/vm0-ai/vm0/commit/6c36f64c0b2153cb7088db7f7016094b37ed80fc))
+* **cli:** replace process.exit with throw in model-provider commands ([#4225](https://github.com/vm0-ai/vm0/issues/4225)) ([8c07f99](https://github.com/vm0-ai/vm0/commit/8c07f995af0c56c0f33044d97c078fdc5c440e56))
+* **cli:** replace process.exit with throw in run and cook commands ([#4241](https://github.com/vm0-ai/vm0/issues/4241)) ([8bf7e5e](https://github.com/vm0-ai/vm0/commit/8bf7e5ef22d86af9455a6b9851178241356da54b))
+* **cli:** replace process.exit with throw in scope and onboard commands ([#4330](https://github.com/vm0-ai/vm0/issues/4330)) ([b4a6e48](https://github.com/vm0-ai/vm0/commit/b4a6e483682320ac1bf08864d300dce6f351fc44))
+* **cli:** replace process.exit with throw in secret and variable commands ([#4334](https://github.com/vm0-ai/vm0/issues/4334)) ([e025211](https://github.com/vm0-ai/vm0/commit/e0252117d03813d46f1e4e11215d1b410c51b604))
+* **cli:** replace process.exit with throw in usage and dev-tool commands ([#4342](https://github.com/vm0-ai/vm0/issues/4342)) ([633b8a5](https://github.com/vm0-ai/vm0/commit/633b8a517b2d11857fcad99f79611f0a2ac7798e))
+* remove legacy credential concept entirely ([#4345](https://github.com/vm0-ai/vm0/issues/4345)) ([13919fe](https://github.com/vm0-ai/vm0/commit/13919fe66518807d6598a202033af74a562fbf0b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.56.0
+
 ## [9.55.4](https://github.com/vm0-ai/vm0/compare/cli-v9.55.3...cli-v9.55.4) (2026-03-11)
 
 

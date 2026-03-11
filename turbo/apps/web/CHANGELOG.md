@@ -1,5 +1,40 @@
 # Changelog
 
+## [12.98.0](https://github.com/vm0-ai/vm0/compare/web-v12.97.0...web-v12.98.0) (2026-03-11)
+
+
+### Features
+
+* add atlassian api-token connector ([#4326](https://github.com/vm0-ai/vm0/issues/4326)) ([8bc6ee2](https://github.com/vm0-ai/vm0/commit/8bc6ee27d66094c1ac18dacf82b2b721b8d49b4f))
+* add clickup api-token connector ([#4322](https://github.com/vm0-ai/vm0/issues/4322)) ([583127c](https://github.com/vm0-ai/vm0/commit/583127cd041eecb0aabba535aeba0e2af08e6778))
+* add clickup skill to platform, web, and docs ([#4364](https://github.com/vm0-ai/vm0/issues/4364)) ([6410f37](https://github.com/vm0-ai/vm0/commit/6410f37478b130e54ddfd6cc7397ea9ea6555e81))
+* add cloudflare api-token connector ([#4324](https://github.com/vm0-ai/vm0/issues/4324)) ([614123b](https://github.com/vm0-ai/vm0/commit/614123badce9868ffce2e83c22452314a401e2c6))
+* add heygen api-token connector ([#4346](https://github.com/vm0-ai/vm0/issues/4346)) ([230d6f5](https://github.com/vm0-ai/vm0/commit/230d6f5331b04931f55f893d87aee095d2c4e345))
+* add hugging-face api-token connector ([#4362](https://github.com/vm0-ai/vm0/issues/4362)) ([d1e9a14](https://github.com/vm0-ai/vm0/commit/d1e9a14e38997f4522ba00519618241945d02632))
+* add intercom api-token connector ([#4332](https://github.com/vm0-ai/vm0/issues/4332)) ([a29e8dd](https://github.com/vm0-ai/vm0/commit/a29e8ddb957bf1a49e927a372ecb13eff3d4863c))
+* add line api-token connector ([#4325](https://github.com/vm0-ai/vm0/issues/4325)) ([b5d65e6](https://github.com/vm0-ai/vm0/commit/b5d65e652552ee33115fd51a8e5ca4b2e384d2e6))
+* add make api-token connector ([#4329](https://github.com/vm0-ai/vm0/issues/4329)) ([2d619dc](https://github.com/vm0-ai/vm0/commit/2d619dce7b7afc11620a876c4fb84cf442597d80))
+* add org_cache table and cache service for non-jwt contexts ([#4239](https://github.com/vm0-ai/vm0/issues/4239)) ([1fb745d](https://github.com/vm0-ai/vm0/commit/1fb745d5d5af2a88b249b7a608ccb176ef96c8b5))
+* add wrike api-token connector ([#4340](https://github.com/vm0-ai/vm0/issues/4340)) ([ddd3785](https://github.com/vm0-ai/vm0/commit/ddd3785fc219ce6711ac246597b7880d3558f61d))
+* **platform:** wire zero meet settings tab to real api ([#4192](https://github.com/vm0-ai/vm0/issues/4192)) ([b5f8525](https://github.com/vm0-ai/vm0/commit/b5f8525c560b692967359ee7f66c2490e4362e61))
+* remove Clerk org creation from scope service ([#4240](https://github.com/vm0-ai/vm0/issues/4240)) ([191c048](https://github.com/vm0-ai/vm0/commit/191c0482a0b6c1d209d144d61bd5c38e271b5a8e))
+* support org query param as alternative to scope slug ([#4237](https://github.com/vm0-ai/vm0/issues/4237)) ([f06a15b](https://github.com/vm0-ai/vm0/commit/f06a15b833d40b7b4066ad89365bf25bfab36655))
+* switch user preferences read path to clerk jwt claims ([#4344](https://github.com/vm0-ai/vm0/issues/4344)) ([58113eb](https://github.com/vm0-ai/vm0/commit/58113eb88a8a31eefaef3acc1e268347d56e314d))
+
+
+### Refactoring
+
+* remove legacy credential concept entirely ([#4345](https://github.com/vm0-ai/vm0/issues/4345)) ([13919fe](https://github.com/vm0-ai/vm0/commit/13919fe66518807d6598a202033af74a562fbf0b))
+* remove unused default flag from agent compose response ([#4348](https://github.com/vm0-ai/vm0/issues/4348)) ([bb36686](https://github.com/vm0-ai/vm0/commit/bb36686d533dd8fce1c51d364cd9705a60ab1898)), closes [#4337](https://github.com/vm0-ai/vm0/issues/4337)
+* rename skill references from dev.to/fal.ai to devto/fal ([#4347](https://github.com/vm0-ai/vm0/issues/4347)) ([0b86ca4](https://github.com/vm0-ai/vm0/commit/0b86ca4e3a8aa9ec153c4c15f495450cab027be1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.56.0
+
 ## [12.97.0](https://github.com/vm0-ai/vm0/compare/web-v12.96.0...web-v12.97.0) (2026-03-11)
 
 

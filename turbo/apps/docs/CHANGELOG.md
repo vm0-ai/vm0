@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.16.0](https://github.com/vm0-ai/vm0/compare/docs-v2.15.1...docs-v2.16.0) (2026-03-11)
+
+
+### Features
+
+* add clickup skill to platform, web, and docs ([#4364](https://github.com/vm0-ai/vm0/issues/4364)) ([6410f37](https://github.com/vm0-ai/vm0/commit/6410f37478b130e54ddfd6cc7397ea9ea6555e81))
+
+
+### Refactoring
+
+* rename skill references from dev.to/fal.ai to devto/fal ([#4347](https://github.com/vm0-ai/vm0/issues/4347)) ([0b86ca4](https://github.com/vm0-ai/vm0/commit/0b86ca4e3a8aa9ec153c4c15f495450cab027be1))
+
 ## [2.15.1](https://github.com/vm0-ai/vm0/compare/docs-v2.15.0...docs-v2.15.1) (2026-03-09)
 
 
