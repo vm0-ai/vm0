@@ -791,6 +791,27 @@ const CONNECTOR_TYPES_DEF = {
       scopes: ["offline_access"],
     } as ConnectorOAuthConfig,
   },
+  minimax: {
+    label: "MiniMax",
+    helpText:
+      "Connect your MiniMax account to access AI model APIs for text, voice, and video generation",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to the [MiniMax Platform](https://platform.minimaxi.com)\n2. Go to **Account → API Keys**\n3. Create a new API key and copy it",
+        secrets: {
+          MINIMAX_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-minimax-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {} as Record<string, string>,
+  },
   reddit: {
     label: "Reddit",
     featureFlag: FeatureSwitchKey.RedditConnector,
@@ -1842,6 +1863,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   mercury: {
     services: [service("https://api.mercury.com", bearerAuth("MERCURY_TOKEN"))],
   },
+  minimax: {
+    services: [
+      service("https://api.minimaxi.com/v1", bearerAuth("MINIMAX_TOKEN")),
+    ],
+  },
   reddit: {
     services: [service("https://oauth.reddit.com", bearerAuth("REDDIT_TOKEN"))],
   },
@@ -2051,6 +2077,7 @@ export const connectorTypeSchema = z.enum([
   "linear",
   "figma",
   "mercury",
+  "minimax",
   "reddit",
   "strava",
   "neon",

@@ -25,6 +25,7 @@ import linearIcon from "./icons/linear.svg";
 import mailchimpIcon from "./icons/mailchimp.svg";
 import mercuryIcon from "./icons/mercury.svg";
 import metaAdsIcon from "./icons/meta-ads.svg";
+import minimaxIcon from "./icons/minimax.svg";
 import mondayIcon from "./icons/monday.svg";
 import neonIcon from "./icons/neon.svg";
 import notionIcon from "./icons/notion.svg";
@@ -73,6 +74,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   mailchimp: mailchimpIcon,
   mercury: mercuryIcon,
   "meta-ads": metaAdsIcon,
+  minimax: minimaxIcon,
   monday: mondayIcon,
   neon: neonIcon,
   notion: notionIcon,

@@ -26,6 +26,7 @@ import { googleDriveHandler } from "./providers/google-drive-handler";
 import { googleSheetsHandler } from "./providers/google-sheets-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
+import { minimaxHandler } from "./providers/minimax-handler";
 import { mondayHandler } from "./providers/monday-handler";
 import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
@@ -79,6 +80,7 @@ export const PROVIDER_HANDLERS: Record<
   linear: linearHandler,
   mailchimp: mailchimpHandler,
   mercury: mercuryHandler,
+  minimax: minimaxHandler,
   monday: mondayHandler,
   neon: neonHandler,
   notion: notionHandler,
