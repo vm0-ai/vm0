@@ -833,6 +833,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  supadata: {
+    label: "Supadata",
+    helpText:
+      "Connect your Supadata account to extract YouTube transcripts, channel data, and video metadata",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [Supadata](https://supadata.ai/)\n2. Go to the dashboard and copy your API key",
+        secrets: {
+          SUPADATA_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-supadata-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   reddit: {
     label: "Reddit",
     featureFlag: FeatureSwitchKey.RedditConnector,
@@ -2516,6 +2536,13 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       }),
     ],
   },
+  supadata: {
+    services: [
+      service("https://api.supadata.ai/v1", {
+        headers: { "x-api-key": "${secrets.SUPADATA_TOKEN}" },
+      }),
+    ],
+  },
   zeptomail: {
     services: [
       service("https://api.zeptomail.com/v1.1", {
@@ -2593,6 +2620,7 @@ export const connectorTypeSchema = z.enum([
   "podchaser",
   "pushinator",
   "qdrant",
+  "supadata",
   "zeptomail",
 ]);
 
