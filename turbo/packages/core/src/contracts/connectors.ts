@@ -1759,6 +1759,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  pdf4me: {
+    label: "PDF4me",
+    helpText:
+      "Connect your PDF4me account to convert, merge, split, compress, and manipulate PDF documents",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [PDF4me](https://dev.pdf4me.com)\n2. Go to your **Dashboard → API Keys**\n3. Copy your API key",
+        secrets: {
+          PDF4ME_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-pdf4me-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   apify: {
     label: "Apify",
     helpText:
@@ -1900,6 +1920,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  devto: {
+    label: "Dev.to",
+    helpText:
+      "Connect your Dev.to account to publish articles, manage posts, and interact with the developer community",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Dev.to](https://dev.to)\n2. Go to **Settings → Extensions**\n3. Scroll to **DEV Community API Keys**\n4. Generate a new API key and copy it",
+        secrets: {
+          DEVTO_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-devto-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   fal: {
     label: "fal.ai",
     helpText:
@@ -1914,6 +1954,26 @@ const CONNECTOR_TYPES_DEF = {
             label: "API Key",
             required: true,
             placeholder: "fal_...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  podchaser: {
+    label: "Podchaser",
+    helpText:
+      "Connect your Podchaser account to search podcasts, episodes, creators, and access podcast industry data",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Podchaser](https://www.podchaser.com)\n2. Go to **Account Settings → API**\n3. Use your client ID and secret to request an access token via the `requestAccessToken` mutation\n4. Copy the access token",
+        secrets: {
+          PODCHASER_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-podchaser-access-token",
           },
         },
       },
@@ -2296,6 +2356,13 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   resend: {
     services: [service("https://api.resend.com", bearerAuth("RESEND_API_KEY"))],
   },
+  pdf4me: {
+    services: [
+      service("https://api.pdf4me.com", {
+        headers: { Authorization: "${secrets.PDF4ME_TOKEN}" },
+      }),
+    ],
+  },
   apify: {
     services: [service("https://api.apify.com/v2", bearerAuth("APIFY_TOKEN"))],
   },
@@ -2330,8 +2397,20 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       }),
     ],
   },
+  devto: {
+    services: [
+      service("https://dev.to/api", {
+        headers: { "api-key": "${secrets.DEVTO_TOKEN}" },
+      }),
+    ],
+  },
   fal: {
     services: [service("https://fal.run", bearerAuth("FAL_KEY"))],
+  },
+  podchaser: {
+    services: [
+      service("https://api.podchaser.com", bearerAuth("PODCHASER_TOKEN")),
+    ],
   },
   pushinator: {
     services: [
@@ -2391,6 +2470,7 @@ export const connectorTypeSchema = z.enum([
   "plausible",
   "productlane",
   "resend",
+  "pdf4me",
   "apify",
   "bright-data",
   "browserbase",
@@ -2398,7 +2478,9 @@ export const connectorTypeSchema = z.enum([
   "firecrawl",
   "scrapeninja",
   "elevenlabs",
+  "devto",
   "fal",
+  "podchaser",
   "pushinator",
 ]);
 
