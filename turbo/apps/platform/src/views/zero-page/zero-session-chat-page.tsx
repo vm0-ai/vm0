@@ -10,6 +10,8 @@ import {
   IconAlertCircle,
   IconLoader2,
   IconArrowLeft,
+  IconUsers,
+  IconCalendar,
 } from "@tabler/icons-react";
 import { Button, Card, CardContent } from "@vm0/ui";
 import { Markdown } from "../components/markdown.tsx";
@@ -33,12 +35,16 @@ interface ZeroSessionChatPageProps {
   zeroAvatarSrc?: string;
   onAvatarClick?: () => void;
   onBack?: () => void;
+  onNavigateToJob?: () => void;
+  onNavigateToSchedule?: () => void;
 }
 
 export function ZeroSessionChatPage({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
   onBack,
+  onNavigateToJob,
+  onNavigateToSchedule,
 }: ZeroSessionChatPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
@@ -103,6 +109,26 @@ export function ZeroSessionChatPage({
             />
           </button>
           <span className="font-semibold text-foreground">{agentName}</span>
+        </div>
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={onNavigateToJob}
+            aria-label="Sub-agents"
+          >
+            <IconUsers size={18} stroke={1.5} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={onNavigateToSchedule}
+            aria-label="Schedule"
+          >
+            <IconCalendar size={18} stroke={1.5} />
+          </Button>
         </div>
       </header>
 

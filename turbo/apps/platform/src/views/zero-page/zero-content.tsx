@@ -66,6 +66,8 @@ export function ZeroContent({
           zeroAvatarSrc={zeroAvatarSrc}
           onAvatarClick={onAvatarClick}
           onBack={onBackFromSession}
+          onNavigateToJob={onNavigateToJob}
+          onNavigateToSchedule={onNavigateToSchedule}
         />
       );
     }
