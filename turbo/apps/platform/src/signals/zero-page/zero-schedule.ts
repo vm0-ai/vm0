@@ -303,10 +303,11 @@ export const toggleZeroScheduleEnabled$ = command(
       const errorData = (await response.json().catch(() => null)) as {
         error?: { message?: string };
       } | null;
-      throw new Error(
+      const message =
         errorData?.error?.message ??
-          `Failed to ${action} schedule: ${response.statusText}`,
-      );
+        `Failed to ${action} schedule: ${response.statusText}`;
+      toast.error(message);
+      throw new Error(message);
     }
 
     await set(fetchZeroSchedules$);

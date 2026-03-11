@@ -8,6 +8,7 @@ import {
   zeroScheduleEntries$,
   saveZeroSchedule$,
   deleteZeroSchedule$,
+  toggleZeroScheduleEnabled$,
 } from "../zero-schedule.ts";
 
 const context = testContext();
@@ -251,6 +252,85 @@ describe("zero-schedule signals", () => {
 
       expect(captured.body?.name).toBe("existing-schedule");
       expect(captured.body?.cronExpression).toBe("30 10 * * 1-5");
+    });
+  });
+
+  describe("toggleZeroScheduleEnabled$", () => {
+    it("should POST to enable endpoint and refresh schedules", async () => {
+      const captured: {
+        action: string | null;
+        body: Record<string, unknown> | null;
+      } = { action: null, body: null };
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/schedules/:name/:action",
+          async ({ params, request }) => {
+            captured.action = params["action"] as string;
+            captured.body = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({ success: true });
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      await setup();
+      await context.store.set(toggleZeroScheduleEnabled$, {
+        name: "morning-briefing",
+        enabled: true,
+      });
+
+      expect(captured.action).toBe("enable");
+      expect(captured.body?.composeId).toBe("mock-compose-id");
+    });
+
+    it("should POST to disable endpoint when enabled is false", async () => {
+      const captured: { action: string | null } = { action: null };
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/schedules/:name/:action",
+          ({ params }) => {
+            captured.action = params["action"] as string;
+            return HttpResponse.json({ success: true });
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      await setup();
+      await context.store.set(toggleZeroScheduleEnabled$, {
+        name: "morning-briefing",
+        enabled: false,
+      });
+
+      expect(captured.action).toBe("disable");
+    });
+
+    it("should throw and show toast on API error", async () => {
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/schedules/:name/:action",
+          () => {
+            return HttpResponse.json(
+              { error: { message: "Schedule not found" } },
+              { status: 404 },
+            );
+          },
+        ),
+      );
+
+      await setup();
+      await expect(
+        context.store.set(toggleZeroScheduleEnabled$, {
+          name: "nonexistent",
+          enabled: true,
+        }),
+      ).rejects.toThrow("Schedule not found");
     });
   });
 
