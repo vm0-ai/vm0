@@ -168,11 +168,13 @@ export {
   scopeResponseSchema,
   createScopeRequestSchema,
   updateScopeRequestSchema,
+  scopeTierSchema,
   type ScopeContract,
   type ScopeDefaultAgentContract,
   type ScopeResponse,
   type CreateScopeRequest,
   type UpdateScopeRequest,
+  type ScopeTier,
 } from "./scopes";
 export {
   secretsMainContract,
@@ -463,14 +465,6 @@ export {
   type RemoveScopeMemberRequest,
   type ScopeMessageResponse,
 } from "./scope-members";
-export {
-  adminScopeTierContract,
-  scopeTierSchema,
-  setScopeTierRequestSchema,
-  setScopeTierResponseSchema,
-  type AdminScopeTierContract,
-  type ScopeTier,
-} from "./admin";
 export {
   onboardingStatusContract,
   onboardingStatusResponseSchema,

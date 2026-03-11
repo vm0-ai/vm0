@@ -4,7 +4,6 @@ import { GET, POST, PUT } from "../route";
 import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
-import { reloadEnv } from "../../../../src/env";
 
 const context = testContext();
 
@@ -272,30 +271,8 @@ describe("/api/scope", () => {
         expect(data.error.message).toContain("reserved");
       });
 
-      it("should allow vm0-admin to create vm0-prefixed slug", async () => {
-        const userId = `vm0-admin-user-${Date.now()}`;
-        mockClerk({ userId, email: "admin@vm0.ai" });
-        vi.stubEnv("VM0_ADMIN_USERS", "admin@vm0.ai");
-        reloadEnv();
-
-        const slug = `vm0-admin-test-${Date.now()}`;
-        const request = createTestRequest("http://localhost:3000/api/scope", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slug }),
-        });
-        const response = await POST(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(201);
-        expect(data.slug).toBe(slug);
-      });
-
-      it("should reject vm0-prefixed slug for non-admin user", async () => {
-        const userId = `vm0-nonadmin-user-${Date.now()}`;
-        mockClerk({ userId, email: "user@example.com" });
-        vi.stubEnv("VM0_ADMIN_USERS", "admin@vm0.ai");
-        reloadEnv();
+      it("should reject vm0-prefixed slug", async () => {
+        mockClerk({ userId: `vm0-prefix-user2-${Date.now()}` });
 
         const request = createTestRequest("http://localhost:3000/api/scope", {
           method: "POST",

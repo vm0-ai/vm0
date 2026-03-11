@@ -24,7 +24,6 @@ import { connectorCommand } from "./commands/connector";
 import { onboardCommand } from "./commands/onboard";
 import { setupClaudeCommand } from "./commands/setup-claude";
 import { dashboardCommand } from "./commands/dashboard";
-import { devToolCommand } from "./commands/dev-tool";
 import { preferenceCommand } from "./commands/preference";
 import { upgradeCommand } from "./commands/upgrade";
 
@@ -61,7 +60,6 @@ program.addCommand(setupClaudeCommand);
 program.addCommand(dashboardCommand);
 program.addCommand(preferenceCommand);
 program.addCommand(upgradeCommand);
-program.addCommand(devToolCommand, { hidden: true });
 
 export { program };
 

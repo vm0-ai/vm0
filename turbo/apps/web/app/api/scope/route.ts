@@ -9,11 +9,9 @@ import { getAuthContext } from "../../../src/lib/auth/get-user-id";
 import {
   createScope,
   updateScopeSlug,
-  isVm0Admin,
   ensureDefaultScope,
   resolveUnmatchedClerkOrg,
 } from "../../../src/lib/scope/scope-service";
-import { getUserEmail } from "../../../src/lib/auth/get-user-email";
 import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
@@ -90,19 +88,6 @@ const router = tsr.router(scopeContract, {
     log.debug("creating scope", { userId, slug });
 
     try {
-      // vm0-admin slug policy: allow vm0-prefixed slugs for admin users only
-      let skipSlugValidation = false;
-      if (slug.startsWith("vm0")) {
-        const email = await getUserEmail(userId);
-        if (!isVm0Admin(email)) {
-          return createErrorResponse(
-            "BAD_REQUEST",
-            `Scope slug "${slug}" is reserved`,
-          );
-        }
-        skipSlugValidation = true;
-      }
-
       // Resolve clerkOrgId from user's Clerk org memberships
       const unmatchedOrg = await resolveUnmatchedClerkOrg(userId);
 
@@ -114,7 +99,6 @@ const router = tsr.router(scopeContract, {
       }
 
       const scope = await createScope(userId, slug, {
-        skipSlugValidation,
         clerkOrgId: unmatchedOrg.organization.id,
       });
 

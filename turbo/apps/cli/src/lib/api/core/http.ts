@@ -80,24 +80,6 @@ export async function httpPost(path: string, body: unknown): Promise<Response> {
 }
 
 /**
- * Generic PUT request
- */
-export async function httpPut(path: string, body: unknown): Promise<Response> {
-  const baseUrl = await getBaseUrl();
-  const headers = await getRawHeaders();
-  const scopedPath = await appendScopeParam(path);
-
-  return fetch(`${baseUrl}${scopedPath}`, {
-    method: "PUT",
-    headers: {
-      ...headers,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-}
-
-/**
  * Generic DELETE request
  */
 export async function httpDelete(path: string): Promise<Response> {

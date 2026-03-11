@@ -5,6 +5,12 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 /**
+ * Scope tier values
+ */
+export const scopeTierSchema = z.enum(["free", "pro", "max"]);
+export type ScopeTier = z.infer<typeof scopeTierSchema>;
+
+/**
  * Scope slug validation
  * - 3-64 characters (or 1-2 for single/double char slugs)
  * - lowercase letters, numbers, and hyphens only

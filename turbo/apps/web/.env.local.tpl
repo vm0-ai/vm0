@@ -159,9 +159,6 @@ SENTRY_AUTH_TOKEN=
 SENTRY_ORG=
 SENTRY_PROJECT=
 
-# Optional: VM0 Admin Users (comma-separated emails for super-admin access)
-# VM0_ADMIN_USERS=lancy@vm0.ai,ethan@vm0.ai
-
 # Optional: Github App for Integration
 GITHUB_APP_CLIENT_ID=op://Development/github/GITHUB_APP_CLIENT_ID
 GITHUB_APP_CLIENT_SECRET=op://Development/github/GITHUB_APP_CLIENT_SECRET
