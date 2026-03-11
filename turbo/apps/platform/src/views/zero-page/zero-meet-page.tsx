@@ -464,10 +464,15 @@ function ZeroInstructionsTab() {
               />
               <div className="flex items-center justify-between pt-5 mt-5 border-t border-border/60">
                 <div className="flex items-center gap-2">
-                  {isDirty && (
+                  {isDirty ? (
                     <span className="text-xs font-medium text-amber-500">
                       Unsaved
                     </span>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">
+                      Edit the instructions directly to customize your
+                      agent&apos;s behavior.
+                    </p>
                   )}
                   {buildError && (
                     <span className="text-xs font-medium text-destructive">
