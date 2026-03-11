@@ -2071,6 +2071,7 @@ export const connectorTypeSchema = z.enum([
   "computer",
   "slack",
   "deel",
+  "deepseek",
   "docusign",
   "dropbox",
   "linear",
