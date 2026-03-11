@@ -853,6 +853,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  twenty: {
+    label: "Twenty",
+    helpText:
+      "Connect your Twenty CRM account to manage contacts, companies, and deals",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Twenty](https://twenty.com/)\n2. Go to **Settings → APIs & Webhooks**\n3. Generate an API key and copy it",
+        secrets: {
+          TWENTY_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-twenty-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   reddit: {
     label: "Reddit",
     featureFlag: FeatureSwitchKey.RedditConnector,
@@ -2564,6 +2584,9 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       service("https://app.reportei.com/api/v1", bearerAuth("REPORTEI_TOKEN")),
     ],
   },
+  twenty: {
+    services: [service("https://api.twenty.com", bearerAuth("TWENTY_TOKEN"))],
+  },
   zeptomail: {
     services: [
       service("https://api.zeptomail.com/v1.1", {
@@ -2643,6 +2666,7 @@ export const connectorTypeSchema = z.enum([
   "qdrant",
   "qiita",
   "reportei",
+  "twenty",
   "zeptomail",
 ]);
 

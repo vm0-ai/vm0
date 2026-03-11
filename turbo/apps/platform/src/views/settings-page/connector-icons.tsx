@@ -54,6 +54,7 @@ import qdrantIcon from "./icons/qdrant.svg";
 import qiitaIcon from "./icons/qiita.svg";
 import redditIcon from "./icons/reddit.svg";
 import reporteiIcon from "./icons/reportei.svg";
+import twentyIcon from "./icons/twenty.svg";
 import resendIcon from "./icons/resend.svg";
 import scrapeninja from "./icons/scrapeninja.svg";
 import sentryIcon from "./icons/sentry.svg";
@@ -124,6 +125,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   qiita: qiitaIcon,
   reddit: redditIcon,
   reportei: reporteiIcon,
+  twenty: twentyIcon,
   resend: resendIcon,
   scrapeninja: scrapeninja,
   sentry: sentryIcon,
