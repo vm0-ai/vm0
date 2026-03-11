@@ -21,8 +21,7 @@ export const deleteCommand = new Command()
           error instanceof Error &&
           error.message.toLowerCase().includes("not found")
         ) {
-          console.error(chalk.red(`✗ Secret "${name}" not found`));
-          process.exit(1);
+          throw new Error(`Secret "${name}" not found`);
         }
         throw error;
       }
@@ -30,10 +29,7 @@ export const deleteCommand = new Command()
       // Confirm deletion unless --yes is passed
       if (!options.yes) {
         if (!isInteractive()) {
-          console.error(
-            chalk.red("✗ --yes flag is required in non-interactive mode"),
-          );
-          process.exit(1);
+          throw new Error("--yes flag is required in non-interactive mode");
         }
 
         const confirmed = await promptConfirm(

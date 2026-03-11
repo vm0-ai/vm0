@@ -32,15 +32,11 @@ export const setCommand = new Command()
           }
           value = prompted;
         } else {
-          console.error(
-            chalk.red("✗ --body is required in non-interactive mode"),
-          );
-          console.error();
-          console.error("Usage:");
-          console.error(
-            chalk.cyan(`  vm0 secret set ${name} --body "your-secret-value"`),
-          );
-          process.exit(1);
+          throw new Error("--body is required in non-interactive mode", {
+            cause: new Error(
+              `Usage: vm0 secret set ${name} --body "your-secret-value"`,
+            ),
+          });
         }
 
         let secret;
@@ -56,13 +52,11 @@ export const setCommand = new Command()
             error instanceof Error &&
             error.message.includes("must contain only uppercase")
           ) {
-            console.error(chalk.red(`✗ ${error.message}`));
-            console.error();
-            console.error("Examples of valid secret names:");
-            console.error(chalk.dim("  MY_API_KEY"));
-            console.error(chalk.dim("  GITHUB_TOKEN"));
-            console.error(chalk.dim("  AWS_ACCESS_KEY_ID"));
-            process.exit(1);
+            throw new Error(error.message, {
+              cause: new Error(
+                "Examples of valid secret names: MY_API_KEY, GITHUB_TOKEN, AWS_ACCESS_KEY_ID",
+              ),
+            });
           }
           throw error;
         }
