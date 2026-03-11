@@ -12,6 +12,7 @@ import { fetch$ } from "../fetch.ts";
 import { initScope$, hasScope$ } from "../scope.ts";
 import { createModelProvider$ } from "../external/model-providers.ts";
 import { getProviderShape } from "../../views/settings-page/provider-ui-config.ts";
+import { skillValueToUrl } from "../../data/skills.ts";
 import { logger } from "../log.ts";
 
 const L = logger("ZeroOnboarding");
@@ -74,6 +75,7 @@ function defaultFormValues(): ZeroFormValues {
 
 const internalFormValues$ = state<ZeroFormValues>(defaultFormValues());
 const internalSaving$ = state(false);
+const internalSelectedSkills$ = state<string[]>([]);
 
 // ---------------------------------------------------------------------------
 // Exported computed state
@@ -84,6 +86,9 @@ export const zeroAgentName$ = computed((get) => get(internalAgentName$));
 export const zeroProviderType$ = computed((get) => get(internalProviderType$));
 export const zeroFormValues$ = computed((get) => get(internalFormValues$));
 export const zeroSaving$ = computed((get) => get(internalSaving$));
+export const zeroSelectedSkills$ = computed((get) =>
+  get(internalSelectedSkills$),
+);
 
 export const zeroCanSave$ = computed((get) => {
   const providerType = get(internalProviderType$);
@@ -179,6 +184,14 @@ export const setZeroSecretField$ = command(
   },
 );
 
+export const toggleZeroSkill$ = command(({ set }, skillValue: string) => {
+  set(internalSelectedSkills$, (prev) =>
+    prev.includes(skillValue)
+      ? prev.filter((s) => s !== skillValue)
+      : [...prev, skillValue],
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Commands: lifecycle
 // ---------------------------------------------------------------------------
@@ -264,7 +277,16 @@ export const completeZeroOnboarding$ = command(
 
     try {
       const agentName = get(internalAgentName$);
+      const selectedSkills = get(internalSelectedSkills$);
       const fetchFn = get(fetch$);
+
+      // Build agent definition with optional skills
+      const agentDef: Record<string, unknown> = {
+        framework: "claude-code",
+      };
+      if (selectedSkills.length > 0) {
+        agentDef.skills = selectedSkills.map(skillValueToUrl);
+      }
 
       // Create agent compose
       const composeResp = await fetchFn("/api/agent/composes", {
@@ -274,9 +296,7 @@ export const completeZeroOnboarding$ = command(
           content: {
             version: "1",
             agents: {
-              [agentName]: {
-                framework: "claude-code",
-              },
+              [agentName]: agentDef,
             },
           },
         }),

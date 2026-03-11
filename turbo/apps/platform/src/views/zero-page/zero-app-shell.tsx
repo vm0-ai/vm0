@@ -1,5 +1,5 @@
 import { useCCState, useCommand } from "ccstate-react/experimental";
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
   ZeroSidebar,
   type ZeroNavId,
@@ -120,13 +120,7 @@ function ZeroAppSkeleton({ visible }: { visible: boolean }) {
 }
 
 function useSkeletonVisibility(isLoggedIn: boolean, dataReady: boolean) {
-  const everReady$ = useCCState(false);
-  const everReady = useGet(everReady$);
-  const setEverReady = useSet(everReady$);
-  if (dataReady && !everReady) {
-    setEverReady(true);
-  }
-  return isLoggedIn && !dataReady && !everReady;
+  return isLoggedIn && !dataReady;
 }
 
 function getRecentLabels(agentName: string): Readonly<Record<string, string>> {
@@ -143,11 +137,13 @@ export function ZeroAppShell() {
   const userLoadable = useLoadable(user$);
   const isLoggedIn =
     userLoadable.state === "hasData" && userLoadable.data !== undefined;
-  const onboardingLoadable = useLoadable(zeroNeedsOnboarding$);
+  // useLastLoadable keeps the previous value during re-fetches (e.g. Clerk
+  // session touch), preventing the onboarding dialog from unmounting.
+  const onboardingLoadable = useLastLoadable(zeroNeedsOnboarding$);
   const onboardingReady = onboardingLoadable.state === "hasData";
   const showOnboarding =
     isLoggedIn && onboardingReady && onboardingLoadable.data === true;
-  const agentDisplayNameLoadable = useLoadable(agentDisplayName$);
+  const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
   const agentNameReady = agentDisplayNameLoadable.state === "hasData";
   const agentDisplayName = agentNameReady
     ? agentDisplayNameLoadable.data

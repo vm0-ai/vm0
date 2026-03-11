@@ -5,7 +5,6 @@ import {
   IconMessageCircle,
   IconUser,
   IconFileText,
-  IconPlug,
   IconX,
   IconPlus,
   IconTool,
@@ -14,7 +13,7 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import type { ConnectorType } from "@vm0/core";
-import { ConnectorIcon } from "../settings-page/connector-icons";
+import { skills$ } from "../../data/skills.ts";
 import {
   Card,
   CardContent,
@@ -23,11 +22,6 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   cn,
 } from "@vm0/ui";
 import {
@@ -39,6 +33,7 @@ import {
 import { ZeroScheduleCard, DEFAULT_SCHEDULE } from "./zero-schedule-card";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
+  type ConnectorTypeWithStatus,
   allConnectorTypes$,
   connectConnector$,
   pollingConnectorType$,
@@ -49,6 +44,9 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   zeroUpdateSettings$,
   zeroSettingsSaving$,
+  zeroAddedSkills$,
+  addZeroSkill$,
+  removeZeroSkill$,
 } from "../../signals/zero-page/zero-meet.ts";
 
 const TONE_OPTIONS = [
@@ -89,36 +87,100 @@ const TONE_SAMPLES: Readonly<
   },
 };
 
-const AVAILABLE_SKILLS = [
-  "github",
-  "linear",
-  "plausible",
-  "agentmail",
-  "axiom",
-  "notion",
-  "vm0-cli",
-  "vm0-agent",
-  "slack",
-  "gmail",
-  "elephant",
-] as const;
+// ---------------------------------------------------------------------------
+// Skill item — a single row in the skills list
+// ---------------------------------------------------------------------------
 
-function isConnectorSkill(skill: string): skill is ConnectorType {
+function ZeroSkillItem({
+  name,
+  label,
+  iconUrl,
+  connector,
+  pollingType,
+  onConnect,
+  onDisconnect,
+  onRemove,
+}: {
+  name: string;
+  label: string;
+  iconUrl: string | undefined;
+  connector: ConnectorTypeWithStatus | null;
+  pollingType: ConnectorType | null;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  onRemove: () => void;
+}) {
+  const isPolling = pollingType === name;
+
   return (
-    skill === "github" ||
-    skill === "linear" ||
-    skill === "notion" ||
-    skill === "gmail" ||
-    skill === "slack"
+    <Card className="zero-card">
+      <CardContent className="flex items-center gap-4 px-4 py-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted overflow-hidden">
+          {iconUrl ? (
+            <img src={iconUrl} alt="" className="h-6 w-6 object-contain" />
+          ) : (
+            <IconTool
+              size={20}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
+          )}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground">{label}</p>
+          <p className="text-xs text-muted-foreground">
+            {connector?.connected && connector.connector?.externalUsername
+              ? `Connected as @${connector.connector.externalUsername}`
+              : (connector?.helpText ?? name)}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {connector &&
+            (isPolling ? (
+              <span className="flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs text-muted-foreground">
+                <IconLoader2 size={14} stroke={1.5} className="animate-spin" />
+                Connecting…
+              </span>
+            ) : connector.connected ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 rounded-lg px-3 text-xs text-muted-foreground hover:text-destructive"
+                onClick={onDisconnect}
+              >
+                Disconnect
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="zero-btn-morandi h-8 rounded-lg border px-3 text-xs"
+                onClick={onConnect}
+              >
+                Connect
+              </Button>
+            ))}
+          <button
+            type="button"
+            onClick={onRemove}
+            className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`Remove ${name}`}
+          >
+            <IconX size={14} stroke={2} />
+          </button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Connections tab — real connector status + OAuth connect
+// Skills tab — merged skills + connector management
 // ---------------------------------------------------------------------------
 
-function ZeroConnectionsTab() {
+function ZeroSkillsTab() {
   const allTypesLoadable = useLoadable(allConnectorTypes$);
+  const allSkills = useGet(skills$);
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
   const disconnect = useSet(deleteConnector$);
@@ -127,24 +189,40 @@ function ZeroConnectionsTab() {
   const dialogOpen = useGet(dialogOpen$);
   const setDialogOpen = useSet(dialogOpen$);
 
-  const allTypes =
+  // Skills list: auto-seeded from compose content, synced via compose jobs
+  const addedSkillsLoadable = useLoadable(zeroAddedSkills$);
+  const addedSkills =
+    addedSkillsLoadable.state === "hasData" ? addedSkillsLoadable.data : [];
+  const addSkill = useSet(addZeroSkill$);
+  const removeSkill = useSet(removeZeroSkill$);
+
+  const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
-  const connectedItems = allTypes.filter(
-    (item) => item.connected || pollingType === item.type,
-  );
-  const unconnectedItems = allTypes.filter(
-    (item) => !item.connected && pollingType !== item.type,
-  );
+  const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
+  const skillMap = new Map(allSkills.map((s) => [s.value, s]));
+
+  // Available skills for the "Add Skill" dialog: not yet added
+  const addedSet = new Set(addedSkills);
+  const availableSkills = allSkills.filter((s) => !addedSet.has(s.value));
+
+  const handleAddSkill = (name: string) => {
+    detach(addSkill(name), Reason.DomCallback);
+    setDialogOpen(false);
+  };
+
+  const handleRemoveSkill = (name: string) => {
+    detach(removeSkill(name), Reason.DomCallback);
+  };
 
   return (
     <div className="mx-auto max-w-[900px] px-7 flex flex-col gap-6">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div>
           <h2 className="text-base font-semibold tracking-tight text-foreground">
-            Connectors
+            Skills
           </h2>
           <p className="text-sm text-muted-foreground">
-            Connect and authorize these services so your agent can act on your
+            Add skills and connect services so your agent can act on your
             behalf.
           </p>
         </div>
@@ -154,107 +232,117 @@ function ZeroConnectionsTab() {
           onClick={() => setDialogOpen(true)}
         >
           <IconPlus size={16} stroke={2} />
-          Add Connector
+          Add Skill
         </Button>
       </div>
 
-      {connectedItems.length === 0 ? (
+      {addedSkillsLoadable.state !== "hasData" ? (
+        <ul className="flex flex-col gap-3">
+          {Array.from({ length: 3 }, (_, i) => (
+            <li key={i}>
+              <Card className="zero-card">
+                <CardContent className="flex items-center gap-4 px-4 py-3">
+                  <span className="h-10 w-10 shrink-0 rounded-lg bg-muted/50 animate-pulse" />
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className="h-4 rounded bg-muted/50 animate-pulse mb-1.5"
+                      style={{ width: `${80 + ((i * 37) % 60)}px` }}
+                    />
+                    <div
+                      className="h-3 rounded bg-muted/30 animate-pulse"
+                      style={{ width: `${120 + ((i * 43) % 80)}px` }}
+                    />
+                  </div>
+                  <div className="h-8 w-20 shrink-0 rounded-lg bg-muted/30 animate-pulse" />
+                </CardContent>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      ) : addedSkills.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 py-12">
-          <IconPlug
+          <IconTool
             size={32}
             stroke={1.2}
             className="text-muted-foreground/50"
           />
           <p className="text-sm text-muted-foreground">
-            No connectors yet. Add one to get started.
+            No skills yet. Add one to get started.
           </p>
         </div>
       ) : (
         <ul className="flex flex-col gap-3">
-          {connectedItems.map((item) => (
-            <li key={item.type}>
-              <Card className="zero-card">
-                <CardContent className="flex items-center gap-4 px-4 py-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted overflow-hidden">
-                    <ConnectorIcon type={item.type} size={24} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">
-                      {item.label}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {item.connected && item.connector?.externalUsername
-                        ? `Connected as @${item.connector.externalUsername}`
-                        : item.helpText}
-                    </p>
-                  </div>
-                  {pollingType === item.type ? (
-                    <span className="flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs text-muted-foreground">
-                      <IconLoader2
-                        size={14}
-                        stroke={1.5}
-                        className="animate-spin"
-                      />
-                      Connecting…
-                    </span>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 shrink-0 rounded-lg px-3 text-xs text-muted-foreground hover:text-destructive"
-                      onClick={() =>
-                        detach(disconnect(item.type), Reason.DomCallback)
-                      }
-                    >
-                      Disconnect
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            </li>
-          ))}
+          {addedSkills.map((name) => {
+            const skill = skillMap.get(name);
+            return (
+              <li key={name}>
+                <ZeroSkillItem
+                  name={name}
+                  label={skill?.label ?? name}
+                  iconUrl={skill?.icon}
+                  connector={connectorMap.get(name as ConnectorType) ?? null}
+                  pollingType={pollingType}
+                  onConnect={() =>
+                    detach(
+                      connect(name as ConnectorType, signal),
+                      Reason.DomCallback,
+                    )
+                  }
+                  onDisconnect={() =>
+                    detach(
+                      disconnect(name as ConnectorType),
+                      Reason.DomCallback,
+                    )
+                  }
+                  onRemove={() => handleRemoveSkill(name)}
+                />
+              </li>
+            );
+          })}
         </ul>
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Add Connector</DialogTitle>
+            <DialogTitle>Add Skill</DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto -mx-6 px-6 pb-1">
-            {unconnectedItems.length === 0 ? (
+            {availableSkills.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                All available connectors are connected.
+                All available skills have been added.
               </p>
             ) : (
               <div className="grid grid-cols-2 gap-3">
-                {unconnectedItems.map((item) => {
-                  const isPolling = pollingType === item.type;
-                  return (
-                    <button
-                      key={item.type}
-                      type="button"
-                      disabled={isPolling}
-                      className="flex items-start gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-muted/50 disabled:opacity-60"
-                      onClick={() => {
-                        setDialogOpen(false);
-                        detach(connect(item.type, signal), Reason.DomCallback);
-                      }}
-                    >
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted overflow-hidden mt-0.5">
-                        <ConnectorIcon type={item.type} size={22} />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-foreground">
-                          {item.label}
-                        </p>
-                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
-                          {item.helpText}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
+                {availableSkills.map((skill) => (
+                  <button
+                    key={skill.value}
+                    type="button"
+                    className="flex items-start gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-muted/50"
+                    onClick={() => handleAddSkill(skill.value)}
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted overflow-hidden mt-0.5">
+                      {skill.icon ? (
+                        <img
+                          src={skill.icon}
+                          alt=""
+                          className="h-5 w-5 object-contain"
+                        />
+                      ) : (
+                        <IconTool
+                          size={20}
+                          stroke={1.5}
+                          className="text-muted-foreground"
+                        />
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground">
+                        {skill.label}
+                      </p>
+                    </div>
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -265,7 +353,7 @@ function ZeroConnectionsTab() {
 }
 
 // ---------------------------------------------------------------------------
-// Settings tab — wired to real API for agent name persistence
+// Settings tab — name + tone (wired to real API for agent name persistence)
 // ---------------------------------------------------------------------------
 
 function ZeroSettingsTab({
@@ -279,59 +367,28 @@ function ZeroSettingsTab({
   const tone$ = useCCState<string>("Professional");
   const tone = useGet(tone$);
   const setTone = useSet(tone$);
-  const skills$ = useCCState<string[]>([...AVAILABLE_SKILLS]);
-  const skills = useGet(skills$);
-  const setSkills = useSet(skills$);
-  const savedSettings$ = useCCState<{
-    name: string;
-    tone: string;
-    skills: string[];
-  }>({
+  const savedSettings$ = useCCState<{ name: string; tone: string }>({
     name: resolvedAgentName,
     tone: "Professional",
-    skills: [...AVAILABLE_SKILLS],
   });
   const savedSettings = useGet(savedSettings$);
   const saving = useGet(zeroSettingsSaving$);
 
-  const ADD_SKILL_PLACEHOLDER = "__add_skill__";
-  const addSkillValue$ = useCCState(ADD_SKILL_PLACEHOLDER);
-  const addSkillValue = useGet(addSkillValue$);
-  const setAddSkillValue = useSet(addSkillValue$);
-
   const isSettingsDirty =
-    agentName !== savedSettings.name ||
-    tone !== savedSettings.tone ||
-    JSON.stringify([...skills].sort()) !==
-      JSON.stringify([...savedSettings.skills].sort());
+    agentName !== savedSettings.name || tone !== savedSettings.tone;
 
   const handleResetSettings = () => {
     setAgentName(savedSettings.name);
     setTone(savedSettings.tone);
-    setSkills([...savedSettings.skills]);
   };
 
   const handleSaveSettings$ = useCommand(async ({ set }) => {
-    // Persist agent name to API if changed
     if (agentName !== savedSettings.name) {
       await set(zeroUpdateSettings$, agentName);
     }
-    set(savedSettings$, { name: agentName, tone, skills: [...skills] });
+    set(savedSettings$, { name: agentName, tone });
   });
   const handleSaveSettings = useSet(handleSaveSettings$);
-
-  const removeSkill = (skill: string) => {
-    setSkills((prev) => prev.filter((s) => s !== skill));
-  };
-
-  const addSkill = (skill: string) => {
-    if (!skills.includes(skill)) {
-      setSkills((prev) => [...prev, skill].sort());
-    }
-    setAddSkillValue(ADD_SKILL_PLACEHOLDER);
-  };
-
-  const availableToAdd = AVAILABLE_SKILLS.filter((s) => !skills.includes(s));
 
   return (
     <>
@@ -411,74 +468,6 @@ function ZeroSettingsTab({
                   </div>
                 </div>
               </div>
-              <div className="flex flex-col gap-3">
-                <div>
-                  <span className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Tools & skills
-                  </span>
-                </div>
-                <ul className="flex flex-wrap gap-2" role="list">
-                  {skills.map((skill) => (
-                    <li
-                      key={skill}
-                      className="flex min-w-[120px] max-w-[220px] flex-1 basis-[120px]"
-                    >
-                      <span className="zero-chip flex w-full min-w-0 items-center gap-2 rounded-2xl border px-3 py-2.5 text-sm text-foreground transition-colors duration-200">
-                        {isConnectorSkill(skill) ? (
-                          <ConnectorIcon
-                            type={skill as ConnectorType}
-                            size={16}
-                          />
-                        ) : (
-                          <IconTool
-                            size={16}
-                            stroke={1.5}
-                            className="shrink-0 text-muted-foreground"
-                          />
-                        )}
-                        <span className="min-w-0 truncate font-medium capitalize">
-                          {skill.charAt(0).toUpperCase() +
-                            skill.slice(1).toLowerCase()}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeSkill(skill)}
-                          className="ml-auto shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                          aria-label={`Remove ${skill}`}
-                        >
-                          <IconX size={12} stroke={2} />
-                        </button>
-                      </span>
-                    </li>
-                  ))}
-                  <li className="flex shrink-0">
-                    <Select
-                      value={addSkillValue}
-                      onValueChange={(v) => {
-                        setAddSkillValue(ADD_SKILL_PLACEHOLDER);
-                        if (v && v !== ADD_SKILL_PLACEHOLDER) {
-                          addSkill(v);
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="zero-chip h-10 min-w-[120px] gap-2 rounded-2xl border px-3 py-2.5 text-sm text-foreground transition-colors duration-200">
-                        <IconPlus size={14} stroke={2} />
-                        <SelectValue placeholder="Add skill" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ADD_SKILL_PLACEHOLDER}>
-                          Add skill
-                        </SelectItem>
-                        {availableToAdd.map((s) => (
-                          <SelectItem key={s} value={s}>
-                            {s}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </li>
-                </ul>
-              </div>
             </div>
           </CardContent>
         </Card>
@@ -548,7 +537,7 @@ export function ZeroMeetPage({
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const resolvedAgentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-  const activeTab$ = useCCState("connections");
+  const activeTab$ = useCCState("skills");
   const activeTab = useGet(activeTab$);
   const setActiveTab = useSet(activeTab$);
 
@@ -593,11 +582,11 @@ export function ZeroMeetPage({
             >
               <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1">
                 <TabsTrigger
-                  value="connections"
+                  value="skills"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
-                  <IconPlug size={14} stroke={1.5} />
-                  Connections
+                  <IconTool size={14} stroke={1.5} />
+                  Skills
                 </TabsTrigger>
                 <TabsTrigger
                   value="schedule"
@@ -635,7 +624,7 @@ export function ZeroMeetPage({
       </header>
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
-        {activeTab === "connections" && <ZeroConnectionsTab />}
+        {activeTab === "skills" && <ZeroSkillsTab />}
 
         {activeTab === "schedule" && (
           <div className="mx-auto max-w-[900px] px-7">

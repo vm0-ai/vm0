@@ -182,7 +182,13 @@ function ConnectModalContent({
       {hasOAuth && (
         <button
           onClick={() =>
-            detach(connect(item.type, pageSignal), Reason.DomCallback)
+            detach(
+              (async () => {
+                await connect(item.type, pageSignal);
+                onSuccess();
+              })(),
+              Reason.DomCallback,
+            )
           }
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
         >
