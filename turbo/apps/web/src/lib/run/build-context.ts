@@ -18,8 +18,9 @@ import {
   type ModelProviderFramework,
 } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
-import { scopes } from "../../db/schema/scope";
 import { badRequest, notFound } from "../errors";
+import { getOrgData } from "../scope/org-cache-service";
+import { getScopeById } from "../scope/scope-service";
 import { logger } from "../logger";
 import type { ExecutionContext, ResumeSession, RuntimeScope } from "./types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
@@ -930,17 +931,23 @@ async function resolveScopes(params: BuildContextParams): Promise<{
         },
       };
     }
-    // Fallback: query slug and clerkOrgId from DB when caller didn't provide them
-    const [result] = await globalThis.services.db
-      .select({ slug: scopes.slug, clerkOrgId: scopes.clerkOrgId })
-      .from(scopes)
-      .where(eq(scopes.id, params.scopeId))
-      .limit(1);
-    const resolved = {
-      id: params.scopeId,
-      slug: result?.slug ?? "",
-      clerkOrgId: result?.clerkOrgId ?? "",
-    };
+    // Fallback: resolve clerkOrgId from scopeId, then slug from org cache
+    const scope = await getScopeById(params.scopeId);
+    let resolved;
+    if (scope) {
+      const orgData = await getOrgData(scope.clerkOrgId);
+      resolved = {
+        id: params.scopeId,
+        slug: orgData.slug,
+        clerkOrgId: scope.clerkOrgId,
+      };
+    } else {
+      resolved = {
+        id: params.scopeId,
+        slug: "",
+        clerkOrgId: "",
+      };
+    }
     return {
       runtimeScopeId: params.scopeId,
       runtimeClerkOrgId: resolved.clerkOrgId,

@@ -12,6 +12,7 @@ import { initServices } from "../../lib/init-services";
 import { env } from "../../env";
 import { encryptSecretValue } from "../../lib/crypto/secrets-encryption";
 import { scopes } from "../../db/schema/scope";
+import { orgCache } from "../../db/schema/org-cache";
 import { scopeMembers } from "../../db/schema/scope-member";
 import {
   agentComposes,
@@ -53,10 +54,20 @@ export async function givenGitHubInstallation(
   const scopeSlug = uniqueId("scope");
 
   // Create scope
+  const clerkOrgId = uniqueId("org");
   const [scope] = await globalThis.services.db
     .insert(scopes)
-    .values({ slug: scopeSlug, clerkOrgId: uniqueId("org") })
+    .values({ slug: scopeSlug, clerkOrgId })
     .returning();
+
+  // Pre-populate org cache for getOrgData()
+  await globalThis.services.db
+    .insert(orgCache)
+    .values({ clerkOrgId, slug: scopeSlug, tier: "free", cachedAt: new Date() })
+    .onConflictDoUpdate({
+      target: orgCache.clerkOrgId,
+      set: { slug: scopeSlug, tier: "free", cachedAt: new Date() },
+    });
 
   await globalThis.services.db.insert(scopeMembers).values({
     scopeId: scope!.id,

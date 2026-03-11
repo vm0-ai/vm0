@@ -13,8 +13,8 @@ import {
 } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
 import { connectors } from "../../db/schema/connector";
-import { scopes } from "../../db/schema/scope";
 import { decryptSecretsMap } from "../crypto";
+import { getOrgData } from "../scope/org-cache-service";
 import { notFound, badRequest, schedulePast } from "../errors";
 import { logger } from "../logger";
 import { createRun } from "../run/run-service";
@@ -22,7 +22,6 @@ import { getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { generateCallbackSecret, getApiUrl } from "../callback";
-import { getOrgData } from "../scope/org-cache-service";
 
 const log = logger("service:schedule");
 
@@ -220,16 +219,9 @@ async function loadCompose(
 /**
  * Load scope slug by ID
  */
-async function getScopeSlug(scopeId: string): Promise<string> {
-  const [scope] = await globalThis.services.db
-    .select({ slug: scopes.slug })
-    .from(scopes)
-    .where(eq(scopes.id, scopeId))
-    .limit(1);
-  if (!scope) {
-    throw notFound(`Scope '${scopeId}' not found`);
-  }
-  return scope.slug;
+async function getScopeSlug(clerkOrgId: string): Promise<string> {
+  const orgData = await getOrgData(clerkOrgId);
+  return orgData.slug;
 }
 
 /**
@@ -263,7 +255,7 @@ async function verifyScheduleOwnership(
   }
 
   const compose = await loadCompose(composeId);
-  const scopeSlug = await getScopeSlug(schedule.scopeId);
+  const scopeSlug = await getScopeSlug(clerkOrgId);
 
   return { schedule, compose, scopeSlug };
 }
@@ -367,7 +359,7 @@ export async function deploySchedule(
 
   // Load compose (access control is handled by the caller/route layer)
   const compose = await loadCompose(request.composeId);
-  const scopeSlug = await getScopeSlug(scopeId);
+  const scopeSlug = await getScopeSlug(clerkOrgId);
 
   // Validate timezone
   if (!isValidTimezone(request.timezone)) {
@@ -496,25 +488,24 @@ export async function listSchedules(
     .where(inArray(agentComposes.id, composeIds));
   const composeMap = new Map(composeRows.map((c) => [c.id, c]));
 
-  // Load scope slugs for all schedules (from schedule.scopeId, not compose.scopeId)
-  const scopeIds = [...new Set(userSchedules.map((s) => s.scopeId))];
-  const scopeRows = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(inArray(scopes.id, scopeIds));
-  const scopeMap = new Map(scopeRows.map((s) => [s.id, s.slug]));
+  // Load scope slugs via org cache (by clerkOrgId from schedule records)
+  const uniqueClerkOrgIds = [
+    ...new Set(userSchedules.map((s) => s.clerkOrgId)),
+  ];
+  const orgDataEntries = await Promise.all(
+    uniqueClerkOrgIds.map(async (id) => [id, await getOrgData(id)] as const),
+  );
+  const orgDataMap = new Map(orgDataEntries);
 
   return userSchedules
     .filter((schedule) => {
       // FK constraints with CASCADE should guarantee these exist.
       // Skip orphaned rows rather than masking with fallback values.
-      return (
-        composeMap.has(schedule.composeId) && scopeMap.has(schedule.scopeId)
-      );
+      return composeMap.has(schedule.composeId);
     })
     .map((schedule) => {
       const compose = composeMap.get(schedule.composeId)!;
-      const scopeSlug = scopeMap.get(schedule.scopeId)!;
+      const scopeSlug = orgDataMap.get(schedule.clerkOrgId)?.slug ?? "";
       return toResponse(schedule, compose.name, scopeSlug);
     });
 }
@@ -846,7 +837,7 @@ async function executeSchedule(
   }
 
   // Load org tier and slug from org_cache (Clerk as source of truth)
-  const orgData = await getOrgData(schedule.clerkOrgId);
+  const orgData = await getOrgData(schedule.clerkOrgId).catch(() => null);
 
   // Build callbacks for run completion notifications
   const callbacks: Array<{ url: string; secret: string; payload: unknown }> =
@@ -907,9 +898,11 @@ async function executeSchedule(
       agentName: compose.name,
       callbacks,
       scopeId: schedule.scopeId,
-      scopeSlug: orgData.slug,
-      clerkOrgId: schedule.clerkOrgId,
-      scopeTier: scopeTierSchema.parse(orgData.tier),
+      scopeSlug: orgData?.slug,
+      clerkOrgId: orgData?.clerkOrgId,
+      scopeTier: orgData
+        ? scopeTierSchema.parse(orgData.tier)
+        : undefined,
     });
     runId = result.runId;
   } catch (error) {

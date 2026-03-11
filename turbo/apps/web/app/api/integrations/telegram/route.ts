@@ -15,8 +15,8 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
-import { scopes } from "../../../../src/db/schema/scope";
 import { listSecrets } from "../../../../src/lib/secret/secret-service";
+import { getOrgData } from "../../../../src/lib/scope/org-cache-service";
 import { listVariables } from "../../../../src/lib/variable/variable-service";
 import { listConnectors } from "../../../../src/lib/connector/connector-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
@@ -93,12 +93,15 @@ export async function GET(request: Request) {
       id: agentComposes.id,
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
-      scopeSlug: scopes.slug,
+      clerkOrgId: agentComposes.clerkOrgId,
     })
     .from(agentComposes)
-    .innerJoin(scopes, eq(scopes.clerkOrgId, agentComposes.clerkOrgId))
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
+
+  const scopeSlug = compose
+    ? (await getOrgData(compose.clerkOrgId)).slug
+    : null;
 
   // Extract required secrets/vars from agent compose
   let requiredSecrets: string[] = [];
@@ -159,9 +162,7 @@ export async function GET(request: Request) {
       id: installation.telegramBotId,
       username: installation.botUsername,
     },
-    agent: compose
-      ? { id: compose.id, name: compose.name, scopeSlug: compose.scopeSlug }
-      : null,
+    agent: compose ? { id: compose.id, name: compose.name, scopeSlug } : null,
     isAdmin,
     isConnected,
     domainConfigured,

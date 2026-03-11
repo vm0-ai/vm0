@@ -8,6 +8,7 @@ import {
   enableTestSchedule,
   getTestSchedule,
   getTestScheduleRuns,
+  disableAllSchedules,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
@@ -152,9 +153,10 @@ describe("GET /api/cron/execute-schedules", () => {
   }
 
   describe("Schedule Triggering", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       vi.stubEnv("CRON_SECRET", "test-secret");
       reloadEnv();
+      await disableAllSchedules();
     });
 
     it("should execute due cron schedule", async () => {
@@ -251,9 +253,10 @@ describe("GET /api/cron/execute-schedules", () => {
   });
 
   describe("Loop Schedule Triggering", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       vi.stubEnv("CRON_SECRET", "test-secret");
       reloadEnv();
+      await disableAllSchedules();
     });
 
     it("should execute due loop schedule and set nextRunAt to null", async () => {
@@ -309,9 +312,10 @@ describe("GET /api/cron/execute-schedules", () => {
   });
 
   describe("Concurrency Queue", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       vi.stubEnv("CRON_SECRET", "test-secret");
       reloadEnv();
+      await disableAllSchedules();
     });
 
     it("should enqueue scheduled run when blocked by concurrency limit", async () => {

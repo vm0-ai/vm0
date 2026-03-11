@@ -327,7 +327,33 @@ export async function createTestScope(
       `Failed to create scope: ${error.error?.message || response.status}`,
     );
   }
-  return response.json();
+  const scopeData = await response.json();
+
+  // Pre-populate org cache so getOrgData() works without Clerk API calls.
+  // This is necessary because mockClerk() resets createdOrgs, making
+  // organizations from previously created scopes invisible to Clerk mock.
+  initServices();
+  const [scope] = await globalThis.services.db
+    .select({ clerkOrgId: scopes.clerkOrgId })
+    .from(scopes)
+    .where(eq(scopes.id, scopeData.id))
+    .limit(1);
+  if (scope) {
+    await globalThis.services.db
+      .insert(orgCache)
+      .values({
+        clerkOrgId: scope.clerkOrgId,
+        slug,
+        tier: "free",
+        cachedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: orgCache.clerkOrgId,
+        set: { slug, tier: "free", cachedAt: new Date() },
+      });
+  }
+
+  return scopeData;
 }
 
 /**
@@ -2629,13 +2655,24 @@ export async function createTestTelegramInstallation(options?: {
   const suffix = uniqueId("tg");
   const adminUserId = options?.adminUserId ?? uniqueId("test-admin");
 
+  const scopeSlug = uniqueId("scope");
+  const clerkOrgId = uniqueId("org");
   const [scope] = await globalThis.services.db
     .insert(scopes)
     .values({
-      slug: uniqueId("scope"),
-      clerkOrgId: uniqueId("org"),
+      slug: scopeSlug,
+      clerkOrgId,
     })
     .returning();
+
+  // Pre-populate org cache for getOrgData()
+  await globalThis.services.db
+    .insert(orgCache)
+    .values({ clerkOrgId, slug: scopeSlug, tier: "free", cachedAt: new Date() })
+    .onConflictDoUpdate({
+      target: orgCache.clerkOrgId,
+      set: { slug: scopeSlug, tier: "free", cachedAt: new Date() },
+    });
 
   await globalThis.services.db.insert(scopeMembers).values({
     scopeId: scope!.id,
@@ -2976,12 +3013,32 @@ export async function insertOrgCacheEntry(entry: {
   tier?: string;
   cachedAt?: Date;
 }): Promise<void> {
-  await globalThis.services.db.insert(orgCache).values({
-    clerkOrgId: entry.clerkOrgId,
-    slug: entry.slug,
-    tier: entry.tier ?? "free",
-    cachedAt: entry.cachedAt ?? new Date(),
-  });
+  await globalThis.services.db
+    .insert(orgCache)
+    .values({
+      clerkOrgId: entry.clerkOrgId,
+      slug: entry.slug,
+      tier: entry.tier ?? "free",
+      cachedAt: entry.cachedAt ?? new Date(),
+    })
+    .onConflictDoUpdate({
+      target: orgCache.clerkOrgId,
+      set: {
+        slug: entry.slug,
+        tier: entry.tier ?? "free",
+        cachedAt: entry.cachedAt ?? new Date(),
+      },
+    });
+}
+
+/**
+ * Delete an org_cache row by clerkOrgId.
+ * Useful for testing cache-miss behavior after createTestScope pre-populates cache.
+ */
+export async function deleteOrgCacheEntry(clerkOrgId: string): Promise<void> {
+  await globalThis.services.db
+    .delete(orgCache)
+    .where(eq(orgCache.clerkOrgId, clerkOrgId));
 }
 
 /**
@@ -3024,4 +3081,16 @@ export async function findTestRunnerJobEntry(runId: string) {
     ...row,
     executionContext: row.executionContext as StoredExecutionContext,
   };
+}
+
+/**
+ * Disable all enabled schedules in the database.
+ * Prevents stale schedules from other test files consuming the limit(10)
+ * batch in executeDueSchedules, which can cause test flakiness.
+ */
+export async function disableAllSchedules(): Promise<void> {
+  await globalThis.services.db
+    .update(agentSchedules)
+    .set({ enabled: false })
+    .where(eq(agentSchedules.enabled, true));
 }

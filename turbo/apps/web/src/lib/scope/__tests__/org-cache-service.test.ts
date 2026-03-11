@@ -5,6 +5,7 @@ import { mockClerk } from "../../../__tests__/clerk-mock";
 import {
   createTestScope,
   insertOrgCacheEntry,
+  deleteOrgCacheEntry,
   getOrgCacheEntry,
 } from "../../../__tests__/api-test-helpers";
 import { getOrgData } from "../org-cache-service";
@@ -26,6 +27,9 @@ describe("getOrgData", () => {
     });
     await createTestScope(slug);
     const clerkOrgId = `org_mock_${slug}`;
+
+    // Delete pre-populated orgCache to test cache-miss behavior
+    await deleteOrgCacheEntry(clerkOrgId);
 
     const result = await getOrgData(clerkOrgId);
 
@@ -85,7 +89,7 @@ describe("getOrgData", () => {
     await createTestScope(slug);
     const clerkOrgId = `org_mock_${slug}`;
 
-    // Pre-populate cache with stale entry (2 minutes ago)
+    // Overwrite the fresh orgCache entry from createTestScope with a stale one
     const twoMinutesAgo = new Date(Date.now() - 120_000);
     await insertOrgCacheEntry({
       clerkOrgId,

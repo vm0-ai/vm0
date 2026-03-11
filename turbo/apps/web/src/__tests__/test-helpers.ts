@@ -40,7 +40,7 @@ import { eq } from "drizzle-orm";
 import { Axiom } from "@axiomhq/js";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
 import { initServices } from "../lib/init-services";
-import { createTestScope } from "./api-test-helpers";
+import { createTestScope, insertOrgCacheEntry } from "./api-test-helpers";
 import * as s3Client from "../lib/s3/s3-client";
 import * as axiomClient from "../lib/axiom/client";
 import { slackInstallations } from "../db/schema/slack-installation";
@@ -484,17 +484,21 @@ export function testContext(): TestContext {
     let composeId = options.composeId;
     if (!composeId) {
       const scopeSlug = uniqueId("scope");
+      const clerkOrgId = uniqueId("org");
       const [scopeData] = await globalThis.services.db
         .insert(scopes)
         .values({
           slug: scopeSlug,
-          clerkOrgId: uniqueId("org"),
+          clerkOrgId,
         })
         .returning();
 
       if (!scopeData) {
         throw new Error("Failed to create scope for installation");
       }
+
+      // Pre-populate org cache for getOrgData()
+      await insertOrgCacheEntry({ clerkOrgId, slug: scopeSlug });
 
       await globalThis.services.db.insert(scopeMembers).values({
         scopeId: scopeData.id,
@@ -594,17 +598,21 @@ export function testContext(): TestContext {
 
     // Create a scope directly in the database (bypass API to avoid Clerk auth)
     const scopeSlug = uniqueId("scope");
+    const clerkOrgId = uniqueId("org");
     const [scopeData] = await globalThis.services.db
       .insert(scopes)
       .values({
         slug: scopeSlug,
-        clerkOrgId: uniqueId("org"),
+        clerkOrgId,
       })
       .returning();
 
     if (!scopeData) {
       throw new Error("Failed to create scope");
     }
+
+    // Pre-populate org cache for getOrgData()
+    await insertOrgCacheEntry({ clerkOrgId, slug: scopeSlug });
 
     await globalThis.services.db.insert(scopeMembers).values({
       scopeId: scopeData.id,

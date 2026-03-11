@@ -17,8 +17,8 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
-import { scopes } from "../../../db/schema/scope";
 import type { ExperimentalFirewall as CoreExperimentalFirewall } from "@vm0/core";
+import { getOrgData } from "../../scope/org-cache-service";
 import { extractCliAgentType } from "../utils";
 
 const log = logger("context:preparer");
@@ -203,24 +203,30 @@ export async function prepareForExecution(
   // Runtime Scope (for artifacts/memory) is pre-resolved by buildExecutionContext.
   const userId = context.userId || "";
   const scopeStart = Date.now();
-  const [agentScopeInfo] = await globalThis.services.db
+  const [agentComposeInfo] = await globalThis.services.db
     .select({
       clerkOrgId: agentComposes.clerkOrgId,
-      scopeSlug: scopes.slug,
     })
     .from(agentComposeVersions)
     .innerJoin(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
-    .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
     .where(eq(agentComposeVersions.id, context.agentComposeVersionId))
     .limit(1);
   const scopeEnd = Date.now();
 
-  if (!agentScopeInfo) {
+  if (!agentComposeInfo) {
     throw badRequest("Agent compose not found");
   }
+
+  const agentOrgData = await getOrgData(agentComposeInfo.clerkOrgId).catch(
+    () => null,
+  );
+  const agentScopeInfo = {
+    clerkOrgId: agentComposeInfo.clerkOrgId,
+    scopeSlug: agentOrgData?.slug ?? "",
+  };
 
   // Auto-create artifact and memory storages if they don't exist yet
   const ensureStart = Date.now();

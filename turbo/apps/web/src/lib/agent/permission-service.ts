@@ -3,8 +3,8 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { agentPermissions } from "../../db/schema/agent-permission";
 import { orgMembersCache } from "../../db/schema/org-members-cache";
-import { scopes } from "../../db/schema/scope";
 import { logger } from "../logger";
+import { getOrgData } from "../scope/org-cache-service";
 
 const log = logger("agent:permission");
 
@@ -177,23 +177,43 @@ export async function getEmailSharedAgents(
     conditions.push(eq(agentComposes.name, options.nameFilter));
   }
 
-  return globalThis.services.db
+  const rows = await globalThis.services.db
     .select({
       id: agentComposes.id,
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
       createdAt: agentComposes.createdAt,
       updatedAt: agentComposes.updatedAt,
-      scopeSlug: scopes.slug,
+      clerkOrgId: agentComposes.clerkOrgId,
     })
     .from(agentPermissions)
     .innerJoin(
       agentComposes,
       eq(agentPermissions.agentComposeId, agentComposes.id),
     )
-    .innerJoin(scopes, eq(agentComposes.clerkOrgId, scopes.clerkOrgId))
     .where(and(...conditions))
     .orderBy(desc(agentComposes.createdAt));
+
+  // Resolve scope slugs via org cache
+  const uniqueClerkOrgIds = [...new Set(rows.map((r) => r.clerkOrgId))];
+  const orgDataResults = await Promise.all(
+    uniqueClerkOrgIds.map(async (id) => {
+      const orgData = await getOrgData(id).catch(() => null);
+      return [id, orgData] as const;
+    }),
+  );
+  const orgDataMap = new Map(orgDataResults);
+
+  return rows
+    .filter((row) => orgDataMap.get(row.clerkOrgId) !== null)
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      headVersionId: row.headVersionId,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      scopeSlug: orgDataMap.get(row.clerkOrgId)?.slug ?? "",
+    }));
 }
 
 /**
