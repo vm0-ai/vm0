@@ -11,12 +11,14 @@ import { airtableHandler } from "./providers/airtable-handler";
 import { axiomHandler } from "./providers/axiom-handler";
 import { asanaHandler } from "./providers/asana-handler";
 import { canvaHandler } from "./providers/canva-handler";
+import { chatwootHandler } from "./providers/chatwoot-handler";
 import { closeHandler } from "./providers/close-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { devtoHandler } from "./providers/devto-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
 import { elevenlabsHandler } from "./providers/elevenlabs-handler";
+import { falHandler } from "./providers/fal-handler";
 import { figmaHandler } from "./providers/figma-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
 import { githubHandler } from "./providers/github-handler";
@@ -49,6 +51,7 @@ import { outlookCalendarHandler } from "./providers/outlook-calendar-handler";
 import { outlookMailHandler } from "./providers/outlook-mail-handler";
 import { metaAdsHandler } from "./providers/meta-ads-handler";
 import { posthogHandler } from "./providers/posthog-handler";
+import { perplexityHandler } from "./providers/perplexity-handler";
 import { plausibleHandler } from "./providers/plausible-handler";
 import { productlaneHandler } from "./providers/productlane-handler";
 import { resendHandler } from "./providers/resend-handler";
@@ -67,12 +70,14 @@ export const PROVIDER_HANDLERS: Record<
   axiom: axiomHandler,
   asana: asanaHandler,
   canva: canvaHandler,
+  chatwoot: chatwootHandler,
   close: closeHandler,
   deel: deelHandler,
   devto: devtoHandler,
   docusign: docusignHandler,
   dropbox: dropboxHandler,
   elevenlabs: elevenlabsHandler,
+  fal: falHandler,
   figma: figmaHandler,
   "garmin-connect": garminConnectHandler,
   github: githubHandler,
@@ -104,6 +109,7 @@ export const PROVIDER_HANDLERS: Record<
   supabase: supabaseHandler,
   "meta-ads": metaAdsHandler,
   posthog: posthogHandler,
+  perplexity: perplexityHandler,
   plausible: plausibleHandler,
   productlane: productlaneHandler,
   resend: resendHandler,

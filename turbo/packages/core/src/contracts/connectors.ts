@@ -1652,6 +1652,27 @@ const CONNECTOR_TYPES_DEF = {
       SIMILARWEB_TOKEN: "$secrets.SIMILARWEB_API_KEY",
     } as Record<string, string>,
   },
+  perplexity: {
+    label: "Perplexity",
+    helpText:
+      "Connect your Perplexity account to access AI-powered search and research capabilities via the Sonar API",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Perplexity](https://www.perplexity.ai)\n2. Go to **Settings → API**\n3. Generate a new API key\n4. Copy the key",
+        secrets: {
+          PERPLEXITY_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "pplx-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {} as Record<string, string>,
+  },
   plausible: {
     label: "Plausible",
     helpText:
@@ -1703,6 +1724,26 @@ const CONNECTOR_TYPES_DEF = {
       tokenUrl: "https://login.mailchimp.com/oauth2/token",
       scopes: [],
     } as ConnectorOAuthConfig,
+  },
+  chatwoot: {
+    label: "Chatwoot",
+    helpText:
+      "Connect your Chatwoot account to manage conversations, contacts, and customer support workflows",
+    authMethods: {
+      "api-token": {
+        label: "API Access Token",
+        helpText:
+          "1. Log in to your [Chatwoot](https://app.chatwoot.com) instance\n2. Go to **Settings > Account Settings**\n3. Find **Access Token** in the profile section\n4. Copy the token",
+        secrets: {
+          CHATWOOT_TOKEN: {
+            label: "API Access Token",
+            required: true,
+            placeholder: "your-chatwoot-access-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
   },
   resend: {
     label: "Resend",
@@ -1769,6 +1810,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
     environmentMapping: {} as Record<string, string>,
+  },
+  fal: {
+    label: "fal.ai",
+    helpText:
+      "Connect your fal.ai account to run AI models for image generation, video generation, and other AI tasks",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [fal.ai](https://fal.ai/dashboard)\n2. Go to **Keys** in the sidebar\n3. Click **Create Key**\n4. Copy the key",
+        secrets: {
+          FAL_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "fal_...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
   },
 } satisfies Record<string, ConnectorConfig>;
 
@@ -2020,6 +2081,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       }),
     ],
   },
+  perplexity: {
+    services: [
+      service("https://api.perplexity.ai", bearerAuth("PERPLEXITY_TOKEN")),
+    ],
+  },
   plausible: {
     services: [
       service("https://plausible.io/api", bearerAuth("PLAUSIBLE_TOKEN")),
@@ -2113,6 +2179,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       ),
     ],
   },
+  chatwoot: {
+    services: [
+      service("https://app.chatwoot.com", bearerAuth("CHATWOOT_TOKEN")),
+    ],
+  },
   resend: {
     services: [service("https://api.resend.com", bearerAuth("RESEND_API_KEY"))],
   },
@@ -2129,6 +2200,9 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
         headers: { "api-key": "${secrets.DEVTO_TOKEN}" },
       }),
     ],
+  },
+  fal: {
+    services: [service("https://fal.run", bearerAuth("FAL_KEY"))],
   },
 };
 
@@ -2176,13 +2250,16 @@ export const connectorTypeSchema = z.enum([
   "posthog",
   "stripe",
   "openai",
+  "chatwoot",
   "similarweb",
   "mailchimp",
+  "perplexity",
   "plausible",
   "productlane",
   "resend",
   "elevenlabs",
   "devto",
+  "fal",
 ]);
 
 /**

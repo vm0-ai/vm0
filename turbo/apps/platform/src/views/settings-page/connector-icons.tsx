@@ -6,6 +6,7 @@ import airtableIcon from "./icons/airtable.svg";
 import axiomIcon from "./icons/axiom.svg";
 import asanaIcon from "./icons/asana.svg";
 import canvaIcon from "./icons/canva.svg";
+import chatwootIcon from "./icons/chatwoot.svg";
 import closeIcon from "./icons/close.svg";
 import computerIcon from "./icons/computer.svg";
 import deelIcon from "./icons/deel.svg";
@@ -13,6 +14,7 @@ import devtoIcon from "./icons/devto.svg";
 import docusignIcon from "./icons/docusign.svg";
 import dropboxIcon from "./icons/dropbox.svg";
 import elevenlabsIcon from "./icons/elevenlabs.svg";
+import falIcon from "./icons/fal.svg";
 import figmaIcon from "./icons/figma.svg";
 import garminConnectIcon from "./icons/garmin-connect.svg";
 import githubIcon from "./icons/github.svg";
@@ -34,6 +36,7 @@ import notionIcon from "./icons/notion.svg";
 import openaiIcon from "./icons/openai.svg";
 import outlookCalendarIcon from "./icons/outlook-calendar.svg";
 import outlookMailIcon from "./icons/outlook-mail.svg";
+import perplexityIcon from "./icons/perplexity.svg";
 import plausibleIcon from "./icons/plausible.svg";
 import posthogIcon from "./icons/posthog.svg";
 import productlaneIcon from "./icons/productlane.svg";
@@ -58,6 +61,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   axiom: axiomIcon,
   asana: asanaIcon,
   canva: canvaIcon,
+  chatwoot: chatwootIcon,
   close: closeIcon,
   computer: computerIcon,
   deel: deelIcon,
@@ -65,6 +69,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   docusign: docusignIcon,
   dropbox: dropboxIcon,
   elevenlabs: elevenlabsIcon,
+  fal: falIcon,
   figma: figmaIcon,
   "garmin-connect": garminConnectIcon,
   github: githubIcon,
@@ -86,6 +91,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   openai: openaiIcon,
   "outlook-calendar": outlookCalendarIcon,
   "outlook-mail": outlookMailIcon,
+  perplexity: perplexityIcon,
   plausible: plausibleIcon,
   posthog: posthogIcon,
   productlane: productlaneIcon,
