@@ -390,7 +390,7 @@ describe("agent clone command", () => {
 
       expect(mockExit).toHaveBeenCalledWith(1);
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Clone failed"),
+        expect.stringContaining("Not authenticated"),
       );
     });
   });

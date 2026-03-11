@@ -2,20 +2,21 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { getVariable, deleteVariable } from "../../lib/api";
 import { isInteractive, promptConfirm } from "../../lib/utils/prompt-utils";
+import { withErrorHandler } from "../../lib/command";
 
 export const deleteCommand = new Command()
   .name("delete")
   .description("Delete a variable")
   .argument("<name>", "Variable name to delete")
   .option("-y, --yes", "Skip confirmation prompt")
-  .action(async (name: string, options: { yes?: boolean }) => {
-    try {
+  .action(
+    withErrorHandler(async (name: string, options: { yes?: boolean }) => {
       // Verify variable exists first
       try {
         await getVariable(name);
       } catch (error) {
         // Only show "not found" if it's actually a not found error
-        // Otherwise, re-throw to let the outer catch handle it properly
+        // Otherwise, re-throw to let withErrorHandler handle it properly
         if (
           error instanceof Error &&
           error.message.toLowerCase().includes("not found")
@@ -48,16 +49,5 @@ export const deleteCommand = new Command()
 
       await deleteVariable(name);
       console.log(chalk.green(`✓ Variable "${name}" deleted`));
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
-        } else {
-          console.error(chalk.red(`✗ ${error.message}`));
-        }
-      } else {
-        console.error(chalk.red("✗ An unexpected error occurred"));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

@@ -14,6 +14,7 @@ import { EventRenderer } from "../../lib/events/event-renderer";
 import { CodexEventRenderer } from "../../lib/events/codex-event-renderer";
 import { paginate } from "../../lib/utils/paginate";
 import { searchCommand } from "./search";
+import { withErrorHandler } from "../../lib/command";
 
 /**
  * Maximum entries per API request
@@ -202,25 +203,25 @@ export const logsCommand = new Command()
   .option("--head <n>", "Show first N entries")
   .option("--all", "Fetch all log entries")
   .action(
-    async (
-      runId: string | undefined,
-      options: {
-        agent?: boolean;
-        system?: boolean;
-        metrics?: boolean;
-        network?: boolean;
-        since?: string;
-        tail?: string;
-        head?: string;
-        all?: boolean;
-      },
-    ) => {
-      if (!runId) {
-        logsCommand.help();
-        return;
-      }
+    withErrorHandler(
+      async (
+        runId: string | undefined,
+        options: {
+          agent?: boolean;
+          system?: boolean;
+          metrics?: boolean;
+          network?: boolean;
+          since?: string;
+          tail?: string;
+          head?: string;
+          all?: boolean;
+        },
+      ) => {
+        if (!runId) {
+          logsCommand.help();
+          return;
+        }
 
-      try {
         const logType = getLogType(options);
 
         // Validate --tail, --head, and --all are mutually exclusive
@@ -287,11 +288,8 @@ export const logsCommand = new Command()
             await showNetworkLogs(runId, { since, targetCount, order });
             break;
         }
-      } catch (error) {
-        handleError(error, runId);
-        process.exit(1);
-      }
-    },
+      },
+    ),
   );
 
 /**
@@ -579,26 +577,5 @@ async function showNetworkLogs(
 
   for (const entry of networkLogs) {
     console.log(formatNetworkLog(entry));
-  }
-}
-
-/**
- * Handle errors with friendly messages
- */
-function handleError(error: unknown, runId: string): void {
-  if (error instanceof Error) {
-    if (error.message.includes("Not authenticated")) {
-      console.error(chalk.red("✗ Not authenticated"));
-      console.error(chalk.dim("  Run: vm0 auth login"));
-    } else if (error.message.includes("not found")) {
-      console.error(chalk.red(`✗ Run not found: ${runId}`));
-    } else if (error.message.includes("Invalid time format")) {
-      console.error(chalk.red(`✗ ${error.message}`));
-    } else {
-      console.error(chalk.red("✗ Failed to fetch logs"));
-      console.error(chalk.dim(`  ${error.message}`));
-    }
-  } else {
-    console.error(chalk.red("✗ An unexpected error occurred"));
   }
 }

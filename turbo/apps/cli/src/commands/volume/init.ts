@@ -37,14 +37,9 @@ export const initCommand = new Command()
         // Use provided name (non-interactive mode)
         volumeName = options.name;
       } else if (!isInteractive()) {
-        // Non-interactive mode without --name flag
-        console.error(
-          chalk.red("✗ --name flag is required in non-interactive mode"),
-        );
-        console.error(
-          chalk.dim("  Usage: vm0 volume init --name <volume-name>"),
-        );
-        process.exit(1);
+        throw new Error("--name flag is required in non-interactive mode", {
+          cause: new Error("Usage: vm0 volume init --name <volume-name>"),
+        });
       } else {
         // Interactive prompt with directory name as default
         const defaultName = isValidStorageName(dirName) ? dirName : undefined;
@@ -70,16 +65,11 @@ export const initCommand = new Command()
 
       // Validate volume name
       if (!isValidStorageName(volumeName)) {
-        console.error(chalk.red(`✗ Invalid volume name: "${volumeName}"`));
-        console.error(
-          chalk.dim(
-            "  Volume names must be 3-64 characters, lowercase alphanumeric with hyphens",
+        throw new Error(`Invalid volume name: "${volumeName}"`, {
+          cause: new Error(
+            "Volume names must be 3-64 characters, lowercase alphanumeric with hyphens",
           ),
-        );
-        console.error(
-          chalk.dim("  Example: my-dataset, user-data-v2, training-set-2024"),
-        );
-        process.exit(1);
+        });
       }
 
       // Write config file

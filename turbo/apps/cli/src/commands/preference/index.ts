@@ -87,33 +87,21 @@ function buildUpdates(opts: PreferenceOpts): {
 
   if (hasTimezone) {
     if (!isValidTimezone(opts.timezone!)) {
-      console.error(chalk.red(`Invalid timezone: ${opts.timezone}`));
-      console.error(
-        chalk.dim(
-          "  Use an IANA timezone identifier (e.g., America/New_York, Asia/Shanghai)",
+      throw new Error(`Invalid timezone: ${opts.timezone}`, {
+        cause: new Error(
+          "Use an IANA timezone identifier (e.g., America/New_York, Asia/Shanghai)",
         ),
-      );
-      process.exit(1);
+      });
     }
     updates.timezone = opts.timezone;
   }
 
   if (hasNotifyEmail) {
-    try {
-      updates.notifyEmail = parseOnOff("notify-email", opts.notifyEmail!);
-    } catch (err) {
-      console.error(chalk.red((err as Error).message));
-      process.exit(1);
-    }
+    updates.notifyEmail = parseOnOff("notify-email", opts.notifyEmail!);
   }
 
   if (hasNotifySlack) {
-    try {
-      updates.notifySlack = parseOnOff("notify-slack", opts.notifySlack!);
-    } catch (err) {
-      console.error(chalk.red((err as Error).message));
-      process.exit(1);
-    }
+    updates.notifySlack = parseOnOff("notify-slack", opts.notifySlack!);
   }
 
   return updates;
@@ -169,8 +157,7 @@ async function interactiveSetup(prefs: {
     );
     if (tz?.trim()) {
       if (!isValidTimezone(tz.trim())) {
-        console.error(chalk.red(`Invalid timezone: ${tz.trim()}`));
-        process.exit(1);
+        throw new Error(`Invalid timezone: ${tz.trim()}`);
       }
       await updateUserPreferences({ timezone: tz.trim() });
       console.log(chalk.green(`Timezone set to ${chalk.cyan(tz.trim())}`));

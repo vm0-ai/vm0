@@ -1,4 +1,4 @@
-import { useCCState } from "ccstate-react/experimental";
+import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
@@ -6,15 +6,16 @@ import {
   IconUser,
   IconFileText,
   IconPlug,
-  IconX,
   IconPlus,
-  IconTool,
   IconCalendar,
   IconPencil,
   IconLoader2,
+  IconCrown,
+  IconDotsVertical,
 } from "@tabler/icons-react";
-import type { ConnectorType } from "@vm0/core";
-import { ConnectorIcon } from "../settings-page/connector-icons";
+import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import { skills$ } from "../../data/skills.ts";
+import { ConnectorIcon } from "../settings-page/connector-icons.tsx";
 import {
   Card,
   CardContent,
@@ -23,28 +24,31 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
   cn,
 } from "@vm0/ui";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
 import { ZeroScheduleCard, DEFAULT_SCHEDULE } from "./zero-schedule-card";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
+  type ConnectorTypeWithStatus,
   allConnectorTypes$,
   connectConnector$,
+  addConnectionDialogOpen$,
+  setAddConnectionDialogOpen$,
+  selectedConnectorType$,
+  setSelectedConnectorType$,
   pollingConnectorType$,
 } from "../../signals/settings-page/connectors.ts";
 import { deleteConnector$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import {
+  AddConnectionDialog,
+  ConnectModal,
+} from "../settings-page/add-connection-dialog.tsx";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   zeroInstructions$,
@@ -58,6 +62,11 @@ import {
   setZeroEditedContent$,
   discardZeroEdit$,
   buildZeroInstructions$,
+  zeroUpdateSettings$,
+  zeroSettingsSaving$,
+  zeroAddedSkills$,
+  addZeroSkill$,
+  removeZeroSkill$,
 } from "../../signals/zero-page/zero-meet.ts";
 
 const TONE_OPTIONS = [
@@ -98,76 +107,229 @@ const TONE_SAMPLES: Readonly<
   },
 };
 
-const AVAILABLE_SKILLS = [
-  "github",
-  "linear",
-  "plausible",
-  "agentmail",
-  "axiom",
-  "notion",
-  "vm0-cli",
-  "vm0-agent",
-  "slack",
-  "gmail",
-  "elephant",
-] as const;
+// ---------------------------------------------------------------------------
+// Skill item — a single row in the skills list
+// ---------------------------------------------------------------------------
 
-function isConnectorSkill(skill: string): skill is ConnectorType {
+function ZeroSkillItem({
+  name,
+  label,
+  iconUrl,
+  connector,
+  pollingType,
+  onConnect,
+  onDisconnect,
+  onRemove,
+  isLast,
+}: {
+  name: string;
+  label: string;
+  iconUrl: string | undefined;
+  connector: ConnectorTypeWithStatus | null;
+  pollingType: ConnectorType | null;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  onRemove: () => void;
+  isLast: boolean;
+}) {
+  const isPolling = pollingType === name;
+
   return (
-    skill === "github" ||
-    skill === "linear" ||
-    skill === "notion" ||
-    skill === "gmail" ||
-    skill === "slack"
+    <div
+      className={cn(
+        "flex items-center gap-4 px-4 py-3",
+        !isLast && "border-b border-border/60",
+      )}
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center">
+        {name in CONNECTOR_TYPES ? (
+          <ConnectorIcon type={name as ConnectorType} size={24} />
+        ) : iconUrl ? (
+          <img src={iconUrl} alt="" className="h-6 w-6 object-contain" />
+        ) : (
+          <IconPlug size={20} stroke={1.5} className="text-muted-foreground" />
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">{label}</p>
+      </div>
+      {connector &&
+        (isPolling ? (
+          <span className="flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs text-muted-foreground">
+            <IconLoader2 size={14} stroke={1.5} className="animate-spin" />
+            Connecting…
+          </span>
+        ) : connector.connected ? (
+          <>
+            <span className="text-xs text-muted-foreground shrink-0">
+              {connector.connector?.externalUsername
+                ? `Connected as @${connector.connector.externalUsername}`
+                : "Connected"}
+            </span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+                  aria-label="More options"
+                >
+                  <IconDotsVertical size={16} stroke={1.5} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuItem onClick={onDisconnect}>
+                  Disconnect
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onRemove}>
+                  Remove skill
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        ) : (
+          <div className="flex h-8 shrink-0 items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-lg px-3 zero-btn-morandi border"
+              onClick={onConnect}
+            >
+              Connect
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+                  aria-label="More options"
+                >
+                  <IconDotsVertical size={16} stroke={1.5} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuItem onClick={onRemove}>
+                  Remove skill
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        ))}
+      {!connector && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+              aria-label="More options"
+            >
+              <IconDotsVertical size={16} stroke={1.5} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuItem onClick={onRemove}>Remove skill</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Connections tab — real connector status + OAuth connect
+// Skills tab — merged skills + connector management
 // ---------------------------------------------------------------------------
 
-function ZeroConnectionsTab() {
+function ZeroSkillsTab() {
   const allTypesLoadable = useLoadable(allConnectorTypes$);
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
   const disconnect = useSet(deleteConnector$);
   const signal = useGet(pageSignal$);
-  const dialogOpen$ = useCCState(false);
-  const dialogOpen = useGet(dialogOpen$);
-  const setDialogOpen = useSet(dialogOpen$);
+  const addDialogOpen = useGet(addConnectionDialogOpen$);
+  const setAddDialogOpen = useSet(setAddConnectionDialogOpen$);
+  const selectedType = useGet(selectedConnectorType$);
+  const setSelected = useSet(setSelectedConnectorType$);
 
-  const allTypes =
+  // Skills list: auto-seeded from compose content, synced via compose jobs
+  const addedSkillsLoadable = useLoadable(zeroAddedSkills$);
+  const addedSkills =
+    addedSkillsLoadable.state === "hasData" ? addedSkillsLoadable.data : [];
+  const allSkills = useGet(skills$);
+  const addSkill = useSet(addZeroSkill$);
+  const removeSkill = useSet(removeZeroSkill$);
+
+  const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
-  const connectedItems = allTypes.filter(
-    (item) => item.connected || pollingType === item.type,
-  );
-  const unconnectedItems = allTypes.filter(
-    (item) => !item.connected && pollingType !== item.type,
-  );
+  const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
+  const skillMap = new Map(allSkills.map((s) => [s.value, s]));
+  const addedSet = new Set(addedSkills);
+
+  const handleConnectSuccess = (type: string) => {
+    detach(addSkill(type), Reason.DomCallback);
+    const label =
+      skillMap.get(type)?.label ??
+      connectorMap.get(type as ConnectorType)?.label ??
+      type;
+    toast.success(`${label} added to skills`);
+  };
+
+  const handleRemoveSkill = (name: string) => {
+    detach(removeSkill(name), Reason.DomCallback);
+    const label =
+      skillMap.get(name)?.label ??
+      connectorMap.get(name as ConnectorType)?.label ??
+      name;
+    toast.success(`${label} removed from skills`);
+  };
 
   return (
     <div className="mx-auto max-w-[900px] px-7 flex flex-col gap-6">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div>
           <h2 className="text-base font-semibold tracking-tight text-foreground">
-            Connectors
+            Add skills
           </h2>
           <p className="text-sm text-muted-foreground">
-            Connect and authorize these services so your agent can act on your
-            behalf.
+            Skills manage your connections and help you get more out of these
+            services.
           </p>
         </div>
         <Button
           size="sm"
           className="h-9 shrink-0 gap-2 rounded-lg"
-          onClick={() => setDialogOpen(true)}
+          onClick={() => setAddDialogOpen(true)}
         >
           <IconPlus size={16} stroke={2} />
-          Add Connector
+          Add skill
         </Button>
       </div>
 
-      {connectedItems.length === 0 ? (
+      {addedSkillsLoadable.state !== "hasData" ? (
+        <Card className="zero-card">
+          <CardContent className="p-0">
+            {Array.from({ length: 3 }, (_, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "flex items-center gap-4 px-4 py-3",
+                  i < 2 && "border-b border-border/60",
+                )}
+              >
+                <span className="h-10 w-10 shrink-0 rounded-lg bg-muted/50 animate-pulse" />
+                <div className="min-w-0 flex-1">
+                  <div
+                    className="h-4 rounded bg-muted/50 animate-pulse"
+                    style={{ width: `${80 + ((i * 37) % 60)}px` }}
+                  />
+                </div>
+                <div className="h-8 w-20 shrink-0 rounded-lg bg-muted/30 animate-pulse" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : addedSkills.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 py-12">
           <IconPlug
             size={32}
@@ -175,100 +337,62 @@ function ZeroConnectionsTab() {
             className="text-muted-foreground/50"
           />
           <p className="text-sm text-muted-foreground">
-            No connectors yet. Add one to get started.
+            No skills yet. Add one to get started.
           </p>
         </div>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {connectedItems.map((item) => (
-            <li key={item.type}>
-              <Card className="zero-card">
-                <CardContent className="flex items-center gap-4 px-4 py-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted overflow-hidden">
-                    <ConnectorIcon type={item.type} size={24} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">
-                      {item.label}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {item.connected && item.connector?.externalUsername
-                        ? `Connected as @${item.connector.externalUsername}`
-                        : item.helpText}
-                    </p>
-                  </div>
-                  {pollingType === item.type ? (
-                    <span className="flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs text-muted-foreground">
-                      <IconLoader2
-                        size={14}
-                        stroke={1.5}
-                        className="animate-spin"
-                      />
-                      Connecting…
-                    </span>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 shrink-0 rounded-lg px-3 text-xs text-muted-foreground hover:text-destructive"
-                      onClick={() =>
-                        detach(disconnect(item.type), Reason.DomCallback)
-                      }
-                    >
-                      Disconnect
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            </li>
-          ))}
-        </ul>
+        <Card className="zero-card">
+          <CardContent className="p-0">
+            {addedSkills.map((name, index) => {
+              const skill = skillMap.get(name);
+              return (
+                <ZeroSkillItem
+                  key={name}
+                  name={name}
+                  label={skill?.label ?? name}
+                  iconUrl={skill?.icon}
+                  connector={connectorMap.get(name as ConnectorType) ?? null}
+                  pollingType={pollingType}
+                  onConnect={() =>
+                    detach(
+                      connect(name as ConnectorType, signal),
+                      Reason.DomCallback,
+                    )
+                  }
+                  onDisconnect={() =>
+                    detach(
+                      disconnect(name as ConnectorType),
+                      Reason.DomCallback,
+                    )
+                  }
+                  onRemove={() => handleRemoveSkill(name)}
+                  isLast={index === addedSkills.length - 1}
+                />
+              );
+            })}
+          </CardContent>
+        </Card>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Add Connector</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto -mx-6 px-6 pb-1">
-            {unconnectedItems.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                All available connectors are connected.
-              </p>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                {unconnectedItems.map((item) => {
-                  const isPolling = pollingType === item.type;
-                  return (
-                    <button
-                      key={item.type}
-                      type="button"
-                      disabled={isPolling}
-                      className="flex items-start gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-muted/50 disabled:opacity-60"
-                      onClick={() => {
-                        setDialogOpen(false);
-                        detach(connect(item.type, signal), Reason.DomCallback);
-                      }}
-                    >
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted overflow-hidden mt-0.5">
-                        <ConnectorIcon type={item.type} size={22} />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-foreground">
-                          {item.label}
-                        </p>
-                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
-                          {item.helpText}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AddConnectionDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        variant="zero"
+        excludeTypes={addedSet}
+        onConnectSuccess={handleConnectSuccess}
+        onAdd={handleConnectSuccess}
+      />
+
+      {selectedType && (
+        <ConnectModal
+          onClose={() => setSelected(null)}
+          onSuccess={() => {
+            if (selectedType && !addedSet.has(selectedType)) {
+              handleConnectSuccess(selectedType);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -393,6 +517,175 @@ function ZeroInstructionsTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Settings tab — name + tone (wired to real API for agent name persistence)
+// ---------------------------------------------------------------------------
+
+function ZeroSettingsTab({
+  agentName: resolvedAgentName,
+}: {
+  agentName: string;
+}) {
+  const agentName$ = useCCState(resolvedAgentName);
+  const agentName = useGet(agentName$);
+  const setAgentName = useSet(agentName$);
+  const tone$ = useCCState<string>("Professional");
+  const tone = useGet(tone$);
+  const setTone = useSet(tone$);
+  const savedSettings$ = useCCState<{ name: string; tone: string }>({
+    name: resolvedAgentName,
+    tone: "Professional",
+  });
+  const savedSettings = useGet(savedSettings$);
+  const saving = useGet(zeroSettingsSaving$);
+
+  const isSettingsDirty =
+    agentName !== savedSettings.name || tone !== savedSettings.tone;
+
+  const handleResetSettings = () => {
+    setAgentName(savedSettings.name);
+    setTone(savedSettings.tone);
+  };
+
+  const handleSaveSettings$ = useCommand(async ({ set }) => {
+    if (agentName !== savedSettings.name) {
+      await set(zeroUpdateSettings$, agentName);
+    }
+    set(savedSettings$, { name: agentName, tone });
+  });
+  const handleSaveSettings = useSet(handleSaveSettings$);
+
+  return (
+    <>
+      <div className="mx-auto max-w-[900px] px-7">
+        <Card className="zero-card">
+          <CardContent className="py-5 flex flex-col gap-4">
+            <div className="flex flex-col gap-8">
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="zero-agent-name"
+                  className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                >
+                  Name
+                </label>
+                <Input
+                  id="zero-agent-name"
+                  value={agentName}
+                  onChange={(e) => setAgentName(e.target.value)}
+                  placeholder="What should we call them?"
+                  className="h-9"
+                />
+              </div>
+              <div
+                className="flex flex-col gap-2"
+                role="group"
+                aria-label={`How ${resolvedAgentName} sounds`}
+              >
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  How they sound
+                </span>
+                <div
+                  className="flex flex-wrap gap-2"
+                  role="group"
+                  aria-label="Tone"
+                >
+                  {TONE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setTone(opt)}
+                      className={cn(
+                        "rounded-lg border px-4 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                        tone === opt
+                          ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
+                          : "zero-chip text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+                <div
+                  className="zero-chip rounded-lg border px-3 py-2 transition-colors duration-200"
+                  key={tone}
+                >
+                  <p className="text-xs text-muted-foreground italic min-h-[1.25rem] leading-relaxed">
+                    {TONE_HINT[tone as (typeof TONE_OPTIONS)[number]]}
+                  </p>
+                  <div className="my-2 border-t border-border/30" />
+                  <div className="flex flex-col gap-1.5 pb-1.5">
+                    <div className="flex justify-end">
+                      <div className="zero-bubble-cool max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200">
+                        {
+                          TONE_SAMPLES[tone as (typeof TONE_OPTIONS)[number]]
+                            .user
+                        }
+                      </div>
+                    </div>
+                    <div className="flex justify-start">
+                      <div className="zero-chat-bubble-assistant max-w-[85%] rounded-2xl border px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200">
+                        {
+                          TONE_SAMPLES[tone as (typeof TONE_OPTIONS)[number]]
+                            .zero
+                        }
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {isSettingsDirty &&
+        createPortal(
+          <div className="zero-app fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 sm:left-[255px]">
+            <div className="zero-card flex max-w-md items-center justify-between gap-4 rounded-xl border border-border bg-card px-5 py-4 shadow-lg">
+              <div className="flex items-center gap-2 text-sm text-foreground">
+                <IconPencil
+                  size={18}
+                  stroke={1.5}
+                  className="shrink-0 text-muted-foreground"
+                />
+                <span>You have unsaved changes</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={handleResetSettings}
+                  disabled={saving}
+                >
+                  Discard
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={() =>
+                    detach(handleSaveSettings(), Reason.DomCallback)
+                  }
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <IconLoader2
+                      size={14}
+                      stroke={1.5}
+                      className="animate-spin mr-1.5"
+                    />
+                  ) : null}
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main meet page
 // ---------------------------------------------------------------------------
 
@@ -408,67 +701,9 @@ export function ZeroMeetPage({
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const resolvedAgentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-  const activeTab$ = useCCState("connections");
+  const activeTab$ = useCCState("skills");
   const activeTab = useGet(activeTab$);
   const setActiveTab = useSet(activeTab$);
-  const agentName$ = useCCState(resolvedAgentName);
-  const agentName = useGet(agentName$);
-  const setAgentName = useSet(agentName$);
-  const tone$ = useCCState<string>("Professional");
-  const tone = useGet(tone$);
-  const setTone = useSet(tone$);
-  const skills$ = useCCState<string[]>([...AVAILABLE_SKILLS]);
-  const skills = useGet(skills$);
-  const setSkills = useSet(skills$);
-  const savedSettings$ = useCCState<{
-    name: string;
-    tone: string;
-    skills: string[];
-  }>({
-    name: resolvedAgentName,
-    tone: "Professional",
-    skills: [...AVAILABLE_SKILLS],
-  });
-  const savedSettings = useGet(savedSettings$);
-  const setSavedSettings = useSet(savedSettings$);
-  const ADD_SKILL_PLACEHOLDER = "__add_skill__";
-  const addSkillValue$ = useCCState(ADD_SKILL_PLACEHOLDER);
-  const addSkillValue = useGet(addSkillValue$);
-  const setAddSkillValue = useSet(addSkillValue$);
-
-  const isSettingsDirty =
-    agentName !== savedSettings.name ||
-    tone !== savedSettings.tone ||
-    JSON.stringify([...skills].sort()) !==
-      JSON.stringify([...savedSettings.skills].sort());
-  const showSaveBar = isSettingsDirty;
-
-  const handleResetSettings = () => {
-    setAgentName(savedSettings.name);
-    setTone(savedSettings.tone);
-    setSkills([...savedSettings.skills]);
-  };
-
-  const handleSaveSettings = () => {
-    setSavedSettings({
-      name: agentName,
-      tone,
-      skills: [...skills],
-    });
-  };
-
-  const removeSkill = (skill: string) => {
-    setSkills((prev) => prev.filter((s) => s !== skill));
-  };
-
-  const addSkill = (skill: string) => {
-    if (!skills.includes(skill)) {
-      setSkills((prev) => [...prev, skill].sort());
-    }
-    setAddSkillValue(ADD_SKILL_PLACEHOLDER);
-  };
-
-  const availableToAdd = AVAILABLE_SKILLS.filter((s) => !skills.includes(s));
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
@@ -493,8 +728,13 @@ export function ZeroMeetPage({
                 <h1 className="text-xl font-semibold tracking-tight text-foreground leading-tight">
                   {resolvedAgentName}
                 </h1>
-                <span className="zero-pill inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium">
-                  Super Manager
+                <span className="zero-pill inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium">
+                  <IconCrown
+                    size={12}
+                    stroke={1.8}
+                    className="shrink-0 text-blue-600"
+                  />
+                  Super agent
                 </span>
               </div>
               <p className="text-sm text-muted-foreground mt-0.5 leading-tight">
@@ -511,11 +751,11 @@ export function ZeroMeetPage({
             >
               <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1">
                 <TabsTrigger
-                  value="connections"
+                  value="skills"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
                   <IconPlug size={14} stroke={1.5} />
-                  Connections
+                  Skills
                 </TabsTrigger>
                 <TabsTrigger
                   value="schedule"
@@ -552,12 +792,9 @@ export function ZeroMeetPage({
         </div>
       </header>
 
-      <main
-        className={cn(
-          "shrink-0 px-4 sm:px-6 pt-4",
-          showSaveBar ? "pb-24" : "pb-16",
-        )}
-      >
+      <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
+        {activeTab === "skills" && <ZeroSkillsTab />}
+
         {activeTab === "schedule" && (
           <div className="mx-auto max-w-[900px] px-7">
             <ZeroScheduleCard
@@ -569,196 +806,11 @@ export function ZeroMeetPage({
         )}
 
         {activeTab === "settings" && (
-          <div className="mx-auto max-w-[900px] px-7">
-            <Card className="zero-card">
-              <CardContent className="py-5 flex flex-col gap-4">
-                <div className="flex flex-col gap-8">
-                  <div className="flex flex-col gap-2">
-                    <label
-                      htmlFor="zero-agent-name"
-                      className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-                    >
-                      Name
-                    </label>
-                    <Input
-                      id="zero-agent-name"
-                      value={agentName}
-                      onChange={(e) => setAgentName(e.target.value)}
-                      placeholder="What should we call them?"
-                      className="h-9"
-                    />
-                  </div>
-                  <div
-                    className="flex flex-col gap-2"
-                    role="group"
-                    aria-label={`How ${resolvedAgentName} sounds`}
-                  >
-                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      How they sound
-                    </span>
-                    <div
-                      className="flex flex-wrap gap-2"
-                      role="group"
-                      aria-label="Tone"
-                    >
-                      {TONE_OPTIONS.map((opt) => (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() => setTone(opt)}
-                          className={cn(
-                            "rounded-lg border px-4 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                            tone === opt
-                              ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
-                              : "zero-chip text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                    <div
-                      className="zero-chip rounded-lg border px-3 py-2 transition-colors duration-200"
-                      key={tone}
-                    >
-                      <p className="text-xs text-muted-foreground italic min-h-[1.25rem] leading-relaxed">
-                        {TONE_HINT[tone as (typeof TONE_OPTIONS)[number]]}
-                      </p>
-                      <div className="my-2 border-t border-border/30" />
-                      <div className="flex flex-col gap-1.5 pb-1.5">
-                        <div className="flex justify-end">
-                          <div className="zero-bubble-cool max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200">
-                            {
-                              TONE_SAMPLES[
-                                tone as (typeof TONE_OPTIONS)[number]
-                              ].user
-                            }
-                          </div>
-                        </div>
-                        <div className="flex justify-start">
-                          <div className="zero-chat-bubble-assistant max-w-[85%] rounded-2xl border px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200">
-                            {
-                              TONE_SAMPLES[
-                                tone as (typeof TONE_OPTIONS)[number]
-                              ].zero
-                            }
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-3">
-                    <div>
-                      <span className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Tools & skills
-                      </span>
-                    </div>
-                    <ul className="flex flex-wrap gap-2" role="list">
-                      {skills.map((skill) => (
-                        <li
-                          key={skill}
-                          className="flex min-w-[120px] max-w-[220px] flex-1 basis-[120px]"
-                        >
-                          <span className="zero-chip flex w-full min-w-0 items-center gap-2 rounded-2xl border px-3 py-2.5 text-sm text-foreground transition-colors duration-200">
-                            {isConnectorSkill(skill) ? (
-                              <ConnectorIcon
-                                type={skill as ConnectorType}
-                                size={16}
-                              />
-                            ) : (
-                              <IconTool
-                                size={16}
-                                stroke={1.5}
-                                className="shrink-0 text-muted-foreground"
-                              />
-                            )}
-                            <span className="min-w-0 truncate font-medium capitalize">
-                              {skill.charAt(0).toUpperCase() +
-                                skill.slice(1).toLowerCase()}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removeSkill(skill)}
-                              className="ml-auto shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                              aria-label={`Remove ${skill}`}
-                            >
-                              <IconX size={12} stroke={2} />
-                            </button>
-                          </span>
-                        </li>
-                      ))}
-                      <li className="flex shrink-0">
-                        <Select
-                          value={addSkillValue}
-                          onValueChange={(v) => {
-                            setAddSkillValue(ADD_SKILL_PLACEHOLDER);
-                            if (v && v !== ADD_SKILL_PLACEHOLDER) {
-                              addSkill(v);
-                            }
-                          }}
-                        >
-                          <SelectTrigger className="zero-chip h-10 min-w-[120px] gap-2 rounded-2xl border px-3 py-2.5 text-sm text-foreground transition-colors duration-200">
-                            <IconPlus size={14} stroke={2} />
-                            <SelectValue placeholder="Add skill" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={ADD_SKILL_PLACEHOLDER}>
-                              Add skill
-                            </SelectItem>
-                            {availableToAdd.map((s) => (
-                              <SelectItem key={s} value={s}>
-                                {s}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <ZeroSettingsTab agentName={resolvedAgentName} />
         )}
 
         {activeTab === "instructions" && <ZeroInstructionsTab />}
-
-        {activeTab === "connections" && <ZeroConnectionsTab />}
       </main>
-
-      {showSaveBar &&
-        createPortal(
-          <div className="zero-app fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 sm:left-[255px]">
-            <div className="zero-card flex max-w-md items-center justify-between gap-4 rounded-xl border border-border bg-card px-5 py-4 shadow-lg">
-              <div className="flex items-center gap-2 text-sm text-foreground">
-                <IconPencil
-                  size={18}
-                  stroke={1.5}
-                  className="shrink-0 text-muted-foreground"
-                />
-                <span>You have unsaved changes</span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={handleResetSettings}
-                >
-                  Discard
-                </Button>
-                <Button
-                  size="sm"
-                  className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary/90"
-                  onClick={handleSaveSettings}
-                >
-                  Save
-                </Button>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
     </div>
   );
 }

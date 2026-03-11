@@ -855,6 +855,27 @@
       "when": 1773400000007,
       "tag": "0121_sturdy_magdalene",
       "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1773400000008,
+      "tag": "0122_big_black_cat",
+      "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1773400000009,
+      "tag": "0123_rare_longshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1773400000010,
+      "tag": "0124_dark_quasimodo",
+      "breakpoints": true
     }
   ]
 }

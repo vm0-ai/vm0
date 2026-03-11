@@ -205,10 +205,7 @@ async function gatherFrequency(
   }
 
   if (!isInteractive()) {
-    console.error(
-      chalk.red("✗ --frequency is required (daily|weekly|monthly|once|loop)"),
-    );
-    process.exit(1);
+    throw new Error("--frequency is required (daily|weekly|monthly|once|loop)");
   }
 
   const defaultIndex = existingFrequency
@@ -239,19 +236,15 @@ async function gatherDay(
   if (optionDay) {
     const day = parseDayOption(optionDay, frequency);
     if (day === undefined) {
-      console.error(
-        chalk.red(
-          `✗ Invalid day: ${optionDay}. Use mon-sun for weekly or 1-31 for monthly.`,
-        ),
+      throw new Error(
+        `Invalid day: ${optionDay}. Use mon-sun for weekly or 1-31 for monthly.`,
       );
-      process.exit(1);
     }
     return day;
   }
 
   if (!isInteractive()) {
-    console.error(chalk.red("✗ --day is required for weekly/monthly"));
-    process.exit(1);
+    throw new Error("--day is required for weekly/monthly");
   }
 
   if (frequency === "weekly") {
@@ -275,8 +268,7 @@ async function gatherDay(
 
   const day = parseInt(dayStr, 10);
   if (isNaN(day) || day < 1 || day > 31) {
-    console.error(chalk.red("✗ Day must be between 1 and 31"));
-    process.exit(1);
+    throw new Error("Day must be between 1 and 31");
   }
   return day;
 }
@@ -291,15 +283,13 @@ async function gatherRecurringTime(
   if (optionTime) {
     const validation = validateTimeFormat(optionTime);
     if (validation !== true) {
-      console.error(chalk.red(`✗ Invalid time: ${validation}`));
-      process.exit(1);
+      throw new Error(`Invalid time: ${validation}`);
     }
     return optionTime;
   }
 
   if (!isInteractive()) {
-    console.error(chalk.red("✗ --time is required (HH:MM format)"));
-    process.exit(1);
+    throw new Error("--time is required (HH:MM format)");
   }
 
   return await promptText(
@@ -319,28 +309,22 @@ async function gatherOneTimeSchedule(
 ): Promise<string | null> {
   if (optionDay && optionTime) {
     if (!validateDateFormat(optionDay)) {
-      console.error(
-        chalk.red(
-          `✗ Invalid date format: ${optionDay}. Use YYYY-MM-DD format.`,
-        ),
+      throw new Error(
+        `Invalid date format: ${optionDay}. Use YYYY-MM-DD format.`,
       );
-      process.exit(1);
     }
     if (!validateTimeFormat(optionTime)) {
-      console.error(
-        chalk.red(`✗ Invalid time format: ${optionTime}. Use HH:MM format.`),
-      );
-      process.exit(1);
+      throw new Error(`Invalid time format: ${optionTime}. Use HH:MM format.`);
     }
     return `${optionDay} ${optionTime}`;
   }
 
   if (!isInteractive()) {
-    console.error(chalk.red("✗ One-time schedules require interactive mode"));
-    console.error(
-      chalk.dim("  Or provide --day (YYYY-MM-DD) and --time (HH:MM) flags"),
-    );
-    process.exit(1);
+    throw new Error("One-time schedules require interactive mode", {
+      cause: new Error(
+        "Or provide --day (YYYY-MM-DD) and --time (HH:MM) flags",
+      ),
+    });
   }
 
   const tomorrowDate = getTomorrowDateLocal();
@@ -401,8 +385,7 @@ async function gatherPromptText(
   if (optionPrompt) return optionPrompt;
 
   if (!isInteractive()) {
-    console.error(chalk.red("✗ --prompt is required"));
-    process.exit(1);
+    throw new Error("--prompt is required");
   }
 
   return await promptText(
@@ -424,9 +407,9 @@ async function resolveAgent(
 }> {
   const compose = await getComposeByName(agentName);
   if (!compose) {
-    console.error(chalk.red(`✗ Agent not found: ${agentName}`));
-    console.error(chalk.dim("  Make sure the agent is composed first"));
-    process.exit(1);
+    throw new Error(`Agent not found: ${agentName}`, {
+      cause: new Error("Make sure the agent is composed first"),
+    });
   }
   return {
     composeId: compose.id,
@@ -445,21 +428,15 @@ async function gatherInterval(
   if (optionInterval) {
     const val = parseInt(optionInterval, 10);
     if (isNaN(val) || val < 0) {
-      console.error(
-        chalk.red(
-          "✗ Invalid interval. Must be a non-negative integer (seconds)",
-        ),
+      throw new Error(
+        "Invalid interval. Must be a non-negative integer (seconds)",
       );
-      process.exit(1);
     }
     return val;
   }
 
   if (!isInteractive()) {
-    console.error(
-      chalk.red("✗ --interval is required for loop schedules (seconds)"),
-    );
-    process.exit(1);
+    throw new Error("--interval is required for loop schedules (seconds)");
   }
 
   const defaultVal =

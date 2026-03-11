@@ -3,11 +3,9 @@ import { testContext, uniqueId } from "../../__tests__/test-helpers";
 import {
   insertTestAgentCompose,
   insertTestAgentRun,
-  insertTestStorageRecord,
   deleteTestScope,
   findTestAgentComposeById,
   findTestAgentRunById,
-  findTestStorageById,
   insertTestSlackInstallation,
   insertTestTelegramInstallationRecord,
   insertTestGitHubInstallation,
@@ -21,7 +19,7 @@ import { env } from "../../env";
 const context = testContext();
 
 describe("Scope deletion CASCADE", () => {
-  it("should cascade-delete agent_composes and storages when scope is deleted, but not agent_runs", async () => {
+  it("should cascade-delete agent_composes when scope is deleted, but not agent_runs", async () => {
     context.setupMocks();
     const user = await context.setupUser();
 
@@ -34,22 +32,18 @@ describe("Scope deletion CASCADE", () => {
 
     const run = await insertTestAgentRun(user.userId, user.scopeId);
 
-    const storage = await insertTestStorageRecord(
-      user.userId,
-      user.scopeId,
-      uniqueId("storage"),
-    );
-
     // Delete the scope
     await deleteTestScope(user.scopeId);
 
     // Verify cascade-deleted child records
     expect(await findTestAgentComposeById(compose.id)).toBeUndefined();
-    expect(await findTestStorageById(storage.id)).toBeUndefined();
 
     // agent_runs no longer has FK to scopes (removed in Phase 3 Clerk migration),
     // so the run record is retained after scope deletion
     expect(await findTestAgentRunById(run.id)).toBeDefined();
+
+    // Note: storages no longer cascade-delete via scope — they use clerk_org_id
+    // without a foreign key to scopes, so they are cleaned up separately.
   });
 
   it("should cascade-delete installations via scope -> compose -> installation chain", async () => {

@@ -276,9 +276,6 @@ describe("run continue command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Not authenticated"),
       );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 auth login"),
-      );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
@@ -307,7 +304,7 @@ describe("run continue command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Agent session not found"),
+        expect.stringContaining("Session not found"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

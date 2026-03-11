@@ -110,7 +110,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       })
       .onConflictDoUpdate({
         target: [
-          storages.scopeId,
+          storages.clerkOrgId,
           storages.userId,
           storages.name,
           storages.type,

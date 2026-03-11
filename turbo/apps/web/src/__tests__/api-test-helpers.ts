@@ -37,6 +37,7 @@ import type { EmailTemplate, PostSendAction } from "../lib/email/types";
 import { telegramInstallations } from "../db/schema/telegram-installation";
 import { telegramMessages } from "../db/schema/telegram-message";
 import { telegramUserLinks } from "../db/schema/telegram-user-link";
+import { orgCache } from "../db/schema/org-cache";
 import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
@@ -352,9 +353,14 @@ export async function setScopeTier(
  */
 export async function getTestScope(
   scopeId: string,
-): Promise<{ id: string; slug: string; tier: string }> {
+): Promise<{ id: string; slug: string; tier: string; clerkOrgId: string }> {
   const [scope] = await globalThis.services.db
-    .select({ id: scopes.id, slug: scopes.slug, tier: scopes.tier })
+    .select({
+      id: scopes.id,
+      slug: scopes.slug,
+      tier: scopes.tier,
+      clerkOrgId: scopes.clerkOrgId,
+    })
     .from(scopes)
     .where(eq(scopes.id, scopeId))
     .limit(1);
@@ -1724,12 +1730,13 @@ export async function findTestConnectorSecret(
   secretName: string,
   type: "connector" | "user" = "connector",
 ): Promise<string | undefined> {
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
   const [storedSecret] = await globalThis.services.db
     .select()
     .from(secrets)
     .where(
       and(
-        eq(secrets.scopeId, scopeId),
+        eq(secrets.clerkOrgId, clerkOrgId),
         eq(secrets.name, secretName),
         eq(secrets.type, type),
       ),
@@ -1756,10 +1763,13 @@ export async function findTestConnectorTokenExpiresAt(
   scopeId: string,
   type: string,
 ): Promise<Date | null | undefined> {
+  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
   const [row] = await globalThis.services.db
     .select({ tokenExpiresAt: connectors.tokenExpiresAt })
     .from(connectors)
-    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.type, type)))
+    .where(
+      and(eq(connectors.clerkOrgId, clerkOrgId), eq(connectors.type, type)),
+    )
     .limit(1);
 
   if (!row) return undefined;
@@ -1942,13 +1952,13 @@ export async function createTestSlackComposeRequest(options: {
 /**
  * Find artifact storage for a scope, including its HEAD version details.
  */
-export async function findTestArtifactStorage(scopeId: string) {
+export async function findTestArtifactStorage(clerkOrgId: string) {
   const [storage] = await globalThis.services.db
     .select()
     .from(storages)
     .where(
       and(
-        eq(storages.scopeId, scopeId),
+        eq(storages.clerkOrgId, clerkOrgId),
         eq(storages.name, "artifact"),
         eq(storages.type, "artifact"),
       ),
@@ -1971,12 +1981,12 @@ export async function findTestArtifactStorage(scopeId: string) {
 }
 
 /**
- * Find a storage volume by scope and name.
+ * Find a storage volume by clerk org and name.
  * Volumes use the sentinel VOLUME_SCOPE_USER_ID for scope-level sharing.
  * Returns the storage id and name, or undefined if not found.
  */
 export async function findTestStorageByName(
-  scopeId: string,
+  clerkOrgId: string,
   name: string,
 ): Promise<{ id: string; name: string; s3Prefix: string } | undefined> {
   const [result] = await globalThis.services.db
@@ -1988,7 +1998,7 @@ export async function findTestStorageByName(
     .from(storages)
     .where(
       and(
-        eq(storages.scopeId, scopeId),
+        eq(storages.clerkOrgId, clerkOrgId),
         eq(storages.userId, VOLUME_SCOPE_USER_ID),
         eq(storages.name, name),
         eq(storages.type, "volume"),
@@ -1998,11 +2008,11 @@ export async function findTestStorageByName(
   return result;
 }
 /**
- * Find a storage record by scope, name, and type.
+ * Find a storage record by clerk org, name, and type.
  * Returns the storage userId and other details for verification.
  */
 export async function findTestStorage(
-  scopeId: string,
+  clerkOrgId: string,
   name: string,
   type: "volume" | "artifact" | "memory",
 ): Promise<
@@ -2018,7 +2028,7 @@ export async function findTestStorage(
     .from(storages)
     .where(
       and(
-        eq(storages.scopeId, scopeId),
+        eq(storages.clerkOrgId, clerkOrgId),
         eq(storages.name, name),
         eq(storages.type, type),
       ),
@@ -2774,25 +2784,6 @@ export async function insertTestAgentRun(
 }
 
 /**
- * Insert a storage record directly in the database.
- *
- * Direct DB insert is required for schema-level tests (e.g., CASCADE behavior)
- * that need to verify foreign key constraints without the full storage flow.
- */
-export async function insertTestStorageRecord(
-  userId: string,
-  scopeId: string,
-  name: string,
-) {
-  const clerkOrgId = await getClerkOrgIdFromScope(scopeId);
-  const [row] = await globalThis.services.db
-    .insert(storages)
-    .values({ userId, scopeId, clerkOrgId, name, s3Prefix: "test/prefix" })
-    .returning();
-  return row!;
-}
-
-/**
  * Delete a scope directly from the database.
  *
  * Direct DB delete is required for schema-level tests that verify
@@ -2828,21 +2819,6 @@ export async function findTestAgentRunById(id: string) {
     .select()
     .from(agentRuns)
     .where(eq(agentRuns.id, id))
-    .limit(1);
-  return row;
-}
-
-/**
- * Find a storage by its internal ID.
- *
- * Direct DB read is required for schema-level tests that verify
- * records were cascade-deleted.
- */
-export async function findTestStorageById(id: string) {
-  const [row] = await globalThis.services.db
-    .select()
-    .from(storages)
-    .where(eq(storages.id, id))
     .limit(1);
   return row;
 }
@@ -2980,6 +2956,39 @@ export async function findTestOutboxItemById(id: string) {
     .select()
     .from(emailOutbox)
     .where(eq(emailOutbox.id, id))
+    .limit(1);
+  return row ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// org_cache helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Insert a row into org_cache for testing cache behavior.
+ */
+export async function insertOrgCacheEntry(entry: {
+  clerkOrgId: string;
+  slug: string;
+  tier?: string;
+  cachedAt?: Date;
+}): Promise<void> {
+  await globalThis.services.db.insert(orgCache).values({
+    clerkOrgId: entry.clerkOrgId,
+    slug: entry.slug,
+    tier: entry.tier ?? "free",
+    cachedAt: entry.cachedAt ?? new Date(),
+  });
+}
+
+/**
+ * Read an org_cache row by clerkOrgId.
+ */
+export async function getOrgCacheEntry(clerkOrgId: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(orgCache)
+    .where(eq(orgCache.clerkOrgId, clerkOrgId))
     .limit(1);
   return row ?? null;
 }

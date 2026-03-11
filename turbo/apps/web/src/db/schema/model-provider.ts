@@ -8,7 +8,6 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
-import { scopes } from "./scope";
 import { secrets } from "./secret";
 
 /**
@@ -23,9 +22,7 @@ export const modelProviders = pgTable(
   "model_providers",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    scopeId: uuid("scope_id")
-      .references(() => scopes.id, { onDelete: "cascade" })
-      .notNull(),
+    scopeId: uuid("scope_id").notNull(),
     type: varchar("type", { length: 50 }).notNull(),
     // Legacy single secret FK - null for multi-auth providers
     secretId: uuid("secret_id").references(() => secrets.id, {
@@ -41,13 +38,6 @@ export const modelProviders = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    // One provider per type per user within a scope
-    uniqueIndex("idx_model_providers_scope_user_type").on(
-      table.scopeId,
-      table.userId,
-      table.type,
-    ),
-    index("idx_model_providers_scope").on(table.scopeId),
     index("idx_model_providers_secret").on(table.secretId),
     index("idx_model_providers_clerk_org").on(table.clerkOrgId),
     uniqueIndex("idx_model_providers_clerk_org_user_type").on(

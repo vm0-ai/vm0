@@ -15,6 +15,9 @@ R2_ACCESS_KEY_ID=op://Development/cloudflare/R2_ACCESS_KEY_ID
 R2_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_SECRET_ACCESS_KEY
 R2_USER_STORAGES_BUCKET_NAME=op://Development/cloudflare/R2_USER_STORAGES_BUCKET_NAME
 
+# Optional: Realtime (Ably) — required for runner realtime token endpoint
+ABLY_API_KEY=op://Development/ably/ABLY_API_KEY
+
 # Optional: Observability (Axiom)
 AXIOM_TOKEN_SESSIONS=op://Development/axiom/AXIOM_TOKEN_SESSIONS
 AXIOM_TOKEN_TELEMETRY=op://Development/axiom/AXIOM_TOKEN_TELEMETRY
@@ -169,4 +172,4 @@ GITHUB_APP_WEBHOOK_SECRET=op://Development/github/GITHUB_APP_WEBHOOK_SECRET
 
 # Optional: Self-hosted Runner (for local development with runner on dev-1)
 # RUNNER_DEFAULT_GROUP is auto-configured by sync-env.sh — do not add here
-OFFICIAL_RUNNER_SECRET=op://Team/vm0/OFFICIAL_RUNNER_SECRET
+OFFICIAL_RUNNER_SECRET=0000000000000000000000000000000000000000000000000000000000000000

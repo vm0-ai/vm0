@@ -34,10 +34,11 @@ const router = tsr.router(storagesDownloadContract, {
 
     // Resolve user's default scope
     const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const orgParam = new URL(request.url).searchParams.get("org");
     const { scope: runtimeScope } = await resolveScope(
       userId,
       scopeSlug,
-      null,
+      orgParam,
       tokenScopeId,
     );
 
@@ -57,7 +58,7 @@ const router = tsr.router(storagesDownloadContract, {
       .from(storages)
       .where(
         and(
-          eq(storages.scopeId, runtimeScope.id),
+          eq(storages.clerkOrgId, runtimeScope.clerkOrgId),
           eq(storages.userId, storageUserId),
           eq(storages.name, storageName),
           eq(storages.type, storageType),

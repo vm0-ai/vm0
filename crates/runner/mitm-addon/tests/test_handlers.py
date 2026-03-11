@@ -211,6 +211,67 @@ class TestRequestHandler:
         assert flow.request.pretty_host == "example.com"
 
 
+class TestResponseHeadersHandler:
+    """Tests for the responseheaders() hook that enables selective streaming."""
+
+    def test_sse_enables_streaming(self):
+        """text/event-stream responses should be streamed."""
+        flow = _make_http_flow(host="api.anthropic.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "text/event-stream"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        assert flow.response.stream is True
+
+    def test_sse_with_charset_enables_streaming(self):
+        """text/event-stream with charset should be streamed."""
+        flow = _make_http_flow(host="api.anthropic.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "text/event-stream; charset=utf-8"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        assert flow.response.stream is True
+
+    def test_non_sse_not_streamed(self):
+        """Non-SSE responses should not be streamed (even if chunked)."""
+        flow = _make_http_flow(host="api.example.com")
+        flow.response = MagicMock()
+        flow.response.headers = {
+            "content-type": "application/json",
+            "transfer-encoding": "chunked",
+        }
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        assert flow.response.stream is False
+
+    def test_normal_response_not_streamed(self):
+        """Normal JSON response with Content-Length should not be streamed."""
+        flow = _make_http_flow(host="api.example.com")
+        flow.response = MagicMock()
+        flow.response.headers = {
+            "content-type": "application/json",
+            "content-length": "256",
+        }
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        assert flow.response.stream is False
+
+    def test_no_response_is_noop(self):
+        """Flow without response should not raise."""
+        flow = _make_http_flow(host="api.example.com")
+        flow.response = None
+
+        mitm_addon.responseheaders(flow)  # Should not raise
+
+
 class TestResponseHandler:
     def setup_method(self):
         _reset()

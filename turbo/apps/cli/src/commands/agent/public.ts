@@ -21,30 +21,20 @@ export const publicCommand = new Command()
       async (name: string, options: { experimentalSharedAgent?: boolean }) => {
         // Validate experimental flag
         if (!options.experimentalSharedAgent) {
-          console.error(
-            chalk.red(
-              "✗ This command requires --experimental-shared-agent flag",
-            ),
+          throw new Error(
+            "This command requires --experimental-shared-agent flag",
+            {
+              cause: new Error(
+                `Use: vm0 agent public ${name} --experimental-shared-agent`,
+              ),
+            },
           );
-          console.error();
-          console.error(
-            chalk.dim("  Agent sharing is an experimental feature."),
-          );
-          console.error();
-          console.error("Example:");
-          console.error(
-            chalk.cyan(
-              `  vm0 agent public ${name} --experimental-shared-agent`,
-            ),
-          );
-          process.exit(1);
         }
 
         // Resolve compose by name
         const compose = await getComposeByName(name);
         if (!compose) {
-          console.error(chalk.red(`✗ Agent not found: ${name}`));
-          process.exit(1);
+          throw new Error(`Agent not found: ${name}`);
         }
 
         // Get scope for display

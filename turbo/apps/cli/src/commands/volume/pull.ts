@@ -25,9 +25,9 @@ export const pullCommand = new Command()
       // Read storage config
       const config = await readStorageConfig(cwd);
       if (!config) {
-        console.error(chalk.red("✗ No volume initialized in this directory"));
-        console.error(chalk.dim("  Run: vm0 volume init"));
-        process.exit(1);
+        throw new Error("No volume initialized in this directory", {
+          cause: new Error("Run: vm0 volume init"),
+        });
       }
 
       if (versionId) {

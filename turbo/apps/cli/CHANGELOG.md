@@ -1,5 +1,83 @@
 # Changelog
 
+## [9.55.4](https://github.com/vm0-ai/vm0/compare/cli-v9.55.3...cli-v9.55.4) (2026-03-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.55.0
+
+## [9.55.3](https://github.com/vm0-ai/vm0/compare/cli-v9.55.2...cli-v9.55.3) (2026-03-11)
+
+
+### Refactoring
+
+* **cli:** replace process.exit with throw in connector commands ([#4228](https://github.com/vm0-ai/vm0/issues/4228)) ([3d99fd0](https://github.com/vm0-ai/vm0/commit/3d99fd027e67cff3f69b7193440c53f2ae2824c4))
+
+## [9.55.2](https://github.com/vm0-ai/vm0/compare/cli-v9.55.1...cli-v9.55.2) (2026-03-11)
+
+
+### Refactoring
+
+* **cli:** migrate compose command to centralized error handler ([#4214](https://github.com/vm0-ai/vm0/issues/4214)) ([d737e95](https://github.com/vm0-ai/vm0/commit/d737e95894ec928acbf351bac235cf0dbd1a149b))
+* **cli:** migrate cook command to centralized error handler ([#4213](https://github.com/vm0-ai/vm0/issues/4213)) ([3f5cc80](https://github.com/vm0-ai/vm0/commit/3f5cc8061cc62d360d66e3475c3d7fcf1c13c1af))
+* **cli:** migrate init command to centralized error handler ([#4215](https://github.com/vm0-ai/vm0/issues/4215)) ([ea28f2d](https://github.com/vm0-ai/vm0/commit/ea28f2d9678537b7ac5afc7090dd69bce6cbe090))
+* **cli:** migrate run commands to centralized error handler ([#4217](https://github.com/vm0-ai/vm0/issues/4217)) ([ace02d5](https://github.com/vm0-ai/vm0/commit/ace02d5706d163789772703bca595fe14bda9e26))
+* **cli:** migrate upgrade command to centralized error handler ([#4216](https://github.com/vm0-ai/vm0/issues/4216)) ([50a8a3d](https://github.com/vm0-ai/vm0/commit/50a8a3dac61831b6b0815ea5b37bdbe4f1a98796))
+* **cli:** replace process.exit with throw in agent commands ([#4224](https://github.com/vm0-ai/vm0/issues/4224)) ([72e13f6](https://github.com/vm0-ai/vm0/commit/72e13f6a8aa3395b5d9429fd523ba6cbd77cf260))
+* **cli:** replace process.exit with throw in preference command ([#4212](https://github.com/vm0-ai/vm0/issues/4212)) ([ab31b65](https://github.com/vm0-ai/vm0/commit/ab31b6577c20607f72b27c8878be183134c37e22))
+* **cli:** replace process.exit with throw in schedule setup command ([#4227](https://github.com/vm0-ai/vm0/issues/4227)) ([c3832cc](https://github.com/vm0-ai/vm0/commit/c3832ccfc2cfbb20d354acdb974684c4c23d12ce))
+* **cli:** replace process.exit with throw in scope create command ([#4209](https://github.com/vm0-ai/vm0/issues/4209)) ([5c6965f](https://github.com/vm0-ai/vm0/commit/5c6965fac81f683fcf4128505501acb2870bb634))
+* **cli:** replace process.exit with throw in scope members command ([#4204](https://github.com/vm0-ai/vm0/issues/4204)) ([b7b676c](https://github.com/vm0-ai/vm0/commit/b7b676c4f079a1d13697a84c5e602be806a685b3))
+* **cli:** replace process.exit with throw in scope status command ([#4210](https://github.com/vm0-ai/vm0/issues/4210)) ([fcfedf6](https://github.com/vm0-ai/vm0/commit/fcfedf6eb0c4aed72ca180db661e37d6b1d39317))
+* **cli:** replace process.exit with throw in storage status commands ([#4211](https://github.com/vm0-ai/vm0/issues/4211)) ([071b36c](https://github.com/vm0-ai/vm0/commit/071b36c4fcdc9c603278096b1f9867f424bf02e6))
+
+## [9.55.1](https://github.com/vm0-ai/vm0/compare/cli-v9.55.0...cli-v9.55.1) (2026-03-10)
+
+
+### Refactoring
+
+* **cli:** migrate auth commands to withErrorHandler ([#4200](https://github.com/vm0-ai/vm0/issues/4200)) ([9cce154](https://github.com/vm0-ai/vm0/commit/9cce154535b4764090498940a9c2636303f4bfec))
+* **cli:** replace process.exit with throw in scope set command ([#4208](https://github.com/vm0-ai/vm0/issues/4208)) ([1caed6a](https://github.com/vm0-ai/vm0/commit/1caed6a44cba61cda6ddc61d223240ad231620b7))
+* inline connector feature flags into connector types config ([#4203](https://github.com/vm0-ai/vm0/issues/4203)) ([99168e3](https://github.com/vm0-ai/vm0/commit/99168e3f8e253c3488112f822111c2e66af152dd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.54.1
+
+## [9.55.0](https://github.com/vm0-ai/vm0/compare/cli-v9.54.3...cli-v9.55.0) (2026-03-10)
+
+
+### Features
+
+* **eslint:** add no-fetch-spy rule to enforce msw usage in tests ([#4164](https://github.com/vm0-ai/vm0/issues/4164)) ([aceffec](https://github.com/vm0-ai/vm0/commit/aceffecf774679acb7d04ebefbe3678ddcbb4cd1))
+
+
+### Refactoring
+
+* **cli:** migrate agent commands to withErrorHandler ([#4165](https://github.com/vm0-ai/vm0/issues/4165)) ([c183e03](https://github.com/vm0-ai/vm0/commit/c183e03c0f3df8784960d5929db767c5d2527657))
+* **cli:** migrate connector commands to centralized error handler ([#4169](https://github.com/vm0-ai/vm0/issues/4169)) ([a36b890](https://github.com/vm0-ai/vm0/commit/a36b8903f23934cafbc0f912ac8f5c70ff2b10a8))
+* **cli:** migrate cook commands to use error handler ([#4172](https://github.com/vm0-ai/vm0/issues/4172)) ([6609899](https://github.com/vm0-ai/vm0/commit/660989934e7cd6094702a51e61e286c00a9008f6))
+* **cli:** migrate misc commands to withErrorHandler ([#4173](https://github.com/vm0-ai/vm0/issues/4173)) ([f50cc26](https://github.com/vm0-ai/vm0/commit/f50cc26a9fbc953290b35c0a55bfd5b06541bf02))
+* **cli:** migrate model-provider commands to use error handler ([#4175](https://github.com/vm0-ai/vm0/issues/4175)) ([2cd0da7](https://github.com/vm0-ai/vm0/commit/2cd0da7788dba6cbd7da535c4869e76952319a63))
+* **cli:** migrate run kill command to use error handler ([#4171](https://github.com/vm0-ai/vm0/issues/4171)) ([51de8de](https://github.com/vm0-ai/vm0/commit/51de8de0eafe8c3be235ec56f13b659acb800934))
+* **cli:** migrate scope commands to use error handler ([#4167](https://github.com/vm0-ai/vm0/issues/4167)) ([c44c737](https://github.com/vm0-ai/vm0/commit/c44c737fae7431fd62f07f68a9c9fbea4e0c04a1))
+* **cli:** migrate storage status commands to withErrorHandler ([#4170](https://github.com/vm0-ai/vm0/issues/4170)) ([7d7b07f](https://github.com/vm0-ai/vm0/commit/7d7b07f5692b65b27711f532b6b0519823fc6026))
+* **cli:** migrate variable and secret commands to withErrorHandler ([#4174](https://github.com/vm0-ai/vm0/issues/4174)) ([e7db8cb](https://github.com/vm0-ai/vm0/commit/e7db8cb93735e6b05da0d74d70245c5ebef06c64))
+* **cli:** use os.homedir mock for scope test config isolation ([#4160](https://github.com/vm0-ai/vm0/issues/4160)) ([97a23e5](https://github.com/vm0-ai/vm0/commit/97a23e525eda5717de2e2a1620d7adf9da690ea4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.54.0
+
 ## [9.54.3](https://github.com/vm0-ai/vm0/compare/cli-v9.54.2...cli-v9.54.3) (2026-03-10)
 
 

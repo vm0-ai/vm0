@@ -110,7 +110,9 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error.message).toContain("scope query parameter is required");
+    expect(data.error.message).toContain(
+      "scope or org query parameter is required",
+    );
   });
 
   it("should remove member and return success message", async () => {

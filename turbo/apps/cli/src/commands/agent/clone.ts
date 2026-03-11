@@ -10,6 +10,7 @@ import { stringify as yamlStringify } from "yaml";
 import { getComposeByName, getStorageDownload } from "../../lib/api";
 import { getInstructionsStorageName } from "@vm0/core";
 import type { AgentComposeContent } from "../../lib/domain/compose-types";
+import { withErrorHandler } from "../../lib/command";
 
 /**
  * Remove deprecated fields from compose content
@@ -103,15 +104,14 @@ export const cloneCommand = new Command()
   .description("Clone agent compose to local directory (latest version)")
   .argument("<name>", "Agent compose name to clone")
   .argument("[destination]", "Destination directory (default: agent name)")
-  .action(async (name: string, destination: string | undefined) => {
-    try {
+  .action(
+    withErrorHandler(async (name: string, destination: string | undefined) => {
       const targetDir = destination || name;
 
       // Check if destination already exists and is non-empty
       const dirStatus = checkDirectoryStatus(targetDir);
       if (dirStatus.exists && !dirStatus.empty) {
-        console.error(chalk.red(`✗ Directory "${targetDir}" is not empty`));
-        process.exit(1);
+        throw new Error(`Directory "${targetDir}" is not empty`);
       }
 
       console.log(`Cloning agent compose: ${name}`);
@@ -120,13 +120,11 @@ export const cloneCommand = new Command()
       const compose = await getComposeByName(name);
 
       if (!compose) {
-        console.error(chalk.red(`✗ Agent compose not found: ${name}`));
-        process.exit(1);
+        throw new Error(`Agent compose not found: ${name}`);
       }
 
       if (!compose.content || !compose.headVersionId) {
-        console.error(chalk.red(`✗ Agent compose has no content: ${name}`));
-        process.exit(1);
+        throw new Error(`Agent compose has no content: ${name}`);
       }
 
       const content = compose.content as AgentComposeContent;
@@ -174,15 +172,5 @@ export const cloneCommand = new Command()
       console.log(chalk.green(`✓ Successfully cloned agent: ${name}`));
       console.log(chalk.dim(`  Location: ${targetDir}/`));
       console.log(chalk.dim(`  Version: ${compose.headVersionId.slice(0, 8)}`));
-    } catch (error) {
-      console.error(chalk.red("✗ Clone failed"));
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.dim("  Run: vm0 auth login"));
-        } else {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

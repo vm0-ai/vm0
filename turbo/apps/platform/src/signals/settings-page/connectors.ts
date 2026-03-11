@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   CONNECTOR_TYPES,
-  FeatureSwitchKey,
+  getConnectorEnvironmentMapping,
   hasRequiredScopes,
   type ConnectorType,
   type ConnectorResponse,
@@ -44,37 +44,6 @@ export interface ConnectorTypeWithStatus {
   scopeMismatch: boolean;
 }
 
-/**
- * Maps connector types to their OAuth feature switch keys.
- * Controls whether the OAuth auth method is available for each connector.
- * Connectors not listed here have OAuth always available.
- */
-const CONNECTOR_FEATURE_FLAGS = Object.freeze<
-  Partial<Record<ConnectorType, FeatureSwitchKey>>
->({
-  canva: FeatureSwitchKey.CanvaConnector,
-  computer: FeatureSwitchKey.ComputerConnector,
-  deel: FeatureSwitchKey.DeelConnector,
-  docusign: FeatureSwitchKey.DocuSignConnector,
-  dropbox: FeatureSwitchKey.DropboxConnector,
-  figma: FeatureSwitchKey.FigmaConnector,
-  gmail: FeatureSwitchKey.GmailConnector,
-  "google-sheets": FeatureSwitchKey.GoogleSheetsConnector,
-  "google-docs": FeatureSwitchKey.GoogleDocsConnector,
-  "google-drive": FeatureSwitchKey.GoogleDriveConnector,
-  "google-calendar": FeatureSwitchKey.GoogleCalendarConnector,
-  mercury: FeatureSwitchKey.MercuryConnector,
-  neon: FeatureSwitchKey.NeonConnector,
-  strava: FeatureSwitchKey.StravaConnector,
-  "garmin-connect": FeatureSwitchKey.GarminConnectConnector,
-  reddit: FeatureSwitchKey.RedditConnector,
-  "intervals-icu": FeatureSwitchKey.IntervalsIcuConnector,
-  supabase: FeatureSwitchKey.SupabaseConnector,
-  webflow: FeatureSwitchKey.WebflowConnector,
-  "meta-ads": FeatureSwitchKey.MetaAdsConnector,
-  stripe: FeatureSwitchKey.StripeConnector,
-});
-
 export const allConnectorTypes$ = computed(async (get) => {
   const { connectors } = await get(connectors$);
   const connectorMap = new Map(connectors.map((c) => [c.type, c]));
@@ -82,7 +51,7 @@ export const allConnectorTypes$ = computed(async (get) => {
 
   return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
-      const flag = CONNECTOR_FEATURE_FLAGS[type];
+      const flag = CONNECTOR_TYPES[type].featureFlag;
       const oauthEnabled = !flag || !!features?.[flag];
       const hasApiToken = "api-token" in CONNECTOR_TYPES[type].authMethods;
       // Connector visible if OAuth is enabled OR it has an api-token method
@@ -91,7 +60,7 @@ export const allConnectorTypes$ = computed(async (get) => {
     .map((type) => {
       const config = CONNECTOR_TYPES[type];
       const connector = connectorMap.get(type) ?? null;
-      const flag = CONNECTOR_FEATURE_FLAGS[type];
+      const flag = CONNECTOR_TYPES[type].featureFlag;
       const oauthEnabled = !flag || !!features?.[flag];
       const hasApiToken = "api-token" in config.authMethods;
       const availableAuthMethods: string[] = [];
@@ -142,11 +111,8 @@ const connectorTypesUsedByAgents$ = computed(
       if (type === "computer") {
         continue;
       }
-      const config = CONNECTOR_TYPES[type];
-      const mapping = config.environmentMapping as
-        | Record<string, string>
-        | undefined;
-      if (!mapping) {
+      const mapping = getConnectorEnvironmentMapping(type);
+      if (Object.keys(mapping).length === 0) {
         continue;
       }
       for (const [envVar, ref] of Object.entries(mapping)) {
@@ -302,17 +268,25 @@ export const submitApiToken$ = command(
     signal: AbortSignal,
   ) => {
     const fetchFn = get(fetch$);
-    const resp = await fetchFn(`/api/connectors/${type}/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ secrets: inputSecrets }),
-    });
-    signal.throwIfAborted();
-    if (!resp.ok) {
-      const data = (await resp.json()) as { error?: { message?: string } };
-      throw new Error(
-        data?.error?.message ?? `Failed to submit token (${resp.status})`,
-      );
+    const apiTokenConfig = CONNECTOR_TYPES[type].authMethods["api-token"];
+    for (const [name, value] of Object.entries(inputSecrets)) {
+      if (!value) {
+        continue;
+      }
+      const isVariable = apiTokenConfig?.secrets[name]?.type === "variable";
+      const endpoint = isVariable ? "/api/variables" : "/api/secrets";
+      const resp = await fetchFn(endpoint, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, value }),
+      });
+      signal.throwIfAborted();
+      if (!resp.ok) {
+        const data = (await resp.json()) as { error?: { message?: string } };
+        throw new Error(
+          data?.error?.message ?? `Failed to save ${name} (${resp.status})`,
+        );
+      }
     }
     signal.throwIfAborted();
     set(reloadConnectors$);
@@ -375,7 +349,7 @@ export const connectConnector$ = command(
       if (isConnected) {
         set(internalSelectedConnectorType$, null);
       }
-      break;
+      return isConnected;
     }
   },
 );

@@ -204,10 +204,18 @@ export async function requireScopeFromRequest(
 ) {
   const url = new URL(request.url);
   const scopeSlug = url.searchParams.get("scope");
-  if (!scopeSlug) {
-    throw badRequest("scope query parameter is required");
+  const orgParam = url.searchParams.get("org");
+
+  let scope: Scope | null = null;
+
+  if (scopeSlug) {
+    scope = await getScopeBySlug(scopeSlug);
+  } else if (orgParam) {
+    scope = await getScopeByClerkOrgId(orgParam);
+  } else {
+    throw badRequest("scope or org query parameter is required");
   }
-  const scope = await getScopeBySlug(scopeSlug);
+
   if (!scope) {
     throw notFound("Scope not found");
   }

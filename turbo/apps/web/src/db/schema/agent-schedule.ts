@@ -13,7 +13,6 @@ import {
 import { sql } from "drizzle-orm";
 import { agentComposes } from "./agent-compose";
 import { agentRuns } from "./agent-run";
-import { scopes } from "./scope";
 
 /**
  * Agent Schedules table
@@ -37,9 +36,7 @@ export const agentSchedules = pgTable(
     composeId: uuid("compose_id")
       .notNull()
       .references(() => agentComposes.id, { onDelete: "cascade" }),
-    scopeId: uuid("scope_id")
-      .notNull()
-      .references(() => scopes.id, { onDelete: "cascade" }),
+    scopeId: uuid("scope_id").notNull(),
     userId: text("user_id").notNull(),
     clerkOrgId: text("clerk_org_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
@@ -81,17 +78,8 @@ export const agentSchedules = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    // Schedule name unique within agent per scope+user
-    uniqueIndex("idx_agent_schedules_compose_name_scope_user").on(
-      table.composeId,
-      table.name,
-      table.scopeId,
-      table.userId,
-    ),
     // Index for finding schedules by compose
     index("idx_agent_schedules_compose").on(table.composeId),
-    // Index for listing user's schedules within a scope
-    index("idx_agent_schedules_scope_user").on(table.scopeId, table.userId),
     index("idx_agent_schedules_clerk_org").on(table.clerkOrgId),
     uniqueIndex("idx_agent_schedules_compose_name_clerk_org_user").on(
       table.composeId,

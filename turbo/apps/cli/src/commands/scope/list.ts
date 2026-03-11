@@ -2,12 +2,13 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { listScopes } from "../../lib/api";
 import { loadConfig } from "../../lib/api/config";
+import { withErrorHandler } from "../../lib/command";
 
 export const listCommand = new Command()
   .name("list")
   .description("List all accessible scopes")
-  .action(async () => {
-    try {
+  .action(
+    withErrorHandler(async () => {
       const result = await listScopes();
       const config = await loadConfig();
       const activeScope = config.activeScope;
@@ -20,12 +21,5 @@ export const listCommand = new Command()
         const currentLabel = isCurrent ? chalk.dim(" ← current") : "";
         console.log(`${marker}${scope.slug}${roleLabel}${currentLabel}`);
       }
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error(chalk.red(`✗ ${error.message}`));
-      } else {
-        console.error(chalk.red("✗ An unexpected error occurred"));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

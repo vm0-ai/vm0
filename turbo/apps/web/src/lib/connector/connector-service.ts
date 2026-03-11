@@ -5,10 +5,11 @@ import {
   type ConnectorResponse,
   connectorTypeSchema,
   deriveApiTokenConnectedTypes,
-  getApiTokenRequiredSecretNames,
+  getApiTokenFieldsByType,
 } from "@vm0/core";
 import { connectors } from "../../db/schema/connector";
 import { secrets } from "../../db/schema/secret";
+import { variables } from "../../db/schema/variable";
 import { notFound, badRequest } from "../errors";
 import { logger } from "../logger";
 import { upsertSecretByScope } from "../secret/secret-service";
@@ -41,13 +42,13 @@ function getSecretNameForConnector(type: ConnectorType): string {
  * based on user secrets that match api-token required secret names.
  */
 export async function listConnectors(
-  scopeId: string,
+  clerkOrgId: string,
   userId: string,
 ): Promise<ConnectorResponse[]> {
   const db = globalThis.services.db;
 
-  // Query OAuth connectors from DB and user secret names in parallel
-  const [dbResult, userSecretRows] = await Promise.all([
+  // Query OAuth connectors from DB, user secret names, and variable names in parallel
+  const [dbResult, userSecretRows, userVariableRows] = await Promise.all([
     db
       .select({
         id: connectors.id,
@@ -62,7 +63,10 @@ export async function listConnectors(
       })
       .from(connectors)
       .where(
-        and(eq(connectors.scopeId, scopeId), eq(connectors.userId, userId)),
+        and(
+          eq(connectors.clerkOrgId, clerkOrgId),
+          eq(connectors.userId, userId),
+        ),
       )
       .orderBy(connectors.type),
     db
@@ -70,10 +74,16 @@ export async function listConnectors(
       .from(secrets)
       .where(
         and(
-          eq(secrets.scopeId, scopeId),
+          eq(secrets.clerkOrgId, clerkOrgId),
           eq(secrets.userId, userId),
           eq(secrets.type, "user"),
         ),
+      ),
+    db
+      .select({ name: variables.name })
+      .from(variables)
+      .where(
+        and(eq(variables.clerkOrgId, clerkOrgId), eq(variables.userId, userId)),
       ),
   ]);
 
@@ -89,9 +99,13 @@ export async function listConnectors(
     updatedAt: row.updatedAt.toISOString(),
   }));
 
-  // Derive api-token connected types from user secrets
+  // Derive api-token connected types from user secrets and variables
   const userSecretNames = new Set(userSecretRows.map((r) => r.name));
-  const derivedTypes = deriveApiTokenConnectedTypes(userSecretNames);
+  const userVariableNames = new Set(userVariableRows.map((r) => r.name));
+  const derivedTypes = deriveApiTokenConnectedTypes(
+    userSecretNames,
+    userVariableNames,
+  );
 
   // DB record takes precedence over derived
   const dbTypeSet = new Set(dbConnectors.map((c) => c.type));
@@ -119,7 +133,7 @@ export async function listConnectors(
  * connectors whose required user secrets are all present.
  */
 export async function getConnector(
-  scopeId: string,
+  clerkOrgId: string,
   userId: string,
   type: ConnectorType,
 ): Promise<ConnectorResponse | null> {
@@ -138,7 +152,7 @@ export async function getConnector(
     .from(connectors)
     .where(
       and(
-        eq(connectors.scopeId, scopeId),
+        eq(connectors.clerkOrgId, clerkOrgId),
         eq(connectors.userId, userId),
         eq(connectors.type, type),
       ),
@@ -160,23 +174,44 @@ export async function getConnector(
     };
   }
 
-  // Check if type supports api-token and all required user secrets exist
-  const requiredNames = getApiTokenRequiredSecretNames(type);
-  if (!requiredNames || requiredNames.length === 0) return null;
+  // Check if type supports api-token and all required fields exist
+  const fields = getApiTokenFieldsByType(type);
+  if (!fields || (fields.secrets.length === 0 && fields.variables.length === 0))
+    return null;
 
-  const userSecretRows = await globalThis.services.db
-    .select({ name: secrets.name })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.scopeId, scopeId),
-        eq(secrets.userId, userId),
-        eq(secrets.type, "user"),
-      ),
-    );
+  const [userSecretRows, userVariableRows] = await Promise.all([
+    fields.secrets.length > 0
+      ? globalThis.services.db
+          .select({ name: secrets.name })
+          .from(secrets)
+          .where(
+            and(
+              eq(secrets.clerkOrgId, clerkOrgId),
+              eq(secrets.userId, userId),
+              eq(secrets.type, "user"),
+            ),
+          )
+      : Promise.resolve([]),
+    fields.variables.length > 0
+      ? globalThis.services.db
+          .select({ name: variables.name })
+          .from(variables)
+          .where(
+            and(
+              eq(variables.clerkOrgId, clerkOrgId),
+              eq(variables.userId, userId),
+            ),
+          )
+      : Promise.resolve([]),
+  ]);
 
   const userSecretNames = new Set(userSecretRows.map((r) => r.name));
-  if (!requiredNames.every((name) => userSecretNames.has(name))) return null;
+  const userVariableNames = new Set(userVariableRows.map((r) => r.name));
+  const secretsOk = fields.secrets.every((name) => userSecretNames.has(name));
+  const variablesOk = fields.variables.every((name) =>
+    userVariableNames.has(name),
+  );
+  if (!secretsOk || !variablesOk) return null;
 
   const now = new Date().toISOString();
   return {
@@ -203,13 +238,13 @@ interface ExternalUserInfo {
  * Also stores the associated secret with type="connector"
  */
 export async function upsertOAuthConnector(
+  clerkOrgId: string,
   scopeId: string,
   userId: string,
   type: ConnectorType,
   accessToken: string,
   userInfo: ExternalUserInfo,
   oauthScopes: string[],
-  clerkOrgId: string,
   options?: {
     refreshToken?: string | null;
     refreshSecretName?: string;
@@ -229,7 +264,7 @@ export async function upsertOAuthConnector(
     .from(connectors)
     .where(
       and(
-        eq(connectors.scopeId, scopeId),
+        eq(connectors.clerkOrgId, clerkOrgId),
         eq(connectors.userId, userId),
         eq(connectors.type, type),
       ),
@@ -240,25 +275,25 @@ export async function upsertOAuthConnector(
 
   // Upsert access token secret
   await upsertSecretByScope(
+    clerkOrgId,
     scopeId,
     userId,
     secretName,
     accessToken,
     "connector",
     `OAuth token for ${type} connector`,
-    clerkOrgId,
   );
 
   // Upsert refresh token secret if provided
   if (options?.refreshToken && options.refreshSecretName) {
     await upsertSecretByScope(
+      clerkOrgId,
       scopeId,
       userId,
       options.refreshSecretName,
       options.refreshToken,
       "connector",
       `OAuth refresh token for ${type} connector`,
-      clerkOrgId,
     );
   }
 
@@ -346,7 +381,7 @@ export async function upsertOAuthConnector(
  * For api-token connectors (no DB record): deletes user secrets matching required api-token secret names.
  */
 export async function deleteConnector(
-  scopeId: string,
+  clerkOrgId: string,
   userId: string,
   type: ConnectorType,
 ): Promise<void> {
@@ -358,7 +393,7 @@ export async function deleteConnector(
     .from(connectors)
     .where(
       and(
-        eq(connectors.scopeId, scopeId),
+        eq(connectors.clerkOrgId, clerkOrgId),
         eq(connectors.userId, userId),
         eq(connectors.type, type),
       ),
@@ -390,7 +425,7 @@ export async function deleteConnector(
         .delete(secrets)
         .where(
           and(
-            eq(secrets.scopeId, scopeId),
+            eq(secrets.clerkOrgId, clerkOrgId),
             eq(secrets.userId, userId),
             eq(secrets.name, name),
             eq(secrets.type, "connector"),
@@ -398,20 +433,20 @@ export async function deleteConnector(
         );
     }
 
-    log.debug("connector deleted", { scopeId, type });
+    log.debug("connector deleted", { clerkOrgId, type });
     return;
   }
 
-  // No DB record — check if type supports api-token and user secrets exist
-  const requiredNames = getApiTokenRequiredSecretNames(type);
-  if (requiredNames && requiredNames.length > 0) {
+  // No DB record — check if type supports api-token and delete secrets + variables
+  const fields = getApiTokenFieldsByType(type);
+  if (fields && (fields.secrets.length > 0 || fields.variables.length > 0)) {
     let deletedAny = false;
-    for (const name of requiredNames) {
+    for (const name of fields.secrets) {
       const result = await db
         .delete(secrets)
         .where(
           and(
-            eq(secrets.scopeId, scopeId),
+            eq(secrets.clerkOrgId, clerkOrgId),
             eq(secrets.userId, userId),
             eq(secrets.name, name),
             eq(secrets.type, "user"),
@@ -420,9 +455,22 @@ export async function deleteConnector(
         .returning({ id: secrets.id });
       if (result.length > 0) deletedAny = true;
     }
+    for (const name of fields.variables) {
+      const result = await db
+        .delete(variables)
+        .where(
+          and(
+            eq(variables.clerkOrgId, clerkOrgId),
+            eq(variables.userId, userId),
+            eq(variables.name, name),
+          ),
+        )
+        .returning({ id: variables.id });
+      if (result.length > 0) deletedAny = true;
+    }
     if (deletedAny) {
-      log.debug("api-token connector deleted via user secrets", {
-        scopeId,
+      log.debug("api-token connector deleted via user secrets/variables", {
+        clerkOrgId,
         type,
       });
       return;
@@ -436,19 +484,19 @@ export async function deleteConnector(
  * Create or update a connector secret (e.g., refresh token)
  */
 export async function upsertConnectorSecret(
+  clerkOrgId: string,
   scopeId: string,
   userId: string,
   secretName: string,
   secretValue: string,
-  clerkOrgId: string,
 ): Promise<void> {
   await upsertSecretByScope(
+    clerkOrgId,
     scopeId,
     userId,
     secretName,
     secretValue,
     "connector",
     `Connector secret: ${secretName}`,
-    clerkOrgId,
   );
 }

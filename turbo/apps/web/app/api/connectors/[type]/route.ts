@@ -23,8 +23,14 @@ const router = tsr.router(connectorsByTypeContract, {
     const { userId, scopeId: tokenScopeId } = authCtx;
 
     const scopeSlug = new URL(request.url).searchParams.get("scope");
-    const { scope } = await resolveScope(userId, scopeSlug, null, tokenScopeId);
-    const connector = await getConnector(scope.id, userId, params.type);
+    const orgParam = new URL(request.url).searchParams.get("org");
+    const { scope } = await resolveScope(
+      userId,
+      scopeSlug,
+      orgParam,
+      tokenScopeId,
+    );
+    const connector = await getConnector(scope.clerkOrgId, userId, params.type);
 
     if (!connector) {
       return createErrorResponse("NOT_FOUND", "Connector not found");
@@ -50,13 +56,14 @@ const router = tsr.router(connectorsByTypeContract, {
 
     try {
       const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const orgParam = new URL(request.url).searchParams.get("org");
       const { scope } = await resolveScope(
         userId,
         scopeSlug,
-        null,
+        orgParam,
         tokenScopeId,
       );
-      await deleteConnector(scope.id, userId, params.type);
+      await deleteConnector(scope.clerkOrgId, userId, params.type);
 
       return {
         status: 204 as const,

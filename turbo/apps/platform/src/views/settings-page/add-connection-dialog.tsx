@@ -1,4 +1,6 @@
 import { useLastResolved, useGet, useSet } from "ccstate-react";
+import { useCCState } from "ccstate-react/experimental";
+import { IconSearch, IconPlus } from "@tabler/icons-react";
 import {
   Dialog,
   DialogContent,
@@ -6,7 +8,6 @@ import {
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
-import { IconPlus } from "@tabler/icons-react";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import {
   addConnectionDialogTab$,
@@ -121,7 +122,7 @@ function ApiTokenForm({
       )}
       {apiTokenConfig.helpText && (
         <div
-          className="text-sm text-muted-foreground leading-relaxed [&_a]:text-primary [&_a]:underline"
+          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
           dangerouslySetInnerHTML={{
             __html: renderMarkdown(apiTokenConfig.helpText),
           }}
@@ -182,7 +183,15 @@ function ConnectModalContent({
       {hasOAuth && (
         <button
           onClick={() =>
-            detach(connect(item.type, pageSignal), Reason.DomCallback)
+            detach(
+              (async () => {
+                const connected = await connect(item.type, pageSignal);
+                if (connected) {
+                  onSuccess();
+                }
+              })(),
+              Reason.DomCallback,
+            )
           }
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
         >
@@ -212,7 +221,13 @@ function ConnectModalContent({
 // Connect modal (opened when clicking Connect on a connector with api-token)
 // ---------------------------------------------------------------------------
 
-export function ConnectModal({ onClose }: { onClose: () => void }) {
+export function ConnectModal({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void;
+  onSuccess?: () => void;
+}) {
   const selectedType = useGet(selectedConnectorType$);
   const connectorTypes = useLastResolved(allConnectorTypes$);
 
@@ -240,7 +255,13 @@ export function ConnectModal({ onClose }: { onClose: () => void }) {
           </p>
         )}
 
-        <ConnectModalContent item={item} onSuccess={onClose} />
+        <ConnectModalContent
+          item={item}
+          onSuccess={() => {
+            onSuccess?.();
+            onClose();
+          }}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -250,7 +271,23 @@ export function ConnectModal({ onClose }: { onClose: () => void }) {
 // Connector card (shows Connect button when not connected)
 // ---------------------------------------------------------------------------
 
-function ConnectorCard({ item }: { item: ConnectorTypeWithStatus }) {
+const DEFAULT_BUTTON_CLASS =
+  "rounded-md border border-border bg-background px-2 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors";
+
+const ZERO_BUTTON_CLASS =
+  "zero-btn-morandi h-8 rounded-lg border px-3 text-sm font-medium transition-colors";
+
+function ConnectorCard({
+  item,
+  buttonClassName,
+  onConnectSuccess,
+  onAdd,
+}: {
+  item: ConnectorTypeWithStatus;
+  buttonClassName?: string;
+  onConnectSuccess?: (type: ConnectorType) => void;
+  onAdd?: (type: ConnectorType) => void;
+}) {
   const setSelected = useSet(setSelectedConnectorType$);
   const connect = useSet(connectConnector$);
   const pageSignal = useGet(pageSignal$);
@@ -260,15 +297,53 @@ function ConnectorCard({ item }: { item: ConnectorTypeWithStatus }) {
   const hasApiToken = item.availableAuthMethods.includes("api-token");
 
   const handleConnect = () => {
-    if (hasApiToken) {
-      setSelected(item.type);
+    detach(
+      (async () => {
+        const connected = await connect(item.type, pageSignal);
+        if (connected) {
+          onConnectSuccess?.(item.type);
+        }
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  const handleApiKey = () => {
+    setSelected(item.type);
+  };
+
+  const btnClass = buttonClassName ?? DEFAULT_BUTTON_CLASS;
+
+  // Card click: already connected → add; needs API key → open modal; OAuth only → start OAuth
+  const handleCardClick = () => {
+    if (item.connected) {
+      onAdd?.(item.type);
+    } else if (hasApiToken) {
+      handleApiKey();
     } else {
-      detach(connect(item.type, pageSignal), Reason.DomCallback);
+      handleConnect();
     }
   };
 
+  const clickable = !!onAdd || !item.connected;
+
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
+    <div
+      className={`flex flex-col gap-3 rounded-xl border border-border bg-card p-4${clickable ? " cursor-pointer transition-colors hover:bg-muted/50" : ""}`}
+      onClick={clickable ? handleCardClick : undefined}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleCardClick();
+              }
+            }
+          : undefined
+      }
+    >
       <div className="flex items-center gap-3">
         <div className="shrink-0">
           <ConnectorIcon type={item.type} size={28} />
@@ -282,17 +357,26 @@ function ConnectorCard({ item }: { item: ConnectorTypeWithStatus }) {
       <div className="text-xs text-muted-foreground line-clamp-2">
         {item.helpText}
       </div>
-      <div className="mt-auto">
+      <div className="mt-auto" onClick={(e) => e.stopPropagation()}>
         {item.connected ? (
           <span className="text-xs text-muted-foreground">
             {connectedStatusText(item)}
           </span>
         ) : isPolling ? (
           <span className="text-xs text-muted-foreground">Connecting...</span>
+        ) : hasApiToken && onAdd ? (
+          <button
+            type="button"
+            onClick={handleApiKey}
+            className={`w-full ${btnClass}`}
+          >
+            API key
+          </button>
         ) : (
           <button
-            onClick={handleConnect}
-            className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+            type="button"
+            onClick={hasApiToken ? handleApiKey : handleConnect}
+            className={`w-full ${btnClass}`}
           >
             Connect
           </button>
@@ -303,7 +387,7 @@ function ConnectorCard({ item }: { item: ConnectorTypeWithStatus }) {
 }
 
 // ---------------------------------------------------------------------------
-// Custom API tab content
+// Custom API tab content (settings page only)
 // ---------------------------------------------------------------------------
 
 function CustomAPITabContent({
@@ -359,10 +443,93 @@ function CustomAPITabContent({
 }
 
 // ---------------------------------------------------------------------------
+// Connector grid (shared between default and zero variants)
+// ---------------------------------------------------------------------------
+
+function ConnectorGrid({
+  types,
+  connectorTypes,
+  buttonClassName,
+  onConnectSuccess,
+  onAdd,
+}: {
+  types: ConnectorType[];
+  connectorTypes: ConnectorTypeWithStatus[] | undefined;
+  buttonClassName?: string;
+  onConnectSuccess?: (type: ConnectorType) => void;
+  onAdd?: (type: ConnectorType) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {connectorTypes
+        ? connectorTypes.map((item) => (
+            <ConnectorCard
+              key={item.type}
+              item={item}
+              buttonClassName={buttonClassName}
+              onConnectSuccess={onConnectSuccess}
+              onAdd={onAdd}
+            />
+          ))
+        : types.slice(0, 6).map((type) => (
+            <div
+              key={type}
+              className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 animate-pulse"
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-7 w-7 rounded bg-muted" />
+                <div className="h-4 w-20 rounded bg-muted" />
+              </div>
+              <div className="h-3 w-full rounded bg-muted" />
+              <div className="h-3 w-3/4 rounded bg-muted" />
+              <div className="h-7 w-full rounded bg-muted" />
+            </div>
+          ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Add Connection Dialog
 // ---------------------------------------------------------------------------
 
 export function AddConnectionDialog({
+  open,
+  onOpenChange,
+  variant,
+  excludeTypes,
+  onConnectSuccess,
+  onAdd,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  variant?: "zero";
+  excludeTypes?: ReadonlySet<string>;
+  onConnectSuccess?: (type: ConnectorType) => void;
+  onAdd?: (type: ConnectorType) => void;
+}) {
+  const isZero = variant === "zero";
+
+  if (isZero) {
+    return (
+      <ZeroAddConnectionDialog
+        open={open}
+        onOpenChange={onOpenChange}
+        excludeTypes={excludeTypes}
+        onConnectSuccess={onConnectSuccess}
+        onAdd={onAdd}
+      />
+    );
+  }
+
+  return <DefaultAddConnectionDialog open={open} onOpenChange={onOpenChange} />;
+}
+
+// ---------------------------------------------------------------------------
+// Default (settings) variant: tabbed dialog with Connectors + Custom API
+// ---------------------------------------------------------------------------
+
+function DefaultAddConnectionDialog({
   open,
   onOpenChange,
 }: {
@@ -408,26 +575,10 @@ export function AddConnectionDialog({
                   <p className="text-sm text-muted-foreground">
                     Connect third-party services to your agents.
                   </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    {connectorTypes
-                      ? connectorTypes.map((item) => (
-                          <ConnectorCard key={item.type} item={item} />
-                        ))
-                      : types.slice(0, 6).map((type) => (
-                          <div
-                            key={type}
-                            className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 animate-pulse"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="h-7 w-7 rounded bg-muted" />
-                              <div className="h-4 w-20 rounded bg-muted" />
-                            </div>
-                            <div className="h-3 w-full rounded bg-muted" />
-                            <div className="h-3 w-3/4 rounded bg-muted" />
-                            <div className="h-7 w-full rounded bg-muted" />
-                          </div>
-                        ))}
-                  </div>
+                  <ConnectorGrid
+                    types={types}
+                    connectorTypes={connectorTypes ?? undefined}
+                  />
                 </div>
               )}
               {tab === "custom-api" && (
@@ -439,6 +590,97 @@ export function AddConnectionDialog({
                 </div>
               )}
             </Tabs>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Zero variant: flat search-based dialog
+// ---------------------------------------------------------------------------
+
+function ZeroAddConnectionDialog({
+  open,
+  onOpenChange,
+  excludeTypes,
+  onConnectSuccess,
+  onAdd,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  excludeTypes?: ReadonlySet<string>;
+  onConnectSuccess?: (type: ConnectorType) => void;
+  onAdd?: (type: ConnectorType) => void;
+}) {
+  const connectorTypes = useLastResolved(allConnectorTypes$);
+  const search$ = useCCState("");
+  const search = useGet(search$);
+  const setSearch = useSet(search$);
+  const types = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+
+  const filteredTypes = connectorTypes
+    ?.filter((item) => !excludeTypes || !excludeTypes.has(item.type))
+    .filter((item) => {
+      if (!search.trim()) {
+        return true;
+      }
+      const q = search.trim().toLowerCase();
+      return (
+        item.type.toLowerCase().includes(q) ||
+        item.label.toLowerCase().includes(q) ||
+        item.helpText?.toLowerCase().includes(q)
+      );
+    });
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) {
+          setSearch("");
+        }
+        onOpenChange(v);
+      }}
+    >
+      <DialogContent className="max-w-2xl h-[85vh] flex flex-col overflow-hidden pr-0 pb-0 zero-app">
+        <DialogHeader>
+          <DialogTitle>Add skill</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground pr-6">
+          Skills manage your connections and help you get more out of these
+          services.
+        </p>
+        <div className="relative pr-6">
+          <IconSearch
+            size={16}
+            stroke={1.5}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search skills..."
+            className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="pt-4 pb-6 pr-6">
+            {filteredTypes && filteredTypes.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No matching skills found.
+              </p>
+            ) : (
+              <ConnectorGrid
+                types={types}
+                connectorTypes={filteredTypes ?? undefined}
+                buttonClassName={ZERO_BUTTON_CLASS}
+                onConnectSuccess={onConnectSuccess}
+                onAdd={onAdd}
+              />
+            )}
           </div>
         </div>
       </DialogContent>

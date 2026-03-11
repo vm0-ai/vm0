@@ -100,6 +100,7 @@ export async function POST(request: Request) {
   }
 
   await upsertOAuthConnector(
+    scope.clerkOrgId,
     scope.id,
     userId,
     connectorType,
@@ -110,7 +111,6 @@ export async function POST(request: Request) {
       email: `e2e-${connectorType}@test.vm0.ai`,
     },
     [],
-    scope.clerkOrgId,
   );
 
   return NextResponse.json({

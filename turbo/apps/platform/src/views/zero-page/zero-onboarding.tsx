@@ -1,5 +1,5 @@
 import { useCCState } from "ccstate-react/experimental";
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import slackIcon from "../settings-page/icons/slack.svg";
 import {
   Dialog,
@@ -9,14 +9,13 @@ import {
   Button,
   Input,
 } from "@vm0/ui";
-import { ConnectorIcon } from "../settings-page/connector-icons";
 import { ProviderIcon } from "../settings-page/provider-icons";
 import {
-  CONNECTOR_TYPES,
   MODEL_PROVIDER_TYPES,
   type ConnectorType,
   type ModelProviderType,
 } from "@vm0/core";
+import { skills$ } from "../../data/skills.ts";
 import { ProviderFormFields } from "../shared/provider-form-fields";
 import { getUILabel } from "../settings-page/provider-ui-config";
 import {
@@ -37,6 +36,8 @@ import {
   saveZeroModelProvider$,
   completeZeroOnboarding$,
   zeroHasModelProvider$,
+  zeroSelectedSkills$,
+  toggleZeroSkill$,
 } from "../../signals/zero-page/zero-onboarding.ts";
 import { fetchSlackIntegration$ } from "../../signals/integrations-page/slack-integration.ts";
 import {
@@ -63,88 +64,138 @@ const MODEL_PROVIDER_LIST: readonly ModelProviderType[] = [
   "aws-bedrock",
 ];
 
-const CONNECTOR_LIST: readonly ConnectorType[] = [
-  "github",
-  "notion",
-  "gmail",
-  "google-sheets",
-  "google-docs",
-  "google-drive",
-  "google-calendar",
-  "slack",
-  "docusign",
-  "dropbox",
-  "linear",
-  "deel",
-  "figma",
-  "mercury",
-  "reddit",
-  "strava",
-  "x",
-  "neon",
-  "garmin-connect",
-  "vercel",
-  "sentry",
-  "intervals-icu",
-  "monday",
-  "xero",
-];
-
-function OnboardingConnectorCard({ type }: { type: ConnectorType }) {
-  const config = CONNECTOR_TYPES[type];
-  const connectorTypesLoadable = useLoadable(allConnectorTypes$);
-  const pollingType = useGet(pollingConnectorType$);
-  const connect = useSet(connectConnector$);
-  const setSelected = useSet(setSelectedConnectorType$);
-  const pageSignal = useGet(pageSignal$);
-
-  const isPolling = pollingType === type;
-
-  const item =
-    connectorTypesLoadable.state === "hasData"
-      ? connectorTypesLoadable.data.find((c) => c.type === type)
-      : undefined;
-
-  const isConnected = item?.connected ?? false;
-  const hasApiToken = item?.availableAuthMethods.includes("api-token") ?? false;
-
-  const handleClick = () => {
-    if (isConnected || isPolling) {
-      return;
-    }
-    if (hasApiToken) {
-      setSelected(type);
-    } else {
-      detach(connect(type, pageSignal), Reason.DomCallback);
-    }
-  };
-
+function OnboardingSkillCard({
+  label,
+  iconUrl,
+  isSelected,
+  isPolling,
+  onClick,
+}: {
+  label: string;
+  iconUrl: string | undefined;
+  isSelected: boolean;
+  isPolling: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
-      onClick={handleClick}
-      disabled={isConnected || isPolling}
+      onClick={onClick}
+      disabled={isPolling}
       className={`zero-card flex items-center gap-2 rounded-xl border px-3 py-2 min-w-0 transition-colors ${
-        isConnected
-          ? "border-green-500/30 bg-green-500/5"
+        isSelected
+          ? "border-green-500/30 bg-green-500/5 cursor-pointer"
           : isPolling
             ? "border-yellow-500/30 bg-yellow-500/5"
             : "border-border hover:bg-muted/50 cursor-pointer"
       }`}
     >
       <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
-        <ConnectorIcon type={type} size={18} />
+        {iconUrl ? (
+          <img src={iconUrl} alt="" className="h-5 w-5 object-contain" />
+        ) : (
+          <span className="text-xs font-medium text-muted-foreground">
+            {label.slice(0, 2)}
+          </span>
+        )}
       </span>
       <span className="text-sm font-medium text-foreground whitespace-nowrap">
-        {config.label}
+        {label}
       </span>
-      {isConnected && (
+      {isSelected && (
         <IconCircleCheck className="h-4 w-4 shrink-0 text-green-500" />
       )}
       {isPolling && (
         <IconLoader className="h-4 w-4 shrink-0 text-yellow-500 animate-spin" />
       )}
     </button>
+  );
+}
+
+function OnboardingSkillsStep({
+  name,
+  allSkills,
+  selectedSkills,
+}: {
+  name: string;
+  allSkills: readonly { value: string; label: string; icon?: string }[];
+  selectedSkills: string[];
+}) {
+  const connectorTypesLoadable = useLastLoadable(allConnectorTypes$);
+  const pollingType = useGet(pollingConnectorType$);
+  const connect = useSet(connectConnector$);
+  const setSelectedConnector = useSet(setSelectedConnectorType$);
+  const pageSignal = useGet(pageSignal$);
+  const toggleSkill = useSet(toggleZeroSkill$);
+
+  const allConnectors =
+    connectorTypesLoadable.state === "hasData"
+      ? connectorTypesLoadable.data
+      : [];
+  const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
+  const selectedSet = new Set(selectedSkills);
+
+  const handleClick = (value: string) => {
+    // Already selected → deselect (don't disconnect)
+    if (selectedSet.has(value)) {
+      toggleSkill(value);
+      return;
+    }
+
+    const connector = connectorMap.get(value as ConnectorType);
+    if (!connector) {
+      // Non-connector skill: select immediately
+      toggleSkill(value);
+      return;
+    }
+
+    // Connector skill: already connected → select immediately
+    if (connector.connected) {
+      toggleSkill(value);
+      return;
+    }
+
+    // Not connected → start connect flow, select on success
+    if (connector.availableAuthMethods.includes("api-token")) {
+      setSelectedConnector(value as ConnectorType);
+    } else {
+      // OAuth flow: select skill after connect completes
+      detach(
+        (async () => {
+          await connect(value as ConnectorType, pageSignal);
+          toggleSkill(value);
+        })(),
+        Reason.DomCallback,
+      );
+    }
+  };
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center text-center px-8 pt-8">
+      <DialogHeader className="space-y-2">
+        <DialogTitle className="text-xl font-semibold tracking-tight">
+          Add skills
+        </DialogTitle>
+      </DialogHeader>
+      <p className="text-sm text-muted-foreground leading-relaxed mt-1 mb-6">
+        Add skills so {name || "Zero"} can work with your tools. You can skip
+        and add more later.
+      </p>
+      <div className="w-full px-4 flex-1 min-h-0">
+        <div className="w-full flex flex-wrap justify-center gap-3 pb-4">
+          {allSkills.map((skill) => (
+            <OnboardingSkillCard
+              key={skill.value}
+              label={skill.label}
+              iconUrl={skill.icon}
+              isSelected={selectedSet.has(skill.value)}
+              isPolling={pollingType === skill.value}
+              onClick={() => handleClick(skill.value)}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -170,6 +221,9 @@ export function ZeroOnboarding({
   const setSecretField = useSet(setZeroSecretField$);
   const saving = useGet(zeroSaving$);
   const canSave = useGet(zeroCanSave$);
+  const allSkills = useGet(skills$);
+  const selectedSkills = useGet(zeroSelectedSkills$);
+  const toggleSkill = useSet(toggleZeroSkill$);
   const saveModelProvider = useSet(saveZeroModelProvider$);
   const completeOnboarding = useSet(completeZeroOnboarding$);
   const fetchSlack = useSet(fetchSlackIntegration$);
@@ -262,6 +316,7 @@ export function ZeroOnboarding({
           className={`${dialogBaseClass} zero-onboarding-dialog zero-onboarding-step1`}
           onPointerDownOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
+          aria-describedby={undefined}
         >
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-8">
             <button
@@ -313,6 +368,7 @@ export function ZeroOnboarding({
           className={`${dialogBaseClass} zero-onboarding-dialog`}
           onPointerDownOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
+          aria-describedby={undefined}
         >
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col justify-center px-8 pt-8 pb-8">
             {providerPicked ? (
@@ -393,31 +449,19 @@ export function ZeroOnboarding({
         </DialogContent>
       </Dialog>
 
-      {/* Step 3: Set connectors */}
+      {/* Step 3: Add skills */}
       <Dialog open={step === "3"}>
         <DialogContent
           className={`${dialogBaseClass} zero-onboarding-dialog`}
           onPointerDownOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
+          aria-describedby={undefined}
         >
-          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center text-center px-8 pt-8">
-            <DialogHeader className="space-y-2">
-              <DialogTitle className="text-xl font-semibold tracking-tight">
-                Set connectors
-              </DialogTitle>
-            </DialogHeader>
-            <p className="text-sm text-muted-foreground leading-relaxed mt-1 mb-6 whitespace-nowrap">
-              Connect the tools {name || "Zero"} needs to work with. You can
-              skip and add more later.
-            </p>
-            <div className="w-full px-8 flex-1 min-h-0">
-              <div className="w-full flex flex-wrap justify-center gap-3 pb-4">
-                {CONNECTOR_LIST.map((type) => (
-                  <OnboardingConnectorCard key={type} type={type} />
-                ))}
-              </div>
-            </div>
-          </div>
+          <OnboardingSkillsStep
+            name={name}
+            allSkills={allSkills}
+            selectedSkills={selectedSkills}
+          />
           <div className={`${footerClass} justify-between`}>
             <Button
               variant="ghost"
@@ -437,7 +481,14 @@ export function ZeroOnboarding({
       </Dialog>
 
       {selectedConnectorType && (
-        <ConnectModal onClose={() => setSelected(null)} />
+        <ConnectModal
+          onClose={() => {
+            setSelected(null);
+          }}
+          onSuccess={() => {
+            toggleSkill(selectedConnectorType);
+          }}
+        />
       )}
 
       {/* Step 4: Where would you like to work with Zero? */}
@@ -446,6 +497,7 @@ export function ZeroOnboarding({
           className={`${dialogBaseClass} zero-onboarding-dialog`}
           onPointerDownOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
+          aria-describedby={undefined}
         >
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-8">
             <DialogHeader className="space-y-2">

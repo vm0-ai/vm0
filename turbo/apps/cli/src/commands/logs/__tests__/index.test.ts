@@ -427,7 +427,7 @@ describe("logs command", () => {
       expect(requestCount).toBe(2);
       expect(mockExit).toHaveBeenCalledWith(1);
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to fetch logs"),
+        expect.stringContaining("Server error"),
       );
     });
 
@@ -1000,7 +1000,7 @@ describe("logs command", () => {
 
       expect(mockExit).toHaveBeenCalledWith(1);
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to fetch logs"),
+        expect.stringContaining("Internal server error"),
       );
     });
   });

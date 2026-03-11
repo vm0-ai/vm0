@@ -47,7 +47,7 @@ jobs:
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     permissions:
       contents: read
     environment: production
@@ -144,7 +144,7 @@ jobs:
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     permissions:
       contents: read
       deployments: write
@@ -350,7 +350,7 @@ jobs:
     if: ${{ needs.release-please.outputs.docs_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     permissions:
       contents: read
       deployments: write
@@ -438,7 +438,7 @@ jobs:
     if: ${{ needs.release-please.outputs.platform_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     permissions:
       contents: read
       deployments: write
@@ -629,7 +629,7 @@ jobs:
     if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260310
     permissions:
       contents: write
     environment: production
@@ -807,7 +807,7 @@ jobs:
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     permissions:
       contents: read
     environment: production

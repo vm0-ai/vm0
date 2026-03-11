@@ -21,7 +21,7 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     outputs:
       job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
       web-preview-url: ${{ steps.preview-urls.outputs.web-url }}
@@ -257,7 +257,7 @@ jobs:
     # Skip for release-please commits (only version bumps and changelogs)
     if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release') }}"
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -271,7 +271,7 @@ jobs:
   lint-types:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -285,7 +285,7 @@ jobs:
   lint-format:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -296,7 +296,7 @@ jobs:
   lint-knip:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -314,7 +314,7 @@ jobs:
     # Skip for release-please commits (only version bumps and changelogs)
     if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release') }}"
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     services:
       postgres:
         image: postgres:17-alpine
@@ -348,7 +348,7 @@ jobs:
     # Only run when migration or schema files changed
     if: needs.prepare.outputs.migration-changed == 'true'
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     services:
       postgres:
         image: postgres:17-alpine
@@ -371,7 +371,7 @@ jobs:
   test-cli:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -385,7 +385,7 @@ jobs:
   test-platform:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -399,7 +399,7 @@ jobs:
   test-other:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260310
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -414,7 +414,7 @@ jobs:
   deploy-web:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and web, CLI, runner, or platform changed
     if: |
@@ -804,7 +804,7 @@ jobs:
   deploy-docs:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and docs changed
     if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.docs-changed == 'true' }}"
@@ -846,7 +846,7 @@ jobs:
   deploy-platform:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and platform changed
     if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.platform-changed == 'true' }}"
@@ -897,7 +897,7 @@ jobs:
   e2e-auth:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     needs: [prepare, deploy-web]
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -957,7 +957,7 @@ jobs:
   cli-e2e-01-serial:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     needs:
       [
         prepare,
@@ -1048,7 +1048,7 @@ jobs:
   deploy-runner-prepare:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260310
     needs: [prepare]
     timeout-minutes: 10
     env:
@@ -1112,6 +1112,15 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
+      - name: Provision metal hosts
+        uses: ./.github/actions/provision
+        with:
+          hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          metal-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          grafana-cloud-prometheus-url: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          grafana-cloud-prometheus-user: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          grafana-cloud-api-key: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+
       - name: Resolve metal hosts
         id: host
         env:
@@ -1165,34 +1174,8 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           BIN_DIR: ${{ steps.host.outputs.bin-dir }}
           RUNNER_DIR: ${{ steps.host.outputs.runner-dir }}
-          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
-          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
-          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
         run: |
           TARGET_DIR="crates/target/${TARGET_TRIPLE}/${CARGO_PROFILE}"
-
-          # Provision system dependencies on all hosts (idempotent)
-          echo "=== Provisioning system dependencies ==="
-          rm -rf /var/lib/apt/lists/* && apt-get update && apt-get install -y python3 python3-pip
-          pip3 install ansible
-          cd ansible
-          ansible-playbook \
-            -i "${METAL_HOSTS}," \
-            playbooks/provision-runner.yml \
-            -e "ansible_user=${METAL_USER}" \
-            -v
-          if [ -n "${GRAFANA_CLOUD_API_KEY}" ]; then
-            ansible-playbook \
-              -i "${METAL_HOSTS}," \
-              playbooks/provision-monitoring.yml \
-              -e "ansible_user=${METAL_USER}" \
-              -e "grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL}" \
-              -e "grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER}" \
-              -e "grafana_cloud_api_key=${GRAFANA_CLOUD_API_KEY}" \
-              -e "env_label=dev" \
-              -v
-          fi
-          cd ..
 
           deploy_to_host() {
             local HOST=$1
@@ -1380,7 +1363,7 @@ jobs:
   cli-e2e-03-runner:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     needs:
       [
         prepare,
@@ -1520,7 +1503,7 @@ jobs:
   runner-stress-test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     needs:
       [
         prepare,
@@ -1668,7 +1651,7 @@ jobs:
   build-e2b-template:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260306
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     needs: [prepare]
     # Build on PR or main push when E2B templates changed, skip release-please commits
     if: |

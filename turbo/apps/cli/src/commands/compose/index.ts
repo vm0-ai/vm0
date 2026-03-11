@@ -31,6 +31,7 @@ import {
   startSilentUpgrade,
   waitForSilentUpgrade,
 } from "../../lib/utils/update-checker";
+import { withErrorHandler } from "../../lib/command";
 
 declare const __CLI_VERSION__: string;
 
@@ -84,17 +85,9 @@ interface LoadedConfig {
  */
 async function loadAndValidateConfig(
   configFile: string,
-  jsonMode?: boolean,
 ): Promise<LoadedConfig> {
   if (!existsSync(configFile)) {
-    if (jsonMode) {
-      console.log(
-        JSON.stringify({ error: `Config file not found: ${configFile}` }),
-      );
-    } else {
-      console.error(chalk.red(`✗ Config file not found: ${configFile}`));
-    }
-    process.exit(1);
+    throw new Error(`Config file not found: ${configFile}`);
   }
 
   const content = await readFile(configFile, "utf8");
@@ -104,23 +97,12 @@ async function loadAndValidateConfig(
     config = parseYaml(content);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    if (jsonMode) {
-      console.log(JSON.stringify({ error: `Invalid YAML format: ${message}` }));
-    } else {
-      console.error(chalk.red("✗ Invalid YAML format"));
-      console.error(chalk.dim(`  ${message}`));
-    }
-    process.exit(1);
+    throw new Error(`Invalid YAML format: ${message}`);
   }
 
   const validation = validateAgentCompose(config);
   if (!validation.valid) {
-    if (jsonMode) {
-      console.log(JSON.stringify({ error: validation.error }));
-    } else {
-      console.error(chalk.red(`✗ ${validation.error}`));
-    }
-    process.exit(1);
+    throw new Error(validation.error);
   }
 
   const cfg = config as Record<string, unknown>;
@@ -329,23 +311,11 @@ async function displayAndConfirmVariables(
 
   if (trulyNewSecrets.length > 0 && !options.yes) {
     if (!isInteractive()) {
-      if (options.json) {
-        console.log(
-          JSON.stringify({
-            error: `New secrets detected: ${trulyNewSecrets.join(", ")}. Use --yes flag to approve.`,
-          }),
-        );
-      } else {
-        console.error(
-          chalk.red(`✗ New secrets detected: ${trulyNewSecrets.join(", ")}`),
-        );
-        console.error(
-          chalk.dim(
-            "  Use --yes flag to approve new secrets in non-interactive mode.",
-          ),
-        );
-      }
-      process.exit(1);
+      throw new Error(`New secrets detected: ${trulyNewSecrets.join(", ")}`, {
+        cause: new Error(
+          "Use --yes flag to approve new secrets in non-interactive mode.",
+        ),
+      });
     }
 
     const confirmed = await promptConfirm(
@@ -582,26 +552,14 @@ async function handleGitHubCompose(
 
   try {
     if (!existsSync(configFile)) {
-      if (options.json) {
-        console.log(
-          JSON.stringify({
-            error: "vm0.yaml not found in the GitHub directory",
-          }),
-        );
-      } else {
-        console.error(
-          chalk.red(`✗ vm0.yaml not found in the GitHub directory`),
-        );
-        console.error(chalk.dim(`  URL: ${url}`));
-      }
-      process.exit(1);
+      throw new Error("vm0.yaml not found in the GitHub directory", {
+        cause: new Error(`URL: ${url}`),
+      });
     }
 
     // Load and validate config
-    const { config, agentName, agent, basePath } = await loadAndValidateConfig(
-      configFile,
-      options.json,
-    );
+    const { config, agentName, agent, basePath } =
+      await loadAndValidateConfig(configFile);
 
     // Check if agent with same name already exists
     const existingCompose = await getComposeByName(agentName);
@@ -616,26 +574,14 @@ async function handleGitHubCompose(
       if (!isInteractive()) {
         // Non-interactive mode: require --yes flag to overwrite
         if (!options.yes) {
-          if (options.json) {
-            console.log(
-              JSON.stringify({
-                error:
-                  "Cannot overwrite existing agent in non-interactive mode",
-              }),
-            );
-          } else {
-            console.error(
-              chalk.red(
-                `✗ Cannot overwrite existing agent in non-interactive mode`,
+          throw new Error(
+            "Cannot overwrite existing agent in non-interactive mode",
+            {
+              cause: new Error(
+                "Use --yes flag to confirm overwriting the existing agent.",
               ),
-            );
-            console.error(
-              chalk.dim(
-                `  Use --yes flag to confirm overwriting the existing agent.`,
-              ),
-            );
-          }
-          process.exit(1);
+            },
+          );
         }
       } else {
         // Interactive mode: prompt user (default No)
@@ -654,23 +600,11 @@ async function handleGitHubCompose(
 
     // Check for unsupported volumes
     if (hasVolumes(config)) {
-      if (options.json) {
-        console.log(
-          JSON.stringify({
-            error: "Volumes are not supported for GitHub URL compose",
-          }),
-        );
-      } else {
-        console.error(
-          chalk.red(`✗ Volumes are not supported for GitHub URL compose`),
-        );
-        console.error(
-          chalk.dim(
-            `  Clone the repository locally and run: vm0 compose ./path/to/vm0.yaml`,
-          ),
-        );
-      }
-      process.exit(1);
+      throw new Error("Volumes are not supported for GitHub URL compose", {
+        cause: new Error(
+          "Clone the repository locally and run: vm0 compose ./path/to/vm0.yaml",
+        ),
+      });
     }
 
     // Check for legacy image format (skip in JSON mode)
@@ -722,101 +656,91 @@ export const composeCommand = new Command()
   )
   .addOption(new Option("--no-auto-update").hideHelp())
   .action(
-    async (
-      configFile: string | undefined,
-      options: {
-        yes?: boolean;
-        autoUpdate?: boolean;
-        experimentalSharedCompose?: boolean;
-        json?: boolean;
-        porcelain?: boolean;
-      },
-    ) => {
-      const resolvedConfigFile = configFile ?? DEFAULT_CONFIG_FILE;
+    withErrorHandler(
+      async (
+        configFile: string | undefined,
+        options: {
+          yes?: boolean;
+          autoUpdate?: boolean;
+          experimentalSharedCompose?: boolean;
+          json?: boolean;
+          porcelain?: boolean;
+        },
+      ) => {
+        const resolvedConfigFile = configFile ?? DEFAULT_CONFIG_FILE;
 
-      // Handle deprecated --porcelain flag
-      if (options.porcelain && !options.json) {
-        console.error(
-          chalk.yellow("⚠ --porcelain is deprecated, use --json instead"),
-        );
-        options.json = true;
-      }
-
-      // JSON mode implies --yes and disables auto-update (for CI/CD usage)
-      if (options.json) {
-        options.yes = true;
-        options.autoUpdate = false;
-      }
-
-      // Start upgrade in background at command start (runs in parallel)
-      if (options.autoUpdate !== false) {
-        await startSilentUpgrade(__CLI_VERSION__);
-      }
-
-      try {
-        let result: ComposeResult;
-
-        // Branch based on input type
-        if (isGitHubUrl(resolvedConfigFile)) {
-          result = await handleGitHubCompose(resolvedConfigFile, options);
-        } else {
-          // Existing local file flow
-          // 1. Load and validate config
-          const { config, agentName, agent, basePath } =
-            await loadAndValidateConfig(resolvedConfigFile, options.json);
-
-          // 2. Check for legacy image format (skip in JSON mode)
-          if (!options.json) {
-            checkLegacyImageFormat(config);
-          }
-
-          // 3. Upload instructions and skills
-          const skillResults = await uploadAssets(
-            agentName,
-            agent,
-            basePath,
-            options.json,
+        // Handle deprecated --porcelain flag
+        if (options.porcelain && !options.json) {
+          console.error(
+            chalk.yellow("⚠ --porcelain is deprecated, use --json instead"),
           );
-
-          // 4. Collect and process skill variables
-          const environment = agent.environment || {};
-          const variables = await collectSkillVariables(
-            skillResults,
-            environment,
-            agentName,
-          );
-
-          // 5. Finalize compose (confirm, merge, upload, display)
-          result = await finalizeCompose(config, agent, variables, options);
+          options.json = true;
         }
 
-        // Output JSON result if requested
+        // JSON mode implies --yes and disables auto-update (for CI/CD usage)
         if (options.json) {
-          console.log(JSON.stringify(result));
-        }
-      } catch (error) {
-        if (options.json) {
-          const message =
-            error instanceof Error
-              ? error.message
-              : "An unexpected error occurred";
-          console.log(JSON.stringify({ error: message }));
-          process.exit(1);
+          options.yes = true;
+          options.autoUpdate = false;
         }
 
-        if (error instanceof Error) {
-          if (error.message.includes("Not authenticated")) {
-            console.error(
-              chalk.red("✗ Not authenticated. Run: vm0 auth login"),
-            );
+        // Start upgrade in background at command start (runs in parallel)
+        if (options.autoUpdate !== false) {
+          await startSilentUpgrade(__CLI_VERSION__);
+        }
+
+        try {
+          let result: ComposeResult;
+
+          // Branch based on input type
+          if (isGitHubUrl(resolvedConfigFile)) {
+            result = await handleGitHubCompose(resolvedConfigFile, options);
           } else {
-            console.error(chalk.red("✗ Failed to create compose"));
-            console.error(chalk.dim(`  ${error.message}`));
+            // Existing local file flow
+            // 1. Load and validate config
+            const { config, agentName, agent, basePath } =
+              await loadAndValidateConfig(resolvedConfigFile);
+
+            // 2. Check for legacy image format (skip in JSON mode)
+            if (!options.json) {
+              checkLegacyImageFormat(config);
+            }
+
+            // 3. Upload instructions and skills
+            const skillResults = await uploadAssets(
+              agentName,
+              agent,
+              basePath,
+              options.json,
+            );
+
+            // 4. Collect and process skill variables
+            const environment = agent.environment || {};
+            const variables = await collectSkillVariables(
+              skillResults,
+              environment,
+              agentName,
+            );
+
+            // 5. Finalize compose (confirm, merge, upload, display)
+            result = await finalizeCompose(config, agent, variables, options);
           }
-        } else {
-          console.error(chalk.red("✗ An unexpected error occurred"));
+
+          // Output JSON result if requested
+          if (options.json) {
+            console.log(JSON.stringify(result));
+          }
+        } catch (error) {
+          if (options.json) {
+            const message =
+              error instanceof Error
+                ? error.message
+                : "An unexpected error occurred";
+            console.log(JSON.stringify({ error: message }));
+            process.exit(1);
+          }
+
+          throw error;
         }
-        process.exit(1);
-      }
-    },
+      },
+    ),
   );

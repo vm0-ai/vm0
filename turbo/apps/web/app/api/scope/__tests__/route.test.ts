@@ -309,6 +309,34 @@ describe("/api/scope", () => {
         expect(data.error.message).toContain("reserved");
       });
     });
+
+    it("should return 400 when user has no unmatched Clerk org", async () => {
+      const userId = `no-org-avail-${Date.now()}`;
+      mockClerk({ userId });
+
+      // First creation succeeds (matches user's default mock org)
+      const slug1 = `first-${Date.now()}`;
+      const req1 = createTestRequest("http://localhost:3000/api/scope", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: slug1 }),
+      });
+      const res1 = await POST(req1);
+      expect(res1.status).toBe(201);
+
+      // Second creation fails (no more unmatched orgs)
+      const slug2 = `second-${Date.now()}`;
+      const req2 = createTestRequest("http://localhost:3000/api/scope", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: slug2 }),
+      });
+      const res2 = await POST(req2);
+      const data = await res2.json();
+
+      expect(res2.status).toBe(400);
+      expect(data.error.message).toContain("No available Clerk organization");
+    });
   });
 
   describe("PUT /api/scope", () => {
@@ -420,9 +448,19 @@ describe("/api/scope", () => {
   describe("GET /api/scope (clerkOrgId resolution)", () => {
     it("should resolve scope by clerkOrgId from session", async () => {
       const userId = `clerk-org-test-${Date.now()}`;
-      mockClerk({ userId });
+      const org1Id = `org_first_${Date.now()}`;
+      const org2Id = `org_second_${Date.now()}`;
 
-      // Create first scope (becomes default)
+      // User has two Clerk orgs
+      mockClerk({
+        userId,
+        clerkOrgs: [
+          { id: org1Id, slug: `first-org`, name: "First Org" },
+          { id: org2Id, slug: `second-org`, name: "Second Org" },
+        ],
+      });
+
+      // Create first scope (matches first Clerk org)
       const slug1 = `first-org-${Date.now()}`;
       const req1 = createTestRequest("http://localhost:3000/api/scope", {
         method: "POST",
@@ -431,7 +469,7 @@ describe("/api/scope", () => {
       });
       await POST(req1);
 
-      // Create second scope
+      // Create second scope (matches second Clerk org)
       const slug2 = `second-org-${Date.now()}`;
       const req2 = createTestRequest("http://localhost:3000/api/scope", {
         method: "POST",
@@ -440,15 +478,8 @@ describe("/api/scope", () => {
       });
       await POST(req2);
 
-      // Set active org to second scope's clerkOrgId, include both scope orgs
-      mockClerk({
-        userId,
-        orgId: `org_mock_${slug2}`,
-        clerkOrgs: [
-          { id: `org_mock_${slug1}`, slug: slug1, name: slug1 },
-          { id: `org_mock_${slug2}`, slug: slug2, name: slug2 },
-        ],
-      });
+      // Set active org to second scope's clerkOrgId
+      mockClerk({ userId, orgId: org2Id });
 
       const request = createTestRequest("http://localhost:3000/api/scope");
       const response = await GET(request);
@@ -460,7 +491,12 @@ describe("/api/scope", () => {
 
     it("should fall through to default when clerkOrgId has no matching scope", async () => {
       const userId = `no-match-org-${Date.now()}`;
-      mockClerk({ userId });
+      const clerkOrgs = [
+        { id: `org_mock_${userId}`, slug: `default-org`, name: "Default Org" },
+      ];
+
+      // Set up Clerk org BEFORE creating scope so POST resolves correct clerkOrgId
+      mockClerk({ userId, clerkOrgs });
 
       // Create a default scope
       const slug = `default-org-${Date.now()}`;
@@ -475,7 +511,7 @@ describe("/api/scope", () => {
       mockClerk({
         userId,
         orgId: "org_nonexistent_xyz",
-        clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
+        clerkOrgs,
       });
 
       const request = createTestRequest("http://localhost:3000/api/scope");

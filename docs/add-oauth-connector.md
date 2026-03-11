@@ -11,7 +11,7 @@ Run all checks for a given `<PROVIDER>` (e.g., `hubspot`, `todoist`, `gmail`). U
 | 1 | **Connector code exists** | `ls turbo/apps/web/src/lib/connector/providers/<provider>*.ts` | Whether implementation has started |
 | 2 | **CONNECTOR_TYPES entry** | `grep '<provider>' turbo/packages/core/src/contracts/connectors.ts` | Whether the connector is registered |
 | 3 | **Feature switch exists** | `grep '<provider>' turbo/packages/core/src/feature-switch.ts` | Whether the connector is behind a feature flag |
-| 4 | **Feature switch enabled** | Check `enabled: true/false` in `FEATURE_SWITCHES[FeatureSwitchKey.<Provider>Connector]` in `turbo/packages/core/src/feature-switch.ts` | `false` = still gated (dev/testing); removed from `CONNECTOR_FEATURE_FLAGS` or `true` = public |
+| 4 | **Feature switch enabled** | Check `enabled: true/false` in `FEATURE_SWITCHES[FeatureSwitchKey.<Provider>Connector]` in `turbo/packages/core/src/feature-switch.ts` | `false` = still gated (dev/testing); `true` = public |
 | 5 | **`.env.tpl` entry** | `grep '<PREFIX>_OAUTH' turbo/apps/web/.env.local.tpl` | Whether 1Password references are set up |
 | 6 | **GitHub vars/secrets** | `gh variable list \| grep <PREFIX>_OAUTH` and `gh secret list \| grep <PREFIX>_OAUTH` | Whether CI/CD credentials are synced |
 | 7 | **Workflow env vars** | `grep '<PREFIX>_OAUTH' .github/workflows/turbo.yml .github/workflows/release-please.yml` | Whether deploy pipelines pass the credentials |
@@ -177,11 +177,11 @@ After both apps are registered and the credentials file is populated:
    ```
    Then re-run the checks. Only investigate errors that persist after the environment is fresh.
 1. Ensure you use the real product SVG logo from the Internet, not a placeholder image.
-1. Ensure the new connector is protected with a feature switch, and that the feature switch is disabled by default.
-1. Add the OAuth env vars to both `.github/workflows/turbo.yml` and `.github/workflows/release-please.yml` deploy steps (client ID from `vars`, client secret from `secrets`).
-1. Ensure that `.env.tpl` references the correct secrets/vars and that the secret/var names in 1Password match the environment variable names.
-1. Run `bash scripts/sync-oauth.sh PROVIDER_NAME` to sync credentials from `/tmp/oauth-credentials/<PROVIDER>` to 1Password and GitHub. If any fields are missing, fill them in and re-run. Wait for the user to confirm completion.
-1. Verify that the secrets/vars are correctly set on GitHub by running `gh variable list | grep PROVIDER` and `gh secret list | grep PROVIDER`.
+1. **Feature switch:** Only connectors with an OAuth flow (Decision Matrix rows 1–3) need a feature switch (`enabled: false`). API-token-only connectors (row 4) do **not** need a feature switch — they are always visible once merged.
+1. **OAuth env vars (skip for API-token-only):** Add the OAuth env vars to both `.github/workflows/turbo.yml` and `.github/workflows/release-please.yml` deploy steps (client ID from `vars`, client secret from `secrets`).
+1. **`.env.tpl` (skip for API-token-only):** Ensure that `.env.tpl` references the correct secrets/vars and that the secret/var names in 1Password match the environment variable names.
+1. **Credential sync (skip for API-token-only):** Run `bash scripts/sync-oauth.sh PROVIDER_NAME` to sync credentials from `/tmp/oauth-credentials/<PROVIDER>` to 1Password and GitHub. If any fields are missing, fill them in and re-run. Wait for the user to confirm completion.
+1. **Verify GitHub secrets (skip for API-token-only):** Verify that the secrets/vars are correctly set on GitHub by running `gh variable list | grep PROVIDER` and `gh secret list | grep PROVIDER`.
 1. Make sure the local `.env.local` contains the correct secret/var values.
 1. Commit all changes and create a PR using `/pull-request`. This lets CI validate the implementation in parallel while you do local testing.
 1. Start the project locally using `/dev-tunnel` (starts the dev server, creates a Cloudflare tunnel, and sets up the proxy). Verify the server is running and accessible before proceeding.

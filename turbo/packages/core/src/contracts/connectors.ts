@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 const c = initContract();
 
@@ -12,6 +13,8 @@ export interface ConnectorSecretConfig {
   required: boolean;
   placeholder?: string;
   helpText?: string;
+  /** Storage type: "secret" (default, encrypted) or "variable" (plain text). */
+  type?: "secret" | "variable";
 }
 
 /**
@@ -24,23 +27,42 @@ export interface ConnectorAuthMethodConfig {
 }
 
 /**
- * OAuth configuration for connectors that support OAuth flow
+ * OAuth configuration for connectors that support OAuth flow.
+ *
+ * `environmentMapping` lives here because it only applies to the OAuth path:
+ * OAuth stores secrets under internal names (e.g. `FIGMA_ACCESS_TOKEN`) that
+ * need to be mapped to the env var names skills expect (e.g. `FIGMA_TOKEN`).
+ * API-token connectors store secrets directly under the target name, so they
+ * don't need any mapping.
+ *
+ * `$secrets.X` in mapping values looks up secret X from the connector's secrets.
  */
 export interface ConnectorOAuthConfig {
   authorizationUrl?: string;
   tokenUrl: string;
   scopes: string[];
+  environmentMapping: Record<string, string>;
+}
+
+/**
+ * Base configuration shape for all connector types.
+ */
+export interface ConnectorConfig {
+  readonly label: string;
+  readonly helpText: string;
+  readonly featureFlag?: FeatureSwitchKey;
+  readonly authMethods: Record<string, ConnectorAuthMethodConfig>;
+  readonly defaultAuthMethod?: string;
+  /** Non-OAuth environment mapping (e.g. computer connector bridge credentials). */
+  readonly bridgeMapping?: Record<string, string>;
+  readonly oauth?: ConnectorOAuthConfig;
 }
 
 /**
  * Connector type configuration
- * Maps type to display info, auth methods, and environment mapping
- *
- * For connectors with `environmentMapping`, secrets are mapped to environment variables:
- * - `$secrets.X` - lookup secret X from the connector's secrets
- * - Other values are passed through as literals
+ * Maps type to display info, auth methods, and OAuth environment mapping.
  */
-export const CONNECTOR_TYPES = {
+const CONNECTOR_TYPES_DEF = {
   axiom: {
     label: "Axiom",
     helpText:
@@ -60,12 +82,10 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      AXIOM_TOKEN: "$secrets.AXIOM_API_TOKEN",
-    } as Record<string, string>,
   },
   ahrefs: {
     label: "Ahrefs",
+    featureFlag: FeatureSwitchKey.AhrefsConnector,
     helpText:
       "Connect your Ahrefs account to access SEO data, backlink analysis, and keyword research",
     authMethods: {
@@ -97,13 +117,13 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://app.ahrefs.com/api/auth",
       tokenUrl: "https://app.ahrefs.com/api/token",
       scopes: ["api"],
+      environmentMapping: {
+        AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   agentmail: {
@@ -125,9 +145,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      AGENTMAIL_TOKEN: "$secrets.AGENTMAIL_API_KEY",
-    } as Record<string, string>,
   },
   airtable: {
     label: "Airtable",
@@ -150,9 +167,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://airtable.com/oauth2/v1/authorize",
       tokenUrl: "https://airtable.com/oauth2/v1/token",
@@ -165,6 +179,9 @@ export const CONNECTOR_TYPES = {
         "schema.bases:write",
         "user.email:read",
       ],
+      environmentMapping: {
+        AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   github: {
@@ -184,14 +201,14 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
-      GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://github.com/login/oauth/authorize",
       tokenUrl: "https://github.com/login/oauth/access_token",
       scopes: ["repo", "project"],
+      environmentMapping: {
+        GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
+        GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   notion: {
@@ -214,17 +231,18 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      NOTION_TOKEN: "$secrets.NOTION_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://api.notion.com/v1/oauth/authorize",
       tokenUrl: "https://api.notion.com/v1/oauth/token",
       scopes: [],
+      environmentMapping: {
+        NOTION_TOKEN: "$secrets.NOTION_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   gmail: {
     label: "Gmail",
+    featureFlag: FeatureSwitchKey.GmailConnector,
     helpText: "Connect your Gmail account to send and read emails",
     authMethods: {
       oauth: {
@@ -243,17 +261,18 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
       scopes: ["https://www.googleapis.com/auth/gmail.modify"],
+      environmentMapping: {
+        GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   "google-sheets": {
     label: "Google Sheets",
+    featureFlag: FeatureSwitchKey.GoogleSheetsConnector,
     helpText: "Connect your Google account to access and manage spreadsheets",
     authMethods: {
       oauth: {
@@ -272,9 +291,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      GOOGLE_SHEETS_TOKEN: "$secrets.GOOGLE_SHEETS_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
@@ -282,10 +298,14 @@ export const CONNECTOR_TYPES = {
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
+      environmentMapping: {
+        GOOGLE_SHEETS_TOKEN: "$secrets.GOOGLE_SHEETS_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   "google-docs": {
     label: "Google Docs",
+    featureFlag: FeatureSwitchKey.GoogleDocsConnector,
     helpText: "Connect your Google account to access and manage documents",
     authMethods: {
       oauth: {
@@ -304,9 +324,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      GOOGLE_DOCS_TOKEN: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
@@ -314,10 +331,14 @@ export const CONNECTOR_TYPES = {
         "https://www.googleapis.com/auth/documents",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
+      environmentMapping: {
+        GOOGLE_DOCS_TOKEN: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   "google-drive": {
     label: "Google Drive",
+    featureFlag: FeatureSwitchKey.GoogleDriveConnector,
     helpText: "Connect your Google account to access and manage files in Drive",
     authMethods: {
       oauth: {
@@ -336,9 +357,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      GOOGLE_DRIVE_TOKEN: "$secrets.GOOGLE_DRIVE_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
@@ -346,10 +364,14 @@ export const CONNECTOR_TYPES = {
         "https://www.googleapis.com/auth/drive",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
+      environmentMapping: {
+        GOOGLE_DRIVE_TOKEN: "$secrets.GOOGLE_DRIVE_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   "google-calendar": {
     label: "Google Calendar",
+    featureFlag: FeatureSwitchKey.GoogleCalendarConnector,
     helpText:
       "Connect your Google account to access and manage calendar events",
     authMethods: {
@@ -369,9 +391,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      GOOGLE_CALENDAR_TOKEN: "$secrets.GOOGLE_CALENDAR_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
@@ -379,10 +398,14 @@ export const CONNECTOR_TYPES = {
         "https://www.googleapis.com/auth/calendar",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
+      environmentMapping: {
+        GOOGLE_CALENDAR_TOKEN: "$secrets.GOOGLE_CALENDAR_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   close: {
     label: "Close",
+    featureFlag: FeatureSwitchKey.CloseConnector,
     helpText:
       "Connect your Close account to manage leads, contacts, and opportunities",
     authMethods: {
@@ -402,13 +425,13 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      CLOSE_TOKEN: "$secrets.CLOSE_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://app.close.com/oauth2/authorize/",
       tokenUrl: "https://api.close.com/oauth2/token/",
       scopes: ["all.full_access", "offline_access"],
+      environmentMapping: {
+        CLOSE_TOKEN: "$secrets.CLOSE_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   hubspot: {
@@ -432,9 +455,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      HUBSPOT_TOKEN: "$secrets.HUBSPOT_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://app.hubspot.com/oauth/authorize",
       tokenUrl: "https://api.hubapi.com/oauth/v1/token",
@@ -452,10 +472,14 @@ export const CONNECTOR_TYPES = {
         "crm.schemas.contacts.read",
         "settings.users.read",
       ],
+      environmentMapping: {
+        HUBSPOT_TOKEN: "$secrets.HUBSPOT_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   computer: {
     label: "Computer",
+    featureFlag: FeatureSwitchKey.ComputerConnector,
     helpText:
       "Expose local services to remote sandboxes via authenticated ngrok tunnels",
     authMethods: {
@@ -479,11 +503,11 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api",
-    environmentMapping: {
+    bridgeMapping: {
       COMPUTER_CONNECTOR_BRIDGE_TOKEN:
         "$secrets.COMPUTER_CONNECTOR_BRIDGE_TOKEN",
       COMPUTER_CONNECTOR_DOMAIN: "$secrets.COMPUTER_CONNECTOR_DOMAIN",
-    } as Record<string, string>,
+    },
   },
   slack: {
     label: "Slack",
@@ -501,9 +525,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://slack.com/oauth/v2/authorize",
       tokenUrl: "https://slack.com/api/oauth.v2.access",
@@ -515,10 +536,14 @@ export const CONNECTOR_TYPES = {
         "users:read.email",
         "files:read",
       ],
+      environmentMapping: {
+        SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   docusign: {
     label: "DocuSign",
+    featureFlag: FeatureSwitchKey.DocuSignConnector,
     helpText:
       "Connect your DocuSign account to send and manage electronic signatures",
     authMethods: {
@@ -538,17 +563,18 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      DOCUSIGN_TOKEN: "$secrets.DOCUSIGN_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://account.docusign.com/oauth/auth",
       tokenUrl: "https://account.docusign.com/oauth/token",
       scopes: ["signature", "extended", "openid"],
+      environmentMapping: {
+        DOCUSIGN_TOKEN: "$secrets.DOCUSIGN_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   dropbox: {
     label: "Dropbox",
+    featureFlag: FeatureSwitchKey.DropboxConnector,
     helpText: "Connect your Dropbox account to access and manage files",
     authMethods: {
       oauth: {
@@ -579,9 +605,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://www.dropbox.com/oauth2/authorize",
       tokenUrl: "https://api.dropboxapi.com/oauth2/token",
@@ -590,6 +613,9 @@ export const CONNECTOR_TYPES = {
         "files.metadata.read",
         "files.content.read",
       ],
+      environmentMapping: {
+        DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   linear: {
@@ -612,17 +638,37 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      LINEAR_API_KEY: "$secrets.LINEAR_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://linear.app/oauth/authorize",
       tokenUrl: "https://api.linear.app/oauth/token",
       scopes: ["read", "write"],
+      environmentMapping: {
+        LINEAR_API_KEY: "$secrets.LINEAR_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
+  },
+  line: {
+    label: "LINE",
+    helpText:
+      "Connect your LINE account to send messages, manage channels, and access the LINE Messaging API",
+    authMethods: {
+      "api-token": {
+        label: "Channel Access Token",
+        helpText:
+          "1. Log in to the [LINE Developers Console](https://developers.line.biz/console)\n2. Select your provider and channel\n3. Go to the **Messaging API** tab\n4. Issue or copy the **Channel access token (long-lived)**",
+        secrets: {
+          LINE_TOKEN: {
+            label: "Channel Access Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
   },
   deel: {
     label: "Deel",
+    featureFlag: FeatureSwitchKey.DeelConnector,
     helpText:
       "Connect your Deel account to access HR, payroll, and contractor data",
     authMethods: {
@@ -653,9 +699,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://app.deel.com/oauth2/authorize",
       tokenUrl: "https://app.deel.com/oauth2/tokens",
@@ -669,10 +712,93 @@ export const CONNECTOR_TYPES = {
         "invoice-adjustments:read",
         "invoice-adjustments:write",
       ],
+      environmentMapping: {
+        DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
+  },
+  deepseek: {
+    label: "DeepSeek",
+    helpText:
+      "Connect your DeepSeek account to use DeepSeek AI models for chat completions, code generation, and reasoning tasks",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [DeepSeek Platform](https://platform.deepseek.com)\n2. Go to **API Keys**\n3. Create a new API key\n4. Copy the key",
+        secrets: {
+          DEEPSEEK_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "sk-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  clickup: {
+    label: "ClickUp",
+    helpText:
+      "Connect your ClickUp account to manage tasks, projects, and team workflows",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [ClickUp](https://app.clickup.com)\n2. Click your avatar in the bottom-left corner\n3. Go to **Settings** → **Apps**\n4. Under **API Token**, click **Generate** and copy it",
+        secrets: {
+          CLICKUP_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "pk_...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  cloudflare: {
+    label: "Cloudflare",
+    helpText:
+      "Connect your Cloudflare account to manage DNS, zones, workers, and other Cloudflare services",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to the [Cloudflare Dashboard](https://dash.cloudflare.com)\n2. Go to **My Profile** → **API Tokens**\n3. Click **Create Token** and configure the required permissions\n4. Copy the generated token",
+        secrets: {
+          CLOUDFLARE_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  dify: {
+    label: "Dify",
+    helpText:
+      "Connect your Dify account to build and manage AI-powered workflows, chatbots, and agentic applications",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Dify](https://cloud.dify.ai)\n2. Open your application\n3. Go to **API Access** in the left sidebar\n4. Copy the API Key",
+        secrets: {
+          DIFY_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "app-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
   },
   figma: {
     label: "Figma",
+    featureFlag: FeatureSwitchKey.FigmaConnector,
     helpText: "Connect your Figma account to access design files and projects",
     authMethods: {
       oauth: {
@@ -703,9 +829,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      FIGMA_TOKEN: "$secrets.FIGMA_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://www.figma.com/oauth",
       tokenUrl: "https://api.figma.com/v1/oauth/token",
@@ -720,10 +843,14 @@ export const CONNECTOR_TYPES = {
         "library_assets:read",
         "library_content:read",
       ],
+      environmentMapping: {
+        FIGMA_TOKEN: "$secrets.FIGMA_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   mercury: {
     label: "Mercury",
+    featureFlag: FeatureSwitchKey.MercuryConnector,
     helpText:
       "Connect your Mercury account to access banking and financial data",
     authMethods: {
@@ -755,17 +882,78 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      MERCURY_TOKEN: "$secrets.MERCURY_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://oauth2.mercury.com/oauth2/auth",
       tokenUrl: "https://oauth2.mercury.com/oauth2/token",
       scopes: ["offline_access"],
+      environmentMapping: {
+        MERCURY_TOKEN: "$secrets.MERCURY_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
+  },
+  minimax: {
+    label: "MiniMax",
+    helpText:
+      "Connect your MiniMax account to access AI model APIs for text, voice, and video generation",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to the [MiniMax Platform](https://platform.minimaxi.com)\n2. Go to **Account → API Keys**\n3. Create a new API key and copy it",
+        secrets: {
+          MINIMAX_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-minimax-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  reportei: {
+    label: "Reportei",
+    helpText:
+      "Connect your Reportei account to generate and manage marketing reports with automated analytics",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Sign up at [Reportei](https://www.reportei.com/)\n2. Go to Dashboard → Generate API Token\n3. Copy the token",
+        secrets: {
+          REPORTEI_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-reportei-api-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  serpapi: {
+    label: "SerpApi",
+    helpText:
+      "Connect your SerpApi account to search Google, Bing, YouTube and other search engines programmatically",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [SerpApi](https://serpapi.com/)\n2. Go to **Manage API Key** in the dashboard\n3. Copy your API key",
+        secrets: {
+          SERPAPI_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-serpapi-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
   },
   reddit: {
     label: "Reddit",
+    featureFlag: FeatureSwitchKey.RedditConnector,
     helpText:
       "Connect your Reddit account to access Reddit discussions and content",
     authMethods: {
@@ -785,17 +973,18 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://www.reddit.com/api/v1/authorize",
       tokenUrl: "https://www.reddit.com/api/v1/access_token",
       scopes: ["identity", "read"],
+      environmentMapping: {
+        REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   strava: {
     label: "Strava",
+    featureFlag: FeatureSwitchKey.StravaConnector,
     helpText:
       "Connect your Strava account to access activities and athlete data",
     authMethods: {
@@ -815,9 +1004,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      STRAVA_TOKEN: "$secrets.STRAVA_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://www.strava.com/oauth/authorize",
       tokenUrl: "https://www.strava.com/oauth/token",
@@ -827,6 +1013,9 @@ export const CONNECTOR_TYPES = {
         "activity:read_all",
         "activity:write",
       ],
+      environmentMapping: {
+        STRAVA_TOKEN: "$secrets.STRAVA_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   x: {
@@ -850,17 +1039,18 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      X_ACCESS_TOKEN: "$secrets.X_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://twitter.com/i/oauth2/authorize",
       tokenUrl: "https://api.twitter.com/2/oauth2/token",
       scopes: ["tweet.read", "users.read", "follows.read", "offline.access"],
+      environmentMapping: {
+        X_ACCESS_TOKEN: "$secrets.X_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   neon: {
     label: "Neon",
+    featureFlag: FeatureSwitchKey.NeonConnector,
     helpText:
       "Connect your Neon account to manage serverless Postgres databases and projects",
     authMethods: {
@@ -892,9 +1082,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      NEON_TOKEN: "$secrets.NEON_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://oauth2.neon.tech/oauth2/auth",
       tokenUrl: "https://oauth2.neon.tech/oauth2/token",
@@ -906,10 +1093,14 @@ export const CONNECTOR_TYPES = {
         "urn:neoncloud:projects:update",
         "urn:neoncloud:projects:delete",
       ],
+      environmentMapping: {
+        NEON_TOKEN: "$secrets.NEON_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   "garmin-connect": {
     label: "Garmin Connect",
+    featureFlag: FeatureSwitchKey.GarminConnectConnector,
     helpText:
       "Connect your Garmin Connect account to access wellness and activity data",
     authMethods: {
@@ -929,13 +1120,13 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      GARMIN_CONNECT_TOKEN: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://connect.garmin.com/oauth2Confirm",
       tokenUrl: "https://diauth.garmin.com/di-oauth2-service/oauth/token",
       scopes: [],
+      environmentMapping: {
+        GARMIN_CONNECT_TOKEN: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   vercel: {
@@ -955,12 +1146,12 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      VERCEL_TOKEN: "$secrets.VERCEL_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       tokenUrl: "https://api.vercel.com/v2/oauth/access_token",
       scopes: [],
+      environmentMapping: {
+        VERCEL_TOKEN: "$secrets.VERCEL_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   sentry: {
@@ -984,9 +1175,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      SENTRY_TOKEN: "$secrets.SENTRY_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://sentry.io/oauth/authorize/",
       tokenUrl: "https://sentry.io/oauth/token/",
@@ -998,10 +1186,14 @@ export const CONNECTOR_TYPES = {
         "event:read",
         "event:write",
       ],
+      environmentMapping: {
+        SENTRY_TOKEN: "$secrets.SENTRY_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   posthog: {
     label: "PostHog",
+    featureFlag: FeatureSwitchKey.PosthogConnector,
     helpText:
       "Connect your PostHog account to access product analytics, feature flags, and experiments",
     authMethods: {
@@ -1033,9 +1225,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      POSTHOG_TOKEN: "$secrets.POSTHOG_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://us.posthog.com/oauth/authorize",
       tokenUrl: "https://us.posthog.com/oauth/token",
@@ -1065,6 +1254,9 @@ export const CONNECTOR_TYPES = {
         "survey:write",
         "error_tracking:read",
       ],
+      environmentMapping: {
+        POSTHOG_TOKEN: "$secrets.POSTHOG_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   productlane: {
@@ -1086,10 +1278,10 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {} as Record<string, string>,
   },
   "intervals-icu": {
     label: "Intervals.icu",
+    featureFlag: FeatureSwitchKey.IntervalsIcuConnector,
     helpText:
       "Connect your Intervals.icu account to access training, activity, wellness, and calendar data",
     authMethods: {
@@ -1116,13 +1308,13 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      INTERVALS_ICU_TOKEN: "$secrets.INTERVALS_ICU_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://intervals.icu/oauth/authorize",
       tokenUrl: "https://intervals.icu/api/oauth/token",
       scopes: ["ACTIVITY", "WELLNESS", "CALENDAR", "SETTINGS", "LIBRARY"],
+      environmentMapping: {
+        INTERVALS_ICU_TOKEN: "$secrets.INTERVALS_ICU_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   monday: {
@@ -1146,9 +1338,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://auth.monday.com/oauth2/authorize",
       tokenUrl: "https://auth.monday.com/oauth2/token",
@@ -1168,10 +1357,14 @@ export const CONNECTOR_TYPES = {
         "tags:read",
         "teams:read",
       ],
+      environmentMapping: {
+        MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   canva: {
     label: "Canva",
+    featureFlag: FeatureSwitchKey.CanvaConnector,
     helpText:
       "Connect your Canva account to access designs, assets, and projects",
     authMethods: {
@@ -1191,9 +1384,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://www.canva.com/api/oauth/authorize",
       tokenUrl: "https://api.canva.com/rest/v1/oauth/token",
@@ -1211,6 +1401,9 @@ export const CONNECTOR_TYPES = {
         "folder:write",
         "profile:read",
       ],
+      environmentMapping: {
+        CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   xero: {
@@ -1234,9 +1427,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      XERO_TOKEN: "$secrets.XERO_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://login.xero.com/identity/connect/authorize",
       tokenUrl: "https://identity.xero.com/connect/token",
@@ -1264,10 +1454,14 @@ export const CONNECTOR_TYPES = {
         "assets",
         "projects",
       ],
+      environmentMapping: {
+        XERO_TOKEN: "$secrets.XERO_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   supabase: {
     label: "Supabase",
+    featureFlag: FeatureSwitchKey.SupabaseConnector,
     helpText:
       "Connect your Supabase account to manage projects, databases, and APIs",
     authMethods: {
@@ -1299,9 +1493,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://api.supabase.com/v1/oauth/authorize",
       tokenUrl: "https://api.supabase.com/v1/oauth/token",
@@ -1319,6 +1510,9 @@ export const CONNECTOR_TYPES = {
         "environment:read",
         "domains:read",
       ],
+      environmentMapping: {
+        SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   todoist: {
@@ -1338,17 +1532,18 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      TODOIST_TOKEN: "$secrets.TODOIST_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://todoist.com/oauth/authorize",
       tokenUrl: "https://todoist.com/oauth/access_token",
       scopes: ["data:read_write", "data:delete", "project:delete"],
+      environmentMapping: {
+        TODOIST_TOKEN: "$secrets.TODOIST_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   webflow: {
     label: "Webflow",
+    featureFlag: FeatureSwitchKey.WebflowConnector,
     helpText:
       "Connect your Webflow account to manage sites, pages, CMS collections, and ecommerce",
     authMethods: {
@@ -1375,9 +1570,6 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      WEBFLOW_TOKEN: "$secrets.WEBFLOW_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://webflow.com/oauth/authorize",
       tokenUrl: "https://api.webflow.com/oauth/access_token",
@@ -1399,10 +1591,14 @@ export const CONNECTOR_TYPES = {
         "custom_code:read",
         "custom_code:write",
       ],
+      environmentMapping: {
+        WEBFLOW_TOKEN: "$secrets.WEBFLOW_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   "outlook-mail": {
     label: "Outlook Mail",
+    featureFlag: FeatureSwitchKey.OutlookMailConnector,
     helpText: "Connect your Microsoft Outlook account to send and read emails",
     authMethods: {
       oauth: {
@@ -1421,18 +1617,19 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl:
         "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
       scopes: ["Mail.ReadWrite", "Mail.Send", "User.Read", "offline_access"],
+      environmentMapping: {
+        OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   "outlook-calendar": {
     label: "Outlook Calendar",
+    featureFlag: FeatureSwitchKey.OutlookCalendarConnector,
     helpText:
       "Connect your Microsoft account to access and manage Outlook calendar events",
     authMethods: {
@@ -1452,14 +1649,14 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl:
         "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
       scopes: ["Calendars.ReadWrite", "User.Read", "offline_access"],
+      environmentMapping: {
+        OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   asana: {
@@ -1483,17 +1680,38 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://app.asana.com/-/oauth_authorize",
       tokenUrl: "https://app.asana.com/-/oauth_token",
       scopes: [],
+      environmentMapping: {
+        ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
+  },
+  atlassian: {
+    label: "Atlassian (Jira/Confluence)",
+    helpText:
+      "Connect your Atlassian account to manage Jira issues, Confluence pages, and other Atlassian products",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Atlassian](https://id.atlassian.com/manage-profile/security/api-tokens)\n2. Click **Create API token**\n3. Give it a label and click **Create**\n4. Copy the generated token",
+        secrets: {
+          ATLASSIAN_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-api-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
   },
   "meta-ads": {
     label: "Meta Ads",
+    featureFlag: FeatureSwitchKey.MetaAdsConnector,
     helpText:
       "Connect your Meta Ads Manager account to manage ad campaigns, audiences, and insights",
     authMethods: {
@@ -1509,17 +1727,18 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://www.facebook.com/v22.0/dialog/oauth",
       tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
       scopes: ["ads_management", "ads_read", "business_management"],
+      environmentMapping: {
+        META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
   stripe: {
     label: "Stripe",
+    featureFlag: FeatureSwitchKey.StripeConnector,
     helpText:
       "Connect your Stripe account to manage payments, customers, and subscriptions",
     authMethods: {
@@ -1539,14 +1758,34 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "oauth",
-    environmentMapping: {
-      STRIPE_API_KEY: "$secrets.STRIPE_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://connect.stripe.com/oauth/authorize",
       tokenUrl: "https://connect.stripe.com/oauth/token",
       scopes: ["read_write"],
+      environmentMapping: {
+        STRIPE_API_KEY: "$secrets.STRIPE_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
+  },
+  openai: {
+    label: "OpenAI",
+    helpText:
+      "Connect your OpenAI account to access GPT models, embeddings, image generation, and other AI capabilities",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [OpenAI](https://platform.openai.com)\n2. Go to **API keys** in the left sidebar\n3. Click **Create new secret key**\n4. Copy the key",
+        secrets: {
+          OPENAI_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "sk-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
   },
   similarweb: {
     label: "SimilarWeb",
@@ -1567,9 +1806,26 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      SIMILARWEB_TOKEN: "$secrets.SIMILARWEB_API_KEY",
-    } as Record<string, string>,
+  },
+  perplexity: {
+    label: "Perplexity",
+    helpText:
+      "Connect your Perplexity account to access AI-powered search and research capabilities via the Sonar API",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Perplexity](https://www.perplexity.ai)\n2. Go to **Settings → API**\n3. Generate a new API key\n4. Copy the key",
+        secrets: {
+          PERPLEXITY_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "pplx-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
   },
   plausible: {
     label: "Plausible",
@@ -1590,12 +1846,10 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      PLAUSIBLE_TOKEN: "$secrets.PLAUSIBLE_TOKEN",
-    } as Record<string, string>,
   },
   mailchimp: {
     label: "Mailchimp",
+    featureFlag: FeatureSwitchKey.MailchimpConnector,
     helpText:
       "Connect your Mailchimp account to manage audiences, campaigns, templates, and automations",
     authMethods: {
@@ -1613,18 +1867,578 @@ export const CONNECTOR_TYPES = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      MAILCHIMP_TOKEN: "$secrets.MAILCHIMP_ACCESS_TOKEN",
-    } as Record<string, string>,
     oauth: {
       authorizationUrl: "https://login.mailchimp.com/oauth2/authorize",
       tokenUrl: "https://login.mailchimp.com/oauth2/token",
       scopes: [],
+      environmentMapping: {
+        MAILCHIMP_TOKEN: "$secrets.MAILCHIMP_ACCESS_TOKEN",
+      },
     } as ConnectorOAuthConfig,
   },
-} as const;
+  chatwoot: {
+    label: "Chatwoot",
+    helpText:
+      "Connect your Chatwoot account to manage conversations, contacts, and customer support workflows",
+    authMethods: {
+      "api-token": {
+        label: "API Access Token",
+        helpText:
+          "1. Log in to your [Chatwoot](https://app.chatwoot.com) instance\n2. Go to **Settings > Account Settings**\n3. Find **Access Token** in the profile section\n4. Copy the token",
+        secrets: {
+          CHATWOOT_TOKEN: {
+            label: "API Access Token",
+            required: true,
+            placeholder: "your-chatwoot-access-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  resend: {
+    label: "Resend",
+    featureFlag: FeatureSwitchKey.ResendConnector,
+    helpText:
+      "Connect your Resend account to send transactional emails, manage domains, audiences, and contacts",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Resend](https://resend.com)\n2. Go to **API Keys** in the sidebar\n3. Click **Create API Key**\n4. Choose permissions (Full access recommended) and copy the key",
+        secrets: {
+          RESEND_API_KEY: {
+            label: "API Key",
+            required: true,
+            placeholder: "re_xxxxxxxxxx",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  pdf4me: {
+    label: "PDF4me",
+    helpText:
+      "Connect your PDF4me account to convert, merge, split, compress, and manipulate PDF documents",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [PDF4me](https://dev.pdf4me.com)\n2. Go to your **Dashboard → API Keys**\n3. Copy your API key",
+        secrets: {
+          PDF4ME_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-pdf4me-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  apify: {
+    label: "Apify",
+    helpText:
+      "Connect your Apify account to run web scraping actors, manage datasets, and automate browser tasks",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Apify Console](https://console.apify.com)\n2. Go to **Settings > Integrations**\n3. Copy your **Personal API token**",
+        secrets: {
+          APIFY_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "apify_api_xxxxxxxx",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  "bright-data": {
+    label: "Bright Data",
+    helpText:
+      "Connect your Bright Data account to scrape websites, manage proxies, and access web data",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Bright Data](https://brightdata.com/cp)\n2. Go to **Settings > Users**\n3. Copy your **API token**",
+        secrets: {
+          BRIGHTDATA_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  browserbase: {
+    label: "Browserbase",
+    helpText:
+      "Connect your Browserbase account to create browser sessions, persist contexts, and automate cloud browsers",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Browserbase](https://www.browserbase.com)\n2. Go to **Dashboard > Settings**\n3. Copy your **API Key** and **Project ID**",
+        secrets: {
+          BROWSERBASE_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+          BROWSERBASE_PROJECT_ID: {
+            label: "Project ID",
+            required: true,
+            type: "variable",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  browserless: {
+    label: "Browserless",
+    helpText:
+      "Connect your Browserless account to take screenshots, generate PDFs, scrape pages, and automate headless browsers",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Browserless](https://account.browserless.io)\n2. Copy your **API Token** from the dashboard",
+        secrets: {
+          BROWSERLESS_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  firecrawl: {
+    label: "Firecrawl",
+    helpText:
+      "Connect your Firecrawl account to scrape webpages, crawl websites, and extract structured data",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Firecrawl](https://www.firecrawl.dev)\n2. Go to your **Dashboard**\n3. Copy your **API Key**",
+        secrets: {
+          FIRECRAWL_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "fc-xxxxxxxx",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  scrapeninja: {
+    label: "ScrapeNinja",
+    helpText:
+      "Connect your ScrapeNinja account to scrape web pages with Chrome TLS fingerprint and JS rendering",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Sign up at [RapidAPI](https://rapidapi.com/restyler/api/scrapeninja) or [APIRoad](https://apiroad.net/marketplace/apis/scrapeninja)\n2. Subscribe to the ScrapeNinja API\n3. Copy your **API Key**",
+        secrets: {
+          SCRAPENINJA_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  pdfco: {
+    label: "PDF.co",
+    helpText:
+      "Connect your PDF.co account to convert, merge, split, and extract data from PDF documents via API",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [PDF.co](https://app.pdf.co)\n2. Find your API key on the dashboard\n3. Copy the key",
+        secrets: {
+          PDFCO_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-pdfco-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  elevenlabs: {
+    label: "ElevenLabs",
+    helpText:
+      "Connect your ElevenLabs account to generate speech, clone voices, manage audio projects, and access sound effects",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [ElevenLabs](https://elevenlabs.io)\n2. Click your profile icon → **Profile + API key**\n3. Copy your API key",
+        secrets: {
+          ELEVENLABS_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-elevenlabs-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  devto: {
+    label: "Dev.to",
+    helpText:
+      "Connect your Dev.to account to publish articles, manage posts, and interact with the developer community",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Dev.to](https://dev.to)\n2. Go to **Settings → Extensions**\n3. Scroll to **DEV Community API Keys**\n4. Generate a new API key and copy it",
+        secrets: {
+          DEVTO_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-devto-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  fal: {
+    label: "fal.ai",
+    helpText:
+      "Connect your fal.ai account to run AI models for image generation, video generation, and other AI tasks",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [fal.ai](https://fal.ai/dashboard)\n2. Go to **Keys** in the sidebar\n3. Click **Create Key**\n4. Copy the key",
+        secrets: {
+          FAL_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "fal_...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  podchaser: {
+    label: "Podchaser",
+    helpText:
+      "Connect your Podchaser account to search podcasts, episodes, creators, and access podcast industry data",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Podchaser](https://www.podchaser.com)\n2. Go to **Account Settings → API**\n3. Use your client ID and secret to request an access token via the `requestAccessToken` mutation\n4. Copy the access token",
+        secrets: {
+          PODCHASER_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-podchaser-access-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  pushinator: {
+    label: "Pushinator",
+    helpText:
+      "Connect your Pushinator account to send push notifications to mobile devices",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Sign up at [Pushinator](https://pushinator.com/)\n2. Go to the [Console](https://console.pushinator.com/tokens)\n3. Generate an API token\n4. Copy the token",
+        secrets: {
+          PUSHINATOR_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-pushinator-api-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  qdrant: {
+    label: "Qdrant",
+    helpText:
+      "Connect your Qdrant account to store, search, and manage vector embeddings",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Qdrant Cloud](https://cloud.qdrant.io)\n2. Go to **Data Access Control → API Keys**\n3. Create a new API key\n4. Copy the key",
+        secrets: {
+          QDRANT_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-qdrant-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  qiita: {
+    label: "Qiita",
+    helpText:
+      "Connect your Qiita account to search, read, and publish technical articles",
+    authMethods: {
+      "api-token": {
+        label: "Access Token",
+        helpText:
+          "1. Log in to [Qiita](https://qiita.com)\n2. Go to **Settings → Applications → Personal access tokens**\n3. Generate a new token with required scopes\n4. Copy the token",
+        secrets: {
+          QIITA_TOKEN: {
+            label: "Access Token",
+            required: true,
+            placeholder: "your-qiita-access-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  zeptomail: {
+    label: "ZeptoMail",
+    helpText:
+      "Connect your ZeptoMail account to send transactional emails via Zoho's email delivery service",
+    authMethods: {
+      "api-token": {
+        label: "Send Mail Token",
+        helpText:
+          "1. Log in to [ZeptoMail](https://zeptomail.zoho.com)\n2. Go to **Agents → SMTP/API**\n3. Under **Send Mail Token**, click the copy icon",
+        secrets: {
+          ZEPTOMAIL_TOKEN: {
+            label: "Send Mail Token",
+            required: true,
+            placeholder: "your-zeptomail-send-mail-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  runway: {
+    label: "Runway",
+    helpText:
+      "Connect your Runway account to generate AI videos from images, text, or video inputs",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [Runway Developer Portal](https://dev.runwayml.com/)\n2. Purchase credits and create an API key in the dashboard\n3. Copy the API key",
+        secrets: {
+          RUNWAY_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-runway-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  shortio: {
+    label: "Short.io",
+    helpText:
+      "Connect your Short.io account to create and manage short links and track click analytics",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [Short.io](https://short.io/)\n2. Go to **Integrations & API** in Settings\n3. Copy your API key",
+        secrets: {
+          SHORTIO_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-shortio-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  streak: {
+    label: "Streak",
+    helpText:
+      "Connect your Streak account to manage CRM pipelines, contacts, and deals inside Gmail",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Streak](https://streak.com/)\n2. Go to **Settings → Integrations & API**\n3. Copy your API key",
+        secrets: {
+          STREAK_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-streak-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  supadata: {
+    label: "Supadata",
+    helpText:
+      "Connect your Supadata account to extract YouTube transcripts, channel data, and video metadata",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [Supadata](https://supadata.ai/)\n2. Go to the dashboard and copy your API key",
+        secrets: {
+          SUPADATA_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-supadata-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  tavily: {
+    label: "Tavily",
+    helpText:
+      "Connect your Tavily account to perform AI-optimized web searches and content extraction",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [Tavily](https://tavily.com/)\n2. Go to the dashboard and copy your API key",
+        secrets: {
+          TAVILY_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "tvly-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  twenty: {
+    label: "Twenty",
+    helpText:
+      "Connect your Twenty CRM account to manage contacts, companies, and deals",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Twenty](https://twenty.com/)\n2. Go to **Settings → APIs & Webhooks**\n3. Generate an API key and copy it",
+        secrets: {
+          TWENTY_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-twenty-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  youtube: {
+    label: "YouTube",
+    helpText:
+      "Connect your YouTube account to search videos, get channel info, and fetch comments via the Data API",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Go to [Google Cloud Console](https://console.cloud.google.com/)\n2. Enable **YouTube Data API v3**\n3. Go to **Credentials** → **Create Credentials** → **API Key**\n4. Copy the API key",
+        secrets: {
+          YOUTUBE_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "AIzaSy...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  zapsign: {
+    label: "ZapSign",
+    helpText:
+      "Connect your ZapSign account to create documents for electronic signature and track signing status",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [ZapSign](https://app.zapsign.com.br/)\n2. Go to **Settings → Integrations → API**\n3. Copy your API token",
+        secrets: {
+          ZAPSIGN_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-zapsign-api-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  zendesk: {
+    label: "Zendesk",
+    helpText:
+      "Connect your Zendesk account to manage support tickets, users, organizations, and automate customer support workflows",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Zendesk Admin Center](https://www.zendesk.com/admin/)\n2. Go to **Apps and integrations → APIs → Zendesk API**\n3. Enable **Token Access** under the Settings tab\n4. Click **Add API token** and copy the token",
+        secrets: {
+          ZENDESK_API_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-zendesk-api-token",
+          },
+          ZENDESK_EMAIL: {
+            label: "Email",
+            required: true,
+            placeholder: "your-email@company.com",
+            helpText: "The email address associated with your Zendesk account",
+            type: "variable",
+          },
+          ZENDESK_SUBDOMAIN: {
+            label: "Subdomain",
+            required: true,
+            placeholder: "yourcompany",
+            helpText:
+              "Your Zendesk subdomain (e.g. 'yourcompany' from yourcompany.zendesk.com)",
+            type: "variable",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+} satisfies Record<string, ConnectorConfig>;
 
-export type ConnectorType = keyof typeof CONNECTOR_TYPES;
+export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
+
+export const CONNECTOR_TYPES: Record<ConnectorType, ConnectorConfig> =
+  CONNECTOR_TYPES_DEF;
 
 /**
  * Proxy-side connector configuration for token replacement.
@@ -1765,14 +2579,43 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   linear: {
     services: [service("https://api.linear.app", bearerAuth("LINEAR_API_KEY"))],
   },
+  line: {
+    services: [service("https://api.line.me", bearerAuth("LINE_TOKEN"))],
+  },
+  clickup: {
+    services: [
+      service("https://api.clickup.com/api/v2", bearerAuth("CLICKUP_TOKEN")),
+    ],
+  },
+  cloudflare: {
+    services: [
+      service(
+        "https://api.cloudflare.com/client/v4",
+        bearerAuth("CLOUDFLARE_TOKEN"),
+      ),
+    ],
+  },
   deel: {
     services: [service("https://api.deel.com", bearerAuth("DEEL_TOKEN"))],
+  },
+  deepseek: {
+    services: [
+      service("https://api.deepseek.com", bearerAuth("DEEPSEEK_TOKEN")),
+    ],
+  },
+  dify: {
+    services: [service("https://api.dify.ai/v1", bearerAuth("DIFY_TOKEN"))],
   },
   figma: {
     services: [service("https://api.figma.com", bearerAuth("FIGMA_TOKEN"))],
   },
   mercury: {
     services: [service("https://api.mercury.com", bearerAuth("MERCURY_TOKEN"))],
+  },
+  minimax: {
+    services: [
+      service("https://api.minimaxi.com/v1", bearerAuth("MINIMAX_TOKEN")),
+    ],
   },
   reddit: {
     services: [service("https://oauth.reddit.com", bearerAuth("REDDIT_TOKEN"))],
@@ -1854,11 +2697,19 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       ),
     ],
   },
+  openai: {
+    services: [service("https://api.openai.com", bearerAuth("OPENAI_TOKEN"))],
+  },
   similarweb: {
     services: [
       service("https://api.similarweb.com", {
         headers: { "api-key": "${secrets.SIMILARWEB_API_KEY}" },
       }),
+    ],
+  },
+  perplexity: {
+    services: [
+      service("https://api.perplexity.ai", bearerAuth("PERPLEXITY_TOKEN")),
     ],
   },
   plausible: {
@@ -1954,15 +2805,148 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       ),
     ],
   },
+  chatwoot: {
+    services: [
+      service("https://app.chatwoot.com", bearerAuth("CHATWOOT_TOKEN")),
+    ],
+  },
+  resend: {
+    services: [service("https://api.resend.com", bearerAuth("RESEND_API_KEY"))],
+  },
+  pdf4me: {
+    services: [
+      service("https://api.pdf4me.com", {
+        headers: { Authorization: "${secrets.PDF4ME_TOKEN}" },
+      }),
+    ],
+  },
+  pdfco: {
+    services: [
+      service("https://api.pdf.co/v1", {
+        headers: { "x-api-key": "${secrets.PDFCO_TOKEN}" },
+      }),
+    ],
+  },
+  apify: {
+    services: [service("https://api.apify.com/v2", bearerAuth("APIFY_TOKEN"))],
+  },
+  "bright-data": {
+    services: [
+      service("https://api.brightdata.com", bearerAuth("BRIGHTDATA_TOKEN")),
+    ],
+  },
+  browserbase: {
+    services: [
+      service("https://api.browserbase.com/v1", {
+        headers: { "X-BB-API-Key": "${secrets.BROWSERBASE_TOKEN}" },
+      }),
+    ],
+  },
+  firecrawl: {
+    services: [
+      service("https://api.firecrawl.dev/v1", bearerAuth("FIRECRAWL_TOKEN")),
+    ],
+  },
+  scrapeninja: {
+    services: [
+      service("https://scrapeninja.p.rapidapi.com", {
+        headers: { "X-RapidAPI-Key": "${secrets.SCRAPENINJA_TOKEN}" },
+      }),
+    ],
+  },
+  elevenlabs: {
+    services: [
+      service("https://api.elevenlabs.io", {
+        headers: { "xi-api-key": "${secrets.ELEVENLABS_TOKEN}" },
+      }),
+    ],
+  },
+  devto: {
+    services: [
+      service("https://dev.to/api", {
+        headers: { "api-key": "${secrets.DEVTO_TOKEN}" },
+      }),
+    ],
+  },
+  fal: {
+    services: [service("https://fal.run", bearerAuth("FAL_KEY"))],
+  },
+  podchaser: {
+    services: [
+      service("https://api.podchaser.com", bearerAuth("PODCHASER_TOKEN")),
+    ],
+  },
+  pushinator: {
+    services: [
+      service("https://api.pushinator.com", bearerAuth("PUSHINATOR_TOKEN")),
+    ],
+  },
+  qdrant: {
+    services: [
+      service("https://cloud.qdrant.io", {
+        headers: { "api-key": "${secrets.QDRANT_TOKEN}" },
+      }),
+    ],
+  },
+  qiita: {
+    services: [service("https://qiita.com/api/v2", bearerAuth("QIITA_TOKEN"))],
+  },
+  reportei: {
+    services: [
+      service("https://app.reportei.com/api/v1", bearerAuth("REPORTEI_TOKEN")),
+    ],
+  },
+  zeptomail: {
+    services: [
+      service("https://api.zeptomail.com/v1.1", {
+        headers: {
+          Authorization: "Zoho-enczapikey ${secrets.ZEPTOMAIL_TOKEN}",
+        },
+      }),
+    ],
+  },
+  runway: {
+    services: [
+      service("https://api.dev.runwayml.com/v1", bearerAuth("RUNWAY_TOKEN")),
+    ],
+  },
+  shortio: {
+    services: [
+      service("https://api.short.io", {
+        headers: { Authorization: "${secrets.SHORTIO_TOKEN}" },
+      }),
+    ],
+  },
+  supadata: {
+    services: [
+      service("https://api.supadata.ai/v1", {
+        headers: { "x-api-key": "${secrets.SUPADATA_TOKEN}" },
+      }),
+    ],
+  },
+  tavily: {
+    services: [service("https://api.tavily.com", bearerAuth("TAVILY_TOKEN"))],
+  },
+  twenty: {
+    services: [service("https://api.twenty.com", bearerAuth("TWENTY_TOKEN"))],
+  },
+  zapsign: {
+    services: [
+      service("https://api.zapsign.com.br/api/v1", bearerAuth("ZAPSIGN_TOKEN")),
+    ],
+  },
 };
 
 export const connectorTypeSchema = z.enum([
   "agentmail",
   "ahrefs",
+  "atlassian",
   "axiom",
   "airtable",
   "asana",
   "canva",
+  "clickup",
+  "cloudflare",
   "close",
   "github",
   "gmail",
@@ -1975,11 +2959,15 @@ export const connectorTypeSchema = z.enum([
   "computer",
   "slack",
   "deel",
+  "deepseek",
+  "dify",
   "docusign",
   "dropbox",
   "linear",
+  "line",
   "figma",
   "mercury",
+  "minimax",
   "reddit",
   "strava",
   "neon",
@@ -1998,10 +2986,41 @@ export const connectorTypeSchema = z.enum([
   "meta-ads",
   "posthog",
   "stripe",
+  "openai",
+  "chatwoot",
   "similarweb",
   "mailchimp",
+  "pdfco",
+  "perplexity",
   "plausible",
   "productlane",
+  "resend",
+  "pdf4me",
+  "apify",
+  "bright-data",
+  "browserbase",
+  "browserless",
+  "firecrawl",
+  "scrapeninja",
+  "elevenlabs",
+  "devto",
+  "fal",
+  "podchaser",
+  "pushinator",
+  "qdrant",
+  "qiita",
+  "reportei",
+  "serpapi",
+  "zeptomail",
+  "runway",
+  "shortio",
+  "streak",
+  "supadata",
+  "tavily",
+  "twenty",
+  "youtube",
+  "zapsign",
+  "zendesk",
 ]);
 
 /**
@@ -2016,7 +3035,9 @@ export function getConnectorAuthMethods(
 /**
  * Get default auth method for a connector type
  */
-export function getConnectorDefaultAuthMethod(type: ConnectorType): string {
+export function getConnectorDefaultAuthMethod(
+  type: ConnectorType,
+): string | undefined {
   return CONNECTOR_TYPES[type].defaultAuthMethod;
 }
 
@@ -2043,12 +3064,16 @@ export function getConnectorSecretNames(
 }
 
 /**
- * Get environment mapping for a connector type
+ * Get environment mapping for a connector type.
+ *
+ * For OAuth connectors, reads from `oauth.environmentMapping`.
+ * For special connectors (e.g. computer), reads from `bridgeMapping`.
  */
 export function getConnectorEnvironmentMapping(
   type: ConnectorType,
 ): Record<string, string> {
-  return CONNECTOR_TYPES[type].environmentMapping;
+  const config = CONNECTOR_TYPES[type];
+  return config.oauth?.environmentMapping ?? config.bridgeMapping ?? {};
 }
 
 /**
@@ -2095,7 +3120,7 @@ export function getConnectorDerivedNames(
     }
 
     // Find all env var names that reference this secret
-    const mapping = config.environmentMapping as Record<string, string>;
+    const mapping = getConnectorEnvironmentMapping(type);
     const envVarNames = Object.entries(mapping)
       .filter(([, valueRef]) => valueRef === `$secrets.${secretName}`)
       .map(([envVar]) => envVar);
@@ -2164,6 +3189,7 @@ export function hasRequiredScopes(
 /**
  * Get required secret names for a connector's api-token auth method.
  * Returns null if the connector type does not support api-token auth.
+ * Note: Returns ALL required field names regardless of storage type (secret or variable).
  */
 export function getApiTokenRequiredSecretNames(
   type: ConnectorType,
@@ -2180,19 +3206,51 @@ export function getApiTokenRequiredSecretNames(
 }
 
 /**
- * Derive which connector types are "connected" via api-token based on present user secret names.
- * A connector type is considered connected if all its required api-token secrets exist.
+ * Get required field names grouped by storage type for a connector's api-token auth method.
+ * Returns null if the connector type does not support api-token auth.
+ */
+export function getApiTokenFieldsByType(
+  type: ConnectorType,
+): { secrets: string[]; variables: string[] } | null {
+  const config = CONNECTOR_TYPES[type];
+  const apiTokenConfig = config.authMethods["api-token"] as
+    | ConnectorAuthMethodConfig
+    | undefined;
+  if (!apiTokenConfig) return null;
+
+  const secretNames: string[] = [];
+  const variableNames: string[] = [];
+  for (const [name, cfg] of Object.entries(apiTokenConfig.secrets)) {
+    if (!cfg.required) continue;
+    if (cfg.type === "variable") {
+      variableNames.push(name);
+    } else {
+      secretNames.push(name);
+    }
+  }
+  return { secrets: secretNames, variables: variableNames };
+}
+
+/**
+ * Derive which connector types are "connected" via api-token based on present user secret and variable names.
+ * A connector type is considered connected if all its required api-token fields exist
+ * (secrets checked against userSecretNames, variables checked against userVariableNames).
  */
 export function deriveApiTokenConnectedTypes(
   userSecretNames: Set<string>,
+  userVariableNames?: Set<string>,
 ): ConnectorType[] {
   const allTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
   const connected: ConnectorType[] = [];
+  const varNames = userVariableNames ?? new Set<string>();
 
   for (const type of allTypes) {
-    const requiredNames = getApiTokenRequiredSecretNames(type);
-    if (!requiredNames || requiredNames.length === 0) continue;
-    if (requiredNames.every((name) => userSecretNames.has(name))) {
+    const fields = getApiTokenFieldsByType(type);
+    if (!fields) continue;
+    if (fields.secrets.length === 0 && fields.variables.length === 0) continue;
+    const secretsOk = fields.secrets.every((name) => userSecretNames.has(name));
+    const variablesOk = fields.variables.every((name) => varNames.has(name));
+    if (secretsOk && variablesOk) {
       connected.push(type);
     }
   }

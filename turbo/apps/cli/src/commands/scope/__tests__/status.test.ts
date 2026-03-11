@@ -54,10 +54,10 @@ describe("scope status command", () => {
         await statusCommand.parseAsync(["node", "cli"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("No scope configured"),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("vm0 scope set"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);

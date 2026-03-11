@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import chalk from "chalk";
 import { loadCookState } from "../../lib/domain/cook-state";
+import { withErrorHandler } from "../../lib/command";
 import { printCommand, execVm0Command } from "./utils";
 
 export const logsCommand = new Command()
@@ -17,21 +17,21 @@ export const logsCommand = new Command()
   .option("--tail <n>", "Show last N entries (default: 5, max: 100)")
   .option("--head <n>", "Show first N entries (max: 100)")
   .action(
-    async (options: {
-      agent?: boolean;
-      system?: boolean;
-      metrics?: boolean;
-      network?: boolean;
-      since?: string;
-      tail?: string;
-      head?: string;
-    }) => {
-      try {
+    withErrorHandler(
+      async (options: {
+        agent?: boolean;
+        system?: boolean;
+        metrics?: boolean;
+        network?: boolean;
+        since?: string;
+        tail?: string;
+        head?: string;
+      }) => {
         const state = await loadCookState();
         if (!state.lastRunId) {
-          console.error(chalk.red("✗ No previous run found"));
-          console.error(chalk.dim("  Run 'vm0 cook <prompt>' first"));
-          process.exit(1);
+          throw new Error("No previous run found", {
+            cause: new Error("Run 'vm0 cook <prompt>' first"),
+          });
         }
 
         // Build command args
@@ -69,16 +69,6 @@ export const logsCommand = new Command()
 
         printCommand(displayArgs.join(" "));
         await execVm0Command(args);
-      } catch (error) {
-        if (error instanceof Error) {
-          console.error(chalk.red(`✗ ${error.message}`));
-          if (error.cause instanceof Error) {
-            console.error(chalk.dim(`  Cause: ${error.cause.message}`));
-          }
-        } else {
-          console.error(chalk.red("✗ An unexpected error occurred"));
-        }
-        process.exit(1);
-      }
-    },
+      },
+    ),
   );

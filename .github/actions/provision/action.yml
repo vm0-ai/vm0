@@ -1,0 +1,78 @@
+name: "Provision Metal Hosts"
+description: "Provision runner and monitoring on metal hosts (skips if already up-to-date)"
+
+inputs:
+  hosts:
+    description: "Comma-separated metal hosts"
+    required: true
+  metal-user:
+    description: "SSH user for metal hosts"
+    required: true
+  grafana-cloud-prometheus-url:
+    description: "Grafana Cloud Prometheus URL"
+    required: true
+  grafana-cloud-prometheus-user:
+    description: "Grafana Cloud Prometheus user"
+    required: true
+  grafana-cloud-api-key:
+    description: "Grafana Cloud API key"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Configure git safe directory
+      shell: bash
+      run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+    - name: Provision metal hosts
+      shell: bash
+      env:
+        HOSTS: ${{ inputs.hosts }}
+        METAL_USER: ${{ inputs.metal-user }}
+        GRAFANA_CLOUD_PROMETHEUS_URL: ${{ inputs.grafana-cloud-prometheus-url }}
+        GRAFANA_CLOUD_PROMETHEUS_USER: ${{ inputs.grafana-cloud-prometheus-user }}
+        GRAFANA_CLOUD_API_KEY: ${{ inputs.grafana-cloud-api-key }}
+        ANSIBLE_CONFIG: ansible/ansible.cfg
+      run: |
+        if [ -z "${GRAFANA_CLOUD_API_KEY}" ]; then
+          echo "::error::GRAFANA_CLOUD_API_KEY secret is not set"
+          exit 1
+        fi
+
+        ANSIBLE_HASH=$(git rev-parse HEAD:ansible)
+        STALE_HOSTS=""
+        for HOST in $(echo "$HOSTS" | tr ',' ' '); do
+          REMOTE_HASH=$(ssh "${METAL_USER}@${HOST}" "cat ~/.vm0-provision-hash 2>/dev/null" || true)
+          if [ "$ANSIBLE_HASH" != "$REMOTE_HASH" ]; then
+            echo "Host ${HOST} needs provisioning (${REMOTE_HASH:0:8} != ${ANSIBLE_HASH:0:8})"
+            STALE_HOSTS="${STALE_HOSTS:+${STALE_HOSTS},}${HOST}"
+          fi
+        done
+
+        if [ -z "$STALE_HOSTS" ]; then
+          echo "=== Skipping provisioning (hash ${ANSIBLE_HASH:0:8} matches on all hosts) ==="
+          exit 0
+        fi
+
+        echo "=== Provisioning: ${STALE_HOSTS} ==="
+        if ! command -v ansible-playbook &>/dev/null; then
+          if ! command -v pip3 &>/dev/null; then
+            rm -rf /var/lib/apt/lists/* && apt-get update && apt-get install -y python3 python3-pip
+          fi
+          pip3 install ansible
+        fi
+
+        ansible-playbook -i "${STALE_HOSTS}," ansible/playbooks/provision-runner.yml \
+          -e "ansible_user=${METAL_USER}" -v
+
+        ansible-playbook -i "${STALE_HOSTS}," ansible/playbooks/provision-monitoring.yml \
+          -e "ansible_user=${METAL_USER}" \
+          -e "grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL}" \
+          -e "grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER}" \
+          -e "grafana_cloud_api_key=${GRAFANA_CLOUD_API_KEY}" \
+          -e "env_label=dev" -v
+
+        for HOST in $(echo "$STALE_HOSTS" | tr ',' ' '); do
+          ssh "${METAL_USER}@${HOST}" "echo ${ANSIBLE_HASH} > ~/.vm0-provision-hash"
+        done

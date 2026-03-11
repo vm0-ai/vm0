@@ -100,10 +100,11 @@ const router = tsr.router(storagesPrepareContract, {
 
     // Resolve user's default scope
     const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const orgParam = new URL(request.url).searchParams.get("org");
     const { scope: runtimeScope } = await resolveScope(
       userId,
       scopeSlug,
-      null,
+      orgParam,
       tokenScopeId,
     );
 
@@ -158,7 +159,7 @@ const router = tsr.router(storagesPrepareContract, {
       })
       .onConflictDoUpdate({
         target: [
-          storages.scopeId,
+          storages.clerkOrgId,
           storages.userId,
           storages.name,
           storages.type,

@@ -91,6 +91,35 @@ describe("GET /api/agent/schedules/missing-secrets", () => {
     expect(agent).toBeUndefined();
   });
 
+  it("should not report api-token-only connector secret as missing", async () => {
+    // Productlane has empty environmentMapping — the secret is stored as a
+    // user secret via the api-token connector flow, so it should still be
+    // found by the missing-secrets check.
+    const agentName = uniqueId("productlane-agent");
+    await createTestCompose(agentName, {
+      overrides: {
+        environment: {
+          PRODUCTLANE_TOKEN: "${{ secrets.PRODUCTLANE_TOKEN }}",
+        },
+      },
+    });
+
+    await createTestSecret("PRODUCTLANE_TOKEN", "pl_test_value");
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules/missing-secrets",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const agent = data.agents.find(
+      (a: { agentName: string }) => a.agentName === agentName,
+    );
+    // Agent should not appear since its secret is configured
+    expect(agent).toBeUndefined();
+  });
+
   it("should report missing secrets for email-shared agent", async () => {
     // Owner creates agent with secret refs and shares it
     const owner = await context.setupUser({ prefix: "ms-owner" });

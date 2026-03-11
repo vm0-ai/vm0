@@ -2,6 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { setSecret } from "../../lib/api";
 import { isInteractive, promptPassword } from "../../lib/utils/prompt-utils";
+import { withErrorHandler } from "../../lib/command";
 
 export const setCommand = new Command()
   .name("set")
@@ -13,8 +14,11 @@ export const setCommand = new Command()
   )
   .option("-d, --description <description>", "Optional description")
   .action(
-    async (name: string, options: { body?: string; description?: string }) => {
-      try {
+    withErrorHandler(
+      async (
+        name: string,
+        options: { body?: string; description?: string },
+      ) => {
         // Resolve the secret value
         let value: string;
 
@@ -39,37 +43,35 @@ export const setCommand = new Command()
           process.exit(1);
         }
 
-        const secret = await setSecret({
-          name,
-          value,
-          description: options.description,
-        });
-
-        console.log(chalk.green(`✓ Secret "${secret.name}" saved`));
-        console.log();
-        console.log("Use in vm0.yaml:");
-        console.log(chalk.cyan(`  environment:`));
-        console.log(chalk.cyan(`    ${name}: \${{ secrets.${name} }}`));
-      } catch (error) {
-        if (error instanceof Error) {
-          if (error.message.includes("Not authenticated")) {
-            console.error(
-              chalk.red("✗ Not authenticated. Run: vm0 auth login"),
-            );
-          } else if (error.message.includes("must contain only uppercase")) {
+        let secret;
+        try {
+          secret = await setSecret({
+            name,
+            value,
+            description: options.description,
+          });
+        } catch (error) {
+          // Provide helpful examples for naming validation errors
+          if (
+            error instanceof Error &&
+            error.message.includes("must contain only uppercase")
+          ) {
             console.error(chalk.red(`✗ ${error.message}`));
             console.error();
             console.error("Examples of valid secret names:");
             console.error(chalk.dim("  MY_API_KEY"));
             console.error(chalk.dim("  GITHUB_TOKEN"));
             console.error(chalk.dim("  AWS_ACCESS_KEY_ID"));
-          } else {
-            console.error(chalk.red(`✗ ${error.message}`));
+            process.exit(1);
           }
-        } else {
-          console.error(chalk.red("✗ An unexpected error occurred"));
+          throw error;
         }
-        process.exit(1);
-      }
-    },
+
+        console.log(chalk.green(`✓ Secret "${secret.name}" saved`));
+        console.log();
+        console.log("Use in vm0.yaml:");
+        console.log(chalk.cyan(`  environment:`));
+        console.log(chalk.cyan(`    ${name}: \${{ secrets.${name} }}`));
+      },
+    ),
   );

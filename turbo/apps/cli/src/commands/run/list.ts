@@ -58,12 +58,9 @@ function parseStatusFilter(options: ListOptions): string | undefined {
     const values = options.status.split(",").map((s) => s.trim());
     for (const v of values) {
       if (!ALL_RUN_STATUSES.includes(v as RunStatus)) {
-        console.error(
-          chalk.red(
-            `Error: Invalid status "${v}". Valid values: ${VALID_STATUSES}`,
-          ),
-        );
-        process.exit(1);
+        throw new Error(`Invalid status "${v}"`, {
+          cause: new Error(`Valid values: ${VALID_STATUSES}`),
+        });
       }
     }
     return values.join(",");
@@ -85,12 +82,9 @@ function parseTimeOption(value: string, optionName: string): string {
   try {
     return new Date(parseTime(value)).toISOString();
   } catch {
-    console.error(
-      chalk.red(
-        `Error: Invalid ${optionName} format. Use ISO (2026-01-01) or relative (1h, 7d, 30d)`,
-      ),
+    throw new Error(
+      `Invalid ${optionName} format. Use ISO (2026-01-01) or relative (1h, 7d, 30d)`,
     );
-    process.exit(1);
   }
 }
 
@@ -102,8 +96,7 @@ function parseLimit(value: string | undefined): number | undefined {
 
   const limit = parseInt(value, 10);
   if (isNaN(limit) || limit < 1 || limit > 100) {
-    console.error(chalk.red("Error: --limit must be between 1 and 100"));
-    process.exit(1);
+    throw new Error("--limit must be between 1 and 100");
   }
   return limit;
 }
@@ -166,10 +159,7 @@ export const listCommand = new Command()
     withErrorHandler(async (options: ListOptions) => {
       // Validate mutual exclusion
       if (options.all && options.status) {
-        console.error(
-          chalk.red("Error: --all and --status are mutually exclusive"),
-        );
-        process.exit(1);
+        throw new Error("--all and --status are mutually exclusive");
       }
 
       // Parse options
@@ -184,8 +174,7 @@ export const listCommand = new Command()
 
       // Validate since < until
       if (since && until && new Date(since) >= new Date(until)) {
-        console.error(chalk.red("Error: --since must be before --until"));
-        process.exit(1);
+        throw new Error("--since must be before --until");
       }
 
       // Fetch runs with filters

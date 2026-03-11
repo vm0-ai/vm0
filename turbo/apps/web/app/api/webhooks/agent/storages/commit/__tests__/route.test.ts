@@ -12,7 +12,6 @@ import {
   uniqueId,
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
-import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 
 vi.hoisted(() => {
   vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-storages-bucket");
@@ -78,8 +77,6 @@ describe("POST /api/webhooks/agent/storages/commit", () => {
     const { runId } = await createTestRun(composeId, "Test prompt");
     testRunId = runId;
     testToken = await createTestSandboxToken(user.userId, testRunId);
-
-    mockClerk({ userId: null });
   });
 
   it("should return 401 without authentication", async () => {

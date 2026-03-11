@@ -5,6 +5,7 @@ import { enableSchedule } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
 import { isNotFound, isSchedulePast } from "../../../../../../src/lib/errors";
 import { resolveScopeId } from "../../../../../../src/lib/scope/scope-member-service";
+import { getScopeById } from "../../../../../../src/lib/scope/scope-service";
 
 const log = logger("api:schedules:enable");
 
@@ -45,13 +46,20 @@ export async function POST(
   }
 
   const scopeId = await resolveScopeId(userId, body.scopeId, tokenScopeId);
+  const scope = await getScopeById(scopeId);
+  if (!scope) {
+    return NextResponse.json(
+      { error: { message: "Scope not found", code: "NOT_FOUND" } },
+      { status: 404 },
+    );
+  }
 
   log.debug(`Enabling schedule ${name} for compose ${body.composeId}`);
 
   try {
     const schedule = await enableSchedule(
       userId,
-      scopeId,
+      scope.clerkOrgId,
       body.composeId,
       name,
     );

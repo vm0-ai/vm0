@@ -243,7 +243,7 @@ async function getScopeSlug(scopeId: string): Promise<string> {
  */
 async function verifyScheduleOwnership(
   userId: string,
-  scopeId: string,
+  clerkOrgId: string,
   composeId: string,
   name: string,
 ): Promise<{
@@ -258,7 +258,7 @@ async function verifyScheduleOwnership(
       and(
         eq(agentSchedules.composeId, composeId),
         eq(agentSchedules.name, name),
-        eq(agentSchedules.scopeId, scopeId),
+        eq(agentSchedules.clerkOrgId, clerkOrgId),
         eq(agentSchedules.userId, userId),
       ),
     )
@@ -269,7 +269,7 @@ async function verifyScheduleOwnership(
   }
 
   const compose = await loadCompose(composeId);
-  const scopeSlug = await getScopeSlug(scopeId);
+  const scopeSlug = await getScopeSlug(schedule.scopeId);
 
   return { schedule, compose, scopeSlug };
 }
@@ -280,9 +280,8 @@ async function verifyScheduleOwnership(
  */
 async function validateRequiredConfig(
   compose: typeof agentComposes.$inferSelect,
-  scopeId: string,
-  userId: string,
   clerkOrgId: string,
+  userId: string,
 ): Promise<void> {
   if (!compose.headVersionId) return;
 
@@ -297,7 +296,7 @@ async function validateRequiredConfig(
   const required = extractRequiredConfiguration(version.content);
 
   // Fetch platform-managed secrets and vars from schedule's scope + user
-  const platformSecrets = await getSecretValues(scopeId, userId, "user");
+  const platformSecrets = await getSecretValues(clerkOrgId, userId, "user");
   const platformSecretNames = Object.keys(platformSecrets);
   log.debug(
     `Fetched ${platformSecretNames.length} platform secret(s) for validation`,
@@ -313,7 +312,9 @@ async function validateRequiredConfig(
   const userConnectors = await globalThis.services.db
     .select({ type: connectors.type })
     .from(connectors)
-    .where(and(eq(connectors.scopeId, scopeId), eq(connectors.userId, userId)));
+    .where(
+      and(eq(connectors.clerkOrgId, clerkOrgId), eq(connectors.userId, userId)),
+    );
   const connectorProvidedNames = getConnectorProvidedSecretNames(
     userConnectors.map((c) => c.type),
   );
@@ -363,8 +364,8 @@ function resolveTrigger(request: DeployScheduleRequest): {
  */
 export async function deploySchedule(
   userId: string,
-  scopeId: string,
   clerkOrgId: string,
+  scopeId: string,
   request: DeployScheduleRequest,
 ): Promise<{ schedule: ScheduleResponse; created: boolean }> {
   log.debug(
@@ -388,14 +389,14 @@ export async function deploySchedule(
       and(
         eq(agentSchedules.composeId, request.composeId),
         eq(agentSchedules.name, request.name),
-        eq(agentSchedules.scopeId, scopeId),
+        eq(agentSchedules.clerkOrgId, clerkOrgId),
         eq(agentSchedules.userId, userId),
       ),
     )
     .limit(1);
 
   // Validate required secrets/vars against schedule's scope + user
-  await validateRequiredConfig(compose, scopeId, userId, clerkOrgId);
+  await validateRequiredConfig(compose, clerkOrgId, userId);
 
   const { triggerType, nextRunAt } = resolveTrigger(request);
 
@@ -530,7 +531,7 @@ export async function listSchedules(
  */
 export async function getScheduleByName(
   userId: string,
-  scopeId: string,
+  clerkOrgId: string,
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
@@ -538,7 +539,7 @@ export async function getScheduleByName(
 
   const { schedule, compose, scopeSlug } = await verifyScheduleOwnership(
     userId,
-    scopeId,
+    clerkOrgId,
     composeId,
     name,
   );
@@ -551,7 +552,7 @@ export async function getScheduleByName(
  */
 export async function getScheduleRecentRuns(
   userId: string,
-  scopeId: string,
+  clerkOrgId: string,
   composeId: string,
   scheduleName: string,
   limit: number,
@@ -562,7 +563,7 @@ export async function getScheduleRecentRuns(
 
   const { schedule } = await verifyScheduleOwnership(
     userId,
-    scopeId,
+    clerkOrgId,
     composeId,
     scheduleName,
   );
@@ -595,7 +596,7 @@ export async function getScheduleRecentRuns(
  */
 export async function deleteSchedule(
   userId: string,
-  scopeId: string,
+  clerkOrgId: string,
   composeId: string,
   name: string,
 ): Promise<void> {
@@ -603,7 +604,7 @@ export async function deleteSchedule(
 
   const { schedule } = await verifyScheduleOwnership(
     userId,
-    scopeId,
+    clerkOrgId,
     composeId,
     name,
   );
@@ -620,7 +621,7 @@ export async function deleteSchedule(
  */
 export async function enableSchedule(
   userId: string,
-  scopeId: string,
+  clerkOrgId: string,
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
@@ -628,7 +629,7 @@ export async function enableSchedule(
 
   const { schedule, compose, scopeSlug } = await verifyScheduleOwnership(
     userId,
-    scopeId,
+    clerkOrgId,
     composeId,
     name,
   );
@@ -678,7 +679,7 @@ export async function enableSchedule(
  */
 export async function disableSchedule(
   userId: string,
-  scopeId: string,
+  clerkOrgId: string,
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
@@ -686,7 +687,7 @@ export async function disableSchedule(
 
   const { schedule, compose, scopeSlug } = await verifyScheduleOwnership(
     userId,
-    scopeId,
+    clerkOrgId,
     composeId,
     name,
   );

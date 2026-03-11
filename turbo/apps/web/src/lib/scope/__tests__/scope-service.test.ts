@@ -19,8 +19,8 @@ describe("getScopeByClerkOrgId", () => {
 
     const created = await createTestScope(slug);
 
-    // Clerk mock generates clerkOrgId as "org_mock_{slug}"
-    const result = await getScopeByClerkOrgId(`org_mock_${slug}`);
+    // POST route resolves clerkOrgId from user's Clerk org membership (org_mock_{userId})
+    const result = await getScopeByClerkOrgId(`org_mock_${userId}`);
 
     expect(result).not.toBeNull();
     expect(result!.id).toBe(created.id);
@@ -57,22 +57,15 @@ describe("createScope", () => {
     expect(client.organizations.createOrganization).not.toHaveBeenCalled();
   });
 
-  it("should create a new Clerk org when clerkOrgId is not provided", async () => {
+  it("should require clerkOrgId parameter", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("scope");
+    const clerkOrgId = `org_required_${slug}`;
     mockClerk({ userId });
 
-    const scope = await createScope(userId, slug);
+    const scope = await createScope(userId, slug, { clerkOrgId });
 
     expect(scope.slug).toBe(slug);
-    // Clerk mock generates org ID as "org_mock_{slug}"
-    expect(scope.clerkOrgId).toBe(`org_mock_${slug}`);
-
-    // Verify Clerk createOrganization WAS called
-    const client = await clerkClient();
-    expect(client.organizations.createOrganization).toHaveBeenCalledWith({
-      name: slug,
-      createdBy: userId,
-    });
+    expect(scope.clerkOrgId).toBe(clerkOrgId);
   });
 });

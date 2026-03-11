@@ -1,4 +1,4 @@
-import { getBaseUrl, getHeaders } from "../core/client-factory";
+import { getBaseUrl, getHeaders, handleError } from "../core/client-factory";
 import type { UsageResponse } from "../core/types";
 
 /**
@@ -22,8 +22,13 @@ export async function getUsage(options: {
   });
 
   if (!response.ok) {
-    const error = (await response.json()) as { error?: { message?: string } };
-    throw new Error(error.error?.message || "Failed to fetch usage data");
+    const body = (await response.json()) as {
+      error?: { message?: string; code?: string };
+    };
+    handleError(
+      { status: response.status, body },
+      "Failed to fetch usage data",
+    );
   }
 
   return response.json() as Promise<UsageResponse>;

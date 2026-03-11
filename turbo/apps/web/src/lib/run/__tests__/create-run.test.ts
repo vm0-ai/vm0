@@ -695,6 +695,7 @@ describe("createRun()", () => {
         name: uniqueId("org-agent"),
       });
       const orgScopeId = orgCompose.scopeId;
+      const orgClerkOrgId = orgCompose.clerkOrgId;
 
       // Use the default compose but pass org scope for storage resolution
       const result = await createRun(
@@ -714,7 +715,7 @@ describe("createRun()", () => {
 
       // Verify artifact storage was created in the org scope (not user's default scope)
       const artifact = await findTestStorage(
-        orgScopeId,
+        orgClerkOrgId,
         "artifact",
         "artifact",
       );
@@ -722,7 +723,7 @@ describe("createRun()", () => {
       expect(artifact!.userId).toBe(user.userId);
 
       // Verify memory storage was created in the org scope
-      const memory = await findTestStorage(orgScopeId, "memory", "memory");
+      const memory = await findTestStorage(orgClerkOrgId, "memory", "memory");
       expect(memory).toBeDefined();
       expect(memory!.userId).toBe(user.userId);
     });
@@ -742,7 +743,7 @@ describe("createRun()", () => {
 
       // Verify artifact storage was created in user's default scope
       const artifact = await findTestStorage(
-        user.scopeId,
+        user.clerkOrgId,
         "artifact",
         "artifact",
       );
@@ -750,7 +751,7 @@ describe("createRun()", () => {
       expect(artifact!.userId).toBe(user.userId);
 
       // Verify memory storage was created in user's default scope
-      const memory = await findTestStorage(user.scopeId, "memory", "memory");
+      const memory = await findTestStorage(user.clerkOrgId, "memory", "memory");
       expect(memory).toBeDefined();
       expect(memory!.userId).toBe(user.userId);
     });
@@ -785,6 +786,39 @@ describe("createRun()", () => {
         envs?: Record<string, string>;
       };
       expect(sandboxOptions.envs?.FIGMA_TOKEN).toBe("figd_test_secret_123");
+    });
+
+    it("should inject api-token-only connector secret (no environmentMapping) into sandbox environment", async () => {
+      // Productlane has empty environmentMapping — secret is resolved purely
+      // from user secrets, not via connector environmentMapping.
+      const compose = await createTestCompose(
+        uniqueId("api-token-only-agent"),
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-api-key",
+              PRODUCTLANE_TOKEN: "${{ secrets.PRODUCTLANE_TOKEN }}",
+            },
+          },
+        },
+      );
+
+      // Store secret as a user secret (api-token connector path)
+      await createTestConnector(user.scopeId, {
+        type: "productlane",
+        authMethod: "api-token",
+        secretName: "PRODUCTLANE_TOKEN",
+        accessToken: "pl_test_secret_789",
+      });
+
+      await createRun(baseParams({ agentComposeVersionId: compose.versionId }));
+
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      expect(createCall).toBeDefined();
+      const sandboxOptions = createCall![1] as {
+        envs?: Record<string, string>;
+      };
+      expect(sandboxOptions.envs?.PRODUCTLANE_TOKEN).toBe("pl_test_secret_789");
     });
 
     it("should inject oauth connector secret via environmentMapping into sandbox environment", async () => {

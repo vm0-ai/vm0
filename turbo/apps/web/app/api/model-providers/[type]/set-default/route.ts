@@ -32,14 +32,15 @@ const router = tsr.router(modelProvidersSetDefaultContract, {
 
     try {
       const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const orgParam = new URL(request.url).searchParams.get("org");
       const { scope } = await resolveScope(
         userId,
         scopeSlug,
-        null,
+        orgParam,
         tokenScopeId,
       );
       const provider = await setModelProviderDefault(
-        scope.id,
+        scope.clerkOrgId,
         userId,
         params.type,
       );

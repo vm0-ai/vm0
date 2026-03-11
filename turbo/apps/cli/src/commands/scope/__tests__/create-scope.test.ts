@@ -105,6 +105,11 @@ describe("scope create command", () => {
 
     await expect(async () => {
       await createCommand.parseAsync(["node", "cli", "my-team"]);
-    }).rejects.toThrow("Not authenticated");
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("Not authenticated"),
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

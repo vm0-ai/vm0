@@ -23,8 +23,18 @@ const router = tsr.router(modelProvidersCheckContract, {
     const { userId, scopeId: tokenScopeId } = authCtx;
 
     const scopeSlug = new URL(request.url).searchParams.get("scope");
-    const { scope } = await resolveScope(userId, scopeSlug, null, tokenScopeId);
-    const result = await checkSecretExists(scope.id, userId, params.type);
+    const orgParam = new URL(request.url).searchParams.get("org");
+    const { scope } = await resolveScope(
+      userId,
+      scopeSlug,
+      orgParam,
+      tokenScopeId,
+    );
+    const result = await checkSecretExists(
+      scope.clerkOrgId,
+      userId,
+      params.type,
+    );
 
     return {
       status: 200 as const,

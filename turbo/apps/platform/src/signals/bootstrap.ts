@@ -29,6 +29,7 @@ import { setupProviderSetupPage$ } from "./provider-setup/provider-setup-page.ts
 import { setupSlackConnectPage$ } from "./slack-connect/slack-connect-page.ts";
 import { setupSlackConnectSuccessPage$ } from "./slack-connect/slack-connect-success-page.ts";
 import { setupZeroPage$ } from "./zero-page/zero-page.ts";
+import { setupSelectOrgPage$ } from "./select-org/select-org-page.ts";
 import { setupTelegramSettingsPage$ } from "./integrations-page/telegram-settings-page.ts";
 import { setupTelegramConnectPage$ } from "./telegram-connect/telegram-connect-page.ts";
 import { setupTelegramConnectSuccessPage$ } from "./telegram-connect/telegram-connect-success-page.ts";
@@ -39,6 +40,10 @@ const ROUTE_CONFIG = [
   {
     path: "/",
     setup: setupAuthPageWrapper(setupHomePage$),
+  },
+  {
+    path: "/select-org",
+    setup: setupAuthPageWrapper(setupSelectOrgPage$),
   },
   {
     path: "/zero/:tab",

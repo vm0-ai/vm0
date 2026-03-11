@@ -3,7 +3,6 @@ import chalk from "chalk";
 import { initClient } from "@ts-rest/core";
 import {
   CONNECTOR_TYPES,
-  CONNECTOR_FEATURE_FLAGS,
   connectorSessionsContract,
   connectorSessionByIdContract,
   connectorTypeSchema,
@@ -15,6 +14,7 @@ import {
 } from "@vm0/core";
 import { getApiUrl, getActiveToken } from "../../lib/api/config";
 import { deleteConnector, setSecret } from "../../lib/api";
+import { withErrorHandler } from "../../lib/command";
 import {
   checkComputerDependencies,
   startComputerServices,
@@ -69,10 +69,9 @@ async function connectViaApiToken(
   const config = CONNECTOR_TYPES[connectorType];
   const apiTokenConfig = config.authMethods["api-token"];
   if (!apiTokenConfig) {
-    console.error(
-      chalk.red(`✗ ${config.label} does not support API token authentication`),
+    throw new Error(
+      `${config.label} does not support API token authentication`,
     );
-    process.exit(1);
   }
 
   const secretEntries = Object.entries(apiTokenConfig.secrets);
@@ -98,8 +97,7 @@ async function connectViaApiToken(
       );
 
       if (!value) {
-        console.error(chalk.red("✗ Cancelled"));
-        process.exit(1);
+        throw new Error("Cancelled");
       }
 
       inputSecrets[secretName] = value;
@@ -140,10 +138,7 @@ async function connectComputer(
 
   if (createResult.status !== 200) {
     const errorBody = createResult.body as ApiErrorResponse;
-    console.error(
-      chalk.red(`✗ Failed to create connector: ${errorBody.error?.message}`),
-    );
-    process.exit(1);
+    throw new Error(`Failed to create connector: ${errorBody.error?.message}`);
   }
 
   const credentials = createResult.body as ComputerConnectorCreateResponse;
@@ -163,7 +158,7 @@ async function resolveAuthMethod(
   tokenFlag?: string,
 ): Promise<"oauth" | "api-token"> {
   const config = CONNECTOR_TYPES[connectorType];
-  const oauthFlag = CONNECTOR_FEATURE_FLAGS[connectorType];
+  const oauthFlag = CONNECTOR_TYPES[connectorType].featureFlag;
   const oauthAvailable =
     "oauth" in config.authMethods &&
     (!oauthFlag || (await isFeatureEnabled(oauthFlag)));
@@ -171,12 +166,9 @@ async function resolveAuthMethod(
 
   if (tokenFlag) {
     if (!apiTokenAvailable) {
-      console.error(
-        chalk.red(
-          `✗ ${config.label} does not support API token authentication`,
-        ),
+      throw new Error(
+        `${config.label} does not support API token authentication`,
       );
-      process.exit(1);
     }
     return "api-token";
   }
@@ -193,8 +185,7 @@ async function resolveAuthMethod(
       ],
     );
     if (!selected) {
-      console.error(chalk.red("✗ Cancelled"));
-      process.exit(1);
+      throw new Error("Cancelled");
     }
     return selected;
   }
@@ -202,12 +193,9 @@ async function resolveAuthMethod(
   if (apiTokenAvailable) return "api-token";
   if (oauthAvailable) return "oauth";
 
-  console.error(
-    chalk.red(
-      `✗ ${config.label} has no available auth methods. OAuth may not be enabled yet.`,
-    ),
+  throw new Error(
+    `${config.label} has no available auth methods. OAuth may not be enabled yet.`,
   );
-  process.exit(1);
 }
 
 /**
@@ -233,10 +221,7 @@ async function connectViaOAuth(
 
   if (createResult.status !== 200) {
     const errorBody = createResult.body as ApiErrorResponse;
-    console.error(
-      chalk.red(`✗ Failed to create session: ${errorBody.error?.message}`),
-    );
-    process.exit(1);
+    throw new Error(`Failed to create session: ${errorBody.error?.message}`);
   }
 
   const session = createResult.body;
@@ -272,10 +257,7 @@ async function connectViaOAuth(
 
     if (statusResult.status !== 200) {
       const errorBody = statusResult.body as ApiErrorResponse;
-      console.error(
-        chalk.red(`\n✗ Failed to check status: ${errorBody.error?.message}`),
-      );
-      process.exit(1);
+      throw new Error(`Failed to check status: ${errorBody.error?.message}`);
     }
 
     const status = statusResult.body;
@@ -287,25 +269,18 @@ async function connectViaOAuth(
         );
         return;
       case "expired":
-        console.error(chalk.red("\n✗ Session expired, please try again"));
-        process.exit(1);
-        break;
+        throw new Error("Session expired, please try again");
       case "error":
-        console.error(
-          chalk.red(
-            `\n✗ Connection failed: ${status.errorMessage || "Unknown error"}`,
-          ),
+        throw new Error(
+          `Connection failed: ${status.errorMessage || "Unknown error"}`,
         );
-        process.exit(1);
-        break;
       case "pending":
         process.stdout.write(chalk.dim("."));
         break;
     }
   }
 
-  console.error(chalk.red("\n✗ Session timed out, please try again"));
-  process.exit(1);
+  throw new Error("Session timed out, please try again");
 }
 
 export const connectCommand = new Command()
@@ -313,13 +288,13 @@ export const connectCommand = new Command()
   .description("Connect a third-party service (e.g., GitHub)")
   .argument("<type>", "Connector type (e.g., github)")
   .option("--token <value>", "API token value (skip interactive prompt)")
-  .action(async (type: string, options: { token?: string }) => {
-    try {
+  .action(
+    withErrorHandler(async (type: string, options: { token?: string }) => {
       const parseResult = connectorTypeSchema.safeParse(type);
       if (!parseResult.success) {
-        console.error(chalk.red(`✗ Unknown connector type: ${type}`));
-        console.error("Available connectors: github");
-        process.exit(1);
+        throw new Error(`Unknown connector type: ${type}`, {
+          cause: new Error("Available connectors: github"),
+        });
       }
 
       const connectorType = parseResult.data;
@@ -339,15 +314,5 @@ export const connectCommand = new Command()
       }
 
       await connectViaOAuth(connectorType, apiUrl, headers);
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error(chalk.red(`✗ ${error.message}`));
-        if (error.cause instanceof Error) {
-          console.error(chalk.dim(`  Cause: ${error.cause.message}`));
-        }
-      } else {
-        console.error(chalk.red("✗ An unexpected error occurred"));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

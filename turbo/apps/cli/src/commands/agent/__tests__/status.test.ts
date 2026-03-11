@@ -224,7 +224,7 @@ describe("agent status command", () => {
 
       expect(mockExit).toHaveBeenCalledWith(1);
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to get agent compose status"),
+        expect.stringContaining("Not authenticated"),
       );
     });
   });

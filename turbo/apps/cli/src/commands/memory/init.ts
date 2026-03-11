@@ -49,13 +49,9 @@ export const initCommand = new Command()
       if (options.name) {
         memoryName = options.name;
       } else if (!isInteractive()) {
-        console.error(
-          chalk.red("✗ --name flag is required in non-interactive mode"),
-        );
-        console.error(
-          chalk.dim("  Usage: vm0 memory init --name <memory-name>"),
-        );
-        process.exit(1);
+        throw new Error("--name flag is required in non-interactive mode", {
+          cause: new Error("Usage: vm0 memory init --name <memory-name>"),
+        });
       } else {
         // Interactive prompt with directory name as default
         const defaultName = isValidStorageName(dirName) ? dirName : undefined;
@@ -80,16 +76,11 @@ export const initCommand = new Command()
 
       // Validate name
       if (!isValidStorageName(memoryName)) {
-        console.error(chalk.red(`✗ Invalid memory name: "${memoryName}"`));
-        console.error(
-          chalk.dim(
-            "  Memory names must be 3-64 characters, lowercase alphanumeric with hyphens",
+        throw new Error(`Invalid memory name: "${memoryName}"`, {
+          cause: new Error(
+            "Memory names must be 3-64 characters, lowercase alphanumeric with hyphens",
           ),
-        );
-        console.error(
-          chalk.dim("  Example: my-memory, agent-context, project-memory"),
-        );
-        process.exit(1);
+        });
       }
 
       // Write config file with type: memory

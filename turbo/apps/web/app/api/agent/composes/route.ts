@@ -22,7 +22,10 @@ import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
-import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
+import {
+  getScopeBySlug,
+  getScopeByClerkOrgId,
+} from "../../../../src/lib/scope/scope-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
@@ -44,10 +47,28 @@ const router = tsr.router(composesMainContract, {
 
     // Resolve scope: for cross-scope lookups (shared agents), skip membership
     // check and rely on canAccessCompose for authorization instead.
+    // isCrossScopeLookup is true when an explicit scope/org param is provided,
+    // which requires canAccessCompose authorization below.
+    const isCrossScopeLookup = Boolean(query.scope || query.org);
     let clerkOrgId: string;
     let defaultAgentComposeId: string | null = null;
     if (query.scope) {
       const scope = await getScopeBySlug(query.scope);
+      if (!scope) {
+        return {
+          status: 404 as const,
+          body: {
+            error: {
+              message: `Agent compose not found: ${query.name}`,
+              code: "NOT_FOUND",
+            },
+          },
+        };
+      }
+      clerkOrgId = scope.clerkOrgId;
+      defaultAgentComposeId = scope.defaultAgentComposeId;
+    } else if (query.org) {
+      const scope = await getScopeByClerkOrgId(query.org);
       if (!scope) {
         return {
           status: 404 as const,
@@ -110,7 +131,7 @@ const router = tsr.router(composesMainContract, {
     }
 
     // Check permission to access this compose (for cross-scope lookups)
-    if (query.scope) {
+    if (isCrossScopeLookup) {
       const userEmail = await getUserEmail(userId);
       const hasAccess = await canAccessCompose(userId, userEmail, result);
       if (!hasAccess) {

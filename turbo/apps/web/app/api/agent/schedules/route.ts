@@ -45,7 +45,7 @@ const router = tsr.router(schedulesMainContract, {
         };
       }
 
-      const result = await deploySchedule(userId, scopeId, scope.clerkOrgId, {
+      const result = await deploySchedule(userId, scope.clerkOrgId, scopeId, {
         name: body.name,
         composeId: body.composeId,
         cronExpression: body.cronExpression,

@@ -140,6 +140,32 @@ describe("Agent Compose Permission Checks", () => {
       expect(data.error.message).toContain("not found");
     });
 
+    it("should allow access when user is in the same Clerk org (via scope resolution)", async () => {
+      // Get owner's org info
+      const owner = await context.user;
+
+      // Switch to another user who is a Clerk member of the same org
+      // (but NOT the compose owner and NOT in scope_members table)
+      const otherUserId = uniqueId("org-member");
+      mockClerk({
+        userId: otherUserId,
+        clerkOrgs: [
+          { id: owner.clerkOrgId, slug: "shared-org", name: "shared-org" },
+        ],
+      });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/composes/${testComposeId}`,
+        { method: "GET" },
+      );
+
+      const response = await getCompose(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.id).toBe(testComposeId);
+    });
+
     it("should always allow owner to access their compose", async () => {
       const request = createTestRequest(
         `http://localhost:3000/api/agent/composes/${testComposeId}`,

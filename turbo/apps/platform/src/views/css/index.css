@@ -99,7 +99,7 @@
   border-color: hsl(220 8% 26%);
 }
 
-/* Pill/tag (e.g. "Super Manager"): cool gray, not warm */
+/* Pill/tag (e.g. "Super agent"): cool gray, not warm */
 .zero-app .zero-pill {
   background-color: hsl(220 6% 97%);
   border-color: hsl(220 5% 92%);

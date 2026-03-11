@@ -30,7 +30,11 @@ describe("Storage per-user isolation", () => {
 
     await createTestVolume("shared-vol");
 
-    const record = await findTestStorage(user.scopeId, "shared-vol", "volume");
+    const record = await findTestStorage(
+      user.clerkOrgId,
+      "shared-vol",
+      "volume",
+    );
     expect(record).toBeDefined();
     expect(record!.userId).toBe(VOLUME_SCOPE_USER_ID);
   });
@@ -41,7 +45,7 @@ describe("Storage per-user isolation", () => {
     await createTestArtifact("my-artifact");
 
     const record = await findTestStorage(
-      user.scopeId,
+      user.clerkOrgId,
       "my-artifact",
       "artifact",
     );
@@ -54,7 +58,11 @@ describe("Storage per-user isolation", () => {
 
     await createTestMemory("my-memory");
 
-    const record = await findTestStorage(user.scopeId, "my-memory", "memory");
+    const record = await findTestStorage(
+      user.clerkOrgId,
+      "my-memory",
+      "memory",
+    );
     expect(record).toBeDefined();
     expect(record!.userId).toBe(user.userId);
   });
@@ -147,12 +155,12 @@ describe("Storage per-user isolation", () => {
 
     // Both volumes use sentinel userId, not the real user
     const recordA = await findTestStorage(
-      userA.scopeId,
+      userA.clerkOrgId,
       "shared-data",
       "volume",
     );
     const recordB = await findTestStorage(
-      userB.scopeId,
+      userB.clerkOrgId,
       "shared-data",
       "volume",
     );

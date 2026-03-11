@@ -11,6 +11,7 @@ import {
   updateScopeSlug,
   isVm0Admin,
   ensureDefaultScope,
+  resolveUnmatchedClerkOrg,
 } from "../../../src/lib/scope/scope-service";
 import { getUserEmail } from "../../../src/lib/auth/get-user-email";
 import { resolveScope } from "../../../src/lib/scope/resolve-scope";
@@ -102,7 +103,20 @@ const router = tsr.router(scopeContract, {
         skipSlugValidation = true;
       }
 
-      const scope = await createScope(userId, slug, { skipSlugValidation });
+      // Resolve clerkOrgId from user's Clerk org memberships
+      const unmatchedOrg = await resolveUnmatchedClerkOrg(userId);
+
+      if (!unmatchedOrg) {
+        return createErrorResponse(
+          "BAD_REQUEST",
+          "No available Clerk organization to associate with this scope",
+        );
+      }
+
+      const scope = await createScope(userId, slug, {
+        skipSlugValidation,
+        clerkOrgId: unmatchedOrg.organization.id,
+      });
 
       return { status: 201 as const, body: scopeToResponseBody(scope) };
     } catch (error) {

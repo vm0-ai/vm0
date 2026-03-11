@@ -179,3 +179,8 @@ docs/tapes/*.gif
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Debug screenshots
+debug-*.png
+
+.claude/scheduled_tasks.lock

@@ -34,6 +34,7 @@ import {
 } from "@vm0/core";
 import type { z } from "zod";
 import { getApiUrl, getActiveToken } from "./config";
+import { handleError } from "./core/client-factory";
 
 // Import types from @vm0/core contracts
 import type {
@@ -1259,9 +1260,7 @@ class ApiClient {
       return result.body;
     }
 
-    const errorBody = result.body as ApiErrorResponse;
-    const message = errorBody.error?.message || "Failed to search logs";
-    throw new Error(message);
+    handleError(result, "Failed to search logs");
   }
 }
 

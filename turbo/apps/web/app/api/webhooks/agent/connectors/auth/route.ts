@@ -35,9 +35,9 @@ async function refreshConnectorToken(
   connectorType: string,
   connectorSecrets: Record<string, string>,
   accessTokenName: string,
+  clerkOrgId: string,
   scopeId: string,
   userId: string,
-  clerkOrgId: string,
   runId: string,
 ): Promise<Response | null> {
   if (!handler.refreshToken || !handler.getRefreshSecretName) return null;
@@ -72,19 +72,19 @@ async function refreshConnectorToken(
       currentRefreshToken,
     );
     await upsertConnectorSecret(
+      clerkOrgId,
       scopeId,
       userId,
       accessTokenName,
       result.accessToken,
-      clerkOrgId,
     );
     if (result.refreshToken) {
       await upsertConnectorSecret(
+        clerkOrgId,
         scopeId,
         userId,
         refreshTokenName,
         result.refreshToken,
-        clerkOrgId,
       );
     }
     connectorSecrets[accessTokenName] = result.accessToken;
@@ -248,7 +248,7 @@ export async function POST(request: Request) {
     .from(connectors)
     .where(
       and(
-        eq(connectors.scopeId, run.scopeId),
+        eq(connectors.clerkOrgId, run.clerkOrgId),
         eq(connectors.userId, auth.userId),
         eq(connectors.type, connectorType),
       ),
@@ -269,7 +269,7 @@ export async function POST(request: Request) {
 
   // Get connector secrets and refresh if needed
   const connectorSecrets = await getSecretValues(
-    run.scopeId,
+    run.clerkOrgId,
     auth.userId,
     "connector",
   );
@@ -285,9 +285,9 @@ export async function POST(request: Request) {
       connectorType,
       connectorSecrets,
       accessTokenName,
+      run.clerkOrgId,
       run.scopeId,
       auth.userId,
-      run.clerkOrgId,
       body.runId,
     );
     if (refreshError) return refreshError;

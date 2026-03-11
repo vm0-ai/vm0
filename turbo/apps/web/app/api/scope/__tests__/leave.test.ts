@@ -44,7 +44,9 @@ describe("POST /api/scope/leave - Leave Scope", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error.message).toContain("scope query parameter is required");
+    expect(data.error.message).toContain(
+      "scope or org query parameter is required",
+    );
   });
 
   it("should prevent admin from leaving", async () => {

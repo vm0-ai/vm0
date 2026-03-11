@@ -37,7 +37,7 @@ const router = tsr.router(onboardingStatusContract, {
       const [provider] = await globalThis.services.db
         .select({ id: modelProviders.id })
         .from(modelProviders)
-        .where(eq(modelProviders.scopeId, scope.id))
+        .where(eq(modelProviders.clerkOrgId, scope.clerkOrgId))
         .limit(1);
 
       hasModelProvider = provider !== undefined;

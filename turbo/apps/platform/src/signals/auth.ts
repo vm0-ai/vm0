@@ -120,3 +120,44 @@ export const user$ = computed(async (get) => {
   const clerk = await get(clerk$);
   return clerk.user ?? undefined;
 });
+
+/**
+ * Determines whether the current user needs to select an organization
+ * before entering the platform.
+ *
+ * Returns true when ALL of:
+ * - No active organization is set in the Clerk session
+ * - AND at least one of:
+ *   - User belongs to more than 1 organization
+ *   - User has pending organization invitations
+ *
+ * Note: callers should gate on the Zero feature flag before using this signal.
+ */
+export const needsOrgSelection$ = computed(async (get) => {
+  get(reload$);
+  const clerk = await get(clerk$);
+  const user = clerk.user;
+  if (!user) {
+    return false;
+  }
+
+  // If an active organization is already set, no selection needed
+  if (clerk.organization) {
+    return false;
+  }
+
+  // Check membership count (synchronous property on User)
+  if (user.organizationMemberships.length > 1) {
+    return true;
+  }
+
+  // Check pending invitations (async API call)
+  const invitations = await user.getOrganizationInvitations({
+    status: "pending",
+  });
+  if (invitations.total_count > 0) {
+    return true;
+  }
+
+  return false;
+});
