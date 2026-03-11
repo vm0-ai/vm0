@@ -153,6 +153,9 @@ const SERVICE_CONFIGS: Partial<Record<ConnectorType, ServiceConfig>> = {
       api("https://api.au.intercom.io", bearerAuth("INTERCOM_TOKEN")),
     ],
   },
+  jam: {
+    apis: [api("https://api.jam.dev", bearerAuth("JAM_TOKEN"))],
+  },
   jotform: {
     apis: [
       api("https://api.jotform.com", {

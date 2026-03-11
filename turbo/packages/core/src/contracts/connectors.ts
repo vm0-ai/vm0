@@ -717,6 +717,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  jam: {
+    label: "Jam",
+    helpText:
+      "Connect your Jam account to capture bugs, manage reports, and access debugging telemetry",
+    authMethods: {
+      "api-token": {
+        label: "Personal Access Token",
+        helpText:
+          "1. Log in to [Jam](https://jam.dev)\n2. Go to **Settings** → **API**\n3. Create a new **Personal Access Token**\n4. Copy the token (starts with `jam_pat_`)",
+        secrets: {
+          JAM_TOKEN: {
+            label: "Personal Access Token",
+            required: true,
+            placeholder: "jam_pat_...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   jotform: {
     label: "Jotform",
     helpText:
@@ -2678,6 +2698,7 @@ export const connectorTypeSchema = z.enum([
   "dropbox",
   "linear",
   "intercom",
+  "jam",
   "jotform",
   "line",
   "make",

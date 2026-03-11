@@ -37,6 +37,7 @@ import humeIcon from "./icons/hume.svg";
 import hubspotIcon from "./icons/hubspot.svg";
 import intercomIcon from "./icons/intercom.svg";
 import intervalsIcuIcon from "./icons/intervals-icu.svg";
+import jamIcon from "./icons/jam.svg";
 import jotformIcon from "./icons/jotform.svg";
 import gmailIcon from "./icons/gmail.svg";
 import googleCalendarIcon from "./icons/google-calendar.svg";
@@ -142,6 +143,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   "google-sheets": googleSheetsIcon,
   intercom: intercomIcon,
   "intervals-icu": intervalsIcuIcon,
+  jam: jamIcon,
   jotform: jotformIcon,
   line: lineIcon,
   linear: linearIcon,
