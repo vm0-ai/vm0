@@ -149,6 +149,35 @@ export const removeZeroSkill$ = command(async ({ get, set }, name: string) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Shared helper: build compose and update default agent reference
+// ---------------------------------------------------------------------------
+
+async function buildAndSetDefaultAgent(
+  fetchFn: typeof fetch,
+  newContent: ZeroComposeContent,
+): Promise<void> {
+  const job = await triggerAndPollComposeJob(fetchFn, newContent);
+  if (!job.result) {
+    throw new Error("Build completed without result");
+  }
+
+  const resp = await fetchFn("/api/scopes/default-agent", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agentComposeId: job.result.composeId }),
+  });
+
+  if (!resp.ok) {
+    const err = (await resp.json().catch(() => null)) as {
+      error?: { message?: string };
+    } | null;
+    throw new Error(
+      err?.error?.message ?? `Failed to update: ${resp.statusText}`,
+    );
+  }
+}
+
 /** Sync the skills list to compose content via compose job. */
 const syncSkillsToCompose$ = command(
   async ({ get, set }, skillValues: string[]) => {
@@ -177,27 +206,7 @@ const syncSkillsToCompose$ = command(
     };
 
     const fetchFn = get(fetch$);
-    const job = await triggerAndPollComposeJob(fetchFn, newContent);
-    if (!job.result) {
-      throw new Error("Build completed without result");
-    }
-
-    // Update default agent reference to the new compose
-    const resp = await fetchFn("/api/scopes/default-agent", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agentComposeId: job.result.composeId }),
-    });
-
-    if (!resp.ok) {
-      const err = (await resp.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      throw new Error(
-        err?.error?.message ?? `Failed to update: ${resp.statusText}`,
-      );
-    }
-
+    await buildAndSetDefaultAgent(fetchFn, newContent);
     set(internalComposeReload$, (x) => x + 1);
   },
 );
@@ -210,13 +219,13 @@ export const zeroUpdateSettings$ = command(
   async ({ get, set }, newName: string) => {
     const compose = await get(zeroCompose$);
     if (!compose?.content) {
-      return;
+      throw new Error("No compose content found");
     }
 
     const content = compose.content;
     const oldName = Object.keys(content.agents)[0];
     if (!oldName) {
-      return;
+      throw new Error("No agent found in compose");
     }
 
     // Only update if name actually changed
@@ -228,34 +237,13 @@ export const zeroUpdateSettings$ = command(
     set(internalSaving$, true);
     try {
       const agentConfig = content.agents[oldName];
-      const newContent = {
+      const newContent: ZeroComposeContent = {
         ...content,
         agents: { [newName.toLowerCase()]: agentConfig },
       };
 
       const fetchFn = get(fetch$);
-
-      // Build the new compose via compose job
-      const job = await triggerAndPollComposeJob(fetchFn, newContent);
-      if (!job.result) {
-        throw new Error("Build completed without result");
-      }
-
-      // Update default agent reference to the new compose
-      const resp = await fetchFn("/api/scopes/default-agent", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentComposeId: job.result.composeId }),
-      });
-
-      if (!resp.ok) {
-        const err = (await resp.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        throw new Error(
-          err?.error?.message ?? `Failed to update: ${resp.statusText}`,
-        );
-      }
+      await buildAndSetDefaultAgent(fetchFn, newContent);
 
       set(internalComposeReload$, (x) => x + 1);
       toast.success("Settings saved");
