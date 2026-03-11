@@ -16,6 +16,7 @@ import {
   findTestRunRecord,
   findTestRunCallbacks,
   findTestStorage,
+  findTestRunnerJobEntry,
 } from "../../../__tests__/api-test-helpers";
 import { POST as checkpointWebhook } from "../../../../app/api/webhooks/agent/checkpoints/route";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
@@ -641,6 +642,33 @@ describe("createRun()", () => {
 
       expect(result.status).toBe("pending");
     });
+
+    it("should mark run as failed when runner group scope validation fails", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "nonexistent-scope/default");
+      reloadEnv();
+
+      mockClerk({ userId: user.userId, email: "user@example.com" });
+
+      let caughtError: unknown;
+      try {
+        await createRun(baseParams());
+      } catch (error: unknown) {
+        caughtError = error;
+      }
+
+      // Dispatch failure should throw a ForbiddenError
+      expect(caughtError).toSatisfy(isForbidden);
+
+      // The error should carry runId metadata (RunDispatchError)
+      expect(caughtError).toHaveProperty("runId");
+      const runId = (caughtError as { runId: string }).runId;
+
+      // Verify the run is marked as "failed" in the database
+      const run = await findTestRunRecord(runId);
+      expect(run).toBeDefined();
+      expect(run!.status).toBe("failed");
+      expect(run!.error).toMatch(/nonexistent-scope/);
+    });
   });
 
   describe("Scope Resolution for Storage", () => {
@@ -738,6 +766,13 @@ describe("createRun()", () => {
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
+
+      // Verify the runner job queue entry contains the injected secret
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.environment).toMatchObject({
+        FIGMA_TOKEN: "figd_test_secret_123",
+      });
     });
 
     it("should inject api-token-only connector secret (no environmentMapping) into sandbox environment", async () => {
@@ -769,6 +804,13 @@ describe("createRun()", () => {
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
+
+      // Verify the runner job queue entry contains the injected secret
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.environment).toMatchObject({
+        PRODUCTLANE_TOKEN: "pl_test_secret_789",
+      });
     });
 
     it("should inject oauth connector secret via environmentMapping into sandbox environment", async () => {
@@ -795,6 +837,13 @@ describe("createRun()", () => {
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
+
+      // Verify the runner job queue entry contains the injected secret
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.environment).toMatchObject({
+        GH_TOKEN: "ghp_oauth_test_456",
+      });
     });
   });
 });

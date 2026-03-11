@@ -18,7 +18,7 @@ vi.mock("@e2b/code-interpreter", () => ({
   Sandbox: {
     create: vi.fn().mockResolvedValue({
       sandboxId: "mock-sandbox-id",
-      filesystemWrite: vi.fn().mockResolvedValue(undefined),
+      files: { write: vi.fn().mockResolvedValue(undefined) },
       commands: { run: vi.fn().mockResolvedValue({ exitCode: 0 }) },
     }),
     connect: vi.fn(),
@@ -130,8 +130,8 @@ describe("GET /api/platform/logs/[id]", () => {
     expect(data.sessionId).toBeDefined();
   });
 
-  it("should handle running run status", async () => {
-    // Create run but don't complete it (stays in running status)
+  it("should handle pending run status", async () => {
+    // Create run but don't complete it (stays in pending status)
     const { runId, status } = await createTestRun(testComposeId, "Test prompt");
 
     // Run should be in pending state

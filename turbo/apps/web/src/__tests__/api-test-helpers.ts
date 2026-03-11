@@ -3011,3 +3011,17 @@ export async function insertOrgMembersCacheEntry(entry: {
     cachedAt: entry.cachedAt ?? new Date(),
   });
 }
+
+export async function findTestRunnerJobEntry(runId: string) {
+  const rows = await globalThis.services.db
+    .select()
+    .from(runnerJobQueue)
+    .where(eq(runnerJobQueue.runId, runId))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return undefined;
+  return {
+    ...row,
+    executionContext: row.executionContext as StoredExecutionContext,
+  };
+}
