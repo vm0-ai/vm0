@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.1](https://github.com/vm0-ai/vm0/compare/docs-v2.16.0...docs-v2.16.1) (2026-03-11)
+
+
+### Refactoring
+
+* standardize connector secret names to use token convention ([#4385](https://github.com/vm0-ai/vm0/issues/4385)) ([470101f](https://github.com/vm0-ai/vm0/commit/470101f7612e95e8826653b33df819cf0de49b26))
+
 ## [2.16.0](https://github.com/vm0-ai/vm0/compare/docs-v2.15.1...docs-v2.16.0) (2026-03-11)
 
 

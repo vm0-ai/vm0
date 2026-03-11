@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.22.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.2...runner-rs-v0.22.3) (2026-03-11)
+
+
+### Bug Fixes
+
+* **runner:** log response headers in network logs for zlib error debugging ([#4400](https://github.com/vm0-ai/vm0/issues/4400)) ([47207fa](https://github.com/vm0-ai/vm0/commit/47207fa18c72b204219a9171418ed5dc21f19e8e))
+
+
+### Refactoring
+
+* decouple service proxy config from connector concept ([#4388](https://github.com/vm0-ai/vm0/issues/4388)) ([b970b33](https://github.com/vm0-ai/vm0/commit/b970b33d97fc4f1cf825215e4b94ed182110c31f))
+
 ## [0.22.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.1...runner-rs-v0.22.2) (2026-03-11)
 
 

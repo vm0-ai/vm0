@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.56.0](https://github.com/vm0-ai/vm0/compare/cli-v9.55.5...cli-v9.56.0) (2026-03-11)
+
+
+### Features
+
+* inject agent metadata into instructions as frontmatter during compose ([#4382](https://github.com/vm0-ai/vm0/issues/4382)) ([c9e4c02](https://github.com/vm0-ai/vm0/commit/c9e4c02ce0bea2182f14269856f21222a5b0d94f))
+
+
+### Refactoring
+
+* **cli:** preserve error cause in version resolution try/catch ([#4356](https://github.com/vm0-ai/vm0/issues/4356)) ([26613f5](https://github.com/vm0-ai/vm0/commit/26613f55887acd56ce984634c2a2afd3dbcceeab)), closes [#4155](https://github.com/vm0-ai/vm0/issues/4155)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.57.0
+
 ## [9.55.5](https://github.com/vm0-ai/vm0/compare/cli-v9.55.4...cli-v9.55.5) (2026-03-11)
 
 
