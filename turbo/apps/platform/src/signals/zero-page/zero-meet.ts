@@ -48,7 +48,7 @@ const zeroCompose$ = computed(async (get) => {
   const fetchFn = get(fetch$);
   const resp = await fetchFn(`/api/agent/composes/${composeId}`);
   if (!resp.ok) {
-    return null;
+    throw new Error(`Failed to fetch compose: ${resp.statusText}`);
   }
   return (await resp.json()) as ZeroCompose;
 });

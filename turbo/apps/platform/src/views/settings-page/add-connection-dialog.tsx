@@ -1,14 +1,17 @@
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useCCState } from "ccstate-react/experimental";
-import { IconSearch } from "@tabler/icons-react";
+import { IconSearch, IconPlus } from "@tabler/icons-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import {
+  addConnectionDialogTab$,
+  setAddConnectionDialogTab$,
   allConnectorTypes$,
   pollingConnectorType$,
   connectConnector$,
@@ -22,6 +25,8 @@ import {
   setSelectedConnectorType$,
   type ConnectorTypeWithStatus,
 } from "../../signals/settings-page/connectors.ts";
+import { openAddSecretDialog$ } from "../../signals/settings-page/secrets.ts";
+import { openAddVariableDialog$ } from "../../signals/settings-page/variables.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -359,7 +364,7 @@ function ConnectorCard({
           </span>
         ) : isPolling ? (
           <span className="text-xs text-muted-foreground">Connecting...</span>
-        ) : hasApiToken ? (
+        ) : hasApiToken && onAdd ? (
           <button
             type="button"
             onClick={handleApiKey}
@@ -370,13 +375,116 @@ function ConnectorCard({
         ) : (
           <button
             type="button"
-            onClick={handleConnect}
+            onClick={hasApiToken ? handleApiKey : handleConnect}
             className={`w-full ${btnClass}`}
           >
             Connect
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Custom API tab content (settings page only)
+// ---------------------------------------------------------------------------
+
+function CustomAPITabContent({
+  onAddSecret,
+  onAddVariable,
+}: {
+  onAddSecret: () => void;
+  onAddVariable: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-4 py-2">
+      <p className="text-sm text-muted-foreground">
+        Add custom API keys and environment variables for your agents.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={onAddSecret}
+          className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
+              <IconPlus size={16} stroke={1.5} />
+            </div>
+            <span className="text-sm font-medium text-foreground">
+              Add secret
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Store API keys and tokens for your agents.
+          </p>
+        </button>
+        <button
+          type="button"
+          onClick={onAddVariable}
+          className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
+              <IconPlus size={16} stroke={1.5} />
+            </div>
+            <span className="text-sm font-medium text-foreground">
+              Add variable
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Add environment variables for your agents.
+          </p>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Connector grid (shared between default and zero variants)
+// ---------------------------------------------------------------------------
+
+function ConnectorGrid({
+  types,
+  connectorTypes,
+  buttonClassName,
+  onConnectSuccess,
+  onAdd,
+}: {
+  types: ConnectorType[];
+  connectorTypes: ConnectorTypeWithStatus[] | undefined;
+  buttonClassName?: string;
+  onConnectSuccess?: (type: ConnectorType) => void;
+  onAdd?: (type: ConnectorType) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {connectorTypes
+        ? connectorTypes.map((item) => (
+            <ConnectorCard
+              key={item.type}
+              item={item}
+              buttonClassName={buttonClassName}
+              onConnectSuccess={onConnectSuccess}
+              onAdd={onAdd}
+            />
+          ))
+        : types.slice(0, 6).map((type) => (
+            <div
+              key={type}
+              className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 animate-pulse"
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-7 w-7 rounded bg-muted" />
+                <div className="h-4 w-20 rounded bg-muted" />
+              </div>
+              <div className="h-3 w-full rounded bg-muted" />
+              <div className="h-3 w-3/4 rounded bg-muted" />
+              <div className="h-7 w-full rounded bg-muted" />
+            </div>
+          ))}
     </div>
   );
 }
@@ -400,15 +508,117 @@ export function AddConnectionDialog({
   onConnectSuccess?: (type: ConnectorType) => void;
   onAdd?: (type: ConnectorType) => void;
 }) {
+  const isZero = variant === "zero";
+
+  if (isZero) {
+    return (
+      <ZeroAddConnectionDialog
+        open={open}
+        onOpenChange={onOpenChange}
+        excludeTypes={excludeTypes}
+        onConnectSuccess={onConnectSuccess}
+        onAdd={onAdd}
+      />
+    );
+  }
+
+  return <DefaultAddConnectionDialog open={open} onOpenChange={onOpenChange} />;
+}
+
+// ---------------------------------------------------------------------------
+// Default (settings) variant: tabbed dialog with Connectors + Custom API
+// ---------------------------------------------------------------------------
+
+function DefaultAddConnectionDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const tab = useGet(addConnectionDialogTab$);
+  const setTab = useSet(setAddConnectionDialogTab$);
+  const connectorTypes = useLastResolved(allConnectorTypes$);
+  const types = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+  const openAddSecret = useSet(openAddSecretDialog$);
+  const openAddVariable = useSet(openAddVariableDialog$);
+
+  const handleAddSecret = () => {
+    openAddSecret();
+    onOpenChange(false);
+  };
+
+  const handleAddVariable = () => {
+    openAddVariable();
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden pr-0 pb-0">
+        <DialogHeader>
+          <DialogTitle>Add connection</DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="pt-4 pb-6 pr-6">
+            <Tabs
+              value={tab}
+              onValueChange={(v) => setTab(v as "connectors" | "custom-api")}
+              className="flex flex-col min-h-0"
+            >
+              <TabsList className="w-fit">
+                <TabsTrigger value="connectors">Connectors</TabsTrigger>
+                <TabsTrigger value="custom-api">Custom API</TabsTrigger>
+              </TabsList>
+              {tab === "connectors" && (
+                <div className="flex flex-col gap-4 mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Connect third-party services to your agents.
+                  </p>
+                  <ConnectorGrid
+                    types={types}
+                    connectorTypes={connectorTypes ?? undefined}
+                  />
+                </div>
+              )}
+              {tab === "custom-api" && (
+                <div className="mt-4">
+                  <CustomAPITabContent
+                    onAddSecret={handleAddSecret}
+                    onAddVariable={handleAddVariable}
+                  />
+                </div>
+              )}
+            </Tabs>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Zero variant: flat search-based dialog
+// ---------------------------------------------------------------------------
+
+function ZeroAddConnectionDialog({
+  open,
+  onOpenChange,
+  excludeTypes,
+  onConnectSuccess,
+  onAdd,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  excludeTypes?: ReadonlySet<string>;
+  onConnectSuccess?: (type: ConnectorType) => void;
+  onAdd?: (type: ConnectorType) => void;
+}) {
   const connectorTypes = useLastResolved(allConnectorTypes$);
   const search$ = useCCState("");
   const search = useGet(search$);
   const setSearch = useSet(search$);
-  const isZero = variant === "zero";
-  const buttonClassName = isZero ? ZERO_BUTTON_CLASS : undefined;
-  const contentClass = isZero
-    ? "max-w-2xl h-[85vh] flex flex-col overflow-hidden pr-0 pb-0 zero-app"
-    : "max-w-2xl h-[85vh] flex flex-col overflow-hidden pr-0 pb-0";
+  const types = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
 
   const filteredTypes = connectorTypes
     ?.filter((item) => !excludeTypes || !excludeTypes.has(item.type))
@@ -434,7 +644,7 @@ export function AddConnectionDialog({
         onOpenChange(v);
       }}
     >
-      <DialogContent className={contentClass}>
+      <DialogContent className="max-w-2xl h-[85vh] flex flex-col overflow-hidden pr-0 pb-0 zero-app">
         <DialogHeader>
           <DialogTitle>Add skill</DialogTitle>
         </DialogHeader>
@@ -463,34 +673,13 @@ export function AddConnectionDialog({
                 No matching skills found.
               </p>
             ) : (
-              <div className="grid grid-cols-2 gap-3">
-                {filteredTypes
-                  ? filteredTypes.map((item) => (
-                      <ConnectorCard
-                        key={item.type}
-                        item={item}
-                        buttonClassName={buttonClassName}
-                        onConnectSuccess={onConnectSuccess}
-                        onAdd={onAdd}
-                      />
-                    ))
-                  : (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
-                      .slice(0, 6)
-                      .map((type) => (
-                        <div
-                          key={type}
-                          className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 animate-pulse"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="h-7 w-7 rounded bg-muted" />
-                            <div className="h-4 w-20 rounded bg-muted" />
-                          </div>
-                          <div className="h-3 w-full rounded bg-muted" />
-                          <div className="h-3 w-3/4 rounded bg-muted" />
-                          <div className="h-7 w-full rounded bg-muted" />
-                        </div>
-                      ))}
-              </div>
+              <ConnectorGrid
+                types={types}
+                connectorTypes={filteredTypes ?? undefined}
+                buttonClassName={ZERO_BUTTON_CLASS}
+                onConnectSuccess={onConnectSuccess}
+                onAdd={onAdd}
+              />
             )}
           </div>
         </div>
