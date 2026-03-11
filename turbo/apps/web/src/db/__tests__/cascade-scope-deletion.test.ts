@@ -19,7 +19,7 @@ import { env } from "../../env";
 const context = testContext();
 
 describe("Scope deletion CASCADE", () => {
-  it("should cascade-delete agent_composes when scope is deleted, but not agent_runs", async () => {
+  it("should not cascade-delete agent_composes or agent_runs when scope is deleted (scope_id no longer populated)", async () => {
     context.setupMocks();
     const user = await context.setupUser();
 
@@ -35,18 +35,16 @@ describe("Scope deletion CASCADE", () => {
     // Delete the scope
     await deleteTestScope(user.scopeId);
 
-    // Verify cascade-deleted child records
-    expect(await findTestAgentComposeById(compose.id)).toBeUndefined();
+    // Phase 5b-3: scope_id is no longer populated in INSERT operations,
+    // so compose records have null scope_id and are not cascade-deleted.
+    expect(await findTestAgentComposeById(compose.id)).toBeDefined();
 
     // agent_runs no longer has FK to scopes (removed in Phase 3 Clerk migration),
     // so the run record is retained after scope deletion
     expect(await findTestAgentRunById(run.id)).toBeDefined();
-
-    // Note: storages no longer cascade-delete via scope — they use clerk_org_id
-    // without a foreign key to scopes, so they are cleaned up separately.
   });
 
-  it("should cascade-delete installations via scope -> compose -> installation chain", async () => {
+  it("should not cascade-delete installations when scope is deleted (scope_id no longer populated)", async () => {
     context.setupMocks();
     const user = await context.setupUser();
     const { SECRETS_ENCRYPTION_KEY } = env();
@@ -74,12 +72,14 @@ describe("Scope deletion CASCADE", () => {
 
     const github = await insertTestGitHubInstallation(compose.id);
 
-    // Delete the scope — should cascade through compose to installations
+    // Delete the scope — since scope_id is no longer populated on compose,
+    // cascade does not reach compose or its child installations.
     await deleteTestScope(user.scopeId);
 
-    // Verify all installations are deleted
-    expect(await findTestSlackInstallationById(slack.id)).toBeUndefined();
-    expect(await findTestTelegramInstallationById(telegram.id)).toBeUndefined();
-    expect(await findTestGitHubInstallationById(github.id)).toBeUndefined();
+    // Phase 5b-3: installations remain because compose.scope_id is null,
+    // so the scope -> compose cascade chain is broken.
+    expect(await findTestSlackInstallationById(slack.id)).toBeDefined();
+    expect(await findTestTelegramInstallationById(telegram.id)).toBeDefined();
+    expect(await findTestGitHubInstallationById(github.id)).toBeDefined();
   });
 });
