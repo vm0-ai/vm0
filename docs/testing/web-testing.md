@@ -33,7 +33,6 @@ import {
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 vi.mock("@clerk/nextjs/server");
-vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
@@ -130,7 +129,6 @@ vi.mock("../../../lib/agent-session", () => ({
 ```typescript
 // Only mock external services
 vi.mock("@clerk/nextjs/server");
-vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
@@ -150,7 +148,7 @@ const context = testContext(); // Outside all describe blocks
 
 describe("...", () => {
   beforeEach(() => {
-    context.setupMocks(); // Set up default mock behavior for E2B, S3, Axiom, etc.
+    context.setupMocks(); // Set up default mock behavior for S3, Axiom, etc.
   });
 });
 ```
@@ -694,7 +692,7 @@ it("should run agent", async () => {
 
 ```typescript
 // ✅ Do this - mock only external services, verify behavior through response
-vi.mock("@e2b/code-interpreter"); // External service
+vi.mock("@clerk/nextjs/server"); // External service
 
 it("should run agent", async () => {
   const response = await POST(request);

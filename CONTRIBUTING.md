@@ -23,12 +23,6 @@ You need to register the following services and obtain API keys:
 | [Clerk](https://clerk.com) | User authentication and session management | `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY` |
 | [Cloudflare R2](https://www.cloudflare.com/products/r2/) | Object storage for user files and artifacts | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_USER_STORAGES_BUCKET_NAME` |
 
-**Optional** (only needed for specific features):
-
-| Service | Purpose | Keys needed |
-|---------|---------|-------------|
-| [E2B](https://e2b.dev) | Cloud sandbox for running agents | `E2B_API_KEY` |
-
 All other environment variables (OAuth connectors, Slack, Axiom, etc.) can be left empty.
 
 ### SSL Certificates
@@ -75,7 +69,7 @@ cp turbo/apps/platform/.env.local.tpl turbo/apps/platform/.env.local
 
 Then edit the `.env.local` files:
 
-1. Replace `op://...` values for required services (Clerk, E2B, Cloudflare R2) with your actual keys
+1. Replace `op://...` values for required services (Clerk, Cloudflare R2) with your actual keys
 2. For `SECRETS_ENCRYPTION_KEY`, generate one:
    ```bash
    openssl rand -hex 32
