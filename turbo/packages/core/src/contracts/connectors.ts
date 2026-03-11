@@ -813,6 +813,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  shortio: {
+    label: "Short.io",
+    helpText:
+      "Connect your Short.io account to create and manage short links and track click analytics",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [Short.io](https://short.io/)\n2. Go to **Integrations & API** in Settings\n3. Copy your API key",
+        secrets: {
+          SHORTIO_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-shortio-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   reddit: {
     label: "Reddit",
     featureFlag: FeatureSwitchKey.RedditConnector,
@@ -2444,6 +2464,13 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
       }),
     ],
   },
+  shortio: {
+    services: [
+      service("https://api.short.io", {
+        headers: { Authorization: "${secrets.SHORTIO_TOKEN}" },
+      }),
+    ],
+  },
 };
 
 export const connectorTypeSchema = z.enum([
@@ -2510,6 +2537,7 @@ export const connectorTypeSchema = z.enum([
   "podchaser",
   "pushinator",
   "qdrant",
+  "shortio",
 ]);
 
 /**
