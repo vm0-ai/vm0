@@ -1810,6 +1810,27 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  zeptomail: {
+    label: "ZeptoMail",
+    helpText:
+      "Connect your ZeptoMail account to send transactional emails via Zoho's email delivery service",
+    authMethods: {
+      "api-token": {
+        label: "Send Mail Token",
+        helpText:
+          "1. Log in to [ZeptoMail](https://zeptomail.zoho.com)\n2. Go to **Agents → SMTP/API**\n3. Under **Send Mail Token**, click the copy icon",
+        secrets: {
+          ZEPTOMAIL_TOKEN: {
+            label: "Send Mail Token",
+            required: true,
+            placeholder: "your-zeptomail-send-mail-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {} as Record<string, string>,
+  },
 } satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
@@ -2176,6 +2197,15 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   fal: {
     services: [service("https://fal.run", bearerAuth("FAL_KEY"))],
   },
+  zeptomail: {
+    services: [
+      service("https://api.zeptomail.com/v1.1", {
+        headers: {
+          Authorization: "Zoho-enczapikey ${secrets.ZEPTOMAIL_TOKEN}",
+        },
+      }),
+    ],
+  },
 };
 
 export const connectorTypeSchema = z.enum([
@@ -2231,6 +2261,7 @@ export const connectorTypeSchema = z.enum([
   "resend",
   "elevenlabs",
   "fal",
+  "zeptomail",
 ]);
 
 /**

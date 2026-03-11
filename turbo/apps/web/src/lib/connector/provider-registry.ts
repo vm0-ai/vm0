@@ -56,6 +56,7 @@ import { productlaneHandler } from "./providers/productlane-handler";
 import { resendHandler } from "./providers/resend-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
 import { xeroHandler } from "./providers/xero-handler";
+import { zeptomailHandler } from "./providers/zeptomail-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
 
@@ -114,6 +115,7 @@ export const PROVIDER_HANDLERS: Record<
   similarweb: similarwebHandler,
   x: xHandler,
   xero: xeroHandler,
+  zeptomail: zeptomailHandler,
 };
 
 /**
