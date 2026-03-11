@@ -20,6 +20,15 @@ import {
   setZeroActiveId$,
 } from "../../signals/zero-page/zero-nav.ts";
 import { updateSearchParams$ } from "../../signals/route.ts";
+import {
+  zeroSessionList$,
+  zeroSessionListLoading$,
+  zeroCurrentSessionId$,
+  fetchZeroSessionList$,
+  switchZeroSession$,
+  startNewZeroSession$,
+  sendZeroChatMessage$,
+} from "../../signals/zero-page/zero-chat.ts";
 
 const ZERO_AVATARS = [
   "/zero-avatar.png",
@@ -123,13 +132,50 @@ function useSkeletonVisibility(isLoggedIn: boolean, dataReady: boolean) {
   return isLoggedIn && !dataReady;
 }
 
-function getRecentLabels(agentName: string): Readonly<Record<string, string>> {
+/**
+ * Manages the chat session lifecycle: fetches session list when onboarding
+ * completes, and auto-sends an introductory message for new users.
+ */
+function useChatLifecycle(
+  isLoggedIn: boolean,
+  onboardingReady: boolean,
+  needsOnboarding: boolean,
+) {
+  const recentSessions = useGet(zeroSessionList$);
+  const recentSessionsLoading = useGet(zeroSessionListLoading$);
+  const currentSessionId = useGet(zeroCurrentSessionId$);
+  const fetchSessionList = useSet(fetchZeroSessionList$);
+  const switchSession = useSet(switchZeroSession$);
+  const startNewSession = useSet(startNewZeroSession$);
+  const sendMessage = useSet(sendZeroChatMessage$);
+
+  // "init" → "onboarding" → "ready" lifecycle
+  const lifecycleRef$ = useCCState<"init" | "onboarding" | "ready">("init");
+  const lifecycle = useGet(lifecycleRef$);
+  const setLifecycle = useSet(lifecycleRef$);
+
+  if (isLoggedIn && onboardingReady) {
+    if (needsOnboarding && lifecycle === "init") {
+      setLifecycle("onboarding");
+    } else if (!needsOnboarding && lifecycle !== "ready") {
+      const wasOnboarding = lifecycle === "onboarding";
+      setLifecycle("ready");
+      detach(fetchSessionList(), Reason.DomCallback);
+      if (wasOnboarding) {
+        detach(
+          sendMessage("Who are you and what can you do?"),
+          Reason.DomCallback,
+        );
+      }
+    }
+  }
+
   return {
-    hello: `Hello from ${agentName}`,
-    "1": "Daily digest workflow",
-    "2": "Set up Slack integration",
-    "3": "Weekly report automation",
-    "4": "Code review reminders",
+    recentSessions,
+    recentSessionsLoading,
+    currentSessionId,
+    switchSession,
+    startNewSession,
   };
 }
 
@@ -141,8 +187,9 @@ export function ZeroAppShell() {
   // session touch), preventing the onboarding dialog from unmounting.
   const onboardingLoadable = useLastLoadable(zeroNeedsOnboarding$);
   const onboardingReady = onboardingLoadable.state === "hasData";
-  const showOnboarding =
-    isLoggedIn && onboardingReady && onboardingLoadable.data === true;
+  const needsOnboarding =
+    onboardingLoadable.state === "hasData" && onboardingLoadable.data === true;
+  const showOnboarding = isLoggedIn && onboardingReady && needsOnboarding;
   const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
   const agentNameReady = agentDisplayNameLoadable.state === "hasData";
   const agentDisplayName = agentNameReady
@@ -150,8 +197,6 @@ export function ZeroAppShell() {
     : "Zero";
   const activeId = useGet(zeroActiveId$);
   const setActiveId = useSet(setZeroActiveId$);
-  const recentId$ = useCCState<string | null>(null);
-  const recentId = useGet(recentId$);
   const accountSubId$ = useCCState<ZeroAccountSubId>(null);
   const accountSubId = useGet(accountSubId$);
   const avatarIndex$ = useCCState(0);
@@ -165,15 +210,28 @@ export function ZeroAppShell() {
   });
   const cycleAvatar = useSet(cycleAvatar$);
 
-  const handleRecentSelect$ = useCommand(({ set }, id: string) => {
-    set(recentId$, id);
+  const {
+    recentSessions,
+    recentSessionsLoading,
+    currentSessionId,
+    switchSession,
+    startNewSession,
+  } = useChatLifecycle(isLoggedIn, onboardingReady, needsOnboarding);
+
+  const handleRecentSelect$ = useCommand(({ set }, sessionId: string) => {
     set(setZeroActiveId$, "chat");
+    detach(switchSession(sessionId), Reason.DomCallback);
   });
   const handleRecentSelect = useSet(handleRecentSelect$);
 
+  const handleNewChat$ = useCommand(({ set }) => {
+    set(setZeroActiveId$, "chat");
+    startNewSession();
+  });
+  const handleNewChat = useSet(handleNewChat$);
+
   const handleNavSelect$ = useCommand(({ set }, id: ZeroNavId) => {
     set(setZeroActiveId$, id);
-    set(recentId$, null);
     set(showAboutPage$, false);
   });
   const handleNavSelect = useSet(handleNavSelect$);
@@ -189,17 +247,8 @@ export function ZeroAppShell() {
   );
   const handleAccountAction = useSet(handleAccountAction$);
 
-  const handleClearRecent$ = useCommand(({ set }) => {
-    set(recentId$, null);
-  });
-  const handleClearRecent = useSet(handleClearRecent$);
-
   const updateSearchParams = useSet(updateSearchParams$);
   const resetDefaultAgent = useSet(resetDefaultAgent$);
-
-  const recentLabel = recentId
-    ? (getRecentLabels(agentDisplayName)[recentId] ?? null)
-    : null;
 
   const dataReady = isLoggedIn && onboardingReady && agentNameReady;
   const showSkeleton = useSkeletonVisibility(isLoggedIn, dataReady);
@@ -218,8 +267,11 @@ export function ZeroAppShell() {
         agentName={agentDisplayName}
         onSelect={handleNavSelect}
         onRecentSelect={handleRecentSelect}
-        selectedRecentId={activeId === "chat" ? recentId : null}
+        selectedRecentId={activeId === "chat" ? currentSessionId : null}
         onAccountAction={handleAccountAction}
+        recentSessions={recentSessions}
+        recentSessionsLoading={recentSessionsLoading}
+        onNewChat={handleNewChat}
       />
       <div className="flex flex-1 flex-col min-w-0 zero-workspace-bg">
         {import.meta.env.DEV && isLoggedIn && (
@@ -271,9 +323,6 @@ export function ZeroAppShell() {
           <ZeroContent
             sectionId={activeId}
             accountSubId={accountSubId}
-            recentLabel={recentLabel}
-            recentId={recentId}
-            onClearRecent={handleClearRecent}
             onNavigateToActivity={() => setActiveId("activity")}
             onNavigateToSchedule={() => setActiveId("schedule")}
             onNavigateToJob={() => setActiveId("job")}

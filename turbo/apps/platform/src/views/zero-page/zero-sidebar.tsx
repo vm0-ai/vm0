@@ -14,7 +14,9 @@ import {
   IconPlus,
   IconChevronRight,
   IconSwitchHorizontal,
+  IconLoader2,
 } from "@tabler/icons-react";
+import type { SessionListItem } from "@vm0/core";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -51,14 +53,6 @@ const MAIN_NAV = [
   { id: "activity", label: "Activities", icon: IconChartLine as NavIcon },
 ] as const;
 
-const RECENT_ITEMS = [
-  { id: "hello", label: "Hello from Zero" },
-  { id: "1", label: "Daily digest workflow" },
-  { id: "2", label: "Set up Slack integration" },
-  { id: "3", label: "Weekly report automation" },
-  { id: "4", label: "Code review reminders" },
-] as const;
-
 const FOOTER_NAV = [
   {
     id: "works" as const satisfies ZeroNavId,
@@ -88,6 +82,9 @@ interface ZeroSidebarProps {
   onRecentSelect?: (id: string) => void;
   selectedRecentId?: string | null;
   onAccountAction?: (action: ZeroAccountAction) => void;
+  recentSessions?: SessionListItem[];
+  recentSessionsLoading?: boolean;
+  onNewChat?: () => void;
 }
 
 function AccountAvatar({
@@ -341,13 +338,12 @@ export function ZeroSidebar({
   onRecentSelect,
   selectedRecentId = null,
   onAccountAction,
+  recentSessions = [],
+  recentSessionsLoading = false,
+  onNewChat,
 }: ZeroSidebarProps) {
   const displayName = agentName || "Zero";
   const mainNav = MAIN_NAV.map((item) => ({
-    ...item,
-    label: item.label.replace("Zero", displayName),
-  }));
-  const recentItems = RECENT_ITEMS.map((item) => ({
     ...item,
     label: item.label.replace("Zero", displayName),
   }));
@@ -386,34 +382,53 @@ export function ZeroSidebar({
             ))}
           </div>
 
-          {/* Recent dialogue — no extra wrapper padding so label/items align with main nav (nav already has p-2) */}
+          {/* Recent chat sessions */}
           <div className="mt-4">
-            <div className="zero-nav-recent-label h-8 flex items-center px-2">
+            <div className="zero-nav-recent-label h-8 flex items-center justify-between px-2">
               <span className="text-xs leading-4 text-sidebar-foreground uppercase tracking-wider">
                 recent chat
               </span>
+              {onNewChat && (
+                <button
+                  type="button"
+                  onClick={onNewChat}
+                  className="text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors"
+                  aria-label="New chat"
+                >
+                  <IconPlus size={14} />
+                </button>
+              )}
             </div>
             <div className="flex flex-col gap-1">
-              {recentItems.map(({ id, label }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => onRecentSelect?.(id)}
-                  className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
-                    selectedRecentId === id
-                      ? "bg-sidebar-active text-sidebar-primary"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent"
-                  }`}
-                >
-                  <span className="truncate min-w-0 flex-1">{label}</span>
-                  {id === "hello" && (
-                    <span
-                      className="shrink-0 w-1.5 h-1.5 rounded-full bg-red-500"
-                      aria-hidden
-                    />
-                  )}
-                </button>
-              ))}
+              {recentSessionsLoading ? (
+                <div className="flex items-center justify-center py-3">
+                  <IconLoader2
+                    size={14}
+                    className="animate-spin text-muted-foreground"
+                  />
+                </div>
+              ) : recentSessions.length === 0 ? (
+                <p className="px-2 py-2 text-xs text-muted-foreground">
+                  No recent chats
+                </p>
+              ) : (
+                recentSessions.map((session) => (
+                  <button
+                    key={session.id}
+                    type="button"
+                    onClick={() => onRecentSelect?.(session.id)}
+                    className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
+                      selectedRecentId === session.id
+                        ? "bg-sidebar-active text-sidebar-primary"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent"
+                    }`}
+                  >
+                    <span className="truncate min-w-0 flex-1">
+                      {session.preview ?? "New chat"}
+                    </span>
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </nav>
