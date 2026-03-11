@@ -10,7 +10,7 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
-import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
+import { agentComposeContentSchema } from "@vm0/core";
 
 const router = tsr.router(onboardingStatusContract, {
   getStatus: async ({ headers }) => {
@@ -70,10 +70,12 @@ const router = tsr.router(onboardingStatusContract, {
           defaultAgentComposeId = scope.defaultAgentComposeId;
 
           // Extract metadata from compose content
-          const content = compose.content as AgentComposeYaml | null;
-          if (content) {
-            const agentKey = Object.keys(content.agents)[0];
-            const agentDef = agentKey ? content.agents[agentKey] : undefined;
+          const parsed = agentComposeContentSchema.safeParse(compose.content);
+          if (parsed.success) {
+            const agentKey = Object.keys(parsed.data.agents)[0];
+            const agentDef = agentKey
+              ? parsed.data.agents[agentKey]
+              : undefined;
             if (agentDef) {
               defaultAgentMetadata = agentDef.metadata ?? null;
             }

@@ -806,11 +806,15 @@ export function ZeroMeetPage({
   const resolvedAgentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
   const metadataLoadable = useLoadable(defaultAgentMetadata$);
-  const resolvedSound = (
+  const rawSound =
     metadataLoadable.state === "hasData"
       ? (metadataLoadable.data?.sound ?? "professional")
-      : "professional"
-  ) as Tone;
+      : "professional";
+  const resolvedSound: Tone = (TONE_OPTIONS as readonly string[]).includes(
+    rawSound,
+  )
+    ? (rawSound as Tone)
+    : "professional";
   const VALID_TABS = ["skills", "schedule", "settings", "instructions"];
   const params = new URLSearchParams(window.location.search);
   const initialTab = VALID_TABS.includes(params.get("tab") ?? "")
