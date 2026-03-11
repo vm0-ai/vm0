@@ -55,9 +55,11 @@ async function ensureTestScope(
     scope = await ensureDefaultScope(userId);
   } catch (error) {
     if (!isNotFound(error)) throw error;
-    // User has no Clerk org — create one via the normal scope creation flow
+    // User has no Clerk org — create a test scope with a sentinel clerkOrgId
     const slug = generateDefaultScopeSlug(userId);
-    scope = await createScope(userId, slug);
+    scope = await createScope(userId, slug, {
+      clerkOrgId: `org_test_${userId}`,
+    });
   }
   return { scopeId: scope.id, clerkOrgId: scope.clerkOrgId };
 }
