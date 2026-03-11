@@ -42,6 +42,7 @@ import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
 import { openaiHandler } from "./providers/openai-handler";
 import { redditHandler } from "./providers/reddit-handler";
+import { reporteiHandler } from "./providers/reportei-handler";
 import { serpapiHandler } from "./providers/serpapi-handler";
 import { slackHandler } from "./providers/slack-handler";
 import { stravaHandler } from "./providers/strava-handler";
@@ -66,6 +67,7 @@ import { plausibleHandler } from "./providers/plausible-handler";
 import { podchaserHandler } from "./providers/podchaser-handler";
 import { productlaneHandler } from "./providers/productlane-handler";
 import { qdrantHandler } from "./providers/qdrant-handler";
+import { qiitaHandler } from "./providers/qiita-handler";
 import { resendHandler } from "./providers/resend-handler";
 import { scrapeninjaHandler } from "./providers/scrapeninja-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
@@ -118,6 +120,7 @@ export const PROVIDER_HANDLERS: Record<
   "outlook-calendar": outlookCalendarHandler,
   "outlook-mail": outlookMailHandler,
   reddit: redditHandler,
+  reportei: reporteiHandler,
   serpapi: serpapiHandler,
   "intervals-icu": intervalsIcuHandler,
   sentry: sentryHandler,
@@ -138,6 +141,7 @@ export const PROVIDER_HANDLERS: Record<
   productlane: productlaneHandler,
   pushinator: pushinatorHandler,
   qdrant: qdrantHandler,
+  qiita: qiitaHandler,
   resend: resendHandler,
   scrapeninja: scrapeninjaHandler,
   similarweb: similarwebHandler,
