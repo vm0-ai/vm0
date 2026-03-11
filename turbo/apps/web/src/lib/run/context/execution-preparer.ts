@@ -348,8 +348,8 @@ function buildPreparedContext(
     // Experimental firewall configuration (processed with auto-injected rules)
     experimentalFirewall,
 
-    // Experimental connectors for proxy-side token replacement
-    experimentalConnectors: context.experimentalConnectors ?? null,
+    // Experimental services for proxy-side token replacement
+    experimentalServices: context.experimentalServices ?? null,
 
     // Routing
     runnerGroup,

@@ -1,10 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { expandEnvironmentFromCompose } from "../expand-environment";
 
-function makeCompose(
-  environment: Record<string, string>,
-  connectors?: string[],
-) {
+function makeCompose(environment: Record<string, string>, services?: string[]) {
   return {
     version: "1.0",
     agents: {
@@ -13,14 +10,14 @@ function makeCompose(
         framework: "claude-code" as const,
         working_dir: "/home/user",
         environment,
-        ...(connectors ? { experimental_connectors: connectors } : {}),
+        ...(services ? { experimental_services: services } : {}),
       },
     },
   };
 }
 
-describe("expandEnvironmentFromCompose — connector env vars", () => {
-  it("replaces secret values with connector placeholders when connector is connected", () => {
+describe("expandEnvironmentFromCompose — service env vars", () => {
+  it("replaces secret values with service placeholders when service is connected", () => {
     const compose = makeCompose(
       {
         GH_TOKEN: "${{ secrets.GH_TOKEN }}",
@@ -48,7 +45,7 @@ describe("expandEnvironmentFromCompose — connector env vars", () => {
     );
   });
 
-  it("does not inject placeholders when connector is not connected", () => {
+  it("does not inject placeholders when service is not connected", () => {
     const compose = makeCompose(
       {
         GH_TOKEN: "${{ secrets.GH_TOKEN }}",
@@ -67,16 +64,16 @@ describe("expandEnvironmentFromCompose — connector env vars", () => {
     );
 
     expect(environment).toBeDefined();
-    // Connector not connected → falls back to passed secret
+    // Service not connected → falls back to passed secret
     expect(environment!.GH_TOKEN).toBe("user-provided");
   });
 
-  it("does not inject placeholders when connector is not declared", () => {
+  it("does not inject placeholders when service is not declared", () => {
     const compose = makeCompose(
       {
         GH_TOKEN: "${{ secrets.GH_TOKEN }}",
       },
-      // no experimental_connectors
+      // no experimental_services
     );
 
     const { environment } = expandEnvironmentFromCompose(
@@ -90,11 +87,11 @@ describe("expandEnvironmentFromCompose — connector env vars", () => {
     );
 
     expect(environment).toBeDefined();
-    // Connector not declared → falls back to passed secret
+    // Service not declared → falls back to passed secret
     expect(environment!.GH_TOKEN).toBe("user-provided");
   });
 
-  it("handles multiple connectors with different placeholders", () => {
+  it("handles multiple services with different placeholders", () => {
     const compose = makeCompose(
       {
         GH_TOKEN: "${{ secrets.GH_TOKEN }}",
@@ -120,7 +117,7 @@ describe("expandEnvironmentFromCompose — connector env vars", () => {
     expect(environment!.SLACK_TOKEN).toBe("xoxb-0000-0000-vm0placeholder");
   });
 
-  it("connector placeholder takes precedence over passed secrets", () => {
+  it("service placeholder takes precedence over passed secrets", () => {
     const compose = makeCompose(
       {
         GH_TOKEN: "${{ secrets.GH_TOKEN }}",

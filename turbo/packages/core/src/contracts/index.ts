@@ -299,10 +299,10 @@ export {
   type ResumeSession,
   type FirewallRule,
   type ExperimentalFirewall,
-  connectorEntrySchema,
-  experimentalConnectorsSchema,
-  type ConnectorEntry,
-  type ExperimentalConnectors,
+  serviceApiEntrySchema,
+  experimentalServicesSchema,
+  type ServiceApiEntry,
+  type ExperimentalServices,
 } from "./runners";
 
 export {
@@ -404,7 +404,7 @@ export {
   getConnectorDerivedNames,
   getConnectorProvidedSecretNames,
   getConnectorOAuthConfig,
-  getConnectorProxyConfig,
+  getServiceConfig,
   hasRequiredScopes,
   getApiTokenRequiredSecretNames,
   getApiTokenFieldsByType,
@@ -423,7 +423,7 @@ export {
   type ConnectorSecretConfig,
   type ConnectorAuthMethodConfig,
   type ConnectorOAuthConfig,
-  type ConnectorProxyConfig,
+  type ServiceConfig,
   // Computer connector
   computerConnectorContract,
   computerConnectorCreateResponseSchema,

@@ -56,7 +56,7 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub experimental_firewall: Option<ExperimentalFirewall>,
     #[serde(default)]
-    pub experimental_connectors: Option<ExperimentalConnectors>,
+    pub experimental_services: Option<ExperimentalServices>,
     #[serde(default)]
     pub debug_no_mock_claude: Option<bool>,
     #[serde(default)]
@@ -79,18 +79,23 @@ pub struct ExperimentalFirewall {
     pub experimental_seal_secrets: Option<bool>,
 }
 
-/// Connector manifest for proxy-side token replacement.
+/// Service manifest for proxy-side token replacement.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ExperimentalConnectors {
-    pub connectors: Vec<ConnectorEntry>,
+pub struct ExperimentalServices {
+    pub apis: Vec<ServiceApiEntry>,
 }
 
-/// A single connector service entry with a base URL for proxy-side matching.
+/// A single service API entry with base URL and auth headers for proxy-side matching.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConnectorEntry {
-    pub name: String,
+pub struct ServiceApiEntry {
     pub base: String,
+    pub auth: ServiceApiAuth,
+}
+
+/// Auth configuration for a service API entry.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ServiceApiAuth {
+    pub headers: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

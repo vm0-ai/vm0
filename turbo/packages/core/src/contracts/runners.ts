@@ -80,18 +80,20 @@ export const runnersPollContract = c.router({
 });
 
 /**
- * Connector entry in experimental connectors manifest
+ * Service API entry for proxy-side token replacement
  */
-export const connectorEntrySchema = z.object({
-  name: z.string(),
+export const serviceApiEntrySchema = z.object({
   base: z.string(),
+  auth: z.object({
+    headers: z.record(z.string(), z.string()),
+  }),
 });
 
 /**
- * Experimental connectors configuration for proxy-side token replacement
+ * Experimental services configuration for proxy-side token replacement
  */
-export const experimentalConnectorsSchema = z.object({
-  connectors: z.array(connectorEntrySchema),
+export const experimentalServicesSchema = z.object({
+  apis: z.array(serviceApiEntrySchema),
 });
 
 /**
@@ -153,8 +155,8 @@ export const storedExecutionContextSchema = z.object({
   agentScopeSlug: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
-  // Experimental connectors for proxy-side token replacement
-  experimentalConnectors: experimentalConnectorsSchema.optional(),
+  // Experimental services for proxy-side token replacement
+  experimentalServices: experimentalServicesSchema.optional(),
 });
 
 /**
@@ -188,8 +190,8 @@ export const executionContextSchema = z.object({
   agentScopeSlug: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
-  // Experimental connectors for proxy-side token replacement
-  experimentalConnectors: experimentalConnectorsSchema.optional(),
+  // Experimental services for proxy-side token replacement
+  experimentalServices: experimentalServicesSchema.optional(),
 });
 
 /**
@@ -232,7 +234,5 @@ export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
 export type FirewallRule = z.infer<typeof firewallRuleSchema>;
 export type ExperimentalFirewall = z.infer<typeof experimentalFirewallSchema>;
-export type ConnectorEntry = z.infer<typeof connectorEntrySchema>;
-export type ExperimentalConnectors = z.infer<
-  typeof experimentalConnectorsSchema
->;
+export type ServiceApiEntry = z.infer<typeof serviceApiEntrySchema>;
+export type ExperimentalServices = z.infer<typeof experimentalServicesSchema>;

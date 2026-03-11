@@ -4,7 +4,7 @@ import {
   groupVariablesBySource,
   connectorTypeSchema,
   getConnectorEnvironmentMapping,
-  getConnectorProxyConfig,
+  getServiceConfig,
 } from "@vm0/core";
 import { createProxyToken } from "../../proxy/token-service";
 import { badRequest } from "../../errors";
@@ -62,31 +62,31 @@ function processSecretValues(
 }
 
 /**
- * Build connector env var placeholders for experimental_connectors that are actually connected.
+ * Build connector env var placeholders for experimental_services that are actually connected.
  * Returns a map of env var name → placeholder value, or undefined if no connectors qualify.
  */
 function buildConnectorEnvVars(
-  declaredConnectors: string[],
+  declaredServices: string[],
   connectedTypes: string[],
 ): Record<string, string> | undefined {
-  if (declaredConnectors.length === 0 || connectedTypes.length === 0)
+  if (declaredServices.length === 0 || connectedTypes.length === 0)
     return undefined;
 
   const connected = new Set(connectedTypes);
   const envVars: Record<string, string> = {};
 
-  for (const name of declaredConnectors) {
+  for (const name of declaredServices) {
     if (!connected.has(name)) continue;
     const parsed = connectorTypeSchema.safeParse(name);
     if (!parsed.success) continue;
     const connectorType = parsed.data;
-    const proxyConfig = getConnectorProxyConfig(connectorType);
-    if (!proxyConfig) continue;
+    const serviceConfig = getServiceConfig(connectorType);
+    if (!serviceConfig) continue;
 
     const envMapping = getConnectorEnvironmentMapping(connectorType);
     for (const envVar of Object.keys(envMapping)) {
       envVars[envVar] =
-        proxyConfig.placeholders?.[envVar] ?? `VM0_PLACEHOLDER_${envVar}`;
+        serviceConfig.placeholders?.[envVar] ?? `VM0_PLACEHOLDER_${envVar}`;
     }
   }
   return Object.keys(envVars).length > 0 ? envVars : undefined;
@@ -99,7 +99,7 @@ function buildConnectorEnvVars(
  * When experimental_firewall.experimental_seal_secrets is enabled:
  * - Secrets are encrypted into proxy tokens (vm0_enc_xxx)
  *
- * When experimental_connectors is declared:
+ * When experimental_services is declared:
  * - Connector env vars are set to placeholder values (proxy replaces at runtime)
  *
  * @param agentCompose Agent compose configuration
@@ -152,9 +152,9 @@ export function expandEnvironmentFromCompose(
   const sealSecretsEnabled =
     firstAgent?.experimental_firewall?.experimental_seal_secrets ?? false;
 
-  // Build connector env var placeholders from experimental_connectors ∩ connectedTypes
+  // Build connector env var placeholders from experimental_services ∩ connectedTypes
   const connectorEnvVars = buildConnectorEnvVars(
-    firstAgent?.experimental_connectors ?? [],
+    firstAgent?.experimental_services ?? [],
     connectedTypes ?? [],
   );
 

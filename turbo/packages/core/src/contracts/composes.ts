@@ -94,11 +94,11 @@ const agentDefinitionSchema = z.object({
    */
   experimental_firewall: experimentalFirewallSchema.optional(),
   /**
-   * External service connectors (e.g., github, slack).
-   * Connector env vars are injected as placeholders; the proxy replaces them at runtime.
+   * External services for proxy-side token replacement (e.g., github, slack).
+   * Service-referenced env vars are replaced with placeholders; the proxy injects real secrets at runtime.
    * Requires experimental_runner to be configured.
    */
-  experimental_connectors: z.array(z.string()).optional(),
+  experimental_services: z.array(z.string()).optional(),
   /**
    * Agent metadata for display and personalization.
    * - displayName: Human-readable name shown in the UI (preserves original casing).
