@@ -111,6 +111,13 @@ const router = tsr.router(scopeContract, {
         userId,
       });
 
+      if (memberships.data.length === 0) {
+        return createErrorResponse(
+          "BAD_REQUEST",
+          "No available Clerk organization to associate with this scope",
+        );
+      }
+
       const orgIds = memberships.data.map((m) => m.organization.id);
       const matchedScopes = await globalThis.services.db
         .select({ clerkOrgId: scopes.clerkOrgId })
