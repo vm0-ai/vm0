@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
-# Test experimental_connectors placeholder env var injection and token replacement
+# Test experimental_services placeholder env var injection and token replacement
 #
-# Verifies that when experimental_connectors is declared:
+# Verifies that when experimental_services is declared:
 # 1. Compose accepts the configuration
 # 2. Placeholder env vars replace secret values in the sandbox (with custom formats)
 # 3. Multiple connectors work together
@@ -73,7 +73,7 @@ setup_test_connector() {
     fi
 }
 
-@test "connector: compose accepts experimental_connectors" {
+@test "connector: compose accepts experimental_services" {
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -84,7 +84,7 @@ agents:
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
-    experimental_connectors:
+    experimental_services:
       - github
 EOF
 
@@ -105,7 +105,7 @@ agents:
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
-    experimental_connectors:
+    experimental_services:
       - github
     environment:
       GH_TOKEN: \${{ secrets.GH_TOKEN }}
@@ -147,7 +147,7 @@ agents:
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
-    experimental_connectors:
+    experimental_services:
       - github
       - slack
     environment:
@@ -196,7 +196,7 @@ agents:
     working_dir: /home/user/workspace
     experimental_runner:
       group: ${RUNNER_GROUP}
-    experimental_connectors:
+    experimental_services:
       - github
     environment:
       GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}

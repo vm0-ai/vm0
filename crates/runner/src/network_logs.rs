@@ -32,6 +32,12 @@ struct NetworkLog {
     request_size: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     response_size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resp_content_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resp_content_encoding: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resp_transfer_encoding: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -90,9 +96,7 @@ pub async fn upload_network_logs(
 
     match result {
         Ok(resp) if resp.status().is_success() => {
-            if let Err(e) = tokio::fs::remove_file(path).await {
-                warn!(run_id = %run_id, error = %e, "failed to delete network log file");
-            }
+            // File is kept locally for debugging; gc_job_logs deletes after 7 days.
         }
         Ok(resp) => {
             warn!(run_id = %run_id, status = %resp.status(), "network logs upload rejected");
@@ -119,11 +123,14 @@ mod tests {
 
     #[test]
     fn network_log_deserializes_mitm() {
-        let json = r#"{"timestamp":"2026-02-15T10:00:00","mode":"mitm","action":"ALLOW","host":"api.example.com","port":443,"rule_matched":"domain:*.example.com","method":"GET","url":"https://api.example.com/data","status":200,"latency_ms":150,"request_size":0,"response_size":1024}"#;
+        let json = r#"{"timestamp":"2026-02-15T10:00:00","mode":"mitm","action":"ALLOW","host":"api.example.com","port":443,"rule_matched":"domain:*.example.com","method":"GET","url":"https://api.example.com/data","status":200,"latency_ms":150,"request_size":0,"response_size":1024,"resp_content_type":"application/json","resp_content_encoding":"gzip","resp_transfer_encoding":"chunked"}"#;
         let log: NetworkLog = serde_json::from_str(json).unwrap();
         assert_eq!(log.method.as_deref(), Some("GET"));
         assert_eq!(log.status, Some(200));
         assert_eq!(log.latency_ms, Some(150));
+        assert_eq!(log.resp_content_type.as_deref(), Some("application/json"));
+        assert_eq!(log.resp_content_encoding.as_deref(), Some("gzip"));
+        assert_eq!(log.resp_transfer_encoding.as_deref(), Some("chunked"));
     }
 
     #[test]

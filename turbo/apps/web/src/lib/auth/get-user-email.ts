@@ -1,16 +1,10 @@
-import { clerkClient } from "@clerk/nextjs/server";
+import { getCachedUser } from "./user-cache-service";
 
 /**
- * Get user's primary email address
+ * Get user's primary email address.
+ * Uses DB cache (1-min TTL) to avoid hitting Clerk API on every call.
  */
 export async function getUserEmail(userId: string): Promise<string> {
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
-  const email = user.emailAddresses.find(
-    (e) => e.id === user.primaryEmailAddressId,
-  )?.emailAddress;
-  if (!email) {
-    throw new Error(`No primary email found for user ${userId}`);
-  }
+  const { email } = await getCachedUser(userId);
   return email;
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   hasRequiredScopes,
-  getConnectorProxyConfig,
+  getServiceConfig,
   CONNECTOR_TYPES,
 } from "../connectors";
 import type { ConnectorType } from "../connectors";
@@ -41,12 +41,12 @@ describe("hasRequiredScopes", () => {
   });
 });
 
-describe("getConnectorProxyConfig", () => {
+describe("getServiceConfig", () => {
   it("returns proxy config for known connector types", () => {
-    const config = getConnectorProxyConfig("github");
+    const config = getServiceConfig("github");
     expect(config).toBeDefined();
-    expect(config!.services[0]!.base).toBe("https://api.github.com");
-    expect(config!.services[0]!.auth.headers.Authorization).toBe(
+    expect(config!.apis[0]!.base).toBe("https://api.github.com");
+    expect(config!.apis[0]!.auth.headers.Authorization).toBe(
       "Bearer ${secrets.GITHUB_TOKEN}",
     );
     expect(config!.placeholders).toEqual({
@@ -56,9 +56,9 @@ describe("getConnectorProxyConfig", () => {
   });
 
   it("returns config with multiple services for slack", () => {
-    const config = getConnectorProxyConfig("slack");
+    const config = getServiceConfig("slack");
     expect(config).toBeDefined();
-    expect(config!.services.map((s) => s.base)).toEqual([
+    expect(config!.apis.map((s) => s.base)).toEqual([
       "https://slack.com/api",
       "https://files.slack.com",
     ]);
@@ -68,15 +68,13 @@ describe("getConnectorProxyConfig", () => {
   });
 
   it("returns config with custom headers for notion", () => {
-    const config = getConnectorProxyConfig("notion");
+    const config = getServiceConfig("notion");
     expect(config).toBeDefined();
-    expect(config!.services[0]!.auth.headers["Notion-Version"]).toBe(
-      "2022-06-28",
-    );
+    expect(config!.apis[0]!.auth.headers["Notion-Version"]).toBe("2022-06-28");
   });
 
   it("returns undefined for computer connector (no proxy support)", () => {
-    const config = getConnectorProxyConfig("computer");
+    const config = getServiceConfig("computer");
     expect(config).toBeUndefined();
   });
 
@@ -84,14 +82,14 @@ describe("getConnectorProxyConfig", () => {
     const allTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
 
     for (const type of allTypes) {
-      const config = getConnectorProxyConfig(type);
+      const config = getServiceConfig(type);
       if (!config) continue;
 
       expect(
-        config.services.length,
+        config.apis.length,
         `${type} should have at least one service`,
       ).toBeGreaterThan(0);
-      for (const svc of config.services) {
+      for (const svc of config.apis) {
         expect(svc.base, `${type} service base should be https URL`).toMatch(
           /^https:\/\//,
         );

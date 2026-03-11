@@ -9,6 +9,7 @@ import { env } from "../../env";
 import { e2bConfig } from "../e2b/config";
 import { logger } from "../logger";
 import { notifySlackComposeComplete } from "../slack/handlers/compose-notification";
+import { injectMetadataFrontmatter } from "@vm0/core";
 
 const log = logger("compose:trigger");
 
@@ -199,6 +200,25 @@ main().catch(async (error) => {
 `;
 
 /**
+ * Extract agent metadata from compose content.
+ * Looks for the `metadata` field in the first agent's config.
+ */
+function getAgentMetadata(
+  content: Record<string, unknown>,
+): { displayName?: string; sound?: string } | undefined {
+  const agents = content.agents as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  if (!agents) return undefined;
+  const agentName = Object.keys(agents)[0];
+  if (!agentName) return undefined;
+  const metadata = agents[agentName]?.metadata as
+    | { displayName?: string; sound?: string }
+    | undefined;
+  return metadata;
+}
+
+/**
  * Extract instructions filename from compose content.
  * Looks for the `instructions` field in the first agent's config.
  */
@@ -279,13 +299,18 @@ async function spawnComposeJobSandbox(
     const yamlContent = JSON.stringify(params.content, null, 2);
     await sandbox.files.write("/tmp/compose/vm0.yaml", yamlContent);
 
-    // Write instructions file if provided
+    // Write instructions file if provided, with metadata frontmatter injected
     if (params.instructions) {
       const instructionsFilename = getInstructionsFilename(params.content);
       if (instructionsFilename) {
+        const metadata = getAgentMetadata(params.content);
+        const instructionsContent = injectMetadataFrontmatter(
+          params.instructions,
+          metadata,
+        );
         await sandbox.files.write(
           `/tmp/compose/${instructionsFilename}`,
-          params.instructions,
+          instructionsContent,
         );
       }
     }

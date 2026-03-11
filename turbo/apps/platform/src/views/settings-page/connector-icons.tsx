@@ -23,6 +23,7 @@ import devtoIcon from "./icons/devto.svg";
 import docusignIcon from "./icons/docusign.svg";
 import dropboxIcon from "./icons/dropbox.svg";
 import elevenlabsIcon from "./icons/elevenlabs.svg";
+import exploriumIcon from "./icons/explorium.svg";
 import falIcon from "./icons/fal.svg";
 import figmaIcon from "./icons/figma.svg";
 import firefliesIcon from "./icons/fireflies.svg";
@@ -77,6 +78,7 @@ import tavilyIcon from "./icons/tavily.svg";
 import tldvIcon from "./icons/tldv.svg";
 import twentyIcon from "./icons/twenty.svg";
 import youtubeIcon from "./icons/youtube.svg";
+import zapierIcon from "./icons/zapier.svg";
 import zapsignIcon from "./icons/zapsign.svg";
 import zendeskIcon from "./icons/zendesk.svg";
 import resendIcon from "./icons/resend.svg";
@@ -120,6 +122,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   docusign: docusignIcon,
   dropbox: dropboxIcon,
   elevenlabs: elevenlabsIcon,
+  explorium: exploriumIcon,
   fal: falIcon,
   figma: figmaIcon,
   fireflies: firefliesIcon,
@@ -174,6 +177,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   tldv: tldvIcon,
   twenty: twentyIcon,
   youtube: youtubeIcon,
+  zapier: zapierIcon,
   zapsign: zapsignIcon,
   zendesk: zendeskIcon,
   resend: resendIcon,

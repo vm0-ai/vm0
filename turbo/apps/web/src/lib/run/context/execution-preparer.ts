@@ -220,12 +220,10 @@ export async function prepareForExecution(
     throw badRequest("Agent compose not found");
   }
 
-  const agentOrgData = await getOrgData(agentComposeInfo.clerkOrgId).catch(
-    () => null,
-  );
+  const agentOrgData = await getOrgData(agentComposeInfo.clerkOrgId);
   const agentScopeInfo = {
     clerkOrgId: agentComposeInfo.clerkOrgId,
-    scopeSlug: agentOrgData?.slug ?? "",
+    scopeSlug: agentOrgData.slug,
   };
 
   // Auto-create artifact and memory storages if they don't exist yet
@@ -348,8 +346,8 @@ function buildPreparedContext(
     // Experimental firewall configuration (processed with auto-injected rules)
     experimentalFirewall,
 
-    // Experimental connectors for proxy-side token replacement
-    experimentalConnectors: context.experimentalConnectors ?? null,
+    // Experimental services for proxy-side token replacement
+    experimentalServices: context.experimentalServices ?? null,
 
     // Routing
     runnerGroup,

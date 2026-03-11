@@ -27,6 +27,7 @@ import { devtoHandler } from "./providers/devto-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
 import { elevenlabsHandler } from "./providers/elevenlabs-handler";
+import { exploriumHandler } from "./providers/explorium-handler";
 import { falHandler } from "./providers/fal-handler";
 import { figmaHandler } from "./providers/figma-handler";
 import { firefliesHandler } from "./providers/fireflies-handler";
@@ -65,6 +66,7 @@ import { tavilyHandler } from "./providers/tavily-handler";
 import { tldvHandler } from "./providers/tldv-handler";
 import { twentyHandler } from "./providers/twenty-handler";
 import { youtubeHandler } from "./providers/youtube-handler";
+import { zapierHandler } from "./providers/zapier-handler";
 import { zapsignHandler } from "./providers/zapsign-handler";
 import { zendeskHandler } from "./providers/zendesk-handler";
 import { slackHandler } from "./providers/slack-handler";
@@ -128,6 +130,7 @@ export const PROVIDER_HANDLERS: Record<
   docusign: docusignHandler,
   dropbox: dropboxHandler,
   elevenlabs: elevenlabsHandler,
+  explorium: exploriumHandler,
   fal: falHandler,
   figma: figmaHandler,
   fireflies: firefliesHandler,
@@ -198,6 +201,7 @@ export const PROVIDER_HANDLERS: Record<
   tldv: tldvHandler,
   twenty: twentyHandler,
   youtube: youtubeHandler,
+  zapier: zapierHandler,
   zapsign: zapsignHandler,
   zendesk: zendeskHandler,
 };

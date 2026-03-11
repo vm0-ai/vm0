@@ -154,8 +154,8 @@ class TestRequestHandler:
         assert flow.request.pretty_host == "mybucket.s3.amazonaws.com"
         assert flow.response is None
 
-    def test_connector_match_calls_handler(self, tmp_path):
-        """When URL matches a connector, handle_connector_request is called."""
+    def test_service_match_calls_handler(self, tmp_path):
+        """When URL matches a service, handle_service_request is called."""
         registry = {
             "vms": {
                 "10.200.0.5": {
@@ -164,9 +164,9 @@ class TestRequestHandler:
                     "mitmEnabled": True,
                     "firewallRules": [{"final": "DENY"}],
                     "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "connectors": {
-                        "connectors": [
-                            {"name": "github", "base": "https://api.github.com"},
+                    "services": {
+                        "apis": [
+                            {"base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}}},
                         ]
                     },
                 }
@@ -183,14 +183,14 @@ class TestRequestHandler:
             patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "handle_connector_request") as mock_handler,
+            patch.object(mitm_addon, "handle_service_request") as mock_handler,
         ):
             mitm_addon.request(flow)
 
         mock_handler.assert_called_once()
         call_args = mock_handler.call_args
         assert call_args[0][0] is flow
-        assert call_args[0][1]["name"] == "github"
+        assert call_args[0][1]["base"] == "https://api.github.com"
 
     def test_no_mitm_allows_without_rewrite(self, registry_file):
         """mitmEnabled=False with allowed request passes through without rewrite."""
@@ -253,7 +253,12 @@ class TestResponseHandler:
         # Add response
         flow.response = MagicMock()
         flow.response.status_code = 200
-        flow.response.headers = {"content-length": "256"}
+        flow.response.headers = {
+            "content-length": "256",
+            "content-type": "application/json",
+            "content-encoding": "gzip",
+            "transfer-encoding": "chunked",
+        }
 
         # Simulate tracked start time
         mitm_addon._request_start_times[flow.id] = __import__("time").time() - 0.1
@@ -272,26 +277,29 @@ class TestResponseHandler:
         assert entry["host"] == "api.anthropic.com"
         assert entry["latency_ms"] > 0
         assert entry["response_size"] == 256
+        assert entry["resp_content_type"] == "application/json"
+        assert entry["resp_content_encoding"] == "gzip"
+        assert entry["resp_transfer_encoding"] == "chunked"
 
-    def test_401_connector_cache_invalidation(self):
-        """401 response with connector firewall_rule pops the cache entry."""
+    def test_401_service_cache_invalidation(self):
+        """401 response with service firewall_rule pops the cache entry."""
         flow = _make_http_flow(host="api.github.com")
         flow.metadata["vm_run_id"] = "run-conn-1"
         flow.metadata["vm_client_ip"] = "10.200.0.5"
         flow.metadata["vm_mitm_enabled"] = True
         flow.metadata["vm_network_log_path"] = ""
         flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_rule"] = "connector:github"
-        flow.metadata["connector_base"] = "https://api.github.com"
+        flow.metadata["firewall_rule"] = "service:https://api.github.com"
+        flow.metadata["service_base"] = "https://api.github.com"
         flow.metadata["original_url"] = "https://api.github.com/repos"
 
         flow.response = MagicMock()
         flow.response.status_code = 401
         flow.response.headers = {}
 
-        # Pre-populate connector token cache
-        cache_key = ("run-conn-1", "github", "https://api.github.com")
-        mitm_addon._connector_token_cache[cache_key] = {
+        # Pre-populate service token cache
+        cache_key = ("run-conn-1", "https://api.github.com")
+        mitm_addon._service_token_cache[cache_key] = {
             "headers": {"Authorization": "Bearer old-token"},
             "expires_at": time.time() + 3600,
         }
@@ -300,7 +308,7 @@ class TestResponseHandler:
             mitm_addon.response(flow)
 
         # Cache entry should have been removed
-        assert cache_key not in mitm_addon._connector_token_cache
+        assert cache_key not in mitm_addon._service_token_cache
 
     def test_error_status_logs_warning(self, tmp_path):
         """Response with status >= 400 calls ctx.log.warn."""

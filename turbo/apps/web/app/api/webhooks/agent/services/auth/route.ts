@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import {
-  connectorTypeSchema,
+  CONNECTOR_TYPES,
   getConnectorEnvironmentMapping,
-  getConnectorProxyConfig,
+  getServiceConfig,
 } from "@vm0/core";
+import type { ConnectorType, ServiceConfig } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
@@ -17,14 +18,34 @@ import { logger } from "../../../../../../src/lib/logger";
 
 const bodySchema = z.object({
   runId: z.string(),
-  connectorName: z.string(),
   base: z.string(),
 });
 
-const log = logger("webhook:connector-token");
+const log = logger("webhook:service-auth");
 
 type ProviderHandler =
   (typeof PROVIDER_HANDLERS)[keyof typeof PROVIDER_HANDLERS];
+
+/**
+ * Find the connector type and service config that contains an API entry matching the given base URL.
+ */
+function findConnectorByBase(base: string):
+  | {
+      connectorType: ConnectorType;
+      api: ServiceConfig["apis"][number];
+    }
+  | undefined {
+  const allTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+  for (const type of allTypes) {
+    const config = getServiceConfig(type);
+    if (!config) continue;
+    const api = config.apis.find((a) => a.base === base);
+    if (api) {
+      return { connectorType: type, api };
+    }
+  }
+  return undefined;
+}
 
 /**
  * Attempt to refresh the connector's access token if the handler supports it.
@@ -141,13 +162,13 @@ function resolveAuthHeaders(
 }
 
 /**
- * POST /api/webhooks/agent/connectors/auth
+ * POST /api/webhooks/agent/services/auth
  *
- * Returns resolved auth headers for a connector.
- * Called by the mitmproxy addon when it intercepts a connector-matched request.
+ * Returns resolved auth headers for a service API base URL.
+ * Called by the mitmproxy addon when it intercepts a service-matched request.
  *
  * Auth: Sandbox JWT (same as other webhook/agent endpoints).
- * Body: { runId: string, connectorName: string, base: string }
+ * Body: { runId: string, base: string }
  * Response: { headers: Record<string, string>, expiresIn: number }
  */
 export async function POST(request: Request) {
@@ -173,7 +194,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: {
-          message: "runId and connectorName are required",
+          message: "runId and base are required",
           code: "BAD_REQUEST",
         },
       },
@@ -199,34 +220,20 @@ export async function POST(request: Request) {
     );
   }
 
-  // Validate connector type
-  const connectorParsed = connectorTypeSchema.safeParse(body.connectorName);
-  if (!connectorParsed.success) {
+  // Find connector type by matching base URL against all service configs
+  const match = findConnectorByBase(body.base);
+  if (!match) {
     return NextResponse.json(
       {
         error: {
-          message: `Unknown connector type: "${body.connectorName}"`,
+          message: `No service config matching base "${body.base}"`,
           code: "BAD_REQUEST",
         },
       },
       { status: 400 },
     );
   }
-  const connectorType = connectorParsed.data;
-
-  // Get proxy config (auth header templates)
-  const proxyConfig = getConnectorProxyConfig(connectorType);
-  if (!proxyConfig) {
-    return NextResponse.json(
-      {
-        error: {
-          message: `No proxy config for "${connectorType}"`,
-          code: "BAD_REQUEST",
-        },
-      },
-      { status: 400 },
-    );
-  }
+  const { connectorType, api: matchedApi } = match;
 
   // Look up run to get scopeId
   const [run] = await globalThis.services.db
@@ -293,26 +300,10 @@ export async function POST(request: Request) {
     if (refreshError) return refreshError;
   }
 
-  // Find the matching service by base URL
-  const matchedService = proxyConfig.services.find(
-    (svc) => svc.base === body.base,
-  );
-  if (!matchedService) {
-    return NextResponse.json(
-      {
-        error: {
-          message: `No service matching base "${body.base}" for connector "${connectorType}"`,
-          code: "BAD_REQUEST",
-        },
-      },
-      { status: 400 },
-    );
-  }
-
   // Resolve auth header templates with real secret values
   const envMapping = getConnectorEnvironmentMapping(connectorType);
   const resolvedHeaders = resolveAuthHeaders(
-    matchedService.auth.headers,
+    matchedApi.auth.headers,
     envMapping,
     connectorSecrets,
   );
@@ -323,7 +314,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: {
-          message: `No secrets found for "${connectorType}"`,
+          message: `No secrets found for base "${body.base}"`,
           code: "NOT_FOUND",
         },
       },

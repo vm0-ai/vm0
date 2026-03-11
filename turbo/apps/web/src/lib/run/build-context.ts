@@ -9,10 +9,10 @@ import {
   hasAuthMethods,
   getSecretNamesForAuthMethod,
   getConnectorEnvironmentMapping,
-  getConnectorProxyConfig,
+  getServiceConfig,
   connectorTypeSchema,
   MODEL_PROVIDER_TYPES,
-  type ExperimentalConnectors,
+  type ExperimentalServices,
   type ConnectorType,
   type ModelProviderType,
   type ModelProviderFramework,
@@ -396,7 +396,7 @@ interface ConnectorSecretResult {
   connectorSecrets: Record<string, string> | undefined;
   /** Environment variables mapped from OAuth connectors via environmentMapping */
   injectedEnvVars: Record<string, string> | undefined;
-  /** Connected connector type names (used to filter experimental_connectors placeholders) */
+  /** Connected connector type names (used to filter experimental_services placeholders) */
   connectedTypes: string[];
 }
 
@@ -979,49 +979,50 @@ interface BuildContextResult {
 }
 
 /**
- * Build ExperimentalConnectors manifest from agent compose's experimental_connectors array.
- * Returns null if no connectors are declared.
+ * Build ExperimentalServices manifest from agent compose's experimental_services array.
+ * Returns null if no services are declared.
  *
- * For each declared connector name:
- * 1. Validates it's a known connector type with proxy config
- * 2. Flattens services to one entry per base URL (for runner-side matching)
+ * For each declared service name:
+ * 1. Validates it's a known connector type with service config
+ * 2. Flattens apis to one entry per base URL with auth headers (for runner-side matching)
  *
  * Placeholder env var injection is handled by expandEnvironmentFromCompose.
  */
-function buildExperimentalConnectors(
+function buildExperimentalServices(
   agentCompose: unknown,
-): ExperimentalConnectors | null {
+): ExperimentalServices | null {
   const compose = agentCompose as
-    | { agents?: Record<string, { experimental_connectors?: string[] }> }
+    | { agents?: Record<string, { experimental_services?: string[] }> }
     | undefined;
   if (!compose?.agents) return null;
 
   const firstAgent = Object.values(compose.agents)[0];
-  const connectorNames = firstAgent?.experimental_connectors;
-  if (!connectorNames || connectorNames.length === 0) return null;
+  const serviceNames = firstAgent?.experimental_services;
+  if (!serviceNames || serviceNames.length === 0) return null;
 
-  const entries: { name: string; base: string }[] = [];
+  const entries: { base: string; auth: { headers: Record<string, string> } }[] =
+    [];
 
-  for (const name of connectorNames) {
+  for (const name of serviceNames) {
     const parsed = connectorTypeSchema.safeParse(name);
     if (!parsed.success) {
       throw badRequest(`Unknown connector type: "${name}"`);
     }
     const connectorType = parsed.data;
 
-    const proxyConfig = getConnectorProxyConfig(connectorType);
-    if (!proxyConfig) {
+    const serviceConfig = getServiceConfig(connectorType);
+    if (!serviceConfig) {
       throw badRequest(
         `Connector "${name}" does not support proxy-side token replacement`,
       );
     }
 
-    for (const svc of proxyConfig.services) {
-      entries.push({ name, base: svc.base });
+    for (const api of serviceConfig.apis) {
+      entries.push({ base: api.base, auth: api.auth });
     }
   }
 
-  return { connectors: entries };
+  return { apis: entries };
 }
 
 /**
@@ -1154,9 +1155,9 @@ export async function buildExecutionContext(
     ? { ...platformSecrets, ...secrets }
     : secrets;
 
-  // Build experimental connectors manifest (name + base entries for the runner)
-  const experimentalConnectors =
-    buildExperimentalConnectors(agentCompose) ?? undefined;
+  // Build experimental services manifest (base + auth entries for the runner)
+  const experimentalServices =
+    buildExperimentalServices(agentCompose) ?? undefined;
 
   // Build final execution context
   return {
@@ -1177,7 +1178,7 @@ export async function buildExecutionContext(
       volumeVersions,
       environment,
       userTimezone,
-      experimentalConnectors,
+      experimentalServices,
       resumeSession,
       resumeArtifact,
       // Metadata for vm0_start event

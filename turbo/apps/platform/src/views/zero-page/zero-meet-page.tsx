@@ -13,7 +13,11 @@ import {
   IconCrown,
   IconDotsVertical,
 } from "@tabler/icons-react";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+  stripMetadataFrontmatter,
+} from "@vm0/core";
 import { skills$ } from "../../data/skills.ts";
 import { ConnectorIcon } from "../settings-page/connector-icons.tsx";
 import {
@@ -535,7 +539,9 @@ function ZeroInstructionsTab() {
     detach(fetchInstructions(), Reason.DomCallback);
   }
 
-  const displayContent = edited ?? instructions?.content ?? "";
+  const rawContent = instructions?.content ?? "";
+  const strippedContent = stripMetadataFrontmatter(rawContent);
+  const displayContent = edited ?? strippedContent;
 
   return (
     <div className="mx-auto max-w-[900px] px-7">

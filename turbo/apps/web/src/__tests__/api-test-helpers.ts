@@ -39,6 +39,7 @@ import { telegramMessages } from "../db/schema/telegram-message";
 import { telegramUserLinks } from "../db/schema/telegram-user-link";
 import { orgCache } from "../db/schema/org-cache";
 import { orgMembersCache } from "../db/schema/org-members-cache";
+import { userCache } from "../db/schema/user-cache";
 import { and, eq, inArray, like, or, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
@@ -3126,4 +3127,19 @@ export async function disableAllSchedules(): Promise<void> {
     .update(agentSchedules)
     .set({ enabled: false })
     .where(eq(agentSchedules.enabled, true));
+}
+
+/**
+ * Insert a user_cache row for testing.
+ */
+export async function insertUserCacheEntry(entry: {
+  userId: string;
+  email: string;
+  cachedAt?: Date;
+}): Promise<void> {
+  await globalThis.services.db.insert(userCache).values({
+    userId: entry.userId,
+    email: entry.email,
+    cachedAt: entry.cachedAt ?? new Date(),
+  });
 }

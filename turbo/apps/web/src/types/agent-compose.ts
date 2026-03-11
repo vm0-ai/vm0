@@ -82,11 +82,11 @@ interface AgentDefinition {
    */
   experimental_firewall?: ExperimentalFirewall;
   /**
-   * Experimental connectors for proxy-side token replacement.
-   * Array of connector type names (e.g., ["gmail", "github"]).
+   * Experimental services for proxy-side token replacement.
+   * Array of service names (e.g., ["gmail", "github"]).
    * Requires experimental_runner to be configured.
    */
-  experimental_connectors?: string[];
+  experimental_services?: string[];
   /**
    * Agent metadata for display and personalization.
    */

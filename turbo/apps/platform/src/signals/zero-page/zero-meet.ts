@@ -9,7 +9,7 @@ import { triggerAndPollComposeJob } from "../agent-detail/compose-job.ts";
 import type { AgentInstructions } from "../agent-detail/types.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
-import { getInstructionsFilename } from "@vm0/core";
+import { getInstructionsFilename, stripMetadataFrontmatter } from "@vm0/core";
 import { skillValueToUrl, skillUrlToValue } from "../../data/skills.ts";
 
 const L = logger("ZeroMeet");
@@ -137,7 +137,8 @@ export const zeroEditedContent$ = computed((get) => get(editedContent$));
 export const zeroInstructionsDirty$ = computed((get) => {
   const edited = get(editedContent$);
   const instructions = get(instructionsState$).instructions;
-  return edited !== null && edited !== (instructions?.content ?? "");
+  const savedBody = stripMetadataFrontmatter(instructions?.content ?? "");
+  return edited !== null && edited !== savedBody;
 });
 
 export const setZeroEditedContent$ = command(({ set }, value: string) => {
@@ -333,14 +334,67 @@ export const removeZeroSkill$ = command(async ({ get, set }, name: string) => {
 });
 
 // ---------------------------------------------------------------------------
+// Shared helper: resolve current instructions content
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the current instructions content, fetching from API if not already loaded.
+ * This ensures compose jobs always include the instructions file when the
+ * compose content references one (e.g., instructions: "CLAUDE.md").
+ */
+async function resolveInstructionsContent(
+  fetchFn: typeof fetch,
+  composeId: string | undefined,
+  localContent: string | null | undefined,
+): Promise<string | undefined> {
+  if (localContent) {
+    return localContent;
+  }
+  if (!composeId) {
+    return undefined;
+  }
+  const resp = await fetchFn(`/api/agent/composes/${composeId}/instructions`);
+  if (!resp.ok) {
+    L.warn(
+      `Failed to fetch instructions for compose ${composeId}: ${resp.status} ${resp.statusText}`,
+    );
+    return undefined;
+  }
+  const data = (await resp.json()) as AgentInstructions;
+  return data.content ?? undefined;
+}
+
+// ---------------------------------------------------------------------------
 // Shared helper: build compose and update default agent reference
 // ---------------------------------------------------------------------------
 
 async function buildAndSetDefaultAgent(
   fetchFn: typeof fetch,
   newContent: ZeroComposeContent,
+  instructions?: string,
 ): Promise<void> {
-  const job = await triggerAndPollComposeJob(fetchFn, newContent);
+  // Ensure compose content includes instructions field so the CLI uploads it
+  const agentKey = Object.keys(newContent.agents)[0];
+  const agent = agentKey ? newContent.agents[agentKey] : undefined;
+  const contentWithInstructions: ZeroComposeContent =
+    agentKey && agent && !("instructions" in agent)
+      ? {
+          ...newContent,
+          agents: {
+            ...newContent.agents,
+            [agentKey]: {
+              ...agent,
+              instructions: getInstructionsFilename(agent.framework),
+            },
+          },
+        }
+      : newContent;
+
+  const job = await triggerAndPollComposeJob(
+    fetchFn,
+    contentWithInstructions,
+    instructions,
+  );
   if (!job.result) {
     throw new Error("Build completed without result");
   }
@@ -389,7 +443,12 @@ const syncSkillsToCompose$ = command(
     };
 
     const fetchFn = get(fetch$);
-    await buildAndSetDefaultAgent(fetchFn, newContent);
+    const instructions = await resolveInstructionsContent(
+      fetchFn,
+      compose.id,
+      get(instructionsState$).instructions?.content,
+    );
+    await buildAndSetDefaultAgent(fetchFn, newContent, instructions);
     await set(reloadOnboardingStatus$);
     set(internalComposeReload$, (x) => x + 1);
   },
@@ -445,7 +504,12 @@ export const zeroUpdateSettings$ = command(
       };
 
       const fetchFn = get(fetch$);
-      await buildAndSetDefaultAgent(fetchFn, newContent);
+      const instructions = await resolveInstructionsContent(
+        fetchFn,
+        compose.id,
+        get(instructionsState$).instructions?.content,
+      );
+      await buildAndSetDefaultAgent(fetchFn, newContent, instructions);
 
       await set(reloadOnboardingStatus$);
       set(internalComposeReload$, (x) => x + 1);

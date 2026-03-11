@@ -18,7 +18,7 @@ const context = testContext();
 
 function makeRequest(body: Record<string, unknown>, token?: string): Request {
   return createTestRequest(
-    "http://localhost:3000/api/webhooks/agent/connectors/auth",
+    "http://localhost:3000/api/webhooks/agent/services/auth",
     {
       method: "POST",
       headers: {
@@ -30,7 +30,7 @@ function makeRequest(body: Record<string, unknown>, token?: string): Request {
   );
 }
 
-describe("POST /api/webhooks/agent/connectors/auth", () => {
+describe("POST /api/webhooks/agent/services/auth", () => {
   let user: UserContext;
   let testComposeId: string;
   let testRunId: string;
@@ -42,7 +42,7 @@ describe("POST /api/webhooks/agent/connectors/auth", () => {
     user = await context.setupUser();
 
     const { composeId } = await createTestCompose(
-      `agent-connector-token-${Date.now()}`,
+      `agent-service-auth-${Date.now()}`,
     );
     testComposeId = composeId;
 
@@ -59,7 +59,6 @@ describe("POST /api/webhooks/agent/connectors/auth", () => {
       const response = await POST(
         makeRequest({
           runId: testRunId,
-          connectorName: "github",
           base: "https://api.github.com",
         }),
       );
@@ -71,7 +70,6 @@ describe("POST /api/webhooks/agent/connectors/auth", () => {
         makeRequest(
           {
             runId: testRunId,
-            connectorName: "github",
             base: "https://api.github.com",
           },
           "invalid-token",
@@ -86,7 +84,6 @@ describe("POST /api/webhooks/agent/connectors/auth", () => {
         makeRequest(
           {
             runId: otherRunId,
-            connectorName: "github",
             base: "https://api.github.com",
           },
           testToken,
@@ -99,38 +96,29 @@ describe("POST /api/webhooks/agent/connectors/auth", () => {
   describe("Validation", () => {
     it("should reject without runId", async () => {
       const response = await POST(
-        makeRequest(
-          { connectorName: "github", base: "https://api.github.com" },
-          testToken,
-        ),
+        makeRequest({ base: "https://api.github.com" }, testToken),
       );
       expect(response.status).toBe(400);
     });
 
-    it("should reject without connectorName", async () => {
-      const response = await POST(
-        makeRequest(
-          { runId: testRunId, base: "https://api.github.com" },
-          testToken,
-        ),
-      );
+    it("should reject without base", async () => {
+      const response = await POST(makeRequest({ runId: testRunId }, testToken));
       expect(response.status).toBe(400);
     });
 
-    it("should reject unknown connector type", async () => {
+    it("should reject unknown base URL", async () => {
       const response = await POST(
         makeRequest(
           {
             runId: testRunId,
-            connectorName: "not-a-connector",
-            base: "https://example.com",
+            base: "https://unknown-api.example.com",
           },
           testToken,
         ),
       );
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error.message).toContain("Unknown connector type");
+      expect(data.error.message).toContain("No service config matching base");
     });
   });
 
@@ -140,7 +128,6 @@ describe("POST /api/webhooks/agent/connectors/auth", () => {
         makeRequest(
           {
             runId: testRunId,
-            connectorName: "github",
             base: "https://api.github.com",
           },
           testToken,
@@ -166,7 +153,6 @@ describe("POST /api/webhooks/agent/connectors/auth", () => {
         makeRequest(
           {
             runId: testRunId,
-            connectorName: "github",
             base: "https://api.github.com",
           },
           testToken,
@@ -193,7 +179,6 @@ describe("POST /api/webhooks/agent/connectors/auth", () => {
         makeRequest(
           {
             runId: testRunId,
-            connectorName: "slack",
             base: "https://slack.com/api",
           },
           testToken,
@@ -210,7 +195,7 @@ describe("POST /api/webhooks/agent/connectors/auth", () => {
     it("should reject run owned by different user", async () => {
       const otherUser = await context.setupUser({ prefix: "other" });
       const { composeId: otherComposeId } = await createTestCompose(
-        `other-connector-${Date.now()}`,
+        `other-service-auth-${Date.now()}`,
       );
       const { runId: otherRunId } = await createTestRun(
         otherComposeId,
@@ -233,7 +218,6 @@ describe("POST /api/webhooks/agent/connectors/auth", () => {
         makeRequest(
           {
             runId: otherRunId,
-            connectorName: "github",
             base: "https://api.github.com",
           },
           tokenForOtherRun,

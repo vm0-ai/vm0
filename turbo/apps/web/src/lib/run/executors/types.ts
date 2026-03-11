@@ -1,7 +1,7 @@
 import type { StorageManifest } from "../../storage/types";
 import type { ResumeSession } from "../types";
 import type { ArtifactSnapshot } from "../../checkpoint/types";
-import type { ExperimentalFirewall, ExperimentalConnectors } from "@vm0/core";
+import type { ExperimentalFirewall, ExperimentalServices } from "@vm0/core";
 
 /**
  * Prepared execution context for executors
@@ -45,8 +45,8 @@ export interface PreparedContext {
   // Experimental firewall configuration
   experimentalFirewall: ExperimentalFirewall | null;
 
-  // Experimental connectors for proxy-side token replacement
-  experimentalConnectors: ExperimentalConnectors | null;
+  // Experimental services for proxy-side token replacement
+  experimentalServices: ExperimentalServices | null;
 
   // Routing hint (runner group name)
   runnerGroup: string | null;
