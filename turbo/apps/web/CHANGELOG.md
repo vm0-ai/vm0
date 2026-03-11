@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.96.0](https://github.com/vm0-ai/vm0/compare/web-v12.95.0...web-v12.96.0) (2026-03-11)
+
+
+### Features
+
+* dual-write default agent compose id to clerk org metadata ([#4226](https://github.com/vm0-ai/vm0/issues/4226)) ([6c1814e](https://github.com/vm0-ai/vm0/commit/6c1814e3e404494a6a159381cf72466425d27676))
+
 ## [12.95.0](https://github.com/vm0-ai/vm0/compare/web-v12.94.0...web-v12.95.0) (2026-03-10)
 
 

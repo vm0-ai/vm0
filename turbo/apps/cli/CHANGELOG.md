@@ -1,5 +1,23 @@
 # Changelog
 
+## [9.55.2](https://github.com/vm0-ai/vm0/compare/cli-v9.55.1...cli-v9.55.2) (2026-03-11)
+
+
+### Refactoring
+
+* **cli:** migrate compose command to centralized error handler ([#4214](https://github.com/vm0-ai/vm0/issues/4214)) ([d737e95](https://github.com/vm0-ai/vm0/commit/d737e95894ec928acbf351bac235cf0dbd1a149b))
+* **cli:** migrate cook command to centralized error handler ([#4213](https://github.com/vm0-ai/vm0/issues/4213)) ([3f5cc80](https://github.com/vm0-ai/vm0/commit/3f5cc8061cc62d360d66e3475c3d7fcf1c13c1af))
+* **cli:** migrate init command to centralized error handler ([#4215](https://github.com/vm0-ai/vm0/issues/4215)) ([ea28f2d](https://github.com/vm0-ai/vm0/commit/ea28f2d9678537b7ac5afc7090dd69bce6cbe090))
+* **cli:** migrate run commands to centralized error handler ([#4217](https://github.com/vm0-ai/vm0/issues/4217)) ([ace02d5](https://github.com/vm0-ai/vm0/commit/ace02d5706d163789772703bca595fe14bda9e26))
+* **cli:** migrate upgrade command to centralized error handler ([#4216](https://github.com/vm0-ai/vm0/issues/4216)) ([50a8a3d](https://github.com/vm0-ai/vm0/commit/50a8a3dac61831b6b0815ea5b37bdbe4f1a98796))
+* **cli:** replace process.exit with throw in agent commands ([#4224](https://github.com/vm0-ai/vm0/issues/4224)) ([72e13f6](https://github.com/vm0-ai/vm0/commit/72e13f6a8aa3395b5d9429fd523ba6cbd77cf260))
+* **cli:** replace process.exit with throw in preference command ([#4212](https://github.com/vm0-ai/vm0/issues/4212)) ([ab31b65](https://github.com/vm0-ai/vm0/commit/ab31b6577c20607f72b27c8878be183134c37e22))
+* **cli:** replace process.exit with throw in schedule setup command ([#4227](https://github.com/vm0-ai/vm0/issues/4227)) ([c3832cc](https://github.com/vm0-ai/vm0/commit/c3832ccfc2cfbb20d354acdb974684c4c23d12ce))
+* **cli:** replace process.exit with throw in scope create command ([#4209](https://github.com/vm0-ai/vm0/issues/4209)) ([5c6965f](https://github.com/vm0-ai/vm0/commit/5c6965fac81f683fcf4128505501acb2870bb634))
+* **cli:** replace process.exit with throw in scope members command ([#4204](https://github.com/vm0-ai/vm0/issues/4204)) ([b7b676c](https://github.com/vm0-ai/vm0/commit/b7b676c4f079a1d13697a84c5e602be806a685b3))
+* **cli:** replace process.exit with throw in scope status command ([#4210](https://github.com/vm0-ai/vm0/issues/4210)) ([fcfedf6](https://github.com/vm0-ai/vm0/commit/fcfedf6eb0c4aed72ca180db661e37d6b1d39317))
+* **cli:** replace process.exit with throw in storage status commands ([#4211](https://github.com/vm0-ai/vm0/issues/4211)) ([071b36c](https://github.com/vm0-ai/vm0/commit/071b36c4fcdc9c603278096b1f9867f424bf02e6))
+
 ## [9.55.1](https://github.com/vm0-ai/vm0/compare/cli-v9.55.0...cli-v9.55.1) (2026-03-10)
 
 
