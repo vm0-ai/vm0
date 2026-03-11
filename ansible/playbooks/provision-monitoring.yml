@@ -64,14 +64,11 @@
           prometheus.exporter.unix "default" {
             set_collectors = [
               "cpu", "diskstats", "filesystem", "loadavg", "meminfo",
-              "netdev", "os", "pressure", "processes", "systemd",
+              "netdev", "os", "pressure", "processes",
               "uname", "vmstat",
             ]
             netdev {
               device_include = "^(en|eth|bond).*"
-            }
-            systemd {
-              unit_include = "vm0-runner-v.+\\.service|alloy\\.service|docker\\.service"
             }
           }
 
@@ -103,21 +100,25 @@
             scrape_interval = "15s"
           }
 
-          // Count firecracker processes (separate pipeline, only keep num_procs)
-          prometheus.exporter.process "firecracker" {
+          // Count vm0 processes (separate pipeline, only keep num_procs)
+          prometheus.exporter.process "vm0" {
+            matcher {
+              name = "runner"
+              comm = ["runner"]
+            }
             matcher {
               name = "firecracker"
               comm = ["firecracker"]
             }
           }
 
-          prometheus.scrape "firecracker" {
-            targets         = prometheus.exporter.process.firecracker.targets
-            forward_to      = [prometheus.relabel.firecracker.receiver]
+          prometheus.scrape "vm0" {
+            targets         = prometheus.exporter.process.vm0.targets
+            forward_to      = [prometheus.relabel.vm0.receiver]
             scrape_interval = "15s"
           }
 
-          prometheus.relabel "firecracker" {
+          prometheus.relabel "vm0" {
             forward_to = [prometheus.remote_write.grafana_cloud.receiver]
 
             rule {
