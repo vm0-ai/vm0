@@ -314,15 +314,7 @@ export async function enrichMessageContent(opts: {
   }
 
   // Prepend Slack user info to the prompt
-  const userInfo = await fetchSlackUserInfo(opts.client, opts.userId).catch(
-    (err) => {
-      log.warn("Failed to fetch Slack user info", {
-        userId: opts.userId,
-        error: err,
-      });
-      return undefined;
-    },
-  );
+  const userInfo = await fetchSlackUserInfo(opts.client, opts.userId);
   if (userInfo) {
     content = `[Slack User]\n${userInfo}\n\n${content}`;
   }
