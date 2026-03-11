@@ -47,6 +47,8 @@ import plausibleIcon from "./icons/plausible.svg";
 import podchaserIcon from "./icons/podchaser.svg";
 import posthogIcon from "./icons/posthog.svg";
 import productlaneIcon from "./icons/productlane.svg";
+import pushinatorIcon from "./icons/pushinator.svg";
+import qdrantIcon from "./icons/qdrant.svg";
 import redditIcon from "./icons/reddit.svg";
 import reporteiIcon from "./icons/reportei.svg";
 import resendIcon from "./icons/resend.svg";
@@ -111,6 +113,8 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   podchaser: podchaserIcon,
   posthog: posthogIcon,
   productlane: productlaneIcon,
+  pushinator: pushinatorIcon,
+  qdrant: qdrantIcon,
   reddit: redditIcon,
   reportei: reporteiIcon,
   resend: resendIcon,
