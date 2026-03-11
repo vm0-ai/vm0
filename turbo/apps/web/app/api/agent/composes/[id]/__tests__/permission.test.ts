@@ -15,10 +15,12 @@ const context = testContext();
 
 describe("Agent Compose Permission Checks", () => {
   let testComposeId: string;
+  let ownerClerkOrgId: string;
 
   beforeEach(async () => {
     context.setupMocks();
-    await context.setupUser();
+    const user = await context.setupUser();
+    ownerClerkOrgId = user.clerkOrgId;
 
     const { composeId } = await createTestCompose(uniqueId("agent"));
     testComposeId = composeId;
@@ -140,17 +142,17 @@ describe("Agent Compose Permission Checks", () => {
       expect(data.error.message).toContain("not found");
     });
 
-    it("should allow access when user is in the same Clerk org (via scope resolution)", async () => {
-      // Get owner's org info
-      const owner = await context.user;
-
-      // Switch to another user who is a Clerk member of the same org
-      // (but NOT the compose owner and NOT in scope_members table)
-      const otherUserId = uniqueId("org-member");
+    it("should allow access when user is a member of the same org", async () => {
+      // Switch to another user who is a member of the SAME Clerk org as the owner
       mockClerk({
-        userId: otherUserId,
+        userId: "other-user-123",
+        orgId: ownerClerkOrgId,
         clerkOrgs: [
-          { id: owner.clerkOrgId, slug: "shared-org", name: "shared-org" },
+          {
+            id: ownerClerkOrgId,
+            slug: "shared-org",
+            name: "Shared Org",
+          },
         ],
       });
 

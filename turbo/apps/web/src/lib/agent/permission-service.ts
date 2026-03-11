@@ -1,9 +1,9 @@
 import { eq, and, or, ne, desc } from "drizzle-orm";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { agentPermissions } from "../../db/schema/agent-permission";
 import { scopes } from "../../db/schema/scope";
 import { logger } from "../logger";
-import { resolveScope } from "../scope/resolve-scope";
 
 const log = logger("agent:permission");
 
@@ -12,8 +12,9 @@ const log = logger("agent:permission");
  *
  * Access is granted if:
  * 1. User is the owner of the compose
- * 2. User's resolved scope matches the compose's org (via Clerk org membership)
- * 3. Compose has a 'public' or email-matched permission entry
+ * 2. User is a member of the same Clerk organization
+ * 3. Compose has a 'public' permission entry
+ * 4. User's email matches an 'email' permission entry
  */
 export async function canAccessCompose(
   userId: string,
@@ -23,12 +24,25 @@ export async function canAccessCompose(
   // 1. Owner always has access
   if (compose.userId === userId) return true;
 
-  // 2. Check org membership via scope resolution (trusts JWT + Clerk API)
-  try {
-    const { scope } = await resolveScope(userId);
-    if (scope.clerkOrgId === compose.clerkOrgId) return true;
-  } catch {
-    // Scope resolution failed — continue to ACL check
+  // 2. Check org membership via Clerk
+  const authResult = await auth();
+
+  // JWT fast path: active org matches → trust JWT, no API call
+  if (authResult.orgId === compose.clerkOrgId) {
+    return true;
+  }
+
+  // Clerk API fallback for cross-org or non-session contexts (e.g. email webhooks)
+  if (!compose.clerkOrgId.startsWith("pending_")) {
+    const client = await clerkClient();
+    const memberships =
+      await client.organizations.getOrganizationMembershipList({
+        organizationId: compose.clerkOrgId,
+      });
+    const isMember = memberships.data.some(
+      (m) => m.publicUserData?.userId === userId,
+    );
+    if (isMember) return true;
   }
 
   // 3. Check ACL
