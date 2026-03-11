@@ -677,9 +677,7 @@ export function ZeroChatPage({
   const setConversationActive = useSet(conversationActive$);
   const streamedCount$ = useCCState(0);
   const streamedCount = useGet(streamedCount$);
-  const setStreamedCount = useSet(streamedCount$);
   const conversationEndEl$ = useCCState<HTMLDivElement | null>(null);
-  const conversationEndEl = useGet(conversationEndEl$);
   const setConversationEndEl = useSet(conversationEndEl$);
   const subAgentListEl$ = useCCState<HTMLDivElement | null>(null);
   const setSubAgentListEl = useSet(subAgentListEl$);
@@ -738,7 +736,6 @@ export function ZeroChatPage({
     }, STREAM_DELAY_MS);
     set(streamTimeoutId$, id);
   });
-  const scheduleStreamTick = useSet(scheduleStreamTick$);
   // Clean up pending stream timeout on unmount
   const streamCleanup$ = useCommand(
     ({ get }, _el: HTMLElement, signal: AbortSignal) => {
@@ -769,21 +766,6 @@ export function ZeroChatPage({
   });
   const toggleSubAgentList = useSet(toggleSubAgentList$);
 
-  const handleComposerFocus = () => {
-    if (!conversationActive) {
-      setConversationActive(true);
-      setStreamedCount(1);
-      // Scroll conversation end into view after first message
-      if (conversationEndEl) {
-        window.requestAnimationFrame(() => {
-          conversationEndEl.scrollIntoView({ behavior: "smooth" });
-        });
-      }
-      // Start streaming ticks
-      scheduleStreamTick();
-    }
-  };
-
   const handleSend = (messageOverride?: string) => {
     const text = (messageOverride ?? input).trim();
     if (!text) {
@@ -803,7 +785,6 @@ export function ZeroChatPage({
   ];
 
   const handleFeelingLucky = () => {
-    handleComposerFocus();
     const prompt =
       LUCKY_PROMPTS[Math.floor(Math.random() * LUCKY_PROMPTS.length)];
     handleSend(prompt);
@@ -1115,7 +1096,6 @@ export function ZeroChatPage({
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  onFocus={handleComposerFocus}
                 />
                 <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border/50">
                   <div className="flex items-center gap-1 text-muted-foreground">
