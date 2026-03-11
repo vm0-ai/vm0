@@ -30,7 +30,7 @@ function s(value: string, label: string, icon: string): ComboboxOption {
 function aiMediaSkills(): ComboboxOption[] {
   return [
     s("elevenlabs", "elevenlabs", "https://vm0.ai/skills/elevenlabs.svg"),
-    s("fal.ai", "fal.ai", "https://vm0.ai/skills/fal-image.svg"),
+    s("fal", "fal", "https://vm0.ai/skills/fal-image.svg"),
     s(
       "htmlcsstoimage",
       "htmlcsstoimage",
@@ -114,7 +114,7 @@ function developmentSkills(): ComboboxOption[] {
       "https://cdn.simpleicons.org/anthropic",
     ),
     s("deepseek", "deepseek", "https://vm0.ai/skills/deepseek.svg"),
-    s("dev.to", "dev.to", "https://cdn.simpleicons.org/devdotto"),
+    s("devto", "devto", "https://cdn.simpleicons.org/devdotto"),
     s("github", "github", "https://vm0.ai/skills/github.svg"),
     s(
       "github-copilot",

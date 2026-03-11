@@ -198,7 +198,7 @@ const SKILL_CATEGORIES: Record<
     description:
       "Advanced AI coding assistant with code generation and technical problem-solving",
   },
-  "dev.to": {
+  devto: {
     category: "Development",
     logo: "/skills/devdotto.svg",
     description:
@@ -238,7 +238,7 @@ const SKILL_CATEGORIES: Record<
     description:
       "Generate natural-sounding speech with advanced AI voice synthesis and cloning",
   },
-  "fal.ai": {
+  fal: {
     category: "AI & Media",
     logo: "/skills/fal-image.svg",
     description:
@@ -681,8 +681,7 @@ const SKILLS_WITH_DOCS = new Set([
 
 // Map repo directory names to doc page slugs where they differ
 const SKILL_DOC_SLUG_MAP: Record<string, string> = {
-  "dev.to": "devto",
-  "fal.ai": "fal-ai",
+  fal: "fal-ai",
 };
 
 // Get documentation URL for a skill
