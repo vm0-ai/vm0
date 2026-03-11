@@ -1,7 +1,13 @@
 import { computed } from "ccstate";
-import type { SecretResponse, VariableResponse } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+  type SecretResponse,
+  type VariableResponse,
+} from "@vm0/core";
 import { secrets$ } from "./secrets.ts";
 import { variables$ } from "./variables.ts";
+import { connectors$ } from "../external/connectors.ts";
 
 // ---------------------------------------------------------------------------
 // Merged items
@@ -19,15 +25,40 @@ export type MergedItem =
       data: VariableResponse;
     };
 
+/**
+ * Collect all secret and variable names managed by connected connectors.
+ */
+function getConnectorManagedNames(
+  connectedTypes: ConnectorType[],
+): Set<string> {
+  const managed = new Set<string>();
+  for (const type of connectedTypes) {
+    const config = CONNECTOR_TYPES[type];
+    for (const method of Object.values(config.authMethods)) {
+      for (const name of Object.keys(method.secrets)) {
+        managed.add(name);
+      }
+    }
+  }
+  return managed;
+}
+
 export const mergedItems$ = computed(async (get) => {
-  const [secretsList, variablesList] = await Promise.all([
+  const [secretsList, variablesList, connectorsData] = await Promise.all([
     get(secrets$),
     get(variables$),
+    get(connectors$),
   ]);
+
+  const connectedTypes = connectorsData.connectors.map(
+    (c) => c.type as ConnectorType,
+  );
+  const managedNames = getConnectorManagedNames(connectedTypes);
 
   const items: MergedItem[] = [];
 
   for (const secret of secretsList) {
+    if (managedNames.has(secret.name)) continue;
     items.push({
       kind: "secret",
       name: secret.name,
@@ -36,6 +67,7 @@ export const mergedItems$ = computed(async (get) => {
   }
 
   for (const variable of variablesList) {
+    if (managedNames.has(variable.name)) continue;
     items.push({
       kind: "variable",
       name: variable.name,
