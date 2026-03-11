@@ -271,6 +271,7 @@ class TestResponseHandler:
         assert entry["action"] == "ALLOW"
         assert entry["host"] == "api.anthropic.com"
         assert entry["latency_ms"] > 0
+        assert entry["response_size"] == 256
 
     def test_401_connector_cache_invalidation(self):
         """401 response with connector firewall_rule pops the cache entry."""
