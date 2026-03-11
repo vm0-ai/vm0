@@ -119,7 +119,7 @@ describe("zero-activity signals", () => {
       expect(logs).toHaveLength(0);
     });
 
-    it("should handle API error gracefully", async () => {
+    it("should throw on API error", async () => {
       server.use(
         http.get("http://localhost:3000/api/platform/logs", () => {
           return new HttpResponse(null, { status: 500 });
@@ -127,10 +127,9 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroActivityLogs$);
-
-      const logs = context.store.get(zeroActivityLogs$);
-      expect(logs).toHaveLength(0);
+      await expect(context.store.set(fetchZeroActivityLogs$)).rejects.toThrow(
+        "Failed to fetch logs",
+      );
     });
 
     it("should report hasMore from pagination", async () => {
@@ -187,6 +186,16 @@ describe("zero-activity signals", () => {
             return new HttpResponse(null, { status: 404 });
           },
         ),
+        http.get(
+          "http://localhost:3000/api/agent/runs/:runId/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [],
+              hasMore: false,
+              framework: "claude-code",
+            });
+          },
+        ),
       );
 
       await setup();
@@ -196,6 +205,9 @@ describe("zero-activity signals", () => {
       expect(detail).not.toBeNull();
       expect(detail?.prompt).toBe("Summarize today's activity");
       expect(detail?.status).toBe("completed");
+
+      // Clean up: deselect log to stop polling
+      context.store.set(setZeroActivitySelectedLogId$, null);
     });
   });
 
