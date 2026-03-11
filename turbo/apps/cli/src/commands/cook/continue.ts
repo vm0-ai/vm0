@@ -50,23 +50,18 @@ export const continueCommand = new Command()
         );
         console.log();
 
-        let runOutput: string;
-        try {
-          runOutput = await execVm0RunWithCapture(
-            [
-              "run",
-              "continue",
-              ...(options.envFile ? ["--env-file", options.envFile] : []),
-              ...(options.verbose ? ["--verbose"] : []),
-              state.lastSessionId,
-              ...(options.debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
-              prompt,
-            ],
-            { cwd },
-          );
-        } catch {
-          throw new Error("Run command failed");
-        }
+        const runOutput = await execVm0RunWithCapture(
+          [
+            "run",
+            "continue",
+            ...(options.envFile ? ["--env-file", options.envFile] : []),
+            ...(options.verbose ? ["--verbose"] : []),
+            state.lastSessionId,
+            ...(options.debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
+            prompt,
+          ],
+          { cwd },
+        );
 
         // Update state with new IDs
         const newIds = parseRunIdsFromOutput(runOutput);
