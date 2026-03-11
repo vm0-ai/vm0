@@ -104,13 +104,13 @@ describe("volume init", () => {
       );
     });
 
-    it("should show example valid names on error", async () => {
+    it("should show naming rules in error cause", async () => {
       await expect(async () => {
         await initCommand.parseAsync(["node", "cli", "--name", "X"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("my-dataset"),
+        expect.stringContaining("3-64 characters"),
       );
     });
   });

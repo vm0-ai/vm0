@@ -19,19 +19,16 @@ export const pushCommand = new Command()
       // Read config
       const config = await readStorageConfig(cwd);
       if (!config) {
-        console.error(chalk.red("✗ No artifact initialized in this directory"));
-        console.error(chalk.dim("  Run: vm0 artifact init"));
-        process.exit(1);
+        throw new Error("No artifact initialized in this directory", {
+          cause: new Error("Run: vm0 artifact init"),
+        });
       }
 
       if (config.type !== "artifact") {
-        console.error(
-          chalk.red(
-            `✗ This directory is initialized as a volume, not an artifact`,
-          ),
+        throw new Error(
+          "This directory is initialized as a volume, not an artifact",
+          { cause: new Error("Use: vm0 volume push") },
         );
-        console.error(chalk.dim("  Use: vm0 volume push"));
-        process.exit(1);
       }
 
       console.log(`Pushing artifact: ${config.name}`);

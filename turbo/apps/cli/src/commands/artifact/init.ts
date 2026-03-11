@@ -55,14 +55,9 @@ export const initCommand = new Command()
         // Use provided name (non-interactive mode)
         artifactName = options.name;
       } else if (!isInteractive()) {
-        // Non-interactive mode without --name flag
-        console.error(
-          chalk.red("✗ --name flag is required in non-interactive mode"),
-        );
-        console.error(
-          chalk.dim("  Usage: vm0 artifact init --name <artifact-name>"),
-        );
-        process.exit(1);
+        throw new Error("--name flag is required in non-interactive mode", {
+          cause: new Error("Usage: vm0 artifact init --name <artifact-name>"),
+        });
       } else {
         // Interactive prompt with directory name as default
         const defaultName = isValidStorageName(dirName) ? dirName : undefined;
@@ -88,16 +83,11 @@ export const initCommand = new Command()
 
       // Validate name
       if (!isValidStorageName(artifactName)) {
-        console.error(chalk.red(`✗ Invalid artifact name: "${artifactName}"`));
-        console.error(
-          chalk.dim(
-            "  Artifact names must be 3-64 characters, lowercase alphanumeric with hyphens",
+        throw new Error(`Invalid artifact name: "${artifactName}"`, {
+          cause: new Error(
+            "Artifact names must be 3-64 characters, lowercase alphanumeric with hyphens",
           ),
-        );
-        console.error(
-          chalk.dim("  Example: my-project, user-workspace, code-artifact"),
-        );
-        process.exit(1);
+        });
       }
 
       // Write config file with type: artifact
