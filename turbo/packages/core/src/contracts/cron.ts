@@ -12,6 +12,7 @@ const cleanupResultSchema = z.object({
   sandboxId: z.string().nullable(),
   status: z.enum(["cleaned", "error"]),
   error: z.string().optional(),
+  reason: z.string().optional(),
 });
 
 /**
@@ -21,6 +22,8 @@ const cleanupResponseSchema = z.object({
   cleaned: z.number(),
   errors: z.number(),
   results: z.array(cleanupResultSchema),
+  composeJobsCleaned: z.number(),
+  composeJobErrors: z.number(),
 });
 
 /**
