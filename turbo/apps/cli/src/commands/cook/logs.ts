@@ -1,5 +1,4 @@
 import { Command } from "commander";
-import chalk from "chalk";
 import { loadCookState } from "../../lib/domain/cook-state";
 import { withErrorHandler } from "../../lib/command";
 import { printCommand, execVm0Command } from "./utils";
