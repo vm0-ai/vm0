@@ -825,3 +825,40 @@ jobs:
       - name: Build summary
         run: echo "✅ E2B templates built successfully (production account)"
 
+  # Generate Software Bill of Materials (SBOM) for CASA compliance (CASA-DEP-003)
+  sbom:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Generate SBOM
+        working-directory: turbo
+        run: npx @cyclonedx/cdxgen -o sbom.json --spec-version 1.5
+
+      - name: Upload SBOM as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: turbo/sbom.json
+
+      - name: Attach SBOM to GitHub releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Upload SBOM to each release created in this run
+          for tag in $(gh release list --limit 10 --json tagName,createdAt --jq 'sort_by(.createdAt) | reverse | .[0:5] | .[].tagName'); do
+            # Only attach to releases created today
+            CREATED=$(gh release view "$tag" --json createdAt --jq '.createdAt[:10]')
+            TODAY=$(date -u +%Y-%m-%d)
+            if [ "$CREATED" = "$TODAY" ]; then
+              gh release upload "$tag" turbo/sbom.json --clobber
+            fi
+          done
+
