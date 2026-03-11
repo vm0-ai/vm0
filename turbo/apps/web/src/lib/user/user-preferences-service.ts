@@ -27,15 +27,16 @@ function isValidTimezone(timezone: string): boolean {
 }
 
 /**
- * Get user preferences.
+ * Get user preferences from Clerk membership metadata.
  *
  * Fast path: when sessionClaims are provided (JWT context), reads from
- * Clerk membership JWT claims — zero DB calls.
+ * Clerk membership JWT claims — zero DB/API calls.
  *
  * Fallback: when no claims (cron, run-builder, CLI tokens), reads from
- * scope_members via getPrimaryAdminMembership().
+ * Clerk membership publicMetadata via Clerk API.
  */
 export async function getUserPreferences(
+  clerkOrgId: string,
   userId: string,
   sessionClaims?: CustomJwtSessionClaims,
 ): Promise<UserPreferences> {
@@ -53,13 +54,26 @@ export async function getUserPreferences(
     };
   }
 
-  // Fallback: read from scope_members (cron, run-builder, CLI tokens)
-  const member = await getPrimaryAdminMembership(userId);
+  // Clerk API fallback: read membership publicMetadata
+  const client = await clerkClient();
+  const memberships = await client.organizations.getOrganizationMembershipList({
+    organizationId: clerkOrgId,
+  });
+
+  const membership = memberships.data.find(
+    (m) => m.publicUserData?.userId === userId,
+  );
+
+  const meta = membership?.publicMetadata as
+    | Record<string, unknown>
+    | undefined;
 
   return {
-    timezone: member?.timezone ?? null,
-    notifyEmail: member?.notifyEmail ?? false,
-    notifySlack: member?.notifySlack ?? true,
+    timezone: typeof meta?.timezone === "string" ? meta.timezone : null,
+    notifyEmail:
+      typeof meta?.notify_email === "boolean" ? meta.notify_email : false,
+    notifySlack:
+      typeof meta?.notify_slack === "boolean" ? meta.notify_slack : true,
   };
 }
 
@@ -145,6 +159,7 @@ export async function updateUserPreferences(
  * Set user timezone if not already set (for auto-detection on first login)
  */
 export async function setTimezoneIfNotSet(
+  clerkOrgId: string,
   userId: string,
   timezone: string,
   sessionClaims?: CustomJwtSessionClaims,
@@ -154,6 +169,7 @@ export async function setTimezoneIfNotSet(
   }
 
   const { timezone: existingTimezone } = await getUserPreferences(
+    clerkOrgId,
     userId,
     sessionClaims,
   );
@@ -172,20 +188,12 @@ export async function setTimezoneIfNotSet(
 
       // Dual-write timezone to Clerk membership publicMetadata (fire-and-forget)
       try {
-        const [scope] = await globalThis.services.db
-          .select({ clerkOrgId: scopes.clerkOrgId })
-          .from(scopes)
-          .where(eq(scopes.id, memberRecord.scopeId))
-          .limit(1);
-
-        if (scope) {
-          const client = await clerkClient();
-          await client.organizations.updateOrganizationMembershipMetadata({
-            organizationId: scope.clerkOrgId,
-            userId,
-            publicMetadata: { timezone },
-          });
-        }
+        const client = await clerkClient();
+        await client.organizations.updateOrganizationMembershipMetadata({
+          organizationId: clerkOrgId,
+          userId,
+          publicMetadata: { timezone },
+        });
       } catch (err) {
         log.error("Failed to write timezone to Clerk metadata", {
           error: err,

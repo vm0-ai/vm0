@@ -2,7 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { userPreferencesContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { getScopeById } from "../../../../src/lib/scope/scope-service";
 import {
   getUserPreferences,
   updateUserPreferences,
@@ -16,13 +17,28 @@ const router = tsr.router(userPreferencesContract, {
   get: async ({ headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const ctx = await getAuthContext(headers.authorization);
+    if (!ctx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { sessionClaims } = await auth();
-    const prefs = await getUserPreferences(userId, sessionClaims ?? undefined);
+    const { sessionClaims, orgId } = await auth();
+
+    // Clerk session → orgId from JWT; CLI token → look up from scopeId
+    let clerkOrgId = orgId;
+    if (!clerkOrgId && ctx.scopeId) {
+      const scope = await getScopeById(ctx.scopeId);
+      clerkOrgId = scope?.clerkOrgId ?? null;
+    }
+    if (!clerkOrgId) {
+      return createErrorResponse("BAD_REQUEST", "No organization context");
+    }
+
+    const prefs = await getUserPreferences(
+      clerkOrgId,
+      ctx.userId,
+      sessionClaims ?? undefined,
+    );
 
     return {
       status: 200 as const,
@@ -40,13 +56,13 @@ const router = tsr.router(userPreferencesContract, {
   update: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const ctx = await getAuthContext(headers.authorization);
+    if (!ctx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
     try {
-      const prefs = await updateUserPreferences(userId, {
+      const prefs = await updateUserPreferences(ctx.userId, {
         timezone: body.timezone,
         notifyEmail: body.notifyEmail,
         notifySlack: body.notifySlack,

@@ -171,6 +171,18 @@ export function mockClerk(options: {
         .fn()
         .mockImplementation(
           ({ organizationId }: { organizationId: string }) => {
+            // Build publicMetadata from membership preference options
+            const publicMetadata: Record<string, unknown> = {};
+            if (options.membershipTimezone !== undefined) {
+              publicMetadata.timezone = options.membershipTimezone;
+            }
+            if (options.membershipNotifyEmail !== undefined) {
+              publicMetadata.notify_email = options.membershipNotifyEmail;
+            }
+            if (options.membershipNotifySlack !== undefined) {
+              publicMetadata.notify_slack = options.membershipNotifySlack;
+            }
+
             // Return members of this org.
             // For clerkOrgs: session user is a member.
             // For createdOrgs: the creator is a member (regardless of session).
@@ -181,6 +193,7 @@ export function mockClerk(options: {
                   {
                     role: "org:admin",
                     publicUserData: { userId: options.userId },
+                    publicMetadata,
                     createdAt: Date.now(),
                   },
                 ],
@@ -195,6 +208,7 @@ export function mockClerk(options: {
                     publicUserData: {
                       userId: created.creatorUserId,
                     },
+                    publicMetadata,
                     createdAt: Date.now(),
                   },
                 ],
