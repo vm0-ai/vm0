@@ -56,6 +56,7 @@ import { outlookMailHandler } from "./providers/outlook-mail-handler";
 import { metaAdsHandler } from "./providers/meta-ads-handler";
 import { posthogHandler } from "./providers/posthog-handler";
 import { perplexityHandler } from "./providers/perplexity-handler";
+import { pushinatorHandler } from "./providers/pushinator-handler";
 import { plausibleHandler } from "./providers/plausible-handler";
 import { productlaneHandler } from "./providers/productlane-handler";
 import { resendHandler } from "./providers/resend-handler";
@@ -121,6 +122,7 @@ export const PROVIDER_HANDLERS: Record<
   perplexity: perplexityHandler,
   plausible: plausibleHandler,
   productlane: productlaneHandler,
+  pushinator: pushinatorHandler,
   resend: resendHandler,
   scrapeninja: scrapeninjaHandler,
   similarweb: similarwebHandler,

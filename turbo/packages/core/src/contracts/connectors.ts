@@ -1668,7 +1668,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
-    environmentMapping: {} as Record<string, string>,
   },
   plausible: {
     label: "Plausible",
@@ -1915,6 +1914,26 @@ const CONNECTOR_TYPES_DEF = {
             label: "API Key",
             required: true,
             placeholder: "fal_...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  pushinator: {
+    label: "Pushinator",
+    helpText:
+      "Connect your Pushinator account to send push notifications to mobile devices",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Sign up at [Pushinator](https://pushinator.com/)\n2. Go to the [Console](https://console.pushinator.com/tokens)\n3. Generate an API token\n4. Copy the token",
+        secrets: {
+          PUSHINATOR_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-pushinator-api-token",
           },
         },
       },
@@ -2314,6 +2333,11 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   fal: {
     services: [service("https://fal.run", bearerAuth("FAL_KEY"))],
   },
+  pushinator: {
+    services: [
+      service("https://api.pushinator.com", bearerAuth("PUSHINATOR_TOKEN")),
+    ],
+  },
 };
 
 export const connectorTypeSchema = z.enum([
@@ -2375,6 +2399,7 @@ export const connectorTypeSchema = z.enum([
   "scrapeninja",
   "elevenlabs",
   "fal",
+  "pushinator",
 ]);
 
 /**
