@@ -105,8 +105,6 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "API Token",
-        helpText:
-          "1. Log in to your [Ahrefs Dashboard](https://app.ahrefs.com)\n2. Go to **API keys** under your account settings\n3. Generate a new API token\n4. Copy the token",
         secrets: {
           AHREFS_TOKEN: {
             label: "API Token",
@@ -462,7 +460,7 @@ const CONNECTOR_TYPES_DEF = {
       "api-token": {
         label: "API Key",
         helpText:
-          "1. Log in to the [Hume Portal](https://platform.hume.ai)\n2. Navigate to the **API Keys** page\n3. Copy your API key",
+          "1. Log in to the [Hume Portal](https://app.hume.ai)\n2. Navigate to the **API Keys** page\n3. Copy your API key",
         secrets: {
           HUME_TOKEN: {
             label: "API Key",
@@ -480,8 +478,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [HeyGen](https://app.heygen.com)\n2. Go to **Settings → API**\n3. Copy your API key",
         secrets: {
           HEYGEN_TOKEN: {
             label: "API Key",
@@ -652,8 +648,6 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "Access Token",
-        helpText:
-          '1. Go to [Dropbox App Console](https://www.dropbox.com/developers/apps)\n2. Select or create your app\n3. Under **Settings**, click "Generate" to create an access token\n4. Copy the token\n\n> **Note:** Generated tokens are short-lived (4 hours). You may need to regenerate periodically.',
         secrets: {
           DROPBOX_TOKEN: {
             label: "Access Token",
@@ -713,8 +707,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Access Token",
-        helpText:
-          "1. Log in to your [Intercom workspace](https://app.intercom.com/)\n2. Navigate to **Settings** → **Developers** → **Developer Hub**\n3. Create a new app or select an existing one\n4. Go to **Configure** → **Authentication**\n5. Copy your **Access Token**",
         secrets: {
           INTERCOM_TOKEN: {
             label: "Access Token",
@@ -751,8 +743,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
-        helpText:
-          "1. Log in to [Make](https://www.make.com)\n2. Click your profile icon and go to **Profile**\n3. Scroll to the **API** section\n4. Click **Add token** and select the required scopes\n5. Copy the generated token",
         secrets: {
           MAKE_TOKEN: {
             label: "API Token",
@@ -785,8 +775,6 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "API Token",
-        helpText:
-          "1. Go to **Apps & Integrations > Developer Center** in Deel\n2. Navigate to the **Organization tokens** tab\n3. Create a new token with required scopes\n4. Copy the generated token",
         secrets: {
           DEEL_TOKEN: {
             label: "API Token",
@@ -821,8 +809,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [DeepSeek Platform](https://platform.deepseek.com)\n2. Go to **API Keys**\n3. Create a new API key\n4. Copy the key",
         secrets: {
           DEEPSEEK_TOKEN: {
             label: "API Key",
@@ -841,8 +827,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
-        helpText:
-          "1. Log in to [ClickUp](https://app.clickup.com)\n2. Click your avatar in the bottom-left corner\n3. Go to **Settings** → **Apps**\n4. Under **API Token**, click **Generate** and copy it",
         secrets: {
           CLICKUP_TOKEN: {
             label: "API Token",
@@ -880,8 +864,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [Dify](https://cloud.dify.ai)\n2. Open your application\n3. Go to **API Access** in the left sidebar\n4. Copy the API Key",
         secrets: {
           DIFY_TOKEN: {
             label: "API Key",
@@ -914,8 +896,6 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "Personal Access Token",
-        helpText:
-          "1. Go to [Figma Settings > Security](https://www.figma.com/settings#personal-access-tokens)\n2. Create a new personal access token\n3. Select required scopes (e.g., File content: Read/Write)\n4. Copy the generated token",
         secrets: {
           FIGMA_TOKEN: {
             label: "Personal Access Token",
@@ -968,7 +948,7 @@ const CONNECTOR_TYPES_DEF = {
       "api-token": {
         label: "API Token",
         helpText:
-          "1. Log in to your [Mercury Dashboard](https://app.mercury.com)\n2. Go to **Settings** and find the API section\n3. Generate a new API token\n4. Copy the token",
+          "1. Log in to your [Mercury Dashboard](https://mercury.com)\n2. Go to **Settings → Tokens**\n3. Generate a new API token\n4. Copy the token",
         secrets: {
           MERCURY_TOKEN: {
             label: "API Token",
@@ -995,8 +975,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to the [MiniMax Platform](https://platform.minimaxi.com)\n2. Go to **Account → API Keys**\n3. Create a new API key and copy it",
         secrets: {
           MINIMAX_TOKEN: {
             label: "API Key",
@@ -1015,8 +993,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
-        helpText:
-          "1. Sign up at [Reportei](https://www.reportei.com/)\n2. Go to Dashboard → Generate API Token\n3. Copy the token",
         secrets: {
           REPORTEI_TOKEN: {
             label: "API Token",
@@ -1035,8 +1011,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Sign up at [SerpApi](https://serpapi.com/)\n2. Go to **Manage API Key** in the dashboard\n3. Copy your API key",
         secrets: {
           SERPAPI_TOKEN: {
             label: "API Key",
@@ -1167,8 +1141,6 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "API Key",
-        helpText:
-          '1. Go to [Neon Console > Account Settings > API Keys](https://console.neon.tech/app/settings/api-keys)\n2. Click "Create new API key"\n3. Copy the generated key',
         secrets: {
           NEON_TOKEN: {
             label: "API Key",
@@ -1310,8 +1282,6 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "Personal API Key",
-        helpText:
-          "1. Log in to your [PostHog Dashboard](https://us.posthog.com)\n2. Go to **Settings → Personal API keys**\n3. Click **+ Create personal API key**\n4. Select the scopes you need and copy the key",
         secrets: {
           POSTHOG_TOKEN: {
             label: "Personal API Key",
@@ -1363,8 +1333,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to your [Productlane Dashboard](https://productlane.com)\n2. Go to **Settings → API**\n3. Copy your API key",
         secrets: {
           PRODUCTLANE_TOKEN: {
             label: "API Key",
@@ -1394,8 +1362,6 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Go to [Intervals.icu Settings > Developer Settings](https://intervals.icu/settings)\n2. Scroll to the bottom to find **Developer Settings**\n3. Generate or copy your API key",
         secrets: {
           INTERVALS_ICU_TOKEN: {
             label: "API Key",
@@ -1578,8 +1544,6 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "Service Role Key",
-        helpText:
-          '1. Go to [Supabase Dashboard > Project Settings > API](https://supabase.com/dashboard/project/_/settings/api)\n2. Find the **service_role** key under "Project API keys"\n3. Copy the key\n\n> **Note:** The service_role key bypasses Row Level Security. Keep it secret.',
         secrets: {
           SUPABASE_TOKEN: {
             label: "Service Role Key",
@@ -1656,8 +1620,6 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "Site Token",
-        helpText:
-          '1. Go to your Webflow site\'s **Settings > Apps & integrations > API access**\n2. Click "Generate API token"\n3. Select required scopes\n4. Copy the generated token\n\n> Tokens expire after 365 days of inactivity.',
         secrets: {
           WEBFLOW_TOKEN: {
             label: "Site Token",
@@ -1700,8 +1662,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Permanent Access Token",
-        helpText:
-          "1. Log in to your [Wrike account](https://www.wrike.com/)\n2. Navigate to **Apps & Integrations** → **API**\n3. Click **Create new** under **Permanent access tokens**\n4. Copy the generated token",
         secrets: {
           WRIKE_TOKEN: {
             label: "Permanent Access Token",
@@ -1906,8 +1866,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [OpenAI](https://platform.openai.com)\n2. Go to **API keys** in the left sidebar\n3. Click **Create new secret key**\n4. Copy the key",
         secrets: {
           OPENAI_TOKEN: {
             label: "API Key",
@@ -1926,8 +1884,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [SimilarWeb](https://www.similarweb.com)\n2. Go to **Settings > Account > API Keys**\n3. Generate and activate an API key\n4. Copy the key",
         secrets: {
           SIMILARWEB_TOKEN: {
             label: "API Key",
@@ -1946,8 +1902,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [Perplexity](https://www.perplexity.ai)\n2. Go to **Settings → API**\n3. Generate a new API key\n4. Copy the key",
         secrets: {
           PERPLEXITY_TOKEN: {
             label: "API Key",
@@ -1987,8 +1941,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to your [Mailchimp account](https://login.mailchimp.com)\n2. Go to **Account & Billing** → **Extras** → **API keys**\n3. Click **Create A Key**\n4. Copy the API key (format: `xxxxxxxx-us00`)",
         secrets: {
           MAILCHIMP_TOKEN: {
             label: "API Key",
@@ -2015,8 +1967,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Access Token",
-        helpText:
-          "1. Log in to your [Chatwoot](https://app.chatwoot.com) instance\n2. Go to **Settings > Account Settings**\n3. Find **Access Token** in the profile section\n4. Copy the token",
         secrets: {
           CHATWOOT_TOKEN: {
             label: "API Access Token",
@@ -2036,8 +1986,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [Resend](https://resend.com)\n2. Go to **API Keys** in the sidebar\n3. Click **Create API Key**\n4. Choose permissions (Full access recommended) and copy the key",
         secrets: {
           RESEND_TOKEN: {
             label: "API Key",
@@ -2056,8 +2004,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Secret API Key",
-        helpText:
-          "1. Log in to [RevenueCat](https://app.revenuecat.com)\n2. Go to your project **Settings → API Keys**\n3. Copy your **Secret API key** (starts with `sk_`)",
         secrets: {
           REVENUECAT_TOKEN: {
             label: "Secret API Key",
@@ -2076,8 +2022,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [PDF4me](https://dev.pdf4me.com)\n2. Go to your **Dashboard → API Keys**\n3. Copy your API key",
         secrets: {
           PDF4ME_TOKEN: {
             label: "API Key",
@@ -2117,7 +2061,7 @@ const CONNECTOR_TYPES_DEF = {
       "api-token": {
         label: "API Token",
         helpText:
-          "1. Log in to [Bright Data](https://brightdata.com/cp)\n2. Go to **Settings > Users**\n3. Copy your **API token**",
+          "1. Log in to [Bright Data](https://brightdata.com/cp)\n2. Go to **Account settings**\n3. Click **Add API key** and configure permissions\n4. Copy the token (shown only once)",
         secrets: {
           BRIGHTDATA_TOKEN: {
             label: "API Token",
@@ -2135,8 +2079,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
-        helpText:
-          "1. Log in to [Browserbase](https://www.browserbase.com)\n2. Go to **Dashboard > Settings**\n3. Copy your **API Key** and **Project ID**",
         secrets: {
           BROWSERBASE_TOKEN: {
             label: "API Token",
@@ -2159,8 +2101,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
-        helpText:
-          "1. Log in to [Browserless](https://account.browserless.io)\n2. Copy your **API Token** from the dashboard",
         secrets: {
           BROWSERLESS_TOKEN: {
             label: "API Token",
@@ -2178,8 +2118,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
-        helpText:
-          "1. Log in to [Fireflies.ai](https://app.fireflies.ai)\n2. Go to **Settings > Developer Settings**\n3. Copy your **API Key**",
         secrets: {
           FIREFLIES_TOKEN: {
             label: "API Token",
@@ -2217,8 +2155,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
-        helpText:
-          "1. Sign up at [RapidAPI](https://rapidapi.com/restyler/api/scrapeninja) or [APIRoad](https://apiroad.net/marketplace/apis/scrapeninja)\n2. Subscribe to the ScrapeNinja API\n3. Copy your **API Key**",
         secrets: {
           SCRAPENINJA_TOKEN: {
             label: "API Token",
@@ -2236,8 +2172,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [PDF.co](https://app.pdf.co)\n2. Find your API key on the dashboard\n3. Copy the key",
         secrets: {
           PDFCO_TOKEN: {
             label: "API Key",
@@ -2256,8 +2190,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [ElevenLabs](https://elevenlabs.io)\n2. Click your profile icon → **Profile + API key**\n3. Copy your API key",
         secrets: {
           ELEVENLABS_TOKEN: {
             label: "API Key",
@@ -2276,8 +2208,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [Dev.to](https://dev.to)\n2. Go to **Settings → Extensions**\n3. Scroll to **DEV Community API Keys**\n4. Generate a new API key and copy it",
         secrets: {
           DEVTO_TOKEN: {
             label: "API Key",
@@ -2296,8 +2226,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [fal.ai](https://fal.ai/dashboard)\n2. Go to **Keys** in the sidebar\n3. Click **Create Key**\n4. Copy the key",
         secrets: {
           FAL_TOKEN: {
             label: "API Key",
@@ -2316,8 +2244,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
-        helpText:
-          "1. Log in to [Podchaser](https://www.podchaser.com)\n2. Go to **Account Settings → API**\n3. Use your client ID and secret to request an access token via the `requestAccessToken` mutation\n4. Copy the access token",
         secrets: {
           PODCHASER_TOKEN: {
             label: "API Token",
@@ -2336,8 +2262,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
-        helpText:
-          "1. Sign up at [Pushinator](https://pushinator.com/)\n2. Go to the [Console](https://console.pushinator.com/tokens)\n3. Generate an API token\n4. Copy the token",
         secrets: {
           PUSHINATOR_TOKEN: {
             label: "API Token",
@@ -2357,7 +2281,7 @@ const CONNECTOR_TYPES_DEF = {
       "api-token": {
         label: "API Key",
         helpText:
-          "1. Log in to [Qdrant Cloud](https://cloud.qdrant.io)\n2. Go to **Data Access Control → API Keys**\n3. Create a new API key\n4. Copy the key",
+          "1. Log in to [Qdrant Cloud](https://cloud.qdrant.io)\n2. Open your cluster's detail page and go to **API Keys**\n3. Click **Create** and configure your key\n4. Copy the key (shown only once)",
         secrets: {
           QDRANT_TOKEN: {
             label: "API Key",
@@ -2376,8 +2300,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Access Token",
-        helpText:
-          "1. Log in to [Qiita](https://qiita.com)\n2. Go to **Settings → Applications → Personal access tokens**\n3. Generate a new token with required scopes\n4. Copy the token",
         secrets: {
           QIITA_TOKEN: {
             label: "Access Token",
@@ -2396,8 +2318,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Send Mail Token",
-        helpText:
-          "1. Log in to [ZeptoMail](https://zeptomail.zoho.com)\n2. Go to **Agents → SMTP/API**\n3. Under **Send Mail Token**, click the copy icon",
         secrets: {
           ZEPTOMAIL_TOKEN: {
             label: "Send Mail Token",
@@ -2416,8 +2336,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Sign up at [Runway Developer Portal](https://dev.runwayml.com/)\n2. Purchase credits and create an API key in the dashboard\n3. Copy the API key",
         secrets: {
           RUNWAY_TOKEN: {
             label: "API Key",
@@ -2456,8 +2374,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [Streak](https://streak.com/)\n2. Go to **Settings → Integrations & API**\n3. Copy your API key",
         secrets: {
           STREAK_TOKEN: {
             label: "API Key",
@@ -2476,8 +2392,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Sign up at [Supadata](https://supadata.ai/)\n2. Go to the dashboard and copy your API key",
         secrets: {
           SUPADATA_TOKEN: {
             label: "API Key",
@@ -2496,8 +2410,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Sign up at [Tavily](https://tavily.com/)\n2. Go to the dashboard and copy your API key",
         secrets: {
           TAVILY_TOKEN: {
             label: "API Key",
@@ -2516,8 +2428,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [tl;dv](https://tldv.io/)\n2. Go to **Settings → Personal Settings → API Keys**\n3. Generate a new API key and copy it",
         secrets: {
           TLDV_TOKEN: {
             label: "API Key",
@@ -2536,8 +2446,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [Twenty](https://twenty.com/)\n2. Go to **Settings → APIs & Webhooks**\n3. Generate an API key and copy it",
         secrets: {
           TWENTY_TOKEN: {
             label: "API Key",
@@ -2576,8 +2484,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
-        helpText:
-          "1. Log in to [ZapSign](https://app.zapsign.com.br/)\n2. Go to **Settings → Integrations → API**\n3. Copy your API token",
         secrets: {
           ZAPSIGN_TOKEN: {
             label: "API Token",
@@ -2631,8 +2537,6 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
-        helpText:
-          "1. Log in to [Prisma Console](https://console.prisma.io/)\n2. Select your project and Prisma Postgres database\n3. Go to **Setup** and copy the API key from the connection string",
         secrets: {
           PRISMA_POSTGRES_TOKEN: {
             label: "API Key",
