@@ -2747,13 +2747,13 @@ const SERVICE_CONFIGS: Partial<Record<ConnectorType, ServiceConfig>> = {
     ],
   },
   jotform: {
-    services: [
-      service("https://api.jotform.com", {
+    apis: [
+      api("https://api.jotform.com", {
         headers: {
           APIKEY: "${secrets.JOTFORM_TOKEN}",
         },
       }),
-      service("https://eu-api.jotform.com", {
+      api("https://eu-api.jotform.com", {
         headers: {
           APIKEY: "${secrets.JOTFORM_TOKEN}",
         },
@@ -2788,8 +2788,8 @@ const SERVICE_CONFIGS: Partial<Record<ConnectorType, ServiceConfig>> = {
     ],
   },
   metabase: {
-    services: [
-      service("https://api.metabase.com", {
+    apis: [
+      api("https://api.metabase.com", {
         headers: {
           "x-api-key": "${secrets.METABASE_TOKEN}",
         },
