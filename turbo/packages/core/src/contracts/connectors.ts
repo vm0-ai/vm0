@@ -1769,6 +1769,27 @@ const CONNECTOR_TYPES_DEF = {
       RESEND_API_KEY: "$secrets.RESEND_API_KEY",
     } as Record<string, string>,
   },
+  pdfco: {
+    label: "PDF.co",
+    helpText:
+      "Connect your PDF.co account to convert, merge, split, and extract data from PDF documents via API",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [PDF.co](https://app.pdf.co)\n2. Find your API key on the dashboard\n3. Copy the key",
+        secrets: {
+          PDFCO_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-pdfco-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+    environmentMapping: {} as Record<string, string>,
+  },
   elevenlabs: {
     label: "ElevenLabs",
     helpText:
@@ -2146,6 +2167,13 @@ const CONNECTOR_PROXY_CONFIGS: Partial<
   resend: {
     services: [service("https://api.resend.com", bearerAuth("RESEND_API_KEY"))],
   },
+  pdfco: {
+    services: [
+      service("https://api.pdf.co/v1", {
+        headers: { "x-api-key": "${secrets.PDFCO_TOKEN}" },
+      }),
+    ],
+  },
   elevenlabs: {
     services: [
       service("https://api.elevenlabs.io", {
@@ -2202,6 +2230,7 @@ export const connectorTypeSchema = z.enum([
   "chatwoot",
   "similarweb",
   "mailchimp",
+  "pdfco",
   "perplexity",
   "plausible",
   "productlane",

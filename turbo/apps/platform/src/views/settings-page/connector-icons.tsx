@@ -34,6 +34,7 @@ import notionIcon from "./icons/notion.svg";
 import openaiIcon from "./icons/openai.svg";
 import outlookCalendarIcon from "./icons/outlook-calendar.svg";
 import outlookMailIcon from "./icons/outlook-mail.svg";
+import pdfcoIcon from "./icons/pdfco.svg";
 import perplexityIcon from "./icons/perplexity.svg";
 import plausibleIcon from "./icons/plausible.svg";
 import posthogIcon from "./icons/posthog.svg";
@@ -87,6 +88,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   openai: openaiIcon,
   "outlook-calendar": outlookCalendarIcon,
   "outlook-mail": outlookMailIcon,
+  pdfco: pdfcoIcon,
   perplexity: perplexityIcon,
   plausible: plausibleIcon,
   posthog: posthogIcon,
