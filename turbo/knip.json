@@ -56,7 +56,7 @@
       ],
       "project": ["src/**/*.ts"]
     },
-"packages/ui": {
+    "packages/ui": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.{ts,tsx}",
         "src/**/*.{test,spec}.{ts,tsx}"
