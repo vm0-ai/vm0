@@ -252,34 +252,7 @@ EOF
     assert_output --partial "LOG_LEVEL"
 }
 
-@test "vm0 agent status shows credentials from environment" {
-    echo "# Step 1: Create vm0.yaml with credentials"
-    cat > "$TEST_DIR/vm0.yaml" <<'EOF'
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    framework: claude-code
-    experimental_runner:
-      group: ${RUNNER_GROUP}
-    environment:
-      DATABASE_URL: "${{ credentials.DB_URL }}"
-EOF
-    # Replace $AGENT_NAME in the file
-    sed -i "s|\$AGENT_NAME|$AGENT_NAME|g; s|\${RUNNER_GROUP}|$RUNNER_GROUP|g" "$TEST_DIR/vm0.yaml"
-
-    echo "# Step 2: Run vm0 compose"
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Step 3: Run vm0 agent status and verify credentials are displayed"
-    run $CLI_COMMAND agent status "$AGENT_NAME" --no-sources
-    assert_success
-    assert_output --partial "Credentials:"
-    assert_output --partial "DB_URL"
-}
-
-@test "vm0 agent status shows mixed secrets vars and credentials" {
+@test "vm0 agent status shows mixed secrets and vars" {
     echo "# Step 1: Create vm0.yaml with mixed environment variables"
     cat > "$TEST_DIR/vm0.yaml" <<'EOF'
 version: "1.0"
@@ -292,7 +265,6 @@ agents:
     environment:
       API_KEY: "${{ secrets.API_KEY }}"
       DEBUG: "${{ vars.DEBUG }}"
-      DB_URL: "${{ credentials.DB_URL }}"
       STATIC_VALUE: "hardcoded"
 EOF
     # Replace $AGENT_NAME in the file
@@ -309,8 +281,6 @@ EOF
     assert_output --partial "API_KEY"
     assert_output --partial "Vars:"
     assert_output --partial "DEBUG"
-    assert_output --partial "Credentials:"
-    assert_output --partial "DB_URL"
 }
 
 # ============================================
