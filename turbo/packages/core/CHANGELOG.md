@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.59.0](https://github.com/vm0-ai/vm0/compare/core-v8.58.3...core-v8.59.0) (2026-03-12)
+
+
+### Features
+
+* **zero:** add recent chat sidebar, file attachments, and session switching ([#4582](https://github.com/vm0-ai/vm0/issues/4582)) ([d460861](https://github.com/vm0-ai/vm0/commit/d4608610fa4eda2ffa8ff53663187f430987283c))
+
+
+### Bug Fixes
+
+* add explicit file size limits to storage upload handlers ([#4586](https://github.com/vm0-ai/vm0/issues/4586)) ([d899fdb](https://github.com/vm0-ai/vm0/commit/d899fdbc23a30b5e586fa0755a22f0c4d6826d8b)), closes [#4576](https://github.com/vm0-ai/vm0/issues/4576)
+
+
+### Refactoring
+
+* change encrypted-secrets from value array to key-value map ([#4584](https://github.com/vm0-ai/vm0/issues/4584)) ([9ec335a](https://github.com/vm0-ai/vm0/commit/9ec335a86832c4b2347232840c62d1ba55501591))
+* remove experimental_mitm and always enable mitm when proxy is active ([#4568](https://github.com/vm0-ai/vm0/issues/4568)) ([34e1257](https://github.com/vm0-ai/vm0/commit/34e1257a96ceb70a50c07fa258a442c940b5ef95))
+* remove sni mode dead code from network logging ([#4592](https://github.com/vm0-ai/vm0/issues/4592)) ([20a55a8](https://github.com/vm0-ai/vm0/commit/20a55a8cc7cfd5284b072ec945c23185a58d1d8f))
+* **services:** expand service configs at compose stage with secret-name keyed placeholders ([#4548](https://github.com/vm0-ai/vm0/issues/4548)) ([519df6c](https://github.com/vm0-ai/vm0/commit/519df6cd8125971c7aa46a478e7bcd1e6731d59b))
+* **services:** pass encrypted-secrets blob in claim response to runner ([#4599](https://github.com/vm0-ai/vm0/issues/4599)) ([ffdfe6e](https://github.com/vm0-ai/vm0/commit/ffdfe6e617cceb1823e700f3754aa55dde3d5def))
+
 ## [8.58.3](https://github.com/vm0-ai/vm0/compare/core-v8.58.2...core-v8.58.3) (2026-03-12)
 
 

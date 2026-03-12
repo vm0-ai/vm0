@@ -1,5 +1,37 @@
 # Changelog
 
+## [12.102.0](https://github.com/vm0-ai/vm0/compare/web-v12.101.1...web-v12.102.0) (2026-03-12)
+
+
+### Features
+
+* **zero:** add recent chat sidebar, file attachments, and session switching ([#4582](https://github.com/vm0-ai/vm0/issues/4582)) ([d460861](https://github.com/vm0-ai/vm0/commit/d4608610fa4eda2ffa8ff53663187f430987283c))
+
+
+### Bug Fixes
+
+* add explicit file size limits to storage upload handlers ([#4586](https://github.com/vm0-ai/vm0/issues/4586)) ([d899fdb](https://github.com/vm0-ai/vm0/commit/d899fdbc23a30b5e586fa0755a22f0c4d6826d8b)), closes [#4576](https://github.com/vm0-ai/vm0/issues/4576)
+* add zod validation to api routes using raw request.json() ([#4591](https://github.com/vm0-ai/vm0/issues/4591)) ([148b5e7](https://github.com/vm0-ai/vm0/commit/148b5e703f5f5ce277bd193d39e4a301a8fc6983)), closes [#4573](https://github.com/vm0-ai/vm0/issues/4573)
+* resolve 9 semgrep code scanning alerts on main ([#4566](https://github.com/vm0-ai/vm0/issues/4566)) ([6564875](https://github.com/vm0-ai/vm0/commit/65648751ae9a7aa0c850fade8205a5f35e95639e))
+* sanitize error responses to prevent information leakage ([#4587](https://github.com/vm0-ai/vm0/issues/4587)) ([681d050](https://github.com/vm0-ai/vm0/commit/681d050952d769ea4c287c6fbfbea1425ab8b8fc))
+
+
+### Refactoring
+
+* change encrypted-secrets from value array to key-value map ([#4584](https://github.com/vm0-ai/vm0/issues/4584)) ([9ec335a](https://github.com/vm0-ai/vm0/commit/9ec335a86832c4b2347232840c62d1ba55501591))
+* drop scopes table (phase 6 🆉) ([#4578](https://github.com/vm0-ai/vm0/issues/4578)) ([de7ba9f](https://github.com/vm0-ai/vm0/commit/de7ba9fd49482f689c0cca4d8ff2b3976d03d3c7))
+* remove experimental_mitm and always enable mitm when proxy is active ([#4568](https://github.com/vm0-ai/vm0/issues/4568)) ([34e1257](https://github.com/vm0-ai/vm0/commit/34e1257a96ceb70a50c07fa258a442c940b5ef95))
+* remove sni mode dead code from network logging ([#4592](https://github.com/vm0-ai/vm0/issues/4592)) ([20a55a8](https://github.com/vm0-ai/vm0/commit/20a55a8cc7cfd5284b072ec945c23185a58d1d8f))
+* **services:** expand service configs at compose stage with secret-name keyed placeholders ([#4548](https://github.com/vm0-ai/vm0/issues/4548)) ([519df6c](https://github.com/vm0-ai/vm0/commit/519df6cd8125971c7aa46a478e7bcd1e6731d59b))
+* **services:** pass encrypted-secrets blob in claim response to runner ([#4599](https://github.com/vm0-ai/vm0/issues/4599)) ([ffdfe6e](https://github.com/vm0-ai/vm0/commit/ffdfe6e617cceb1823e700f3754aa55dde3d5def))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.59.0
+
 ## [12.101.1](https://github.com/vm0-ai/vm0/compare/web-v12.101.0...web-v12.101.1) (2026-03-12)
 
 

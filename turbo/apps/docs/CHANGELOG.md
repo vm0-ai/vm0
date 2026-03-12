@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.4](https://github.com/vm0-ai/vm0/compare/docs-v2.16.3...docs-v2.16.4) (2026-03-12)
+
+
+### Refactoring
+
+* remove experimental_mitm and always enable mitm when proxy is active ([#4568](https://github.com/vm0-ai/vm0/issues/4568)) ([34e1257](https://github.com/vm0-ai/vm0/commit/34e1257a96ceb70a50c07fa258a442c940b5ef95))
+
 ## [2.16.3](https://github.com/vm0-ai/vm0/compare/docs-v2.16.2...docs-v2.16.3) (2026-03-12)
 
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.56.6](https://github.com/vm0-ai/vm0/compare/cli-v9.56.5...cli-v9.56.6) (2026-03-12)
+
+
+### Bug Fixes
+
+* resolve 9 semgrep code scanning alerts on main ([#4566](https://github.com/vm0-ai/vm0/issues/4566)) ([6564875](https://github.com/vm0-ai/vm0/commit/65648751ae9a7aa0c850fade8205a5f35e95639e))
+
+
+### Refactoring
+
+* remove sni mode dead code from network logging ([#4592](https://github.com/vm0-ai/vm0/issues/4592)) ([20a55a8](https://github.com/vm0-ai/vm0/commit/20a55a8cc7cfd5284b072ec945c23185a58d1d8f))
+* **services:** expand service configs at compose stage with secret-name keyed placeholders ([#4548](https://github.com/vm0-ai/vm0/issues/4548)) ([519df6c](https://github.com/vm0-ai/vm0/commit/519df6cd8125971c7aa46a478e7bcd1e6731d59b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.59.0
+
 ## [9.56.5](https://github.com/vm0-ai/vm0/compare/cli-v9.56.4...cli-v9.56.5) (2026-03-12)
 
 

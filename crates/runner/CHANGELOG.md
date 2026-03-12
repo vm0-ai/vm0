@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.22.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.5...runner-rs-v0.22.6) (2026-03-12)
+
+
+### Refactoring
+
+* remove experimental_mitm and always enable mitm when proxy is active ([#4568](https://github.com/vm0-ai/vm0/issues/4568)) ([34e1257](https://github.com/vm0-ai/vm0/commit/34e1257a96ceb70a50c07fa258a442c940b5ef95))
+* remove sni mode dead code from network logging ([#4592](https://github.com/vm0-ai/vm0/issues/4592)) ([20a55a8](https://github.com/vm0-ai/vm0/commit/20a55a8cc7cfd5284b072ec945c23185a58d1d8f))
+* **runner:** rename secrets variable to match field name ([#4588](https://github.com/vm0-ai/vm0/issues/4588)) ([5a1413d](https://github.com/vm0-ai/vm0/commit/5a1413dabecf8a3c5966c7c860cb6a93f9f21ad6))
+* **services:** pass encrypted-secrets blob in claim response to runner ([#4599](https://github.com/vm0-ai/vm0/issues/4599)) ([ffdfe6e](https://github.com/vm0-ai/vm0/commit/ffdfe6e617cceb1823e700f3754aa55dde3d5def))
+
 ## [0.22.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.4...runner-rs-v0.22.5) (2026-03-12)
 
 

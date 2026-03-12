@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.107.0](https://github.com/vm0-ai/vm0/compare/platform-v0.106.1...platform-v0.107.0) (2026-03-12)
+
+
+### Features
+
+* **platform:** wire zero schedule page to real api calls ([#4589](https://github.com/vm0-ai/vm0/issues/4589)) ([b1cb54c](https://github.com/vm0-ai/vm0/commit/b1cb54c765b6d2c8ebde756e89608615555e0785))
+* **zero:** add recent chat sidebar, file attachments, and session switching ([#4582](https://github.com/vm0-ai/vm0/issues/4582)) ([d460861](https://github.com/vm0-ai/vm0/commit/d4608610fa4eda2ffa8ff53663187f430987283c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.59.0
+
 ## [0.106.1](https://github.com/vm0-ai/vm0/compare/platform-v0.106.0...platform-v0.106.1) (2026-03-12)
 
 
