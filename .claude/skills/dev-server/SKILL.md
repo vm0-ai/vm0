@@ -222,11 +222,11 @@ Use `/dev-start` to start one
 
 # Operation: logs
 
-View development server output logs with optional filtering.
+View development server output logs with optional filtering. Logs are persisted to `/tmp/dev-server.log` via `tee` in the `pnpm dev` script.
 
 ## Arguments Format
 
-- `logs` - Show all new logs since last check
+- `logs` - Show recent logs (last 50 lines)
 - `logs [pattern]` - Show only logs matching the regex pattern
 
 ## Examples
@@ -237,52 +237,37 @@ View development server output logs with optional filtering.
 
 ## Workflow
 
-### Step 1: Find the Dev Server Shell ID
-
-Read the saved shell_id from persistent storage:
+### Step 1: Check Log File Exists
 
 ```bash
-if [ -f /tmp/dev-server-shell-id ]; then
-  cat /tmp/dev-server-shell-id
-else
-  echo "❌ No dev server shell_id found"
+if [ ! -f /tmp/dev-server.log ]; then
+  echo "❌ No dev server log found at /tmp/dev-server.log"
+  echo "Please run /dev-start first."
   exit 1
 fi
 ```
 
-If shell_id file doesn't exist:
-```
-❌ No dev server is running. Please run `/dev-start` first.
-```
+### Step 2: Read Logs
 
-### Step 2: Get Logs Using TaskOutput Tool
-
-Use the TaskOutput tool with the shell_id to retrieve logs:
-
-**If no filter pattern provided**:
-```javascript
-TaskOutput({
-  task_id: "<shell-id>",
-  block: false,
-  timeout: 5000
-})
+**If no filter pattern provided** — show last 50 lines:
+```bash
+tail -50 /tmp/dev-server.log
 ```
 
-**If filter pattern provided**:
-- First get all logs using TaskOutput
-- Then filter the output using the provided regex pattern
-- Display only matching lines
+**If filter pattern provided** — grep matching lines:
+```bash
+grep -E "<pattern>" /tmp/dev-server.log | tail -50
+```
 
 ### Step 3: Display Logs
 
-Show the output in readable format. If empty, mention that no new logs since last check.
+Show the output in readable format. If the log file is empty, mention that no logs have been recorded yet.
 
 ## Notes
 
-- Only shows **NEW** output since last time logs were checked
+- Logs are written to `/tmp/dev-server.log` by `pnpm dev` (via `tee`)
 - Filter parameter uses regex patterns
-- Non-blocking operation
-- Full logs are also persisted to `/tmp/dev-server.log` — you can read them directly via `cat /tmp/dev-server.log` or `tail -f /tmp/dev-server.log`
+- Log file persists across dev server restarts (overwritten on each start)
 
 ---
 
