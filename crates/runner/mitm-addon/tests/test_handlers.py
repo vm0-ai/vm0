@@ -1,6 +1,7 @@
 """Tests for HTTP/TLS handlers."""
 import json
 import time
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import mitm_addon
@@ -270,7 +271,7 @@ class TestResponseHandler:
         assert flow.id not in mitm_addon._request_start_times
 
         # Network log should be written
-        lines = open(log_path).readlines()
+        lines = Path(log_path).read_text().splitlines()
         assert len(lines) == 1
         entry = json.loads(lines[0])
         assert entry["action"] == "ALLOW"

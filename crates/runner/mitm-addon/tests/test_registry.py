@@ -1,6 +1,6 @@
 """Tests for registry loading, caching, and network logging."""
 import json
-import time
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import mitm_addon
@@ -81,7 +81,7 @@ class TestLogNetworkEntry:
         with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
             mitm_addon.log_network_entry(vm_info, entry)
 
-        lines = open(log_path).readlines()
+        lines = Path(log_path).read_text().splitlines()
         assert len(lines) == 1
         parsed = json.loads(lines[0])
         assert parsed["action"] == "ALLOW"
@@ -95,7 +95,7 @@ class TestLogNetworkEntry:
             mitm_addon.log_network_entry(vm_info, {"n": 1})
             mitm_addon.log_network_entry(vm_info, {"n": 2})
 
-        lines = open(log_path).readlines()
+        lines = Path(log_path).read_text().splitlines()
         assert len(lines) == 2
 
     def test_no_path_is_noop(self):

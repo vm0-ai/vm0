@@ -85,8 +85,8 @@ function valueContainsSearch(value: unknown, searchTerm: string): boolean {
   if (Array.isArray(value)) {
     return value.some((item) => valueContainsSearch(item, searchTerm));
   }
-  if (typeof value === "object" && value !== null) {
-    return Object.entries(value).some(
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).some(
       ([key, val]) =>
         key.toLowerCase().includes(lowerSearch) ||
         valueContainsSearch(val, searchTerm),

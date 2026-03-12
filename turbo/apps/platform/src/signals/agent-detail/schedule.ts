@@ -221,7 +221,7 @@ function parseCronExpression(cron: string): {
   const dayOfMonth = parts[2] ?? "*";
   const dayOfWeek = parts[4] ?? "*";
 
-  let timeOption: CronTimeOption = "every-day";
+  let timeOption: CronTimeOption;
 
   if (dayOfMonth !== "*") {
     timeOption = "every-month";
