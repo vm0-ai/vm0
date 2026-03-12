@@ -108,12 +108,21 @@ export type StoragesContract = typeof storagesContract;
 // ============================================================================
 
 /**
+ * Maximum file size per file in bytes (100MB)
+ */
+export const MAX_FILE_SIZE_BYTES = 104_857_600;
+
+/**
  * File entry with hash for content-addressable storage
  */
 export const fileEntryWithHashSchema = z.object({
   path: z.string().min(1, "File path is required"),
   hash: z.string().length(64, "Hash must be SHA-256 (64 hex chars)"),
-  size: z.number().int().min(0, "Size must be non-negative"),
+  size: z
+    .number()
+    .int()
+    .min(0, "Size must be non-negative")
+    .max(MAX_FILE_SIZE_BYTES, "File size exceeds 100MB limit"),
 });
 
 /**
@@ -173,6 +182,7 @@ export const storagesPrepareContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
+      413: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Prepare for direct S3 upload",
@@ -213,6 +223,7 @@ export const storagesCommitContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema, // S3 files missing
+      413: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Commit uploaded storage",

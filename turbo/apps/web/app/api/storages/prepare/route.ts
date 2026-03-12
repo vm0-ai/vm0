@@ -3,7 +3,11 @@ import {
   tsr,
   createSafeErrorHandler,
 } from "../../../../src/lib/ts-rest-handler";
-import { storagesPrepareContract, VOLUME_SCOPE_USER_ID } from "@vm0/core";
+import {
+  storagesPrepareContract,
+  VOLUME_SCOPE_USER_ID,
+  MAX_FILE_SIZE_BYTES,
+} from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
@@ -117,6 +121,23 @@ const router = tsr.router(storagesPrepareContract, {
       baseVersion,
       changes,
     } = body;
+
+    // Validate total declared file size (100MB per-file limit is enforced by schema)
+    const totalDeclaredSize = files.reduce(
+      (sum: number, f: { size: number }) => sum + f.size,
+      0,
+    );
+    if (totalDeclaredSize > MAX_FILE_SIZE_BYTES) {
+      return {
+        status: 413 as const,
+        body: {
+          error: {
+            message: "Upload rejected: total file size exceeds 100MB limit",
+            code: "PAYLOAD_TOO_LARGE",
+          },
+        },
+      };
+    }
 
     log.debug(
       `Preparing upload for "${storageName}" (type: ${storageType}), ${files.length} files`,

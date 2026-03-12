@@ -206,6 +206,83 @@ describe("POST /api/storages/prepare", () => {
     );
   });
 
+  describe("file size limits", () => {
+    it("should return 413 when a single file exceeds 100MB", async () => {
+      const storageName = `oversize-single-${Date.now()}`;
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/storages/prepare",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storageName,
+            storageType: "artifact",
+            files: [
+              {
+                path: "large-file.bin",
+                hash: "f".repeat(64),
+                size: 104_857_601,
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+    });
+
+    it("should return 413 when total file size exceeds 100MB", async () => {
+      const storageName = `oversize-total-${Date.now()}`;
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/storages/prepare",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storageName,
+            storageType: "artifact",
+            files: [
+              { path: "file1.bin", hash: "a".repeat(64), size: 60_000_000 },
+              { path: "file2.bin", hash: "b".repeat(64), size: 60_000_000 },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(413);
+      const json = await response.json();
+      expect(json.error.code).toBe("PAYLOAD_TOO_LARGE");
+      expect(json.error.message).toContain("100MB");
+    });
+
+    it("should accept files within the 100MB limit", async () => {
+      const storageName = `within-limit-${Date.now()}`;
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/storages/prepare",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storageName,
+            storageType: "artifact",
+            files: [
+              { path: "file1.bin", hash: "a".repeat(64), size: 50_000_000 },
+              { path: "file2.bin", hash: "b".repeat(64), size: 50_000_000 },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+    });
+  });
+
   describe("content hash behavior", () => {
     it("should produce same version ID regardless of file order", async () => {
       const storageName = `order-independent-${Date.now()}`;

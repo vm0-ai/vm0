@@ -381,6 +381,7 @@ export const webhookStoragesPrepareContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
+      413: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Prepare for direct S3 upload from sandbox",
@@ -419,6 +420,7 @@ export const webhookStoragesCommitContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema, // S3 files missing
+      413: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Commit uploaded storage from sandbox",

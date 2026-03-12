@@ -58,14 +58,34 @@ pub async fn post_json(
             }
             Ok(resp) => {
                 let status = resp.status();
+                // 4xx errors (except 429) are deterministic — retrying won't help
+                if status.is_client_error() && status.as_u16() != HTTP_TOO_MANY_REQUESTS {
+                    // Try to extract error message from response body
+                    let error_msg = resp
+                        .text()
+                        .await
+                        .ok()
+                        .and_then(|body| serde_json::from_str::<Value>(&body).ok())
+                        .and_then(|v| v.get("error")?.get("message")?.as_str().map(String::from));
+
+                    return match error_msg {
+                        Some(msg) => {
+                            log_warn!(LOG_TAG, "HTTP POST failed: HTTP {status} — {msg}",);
+                            Err(AgentError::Http(format!("POST {url}: {msg}")))
+                        }
+                        None => {
+                            log_warn!(
+                                LOG_TAG,
+                                "HTTP POST failed (attempt {attempt}/{max_retries}): HTTP {status}",
+                            );
+                            Err(AgentError::Http(format!("POST {url}: HTTP {status}")))
+                        }
+                    };
+                }
                 log_warn!(
                     LOG_TAG,
                     "HTTP POST failed (attempt {attempt}/{max_retries}): HTTP {status}",
                 );
-                // 4xx errors (except 429) are deterministic — retrying won't help
-                if status.is_client_error() && status.as_u16() != HTTP_TOO_MANY_REQUESTS {
-                    return Err(AgentError::Http(format!("POST {url}: HTTP {status}")));
-                }
             }
             Err(e) => {
                 log_warn!(

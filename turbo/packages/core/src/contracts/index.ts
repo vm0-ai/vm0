@@ -108,6 +108,7 @@ export {
   storageTypeSchema,
   uploadStorageResponseSchema,
   // Direct upload schemas (shared with webhooks)
+  MAX_FILE_SIZE_BYTES,
   fileEntryWithHashSchema,
   storageChangesSchema,
   presignedUploadSchema,

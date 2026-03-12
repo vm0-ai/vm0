@@ -115,6 +115,39 @@ describe("POST /api/webhooks/agent/storages/prepare", () => {
     );
   });
 
+  it("should return 413 when total file size exceeds 100MB", async () => {
+    const storageName = uniqueId("webhook-oversize");
+
+    const request = makePrepareRequest(testRunId, testToken, {
+      storageName,
+      storageType: "volume",
+      files: [
+        { path: "file1.bin", hash: "a".repeat(64), size: 60_000_000 },
+        { path: "file2.bin", hash: "b".repeat(64), size: 60_000_000 },
+      ],
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(413);
+    const json = await response.json();
+    expect(json.error.code).toBe("PAYLOAD_TOO_LARGE");
+    expect(json.error.message).toContain("100MB");
+  });
+
+  it("should reject single file exceeding 100MB via schema validation", async () => {
+    const storageName = uniqueId("webhook-single-oversize");
+
+    const request = makePrepareRequest(testRunId, testToken, {
+      storageName,
+      storageType: "volume",
+      files: [{ path: "huge.bin", hash: "f".repeat(64), size: 104_857_601 }],
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+  });
+
   it("should return existing=true for deduplicated version", async () => {
     const storageName = uniqueId("webhook-dedup");
     const files = [{ path: "test.txt", hash: "b".repeat(64), size: 100 }];
