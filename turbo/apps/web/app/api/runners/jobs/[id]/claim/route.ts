@@ -15,7 +15,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { getRunnerAuth } from "../../../../../../src/lib/auth/runner-auth";
 import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 import { logger } from "../../../../../../src/lib/logger";
-import { decryptSecrets } from "../../../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretsMap } from "../../../../../../src/lib/crypto/secrets-encryption";
 import {
   validateRunnerGroupScope,
   isOfficialRunnerGroup,
@@ -171,11 +171,12 @@ const router = tsr.router(runnersJobClaimContract, {
 
     log.debug(`Deleted job queue entry for ${runId}`);
 
-    // Decrypt secrets before returning to runner
-    const secretValues = decryptSecrets(
+    // Decrypt secrets map and extract values for runner log masking
+    const secretsMap = decryptSecretsMap(
       storedContext.encryptedSecrets,
       globalThis.services.env.SECRETS_ENCRYPTION_KEY,
     );
+    const secretValues = secretsMap ? Object.values(secretsMap) : null;
 
     // Return execution context (context already prepared at job creation)
     // Note: apiUrl is not returned - runner uses its configured server.url

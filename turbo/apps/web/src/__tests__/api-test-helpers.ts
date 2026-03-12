@@ -44,7 +44,7 @@ import { userCache } from "../db/schema/user-cache";
 import { and, eq, inArray, like, or, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
-import { encryptSecrets } from "../lib/crypto/secrets-encryption";
+import { encryptSecretsMap } from "../lib/crypto/secrets-encryption";
 import { VOLUME_SCOPE_USER_ID, type StoredExecutionContext } from "@vm0/core";
 
 // Route handlers - imported here so callers don't need to pass them
@@ -2327,7 +2327,7 @@ export async function createTestRunnerJob(
     })
     .returning({ id: agentRuns.id });
 
-  const encryptedSecrets = encryptSecrets(
+  const encryptedSecrets = encryptSecretsMap(
     null,
     globalThis.services.env.SECRETS_ENCRYPTION_KEY,
   );
