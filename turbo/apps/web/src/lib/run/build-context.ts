@@ -29,7 +29,7 @@ import {
   type ConversationResolution,
 } from "./resolvers";
 import { expandEnvironmentFromCompose } from "./environment";
-import { getDefaultScope } from "../scope/scope-member-service";
+import { getDefaultScope } from "../scope/org-member-service";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";

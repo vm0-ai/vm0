@@ -2,7 +2,7 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { forbidden, badRequest, notFound } from "../errors";
 import { logger } from "../logger";
 import { getOrgBySlug, getOrgData } from "./org-cache-service";
-import { getDefaultScope } from "./scope-member-service";
+import { getDefaultScope } from "./org-member-service";
 
 import type { ScopeRole } from "@vm0/core";
 

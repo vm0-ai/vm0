@@ -340,7 +340,7 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
       const data = await response.json();
 
       // Cross-scope sharing: user can schedule another user's agent
-      // The schedule is associated with the caller's scopeId + userId
+      // The schedule is associated with the caller's orgId + userId
       expect(response.status).toBe(201);
       expect(data.created).toBe(true);
       expect(data.schedule.userId).toBe(user.userId);

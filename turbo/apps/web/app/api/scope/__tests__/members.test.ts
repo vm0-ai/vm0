@@ -84,12 +84,12 @@ describe("GET /api/scope/members - Scope Members", () => {
   });
 
   describe("Clerk lazy sync", () => {
-    it("should auto-sync scope membership from Clerk org when user is not in scope_members", async () => {
+    it("should auto-sync org membership from Clerk when user is not yet known locally", async () => {
       const adminUserId = uniqueId("admin");
       const memberUserId = uniqueId("member");
       const { slug, orgId } = await createTestScope(adminUserId);
 
-      // Switch to member user who is in Clerk org but NOT in scope_members
+      // Switch to member user who is in Clerk org but not yet synced locally
       setupClerkOrgMock({
         userId: memberUserId,
         orgId,
@@ -111,7 +111,7 @@ describe("GET /api/scope/members - Scope Members", () => {
       expect(statusData.role).toBe("member");
     });
 
-    it("should return 403 when user is not in Clerk org and not in scope_members", async () => {
+    it("should return 403 when user is not in Clerk org", async () => {
       const adminUserId = uniqueId("admin");
       const outsiderUserId = uniqueId("outsider");
       const { slug, orgId } = await createTestScope(adminUserId);

@@ -9,7 +9,7 @@ import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { deploySchedule, listSchedules } from "../../../../src/lib/schedule";
 import { logger } from "../../../../src/lib/logger";
 import { isNotFound, isBadRequest } from "../../../../src/lib/errors";
-import { resolveOrgId } from "../../../../src/lib/scope/scope-member-service";
+import { resolveOrgId } from "../../../../src/lib/scope/org-member-service";
 
 const log = logger("api:schedules");
 

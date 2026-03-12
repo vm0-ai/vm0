@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { requireScopeFromRequest } from "../../../../src/lib/scope/resolve-scope";
-import { leaveScope } from "../../../../src/lib/scope/scope-member-service";
+import { leaveScope } from "../../../../src/lib/scope/org-member-service";
 import {
   isBadRequest,
   isNotFound,

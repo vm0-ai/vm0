@@ -6,7 +6,7 @@ import { requireScopeFromRequest } from "../../../../src/lib/scope/resolve-scope
 import {
   getScopeMembers,
   removeMember,
-} from "../../../../src/lib/scope/scope-member-service";
+} from "../../../../src/lib/scope/org-member-service";
 import {
   isBadRequest,
   isNotFound,

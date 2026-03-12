@@ -32,7 +32,7 @@ import { getUserEmail } from "../auth/get-user-email";
 import { extractTemplateVars } from "../config-validator";
 
 import { getDefaultScopeByUserId } from "../scope/scope-service";
-import { getDefaultScope } from "../scope/scope-member-service";
+import { getDefaultScope } from "../scope/org-member-service";
 import { getVariableValues } from "../variable/variable-service";
 import { encryptSecretValue } from "../crypto/secrets-encryption";
 import type { ScopeTier } from "@vm0/core";

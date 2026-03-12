@@ -1,6 +1,6 @@
 import { createHmac } from "crypto";
 import { clerkClient } from "@clerk/nextjs/server";
-import { requireScopeMember, getDefaultScope } from "./scope-member-service";
+import { requireScopeMember, getDefaultScope } from "./org-member-service";
 import {
   getOrgData,
   getOrgBySlug,

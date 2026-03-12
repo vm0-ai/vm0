@@ -672,7 +672,7 @@ describe("createRun()", () => {
   });
 
   describe("Scope Resolution for Storage", () => {
-    it("should use runtime scopeId for artifact/memory storage when scopeId is provided", async () => {
+    it("should use runtime orgId for artifact/memory storage when orgId is provided", async () => {
       // Create a second scope (org scope) and make the user a member
       const orgCompose = await context.createAgentCompose(user.userId, {
         name: uniqueId("org-agent"),
@@ -691,7 +691,7 @@ describe("createRun()", () => {
 
       expect(result.status).toBe("pending");
 
-      // Verify the run record was created (scopeId no longer populated in INSERT)
+      // Verify the run record was created
       const run = await findTestRunRecord(result.runId);
       expect(run).toBeDefined();
 
@@ -710,7 +710,7 @@ describe("createRun()", () => {
       expect(memory!.userId).toBe(user.userId);
     });
 
-    it("should use default scope for storage when scopeId is not provided", async () => {
+    it("should use default scope for storage when orgId is not provided", async () => {
       const compose = await createTestCompose(uniqueId("agent"));
 
       const result = await createRun(
