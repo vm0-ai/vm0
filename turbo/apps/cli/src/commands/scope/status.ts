@@ -13,9 +13,6 @@ export const statusCommand = new Command()
 
         console.log(chalk.bold("Scope Information:"));
         console.log(`  Slug: ${chalk.green(scope.slug)}`);
-        console.log(
-          `  Created: ${new Date(scope.createdAt).toLocaleDateString()}`,
-        );
       } catch (error) {
         if (
           error instanceof Error &&

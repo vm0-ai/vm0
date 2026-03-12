@@ -19,11 +19,13 @@ interface ComposePayload {
       string,
       {
         framework: string;
+        instructions?: string;
         metadata?: { displayName?: string; sound?: string };
         skills?: string[];
       }
     >;
   };
+  instructions?: string;
 }
 
 describe("completeZeroOnboarding$", () => {
@@ -31,11 +33,15 @@ describe("completeZeroOnboarding$", () => {
     let capturedPayload: ComposePayload | null = null;
 
     server.use(
-      http.post("*/api/agent/composes", async ({ request }) => {
+      http.post("*/api/compose/jobs", async ({ request }) => {
         capturedPayload = (await request.json()) as ComposePayload;
         return HttpResponse.json({
-          composeId: "new-compose-id",
-          name: "test-compose",
+          jobId: "test-job-id",
+          status: "completed",
+          result: {
+            composeId: "new-compose-id",
+            composeName: "test-compose",
+          },
         });
       }),
       http.put("*/api/scopes/default-agent", () => {
@@ -74,10 +80,14 @@ describe("completeZeroOnboarding$", () => {
     let defaultAgentBody: Record<string, unknown> | null = null;
 
     server.use(
-      http.post("*/api/agent/composes", () => {
+      http.post("*/api/compose/jobs", () => {
         return HttpResponse.json({
-          composeId: "new-compose-id",
-          name: "test-compose",
+          jobId: "test-job-id",
+          status: "completed",
+          result: {
+            composeId: "new-compose-id",
+            composeName: "test-compose",
+          },
         });
       }),
       http.put("*/api/scopes/default-agent", async ({ request }) => {
@@ -97,10 +107,14 @@ describe("completeZeroOnboarding$", () => {
 
   it("should set step to done and saving to false after completion", async () => {
     server.use(
-      http.post("*/api/agent/composes", () => {
+      http.post("*/api/compose/jobs", () => {
         return HttpResponse.json({
-          composeId: "new-compose-id",
-          name: "test-compose",
+          jobId: "test-job-id",
+          status: "completed",
+          result: {
+            composeId: "new-compose-id",
+            composeName: "test-compose",
+          },
         });
       }),
       http.put("*/api/scopes/default-agent", () => {

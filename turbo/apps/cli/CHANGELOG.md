@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.56.3](https://github.com/vm0-ai/vm0/compare/cli-v9.56.2...cli-v9.56.3) (2026-03-12)
+
+
+### Refactoring
+
+* add extract-and-group-variables convenience function ([#4517](https://github.com/vm0-ai/vm0/issues/4517)) ([fe13128](https://github.com/vm0-ai/vm0/commit/fe13128c1a0b0e619c9a585867c3d3f5f81e2f9b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.58.1
+
 ## [9.56.2](https://github.com/vm0-ai/vm0/compare/cli-v9.56.1...cli-v9.56.2) (2026-03-12)
 
 

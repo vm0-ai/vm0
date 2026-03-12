@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { POST as createScopeRoute } from "../route";
 import { POST as inviteRoute } from "../invite/route";
 import { DELETE } from "../members/route";
 import { GET as getMembersRoute } from "../members/route";
-import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
+import {
+  createTestRequest,
+  createTestScope as createTestScopeHelper,
+} from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 import { setupClerkOrgMock } from "../../../../src/__tests__/clerk-org-mock";
@@ -16,7 +18,7 @@ const context = testContext();
  */
 async function createTestScope(userId: string) {
   const slug = uniqueId("scope");
-  const orgId = `org_${userId}`;
+  const orgId = `org_mock_${userId}`;
   setupClerkOrgMock({
     userId,
     orgId,
@@ -24,16 +26,7 @@ async function createTestScope(userId: string) {
     memberships: [{ userId, role: "org:admin" }],
   });
 
-  const createReq = createTestRequest("http://localhost:3000/api/scope", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ slug }),
-  });
-  const createRes = await createScopeRoute(createReq);
-  if (createRes.status !== 201) {
-    const body = await createRes.json();
-    throw new Error(`Failed to create scope: ${body.error?.message}`);
-  }
+  await createTestScopeHelper(slug);
 
   return { slug, orgId };
 }

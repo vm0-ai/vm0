@@ -25,7 +25,6 @@ export { getSession, getCheckpoint } from "./domains/sessions";
 // Domain modules - Scopes
 export {
   getScope,
-  createScope,
   updateScope,
   getScopeMembers,
   inviteScopeMember,

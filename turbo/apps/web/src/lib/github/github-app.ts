@@ -7,6 +7,20 @@
 
 import { createSign } from "node:crypto";
 
+const INSTALLATION_ID_RE = /^\d+$/;
+
+/**
+ * Validate that an installation ID is a numeric string to prevent URL injection.
+ */
+function validateInstallationId(installationId: string): string {
+  if (!INSTALLATION_ID_RE.test(installationId)) {
+    throw new Error(
+      `Invalid GitHub installation ID: expected numeric string, got "${installationId}"`,
+    );
+  }
+  return installationId;
+}
+
 /**
  * Create a JWT for authenticating as a GitHub App.
  *
@@ -49,10 +63,11 @@ export async function getInstallationAccessToken(
   privateKeyBase64: string,
   installationId: string,
 ): Promise<{ token: string; expiresAt: string }> {
+  const safeId = validateInstallationId(installationId);
   const jwt = createAppJWT(appId, privateKeyBase64);
 
   const res = await fetch(
-    `https://api.github.com/app/installations/${installationId}/access_tokens`,
+    `https://api.github.com/app/installations/${safeId}/access_tokens`,
     {
       method: "POST",
       headers: {
@@ -89,10 +104,11 @@ export async function getInstallationInfo(
   targetId: string;
   targetName: string;
 }> {
+  const safeId = validateInstallationId(installationId);
   const jwt = createAppJWT(appId, privateKeyBase64);
 
   const res = await fetch(
-    `https://api.github.com/app/installations/${installationId}`,
+    `https://api.github.com/app/installations/${safeId}`,
     {
       headers: {
         Authorization: `Bearer ${jwt}`,
@@ -131,10 +147,11 @@ export async function deleteInstallation(
   privateKeyBase64: string,
   installationId: string,
 ): Promise<void> {
+  const safeId = validateInstallationId(installationId);
   const jwt = createAppJWT(appId, privateKeyBase64);
 
   const res = await fetch(
-    `https://api.github.com/app/installations/${installationId}`,
+    `https://api.github.com/app/installations/${safeId}`,
     {
       method: "DELETE",
       headers: {

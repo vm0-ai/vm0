@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { POST as createScopeRoute } from "../route";
 import { POST } from "../leave/route";
-import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
+import {
+  createTestRequest,
+  createTestScope as createTestScopeHelper,
+} from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 import { setupClerkOrgMock } from "../../../../src/__tests__/clerk-org-mock";
@@ -61,13 +63,7 @@ describe("POST /api/scope/leave - Leave Scope", () => {
     });
 
     // Create scope
-    const createReq = createTestRequest("http://localhost:3000/api/scope", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slug }),
-    });
-    const createRes = await createScopeRoute(createReq);
-    expect(createRes.status).toBe(201);
+    await createTestScopeHelper(slug);
 
     // Try to leave as admin
     const leaveReq = createTestRequest(

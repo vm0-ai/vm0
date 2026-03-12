@@ -19,19 +19,19 @@ function getProviderTypes(): ModelProviderType[] {
 
 function ProviderCardInDialog({
   type,
-  configured,
   onAdd,
 }: {
   type: ModelProviderType;
-  configured: boolean;
   onAdd: () => void;
 }) {
   const label = getUILabel(type);
   const description = getUIDescription(type);
 
   return (
-    <div
-      className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/50"
+    <button
+      type="button"
+      onClick={onAdd}
+      className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
       data-testid={`provider-card-${type}`}
     >
       <div className="flex items-center gap-3">
@@ -50,19 +50,11 @@ function ProviderCardInDialog({
         </div>
       )}
       <div className="mt-auto">
-        {configured ? (
-          <span className="text-xs text-muted-foreground">Configured</span>
-        ) : (
-          <button
-            type="button"
-            onClick={onAdd}
-            className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
-          >
-            Add
-          </button>
-        )}
+        <span className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-medium text-foreground text-center block">
+          Add
+        </span>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -79,8 +71,11 @@ export function AddProviderDialog({
 
   const handleAdd = (type: ModelProviderType) => {
     openAdd(type);
-    onOpenChange(false);
   };
+
+  const availableTypes = getProviderTypes().filter(
+    (type) => !configuredSet.has(type),
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -90,16 +85,21 @@ export function AddProviderDialog({
         </DialogHeader>
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="pt-4 pb-6 pr-6">
-            <div className="grid grid-cols-2 gap-3">
-              {getProviderTypes().map((type) => (
-                <ProviderCardInDialog
-                  key={type}
-                  type={type}
-                  configured={configuredSet.has(type)}
-                  onAdd={() => handleAdd(type)}
-                />
-              ))}
-            </div>
+            {availableTypes.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">
+                All providers have been configured.
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {availableTypes.map((type) => (
+                  <ProviderCardInDialog
+                    key={type}
+                    type={type}
+                    onAdd={() => handleAdd(type)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </DialogContent>

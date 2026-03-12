@@ -7,11 +7,10 @@ import {
   IconSettings,
   IconPlug,
   IconSparkles,
-  IconX,
   IconPlus,
-  IconTool,
   IconCalendar,
   IconPencil,
+  IconDotsVertical,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -21,14 +20,13 @@ import {
   Card,
   CardContent,
   Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
   cn,
 } from "@vm0/ui";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import type { ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "../settings-page/connector-icons";
 import { ZeroScheduleCard, DUMMY_AGENT_SCHEDULE } from "./zero-schedule-card";
 
@@ -40,35 +38,139 @@ export interface JobItem {
   scope: "personal" | "team";
 }
 
-const WORKFLOW_SKILLS_OPTIONS = [
-  "Slack",
-  "Notion",
-  "GitHub",
-  "Gmail",
-  "Data Analysis",
-  "Content Summarization",
-  "Linear",
+const DUMMY_SKILLS = [
+  {
+    type: "notion" as ConnectorType,
+    label: "Notion",
+    connected: true,
+    statusText: "Connected",
+  },
+  {
+    type: "github" as ConnectorType,
+    label: "GitHub",
+    connected: false,
+    statusText: "",
+  },
+  {
+    type: "axiom" as ConnectorType,
+    label: "Axiom",
+    connected: true,
+    statusText: "Connected",
+  },
+  {
+    type: "slack" as ConnectorType,
+    label: "Slack",
+    connected: false,
+    statusText: "",
+  },
 ] as const;
 
-const INITIAL_SKILLS = [
-  "Slack",
-  "Data Analysis",
-  "Content Summarization",
-] as const;
+function SubAgentSkillsTab() {
+  const removedTypes$ = useCCState<ConnectorType[]>([]);
+  const removedTypes = useGet(removedTypes$);
+  const setRemovedTypes = useSet(removedTypes$);
+  const displayItems = DUMMY_SKILLS.filter(
+    (item) => !removedTypes.includes(item.type),
+  );
 
-const CONNECTOR_LIST: readonly ConnectorType[] = [
-  "github",
-  "linear",
-  "notion",
-  "gmail",
-  "slack",
-];
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Skills manage your connections and help you get more out of these
+        services.
+      </p>
 
-function skillToConnectorType(skill: string): ConnectorType | null {
-  const lower = skill.toLowerCase();
-  return CONNECTOR_LIST.includes(lower as ConnectorType)
-    ? (lower as ConnectorType)
-    : null;
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {/* Add skill */}
+        <button
+          type="button"
+          className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-border/80 transition-colors hover:border-border hover:bg-muted/30 group"
+        >
+          <div className="flex h-14 items-center gap-2.5 px-5">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+              <IconPlus
+                size={18}
+                stroke={2}
+                className="text-muted-foreground group-hover:text-foreground"
+              />
+            </span>
+            <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground">
+              Add skill
+            </span>
+          </div>
+          <div className="flex h-11 items-center border-t border-dashed border-border/80 px-5 group-hover:border-border">
+            <span className="text-xs text-muted-foreground/70">
+              Browse 100+ popular skills
+            </span>
+          </div>
+        </button>
+
+        {/* Skill cards */}
+        {displayItems.map((item) => (
+          <div
+            key={item.type}
+            className="flex flex-col rounded-[var(--zero-card-radius)] border border-[var(--zero-card-border)] bg-card shadow-[var(--zero-card-shadow)]"
+          >
+            <div className="flex h-14 items-center gap-2.5 px-5">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+                <ConnectorIcon type={item.type} size={22} />
+              </span>
+              <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
+                {item.label}
+              </span>
+            </div>
+
+            <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
+              <div className="flex items-center gap-2 min-w-0">
+                {item.connected ? (
+                  <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                    {item.statusText}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                  >
+                    Connect
+                  </button>
+                )}
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+                    aria-label="More options"
+                  >
+                    <IconDotsVertical size={14} stroke={1.5} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  {item.connected ? (
+                    <DropdownMenuItem>Disconnect</DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem
+                      onClick={() =>
+                        setRemovedTypes((prev) =>
+                          prev.includes(item.type)
+                            ? prev
+                            : [...prev, item.type],
+                        )
+                      }
+                    >
+                      Remove skill
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 interface ZeroJobDetailPageProps {
@@ -86,66 +188,32 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
   const settingsDescription$ = useCCState(job.description);
   const settingsDescription = useGet(settingsDescription$);
   const setSettingsDescription = useSet(settingsDescription$);
-  const skills$ = useCCState<string[]>([...INITIAL_SKILLS]);
-  const skills = useGet(skills$);
-  const setSkills = useSet(skills$);
-  const ADD_SKILL_PLACEHOLDER = "__add_skill__";
-  const addSkillValue$ = useCCState(ADD_SKILL_PLACEHOLDER);
-  const addSkillValue = useGet(addSkillValue$);
-  const setAddSkillValue = useSet(addSkillValue$);
-  const connectedConnectors$ = useCCState<ConnectorType[]>(["github", "slack"]);
-  const connectedConnectors = useGet(connectedConnectors$);
-  const setConnectedConnectors = useSet(connectedConnectors$);
-
-  const removeSkill = (s: string) =>
-    setSkills((prev) => prev.filter((x) => x !== s));
-  const toggleConnector = (type: ConnectorType) => {
-    setConnectedConnectors((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
-    );
-  };
-  const addSkill = (s: string) => {
-    if (!skills.includes(s)) {
-      setSkills((prev) => [...prev, s].sort());
-    }
-    setAddSkillValue(ADD_SKILL_PLACEHOLDER);
-  };
-  const availableSkills = WORKFLOW_SKILLS_OPTIONS.filter(
-    (s) => !skills.includes(s),
-  );
 
   const savedSettings$ = useCCState<{
     name: string;
     description: string;
-    skills: string[];
   }>({
     name: job.title,
     description: job.description,
-    skills: [...INITIAL_SKILLS],
   });
   const savedSettings = useGet(savedSettings$);
   const setSavedSettings = useSet(savedSettings$);
 
   const isSettingsDirty =
     settingsName !== savedSettings.name ||
-    settingsDescription !== savedSettings.description ||
-    JSON.stringify([...skills].sort()) !==
-      JSON.stringify([...savedSettings.skills].sort());
+    settingsDescription !== savedSettings.description;
   const showSaveBar = isSettingsDirty;
 
   const handleReset = () => {
     setSettingsName(savedSettings.name);
     setSettingsDescription(savedSettings.description);
-    setSkills([...savedSettings.skills]);
   };
 
   const handleSave = () => {
     setSavedSettings({
       name: settingsName,
       description: settingsDescription,
-      skills: [...skills],
     });
-    // API persist would go here
   };
 
   return (
@@ -197,7 +265,7 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
               >
                 <IconPlug size={14} stroke={1.5} />
-                Connectors
+                Skills
               </TabsTrigger>
               <TabsTrigger
                 value="schedule"
@@ -328,131 +396,11 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
                     className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
                   />
                 </div>
-                <div className="flex flex-col gap-3">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Skills
-                  </span>
-                  <ul className="flex flex-wrap gap-2" role="list">
-                    {skills.map((skill) => {
-                      const connectorType = skillToConnectorType(skill);
-                      return (
-                        <li
-                          key={skill}
-                          className="flex min-w-[120px] max-w-[220px] flex-1 basis-[120px]"
-                        >
-                          <span className="zero-chip flex w-full min-w-0 items-center gap-2 rounded-2xl border px-3 py-2.5 text-sm text-foreground transition-colors duration-200">
-                            {connectorType ? (
-                              <ConnectorIcon type={connectorType} size={16} />
-                            ) : (
-                              <IconTool
-                                size={16}
-                                stroke={1.5}
-                                className="shrink-0 text-muted-foreground"
-                              />
-                            )}
-                            <span className="min-w-0 truncate font-medium">
-                              {skill}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removeSkill(skill)}
-                              className="ml-auto shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                              aria-label={`Remove ${skill}`}
-                            >
-                              <IconX size={12} stroke={2} />
-                            </button>
-                          </span>
-                        </li>
-                      );
-                    })}
-                    {availableSkills.length > 0 && (
-                      <li className="flex shrink-0">
-                        <Select
-                          value={addSkillValue}
-                          onValueChange={(v) => {
-                            setAddSkillValue(ADD_SKILL_PLACEHOLDER);
-                            if (v && v !== ADD_SKILL_PLACEHOLDER) {
-                              addSkill(v);
-                            }
-                          }}
-                        >
-                          <SelectTrigger className="zero-chip h-10 min-w-[120px] gap-2 rounded-2xl border px-3 py-2.5 text-sm text-foreground transition-colors duration-200">
-                            <IconPlus size={14} stroke={2} />
-                            <SelectValue placeholder="Add skill" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={ADD_SKILL_PLACEHOLDER}>
-                              Add skill
-                            </SelectItem>
-                            {availableSkills.map((s) => (
-                              <SelectItem key={s} value={s}>
-                                {s}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </li>
-                    )}
-                  </ul>
-                </div>
               </CardContent>
             </Card>
           )}
 
-          {activeTab === "connectors" && (
-            <div className="flex flex-col gap-6">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                <div>
-                  <h2 className="text-sm font-semibold tracking-tight text-foreground">
-                    Connectors
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    Third-party services this workflow can use
-                  </p>
-                </div>
-                <Button size="sm" className="h-9 shrink-0 gap-2 rounded-lg">
-                  <IconPlus size={16} stroke={2} />
-                  Add Connector
-                </Button>
-              </div>
-              <ul className="flex flex-col gap-3">
-                {CONNECTOR_LIST.map((type) => {
-                  const config = CONNECTOR_TYPES[type];
-                  const connected = connectedConnectors.includes(type);
-                  return (
-                    <li key={type}>
-                      <Card className="zero-card">
-                        <CardContent className="flex items-center gap-4 px-4 py-3">
-                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted overflow-hidden">
-                            <ConnectorIcon type={type} size={24} />
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-foreground">
-                              {config.label}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {config.helpText}
-                            </p>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant={connected ? "secondary" : "outline"}
-                            className={cn(
-                              "h-8 shrink-0 rounded-lg px-3",
-                              !connected && "zero-btn-morandi border",
-                            )}
-                            onClick={() => toggleConnector(type)}
-                          >
-                            {connected ? "Connected" : "Connect"}
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
+          {activeTab === "connectors" && <SubAgentSkillsTab />}
 
           {activeTab !== "instructions" &&
             activeTab !== "settings" &&

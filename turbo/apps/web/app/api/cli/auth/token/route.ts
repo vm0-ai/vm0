@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "../../../../../src/db/schema/device-codes";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
-import { ensureDefaultScope } from "../../../../../src/lib/scope/scope-service";
+import { getDefaultScope } from "../../../../../src/lib/scope/scope-member-service";
 
 const router = tsr.router(cliAuthTokenContract, {
   exchange: async ({ body }) => {
@@ -74,10 +74,10 @@ const router = tsr.router(cliAuthTokenContract, {
       case "authenticated": {
         const userId = session.userId as string;
 
-        // Ensure user has a default scope
-        const scope = await ensureDefaultScope(userId);
+        // Resolve user's default scope from org_cache
+        const { scope } = await getDefaultScope(userId);
 
-        // Generate CLI token with scope binding
+        // Generate CLI token with org binding
         const randomBytes = crypto.randomBytes(32);
         const cliToken = `vm0_live_${randomBytes.toString("base64url")}`;
         const now = new Date();
@@ -87,7 +87,7 @@ const router = tsr.router(cliAuthTokenContract, {
           token: cliToken,
           userId,
           name: "CLI Device Flow Authentication",
-          scopeId: scope.id,
+          scopeId: null,
           orgId: scope.orgId,
           expiresAt,
           createdAt: now,

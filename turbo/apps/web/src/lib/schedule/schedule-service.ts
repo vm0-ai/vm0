@@ -1,8 +1,7 @@
 import { eq, and, lte, inArray, desc } from "drizzle-orm";
 import { Cron } from "croner";
 import {
-  extractVariableReferences,
-  groupVariablesBySource,
+  extractAndGroupVariables,
   getConnectorProvidedSecretNames,
   scopeTierSchema,
 } from "@vm0/core";
@@ -110,8 +109,7 @@ function extractRequiredConfiguration(composeContent: unknown): {
   };
   if (!composeContent) return result;
 
-  const refs = extractVariableReferences(composeContent);
-  const grouped = groupVariablesBySource(refs);
+  const grouped = extractAndGroupVariables(composeContent);
 
   result.secrets = grouped.secrets.map((r) => r.name);
   result.vars = grouped.vars.map((r) => r.name);

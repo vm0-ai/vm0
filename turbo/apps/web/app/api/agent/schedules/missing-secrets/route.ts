@@ -4,7 +4,7 @@ import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../../src/lib/logger";
 import { eq } from "drizzle-orm";
 import { secrets } from "../../../../../src/db/schema/secret";
-import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
+import { extractAndGroupVariables } from "@vm0/core";
 import {
   getUserAgents,
   batchFetchVersionContents,
@@ -92,8 +92,7 @@ export async function GET(request: Request) {
       continue;
     }
 
-    const refs = extractVariableReferences(firstAgent.environment);
-    const grouped = groupVariablesBySource(refs);
+    const grouped = extractAndGroupVariables(firstAgent.environment);
 
     const requiredSecrets = grouped.secrets.map((r) => r.name);
 

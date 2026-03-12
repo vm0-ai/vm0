@@ -99,15 +99,14 @@ describe("settings page", () => {
     const anthropicCard = within(addProviderDialog).getByTestId(
       "provider-card-anthropic-api-key",
     );
-    await user.click(
-      within(anthropicCard).getByRole("button", { name: /^add$/i }),
-    );
+    await user.click(anthropicCard);
 
     // Provider form dialog should open with API key input
-    const dialog = await screen.findByRole("dialog");
-    expect(
-      within(dialog).getByText("Add your Anthropic API key"),
-    ).toBeInTheDocument();
+    const providerFormTitle = await screen.findByText(
+      "Add your Anthropic API key",
+    );
+    const dialog = providerFormTitle.closest("[role='dialog']") as HTMLElement;
+    expect(dialog).toBeTruthy();
 
     // Fill in the API key
     const input = within(dialog).getByPlaceholderText("Enter your API key");
@@ -120,13 +119,19 @@ describe("settings page", () => {
     });
     await user.click(addProviderButton);
 
-    // Verify request was sent with correct data and dialog closed
+    // Verify request was sent with correct data and provider form closed
     await vi.waitFor(() => {
       expect(capturedBody).toBeTruthy();
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expect(capturedBody!.type).toBe("anthropic-api-key");
     expect(capturedBody!.secret).toBe("sk-ant-api-key-12345");
+
+    // Provider form dialog should close; add provider dialog may remain open
+    await vi.waitFor(() => {
+      expect(
+        screen.queryByText("Add your Anthropic API key"),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("persists selected model when adding a provider with model selection", async () => {
@@ -172,10 +177,14 @@ describe("settings page", () => {
     const zaiCard = within(addProviderDialog).getByTestId(
       "provider-card-zai-api-key",
     );
-    await user.click(within(zaiCard).getByRole("button", { name: /^add$/i }));
+    await user.click(zaiCard);
 
     // Provider form dialog should open with model selector
-    const dialog = await screen.findByRole("dialog");
+    const providerFormTitle = await screen.findByText(
+      /^Add your Z\.AI \(GLM\)$/,
+    );
+    const dialog = providerFormTitle.closest("[role='dialog']") as HTMLElement;
+    expect(dialog).toBeTruthy();
 
     // Select glm-5 model via store (Radix Select doesn't render options in jsdom)
     context.store.set(updateFormModel$, "glm-5");
@@ -194,7 +203,6 @@ describe("settings page", () => {
     // Verify selectedModel was included in the request
     await vi.waitFor(() => {
       expect(capturedBody).toBeTruthy();
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expect(capturedBody!.type).toBe("zai-api-key");
     expect(capturedBody!.secret).toBe("test-zai-api-key");

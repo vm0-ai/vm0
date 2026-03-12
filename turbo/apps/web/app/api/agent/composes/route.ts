@@ -22,7 +22,6 @@ import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
-import { getScopeByOrgId } from "../../../../src/lib/scope/scope-service";
 import { getOrgBySlug } from "../../../../src/lib/scope/org-cache-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
@@ -64,19 +63,7 @@ const router = tsr.router(composesMainContract, {
       }
       orgId = orgData.orgId;
     } else if (query.org) {
-      const scope = await getScopeByOrgId(query.org);
-      if (!scope) {
-        return {
-          status: 404 as const,
-          body: {
-            error: {
-              message: `Agent compose not found: ${query.name}`,
-              code: "NOT_FOUND",
-            },
-          },
-        };
-      }
-      orgId = scope.orgId;
+      orgId = query.org;
     } else {
       const { scope: resolvedScope } = await resolveScope(
         userId,

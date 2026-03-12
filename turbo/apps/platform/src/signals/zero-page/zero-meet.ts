@@ -248,9 +248,10 @@ export const zeroSettingsSaving$ = computed((get) => get(internalSaving$));
 // Skills list: derived from compose content, synced via compose jobs
 // ---------------------------------------------------------------------------
 
-const internalAddedSkills$ = state<string[]>([]);
+// null = not initialized (fallback to seeded), string[] = user's local draft
+const internalAddedSkills$ = state<string[] | null>(null);
 
-/** Skills seeded from compose content. Returns compose skills when local list is empty. */
+/** Skills seeded from compose content. */
 const seededSkills$ = computed(async (get) => {
   const compose = await get(zeroCompose$);
   if (!compose?.content) {
@@ -264,69 +265,65 @@ const seededSkills$ = computed(async (get) => {
   return (agent?.skills ?? []).map(skillUrlToValue);
 });
 
-/** Added skills: local overrides take precedence, otherwise seeded from compose. */
+/** Added skills: local draft takes precedence, otherwise seeded from compose. */
 export const zeroAddedSkills$ = computed(async (get) => {
   const local = get(internalAddedSkills$);
-  if (local.length > 0) {
+  if (local !== null) {
     return local;
   }
   return await get(seededSkills$);
 });
 
-/** Add a skill: update compose content and trigger compose job. */
-export const addZeroSkill$ = command(async ({ get, set }, name: string) => {
-  // Ensure internal state is populated from compose before mutating
-  if (get(internalAddedSkills$).length === 0) {
-    const seeded = await get(seededSkills$);
-    if (seeded.length > 0) {
-      set(internalAddedSkills$, seeded);
-    }
+/** Whether local skills differ from the saved compose skills. */
+export const zeroSkillsDirty$ = computed(async (get) => {
+  const local = get(internalAddedSkills$);
+  if (local === null) {
+    return false;
   }
-  // Optimistic update
-  set(internalAddedSkills$, (prev) => [...prev, name]);
-
-  set(internalSaving$, true);
-  try {
-    const newSkills = get(internalAddedSkills$);
-    await set(syncSkillsToCompose$, newSkills);
-  } catch (error) {
-    throwIfAbort(error);
-    // Rollback on failure
-    set(internalAddedSkills$, (prev) => prev.filter((s) => s !== name));
-    L.error("Failed to add skill:", error);
-    toast.error(error instanceof Error ? error.message : "Failed to add skill");
-  } finally {
-    set(internalSaving$, false);
+  const seeded = await get(seededSkills$);
+  if (local.length !== seeded.length) {
+    return true;
   }
+  const sorted = [...local].sort();
+  const seededSorted = [...seeded].sort();
+  return sorted.some((s, i) => s !== seededSorted[i]);
 });
 
-/** Remove a skill: update compose content and trigger compose job. */
-export const removeZeroSkill$ = command(async ({ get, set }, name: string) => {
-  // Ensure internal state is populated from compose before mutating
-  if (get(internalAddedSkills$).length === 0) {
-    const seeded = await get(seededSkills$);
-    if (seeded.length > 0) {
-      set(internalAddedSkills$, seeded);
-    }
+/** Add a skill (local only, no compose job). */
+export const addZeroSkill$ = command(async ({ get, set }, name: string) => {
+  if (get(internalAddedSkills$) === null) {
+    set(internalAddedSkills$, await get(seededSkills$));
   }
-  const prev = get(internalAddedSkills$);
-  // Optimistic update
-  set(
-    internalAddedSkills$,
-    prev.filter((s) => s !== name),
-  );
+  set(internalAddedSkills$, (prev) => [...(prev ?? []), name]);
+});
 
+/** Remove a skill (local only, no compose job). */
+export const removeZeroSkill$ = command(async ({ get, set }, name: string) => {
+  if (get(internalAddedSkills$) === null) {
+    set(internalAddedSkills$, await get(seededSkills$));
+  }
+  set(internalAddedSkills$, (prev) => (prev ?? []).filter((s) => s !== name));
+});
+
+/** Discard local skill changes and revert to saved compose skills. */
+export const discardZeroSkills$ = command(({ set }) => {
+  set(internalAddedSkills$, null);
+});
+
+/** Save skill changes: trigger compose job and wait for completion. */
+export const saveZeroSkills$ = command(async ({ get, set }) => {
   set(internalSaving$, true);
   try {
-    const newSkills = get(internalAddedSkills$);
+    const newSkills = get(internalAddedSkills$) ?? [];
     await set(syncSkillsToCompose$, newSkills);
+    // Reset to null so seeded picks up the new compose state
+    set(internalAddedSkills$, null);
+    toast.success("Skills saved");
   } catch (error) {
     throwIfAbort(error);
-    // Rollback on failure
-    set(internalAddedSkills$, prev);
-    L.error("Failed to remove skill:", error);
+    L.error("Failed to save skills:", error);
     toast.error(
-      error instanceof Error ? error.message : "Failed to remove skill",
+      error instanceof Error ? error.message : "Failed to save skills",
     );
   } finally {
     set(internalSaving$, false);
@@ -373,9 +370,12 @@ async function buildAndSetDefaultAgent(
   newContent: ZeroComposeContent,
   instructions?: string,
 ): Promise<void> {
-  // Ensure compose content includes instructions field so the CLI uploads it
+  // Ensure instructions field is present when we have content to write.
+  // Fall back to empty string so the server creates a CLAUDE.md with
+  // metadata frontmatter even when there are no user-written instructions.
   const agentKey = Object.keys(newContent.agents)[0];
   const agent = agentKey ? newContent.agents[agentKey] : undefined;
+  const resolvedInstructions = instructions ?? "";
   const contentWithInstructions: ZeroComposeContent =
     agentKey && agent && !("instructions" in agent)
       ? {
@@ -393,7 +393,7 @@ async function buildAndSetDefaultAgent(
   const job = await triggerAndPollComposeJob(
     fetchFn,
     contentWithInstructions,
-    instructions,
+    resolvedInstructions,
   );
   if (!job.result) {
     throw new Error("Build completed without result");

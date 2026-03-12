@@ -3,7 +3,6 @@ import { onboardingStatusContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
-import { getScopeByOrgId } from "../../../../src/lib/scope/scope-service";
 import { isNotFound } from "../../../../src/lib/errors";
 import { modelProviders } from "../../../../src/db/schema/model-provider";
 import {
@@ -12,6 +11,7 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 import { agentComposeContentSchema } from "@vm0/core";
+import { auth } from "@clerk/nextjs/server";
 
 const router = tsr.router(onboardingStatusContract, {
   getStatus: async ({ headers }) => {
@@ -49,11 +49,12 @@ const router = tsr.router(onboardingStatusContract, {
 
       hasModelProvider = provider !== undefined;
 
-      // Query the scope record to get defaultAgentComposeId
-      const scopeRecord = await getScopeByOrgId(resolvedScope.orgId);
+      // Read default agent compose ID from Clerk JWT session claims
+      const authResult = await auth();
+      const claimAgentComposeId =
+        authResult.sessionClaims?.org_default_agent_compose_id ?? null;
 
-      // Check default agent and get its name + metadata
-      if (scopeRecord?.defaultAgentComposeId) {
+      if (claimAgentComposeId) {
         const [compose] = await globalThis.services.db
           .select({
             name: agentComposes.name,
@@ -65,13 +66,13 @@ const router = tsr.router(onboardingStatusContract, {
             agentComposeVersions,
             eq(agentComposes.headVersionId, agentComposeVersions.id),
           )
-          .where(eq(agentComposes.id, scopeRecord.defaultAgentComposeId))
+          .where(eq(agentComposes.id, claimAgentComposeId))
           .limit(1);
 
         if (compose) {
           hasDefaultAgent = true;
           defaultAgentName = compose.name;
-          defaultAgentComposeId = scopeRecord.defaultAgentComposeId;
+          defaultAgentComposeId = claimAgentComposeId;
 
           // Extract metadata from compose content
           const parsed = agentComposeContentSchema.safeParse(compose.content);

@@ -1278,6 +1278,10 @@ jobs:
               --api-url ${PREVIEW_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
+            # Stop any existing service from a previous run (e.g., re-run after test failure
+            # where cleanup-runner preserved the runner). Ignore errors if not running.
+            ssh $REMOTE "${BIN_DIR}/runner service stop --name ${RUNNER_NAME}" 2>/dev/null || true
+
             # Start as systemd transient service
             ssh $REMOTE "${BIN_DIR}/runner service start \
               --name ${RUNNER_NAME} \

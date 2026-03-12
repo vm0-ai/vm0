@@ -36,6 +36,14 @@ export function uniqueId(prefix: string): string {
   return `${prefix}-${uniqueSuffix()}`;
 }
 
+/**
+ * Generate a unique numeric ID string for test isolation.
+ * Useful for external IDs that must be numeric (e.g., GitHub installation IDs).
+ */
+export function uniqueNumericId(): string {
+  return String(Math.floor(Math.random() * 900_000_000) + 100_000_000);
+}
+
 import { eq } from "drizzle-orm";
 import { Axiom } from "@axiomhq/js";
 import { mockClerk, clearClerkMock } from "./clerk-mock";

@@ -40,7 +40,6 @@ export const deleteCommand = new Command()
         await deleteSchedule({
           name: resolved.name,
           composeId: resolved.composeId,
-          scopeId: resolved.scopeId,
         });
 
         console.log(

@@ -171,16 +171,13 @@ describe("getOrgBySlug", () => {
   it("fetches from Clerk by slug and caches on miss", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("scope");
+    const orgId = `org_mock_${slug}`;
     mockClerk({
       userId,
-      clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
+      clerkOrgs: [{ id: orgId, slug, name: slug }],
     });
-    await createTestScope(slug);
-    const orgId = `org_mock_${slug}`;
 
-    // Delete pre-populated orgCache to test cache-miss behavior
-    await deleteOrgCacheEntry(orgId);
-
+    // No org_cache entry — this is a cache-miss scenario
     const result = await getOrgBySlug(slug);
 
     expect(result).toEqual({
@@ -204,14 +201,13 @@ describe("getOrgBySlug", () => {
   it("returns cached data without Clerk call when fresh", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("scope");
+    const orgId = `org_mock_${slug}`;
     mockClerk({
       userId,
-      clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
+      clerkOrgs: [{ id: orgId, slug, name: slug }],
     });
-    await createTestScope(slug);
-    const orgId = `org_mock_${slug}`;
 
-    // Overwrite cache with custom tier
+    // Insert fresh cache entry directly
     await insertOrgCacheEntry({ orgId, slug, tier: "pro" });
 
     const result = await getOrgBySlug(slug);
@@ -235,14 +231,13 @@ describe("getOrgBySlug", () => {
   it("refetches from Clerk when cache is stale", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("scope");
+    const orgId = `org_mock_${slug}`;
     mockClerk({
       userId,
-      clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
+      clerkOrgs: [{ id: orgId, slug, name: slug }],
     });
-    await createTestScope(slug);
-    const orgId = `org_mock_${slug}`;
 
-    // Overwrite with stale entry
+    // Insert stale cache entry directly
     const twoMinutesAgo = new Date(Date.now() - 120_000);
     await insertOrgCacheEntry({
       orgId,

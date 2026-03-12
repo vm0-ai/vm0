@@ -14,7 +14,7 @@ export const setupRouter = (
         <ErrorBoundary>
           <Router />
         </ErrorBoundary>
-        <Toaster position="top-center" />
+        <Toaster position="top-center" visibleToasts={1} />
       </StoreWrapper>
     </StrictMode>,
   );

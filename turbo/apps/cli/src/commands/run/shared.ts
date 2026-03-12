@@ -5,7 +5,7 @@ import { getEvents } from "../../lib/api";
 import { parseEvent } from "../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { CodexEventRenderer } from "../../lib/events/codex-event-renderer";
-import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
+import { extractAndGroupVariables } from "@vm0/core";
 /**
  * Collector for --secrets and --vars flags
  * Format: KEY=value
@@ -52,8 +52,7 @@ export function isUUID(str: string): boolean {
  * Extract var names from compose config
  */
 export function extractVarNames(composeContent: unknown): string[] {
-  const refs = extractVariableReferences(composeContent);
-  const grouped = groupVariablesBySource(refs);
+  const grouped = extractAndGroupVariables(composeContent);
   return grouped.vars.map((r) => r.name);
 }
 
@@ -61,8 +60,7 @@ export function extractVarNames(composeContent: unknown): string[] {
  * Extract secret names from compose config
  */
 export function extractSecretNames(composeContent: unknown): string[] {
-  const refs = extractVariableReferences(composeContent);
-  const grouped = groupVariablesBySource(refs);
+  const grouped = extractAndGroupVariables(composeContent);
   return grouped.secrets.map((r) => r.name);
 }
 

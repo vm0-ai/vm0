@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.58.1](https://github.com/vm0-ai/vm0/compare/core-v8.58.0...core-v8.58.1) (2026-03-12)
+
+
+### Refactoring
+
+* add extract-and-group-variables convenience function ([#4517](https://github.com/vm0-ai/vm0/issues/4517)) ([fe13128](https://github.com/vm0-ai/vm0/commit/fe13128c1a0b0e619c9a585867c3d3f5f81e2f9b))
+
 ## [8.58.0](https://github.com/vm0-ai/vm0/compare/core-v8.57.0...core-v8.58.0) (2026-03-12)
 
 

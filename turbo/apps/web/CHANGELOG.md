@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.100.1](https://github.com/vm0-ai/vm0/compare/web-v12.100.0...web-v12.100.1) (2026-03-12)
+
+
+### Bug Fixes
+
+* **web:** add quote character escaping to telegram html output ([#4515](https://github.com/vm0-ai/vm0/issues/4515)) ([759abbd](https://github.com/vm0-ai/vm0/commit/759abbdea0f2a5a807f8c9280972c4b76650d9b3))
+* **web:** add worker-src CSP directive and disable termly autoBlock ([#4522](https://github.com/vm0-ai/vm0/issues/4522)) ([ab7340a](https://github.com/vm0-ai/vm0/commit/ab7340a4794f12bce2ba1df98fafc190b004d438))
+
+
+### Refactoring
+
+* add extract-and-group-variables convenience function ([#4517](https://github.com/vm0-ai/vm0/issues/4517)) ([fe13128](https://github.com/vm0-ai/vm0/commit/fe13128c1a0b0e619c9a585867c3d3f5f81e2f9b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.58.1
+
 ## [12.100.0](https://github.com/vm0-ai/vm0/compare/web-v12.99.1...web-v12.100.0) (2026-03-12)
 
 

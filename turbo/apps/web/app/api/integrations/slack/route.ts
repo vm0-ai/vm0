@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 import {
-  extractVariableReferences,
-  groupVariablesBySource,
+  extractAndGroupVariables,
   getConnectorProvidedSecretNames,
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
@@ -120,8 +119,7 @@ export async function GET(request: Request) {
 
     if (version) {
       const content = version.content as AgentComposeYaml;
-      const refs = extractVariableReferences(content);
-      const grouped = groupVariablesBySource(refs);
+      const grouped = extractAndGroupVariables(content);
       requiredSecrets = grouped.secrets.map((s) => s.name);
       requiredVars = grouped.vars.map((v) => v.name);
     }

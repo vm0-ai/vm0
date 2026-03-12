@@ -5,6 +5,31 @@ import { env } from "../../env";
 
 const log = logger("slack:context");
 
+/**
+ * Validate that a Slack file download URL is from a trusted Slack domain.
+ */
+function isValidSlackDownloadUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" && parsed.hostname.endsWith(".slack.com")
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a buffer starts with known image magic bytes.
+ */
+function hasImageMagicBytes(buffer: Buffer): boolean {
+  const isPng = buffer[0] === 0x89 && buffer[1] === 0x50;
+  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8;
+  const isGif = buffer[0] === 0x47 && buffer[1] === 0x49;
+  const isWebp = buffer[0] === 0x52 && buffer[1] === 0x49;
+  return isPng || isJpeg || isGif || isWebp;
+}
+
 /** Maximum file size to download and upload (10MB) */
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
@@ -261,8 +286,8 @@ async function downloadAndUploadSlackFile(
   sessionId: string,
 ): Promise<string | null> {
   const downloadUrl = file.url_private_download;
-  if (!downloadUrl) {
-    log.debug("No url_private_download available", { fileId: file.id });
+  if (!downloadUrl || !isValidSlackDownloadUrl(downloadUrl)) {
+    log.debug("No valid Slack download URL available", { fileId: file.id });
     return null;
   }
 
@@ -317,13 +342,7 @@ async function downloadAndUploadSlackFile(
     const buffer = Buffer.from(arrayBuffer);
 
     // Verify the content is actually an image (check magic bytes)
-    // PNG: 89 50 4E 47, JPEG: FF D8 FF, GIF: 47 49 46, WebP: 52 49 46 46
-    const isPng = buffer[0] === 0x89 && buffer[1] === 0x50;
-    const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8;
-    const isGif = buffer[0] === 0x47 && buffer[1] === 0x49;
-    const isWebp = buffer[0] === 0x52 && buffer[1] === 0x49;
-
-    if (!isPng && !isJpeg && !isGif && !isWebp) {
+    if (!hasImageMagicBytes(buffer)) {
       log.debug("Downloaded content is not a valid image", {
         fileId: file.id,
         firstBytes: buffer.slice(0, 10).toString("hex"),

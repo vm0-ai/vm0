@@ -9,6 +9,7 @@ import { ZeroProductionPage } from "./zero-production-page.tsx";
 import { ZeroActivityPage } from "./zero-activity-page.tsx";
 import { ZeroWorksPage } from "./zero-works-page.tsx";
 import { ZeroSchedulePage } from "./zero-schedule-page.tsx";
+import { ZeroSettingsPage } from "./zero-settings-page.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 
 interface ZeroContentProps {
@@ -38,6 +39,7 @@ function getSectionTitles(
     production: "Documents",
     activity: "Activities",
     works: `Where ${agentName} works`,
+    settings: "Settings",
     account: "Account",
   };
 }
@@ -105,6 +107,9 @@ export function ZeroContent({
   }
   if (sectionId === "works") {
     return <ZeroWorksPage />;
+  }
+  if (sectionId === "settings") {
+    return <ZeroSettingsPage />;
   }
   if (sectionId === "account") {
     return <ZeroAccountPage accountSubId={accountSubId ?? null} />;

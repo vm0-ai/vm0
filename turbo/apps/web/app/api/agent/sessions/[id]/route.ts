@@ -3,11 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import {
-  sessionsByIdContract,
-  extractVariableReferences,
-  groupVariablesBySource,
-} from "@vm0/core";
+import { sessionsByIdContract, extractAndGroupVariables } from "@vm0/core";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
@@ -75,8 +71,7 @@ const router = tsr.router(sessionsByIdContract, {
         .limit(1);
 
       if (version?.content) {
-        const refs = extractVariableReferences(version.content);
-        const grouped = groupVariablesBySource(refs);
+        const grouped = extractAndGroupVariables(version.content);
         const names = grouped.secrets.map((ref) => ref.name);
         secretNames = names.length > 0 ? names : null;
       }
