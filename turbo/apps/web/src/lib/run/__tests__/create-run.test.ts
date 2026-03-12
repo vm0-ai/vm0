@@ -128,10 +128,10 @@ describe("createRun()", () => {
 
     it("should allow 2 concurrent runs for pro tier", async () => {
       const run1 = await createRun(
-        baseParams({ prompt: "Pro run 1", scopeTier: "pro" }),
+        baseParams({ prompt: "Pro run 1", orgTier: "pro" }),
       );
       const run2 = await createRun(
-        baseParams({ prompt: "Pro run 2", scopeTier: "pro" }),
+        baseParams({ prompt: "Pro run 2", orgTier: "pro" }),
       );
 
       expect(run1.status).toBe("pending");
@@ -139,11 +139,11 @@ describe("createRun()", () => {
     });
 
     it("should queue 3rd concurrent run for pro tier", async () => {
-      await createRun(baseParams({ prompt: "Pro run 1", scopeTier: "pro" }));
-      await createRun(baseParams({ prompt: "Pro run 2", scopeTier: "pro" }));
+      await createRun(baseParams({ prompt: "Pro run 1", orgTier: "pro" }));
+      await createRun(baseParams({ prompt: "Pro run 2", orgTier: "pro" }));
 
       const run3 = await createRun(
-        baseParams({ prompt: "Pro run 3", scopeTier: "pro" }),
+        baseParams({ prompt: "Pro run 3", orgTier: "pro" }),
       );
       expect(run3.status).toBe("queued");
     });
@@ -151,13 +151,13 @@ describe("createRun()", () => {
     it("should allow multiple concurrent runs for max tier", async () => {
       // Create 3 concurrent runs to verify max tier allows more than pro tier (which allows 2)
       const run1 = await createRun(
-        baseParams({ prompt: "Max run 1", scopeTier: "max" }),
+        baseParams({ prompt: "Max run 1", orgTier: "max" }),
       );
       const run2 = await createRun(
-        baseParams({ prompt: "Max run 2", scopeTier: "max" }),
+        baseParams({ prompt: "Max run 2", orgTier: "max" }),
       );
       const run3 = await createRun(
-        baseParams({ prompt: "Max run 3", scopeTier: "max" }),
+        baseParams({ prompt: "Max run 3", orgTier: "max" }),
       );
 
       expect(run1.status).toBe("pending");
@@ -685,7 +685,7 @@ describe("createRun()", () => {
           artifactName: "artifact",
           memoryName: "memory",
           orgId: orgClerkOrgId,
-          scopeSlug: uniqueId("org"), // slug used for S3 prefix (mocked in tests)
+          orgSlug: uniqueId("org"), // slug used for S3 prefix (mocked in tests)
         }),
       );
 

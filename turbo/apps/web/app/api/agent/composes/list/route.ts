@@ -5,7 +5,7 @@ import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { eq, desc } from "drizzle-orm";
-import { resolveScope } from "../../../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../../../src/lib/scope/resolve-org";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 import { getEmailSharedAgents } from "../../../../../src/lib/agent/permission-service";
 
@@ -27,13 +27,13 @@ const router = tsr.router(composesListContract, {
     // Resolve scope: use ?scope= query param or default scope
     let orgId: string;
     try {
-      const { scope: resolvedScope } = await resolveScope(
+      const { org: resolvedOrg } = await resolveOrg(
         userId,
         query.scope,
         query.org,
         tokenOrgId,
       );
-      orgId = resolvedScope.orgId;
+      orgId = resolvedOrg.orgId;
     } catch (error) {
       if (isNotFound(error)) {
         return {
@@ -74,7 +74,7 @@ const router = tsr.router(composesListContract, {
       name: string;
       headVersionId: string | null;
       updatedAt: Date;
-      scopeSlug: string;
+      orgSlug: string;
     }[] = [];
 
     if (!query.scope && !query.org) {
@@ -92,7 +92,7 @@ const router = tsr.router(composesListContract, {
         isOwner: true,
       })),
       ...sharedComposes.map((c) => ({
-        name: `${c.scopeSlug}/${c.name}`,
+        name: `${c.orgSlug}/${c.name}`,
         headVersionId: c.headVersionId,
         updatedAt: c.updatedAt.toISOString(),
         isOwner: false,

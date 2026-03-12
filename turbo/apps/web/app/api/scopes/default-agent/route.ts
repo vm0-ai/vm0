@@ -2,7 +2,7 @@ import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { scopeDefaultAgentContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
@@ -22,7 +22,7 @@ const router = tsr.router(scopeDefaultAgentContract, {
     }
     const { userId, orgId: tokenOrgId } = authCtx;
 
-    const { scope, member } = await resolveScope(
+    const { org, member } = await resolveOrg(
       userId,
       query.scope,
       query.org,
@@ -51,7 +51,7 @@ const router = tsr.router(scopeDefaultAgentContract, {
         .where(
           and(
             eq(agentComposes.id, agentComposeId),
-            eq(agentComposes.orgId, scope.orgId),
+            eq(agentComposes.orgId, org.orgId),
           ),
         )
         .limit(1);
@@ -70,7 +70,7 @@ const router = tsr.router(scopeDefaultAgentContract, {
     }
 
     const client = await clerkClient();
-    await client.organizations.updateOrganizationMetadata(scope.orgId, {
+    await client.organizations.updateOrganizationMetadata(org.orgId, {
       publicMetadata: { default_agent_compose_id: agentComposeId },
     });
 

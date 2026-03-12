@@ -3,7 +3,7 @@ import { Cron } from "croner";
 import {
   extractAndGroupVariables,
   getConnectorProvidedSecretNames,
-  scopeTierSchema,
+  orgTierSchema,
 } from "@vm0/core";
 import { agentSchedules } from "../../db/schema/agent-schedule";
 import {
@@ -909,9 +909,9 @@ async function executeSchedule(
       volumeVersions: schedule.volumeVersions ?? undefined,
       agentName: compose.name,
       callbacks,
-      scopeSlug: orgData.slug,
+      orgSlug: orgData.slug,
       orgId: orgData.orgId,
-      scopeTier: scopeTierSchema.parse(orgData.tier),
+      orgTier: orgTierSchema.parse(orgData.tier),
     });
     runId = result.runId;
   } catch (error) {

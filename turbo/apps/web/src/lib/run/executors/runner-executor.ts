@@ -1,7 +1,7 @@
 import type { StoredExecutionContext } from "@vm0/core";
 import { runnerJobQueue } from "../../../db/schema/runner-job-queue";
 import { encryptSecretsMap } from "../../crypto/secrets-encryption";
-import { validateRunnerGroupScope } from "../../scope/scope-service";
+import { validateRunnerGroupOrg } from "../../scope/org-service";
 import { publishJobNotification } from "../../realtime/client";
 import { logger } from "../../logger";
 import { recordSandboxOperation } from "../../metrics";
@@ -39,7 +39,7 @@ export async function executeRunnerJob(
   log.debug(`Queueing run ${context.runId} for runner group: ${runnerGroup}`);
 
   // Validate runner group scope matches user's scope
-  await validateRunnerGroupScope(context.userId, runnerGroup);
+  await validateRunnerGroupOrg(context.userId, runnerGroup);
 
   // Encrypt secrets map (key-value pairs) before storing
   const encryptedSecrets = encryptSecretsMap(

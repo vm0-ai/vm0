@@ -9,7 +9,7 @@ import {
   getUserAgents,
   batchFetchVersionContents,
 } from "../../../../../src/lib/agent/get-user-agents";
-import { getDefaultScopeByUserId } from "../../../../../src/lib/scope/scope-service";
+import { getDefaultOrgByUserId } from "../../../../../src/lib/scope/org-service";
 
 const log = logger("api:agents:missing-secrets");
 
@@ -51,8 +51,8 @@ export async function GET(request: Request) {
   }
 
   // Get user's scope to query configured secrets
-  const runtimeScope = await getDefaultScopeByUserId(userId);
-  if (!runtimeScope) {
+  const runtimeOrg = await getDefaultOrgByUserId(userId);
+  if (!runtimeOrg) {
     return NextResponse.json({ agents: [] });
   }
 
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
   const userSecrets = await db
     .select({ name: secrets.name })
     .from(secrets)
-    .where(eq(secrets.orgId, runtimeScope.orgId));
+    .where(eq(secrets.orgId, runtimeOrg.orgId));
 
   const configuredSecretNames = new Set(userSecrets.map((s) => s.name));
 

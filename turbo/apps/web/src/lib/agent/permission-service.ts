@@ -155,7 +155,7 @@ interface SharedAgent {
   headVersionId: string | null;
   createdAt: Date;
   updatedAt: Date;
-  scopeSlug: string;
+  orgSlug: string;
 }
 
 /**
@@ -217,7 +217,7 @@ export async function getEmailSharedAgents(
     headVersionId: row.headVersionId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    scopeSlug: orgDataMap.get(row.orgId)?.slug ?? "",
+    orgSlug: orgDataMap.get(row.orgId)?.slug ?? "",
   }));
 }
 

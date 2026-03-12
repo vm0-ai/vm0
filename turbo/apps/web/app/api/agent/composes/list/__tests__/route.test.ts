@@ -43,10 +43,10 @@ describe("GET /api/agent/composes/list", () => {
   it("should return no own composes when none exist in scope", async () => {
     // Use explicit scope param to only get own agents (excludes shared)
     const uniqueSuffix = user.userId.replace("test-user-", "");
-    const scopeSlug = `scope-${uniqueSuffix}`;
+    const orgSlug = `scope-${uniqueSuffix}`;
 
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/composes/list?scope=${scopeSlug}`,
+      `http://localhost:3000/api/agent/composes/list?scope=${orgSlug}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -65,10 +65,10 @@ describe("GET /api/agent/composes/list", () => {
 
     // Use explicit scope param to get only own agents
     const uniqueSuffix = user.userId.replace("test-user-", "");
-    const scopeSlug = `scope-${uniqueSuffix}`;
+    const orgSlug = `scope-${uniqueSuffix}`;
 
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/composes/list?scope=${scopeSlug}`,
+      `http://localhost:3000/api/agent/composes/list?scope=${orgSlug}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -175,11 +175,11 @@ describe("GET /api/agent/composes/list", () => {
     // userId format: test-user-{timestamp}-{uuid}
     // scope slug format: scope-{timestamp}-{uuid}
     const uniqueSuffix = user.userId.replace("test-user-", "");
-    const scopeSlug = `scope-${uniqueSuffix}`;
+    const orgSlug = `scope-${uniqueSuffix}`;
 
     // List by scope slug
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/composes/list?scope=${scopeSlug}`,
+      `http://localhost:3000/api/agent/composes/list?scope=${orgSlug}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -274,10 +274,10 @@ describe("GET /api/agent/composes/list", () => {
       // Switch back to original user, list with explicit scope
       mockClerk({ userId: user.userId });
       const uniqueSuffix = user.userId.replace("test-user-", "");
-      const scopeSlug = `scope-${uniqueSuffix}`;
+      const orgSlug = `scope-${uniqueSuffix}`;
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes/list?scope=${scopeSlug}`,
+        `http://localhost:3000/api/agent/composes/list?scope=${orgSlug}`,
       );
       const response = await GET(request);
       const data = await response.json();

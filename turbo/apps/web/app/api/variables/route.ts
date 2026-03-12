@@ -10,7 +10,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getAuthContext } from "../../../src/lib/auth/get-user-id";
-import { resolveScope } from "../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../src/lib/scope/resolve-org";
 import {
   listVariables,
   setVariable,
@@ -33,15 +33,10 @@ const router = tsr.router(variablesMainContract, {
     }
     const { userId, orgId: tokenOrgId } = authCtx;
 
-    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const orgSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
-    const { scope } = await resolveScope(
-      userId,
-      scopeSlug,
-      orgParam,
-      tokenOrgId,
-    );
-    const vars = await listVariables(scope.orgId, userId);
+    const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
+    const vars = await listVariables(org.orgId, userId);
 
     return {
       status: 200 as const,
@@ -75,16 +70,11 @@ const router = tsr.router(variablesMainContract, {
     log.debug("setting variable", { userId, name });
 
     try {
-      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const orgSlug = new URL(request.url).searchParams.get("scope");
       const orgParam = new URL(request.url).searchParams.get("org");
-      const { scope } = await resolveScope(
-        userId,
-        scopeSlug,
-        orgParam,
-        tokenOrgId,
-      );
+      const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
       const variable = await setVariable(
-        scope.orgId,
+        org.orgId,
         userId,
         name,
         value,

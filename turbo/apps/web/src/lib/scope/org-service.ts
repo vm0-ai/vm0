@@ -1,6 +1,6 @@
 import { createHmac } from "crypto";
 import { clerkClient } from "@clerk/nextjs/server";
-import { requireOrgMember, getDefaultScope } from "./org-member-service";
+import { requireOrgMember, getDefaultOrg } from "./org-member-service";
 import {
   getOrgData,
   getOrgBySlug,
@@ -8,17 +8,17 @@ import {
 } from "./org-cache-service";
 import { badRequest, forbidden, isNotFound } from "../errors";
 import { logger } from "../logger";
-import type { ResolvedScope } from "./resolve-scope";
+import type { ResolvedOrg } from "./resolve-org";
 
-const log = logger("service:scope");
+const log = logger("service:org");
 
 /**
- * Reserved scope slugs that cannot be used by users
+ * Reserved org slugs that cannot be used by users
  */
 const RESERVED_SLUGS = ["vm0", "system", "admin", "api", "app", "www"];
 
 /**
- * Scope slug validation regex
+ * Org slug validation regex
  * Rules:
  * - 3-64 characters (or 1-2 for single/double char slugs)
  * - lowercase letters, numbers, and hyphens only
@@ -27,48 +27,48 @@ const RESERVED_SLUGS = ["vm0", "system", "admin", "api", "app", "www"];
 const SLUG_REGEX = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]{1,2}$/;
 
 /**
- * Generate a deterministic default scope slug from Clerk user ID.
+ * Generate a deterministic default org slug from Clerk user ID.
  * Format: user-{8 hex chars from SHA-256 hash}
  *
  * @param userId - The Clerk user ID to hash
  * @returns A slug in format "user-xxxxxxxx" (13 chars total)
  */
-export function generateDefaultScopeSlug(userId: string): string {
+export function generateDefaultOrgSlug(userId: string): string {
   const hash = createHmac("sha256", "scope-slug").update(userId).digest("hex");
   return `user-${hash.slice(0, 8)}`;
 }
 
 /**
- * Validate scope slug format
+ * Validate org slug format
  */
-function validateScopeSlug(slug: string): void {
+function validateOrgSlug(slug: string): void {
   if (slug.length < 3 || slug.length > 64) {
-    throw badRequest("Scope slug must be between 3 and 64 characters");
+    throw badRequest("Org slug must be between 3 and 64 characters");
   }
 
   if (!SLUG_REGEX.test(slug)) {
     throw badRequest(
-      "Scope slug must contain only lowercase letters, numbers, and hyphens, and must start and end with an alphanumeric character",
+      "Org slug must contain only lowercase letters, numbers, and hyphens, and must start and end with an alphanumeric character",
     );
   }
 
   // TODO: "vm0" is hardcoded as the system scope slug. This should be configurable.
   if (RESERVED_SLUGS.includes(slug) || slug.startsWith("vm0")) {
-    throw badRequest(`Scope slug "${slug}" is reserved`);
+    throw badRequest(`Org slug is reserved`);
   }
 }
 
 /**
- * Get a user's default scope by their Clerk ID.
- * Finds the first scope where the user is an admin member.
- * Returns the scope record or null if none found.
+ * Get a user's default org by their Clerk ID.
+ * Finds the first org where the user is an admin member.
+ * Returns the org record or null if none found.
  */
-export async function getDefaultScopeByUserId(
+export async function getDefaultOrgByUserId(
   userId: string,
-): Promise<ResolvedScope | null> {
+): Promise<ResolvedOrg | null> {
   try {
-    const { scope } = await getDefaultScope(userId);
-    return scope;
+    const { org } = await getDefaultOrg(userId);
+    return org;
   } catch (error) {
     if (isNotFound(error)) return null;
     throw error;
@@ -76,27 +76,27 @@ export async function getDefaultScopeByUserId(
 }
 
 /**
- * Update a scope's slug.
+ * Update an org's slug.
  * Updates the Clerk org slug and refreshes org_cache.
  * Requires force flag since this can break existing references.
  */
-export async function updateScopeSlug(
+export async function updateOrgSlug(
   orgId: string,
   newSlug: string,
   userId: string,
   force: boolean = false,
-): Promise<ResolvedScope> {
+): Promise<ResolvedOrg> {
   // Verify membership (requireOrgMember throws 403 if not a member)
   await requireOrgMember(orgId, userId);
 
   // Require force flag for slug changes
   if (!force) {
     throw badRequest(
-      "Changing scope slug may break existing references. Use --force to confirm.",
+      "Changing org slug may break existing references. Use --force to confirm.",
     );
   }
 
-  validateScopeSlug(newSlug);
+  validateOrgSlug(newSlug);
 
   // Check if new slug already exists via org_cache
   const existing = await getOrgBySlug(newSlug);
@@ -104,7 +104,7 @@ export async function updateScopeSlug(
     throw badRequest(`Scope "${newSlug}" already exists`);
   }
 
-  log.debug("updating scope slug", { orgId, newSlug });
+  log.debug("updating org slug", { orgId, newSlug });
 
   // Primary write: update Clerk org slug
   const client = await clerkClient();
@@ -112,7 +112,7 @@ export async function updateScopeSlug(
     slug: newSlug,
   });
 
-  log.debug("scope slug updated", { orgId, newSlug });
+  log.debug("org slug updated", { orgId, newSlug });
 
   // Invalidate stale cache, then re-fetch from Clerk
   await invalidateOrgCache(orgId);
@@ -120,63 +120,61 @@ export async function updateScopeSlug(
 }
 
 /**
- * Check if a runner group belongs to the official vm0 scope.
+ * Check if a runner group belongs to the official vm0 org.
  * Official runner groups (vm0/production, vm0/development) can be used by any user.
  *
  * @param group - Runner group in format "scope/name"
  * @returns true if the group is an official runner group (vm0/*)
  */
 export function isOfficialRunnerGroup(group: string): boolean {
-  const scopeSlug = group.split("/")[0];
+  const orgSlug = group.split("/")[0];
   // TODO: Runner group public access for vm0 is hardcoded. This should be configurable.
-  return scopeSlug === "vm0";
+  return orgSlug === "vm0";
 }
 
 /**
- * Validate that a runner group's scope matches the user's scope.
+ * Validate that a runner group's org matches the user's org.
  * Runner groups are in format "scope/name" (e.g., "e2e-stable/pr-851").
  *
  * For official runner groups (vm0/*), any authenticated user is allowed.
- * For user runner groups, the scope part must match the user's personal scope slug.
+ * For user runner groups, the org part must match the user's personal scope slug.
  *
  * @throws ForbiddenError if scope doesn't match (for non-official groups)
  */
-export async function validateRunnerGroupScope(
+export async function validateRunnerGroupOrg(
   userId: string,
   group: string,
   tokenOrgId?: string | null,
 ): Promise<void> {
-  const scopeSlug = group.split("/")[0];
-  if (!scopeSlug) {
+  const orgSlug = group.split("/")[0];
+  if (!orgSlug) {
     throw forbidden("Invalid runner group format");
   }
 
   // TODO: Runner group public access for vm0 is hardcoded. This should be configurable.
-  if (scopeSlug === "vm0") {
+  if (orgSlug === "vm0") {
     return;
   }
 
   // CLI token with stored org_id — resolve slug from org_cache
   if (tokenOrgId) {
     const orgData = await getOrgData(tokenOrgId);
-    if (orgData.slug === scopeSlug) {
+    if (orgData.slug === orgSlug) {
       return;
     }
-    throw forbidden(
-      `Runner group scope "${scopeSlug}" does not match your scope`,
-    );
+    throw forbidden(`Runner group org "${orgSlug}" does not match your scope`);
   }
 
-  const defaultScope = await getDefaultScopeByUserId(userId);
+  const defaultScope = await getDefaultOrgByUserId(userId);
   if (!defaultScope) {
     throw forbidden(
-      `Runner group scope "${scopeSlug}" requires you to have a scope configured`,
+      `Runner group org "${orgSlug}" requires you to have a scope configured`,
     );
   }
 
-  if (defaultScope.slug !== scopeSlug) {
+  if (defaultScope.slug !== orgSlug) {
     throw forbidden(
-      `Runner group scope "${scopeSlug}" does not match your scope "${defaultScope.slug}"`,
+      `Runner group org "${orgSlug}" does not match your scope "${defaultScope.slug}"`,
     );
   }
 }

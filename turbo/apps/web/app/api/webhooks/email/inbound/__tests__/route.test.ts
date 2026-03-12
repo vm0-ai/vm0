@@ -524,7 +524,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Extract suffix from userId to derive scope slug
       // userId format: "{prefix}-{suffix}" where suffix is an 8-char UUID
       const suffix = user.userId.slice("trigger-user-".length);
-      const scopeSlug = `scope-${suffix}`;
+      const orgSlug = `scope-${suffix}`;
       const agentName = uniqueId("trigger-agent");
 
       // Create compose (automatically associates with user's scope)
@@ -539,7 +539,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "trigger-email-123",
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}+${agentName}@vm7.bot`],
           from: senderEmail,
           subject: "Test Subject",
           created_at: new Date().toISOString(),
@@ -581,7 +581,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         replyToken: expect.any(String),
         inboundMessageId: "<default-msg-id@example.com>",
         subject: "Test Subject",
-        triggerLocalPart: `${scopeSlug}+${agentName}`,
+        triggerLocalPart: `${orgSlug}+${agentName}`,
       });
     });
 
@@ -659,7 +659,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Create a compose owned by user A
       const ownerUser = await context.setupUser({ prefix: "perm-owner" });
       const suffix = ownerUser.userId.slice("perm-owner-".length);
-      const scopeSlug = `scope-${suffix}`;
+      const orgSlug = `scope-${suffix}`;
       const agentName = uniqueId("perm-agent");
       await createTestCompose(agentName);
 
@@ -672,7 +672,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "no-perm-email",
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}+${agentName}@vm7.bot`],
           from: senderEmail,
           subject: "Forbidden",
           created_at: new Date().toISOString(),
@@ -698,7 +698,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should send error reply when DMARC fails", async () => {
       const user = await context.setupUser({ prefix: "dmarc-fail" });
       const suffix = user.userId.slice("dmarc-fail-".length);
-      const scopeSlug = `scope-${suffix}`;
+      const orgSlug = `scope-${suffix}`;
       const agentName = uniqueId("dmarc-agent");
       await createTestCompose(agentName);
 
@@ -708,7 +708,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Override Resend mock to return dmarc=fail
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}+${agentName}@vm7.bot`],
         subject: "Spoofed email",
         text: "I am pretending to be someone else",
         html: "<p>I am pretending to be someone else</p>",
@@ -722,7 +722,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "dmarc-fail-email",
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}+${agentName}@vm7.bot`],
           from: senderEmail,
           subject: "Spoofed email",
           created_at: new Date().toISOString(),
@@ -752,7 +752,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should send error reply when DMARC is none even if DKIM passes", async () => {
       const user = await context.setupUser({ prefix: "dkim-pass" });
       const suffix = user.userId.slice("dkim-pass-".length);
-      const scopeSlug = `scope-${suffix}`;
+      const orgSlug = `scope-${suffix}`;
       const agentName = uniqueId("dkim-agent");
       await createTestCompose(agentName);
 
@@ -762,7 +762,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Override Resend mock: dmarc=none but dkim=pass — still rejected
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}+${agentName}@vm7.bot`],
         subject: "DKIM Only",
         text: "My domain has no DMARC but DKIM is valid",
         html: "<p>My domain has no DMARC but DKIM is valid</p>",
@@ -776,7 +776,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "dkim-pass-email",
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}+${agentName}@vm7.bot`],
           from: senderEmail,
           subject: "DKIM Only",
           created_at: new Date().toISOString(),
@@ -804,7 +804,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should send error reply when authentication-results header is missing", async () => {
       const user = await context.setupUser({ prefix: "no-auth" });
       const suffix = user.userId.slice("no-auth-".length);
-      const scopeSlug = `scope-${suffix}`;
+      const orgSlug = `scope-${suffix}`;
       const agentName = uniqueId("noauth-agent");
       await createTestCompose(agentName);
 
@@ -814,7 +814,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Override Resend mock: no authentication-results header
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}+${agentName}@vm7.bot`],
         subject: "No Auth Headers",
         text: "Email without authentication results",
         html: "<p>Email without authentication results</p>",
@@ -825,7 +825,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "no-auth-email",
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}+${agentName}@vm7.bot`],
           from: senderEmail,
           subject: "No Auth Headers",
           created_at: new Date().toISOString(),
@@ -853,7 +853,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should send error reply when all authentication methods fail", async () => {
       const user = await context.setupUser({ prefix: "all-fail" });
       const suffix = user.userId.slice("all-fail-".length);
-      const scopeSlug = `scope-${suffix}`;
+      const orgSlug = `scope-${suffix}`;
       const agentName = uniqueId("allfail-agent");
       await createTestCompose(agentName);
 
@@ -863,7 +863,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Override Resend mock: all authentication methods fail
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}+${agentName}@vm7.bot`],
         subject: "All Fail",
         text: "Everything failed",
         html: "<p>Everything failed</p>",
@@ -877,7 +877,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "all-fail-email",
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}+${agentName}@vm7.bot`],
           from: senderEmail,
           subject: "All Fail",
           created_at: new Date().toISOString(),
@@ -905,7 +905,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should send error reply when email body is empty", async () => {
       const user = await context.setupUser({ prefix: "empty-trigger" });
       const suffix = user.userId.slice("empty-trigger-".length);
-      const scopeSlug = `scope-${suffix}`;
+      const orgSlug = `scope-${suffix}`;
       const agentName = uniqueId("empty-body-agent");
       await createTestCompose(agentName);
 
@@ -915,7 +915,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Return an email with empty text and empty HTML, DMARC passes
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}+${agentName}@vm7.bot`],
         subject: "",
         text: "",
         html: "",
@@ -929,7 +929,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "empty-body-email",
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}+${agentName}@vm7.bot`],
           from: senderEmail,
           subject: "",
           created_at: new Date().toISOString(),
@@ -952,7 +952,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should extract content from HTML when text is empty", async () => {
       const user = await context.setupUser({ prefix: "html-trigger" });
       const suffix = user.userId.slice("html-trigger-".length);
-      const scopeSlug = `scope-${suffix}`;
+      const orgSlug = `scope-${suffix}`;
       const agentName = uniqueId("html-agent");
       await createTestCompose(agentName);
 
@@ -962,7 +962,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Override Resend mock to return HTML-only content (empty text)
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}+${agentName}@vm7.bot`],
         subject: "Newsletter",
         text: "",
         html: "<p>Rich content from newsletter</p>",
@@ -976,7 +976,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "html-only-trigger",
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}+${agentName}@vm7.bot`],
           from: senderEmail,
           subject: "Newsletter",
           created_at: new Date().toISOString(),
@@ -1061,7 +1061,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should include attachment URLs in prompt when email has attachments", async () => {
       const user = await context.setupUser({ prefix: "att-trigger" });
       const suffix = user.userId.slice("att-trigger-".length);
-      const scopeSlug = `scope-${suffix}`;
+      const orgSlug = `scope-${suffix}`;
       const agentName = uniqueId("att-agent");
       await createTestCompose(agentName);
 
@@ -1071,7 +1071,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Mock Resend to return email with attachment metadata
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}+${agentName}@vm7.bot`],
         subject: "With Attachment",
         text: "Please review the attached file",
         html: "<p>Please review the attached file</p>",
@@ -1119,7 +1119,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "trigger-att-email",
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}+${agentName}@vm7.bot`],
           from: senderEmail,
           subject: "With Attachment",
           created_at: new Date().toISOString(),
@@ -1156,7 +1156,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should skip oversized attachment with 'exceeds size limit' message", async () => {
       const user = await context.setupUser({ prefix: "att-oversize" });
       const suffix = user.userId.slice("att-oversize-".length);
-      const scopeSlug = `scope-${suffix}`;
+      const orgSlug = `scope-${suffix}`;
       const agentName = uniqueId("oversize-agent");
       await createTestCompose(agentName);
 
@@ -1165,7 +1165,7 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}+${agentName}@vm7.bot`],
         subject: "Big File",
         text: "See attached",
         html: "<p>See attached</p>",
@@ -1191,7 +1191,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "oversize-email",
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}+${agentName}@vm7.bot`],
           from: senderEmail,
           subject: "Big File",
           created_at: new Date().toISOString(),
@@ -1217,7 +1217,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should skip attachment with 'download failed' when download returns error", async () => {
       const user = await context.setupUser({ prefix: "att-dl-fail" });
       const suffix = user.userId.slice("att-dl-fail-".length);
-      const scopeSlug = `scope-${suffix}`;
+      const orgSlug = `scope-${suffix}`;
       const agentName = uniqueId("dlfail-agent");
       await createTestCompose(agentName);
 
@@ -1226,7 +1226,7 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}+${agentName}@vm7.bot`],
         subject: "Broken Attachment",
         text: "File attached",
         html: "<p>File attached</p>",
@@ -1260,7 +1260,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "dl-fail-email",
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}+${agentName}@vm7.bot`],
           from: senderEmail,
           subject: "Broken Attachment",
           created_at: new Date().toISOString(),
@@ -1286,7 +1286,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should handle multiple attachments with mixed results", async () => {
       const user = await context.setupUser({ prefix: "att-mixed" });
       const suffix = user.userId.slice("att-mixed-".length);
-      const scopeSlug = `scope-${suffix}`;
+      const orgSlug = `scope-${suffix}`;
       const agentName = uniqueId("mixed-agent");
       await createTestCompose(agentName);
 
@@ -1295,7 +1295,7 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}+${agentName}@vm7.bot`],
         subject: "Multiple Files",
         text: "Several attachments",
         html: "<p>Several attachments</p>",
@@ -1353,7 +1353,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "mixed-att-email",
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}+${agentName}@vm7.bot`],
           from: senderEmail,
           subject: "Multiple Files",
           created_at: new Date().toISOString(),
@@ -1392,7 +1392,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should replace inline image data URI with placeholder in prompt", async () => {
       const user = await context.setupUser({ prefix: "inline-img" });
       const suffix = user.userId.slice("inline-img-".length);
-      const scopeSlug = `scope-${suffix}`;
+      const orgSlug = `scope-${suffix}`;
       const agentName = uniqueId("inline-agent");
       await createTestCompose(agentName);
 
@@ -1403,7 +1403,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       const fakeBase64 = "A".repeat(1000);
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}+${agentName}@vm7.bot`],
         subject: "Check this photo",
         text: "",
         html: `<p>Can you see what I'm doing?</p><img src="data:image/jpeg;base64,${fakeBase64}" alt="photo.jpg">`,
@@ -1441,7 +1441,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "inline-img-email",
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}+${agentName}@vm7.bot`],
           from: senderEmail,
           subject: "Check this photo",
           created_at: new Date().toISOString(),
@@ -1475,7 +1475,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should handle inline image without alt text", async () => {
       const user = await context.setupUser({ prefix: "inline-noalt" });
       const suffix = user.userId.slice("inline-noalt-".length);
-      const scopeSlug = `scope-${suffix}`;
+      const orgSlug = `scope-${suffix}`;
       const agentName = uniqueId("noalt-agent");
       await createTestCompose(agentName);
 
@@ -1486,7 +1486,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       const fakeBase64 = "B".repeat(500);
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}+${agentName}@vm7.bot`],
         subject: "No Alt Image",
         text: "",
         html: `<p>Look at this</p><img src="data:image/png;base64,${fakeBase64}">`,
@@ -1521,7 +1521,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "noalt-img-email",
-          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}+${agentName}@vm7.bot`],
           from: senderEmail,
           subject: "No Alt Image",
           created_at: new Date().toISOString(),
@@ -1878,7 +1878,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     // Set up a valid trigger scenario so the handler proceeds past address parsing
     const user = await context.setupUser({ prefix: "crash-user" });
     const suffix = user.userId.slice("crash-user-".length);
-    const scopeSlug = `scope-${suffix}`;
+    const orgSlug = `scope-${suffix}`;
     const agentName = uniqueId("crash-agent");
     await createTestCompose(agentName);
 
@@ -1895,7 +1895,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       type: "email.received",
       data: {
         email_id: "crash-email-123",
-        to: [`${scopeSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}+${agentName}@vm7.bot`],
         from: senderEmail,
         subject: "Test crash",
         created_at: new Date().toISOString(),

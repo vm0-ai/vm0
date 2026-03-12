@@ -237,16 +237,16 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       // Create compose and look up scope slug
       const { composeId, versionId } = await createTestCompose("test-agent");
       const composeInfo = await findTestComposeWithScope(composeId);
-      const scopeSlug = composeInfo!.scopeSlug;
+      const orgSlug = composeInfo!.orgSlug;
 
       // Create runner job with agent metadata in stored context
       const { runId } = await createTestRunnerJob(
         user.userId,
         versionId,
-        `${scopeSlug}/default`,
+        `${orgSlug}/default`,
         {
           agentName: "test-agent",
-          agentScopeSlug: scopeSlug,
+          agentScopeSlug: orgSlug,
         },
       );
 
@@ -269,7 +269,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
 
       const data = await response.json();
       expect(data.agentName).toBe("test-agent");
-      expect(data.agentScopeSlug).toBe(scopeSlug);
+      expect(data.agentScopeSlug).toBe(orgSlug);
     });
 
     it("should omit agentName and agentScopeSlug when not set in stored context", async () => {
@@ -277,13 +277,13 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       const { composeId, versionId } =
         await createTestCompose("test-agent-no-meta");
       const composeInfo = await findTestComposeWithScope(composeId);
-      const scopeSlug = composeInfo!.scopeSlug;
+      const orgSlug = composeInfo!.orgSlug;
 
       // Create runner job WITHOUT agent metadata
       const { runId } = await createTestRunnerJob(
         user.userId,
         versionId,
-        `${scopeSlug}/default`,
+        `${orgSlug}/default`,
       );
 
       // Claim the job

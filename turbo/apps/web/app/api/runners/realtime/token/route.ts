@@ -4,9 +4,9 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { getRunnerAuth } from "../../../../../src/lib/auth/runner-auth";
 import { generateRunnerGroupToken } from "../../../../../src/lib/realtime/client";
 import {
-  validateRunnerGroupScope,
+  validateRunnerGroupOrg,
   isOfficialRunnerGroup,
-} from "../../../../../src/lib/scope/scope-service";
+} from "../../../../../src/lib/scope/org-service";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("api:runners:realtime:token");
@@ -35,7 +35,7 @@ const router = tsr.router(runnerRealtimeTokenContract, {
     } else {
       // User runners: validate scope
       try {
-        await validateRunnerGroupScope(auth.userId, group, auth.orgId);
+        await validateRunnerGroupOrg(auth.userId, group, auth.orgId);
       } catch {
         return createErrorResponse("FORBIDDEN", "Access denied");
       }

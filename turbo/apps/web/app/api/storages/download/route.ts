@@ -8,7 +8,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
 import { generatePresignedUrl } from "../../../../src/lib/s3/s3-client";
 import { env } from "../../../../src/env";
 import { resolveVersionByPrefix } from "../../../../src/lib/storage/version-resolver";
@@ -33,11 +33,11 @@ const router = tsr.router(storagesDownloadContract, {
     const { userId, orgId: tokenOrgId } = authCtx;
 
     // Resolve user's default scope
-    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const orgSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
-    const { scope: runtimeScope } = await resolveScope(
+    const { org: runtimeOrg } = await resolveOrg(
       userId,
-      scopeSlug,
+      orgSlug,
       orgParam,
       tokenOrgId,
     );
@@ -45,7 +45,7 @@ const router = tsr.router(storagesDownloadContract, {
     const { name: storageName, type: storageType, version: versionId } = query;
 
     log.debug(
-      `Getting download URL for "${storageName}" (type: ${storageType})${versionId ? ` version ${versionId}` : ""} for scope ${runtimeScope.slug}`,
+      `Getting download URL for "${storageName}" (type: ${storageType})${versionId ? ` version ${versionId}` : ""} for scope ${runtimeOrg.slug}`,
     );
 
     // Volumes use sentinel userId (scope-shared); artifacts/memory use real userId
@@ -58,7 +58,7 @@ const router = tsr.router(storagesDownloadContract, {
       .from(storages)
       .where(
         and(
-          eq(storages.orgId, runtimeScope.orgId),
+          eq(storages.orgId, runtimeOrg.orgId),
           eq(storages.userId, storageUserId),
           eq(storages.name, storageName),
           eq(storages.type, storageType),

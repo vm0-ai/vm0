@@ -6,7 +6,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getAuthContext } from "../../../src/lib/auth/get-user-id";
-import { resolveScope } from "../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../src/lib/scope/resolve-org";
 import {
   listModelProviders,
   upsertModelProvider,
@@ -30,15 +30,10 @@ const router = tsr.router(modelProvidersMainContract, {
     }
     const { userId, orgId: tokenOrgId } = authCtx;
 
-    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const orgSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
-    const { scope } = await resolveScope(
-      userId,
-      scopeSlug,
-      orgParam,
-      tokenOrgId,
-    );
-    const providers = await listModelProviders(scope.orgId, userId);
+    const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
+    const providers = await listModelProviders(org.orgId, userId);
 
     return {
       status: 200 as const,
@@ -76,14 +71,9 @@ const router = tsr.router(modelProvidersMainContract, {
     log.debug("upserting model provider", { userId, type, selectedModel });
 
     try {
-      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const orgSlug = new URL(request.url).searchParams.get("scope");
       const orgParam = new URL(request.url).searchParams.get("org");
-      const { scope } = await resolveScope(
-        userId,
-        scopeSlug,
-        orgParam,
-        tokenOrgId,
-      );
+      const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
 
       // Determine if this is a multi-auth provider or legacy provider
       const isMultiAuth = hasAuthMethods(type);
@@ -100,7 +90,7 @@ const router = tsr.router(modelProvidersMainContract, {
           );
         }
         const result = await upsertMultiAuthModelProvider(
-          scope.orgId,
+          org.orgId,
           userId,
           type,
           authMethod,
@@ -118,7 +108,7 @@ const router = tsr.router(modelProvidersMainContract, {
           );
         }
         const result = await upsertModelProvider(
-          scope.orgId,
+          org.orgId,
           userId,
           type,
           secret,

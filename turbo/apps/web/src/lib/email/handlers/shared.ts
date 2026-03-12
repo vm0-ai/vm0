@@ -172,7 +172,7 @@ interface ResolvedAgent {
   composeId: string;
   userId: string;
   orgId: string;
-  scopeSlug: string;
+  orgSlug: string;
   headVersionId: string;
 }
 
@@ -181,11 +181,11 @@ interface ResolvedAgent {
  * Returns compose details if found, null otherwise.
  */
 export async function resolveAgentByAddress(
-  scopeSlug: string,
+  orgSlug: string,
   agentName: string,
 ): Promise<ResolvedAgent | null> {
   // 1. Resolve org by slug via org cache
-  const orgData = await getOrgBySlug(scopeSlug);
+  const orgData = await getOrgBySlug(orgSlug);
   if (!orgData) return null;
 
   // 2. Find compose by orgId + name
@@ -214,7 +214,7 @@ export async function resolveAgentByAddress(
     composeId: compose.id,
     userId: compose.userId,
     orgId: compose.orgId,
-    scopeSlug,
+    orgSlug,
     headVersionId: compose.headVersionId,
   };
 }

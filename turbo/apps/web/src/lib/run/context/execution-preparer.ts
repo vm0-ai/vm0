@@ -4,7 +4,7 @@ import type {
   ExperimentalFirewall,
   FirewallRule,
 } from "../../../types/agent-compose";
-import type { ExecutionContext, RuntimeScope } from "../types";
+import type { ExecutionContext, RuntimeOrg } from "../types";
 import type { PreparedContext } from "../executors/types";
 import {
   prepareStorageManifest,
@@ -151,7 +151,7 @@ function resolveRunnerGroup(agentCompose: unknown): string | null {
  * @returns PreparedContext ready for executor dispatch
  */
 interface PrepareTimings {
-  resolveScopes: number;
+  resolveOrgs: number;
   ensureStorage: number;
   storageManifest: number;
 }
@@ -163,7 +163,7 @@ interface PrepareResult {
 
 export async function prepareForExecution(
   context: ExecutionContext,
-  runtimeScope: RuntimeScope,
+  runtimeOrg: RuntimeOrg,
 ): Promise<PrepareResult> {
   log.debug(`Preparing execution context for run ${context.runId}...`);
 
@@ -203,7 +203,7 @@ export async function prepareForExecution(
   const agentOrgData = await getOrgData(agentComposeInfo.orgId);
   const agentScopeInfo = {
     orgId: agentComposeInfo.orgId,
-    scopeSlug: agentOrgData.slug,
+    orgSlug: agentOrgData.slug,
   };
 
   // Auto-create artifact and memory storages if they don't exist yet
@@ -211,19 +211,19 @@ export async function prepareForExecution(
   await Promise.all([
     context.artifactName
       ? ensureStorageExists(
-          runtimeScope.orgId,
+          runtimeOrg.orgId,
           userId,
           context.artifactName,
-          runtimeScope.slug,
+          runtimeOrg.slug,
           "artifact",
         )
       : null,
     context.memoryName
       ? ensureStorageExists(
-          runtimeScope.orgId,
+          runtimeOrg.orgId,
           userId,
           context.memoryName,
-          runtimeScope.slug,
+          runtimeOrg.slug,
           "memory",
         )
       : null,
@@ -238,7 +238,7 @@ export async function prepareForExecution(
     context.agentCompose as AgentComposeYaml,
     context.vars || {},
     agentScopeInfo.orgId,
-    runtimeScope.orgId,
+    runtimeOrg.orgId,
     userId,
     context.artifactName,
     context.artifactVersion,
@@ -250,7 +250,7 @@ export async function prepareForExecution(
   const storageEnd = Date.now();
 
   log.debug(
-    `Storage manifest prepared with dual scopes: agentClerkOrgId=${agentScopeInfo.orgId}, runtimeClerkOrgId=${runtimeScope.orgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared with dual scopes: agentClerkOrgId=${agentScopeInfo.orgId}, runtimeClerkOrgId=${runtimeOrg.orgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
   );
 
   // Build PreparedContext
@@ -261,17 +261,17 @@ export async function prepareForExecution(
     runnerGroup,
     storageManifest,
     experimentalFirewall,
-    agentScopeInfo.scopeSlug,
+    agentScopeInfo.orgSlug,
   );
 
   const timings: PrepareTimings = {
-    resolveScopes: scopeEnd - scopeStart,
+    resolveOrgs: scopeEnd - scopeStart,
     ensureStorage: ensureEnd - ensureStart,
     storageManifest: storageEnd - storageStart,
   };
 
   log.debug(
-    `PreparedContext built for run ${context.runId} (scopes=${timings.resolveScopes}ms, ensure=${timings.ensureStorage}ms, storage=${timings.storageManifest}ms)`,
+    `PreparedContext built for run ${context.runId} (scopes=${timings.resolveOrgs}ms, ensure=${timings.ensureStorage}ms, storage=${timings.storageManifest}ms)`,
   );
 
   return { context: preparedContext, timings };

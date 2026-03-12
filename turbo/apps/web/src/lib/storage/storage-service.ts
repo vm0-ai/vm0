@@ -34,14 +34,14 @@ function createEmptyTarGz(): Buffer {
  * @param orgId - Clerk org ID for storage access
  * @param userId - User ID for storage record ownership
  * @param storageName - Storage name
- * @param scopeSlug - Scope slug for S3 prefix construction
+ * @param orgSlug - Scope slug for S3 prefix construction
  * @param storageType - Storage type ("artifact" or "memory")
  */
 export async function ensureStorageExists(
   orgId: string,
   userId: string,
   storageName: string,
-  scopeSlug: string,
+  orgSlug: string,
   storageType: "artifact" | "memory",
 ): Promise<void> {
   // Find or create storage record (artifact/memory use real userId)
@@ -65,7 +65,7 @@ export async function ensureStorageExists(
         name: storageName,
         type: storageType,
         userId,
-        s3Prefix: `${scopeSlug}/${storageType}/${storageName}`,
+        s3Prefix: `${orgSlug}/${storageType}/${storageName}`,
         size: 0,
         fileCount: 0,
         orgId,

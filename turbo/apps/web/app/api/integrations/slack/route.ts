@@ -30,7 +30,7 @@ import {
 import { decryptSecretValue } from "../../../../src/lib/crypto/secrets-encryption";
 import { removePermission } from "../../../../src/lib/agent/permission-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
-import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
 import { syncWorkspaceAgentPermissions } from "../../../../src/lib/slack/permission-sync";
 import { logger } from "../../../../src/lib/logger";
 
@@ -107,7 +107,7 @@ export async function GET(request: Request) {
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
 
-  const scopeSlug = compose ? (await getOrgData(compose.orgId)).slug : null;
+  const orgSlug = compose ? (await getOrgData(compose.orgId)).slug : null;
 
   // Extract required secrets/vars from agent compose
   let requiredSecrets: string[] = [];
@@ -129,11 +129,11 @@ export async function GET(request: Request) {
   }
 
   // Get user's existing secrets, vars, connectors
-  const { scope } = await resolveScope(userId, null, null, tokenOrgId);
+  const { org } = await resolveOrg(userId, null, null, tokenOrgId);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(scope.orgId, userId),
-    listVariables(scope.orgId, userId),
-    listConnectors(scope.orgId, userId),
+    listSecrets(org.orgId, userId),
+    listVariables(org.orgId, userId),
+    listConnectors(org.orgId, userId),
   ]);
 
   const connectorProvided = getConnectorProvidedSecretNames(
@@ -159,7 +159,7 @@ export async function GET(request: Request) {
       id: installation.slackWorkspaceId,
       name: installation.slackWorkspaceName,
     },
-    agent: compose ? { id: compose.id, name: compose.name, scopeSlug } : null,
+    agent: compose ? { id: compose.id, name: compose.name, orgSlug } : null,
     isAdmin,
     environment: {
       requiredSecrets,
@@ -317,17 +317,17 @@ export async function PATCH(request: Request) {
     );
   }
 
-  // Parse scope/agentName format (shared agents use "scopeSlug/agentName")
+  // Parse scope/agentName format (shared agents use "orgSlug/agentName")
   const slashIndex = body.agentName.indexOf("/");
   const agentName =
     slashIndex === -1 ? body.agentName : body.agentName.slice(slashIndex + 1);
-  const scopeSlug =
+  const orgSlug =
     slashIndex === -1 ? null : body.agentName.slice(0, slashIndex);
 
   // Resolve target scope (no membership check - admin can select any agent)
   let targetOrgId: string;
-  if (scopeSlug) {
-    const targetOrg = await getOrgBySlug(scopeSlug);
+  if (orgSlug) {
+    const targetOrg = await getOrgBySlug(orgSlug);
     if (!targetOrg) {
       return NextResponse.json(
         { error: { message: "Scope not found", code: "BAD_REQUEST" } },
@@ -336,8 +336,8 @@ export async function PATCH(request: Request) {
     }
     targetOrgId = targetOrg.orgId;
   } else {
-    const { scope } = await resolveScope(userId, null, null, tokenOrgId);
-    targetOrgId = scope.orgId;
+    const { org } = await resolveOrg(userId, null, null, tokenOrgId);
+    targetOrgId = org.orgId;
   }
 
   // Find agent compose by name in target scope

@@ -13,7 +13,7 @@ import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
 import {
   generatePresignedPutUrl,
   downloadManifest,
@@ -103,11 +103,11 @@ const router = tsr.router(storagesPrepareContract, {
     const { userId, orgId: tokenOrgId } = authCtx;
 
     // Resolve user's default scope
-    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const orgSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
-    const { scope: runtimeScope } = await resolveScope(
+    const { org: runtimeOrg } = await resolveOrg(
       userId,
-      scopeSlug,
+      orgSlug,
       orgParam,
       tokenOrgId,
     );
@@ -170,10 +170,10 @@ const router = tsr.router(storagesPrepareContract, {
       .insert(storages)
       .values({
         userId: storageUserId,
-        orgId: runtimeScope.orgId,
+        orgId: runtimeOrg.orgId,
         name: storageName,
         type: storageType,
-        s3Prefix: `${runtimeScope.slug}/${storageType}/${storageName}`,
+        s3Prefix: `${runtimeOrg.slug}/${storageType}/${storageName}`,
         size: 0,
         fileCount: 0,
       })
@@ -280,7 +280,7 @@ const router = tsr.router(storagesPrepareContract, {
     }
 
     // Generate presigned URLs for archive and manifest
-    const s3Key = `${runtimeScope.slug}/${storageType}/${storageName}/${versionId}`;
+    const s3Key = `${runtimeOrg.slug}/${storageType}/${storageName}/${versionId}`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const manifestKey = `${s3Key}/manifest.json`;
 

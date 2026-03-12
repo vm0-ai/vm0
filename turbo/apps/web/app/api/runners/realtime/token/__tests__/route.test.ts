@@ -165,10 +165,10 @@ describe("POST /api/runners/realtime/token", () => {
 
       // Derive scope slug from user context - setupUser creates scope-{suffix}
       const suffix = user.userId.replace("test-user-", "");
-      const scopeSlug = `scope-${suffix}`;
+      const orgSlug = `scope-${suffix}`;
 
       const response = await POST(
-        makeRequest({ group: `${scopeSlug}/default` }, `Bearer ${token}`),
+        makeRequest({ group: `${orgSlug}/default` }, `Bearer ${token}`),
       );
       const data = await response.json();
 

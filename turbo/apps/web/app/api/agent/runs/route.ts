@@ -6,7 +6,7 @@ import {
 import {
   runsMainContract,
   ALL_RUN_STATUSES,
-  scopeTierSchema,
+  orgTierSchema,
   type RunStatus,
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
@@ -29,7 +29,7 @@ import {
   isBadRequest,
   isNotFound,
 } from "../../../../src/lib/errors";
-import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
 
 const log = logger("api:runs");
 
@@ -446,14 +446,9 @@ const router = tsr.router(runsMainContract, {
 
     // Resolve scope for variable/secret resolution.
     // The actual variable fetching happens in build-context.ts.
-    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const orgSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
-    const { scope } = await resolveScope(
-      userId,
-      scopeSlug,
-      orgParam,
-      tokenOrgId,
-    );
+    const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
 
     // Delegate run creation, validation, and dispatch to createRun()
     try {
@@ -476,9 +471,9 @@ const router = tsr.router(runsMainContract, {
         debugNoMockClaude: body.debugNoMockClaude,
         modelProvider: body.modelProvider,
         checkEnv: body.checkEnv,
-        scopeSlug: scope.slug,
-        orgId: scope.orgId,
-        scopeTier: scopeTierSchema.parse(scope.tier),
+        orgSlug: org.slug,
+        orgId: org.orgId,
+        orgTier: orgTierSchema.parse(org.tier),
       });
 
       log.debug(

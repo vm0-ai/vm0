@@ -21,7 +21,7 @@ import {
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
-import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
 import { getOrgBySlug } from "../../../../src/lib/scope/org-cache-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
@@ -65,13 +65,13 @@ const router = tsr.router(composesMainContract, {
     } else if (query.org) {
       orgId = query.org;
     } else {
-      const { scope: resolvedScope } = await resolveScope(
+      const { org: resolvedOrg } = await resolveOrg(
         userId,
         null,
         null,
         tokenOrgId,
       );
-      orgId = resolvedScope.orgId;
+      orgId = resolvedOrg.orgId;
     }
 
     // JOIN compose + version in a single query
@@ -262,7 +262,7 @@ const router = tsr.router(composesMainContract, {
     const versionId = computeComposeVersionId(resolvedContent);
 
     // Get user's scope (required for compose creation)
-    const { scope } = await resolveScope(userId, null, null, tokenOrgId);
+    const { org } = await resolveOrg(userId, null, null, tokenOrgId);
 
     // Check compose and version existence in parallel
     const [existingComposes, existingVersions] = await Promise.all([
@@ -271,7 +271,7 @@ const router = tsr.router(composesMainContract, {
         .from(agentComposes)
         .where(
           and(
-            eq(agentComposes.orgId, scope.orgId),
+            eq(agentComposes.orgId, org.orgId),
             eq(agentComposes.name, normalizedAgentName),
           ),
         )
@@ -298,7 +298,7 @@ const router = tsr.router(composesMainContract, {
         .values({
           userId,
           name: normalizedAgentName,
-          orgId: scope.orgId,
+          orgId: org.orgId,
         })
         .returning({ id: agentComposes.id });
 

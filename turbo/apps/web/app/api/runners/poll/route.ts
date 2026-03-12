@@ -11,9 +11,9 @@ import { eq, and, isNull, type SQL } from "drizzle-orm";
 import { getRunnerAuth } from "../../../../src/lib/auth/runner-auth";
 import { logger } from "../../../../src/lib/logger";
 import {
-  validateRunnerGroupScope,
+  validateRunnerGroupOrg,
   isOfficialRunnerGroup,
-} from "../../../../src/lib/scope/scope-service";
+} from "../../../../src/lib/scope/org-service";
 
 const log = logger("api:runners:poll");
 
@@ -48,7 +48,7 @@ const router = tsr.router(runnersPollContract, {
     } else {
       // User runners: validate scope and filter by userId
       try {
-        await validateRunnerGroupScope(auth.userId, group, auth.orgId);
+        await validateRunnerGroupOrg(auth.userId, group, auth.orgId);
       } catch {
         return createErrorResponse("FORBIDDEN", "Access denied");
       }

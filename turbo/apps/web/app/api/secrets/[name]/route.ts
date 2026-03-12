@@ -10,7 +10,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
 import {
   getSecret,
   deleteSecret,
@@ -33,15 +33,10 @@ const router = tsr.router(secretsByNameContract, {
     }
     const { userId, orgId: tokenOrgId } = authCtx;
 
-    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const orgSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
-    const { scope } = await resolveScope(
-      userId,
-      scopeSlug,
-      orgParam,
-      tokenOrgId,
-    );
-    const secret = await getSecret(scope.orgId, userId, params.name);
+    const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
+    const secret = await getSecret(org.orgId, userId, params.name);
     if (!secret) {
       return createErrorResponse(
         "NOT_FOUND",
@@ -77,15 +72,10 @@ const router = tsr.router(secretsByNameContract, {
     log.debug("deleting secret", { userId, name: params.name });
 
     try {
-      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const orgSlug = new URL(request.url).searchParams.get("scope");
       const orgParam = new URL(request.url).searchParams.get("org");
-      const { scope } = await resolveScope(
-        userId,
-        scopeSlug,
-        orgParam,
-        tokenOrgId,
-      );
-      await deleteSecret(scope.orgId, userId, params.name);
+      const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
+      await deleteSecret(org.orgId, userId, params.name);
 
       return {
         status: 204 as const,

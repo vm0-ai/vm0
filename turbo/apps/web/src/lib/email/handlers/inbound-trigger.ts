@@ -15,7 +15,7 @@ import { createRun } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
-import { getDefaultScopeByUserId } from "../../scope/scope-service";
+import { getDefaultOrgByUserId } from "../../scope/org-service";
 import { canAccessCompose } from "../../agent/permission-service";
 import { getUserEmail } from "../../auth/get-user-email";
 import { logger } from "../../logger";
@@ -100,8 +100,8 @@ async function resolveTrigger(
     };
   }
 
-  const runtimeScope = await getDefaultScopeByUserId(userId);
-  if (!runtimeScope) {
+  const runtimeOrg = await getDefaultOrgByUserId(userId);
+  if (!runtimeOrg) {
     log.debug("Sender has no scope", { from: senderEmail, userId });
     return {
       ok: false,
@@ -110,7 +110,7 @@ async function resolveTrigger(
   }
 
   return {
-    triggerAddress: { scope: runtimeScope.slug, agent: agentName },
+    triggerAddress: { scope: runtimeOrg.slug, agent: agentName },
     triggerLocalPart: agentName,
     userId,
   };

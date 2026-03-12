@@ -6,7 +6,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
-import { resolveScope } from "../../../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../../../src/lib/scope/resolve-org";
 import { checkSecretExists } from "../../../../../src/lib/model-provider/model-provider-service";
 
 const router = tsr.router(modelProvidersCheckContract, {
@@ -22,15 +22,10 @@ const router = tsr.router(modelProvidersCheckContract, {
     }
     const { userId, orgId: tokenOrgId } = authCtx;
 
-    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const orgSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
-    const { scope } = await resolveScope(
-      userId,
-      scopeSlug,
-      orgParam,
-      tokenOrgId,
-    );
-    const result = await checkSecretExists(scope.orgId, userId, params.type);
+    const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
+    const result = await checkSecretExists(org.orgId, userId, params.type);
 
     return {
       status: 200 as const,

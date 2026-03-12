@@ -457,7 +457,7 @@ describe("/api/integrations/github", () => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            agentName: `${otherCompose!.scopeSlug}/${otherCompose!.composeName}`,
+            agentName: `${otherCompose!.orgSlug}/${otherCompose!.composeName}`,
           }),
         },
       );
@@ -476,7 +476,7 @@ describe("/api/integrations/github", () => {
       const getData = await getResponse.json();
 
       expect(getData.agent.name).toBe(otherCompose!.composeName);
-      expect(getData.agent.scopeSlug).toBe(otherCompose!.scopeSlug);
+      expect(getData.agent.orgSlug).toBe(otherCompose!.orgSlug);
     });
   });
 });

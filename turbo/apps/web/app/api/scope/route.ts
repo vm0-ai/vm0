@@ -6,19 +6,19 @@ import {
 import { scopeContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getAuthContext } from "../../../src/lib/auth/get-user-id";
-import { updateScopeSlug } from "../../../src/lib/scope/scope-service";
-import { resolveScope } from "../../../src/lib/scope/resolve-scope";
-import type { ResolvedScope } from "../../../src/lib/scope/resolve-scope";
+import { updateOrgSlug } from "../../../src/lib/scope/org-service";
+import { resolveOrg } from "../../../src/lib/scope/resolve-org";
+import type { ResolvedOrg } from "../../../src/lib/scope/resolve-org";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
 
 const log = logger("api:scope");
 
-function resolvedScopeToResponse(scope: ResolvedScope) {
+function resolvedOrgToResponse(resolved: ResolvedOrg) {
   return {
-    id: scope.orgId,
-    slug: scope.slug,
-    tier: scope.tier,
+    id: resolved.orgId,
+    slug: resolved.slug,
+    tier: resolved.tier,
   };
 }
 
@@ -39,7 +39,7 @@ const router = tsr.router(scopeContract, {
     const { userId, orgId: tokenOrgId } = authCtx;
 
     try {
-      const { scope: resolvedScope } = await resolveScope(
+      const { org: resolvedOrg } = await resolveOrg(
         userId,
         null,
         null,
@@ -48,7 +48,7 @@ const router = tsr.router(scopeContract, {
 
       return {
         status: 200 as const,
-        body: resolvedScopeToResponse(resolvedScope),
+        body: resolvedOrgToResponse(resolvedOrg),
       };
     } catch (error) {
       if (isNotFound(error)) {
@@ -77,14 +77,9 @@ const router = tsr.router(scopeContract, {
 
     log.debug("updating scope", { userId, slug, force });
 
-    let resolvedScope;
+    let resolvedOrg;
     try {
-      ({ scope: resolvedScope } = await resolveScope(
-        userId,
-        null,
-        null,
-        tokenOrgId,
-      ));
+      ({ org: resolvedOrg } = await resolveOrg(userId, null, null, tokenOrgId));
     } catch (error) {
       if (isNotFound(error)) {
         return createErrorResponse(
@@ -96,14 +91,9 @@ const router = tsr.router(scopeContract, {
     }
 
     try {
-      const scope = await updateScopeSlug(
-        resolvedScope.orgId,
-        slug,
-        userId,
-        force,
-      );
+      const scope = await updateOrgSlug(resolvedOrg.orgId, slug, userId, force);
 
-      return { status: 200 as const, body: resolvedScopeToResponse(scope) };
+      return { status: 200 as const, body: resolvedOrgToResponse(scope) };
     } catch (error) {
       if (isBadRequest(error)) {
         // Check if it's a conflict error (slug already exists)

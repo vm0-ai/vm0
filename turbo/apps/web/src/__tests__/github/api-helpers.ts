@@ -49,16 +49,16 @@ export async function givenGitHubInstallation(
 
   const userId = uniqueId("gh-user");
   const githubUserId = String(Math.floor(Math.random() * 1_000_000_000));
-  const scopeSlug = uniqueId("scope");
+  const orgSlug = uniqueId("scope");
 
   // Pre-populate org cache for getOrgData()
   const orgId = uniqueId("org");
   await globalThis.services.db
     .insert(orgCache)
-    .values({ orgId, slug: scopeSlug, tier: "free", cachedAt: new Date() })
+    .values({ orgId, slug: orgSlug, tier: "free", cachedAt: new Date() })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug: scopeSlug, tier: "free", cachedAt: new Date() },
+      set: { slug: orgSlug, tier: "free", cachedAt: new Date() },
     });
 
   // Create compose

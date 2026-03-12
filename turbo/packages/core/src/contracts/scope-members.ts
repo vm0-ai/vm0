@@ -7,8 +7,8 @@ const c = initContract();
 /**
  * Scope role enum
  */
-export const scopeRoleSchema = z.enum(["admin", "member"]);
-export type ScopeRole = z.infer<typeof scopeRoleSchema>;
+export const orgRoleSchema = z.enum(["admin", "member"]);
+export type OrgRole = z.infer<typeof orgRoleSchema>;
 
 /**
  * Scope member schema
@@ -16,7 +16,7 @@ export type ScopeRole = z.infer<typeof scopeRoleSchema>;
 export const scopeMemberSchema = z.object({
   userId: z.string(),
   email: z.string(),
-  role: scopeRoleSchema,
+  role: orgRoleSchema,
   joinedAt: z.string(),
 });
 export type ScopeMember = z.infer<typeof scopeMemberSchema>;
@@ -26,7 +26,7 @@ export type ScopeMember = z.infer<typeof scopeMemberSchema>;
  */
 export const scopeMembersResponseSchema = z.object({
   slug: z.string(),
-  role: scopeRoleSchema,
+  role: orgRoleSchema,
   members: z.array(scopeMemberSchema),
   createdAt: z.string(),
 });

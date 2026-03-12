@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { requireScopeFromRequest } from "../../../../src/lib/scope/resolve-scope";
+import { requireOrgFromRequest } from "../../../../src/lib/scope/resolve-org";
 import { inviteMember } from "../../../../src/lib/scope/org-member-service";
 import {
   isBadRequest,
@@ -40,12 +40,12 @@ export async function POST(request: Request) {
   const body = parseResult.data;
 
   try {
-    const { scope, member } = await requireScopeFromRequest(
+    const { org, member } = await requireOrgFromRequest(
       request,
       userId,
       tokenOrgId,
     );
-    await inviteMember(userId, scope.orgId, member.role, body.email);
+    await inviteMember(userId, org.orgId, member.role, body.email);
     return NextResponse.json({ message: `Invitation sent to ${body.email}` });
   } catch (error) {
     if (isBadRequest(error)) {

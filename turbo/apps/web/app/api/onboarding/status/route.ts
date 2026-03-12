@@ -2,7 +2,7 @@ import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { onboardingStatusContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
 import { isNotFound } from "../../../../src/lib/errors";
 import { modelProviders } from "../../../../src/db/schema/model-provider";
 import {
@@ -37,14 +37,14 @@ const router = tsr.router(onboardingStatusContract, {
       null;
 
     try {
-      const { scope: resolvedScope } = await resolveScope(userId);
+      const { org: resolvedOrg } = await resolveOrg(userId);
       hasScope = true;
 
       // Check model provider
       const [provider] = await globalThis.services.db
         .select({ id: modelProviders.id })
         .from(modelProviders)
-        .where(eq(modelProviders.orgId, resolvedScope.orgId))
+        .where(eq(modelProviders.orgId, resolvedOrg.orgId))
         .limit(1);
 
       hasModelProvider = provider !== undefined;

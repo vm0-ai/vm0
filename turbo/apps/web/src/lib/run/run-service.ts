@@ -31,11 +31,11 @@ import { canAccessCompose } from "../agent/permission-service";
 import { getUserEmail } from "../auth/get-user-email";
 import { extractTemplateVars } from "../config-validator";
 
-import { getDefaultScopeByUserId } from "../scope/scope-service";
-import { getDefaultScope } from "../scope/org-member-service";
+import { getDefaultOrgByUserId } from "../scope/org-service";
+import { getDefaultOrg } from "../scope/org-member-service";
 import { getVariableValues } from "../variable/variable-service";
 import { encryptSecretValue } from "../crypto/secrets-encryption";
-import type { ScopeTier } from "@vm0/core";
+import type { OrgTier } from "@vm0/core";
 
 const log = logger("service:run");
 
@@ -45,13 +45,13 @@ const log = logger("service:run");
 export const PENDING_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 /** Concurrent run limits by scope tier */
-const TIER_CONCURRENCY_LIMITS: Record<ScopeTier, number> = {
+const TIER_CONCURRENCY_LIMITS: Record<OrgTier, number> = {
   free: 1,
   pro: 2,
   max: 10,
 };
 
-function getConcurrencyLimitForTier(tier: ScopeTier): number {
+function getConcurrencyLimitForTier(tier: OrgTier): number {
   return TIER_CONCURRENCY_LIMITS[tier];
 }
 
@@ -59,13 +59,13 @@ function getConcurrencyLimitForTier(tier: ScopeTier): number {
  * Check if org has reached concurrent run limit
  *
  * @param orgId Clerk org ID to check
- * @param scopeTier Scope tier for tier-based limit (default: "free")
+ * @param orgTier Scope tier for tier-based limit (default: "free")
  * @param db Optional database instance (for use within transactions)
  * @throws ConcurrentRunLimitError if limit exceeded
  */
 async function checkRunConcurrencyLimit(
   orgId: string,
-  scopeTier: ScopeTier = "free",
+  orgTier: OrgTier = "free",
   db?: Database,
 ): Promise<void> {
   // Use env var override if set, otherwise use tier-based limit
@@ -76,7 +76,7 @@ async function checkRunConcurrencyLimit(
       ? 0
       : envLimit !== undefined && !isNaN(envLimit)
         ? envLimit
-        : getConcurrencyLimitForTier(scopeTier);
+        : getConcurrencyLimitForTier(orgTier);
 
   // Skip check if limit is 0 (no limit)
   if (effectiveLimit === 0) {
@@ -306,11 +306,11 @@ export interface CreateRunParams {
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
   // Caller-resolved scope slug and orgId for variable/storage resolution (org-aware).
-  // When provided, used instead of getDefaultScope fallback.
-  scopeSlug?: string;
+  // When provided, used instead of getDefaultOrg fallback.
+  orgSlug?: string;
   orgId?: string;
   // Caller-resolved scope tier for concurrency limit derivation.
-  scopeTier?: ScopeTier;
+  orgTier?: OrgTier;
 }
 
 export interface CreateRunResult {
@@ -435,7 +435,7 @@ async function validateComposeRequirements(
     const requiredVars = extractTemplateVars(composeContent);
     if (requiredVars.length > 0) {
       const resolvedClerkOrgId =
-        orgId ?? (await getDefaultScopeByUserId(userId))?.orgId;
+        orgId ?? (await getDefaultOrgByUserId(userId))?.orgId;
       const storedVars = resolvedClerkOrgId
         ? await getVariableValues(resolvedClerkOrgId, userId)
         : {};
@@ -511,7 +511,7 @@ async function buildAndDispatchRun(opts: {
   params: CreateRunParams;
   composeContent: AgentComposeYaml;
   apiStartTime: number;
-  scopeSlug: string | undefined;
+  orgSlug: string | undefined;
   orgId: string | undefined;
   authorizeTime: number;
   transactionTime: number;
@@ -522,7 +522,7 @@ async function buildAndDispatchRun(opts: {
     params,
     composeContent,
     apiStartTime,
-    scopeSlug,
+    orgSlug,
     orgId,
     authorizeTime,
     transactionTime,
@@ -542,7 +542,7 @@ async function buildAndDispatchRun(opts: {
     // Build execution context
     const {
       context,
-      runtimeScope,
+      runtimeOrg,
       timings: buildContextTimings,
     } = await buildContext({
       checkpointId: params.checkpointId,
@@ -567,13 +567,13 @@ async function buildAndDispatchRun(opts: {
       modelProvider: params.modelProvider,
       checkEnv: params.checkEnv,
       apiStartTime,
-      scopeSlug,
+      orgSlug,
       orgId,
     });
     const buildContextTime = Date.now();
 
     // Prepare execution context (storage manifest, working dir, etc.)
-    const prepareResult = await prepareForExecution(context, runtimeScope);
+    const prepareResult = await prepareForExecution(context, runtimeOrg);
     const prepareTime = Date.now();
 
     // Dispatch to executor
@@ -603,7 +603,7 @@ async function buildAndDispatchRun(opts: {
       // Sub-step timings within prepareForExecution
       {
         op: "api_prepare_resolve_scopes",
-        ms: prepareResult.timings.resolveScopes,
+        ms: prepareResult.timings.resolveOrgs,
       },
       {
         op: "api_prepare_ensure_storage",
@@ -686,15 +686,15 @@ export async function createRun(
   }
 
   // Resolve scope slug and orgId for the run record and storage
-  let scopeSlug: string | undefined;
+  let orgSlug: string | undefined;
   let orgId: string;
   if (params.orgId) {
     orgId = params.orgId;
-    scopeSlug = params.scopeSlug;
+    orgSlug = params.orgSlug;
   } else {
-    const { scope } = await getDefaultScope(userId);
-    scopeSlug = scope.slug;
-    orgId = scope.orgId;
+    const { org } = await getDefaultOrg(userId);
+    orgSlug = org.slug;
+    orgId = org.orgId;
   }
 
   // Step 5: Concurrency check + INSERT in a transaction with advisory lock
@@ -708,7 +708,7 @@ export async function createRun(
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
 
       // Check concurrent run limit within the serialized transaction
-      await checkRunConcurrencyLimit(orgId, params.scopeTier ?? "free", tx);
+      await checkRunConcurrencyLimit(orgId, params.orgTier ?? "free", tx);
 
       // INSERT within the same transaction
       const [newRun] = await tx
@@ -736,7 +736,7 @@ export async function createRun(
     });
   } catch (error) {
     if (isConcurrentRunLimit(error)) {
-      return enqueueRun({ ...params, scopeSlug, orgId });
+      return enqueueRun({ ...params, orgSlug, orgId });
     }
     throw error;
   }
@@ -750,7 +750,7 @@ export async function createRun(
     params,
     composeContent,
     apiStartTime,
-    scopeSlug,
+    orgSlug,
     orgId,
     authorizeTime,
     transactionTime,
@@ -787,7 +787,7 @@ export async function executeQueuedRun(
   const orgId = params.orgId ?? "";
   const [run] = await globalThis.services.db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
-    await checkRunConcurrencyLimit(orgId, params.scopeTier ?? "free", tx);
+    await checkRunConcurrencyLimit(orgId, params.orgTier ?? "free", tx);
 
     return tx
       .update(agentRuns)
@@ -834,7 +834,7 @@ export async function executeQueuedRun(
     params,
     composeContent,
     apiStartTime,
-    scopeSlug: params.scopeSlug,
+    orgSlug: params.orgSlug,
     orgId: params.orgId,
     authorizeTime,
     transactionTime,

@@ -2,13 +2,13 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { badRequest, forbidden, notFound } from "../errors";
 import { logger } from "../logger";
 import { getOrgData } from "./org-cache-service";
-import type { ScopeRole } from "@vm0/core";
-import type { ResolvedScope, ResolvedMember } from "./resolve-scope";
+import type { OrgRole } from "@vm0/core";
+import type { ResolvedOrg, ResolvedMember } from "./resolve-org";
 
 const log = logger("service:org-member");
 
 /**
- * Require a user to be a member of a scope, or throw 403.
+ * Require a user to be a member of an org, or throw 403.
  * Verifies membership via Clerk API using the org ID directly.
  */
 export async function requireOrgMember(orgId: string, userId: string) {
@@ -36,7 +36,7 @@ export async function requireOrgMember(orgId: string, userId: string) {
 }
 
 /**
- * Get user's default scope using org_cache (never queries scopes table).
+ * Get user's default org using org_cache (never queries scopes table).
  *
  * Fast path: if the JWT session contains an orgId, look up via org_cache
  * — no Clerk API call needed.
@@ -44,16 +44,16 @@ export async function requireOrgMember(orgId: string, userId: string) {
  * Slow path: for CLI tokens (no JWT) or when the JWT org has no cache entry,
  * fall back to Clerk Backend API to discover the user's org memberships.
  */
-export async function getDefaultScope(
+export async function getDefaultOrg(
   userId: string,
-): Promise<{ scope: ResolvedScope; member: ResolvedMember }> {
+): Promise<{ org: ResolvedOrg; member: ResolvedMember }> {
   // JWT fast path: use active org from session token
   const authResult = await auth();
   if (authResult.orgId) {
     try {
       const orgData = await getOrgData(authResult.orgId);
       return {
-        scope: orgData,
+        org: orgData,
         member: {
           role: mapClerkRole(authResult.orgRole ?? "org:member"),
           userId,
@@ -83,7 +83,7 @@ export async function getDefaultScope(
     const orgId = membership.organization.id;
     const orgData = await getOrgData(orgId);
     return {
-      scope: orgData,
+      org: orgData,
       member: {
         role: mapClerkRole(membership.role),
         userId,
@@ -91,12 +91,12 @@ export async function getDefaultScope(
     };
   }
 
-  throw notFound("No scope found for user");
+  throw notFound("No org found for user");
 }
 
 /**
- * Resolve org ID: use the provided value or fall back to the user's default scope.
- * Replaces the old resolveScopeId() which returned a scope UUID.
+ * Resolve org ID: use the provided value or fall back to the user's default org.
+ * Replaces the old resolveOrgId() which returned a scope UUID.
  */
 export async function resolveOrgId(
   userId: string,
@@ -105,25 +105,25 @@ export async function resolveOrgId(
 ): Promise<string> {
   if (orgId) return orgId;
   if (tokenOrgId) return tokenOrgId;
-  const { scope } = await getDefaultScope(userId);
-  return scope.orgId;
+  const { org } = await getDefaultOrg(userId);
+  return org.orgId;
 }
 
 /**
- * Map Clerk's internal role string to our ScopeRole type.
+ * Map Clerk's internal role string to our OrgRole type.
  */
-function mapClerkRole(clerkRole: string): ScopeRole {
+function mapClerkRole(clerkRole: string): OrgRole {
   return clerkRole === "org:admin" ? "admin" : "member";
 }
 
 /**
- * Get scope members list.
+ * Get org members list.
  * Reads membership data directly from Clerk API.
  */
 export async function getOrgMembers(
   userId: string,
   orgId: string,
-  scopeSlug: string,
+  orgSlug: string,
 ) {
   // Get members and org info from Clerk
   const client = await clerkClient();
@@ -172,7 +172,7 @@ export async function getOrgMembers(
     : "member";
 
   return {
-    slug: scopeSlug,
+    slug: orgSlug,
     role: callerRole,
     members,
     createdAt: createdAt.toISOString(),
@@ -180,13 +180,13 @@ export async function getOrgMembers(
 }
 
 /**
- * Invite a member to the scope.
+ * Invite a member to the org.
  * Requires admin role.
  */
 export async function inviteMember(
   callerUserId: string,
   orgId: string,
-  role: ScopeRole,
+  role: OrgRole,
   email: string,
 ) {
   if (role !== "admin") {
@@ -205,13 +205,13 @@ export async function inviteMember(
 }
 
 /**
- * Remove a member from the scope.
+ * Remove a member from the org.
  * Requires admin role.
  */
 export async function removeMember(
   callerUserId: string,
   orgId: string,
-  role: ScopeRole,
+  role: OrgRole,
   email: string,
 ) {
   if (role !== "admin") {
@@ -256,10 +256,10 @@ export async function removeMember(
 }
 
 /**
- * Leave the scope.
+ * Leave the org.
  * Admins cannot leave (they must add another admin or delete the scope).
  */
-export async function leaveOrg(userId: string, orgId: string, role: ScopeRole) {
+export async function leaveOrg(userId: string, orgId: string, role: OrgRole) {
   if (role === "admin") {
     throw forbidden(
       "Admins cannot leave a scope. Add another admin or delete the scope.",
@@ -277,9 +277,9 @@ export async function leaveOrg(userId: string, orgId: string, role: ScopeRole) {
 }
 
 /**
- * Get all scopes accessible to a user (via Clerk organization memberships).
+ * Get all orgs accessible to a user (via Clerk organization memberships).
  */
-export async function getUserAccessibleScopes(
+export async function getUserAccessibleOrgs(
   userId: string,
 ): Promise<Array<{ slug: string; role: string }>> {
   const client = await clerkClient();

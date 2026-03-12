@@ -6,7 +6,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getAuthContext } from "../../../src/lib/auth/get-user-id";
-import { resolveScope } from "../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../src/lib/scope/resolve-org";
 import { listConnectors } from "../../../src/lib/connector/connector-service";
 import { getConfiguredConnectorTypes } from "../../../src/lib/connector/provider-registry";
 
@@ -23,15 +23,10 @@ const router = tsr.router(connectorsMainContract, {
     }
     const { userId, orgId: tokenOrgId } = authCtx;
 
-    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const orgSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
-    const { scope } = await resolveScope(
-      userId,
-      scopeSlug,
-      orgParam,
-      tokenOrgId,
-    );
-    const connectorList = await listConnectors(scope.orgId, userId);
+    const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
+    const connectorList = await listConnectors(org.orgId, userId);
     const configuredTypes = getConfiguredConnectorTypes(
       globalThis.services.env,
     );

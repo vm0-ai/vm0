@@ -15,7 +15,7 @@ interface UserAgent {
 
 /**
  * Fetch all agents accessible to a user (own + email-shared).
- * Shared agents are returned with `scopeSlug/name` format for agentName.
+ * Shared agents are returned with `orgSlug/name` format for agentName.
  *
  * Note: This always includes shared agents, unlike `composes/list` which
  * only includes them when no `?scope=` param is provided. This is intentional
@@ -41,7 +41,7 @@ export async function getUserAgents(userId: string): Promise<UserAgent[]> {
     ...ownAgents,
     ...sharedAgents.map((a) => ({
       composeId: a.id,
-      agentName: `${a.scopeSlug}/${a.name}`,
+      agentName: `${a.orgSlug}/${a.name}`,
       headVersionId: a.headVersionId,
     })),
   ];

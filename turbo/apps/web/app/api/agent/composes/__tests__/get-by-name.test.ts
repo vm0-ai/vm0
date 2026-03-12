@@ -204,7 +204,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     // Create compose as current user
     const { composeId } = await createTestCompose(agentName);
 
-    // Access without scope param (uses resolveScope for own scope)
+    // Access without scope param (uses resolveOrg for own scope)
     const getRequest = createTestRequest(
       `http://localhost:3000/api/agent/composes?name=${agentName}`,
       { method: "GET" },

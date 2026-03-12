@@ -5,7 +5,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
-import { resolveScope } from "../../../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../../../src/lib/scope/resolve-org";
 import { setModelProviderDefault } from "../../../../../src/lib/model-provider/model-provider-service";
 import { logger } from "../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../src/lib/errors";
@@ -31,16 +31,11 @@ const router = tsr.router(modelProvidersSetDefaultContract, {
     });
 
     try {
-      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const orgSlug = new URL(request.url).searchParams.get("scope");
       const orgParam = new URL(request.url).searchParams.get("org");
-      const { scope } = await resolveScope(
-        userId,
-        scopeSlug,
-        orgParam,
-        tokenOrgId,
-      );
+      const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
       const provider = await setModelProviderDefault(
-        scope.orgId,
+        org.orgId,
         userId,
         params.type,
       );

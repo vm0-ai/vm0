@@ -175,8 +175,8 @@ export async function givenLinkedSlackUser(
   mockClerk({ userId: vm0UserId });
 
   // Create scope for the user (required for compose creation)
-  const scopeSlug = uniqueId("scope");
-  await createTestScope(scopeSlug);
+  const orgSlug = uniqueId("scope");
+  await createTestScope(orgSlug);
 
   // WebClient methods (views.publish, chat.postEphemeral) are already mocked in setup.ts
   // so linking triggers (refreshAppHome, postEphemeral) will use those mocks.

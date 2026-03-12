@@ -19,18 +19,18 @@ export async function resolveDefaultAgentComposeId(): Promise<string | null> {
     return null;
   }
 
-  const [scopeSlug, agentName] = VM0_DEFAULT_AGENT.split("/");
-  if (!scopeSlug || !agentName) {
+  const [orgSlug, agentName] = VM0_DEFAULT_AGENT.split("/");
+  if (!orgSlug || !agentName) {
     log.warn("VM0_DEFAULT_AGENT has invalid format, expected 'scope/name'", {
       value: VM0_DEFAULT_AGENT,
     });
     return null;
   }
 
-  const orgData = await getOrgBySlug(scopeSlug);
+  const orgData = await getOrgBySlug(orgSlug);
 
   if (!orgData) {
-    log.warn("Scope not found for VM0_DEFAULT_AGENT", { scopeSlug });
+    log.warn("Scope not found for VM0_DEFAULT_AGENT", { orgSlug });
     return null;
   }
 
@@ -47,7 +47,7 @@ export async function resolveDefaultAgentComposeId(): Promise<string | null> {
 
   if (!compose) {
     log.warn("Agent compose not found for VM0_DEFAULT_AGENT", {
-      scopeSlug,
+      orgSlug,
       agentName,
       orgId: orgData.orgId,
     });

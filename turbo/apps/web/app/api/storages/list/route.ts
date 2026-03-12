@@ -8,7 +8,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { storages } from "../../../../src/db/schema/storage";
 import { eq, and, desc } from "drizzle-orm";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:storages:list");
@@ -32,11 +32,11 @@ const router = tsr.router(storagesListContract, {
     const { type: storageType } = query;
 
     // Resolve user's default scope
-    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const orgSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
-    const { scope: runtimeScope } = await resolveScope(
+    const { org: runtimeOrg } = await resolveOrg(
       userId,
-      scopeSlug,
+      orgSlug,
       orgParam,
       tokenOrgId,
     );
@@ -45,7 +45,7 @@ const router = tsr.router(storagesListContract, {
     const storageUserId =
       storageType === "volume" ? VOLUME_SCOPE_USER_ID : userId;
 
-    log.debug(`Listing ${storageType}s for scope ${runtimeScope.slug}`);
+    log.debug(`Listing ${storageType}s for scope ${runtimeOrg.slug}`);
 
     // Query storages filtered by scope, userId, and type
     const results = await globalThis.services.db
@@ -58,7 +58,7 @@ const router = tsr.router(storagesListContract, {
       .from(storages)
       .where(
         and(
-          eq(storages.orgId, runtimeScope.orgId),
+          eq(storages.orgId, runtimeOrg.orgId),
           eq(storages.userId, storageUserId),
           eq(storages.type, storageType),
         ),

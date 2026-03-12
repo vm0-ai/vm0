@@ -17,9 +17,9 @@ import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-tok
 import { logger } from "../../../../../../src/lib/logger";
 import { decryptSecretsMap } from "../../../../../../src/lib/crypto/secrets-encryption";
 import {
-  validateRunnerGroupScope,
+  validateRunnerGroupOrg,
   isOfficialRunnerGroup,
-} from "../../../../../../src/lib/scope/scope-service";
+} from "../../../../../../src/lib/scope/org-service";
 import { recordSandboxOperation } from "../../../../../../src/lib/metrics";
 
 const log = logger("api:runners:jobs:claim");
@@ -84,7 +84,7 @@ const router = tsr.router(runnersJobClaimContract, {
       }
 
       try {
-        await validateRunnerGroupScope(
+        await validateRunnerGroupOrg(
           auth.userId,
           jobWithRun.job.runnerGroup,
           auth.orgId,

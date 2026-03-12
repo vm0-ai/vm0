@@ -9,7 +9,7 @@ import {
   decryptSecretsMap,
 } from "../crypto/secrets-encryption";
 import { PENDING_RUN_TTL_MS } from "./run-service";
-import { getDefaultScope } from "../scope/org-member-service";
+import { getDefaultOrg } from "../scope/org-member-service";
 import type { CreateRunParams, CreateRunResult } from "./run-service";
 
 const log = logger("service:run-queue");
@@ -43,8 +43,8 @@ export async function enqueueRun(
   if (params.orgId) {
     orgId = params.orgId;
   } else {
-    const { scope } = await getDefaultScope(userId);
-    orgId = scope.orgId;
+    const { org } = await getDefaultOrg(userId);
+    orgId = org.orgId;
   }
 
   // Encrypt the full CreateRunParams for later replay

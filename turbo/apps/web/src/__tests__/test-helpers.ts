@@ -502,11 +502,11 @@ export function testContext(): TestContext {
     const adminUserId = optVm0UserId ?? uniqueId("test-admin");
     let composeId = options.composeId;
     if (!composeId) {
-      const scopeSlug = uniqueId("scope");
+      const orgSlug = uniqueId("scope");
       const orgId = uniqueId("org");
 
       // Pre-populate org cache for getOrgData()
-      await insertOrgCacheEntry({ orgId, slug: scopeSlug });
+      await insertOrgCacheEntry({ orgId, slug: orgSlug });
 
       const [compose] = await globalThis.services.db
         .insert(agentComposes)
@@ -597,11 +597,11 @@ export function testContext(): TestContext {
     initServices();
 
     // Create org cache and compose for this user
-    const scopeSlug = uniqueId("scope");
+    const orgSlug = uniqueId("scope");
     const orgId = uniqueId("org");
 
     // Pre-populate org cache for getOrgData()
-    await insertOrgCacheEntry({ orgId, slug: scopeSlug });
+    await insertOrgCacheEntry({ orgId, slug: orgSlug });
 
     // Create a compose for this user
     const [compose] = await globalThis.services.db

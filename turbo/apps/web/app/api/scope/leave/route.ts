@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { requireScopeFromRequest } from "../../../../src/lib/scope/resolve-scope";
+import { requireOrgFromRequest } from "../../../../src/lib/scope/resolve-org";
 import { leaveOrg } from "../../../../src/lib/scope/org-member-service";
 import {
   isBadRequest,
@@ -26,12 +26,12 @@ export async function POST(request: Request) {
   const { userId, orgId: tokenOrgId } = authCtx;
 
   try {
-    const { scope, member } = await requireScopeFromRequest(
+    const { org, member } = await requireOrgFromRequest(
       request,
       userId,
       tokenOrgId,
     );
-    await leaveOrg(userId, scope.orgId, member.role);
+    await leaveOrg(userId, org.orgId, member.role);
     return NextResponse.json({ message: "Left scope" });
   } catch (error) {
     if (isBadRequest(error)) {

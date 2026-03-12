@@ -2290,7 +2290,7 @@ export async function findTestComposeWithScope(composeId: string) {
     .select({
       composeId: agentComposes.id,
       composeName: agentComposes.name,
-      scopeSlug: orgCache.slug,
+      orgSlug: orgCache.slug,
     })
     .from(agentComposes)
     .innerJoin(orgCache, eq(orgCache.orgId, agentComposes.orgId))
@@ -2601,16 +2601,16 @@ export async function createTestTelegramInstallation(options?: {
   const suffix = uniqueId("tg");
   const adminUserId = options?.adminUserId ?? uniqueId("test-admin");
 
-  const scopeSlug = uniqueId("scope");
+  const orgSlug = uniqueId("scope");
   const orgId = uniqueId("org");
 
   // Pre-populate org cache for getOrgData()
   await globalThis.services.db
     .insert(orgCache)
-    .values({ orgId, slug: scopeSlug, tier: "free", cachedAt: new Date() })
+    .values({ orgId, slug: orgSlug, tier: "free", cachedAt: new Date() })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug: scopeSlug, tier: "free", cachedAt: new Date() },
+      set: { slug: orgSlug, tier: "free", cachedAt: new Date() },
     });
 
   const [compose] = await globalThis.services.db

@@ -57,7 +57,7 @@ describe("/api/integrations/slack", () => {
       expect(data.installUrl).toContain(user.userId);
     });
 
-    it("returns workspace info for linked user including scopeSlug", async () => {
+    it("returns workspace info for linked user including orgSlug", async () => {
       const { userLink, installation } = await givenLinkedSlackUser();
 
       // Restore Clerk mock for the linked user
@@ -74,8 +74,8 @@ describe("/api/integrations/slack", () => {
       expect(data.workspace.name).toBe(installation.slackWorkspaceName);
       expect(data.agent).toBeDefined();
       expect(data.agent.name).toBeDefined();
-      expect(data.agent.scopeSlug).toBeDefined();
-      expect(typeof data.agent.scopeSlug).toBe("string");
+      expect(data.agent.orgSlug).toBeDefined();
+      expect(typeof data.agent.orgSlug).toBe("string");
       expect(data.environment).toBeDefined();
       expect(data.environment.requiredSecrets).toBeDefined();
       expect(data.environment.requiredVars).toBeDefined();
@@ -322,7 +322,7 @@ describe("/api/integrations/slack", () => {
       // Set VM0_DEFAULT_AGENT to match the current default agent
       vi.stubEnv(
         "VM0_DEFAULT_AGENT",
-        `${defaultCompose!.scopeSlug}/${defaultCompose!.composeName}`,
+        `${defaultCompose!.orgSlug}/${defaultCompose!.composeName}`,
       );
       reloadEnv();
 
@@ -378,7 +378,7 @@ describe("/api/integrations/slack", () => {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            agentName: `${otherCompose!.scopeSlug}/${otherCompose!.composeName}`,
+            agentName: `${otherCompose!.orgSlug}/${otherCompose!.composeName}`,
           }),
         },
       );
@@ -395,7 +395,7 @@ describe("/api/integrations/slack", () => {
       const getData = await getResponse.json();
 
       expect(getData.agent.name).toBe(otherCompose!.composeName);
-      expect(getData.agent.scopeSlug).toBe(otherCompose!.scopeSlug);
+      expect(getData.agent.orgSlug).toBe(otherCompose!.orgSlug);
     });
 
     it("returns 400 when scoped name has invalid scope slug", async () => {

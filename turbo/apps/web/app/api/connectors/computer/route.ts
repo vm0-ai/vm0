@@ -2,7 +2,7 @@ import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { computerConnectorContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
 import { getConnector } from "../../../../src/lib/connector/connector-service";
 import {
   createComputerConnector,
@@ -28,15 +28,10 @@ const router = tsr.router(computerConnectorContract, {
     const { userId, orgId: tokenOrgId } = authCtx;
 
     try {
-      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const orgSlug = new URL(request.url).searchParams.get("scope");
       const orgParam = new URL(request.url).searchParams.get("org");
-      const { scope } = await resolveScope(
-        userId,
-        scopeSlug,
-        orgParam,
-        tokenOrgId,
-      );
-      const result = await createComputerConnector(scope.orgId, userId);
+      const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
+      const result = await createComputerConnector(org.orgId, userId);
       return { status: 200 as const, body: result };
     } catch (error) {
       if (isBadRequest(error)) {
@@ -61,15 +56,10 @@ const router = tsr.router(computerConnectorContract, {
     }
     const { userId, orgId: tokenOrgId } = authCtx;
 
-    const scopeSlug = new URL(request.url).searchParams.get("scope");
+    const orgSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
-    const { scope } = await resolveScope(
-      userId,
-      scopeSlug,
-      orgParam,
-      tokenOrgId,
-    );
-    const connector = await getConnector(scope.orgId, userId, "computer");
+    const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
+    const connector = await getConnector(org.orgId, userId, "computer");
     if (!connector) {
       return createErrorResponse("NOT_FOUND", "Computer connector not found");
     }
@@ -90,15 +80,10 @@ const router = tsr.router(computerConnectorContract, {
     const { userId, orgId: tokenOrgId } = authCtx;
 
     try {
-      const scopeSlug = new URL(request.url).searchParams.get("scope");
+      const orgSlug = new URL(request.url).searchParams.get("scope");
       const orgParam = new URL(request.url).searchParams.get("org");
-      const { scope } = await resolveScope(
-        userId,
-        scopeSlug,
-        orgParam,
-        tokenOrgId,
-      );
-      await deleteComputerConnector(scope.orgId, userId);
+      const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
+      await deleteComputerConnector(org.orgId, userId);
       return { status: 204 as const, body: undefined };
     } catch (error) {
       if (isNotFound(error)) {

@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
-import { generateDefaultScopeSlug } from "../../../../../src/lib/scope/scope-service";
-import { getDefaultScope } from "../../../../../src/lib/scope/org-member-service";
+import { generateDefaultOrgSlug } from "../../../../../src/lib/scope/org-service";
+import { getDefaultOrg } from "../../../../../src/lib/scope/org-member-service";
 import { orgCache } from "../../../../../src/db/schema/org-cache";
 import { isNotFound } from "../../../../../src/lib/errors";
 import {
@@ -40,20 +40,20 @@ function isTestTokenAllowed(request: Request): boolean {
 
 /**
  * Ensure the test user has an org_cache entry for scope resolution.
- * Uses the same flow as production (getDefaultScope) so that
+ * Uses the same flow as production (getDefaultOrg) so that
  * Clerk API membership verification works during E2E tests.
  *
  * If the user has no Clerk org yet, creates an org_cache entry with a sentinel orgId.
  */
 async function ensureTestScope(userId: string): Promise<{ orgId: string }> {
   try {
-    const { scope } = await getDefaultScope(userId);
-    return { orgId: scope.orgId };
+    const { org } = await getDefaultOrg(userId);
+    return { orgId: org.orgId };
   } catch (error) {
     if (!isNotFound(error)) throw error;
     // User has no Clerk org — use sentinel orgId with org_cache entry
     const sentinelOrgId = `org_test_${userId}`;
-    const slug = generateDefaultScopeSlug(userId);
+    const slug = generateDefaultOrgSlug(userId);
     await globalThis.services.db
       .insert(orgCache)
       .values({ orgId: sentinelOrgId, slug, tier: "free" })

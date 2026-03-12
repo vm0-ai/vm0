@@ -7,8 +7,8 @@ const c = initContract();
 /**
  * Scope tier values
  */
-export const scopeTierSchema = z.enum(["free", "pro", "max"]);
-export type ScopeTier = z.infer<typeof scopeTierSchema>;
+export const orgTierSchema = z.enum(["free", "pro", "max"]);
+export type OrgTier = z.infer<typeof orgTierSchema>;
 
 /**
  * Scope slug validation

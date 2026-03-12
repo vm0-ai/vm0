@@ -20,7 +20,7 @@ import type { AgentComposeYaml } from "../../types/agent-compose";
 import { badRequest, notFound } from "../errors";
 import { getOrgData } from "../scope/org-cache-service";
 import { logger } from "../logger";
-import type { ExecutionContext, ResumeSession, RuntimeScope } from "./types";
+import type { ExecutionContext, ResumeSession, RuntimeOrg } from "./types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
 import {
   resolveCheckpoint,
@@ -29,7 +29,7 @@ import {
   type ConversationResolution,
 } from "./resolvers";
 import { expandEnvironmentFromCompose } from "./environment";
-import { getDefaultScope } from "../scope/org-member-service";
+import { getDefaultOrg } from "../scope/org-member-service";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
@@ -671,8 +671,8 @@ interface BuildContextParams {
   apiStartTime?: number;
   // Caller-resolved scope slug and orgId for secret/variable/storage resolution.
   // When provided, used for both secrets and storage (artifacts/memory).
-  // When not provided, resolved via getDefaultScope fallback.
-  scopeSlug?: string;
+  // When not provided, resolved via getDefaultOrg fallback.
+  orgSlug?: string;
   orgId?: string;
 }
 
@@ -879,16 +879,16 @@ function applyResolutionDefaults(
  *
  * When params.orgId is not provided, the user's default scope is used.
  */
-async function resolveScopes(params: BuildContextParams): Promise<{
+async function resolveOrgs(params: BuildContextParams): Promise<{
   runtimeClerkOrgId: string;
-  pendingRuntimeScope: Promise<RuntimeScope> | RuntimeScope;
+  pendingRuntimeScope: Promise<RuntimeOrg> | RuntimeOrg;
 }> {
   if (params.orgId) {
-    if (params.scopeSlug) {
+    if (params.orgSlug) {
       return {
         runtimeClerkOrgId: params.orgId,
         pendingRuntimeScope: {
-          slug: params.scopeSlug,
+          slug: params.orgSlug,
           orgId: params.orgId,
         },
       };
@@ -904,12 +904,12 @@ async function resolveScopes(params: BuildContextParams): Promise<{
     };
   }
   // No explicit scope — default scope is used
-  const { scope } = await getDefaultScope(params.userId);
+  const { org } = await getDefaultOrg(params.userId);
   return {
-    runtimeClerkOrgId: scope.orgId,
+    runtimeClerkOrgId: org.orgId,
     pendingRuntimeScope: {
-      slug: scope.slug,
-      orgId: scope.orgId,
+      slug: org.slug,
+      orgId: org.orgId,
     },
   };
 }
@@ -921,7 +921,7 @@ interface BuildContextTimings {
 
 interface BuildContextResult {
   context: ExecutionContext;
-  runtimeScope: RuntimeScope;
+  runtimeOrg: RuntimeOrg;
   timings: BuildContextTimings;
 }
 
@@ -985,10 +985,10 @@ export async function buildExecutionContext(
 
   // Step 1: Resolve source and scopes in parallel (independent operations).
   // resolveSource loads checkpoint/session/conversation data.
-  // resolveScopes resolves the runtime scope for secrets and storage.
+  // resolveOrgs resolves the runtime scope for secrets and storage.
   const resolveStart = Date.now();
   const [resolution, { runtimeClerkOrgId, pendingRuntimeScope }] =
-    await Promise.all([resolveSource(params), resolveScopes(params)]);
+    await Promise.all([resolveSource(params), resolveOrgs(params)]);
   const resolveEnd = Date.now();
 
   // Step 2: Apply resolution defaults and build resumeSession (unified path)
@@ -1041,7 +1041,7 @@ export async function buildExecutionContext(
   // Step 4: Resolve secrets, user preferences, and runtime scope in parallel.
   // pendingRuntimeScope may already be resolved (when orgId was not explicit).
   const resolveSecretsStart = Date.now();
-  const [secretsResult, userPrefs, runtimeScope] = await Promise.all([
+  const [secretsResult, userPrefs, runtimeOrg] = await Promise.all([
     resolveSecretsAndEnvironment(
       runtimeClerkOrgId,
       agentCompose,
@@ -1080,7 +1080,7 @@ export async function buildExecutionContext(
 
   // Build final execution context
   return {
-    runtimeScope,
+    runtimeOrg,
     context: {
       runId: params.runId,
       userId: params.userId,

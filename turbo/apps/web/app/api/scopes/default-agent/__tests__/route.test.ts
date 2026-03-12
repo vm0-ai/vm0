@@ -11,11 +11,11 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 const context = testContext();
 
 function putDefaultAgent(
-  scopeSlug: string | undefined,
+  orgSlug: string | undefined,
   agentComposeId: string | null,
 ) {
-  const url = scopeSlug
-    ? `http://localhost:3000/api/scopes/default-agent?scope=${scopeSlug}`
+  const url = orgSlug
+    ? `http://localhost:3000/api/scopes/default-agent?scope=${orgSlug}`
     : "http://localhost:3000/api/scopes/default-agent";
   return PUT(
     createTestRequest(url, {

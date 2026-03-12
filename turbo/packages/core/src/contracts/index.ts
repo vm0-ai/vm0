@@ -163,12 +163,12 @@ export {
   scopeSlugSchema,
   scopeResponseSchema,
   updateScopeRequestSchema,
-  scopeTierSchema,
+  orgTierSchema,
   type ScopeContract,
   type ScopeDefaultAgentContract,
   type ScopeResponse,
   type UpdateScopeRequest,
-  type ScopeTier,
+  type OrgTier,
 } from "./scopes";
 export {
   secretsMainContract,
@@ -452,14 +452,14 @@ export {
 } from "./scope-list";
 export {
   scopeMembersContract,
-  scopeRoleSchema,
+  orgRoleSchema,
   scopeMemberSchema,
   scopeMembersResponseSchema,
   inviteScopeMemberRequestSchema,
   removeScopeMemberRequestSchema,
   scopeMessageResponseSchema,
   type ScopeMembersContract,
-  type ScopeRole,
+  type OrgRole,
   type ScopeMember,
   type ScopeMembersResponse,
   type InviteScopeMemberRequest,

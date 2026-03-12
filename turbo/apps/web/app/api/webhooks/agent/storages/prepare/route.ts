@@ -16,7 +16,7 @@ import {
 } from "../../../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
-import { getDefaultScopeByUserId } from "../../../../../../src/lib/scope/scope-service";
+import { getDefaultOrgByUserId } from "../../../../../../src/lib/scope/org-service";
 import {
   generatePresignedPutUrl,
   downloadManifest,
@@ -96,8 +96,8 @@ const router = tsr.router(webhookStoragesPrepareContract, {
     }
 
     // Resolve Runtime Scope (user's default scope)
-    const resolvedScope = await getDefaultScopeByUserId(userId);
-    if (!resolvedScope) {
+    const resolvedOrg = await getDefaultOrgByUserId(userId);
+    if (!resolvedOrg) {
       return {
         status: 400 as const,
         body: {
@@ -118,10 +118,10 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       .insert(storages)
       .values({
         userId: storageUserId,
-        orgId: resolvedScope.orgId,
+        orgId: resolvedOrg.orgId,
         name: storageName,
         type: storageType,
-        s3Prefix: `${resolvedScope.slug}/${storageType}/${storageName}`,
+        s3Prefix: `${resolvedOrg.slug}/${storageType}/${storageName}`,
         size: 0,
         fileCount: 0,
       })
@@ -273,7 +273,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
     }
 
     // Generate presigned URLs for archive and manifest
-    const s3Key = `${resolvedScope.slug}/${storageType}/${storageName}/${versionId}`;
+    const s3Key = `${resolvedOrg.slug}/${storageType}/${storageName}/${versionId}`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const manifestKey = `${s3Key}/manifest.json`;
 

@@ -24,7 +24,7 @@ import { listConnectors } from "../../../../src/lib/connector/connector-service"
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { decryptSecretValue } from "../../../../src/lib/crypto/secrets-encryption";
 import { deleteWebhook } from "../../../../src/lib/telegram/client";
-import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
 import { isNotFound } from "../../../../src/lib/errors";
 import { logger } from "../../../../src/lib/logger";
 import { checkTelegramDomain } from "../../../../src/lib/telegram/check-domain";
@@ -100,7 +100,7 @@ export async function GET(request: Request) {
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
 
-  const scopeSlug = compose ? (await getOrgData(compose.orgId)).slug : null;
+  const orgSlug = compose ? (await getOrgData(compose.orgId)).slug : null;
 
   // Extract required secrets/vars from agent compose
   let requiredSecrets: string[] = [];
@@ -122,11 +122,11 @@ export async function GET(request: Request) {
   }
 
   // Resolve user's default scope and get existing secrets, vars, connectors
-  const { scope } = await resolveScope(userId, null, null, tokenOrgId);
+  const { org } = await resolveOrg(userId, null, null, tokenOrgId);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(scope.orgId, userId),
-    listVariables(scope.orgId, userId),
-    listConnectors(scope.orgId, userId),
+    listSecrets(org.orgId, userId),
+    listVariables(org.orgId, userId),
+    listConnectors(org.orgId, userId),
   ]);
 
   const connectorProvided = getConnectorProvidedSecretNames(
@@ -160,7 +160,7 @@ export async function GET(request: Request) {
       id: installation.telegramBotId,
       username: installation.botUsername,
     },
-    agent: compose ? { id: compose.id, name: compose.name, scopeSlug } : null,
+    agent: compose ? { id: compose.id, name: compose.name, orgSlug } : null,
     isAdmin,
     isConnected,
     domainConfigured,
@@ -251,28 +251,23 @@ export async function PATCH(request: Request) {
   const slashIndex = body.agentName.indexOf("/");
   const agentName =
     slashIndex === -1 ? body.agentName : body.agentName.slice(slashIndex + 1);
-  const scopeSlug =
+  const orgSlug =
     slashIndex === -1 ? null : body.agentName.slice(0, slashIndex);
 
-  // Resolve target scope
-  let targetScope: { orgId: string };
-  if (scopeSlug) {
-    const targetOrg = await getOrgBySlug(scopeSlug);
-    if (!targetOrg) {
+  // Resolve target org
+  let targetOrg: { orgId: string };
+  if (orgSlug) {
+    const resolved = await getOrgBySlug(orgSlug);
+    if (!resolved) {
       return NextResponse.json(
         { error: { message: "Scope not found", code: "BAD_REQUEST" } },
         { status: 400 },
       );
     }
-    targetScope = targetOrg;
+    targetOrg = resolved;
   } else {
     try {
-      ({ scope: targetScope } = await resolveScope(
-        userId,
-        null,
-        null,
-        tokenOrgId,
-      ));
+      ({ org: targetOrg } = await resolveOrg(userId, null, null, tokenOrgId));
     } catch (error) {
       if (isNotFound(error)) {
         return NextResponse.json(
@@ -290,7 +285,7 @@ export async function PATCH(request: Request) {
     .from(agentComposes)
     .where(
       and(
-        eq(agentComposes.orgId, targetScope.orgId),
+        eq(agentComposes.orgId, targetOrg.orgId),
         eq(agentComposes.name, agentName),
       ),
     )

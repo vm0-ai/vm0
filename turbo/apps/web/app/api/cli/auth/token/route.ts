@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "../../../../../src/db/schema/device-codes";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
-import { getDefaultScope } from "../../../../../src/lib/scope/org-member-service";
+import { getDefaultOrg } from "../../../../../src/lib/scope/org-member-service";
 
 const router = tsr.router(cliAuthTokenContract, {
   exchange: async ({ body }) => {
@@ -75,7 +75,7 @@ const router = tsr.router(cliAuthTokenContract, {
         const userId = session.userId as string;
 
         // Resolve user's default scope from org_cache
-        const { scope } = await getDefaultScope(userId);
+        const { org } = await getDefaultOrg(userId);
 
         // Generate CLI token with org binding
         const randomBytes = crypto.randomBytes(32);
@@ -87,7 +87,7 @@ const router = tsr.router(cliAuthTokenContract, {
           token: cliToken,
           userId,
           name: "CLI Device Flow Authentication",
-          orgId: scope.orgId,
+          orgId: org.orgId,
           expiresAt,
           createdAt: now,
         });
