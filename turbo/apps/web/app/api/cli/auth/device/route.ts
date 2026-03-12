@@ -1,32 +1,14 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { cliAuthDeviceContract } from "@vm0/core";
-import crypto from "crypto";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "../../../../../src/db/schema/device-codes";
-
-// Characters that are easy to read (excluding 0/O, 1/I/L)
-const CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-
-function generateDeviceCode(): string {
-  const randomBytes = crypto.randomBytes(8);
-  let code = "";
-
-  for (let i = 0; i < 8; i++) {
-    if (i === 4) code += "-";
-    const byte = randomBytes[i];
-    if (byte !== undefined) {
-      code += CHARS[byte % CHARS.length];
-    }
-  }
-
-  return code;
-}
+import { generateCode } from "../../../../../src/lib/crypto";
 
 const router = tsr.router(cliAuthDeviceContract, {
   create: async () => {
     initServices();
 
-    const deviceCode = generateDeviceCode();
+    const deviceCode = generateCode();
     const expiresAt = new Date(Date.now() + 900 * 1000); // 15 minutes
 
     await globalThis.services.db.insert(deviceCodes).values({

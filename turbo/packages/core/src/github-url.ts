@@ -27,7 +27,10 @@ export interface ParsedGitHubTreeUrl {
  */
 export function parseGitHubTreeUrl(url: string): ParsedGitHubTreeUrl | null {
   // Normalize: strip trailing slashes for consistent matching
-  const normalizedUrl = url.replace(/\/+$/, "");
+  let normalizedUrl = url;
+  while (normalizedUrl.endsWith("/")) {
+    normalizedUrl = normalizedUrl.slice(0, -1);
+  }
 
   // First, extract the full path after github.com/ (always correct)
   const fullPathMatch = normalizedUrl.match(/^https:\/\/github\.com\/(.+)$/);
@@ -96,7 +99,10 @@ export interface ParsedGitHubUrl {
  */
 export function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
   // Normalize: strip trailing slashes for consistent matching
-  const normalizedUrl = url.replace(/\/+$/, "");
+  let normalizedUrl = url;
+  while (normalizedUrl.endsWith("/")) {
+    normalizedUrl = normalizedUrl.slice(0, -1);
+  }
 
   // Extract full path after github.com/
   const fullPathMatch = normalizedUrl.match(/^https:\/\/github\.com\/(.+)$/);

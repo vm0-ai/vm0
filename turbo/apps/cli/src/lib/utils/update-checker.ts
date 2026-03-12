@@ -91,11 +91,13 @@ export function getManualUpgradeCommand(pm: PackageManager): string {
 }
 
 /**
- * Escape a string for use in shell command display
- * Uses double quotes and escapes internal double quotes
+ * Escape a string for use in shell command display.
+ * Uses single quotes which don't interpret any special characters.
+ * Embedded single quotes are handled via the '\'' idiom
+ * (end quote, escaped literal quote, start quote).
  */
 function escapeForShell(str: string): string {
-  return `"${str.replace(/"/g, '\\"')}"`;
+  return `'${str.replace(/'/g, "'\\''")}'`;
 }
 
 /**

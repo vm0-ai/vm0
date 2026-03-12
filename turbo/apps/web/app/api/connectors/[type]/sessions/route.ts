@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   connectorSessionsContract,
@@ -9,26 +8,9 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { connectorSessions } from "../../../../../src/db/schema/connector-session";
 import { logger } from "../../../../../src/lib/logger";
+import { generateCode } from "../../../../../src/lib/crypto";
 
 const log = logger("api:connectors:sessions");
-
-// Characters that are easy to read (excluding 0/O, 1/I/L)
-const CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-
-function generateSessionCode(): string {
-  const randomBytes = crypto.randomBytes(8);
-  let code = "";
-
-  for (let i = 0; i < 8; i++) {
-    if (i === 4) code += "-";
-    const byte = randomBytes[i];
-    if (byte !== undefined) {
-      code += CHARS[byte % CHARS.length];
-    }
-  }
-
-  return code;
-}
 
 const router = tsr.router(connectorSessionsContract, {
   create: async ({ params, headers }) => {
@@ -50,7 +32,7 @@ const router = tsr.router(connectorSessionsContract, {
       return createErrorResponse("UNAUTHORIZED", "Authentication required");
     }
 
-    const code = generateSessionCode();
+    const code = generateCode();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
     const [session] = await globalThis.services.db
