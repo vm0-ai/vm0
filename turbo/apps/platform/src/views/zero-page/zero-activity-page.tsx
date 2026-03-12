@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useCCState } from "ccstate-react/experimental";
 import {
   IconFilter,
   IconClock,
@@ -144,14 +144,14 @@ export function ZeroActivityPage() {
   const setFilter = useSet(setZeroActivityFilter$);
 
   // Initialize agent name and seed cursor history on mount
-  const initialized = useRef(false);
-  useEffect(() => {
-    if (!initialized.current) {
-      initialized.current = true;
-      detach(initAgentName(), Reason.DomCallback);
-      seedCursorHistory();
-    }
-  }, [initAgentName, seedCursorHistory]);
+  const initialized$ = useCCState(false);
+  const initialized = useGet(initialized$);
+  const setInitialized = useSet(initialized$);
+  if (!initialized) {
+    setInitialized(true);
+    detach(initAgentName(), Reason.DomCallback);
+    seedCursorHistory();
+  }
 
   const logs = dataLoadable.state === "hasData" ? dataLoadable.data.data : [];
   const hasNext =
@@ -171,19 +171,13 @@ export function ZeroActivityPage() {
   ];
 
   // Sync URL-driven detail selection into signals (manages polling lifecycle)
-  const prevSub = useRef<string | null>(null);
-  useEffect(() => {
-    if (sub !== prevSub.current) {
-      prevSub.current = sub;
-      setSelectedLogId(sub);
-    }
-    return () => {
-      // Clear selection when leaving detail view
-      if (sub) {
-        setSelectedLogId(null);
-      }
-    };
-  }, [sub, setSelectedLogId]);
+  const prevSub$ = useCCState<string | null>(null);
+  const prevSub = useGet(prevSub$);
+  const setPrevSub = useSet(prevSub$);
+  if (sub !== prevSub) {
+    setPrevSub(sub ?? null);
+    setSelectedLogId(sub ?? null);
+  }
 
   // Detail view when sub-route is present
   if (sub) {

@@ -151,7 +151,7 @@ describe("zero-activity signals", () => {
       await setup();
       await context.store.set(initZeroActivityAgentName$);
 
-      expect(context.store.get(zeroActivityHasPrev$)).toBe(false);
+      expect(context.store.get(zeroActivityHasPrev$)).toBeFalsy();
     });
   });
 

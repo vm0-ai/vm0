@@ -57,7 +57,9 @@ export const {
 } = createCursorPagination({
   buildFetchParams: (limit, cursor, get) => {
     const agentName = get(cachedAgentName$);
-    if (!agentName) return null;
+    if (!agentName) {
+      return null;
+    }
 
     const params = new URLSearchParams({
       limit: String(limit),
@@ -75,9 +77,13 @@ export const {
   preserveUrlParams: (get) => {
     const result: Record<string, string> = {};
     const agent = get(zeroActivityAgentFilter$);
-    if (agent !== "all") result.agent = agent;
+    if (agent !== "all") {
+      result.agent = agent;
+    }
     const status = get(zeroActivityStatusFilter$);
-    if (status !== "all") result.status = status;
+    if (status !== "all") {
+      result.status = status;
+    }
     return result;
   },
 });
