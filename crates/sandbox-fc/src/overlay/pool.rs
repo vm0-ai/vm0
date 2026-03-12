@@ -214,6 +214,12 @@ impl OverlayPool {
                     Err(e) => error!(error = %e, "overlay creation task panicked"),
                 }
             }
+            if queue.is_empty() {
+                warn!(
+                    attempted = initial,
+                    "all initial overlay pre-warm tasks failed, pool starting with 0 ready files"
+                );
+            }
         }
 
         // Spawn a batch of background tasks for the remaining files.
@@ -341,6 +347,11 @@ impl OverlayPool {
     /// Spawns at most [`REPLENISH_BATCH`] tasks per call to avoid
     /// bursting I/O. Subsequent [`acquire`](Self::acquire) calls will
     /// trigger further batches until the pool reaches `size`.
+    ///
+    /// Trade-off: the pool may operate below target capacity for several
+    /// acquire cycles after startup or heavy consumption. This is acceptable
+    /// because Tier 2/3 fallbacks ensure `acquire` never fails due to an
+    /// empty pool.
     fn maybe_replenish(&mut self) {
         let total = self.queue.len() + self.pending.len();
         if total >= self.replenish_threshold {
