@@ -1,5 +1,6 @@
-import { spawn, ChildProcess } from "child_process";
+import type { ChildProcess } from "child_process";
 import chalk from "chalk";
+import { safeSpawn } from "./spawn";
 
 const PACKAGE_NAME = "@vm0/cli";
 const NPM_REGISTRY_URL = `https://registry.npmjs.org/${encodeURIComponent(PACKAGE_NAME)}/latest`;
@@ -146,17 +147,13 @@ export function performUpgrade(
   packageManager: "npm" | "pnpm",
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    const isWindows = process.platform === "win32";
-    const command = isWindows ? `${packageManager}.cmd` : packageManager;
     const args =
       packageManager === "pnpm"
         ? ["add", "-g", `${PACKAGE_NAME}@latest`]
         : ["install", "-g", `${PACKAGE_NAME}@latest`];
 
-    // nosemgrep: spawn-shell-true, detect-child-process -- shell only on Windows; command is hardcoded package manager name
-    const child = spawn(command, args, {
+    const child = safeSpawn(packageManager, args, {
       stdio: "inherit",
-      shell: isWindows,
     });
 
     child.on("close", (code) => {
@@ -280,17 +277,14 @@ export async function startSilentUpgrade(
 
   // Spawn upgrade process (don't wait for completion)
   const isWindows = process.platform === "win32";
-  const command = isWindows ? `${packageManager}.cmd` : packageManager;
   const args =
     packageManager === "pnpm"
       ? ["add", "-g", `${PACKAGE_NAME}@latest`]
       : ["install", "-g", `${PACKAGE_NAME}@latest`];
 
-  // nosemgrep: spawn-shell-true, detect-child-process -- shell only on Windows; command is hardcoded package manager name
-  const child = spawn(command, args, {
-    stdio: "pipe", // Capture output instead of inheriting
-    shell: isWindows,
-    detached: !isWindows, // Detach on non-Windows
+  const child = safeSpawn(packageManager, args, {
+    stdio: "pipe",
+    detached: !isWindows,
     windowsHide: true,
   });
 

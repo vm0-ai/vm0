@@ -32,9 +32,12 @@ runs:
 
     - name: Prepare Vercel configuration
       shell: bash
-      # nosemgrep: run-shell-injection -- inputs are secrets/IDs from workflow, not attacker-controlled
+      env:
+        VERCEL_TOKEN: ${{ inputs.vercel-token }}
+        VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
+        VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
       run: |
         # Initialize Vercel project configuration
         mkdir -p .vercel
-        echo '{"orgId":"${{ inputs.vercel-org-id }}","projectId":"${{ inputs.vercel-project-id }}"}' > .vercel/project.json
-        vercel pull --token=${{ inputs.vercel-token }}
+        echo "{\"orgId\":\"${VERCEL_ORG_ID}\",\"projectId\":\"${VERCEL_PROJECT_ID}\"}" > .vercel/project.json
+        vercel pull --token="${VERCEL_TOKEN}"

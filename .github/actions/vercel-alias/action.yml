@@ -40,17 +40,23 @@ runs:
     - name: Create Vercel alias
       id: alias
       shell: bash
-      # nosemgrep: run-shell-injection -- all inputs (job-ref, app-name, etc.) come from our own workflow, not attacker-controlled
+      env:
+        VERCEL_TOKEN: ${{ inputs.vercel-token }}
+        VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
+        DEPLOYMENT_URL: ${{ inputs.deployment-url }}
+        APP_NAME: ${{ inputs.app-name }}
+        JOB_REF: ${{ inputs.job-ref }}
+        PREVIEW_DOMAIN: ${{ inputs.preview-domain }}
       run: |
         # Build alias URL: {job-ref}-{app}.{preview-domain}
-        ALIAS_URL="${{ inputs.job-ref }}-${{ inputs.app-name }}.${{ inputs.preview-domain }}"
+        ALIAS_URL="${JOB_REF}-${APP_NAME}.${PREVIEW_DOMAIN}"
 
-        echo "Creating alias: ${ALIAS_URL} -> ${{ inputs.deployment-url }}"
+        echo "Creating alias: ${ALIAS_URL} -> ${DEPLOYMENT_URL}"
 
         # Set the alias using Vercel CLI
-        vercel alias set "${{ inputs.deployment-url }}" "${ALIAS_URL}" \
-          --token="${{ inputs.vercel-token }}" \
-          --scope="${{ inputs.vercel-org-id }}"
+        vercel alias set "${DEPLOYMENT_URL}" "${ALIAS_URL}" \
+          --token="${VERCEL_TOKEN}" \
+          --scope="${VERCEL_ORG_ID}"
 
         # Output the full URL
         FULL_URL="https://${ALIAS_URL}"

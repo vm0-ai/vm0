@@ -1,6 +1,6 @@
 import chalk from "chalk";
-import { spawn } from "child_process";
 import { existsSync } from "fs";
+import { safeSpawn } from "../../lib/utils/spawn";
 
 export const CONFIG_FILE = "vm0.yaml";
 export const ARTIFACT_DIR = "artifact";
@@ -28,11 +28,9 @@ export function execVm0Command(
     // - default: inherit all (full terminal passthrough, allows prompts)
     const stdio: "pipe" | "inherit" = options.silent ? "pipe" : "inherit";
 
-    // nosemgrep: spawn-shell-true -- shell only enabled on Windows for hardcoded "vm0" command
-    const proc = spawn("vm0", args, {
+    const proc = safeSpawn("vm0", args, {
       cwd: options.cwd,
       stdio,
-      shell: process.platform === "win32",
     });
 
     let stdout = "";
@@ -76,12 +74,10 @@ export function execVm0RunWithCapture(
       ? { ...process.env, FORCE_COLOR: "1" }
       : process.env;
 
-    // nosemgrep: spawn-shell-true -- shell only enabled on Windows for hardcoded "vm0" command
-    const proc = spawn("vm0", args, {
+    const proc = safeSpawn("vm0", args, {
       cwd: options.cwd,
       env,
       stdio: ["inherit", "pipe", "pipe"],
-      shell: process.platform === "win32",
     });
 
     let stdout = "";
