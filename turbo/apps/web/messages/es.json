@@ -97,7 +97,8 @@
     "language": "Idioma",
     "status": "Estado",
     "termsOfUse": "Términos de Uso",
-    "privacyPolicy": "Política de Privacidad"
+    "privacyPolicy": "Política de Privacidad",
+    "cookieSettings": "Configuración de Cookies"
   },
   "skills": {
     "hero": {

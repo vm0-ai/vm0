@@ -1,10 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import {
-  extractVariableReferences as extractVariableReferencesCore,
-  groupVariablesBySource,
-} from "@vm0/core";
+import { extractAndGroupVariables } from "@vm0/core";
 import {
   parseGitHubTreeUrl,
   downloadGitHubSkill,
@@ -93,10 +90,7 @@ async function deriveAgentVariableSources(
   options?: { skipNetwork?: boolean },
 ): Promise<AgentVariableSources> {
   // Extract all variable references from environment using @vm0/core
-  const refs = agent.environment
-    ? extractVariableReferencesCore(agent.environment)
-    : [];
-  const grouped = groupVariablesBySource(refs);
+  const grouped = extractAndGroupVariables(agent.environment ?? {});
 
   // Initialize all sources as "agent environment"
   const secretSources = new Map<string, VariableSource>();

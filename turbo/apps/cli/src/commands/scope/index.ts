@@ -3,7 +3,6 @@ import { statusCommand } from "./status";
 import { setCommand } from "./set";
 import { listCommand } from "./list";
 import { useCommand } from "./use";
-import { createCommand } from "./create-scope";
 import { membersCommand } from "./members";
 import { inviteCommand } from "./invite";
 import { removeCommand } from "./remove";
@@ -16,7 +15,6 @@ export const scopeCommand = new Command()
   .addCommand(setCommand)
   .addCommand(listCommand)
   .addCommand(useCommand)
-  .addCommand(createCommand)
   .addCommand(membersCommand)
   .addCommand(inviteCommand)
   .addCommand(removeCommand)

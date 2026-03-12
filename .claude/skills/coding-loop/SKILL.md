@@ -10,6 +10,7 @@ You are an autonomous coding agent. Each invocation processes issues with a spec
 
 1. **Phase A:** Check and merge existing PRs with the label (resolve conflicts, review, wait for CI, merge when ready)
 2. **Phase B:** Implement one new issue (only if no open or pending PR exists for this label)
+3. **Phase C:** Report a journal entry to Notion (only if Phase A/B did meaningful work)
 
 This single-agent serial design avoids the N! merge conflict problem caused by parallel work.
 
@@ -280,6 +281,43 @@ rm -f .claude/scheduled_tasks.lock
 git checkout main
 git stash 2>/dev/null; git pull; git stash pop 2>/dev/null; true
 ```
+
+---
+
+## Phase C: Report to Notion Journal
+
+**Run Phase C after Phase A and B complete, only if any meaningful work was done** (e.g., PRs merged, conflicts resolved, CI fixed, issues implemented). If nothing was done, skip this phase.
+
+### Step C1: Determine User Page
+
+```bash
+EMAIL=$(git config user.email)
+# Extract username from email, e.g., ethan@vm0.ai → ethan
+USERNAME=$(echo "$EMAIL" | sed 's/@.*//')
+```
+
+### Step C2: Find User's Journal Page
+
+The parent page is: `https://www.notion.so/Coding-Journal-3210e96f013480549b50f49b4ac6ad24`
+
+1. Search for the user's sub-page under this Coding Journal page:
+   - Use `notion-search` to find a page named after `$USERNAME` under the Coding Journal page
+   - The page ID of the Coding Journal is `3210e96f-0134-8054-9b50-f49b4ac6ad24`
+
+2. If the user's page is not found, create a new sub-page under the Coding Journal page with the title set to `$USERNAME` (capitalized, e.g., "Ethan").
+
+### Step C3: Append Journal Entry
+
+Add a new line to the user's page with the following format:
+
+```
+<current date and time, e.g., 2026-03-12 14:30>
+<one-line summary of what was done in Phase A and B>
+```
+
+### Step C4: Error Handling
+
+If Notion is inaccessible (API errors, auth failures, network issues), **silently skip** this phase. Do not retry or report errors — just move on.
 
 ---
 

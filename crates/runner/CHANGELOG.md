@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.22.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.3...runner-rs-v0.22.4) (2026-03-12)
+
+
+### Refactoring
+
+* remove balloon_reclaim flag and enable balloon reclaim unconditionally ([#4473](https://github.com/vm0-ai/vm0/issues/4473)) ([b386091](https://github.com/vm0-ai/vm0/commit/b38609140426569f3fe0c3cc3e56bf81ee477583))
+* remove secret names from execution context ([#4489](https://github.com/vm0-ai/vm0/issues/4489)) ([bc70477](https://github.com/vm0-ai/vm0/commit/bc704775200d97dac742f730cb93350609636006))
+* **runner:** stop injecting vars directly as environment variables ([#4482](https://github.com/vm0-ai/vm0/issues/4482)) ([c47674a](https://github.com/vm0-ai/vm0/commit/c47674acb4d22d929b7d98c237947192e89b1f61))
+
 ## [0.22.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.2...runner-rs-v0.22.3) (2026-03-11)
 
 

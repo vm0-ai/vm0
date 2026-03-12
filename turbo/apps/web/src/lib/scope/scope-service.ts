@@ -1,17 +1,14 @@
-import { createHash, randomBytes } from "crypto";
-import { eq, inArray } from "drizzle-orm";
+import { createHash } from "crypto";
 import { clerkClient } from "@clerk/nextjs/server";
-import { scopes } from "../../db/schema/scope";
 import { requireScopeMember, getDefaultScope } from "./scope-member-service";
-import { getOrgData } from "./org-cache-service";
 import {
-  badRequest,
-  notFound,
-  forbidden,
-  isNotFound,
-  isBadRequest,
-} from "../errors";
+  getOrgData,
+  getOrgBySlug,
+  invalidateOrgCache,
+} from "./org-cache-service";
+import { badRequest, forbidden, isNotFound } from "../errors";
 import { logger } from "../logger";
+import type { ResolvedScope } from "./resolve-scope";
 
 const log = logger("service:scope");
 
@@ -62,95 +59,13 @@ function validateScopeSlug(slug: string): void {
 }
 
 /**
- * Get a scope by its ID
- */
-async function getScopeById(id: string) {
-  const result = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(eq(scopes.id, id))
-    .limit(1);
-
-  return result[0] ?? null;
-}
-
-/**
- * Get a scope by its slug
- */
-async function getScopeBySlug(slug: string) {
-  const result = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(eq(scopes.slug, slug))
-    .limit(1);
-
-  return result[0] ?? null;
-}
-
-/**
- * Get a scope by its Clerk organization ID
- */
-export async function getScopeByOrgId(orgId: string) {
-  const result = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(eq(scopes.orgId, orgId))
-    .limit(1);
-
-  return result[0] ?? null;
-}
-
-/**
- * Create a scope for a user.
- *
- * Handles slug validation and scope creation.
- *
- * @param options.orgId - Clerk org ID to bind the scope to
- */
-export async function createScope(
-  userId: string,
-  slug: string,
-  options: { orgId: string },
-) {
-  validateScopeSlug(slug);
-
-  // Pre-check slug availability for clear error
-  const existingScope = await getScopeBySlug(slug);
-  if (existingScope) {
-    throw badRequest(`Scope "${slug}" already exists`);
-  }
-
-  const { orgId } = options;
-
-  const [newScope] = await globalThis.services.db
-    .insert(scopes)
-    .values({
-      slug,
-      orgId,
-    })
-    .onConflictDoNothing({ target: scopes.slug })
-    .returning();
-
-  if (!newScope) {
-    throw badRequest(`Scope "${slug}" already exists`);
-  }
-
-  log.debug("scope created", {
-    userId,
-    scopeId: newScope.id,
-    slug,
-    orgId,
-  });
-
-  return newScope;
-}
-
-/**
  * Get a user's default scope by their Clerk ID.
  * Finds the first scope where the user is an admin member.
  * Returns the scope record or null if none found.
  */
-export async function getDefaultScopeByUserId(userId: string) {
+export async function getDefaultScopeByUserId(
+  userId: string,
+): Promise<ResolvedScope | null> {
   try {
     const { scope } = await getDefaultScope(userId);
     return scope;
@@ -161,128 +76,18 @@ export async function getDefaultScopeByUserId(userId: string) {
 }
 
 /**
- * Ensure a user has a default scope, creating one if it doesn't exist.
- * Consolidates the auto-creation pattern used by CLI token exchange,
- * Slack OAuth, and the scope API.
- *
- * In SaaS mode (Clerk auth configured), discovers existing Clerk orgs via
- * JIT API call and creates a local scope bound to the first unmatched org.
- * In self-hosted mode, falls back to creating a scope with a generated slug.
- *
- * @returns The existing or newly created scope
- */
-export async function ensureDefaultScope(userId: string) {
-  const existing = await getDefaultScopeByUserId(userId);
-  if (existing) {
-    // org_cache found the org, look up DB record for full scope data
-    const scopeRecord = await getScopeByOrgId(existing.orgId);
-    if (scopeRecord) return scopeRecord;
-  }
-
-  return await discoverAndCreateScope(userId);
-}
-
-/**
- * Check if a slug is valid without throwing.
- * Reuses the same rules as validateScopeSlug() but returns a boolean.
- */
-function isValidSlug(slug: string): boolean {
-  return (
-    slug.length >= 3 &&
-    slug.length <= 64 &&
-    SLUG_REGEX.test(slug) &&
-    !RESERVED_SLUGS.includes(slug) &&
-    !slug.startsWith("vm0")
-  );
-}
-
-/**
- * Resolve the first Clerk org membership for a user that has no matching local scope.
- * Fetches the user's Clerk org memberships, batch-queries existing scopes, and
- * returns the first unmatched membership (or null if all orgs are already bound).
- */
-export async function resolveUnmatchedClerkOrg(userId: string) {
-  const client = await clerkClient();
-  const memberships = await client.users.getOrganizationMembershipList({
-    userId: userId,
-  });
-
-  if (memberships.data.length === 0) {
-    return null;
-  }
-
-  const orgIds = memberships.data.map((m) => m.organization.id);
-  const matchedScopes = await globalThis.services.db
-    .select({ orgId: scopes.orgId })
-    .from(scopes)
-    .where(inArray(scopes.orgId, orgIds));
-  const existingOrgIds = new Set(matchedScopes.map((s) => s.orgId));
-
-  return (
-    memberships.data.find((m) => !existingOrgIds.has(m.organization.id)) ?? null
-  );
-}
-
-/**
- * Discover an existing Clerk org for a user and create a local scope bound to it.
- * Queries the Clerk API for the user's org memberships, finds the first org
- * without a matching local scope, and creates a scope record.
- */
-async function discoverAndCreateScope(userId: string) {
-  const unmatchedMembership = await resolveUnmatchedClerkOrg(userId);
-
-  if (!unmatchedMembership) {
-    throw notFound(
-      "No organization found. Please sign up again to create an organization.",
-    );
-  }
-
-  const orgId = unmatchedMembership.organization.id;
-
-  // Prefer Clerk org slug, fall back to deterministic user-{hash}
-  const clerkSlug = unmatchedMembership.organization.slug;
-  let slug: string;
-  if (clerkSlug && isValidSlug(clerkSlug)) {
-    const taken = await getScopeBySlug(clerkSlug);
-    slug = taken ? generateDefaultScopeSlug(userId) : clerkSlug;
-  } else {
-    slug = generateDefaultScopeSlug(userId);
-  }
-
-  try {
-    return await createScope(userId, slug, { orgId });
-  } catch (error) {
-    if (isBadRequest(error) && error.message.includes("already exists")) {
-      // Re-check: another concurrent request may have created this scope
-      const raceScope = await getScopeByOrgId(orgId);
-      if (raceScope) return raceScope;
-
-      // Slug collision with unrelated scope — retry with random slug
-      const fallbackSlug = `user-${randomBytes(4).toString("hex")}`;
-      return await createScope(userId, fallbackSlug, { orgId });
-    }
-    throw error;
-  }
-}
-
-/**
- * Update a scope's slug
- * Requires force flag since this can break existing references
+ * Update a scope's slug.
+ * Updates the Clerk org slug and refreshes org_cache.
+ * Requires force flag since this can break existing references.
  */
 export async function updateScopeSlug(
-  scopeId: string,
+  orgId: string,
   newSlug: string,
   userId: string,
   force: boolean = false,
-) {
-  // Get the scope
-  const scope = await getScopeById(scopeId);
-  if (!scope) {
-    throw notFound("Scope not found");
-  }
-
+): Promise<ResolvedScope> {
   // Verify membership (requireScopeMember throws 403 if not a member)
-  await requireScopeMember(scopeId, userId);
+  await requireScopeMember(orgId, userId);
 
   // Require force flag for slug changes
   if (!force) {
@@ -293,45 +98,25 @@ export async function updateScopeSlug(
 
   validateScopeSlug(newSlug);
 
-  // Check if new slug already exists
-  const existing = await getScopeBySlug(newSlug);
-  if (existing && existing.id !== scopeId) {
+  // Check if new slug already exists via org_cache
+  const existing = await getOrgBySlug(newSlug);
+  if (existing && existing.orgId !== orgId) {
     throw badRequest(`Scope "${newSlug}" already exists`);
   }
 
-  log.debug("updating scope slug", {
-    scopeId,
-    oldSlug: scope.slug,
-    newSlug,
+  log.debug("updating scope slug", { orgId, newSlug });
+
+  // Primary write: update Clerk org slug
+  const client = await clerkClient();
+  await client.organizations.updateOrganization(orgId, {
+    slug: newSlug,
   });
 
-  const [updated] = await globalThis.services.db
-    .update(scopes)
-    .set({
-      slug: newSlug,
-      updatedAt: new Date(),
-    })
-    .where(eq(scopes.id, scopeId))
-    .returning();
+  log.debug("scope slug updated", { orgId, newSlug });
 
-  log.debug("scope slug updated", { scopeId, newSlug });
-
-  // Dual-write: sync slug to Clerk org (fire-and-forget)
-  try {
-    const client = await clerkClient();
-    await client.organizations.updateOrganization(scope.orgId, {
-      slug: newSlug,
-    });
-  } catch (err) {
-    log.error("failed to write slug to Clerk org", {
-      error: err,
-      orgId: scope.orgId,
-      scopeId,
-      newSlug,
-    });
-  }
-
-  return updated!;
+  // Invalidate stale cache, then re-fetch from Clerk
+  await invalidateOrgCache(orgId);
+  return await getOrgData(orgId);
 }
 
 /**

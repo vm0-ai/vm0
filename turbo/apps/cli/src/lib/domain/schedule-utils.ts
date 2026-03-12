@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import { parse as parseYaml } from "yaml";
-import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
-import { listSchedules, getScope } from "../api";
+import { extractAndGroupVariables } from "@vm0/core";
+import { listSchedules } from "../api";
 
 const CONFIG_FILE = "vm0.yaml";
 
@@ -304,8 +304,7 @@ export function extractRequiredConfiguration(
     return result;
   }
 
-  const refs = extractVariableReferences(composeContent);
-  const grouped = groupVariablesBySource(refs);
+  const grouped = extractAndGroupVariables(composeContent);
 
   result.secrets = grouped.secrets.map((r) => r.name);
   result.vars = grouped.vars.map((r) => r.name);
@@ -320,13 +319,11 @@ interface ResolveScheduleResult {
   name: string;
   composeId: string;
   composeName: string;
-  scopeId: string;
 }
 
 /**
  * Resolve a schedule by agent name using the list API.
  * Searches across all user's schedules and finds by composeName (agent name).
- * Also resolves the current scope ID for API calls.
  *
  * When an agent has multiple schedules, scheduleName is required for disambiguation.
  * When an agent has exactly one schedule, scheduleName is optional.
@@ -337,10 +334,7 @@ export async function resolveScheduleByAgent(
   agentName: string,
   scheduleName?: string,
 ): Promise<ResolveScheduleResult> {
-  const [{ schedules }, scope] = await Promise.all([
-    listSchedules(),
-    getScope(),
-  ]);
+  const { schedules } = await listSchedules();
 
   const agentSchedules = schedules.filter((s) => s.composeName === agentName);
 
@@ -361,7 +355,6 @@ export async function resolveScheduleByAgent(
       name: match.name,
       composeId: match.composeId,
       composeName: match.composeName,
-      scopeId: scope.id,
     };
   }
 
@@ -371,7 +364,6 @@ export async function resolveScheduleByAgent(
       name: agentSchedules[0]!.name,
       composeId: agentSchedules[0]!.composeId,
       composeName: agentSchedules[0]!.composeName,
-      scopeId: scope.id,
     };
   }
 

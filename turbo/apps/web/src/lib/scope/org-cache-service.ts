@@ -66,6 +66,16 @@ export async function getOrgData(orgId: string): Promise<OrgData> {
 }
 
 /**
+ * Invalidate (delete) an org_cache entry so the next getOrgData call
+ * re-fetches from Clerk. Used after mutations that change org data
+ * (e.g. slug updates) to avoid returning stale cached values.
+ */
+export async function invalidateOrgCache(orgId: string): Promise<void> {
+  const db = globalThis.services.db;
+  await db.delete(orgCache).where(eq(orgCache.orgId, orgId));
+}
+
+/**
  * Get org data by slug from cache or Clerk API (reverse lookup).
  *
  * 1. Check org_cache by slug

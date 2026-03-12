@@ -11,7 +11,7 @@ import {
 import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { getPlatformUrl } from "../../url";
-import { ensureDefaultScope } from "../../scope/scope-service";
+import { getDefaultScopeByUserId } from "../../scope/scope-service";
 import { validateAgentSession } from "../../run";
 import { ensureStorageExists } from "../../storage/storage-service";
 import { logger } from "../../logger";
@@ -207,7 +207,8 @@ export function buildAgentLogsUrl(agentName: string): string {
  * 2. If no HEAD version, create an empty initial version (upload manifest to S3 + commit)
  */
 export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
-  const scope = await ensureDefaultScope(vm0UserId);
+  const scope = await getDefaultScopeByUserId(vm0UserId);
+  if (!scope) return;
 
   await ensureStorageExists(
     scope.orgId,

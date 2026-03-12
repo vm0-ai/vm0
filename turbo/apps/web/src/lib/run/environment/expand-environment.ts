@@ -1,7 +1,6 @@
 import {
   expandVariables,
-  extractVariableReferences,
-  groupVariablesBySource,
+  extractAndGroupVariables,
   connectorTypeSchema,
   getConnectorEnvironmentMapping,
   getServiceConfig,
@@ -136,8 +135,7 @@ export function expandEnvironmentFromCompose(
   const environment = firstAgent.environment;
 
   // Extract all variable references to determine what we need
-  const refs = extractVariableReferences(environment);
-  const grouped = groupVariablesBySource(refs);
+  const grouped = extractAndGroupVariables(environment);
 
   // Check for unsupported env references
   if (grouped.env.length > 0) {

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../src/lib/logger";
-import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
+import { extractAndGroupVariables } from "@vm0/core";
 import {
   getUserAgents,
   batchFetchVersionContents,
@@ -68,8 +68,7 @@ export async function GET(request: Request) {
       continue;
     }
 
-    const refs = extractVariableReferences(firstAgent.environment);
-    const grouped = groupVariablesBySource(refs);
+    const grouped = extractAndGroupVariables(firstAgent.environment);
 
     const requiredSecrets = grouped.secrets.map((r) => r.name);
     const requiredVariables = grouped.vars.map((r) => r.name);

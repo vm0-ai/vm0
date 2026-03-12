@@ -3,16 +3,19 @@ import {
   type ModelProviderType,
   getDefaultAuthMethod,
   getDefaultModel,
+  getInstructionsFilename,
   getSecretsForAuthMethod,
   hasAuthMethods,
   hasModelSelection,
   onboardingStatusResponseSchema,
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
+import { clerk$ } from "../auth.ts";
 import { initScope$, hasScope$ } from "../scope.ts";
 import { createModelProvider$ } from "../external/model-providers.ts";
 import { getProviderShape } from "../../views/settings-page/provider-ui-config.ts";
 import { skillValueToUrl } from "../../data/skills.ts";
+import { triggerAndPollComposeJob } from "../agent-detail/compose-job.ts";
 import { logger } from "../log.ts";
 
 const L = logger("ZeroOnboarding");
@@ -291,6 +294,7 @@ export const completeZeroOnboarding$ = command(
       // Build agent definition with optional skills and metadata
       const agentDef: Record<string, unknown> = {
         framework: "claude-code",
+        instructions: getInstructionsFilename("claude-code"),
         metadata: {
           displayName,
           sound: "professional",
@@ -300,39 +304,28 @@ export const completeZeroOnboarding$ = command(
         agentDef.skills = selectedSkills.map(skillValueToUrl);
       }
 
-      // Create agent compose
-      const composeResp = await fetchFn("/api/agent/composes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: {
-            version: "1",
-            agents: {
-              [agentId]: agentDef,
-            },
-          },
-        }),
-      });
-      signal.throwIfAborted();
-
-      if (!composeResp.ok) {
-        throw new Error(
-          `Failed to create agent compose: ${composeResp.status}`,
-        );
-      }
-
-      const composeData = (await composeResp.json()) as {
-        composeId: string;
-        name: string;
+      const content = {
+        version: "1",
+        agents: {
+          [agentId]: agentDef,
+        },
       };
+
+      // Run compose job (CLI processes skills, uploads assets)
+      // Pass empty instructions so the server creates a CLAUDE.md with metadata frontmatter
+      const job = await triggerAndPollComposeJob(fetchFn, content, "");
       signal.throwIfAborted();
+
+      if (!job.result) {
+        throw new Error("Compose job completed without result");
+      }
 
       // Set as default agent
       const defaultResp = await fetchFn("/api/scopes/default-agent", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: composeData.composeId,
+          agentComposeId: job.result.composeId,
         }),
       });
       signal.throwIfAborted();
@@ -342,9 +335,15 @@ export const completeZeroOnboarding$ = command(
       }
 
       L.debug("Zero onboarding completed", {
-        agentName: composeData.name,
-        composeId: composeData.composeId,
+        agentName: job.result.composeName,
+        composeId: job.result.composeId,
       });
+
+      // Force JWT refresh so updated org metadata is available immediately
+      const clerk = await get(clerk$);
+      signal.throwIfAborted();
+      await clerk.session?.getToken({ skipCache: true });
+      signal.throwIfAborted();
 
       // Reload status and mark done
       set(internalReload$, (x) => x + 1);

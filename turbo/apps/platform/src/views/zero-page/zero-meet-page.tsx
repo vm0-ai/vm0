@@ -85,6 +85,9 @@ import {
   zeroAddedSkills$,
   addZeroSkill$,
   removeZeroSkill$,
+  zeroSkillsDirty$,
+  saveZeroSkills$,
+  discardZeroSkills$,
 } from "../../signals/zero-page/zero-meet.ts";
 
 /** Stored as lowercase in metadata.sound. */
@@ -130,10 +133,10 @@ const TONE_SAMPLES: Readonly<
 };
 
 // ---------------------------------------------------------------------------
-// Skill item — a single row in the skills list
+// Skill card — a single card in the skills grid
 // ---------------------------------------------------------------------------
 
-function ZeroSkillItem({
+function ZeroSkillCard({
   name,
   label,
   iconUrl,
@@ -142,7 +145,6 @@ function ZeroSkillItem({
   onConnect,
   onDisconnect,
   onRemove,
-  isLast,
 }: {
   name: string;
   label: string;
@@ -152,114 +154,84 @@ function ZeroSkillItem({
   onConnect: () => void;
   onDisconnect: () => void;
   onRemove: () => void;
-  isLast: boolean;
 }) {
   const isPolling = pollingType === name;
 
   return (
-    <div
-      className={cn(
-        "flex items-center gap-4 px-4 py-3",
-        !isLast && "border-b border-border/60",
-      )}
-    >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center">
-        {name in CONNECTOR_TYPES ? (
-          <ConnectorIcon type={name as ConnectorType} size={24} />
-        ) : iconUrl ? (
-          <img src={iconUrl} alt="" className="h-6 w-6 object-contain" />
-        ) : (
-          <IconPlug size={20} stroke={1.5} className="text-muted-foreground" />
-        )}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">{label}</p>
+    <div className="flex flex-col rounded-[var(--zero-card-radius)] border border-[var(--zero-card-border)] bg-card shadow-[var(--zero-card-shadow)]">
+      <div className="flex h-14 items-center gap-2.5 px-5">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+          {name in CONNECTOR_TYPES ? (
+            <ConnectorIcon type={name as ConnectorType} size={22} />
+          ) : iconUrl ? (
+            <img src={iconUrl} alt="" className="h-5 w-5 object-contain" />
+          ) : (
+            <IconPlug
+              size={18}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
+          )}
+        </span>
+        <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
+          {label}
+        </span>
       </div>
-      {connector &&
-        (isPolling ? (
-          <span className="flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs text-muted-foreground">
-            <IconLoader2 size={14} stroke={1.5} className="animate-spin" />
-            Connecting…
-          </span>
-        ) : connector.connected ? (
-          <>
-            <span className="text-xs text-muted-foreground shrink-0">
-              {connector.connector?.externalUsername
-                ? `Connected as @${connector.connector.externalUsername}`
-                : connector.connector?.authMethod === "api-token"
-                  ? "Connected via API key"
-                  : "Connected"}
-            </span>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                  aria-label="More options"
-                >
-                  <IconDotsVertical size={16} stroke={1.5} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
-                <DropdownMenuItem onClick={onDisconnect}>
-                  Disconnect
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={onRemove}>
-                  Remove skill
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        ) : (
-          <div className="flex h-8 shrink-0 items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 rounded-lg px-3 zero-btn-morandi border"
-              onClick={onConnect}
-            >
-              {connector.availableAuthMethods.length === 1 &&
-              connector.availableAuthMethods[0] === "api-token"
-                ? "Add API key"
-                : "Connect"}
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                  aria-label="More options"
-                >
-                  <IconDotsVertical size={16} stroke={1.5} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
-                <DropdownMenuItem onClick={onRemove}>
-                  Remove skill
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        ))}
-      {!connector && (
+
+      <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {connector &&
+            (isPolling ? (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <IconLoader2 size={12} stroke={1.5} className="animate-spin" />
+                Connecting…
+              </span>
+            ) : connector.connected ? (
+              <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                {connector.connector?.externalUsername
+                  ? `@${connector.connector.externalUsername}`
+                  : connector.connector?.authMethod === "api-token"
+                    ? "API key"
+                    : "Connected"}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={onConnect}
+                className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+              >
+                {connector.availableAuthMethods.length === 1 &&
+                connector.availableAuthMethods[0] === "api-token"
+                  ? "Add API key"
+                  : "Connect"}
+              </button>
+            ))}
+          {!connector && (
+            <span className="text-xs text-muted-foreground">Added</span>
+          )}
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+              className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
               aria-label="More options"
             >
-              <IconDotsVertical size={16} stroke={1.5} />
+              <IconDotsVertical size={14} stroke={1.5} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40">
+            {connector?.connected && (
+              <DropdownMenuItem onClick={onDisconnect}>
+                Disconnect
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={onRemove}>Remove skill</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      )}
+      </div>
     </div>
   );
 }
@@ -333,13 +305,19 @@ function ZeroSkillsTab() {
   const selectedType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
 
-  // Skills list: auto-seeded from compose content, synced via compose jobs
+  // Skills list: local draft, saved via compose jobs on explicit Save
   const addedSkillsLoadable = useLastLoadable(zeroAddedSkills$);
   const addedSkills =
     addedSkillsLoadable.state === "hasData" ? addedSkillsLoadable.data : [];
   const allSkills = useGet(skills$);
   const addSkill = useSet(addZeroSkill$);
   const removeSkill = useSet(removeZeroSkill$);
+  const skillsDirtyLoadable = useLastLoadable(zeroSkillsDirty$);
+  const skillsDirty =
+    skillsDirtyLoadable.state === "hasData" ? skillsDirtyLoadable.data : false;
+  const saveSkills = useSet(saveZeroSkills$);
+  const discardSkills = useSet(discardZeroSkills$);
+  const skillsSaving = useGet(zeroSettingsSaving$);
 
   // Optimistic connected state — set by connectConnector$/submitApiToken$
   // so the skill shows "Connected" immediately without waiting for refetch.
@@ -378,110 +356,103 @@ function ZeroSkillsTab() {
   };
 
   return (
-    <div className="mx-auto max-w-[900px] px-7 flex flex-col gap-6">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight text-foreground">
-            Add skills
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Skills manage your connections and help you get more out of these
-            services.
-          </p>
-        </div>
-        <Button
-          size="sm"
-          className="h-9 shrink-0 gap-2 rounded-lg"
-          onClick={() => setAddDialogOpen(true)}
-        >
-          <IconPlus size={16} stroke={2} />
-          Add skill
-        </Button>
-      </div>
+    <div className="mx-auto max-w-[900px] px-7 flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Skills manage your connections and help you get more out of these
+        services.
+      </p>
 
-      {addedSkillsLoadable.state !== "hasData" && addedSkills.length === 0 ? (
-        <Card className="zero-card">
-          <CardContent className="p-0">
-            {Array.from({ length: 3 }, (_, i) => (
-              <div
-                key={i}
-                className={cn(
-                  "flex items-center gap-4 px-4 py-3",
-                  i < 2 && "border-b border-border/60",
-                )}
-              >
-                <span className="h-10 w-10 shrink-0 rounded-lg bg-muted/50 animate-pulse" />
-                <div className="min-w-0 flex-1">
-                  <div
-                    className="h-4 rounded bg-muted/50 animate-pulse"
-                    style={{ width: `${80 + ((i * 37) % 60)}px` }}
-                  />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {/* Add skill */}
+        <button
+          type="button"
+          onClick={() => setAddDialogOpen(true)}
+          className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-border/80 transition-colors hover:border-border hover:bg-muted/30 group"
+        >
+          <div className="flex h-14 items-center gap-2.5 px-5">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+              <IconPlus
+                size={18}
+                stroke={2}
+                className="text-muted-foreground group-hover:text-foreground"
+              />
+            </span>
+            <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground">
+              Add skill
+            </span>
+          </div>
+          <div className="flex h-11 items-center border-t border-dashed border-border/80 px-5 group-hover:border-border">
+            <span className="text-xs text-muted-foreground/70">
+              Browse 100+ popular skills
+            </span>
+          </div>
+        </button>
+
+        {/* Skeleton cards while loading */}
+        {addedSkillsLoadable.state !== "hasData" &&
+          addedSkills.length === 0 && (
+            <>
+              {Array.from({ length: 3 }, (_, i) => (
+                <div
+                  key={i}
+                  className="flex flex-col rounded-[var(--zero-card-radius)] border border-border/50 bg-card animate-pulse"
+                >
+                  <div className="flex h-14 items-center gap-2.5 px-5">
+                    <span className="h-7 w-7 shrink-0 rounded-lg bg-muted/50" />
+                    <span className="h-4 w-24 rounded bg-muted/50" />
+                  </div>
+                  <div className="flex h-11 items-center border-t border-border/30 px-5">
+                    <span className="h-3 w-16 rounded bg-muted/30" />
+                  </div>
                 </div>
-                <div className="h-8 w-20 shrink-0 rounded-lg bg-muted/30 animate-pulse" />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      ) : addedSkills.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 py-12">
-          <IconPlug
-            size={32}
-            stroke={1.2}
-            className="text-muted-foreground/50"
-          />
-          <p className="text-sm text-muted-foreground">
-            No skills yet. Add one to get started.
-          </p>
-        </div>
-      ) : (
-        <Card className="zero-card">
-          <CardContent className="p-0">
-            {addedSkills.map((name, index) => {
-              const skill = skillMap.get(name);
-              const connector = connectorMap.get(name as ConnectorType) ?? null;
-              const effectiveConnector =
-                optimisticConnected.has(name) &&
-                connector &&
-                !connector.connected
-                  ? { ...connector, connected: true }
-                  : connector;
-              return (
-                <ZeroSkillItem
-                  key={name}
-                  name={name}
-                  label={skill?.label ?? name}
-                  iconUrl={skill?.icon}
-                  connector={effectiveConnector}
-                  pollingType={pollingType}
-                  onConnect={() => {
-                    const ct = connectorMap.get(name as ConnectorType);
-                    if (
-                      ct &&
-                      ct.availableAuthMethods.length === 1 &&
-                      ct.availableAuthMethods[0] === "api-token"
-                    ) {
-                      setSelected(name as ConnectorType);
-                    } else {
-                      detach(
-                        connect(name as ConnectorType, signal),
-                        Reason.DomCallback,
-                      );
-                    }
-                  }}
-                  onDisconnect={() =>
-                    detach(
-                      disconnect(name as ConnectorType),
-                      Reason.DomCallback,
-                    )
-                  }
-                  onRemove={() => handleRemoveSkill(name)}
-                  isLast={index === addedSkills.length - 1}
-                />
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
+              ))}
+            </>
+          )}
+
+        {/* Skill cards */}
+        {addedSkills.map((name) => {
+          const skill = skillMap.get(name);
+          const connector = connectorMap.get(name as ConnectorType) ?? null;
+          const effectiveConnector =
+            optimisticConnected.has(name) && connector && !connector.connected
+              ? { ...connector, connected: true }
+              : connector;
+          return (
+            <ZeroSkillCard
+              key={name}
+              name={name}
+              label={skill?.label ?? name}
+              iconUrl={skill?.icon}
+              connector={effectiveConnector}
+              pollingType={pollingType}
+              onConnect={() => {
+                const ct = connectorMap.get(name as ConnectorType);
+                if (
+                  ct &&
+                  ct.availableAuthMethods.length === 1 &&
+                  ct.availableAuthMethods[0] === "api-token"
+                ) {
+                  setSelected(name as ConnectorType);
+                } else {
+                  detach(
+                    connect(name as ConnectorType, signal),
+                    Reason.DomCallback,
+                  );
+                }
+              }}
+              onDisconnect={() => {
+                detach(disconnect(name as ConnectorType), Reason.DomCallback);
+                const label =
+                  skillMap.get(name)?.label ??
+                  connectorMap.get(name as ConnectorType)?.label ??
+                  name;
+                toast.success(`${label} disconnected`);
+              }}
+              onRemove={() => handleRemoveSkill(name)}
+            />
+          );
+        })}
+      </div>
 
       <AddConnectionDialog
         open={addDialogOpen}
@@ -502,6 +473,49 @@ function ZeroSkillsTab() {
           }}
         />
       )}
+
+      {(skillsDirty || skillsSaving) &&
+        createPortal(
+          <div className="zero-app fixed bottom-6 left-0 right-0 z-40 flex justify-center px-4 sm:left-[255px]">
+            <div className="zero-card flex max-w-md items-center justify-between gap-4 rounded-xl border border-border bg-card px-5 py-4 shadow-lg">
+              <div className="flex items-center gap-2 text-sm text-foreground">
+                <IconPencil
+                  size={18}
+                  stroke={1.5}
+                  className="shrink-0 text-muted-foreground"
+                />
+                <span>You have unsaved changes</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => discardSkills()}
+                  disabled={skillsSaving}
+                >
+                  Discard
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={() => detach(saveSkills(), Reason.DomCallback)}
+                  disabled={skillsSaving}
+                >
+                  {skillsSaving ? (
+                    <IconLoader2
+                      size={14}
+                      stroke={1.5}
+                      className="animate-spin mr-1.5"
+                    />
+                  ) : null}
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -589,9 +603,9 @@ function ZeroInstructionsTab() {
         </CardContent>
       </Card>
 
-      {isDirty &&
+      {(isDirty || isBuilding) &&
         createPortal(
-          <div className="zero-app fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 sm:left-[255px]">
+          <div className="zero-app fixed bottom-6 left-0 right-0 z-40 flex justify-center px-4 sm:left-[255px]">
             <div className="zero-card flex max-w-md items-center justify-between gap-4 rounded-xl border border-border bg-card px-5 py-4 shadow-lg">
               <div className="flex items-center gap-2 text-sm text-foreground">
                 <IconPencil
@@ -757,7 +771,7 @@ function ZeroSettingsTab({
 
       {isSettingsDirty &&
         createPortal(
-          <div className="zero-app fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 sm:left-[255px]">
+          <div className="zero-app fixed bottom-6 left-0 right-0 z-40 flex justify-center px-4 sm:left-[255px]">
             <div className="zero-card flex max-w-md items-center justify-between gap-4 rounded-xl border border-border bg-card px-5 py-4 shadow-lg">
               <div className="flex items-center gap-2 text-sm text-foreground">
                 <IconPencil

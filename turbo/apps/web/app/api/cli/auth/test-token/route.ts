@@ -2,11 +2,9 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
-import {
-  ensureDefaultScope,
-  createScope,
-  generateDefaultScopeSlug,
-} from "../../../../../src/lib/scope/scope-service";
+import { generateDefaultScopeSlug } from "../../../../../src/lib/scope/scope-service";
+import { getDefaultScope } from "../../../../../src/lib/scope/scope-member-service";
+import { orgCache } from "../../../../../src/db/schema/org-cache";
 import { isNotFound } from "../../../../../src/lib/errors";
 import {
   resolveTestUserId,
@@ -41,27 +39,27 @@ function isTestTokenAllowed(request: Request): boolean {
 }
 
 /**
- * Ensure the test user has a scope with a real Clerk organization.
- * Uses the same flow as production (ensureDefaultScope) so that
+ * Ensure the test user has an org_cache entry for scope resolution.
+ * Uses the same flow as production (getDefaultScope) so that
  * Clerk API membership verification works during E2E tests.
  *
- * If the user has no Clerk org yet, creates one via createScope.
+ * If the user has no Clerk org yet, creates an org_cache entry with a sentinel orgId.
  */
-async function ensureTestScope(
-  userId: string,
-): Promise<{ scopeId: string; orgId: string }> {
-  let scope;
+async function ensureTestScope(userId: string): Promise<{ orgId: string }> {
   try {
-    scope = await ensureDefaultScope(userId);
+    const { scope } = await getDefaultScope(userId);
+    return { orgId: scope.orgId };
   } catch (error) {
     if (!isNotFound(error)) throw error;
-    // User has no Clerk org — create a test scope with a sentinel orgId
+    // User has no Clerk org — use sentinel orgId with org_cache entry
+    const sentinelOrgId = `org_test_${userId}`;
     const slug = generateDefaultScopeSlug(userId);
-    scope = await createScope(userId, slug, {
-      orgId: `org_test_${userId}`,
-    });
+    await globalThis.services.db
+      .insert(orgCache)
+      .values({ orgId: sentinelOrgId, slug, tier: "free" })
+      .onConflictDoNothing();
+    return { orgId: sentinelOrgId };
   }
-  return { scopeId: scope.id, orgId: scope.orgId };
 }
 
 /**
@@ -91,10 +89,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Test user not found" }, { status: 500 });
   }
 
-  // Auto-create scope if user doesn't have one (creates real Clerk org)
-  const { scopeId, orgId } = await ensureTestScope(userId);
+  // Auto-create scope if user doesn't have one (creates real Clerk org or sentinel)
+  const { orgId } = await ensureTestScope(userId);
 
-  // Generate CLI token with scope binding
+  // Generate CLI token with org binding
   const randomBytes = crypto.randomBytes(32);
   const token = `vm0_live_${randomBytes.toString("base64url")}`;
   const now = new Date();
@@ -104,7 +102,7 @@ export async function POST(request: Request) {
     token,
     userId,
     name: "CI Test Token",
-    scopeId,
+    scopeId: null,
     orgId,
     expiresAt,
     createdAt: now,

@@ -6,8 +6,7 @@ import { dirname, join } from "path";
 import { parse as parseYaml } from "yaml";
 import {
   getLegacySystemTemplateWarning,
-  extractVariableReferences,
-  groupVariablesBySource,
+  extractAndGroupVariables,
   resolveSkillRef,
 } from "@vm0/core";
 import {
@@ -50,8 +49,7 @@ function isGitHubUrl(input: string): boolean {
  * Looks for ${{ secrets.XXX }} patterns in the compose.
  */
 export function getSecretsFromComposeContent(content: unknown): Set<string> {
-  const refs = extractVariableReferences(content);
-  const grouped = groupVariablesBySource(refs);
+  const grouped = extractAndGroupVariables(content);
   return new Set(grouped.secrets.map((r) => r.name));
 }
 
@@ -60,8 +58,7 @@ export function getSecretsFromComposeContent(content: unknown): Set<string> {
  * Looks for ${{ vars.XXX }} patterns in the compose.
  */
 function getVarsFromComposeContent(content: unknown): Set<string> {
-  const refs = extractVariableReferences(content);
-  const grouped = groupVariablesBySource(refs);
+  const grouped = extractAndGroupVariables(content);
   return new Set(grouped.vars.map((r) => r.name));
 }
 

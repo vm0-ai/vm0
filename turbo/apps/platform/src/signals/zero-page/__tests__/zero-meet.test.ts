@@ -7,6 +7,9 @@ import {
   zeroAddedSkills$,
   addZeroSkill$,
   removeZeroSkill$,
+  saveZeroSkills$,
+  discardZeroSkills$,
+  zeroSkillsDirty$,
   zeroUpdateSettings$,
   zeroSettingsSaving$,
 } from "../zero-meet.ts";
@@ -96,7 +99,7 @@ describe("zeroAddedSkills$", () => {
 });
 
 describe("addZeroSkill$", () => {
-  it("should add a skill and sync to compose", async () => {
+  it("should add a skill locally and save to compose", async () => {
     let postedContent: Record<string, unknown> | null = null;
 
     mockComposeApi({
@@ -129,9 +132,18 @@ describe("addZeroSkill$", () => {
 
     await setupPage({ context, path: "/", withoutRender: true });
 
+    // Add skill locally (deferred save pattern)
     await context.store.set(addZeroSkill$, "github");
 
-    // Verify the compose job was triggered with updated skills
+    // Local state should include both skills
+    const skills = await context.store.get(zeroAddedSkills$);
+    expect(skills).toContain("slack");
+    expect(skills).toContain("github");
+    await expect(context.store.get(zeroSkillsDirty$)).resolves.toBeTruthy();
+
+    // Save triggers the compose job
+    await context.store.set(saveZeroSkills$);
+
     expect(postedContent).toBeTruthy();
     const content = getComposeContent(postedContent!);
     const agentKey = Object.keys(content.agents)[0];
@@ -143,7 +155,7 @@ describe("addZeroSkill$", () => {
     );
   });
 
-  it("should rollback on compose job failure", async () => {
+  it("should discard local skill changes", async () => {
     mockComposeApi({
       agents: {
         zero: {
@@ -153,28 +165,21 @@ describe("addZeroSkill$", () => {
       },
     });
 
-    server.use(
-      http.post("*/api/compose/jobs", () => {
-        return HttpResponse.json(
-          { error: { message: "Build failed" } },
-          { status: 500 },
-        );
-      }),
-    );
-
     await setupPage({ context, path: "/", withoutRender: true });
 
     await context.store.set(addZeroSkill$, "github");
+    await expect(context.store.get(zeroSkillsDirty$)).resolves.toBeTruthy();
 
-    // Should have rolled back -- github should not be in the list
+    // Discard reverts to seeded skills
+    await context.store.set(discardZeroSkills$);
     const skills = await context.store.get(zeroAddedSkills$);
-    expect(skills).not.toContain("github");
-    expect(skills).toContain("slack");
+    expect(skills).toStrictEqual(["slack"]);
+    await expect(context.store.get(zeroSkillsDirty$)).resolves.toBeFalsy();
   });
 });
 
 describe("removeZeroSkill$", () => {
-  it("should remove a skill and sync to compose", async () => {
+  it("should remove a skill locally and save to compose", async () => {
     let postedContent: Record<string, unknown> | null = null;
 
     mockComposeApi({
@@ -210,9 +215,18 @@ describe("removeZeroSkill$", () => {
 
     await setupPage({ context, path: "/", withoutRender: true });
 
+    // Remove skill locally (deferred save pattern)
     await context.store.set(removeZeroSkill$, "slack");
 
-    // Verify compose job was triggered with only github
+    // Local state should only have github
+    const skills = await context.store.get(zeroAddedSkills$);
+    expect(skills).toContain("github");
+    expect(skills).not.toContain("slack");
+    await expect(context.store.get(zeroSkillsDirty$)).resolves.toBeTruthy();
+
+    // Save triggers the compose job
+    await context.store.set(saveZeroSkills$);
+
     expect(postedContent).toBeTruthy();
     const content = getComposeContent(postedContent!);
     const agentKey = Object.keys(content.agents)[0];
@@ -224,7 +238,7 @@ describe("removeZeroSkill$", () => {
     );
   });
 
-  it("should rollback on compose job failure", async () => {
+  it("should discard removal and restore original skills", async () => {
     mockComposeApi({
       agents: {
         zero: {
@@ -237,23 +251,17 @@ describe("removeZeroSkill$", () => {
       },
     });
 
-    server.use(
-      http.post("*/api/compose/jobs", () => {
-        return HttpResponse.json(
-          { error: { message: "Build failed" } },
-          { status: 500 },
-        );
-      }),
-    );
-
     await setupPage({ context, path: "/", withoutRender: true });
 
     await context.store.set(removeZeroSkill$, "slack");
+    await expect(context.store.get(zeroSkillsDirty$)).resolves.toBeTruthy();
 
-    // Should have rolled back -- slack should still be in the list
+    // Discard reverts to seeded skills
+    await context.store.set(discardZeroSkills$);
     const skills = await context.store.get(zeroAddedSkills$);
     expect(skills).toContain("slack");
     expect(skills).toContain("github");
+    await expect(context.store.get(zeroSkillsDirty$)).resolves.toBeFalsy();
   });
 });
 

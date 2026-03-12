@@ -14,6 +14,7 @@ import {
   IconPlus,
   IconChevronRight,
   IconSwitchHorizontal,
+  IconSettings,
   IconLoader2,
   IconRefresh,
 } from "@tabler/icons-react";
@@ -42,6 +43,7 @@ export type ZeroNavId =
   | "production"
   | "activity"
   | "works"
+  | "settings"
   | "account";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
@@ -60,6 +62,12 @@ const FOOTER_NAV = [
     label: "Where Zero works",
     icon: IconLayoutGrid as NavIcon,
     iconImg: slackIcon,
+  },
+  {
+    id: "settings" as const satisfies ZeroNavId,
+    label: "Settings",
+    icon: IconSettings as NavIcon,
+    iconImg: undefined,
   },
 ] as const;
 
@@ -323,7 +331,7 @@ function AccountDropdown({
           <IconUser size={18} stroke={1.5} />
           <span>Manage account</span>
         </DropdownMenuItem>
-        {import.meta.env.DEV && onResetAgent && (
+        {onResetAgent && (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem

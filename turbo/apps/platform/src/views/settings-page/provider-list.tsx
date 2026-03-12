@@ -2,6 +2,7 @@ import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { IconPlus } from "@tabler/icons-react";
+import { MODEL_PROVIDER_TYPES } from "@vm0/core";
 import {
   addProviderDialogOpen$,
   setAddProviderDialogOpen$,
@@ -14,6 +15,9 @@ export function ProviderList() {
   const addDialogOpen = useGet(addProviderDialogOpen$);
   const setAddDialogOpen = useSet(setAddProviderDialogOpen$);
   const providers = useLastResolved(configuredProviders$);
+  const allConfigured =
+    providers !== undefined &&
+    providers.length >= Object.keys(MODEL_PROVIDER_TYPES).length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -31,15 +35,17 @@ export function ProviderList() {
             <h3 className="text-base font-medium text-foreground">
               Configured model providers
             </h3>
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0 gap-2"
-              onClick={() => setAddDialogOpen(true)}
-            >
-              <IconPlus size={16} stroke={1.5} />
-              Add model provider
-            </Button>
+            {!allConfigured && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 gap-2"
+                onClick={() => setAddDialogOpen(true)}
+              >
+                <IconPlus size={16} stroke={1.5} />
+                Add model provider
+              </Button>
+            )}
           </div>
           <div className="flex flex-col">
             {providers.length === 0 ? (

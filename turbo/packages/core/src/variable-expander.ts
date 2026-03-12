@@ -10,7 +10,6 @@
 export interface VariableReference {
   source: "env" | "vars" | "secrets";
   name: string;
-  fullMatch: string;
 }
 
 /**
@@ -51,11 +50,7 @@ export function extractVariableReferencesFromString(
   for (const match of matches) {
     const source = match[1] as "env" | "vars" | "secrets";
     const name = match[2]!;
-    refs.push({
-      source,
-      name,
-      fullMatch: match[0]!,
-    });
+    refs.push({ source, name });
   }
 
   return refs;
@@ -116,7 +111,7 @@ export function expandVariablesInString(
       const key = `${typedSource}.${name}`;
       if (!seenMissing.has(key)) {
         seenMissing.add(key);
-        missingVars.push({ source: typedSource, name, fullMatch });
+        missingVars.push({ source: typedSource, name });
       }
       return fullMatch;
     }
@@ -215,6 +210,31 @@ export function groupVariablesBySource(refs: VariableReference[]): {
   }
 
   return groups;
+}
+
+/**
+ * Extract all variable references from an object and group them by source.
+ * Convenience wrapper combining extractVariableReferences + groupVariablesBySource.
+ *
+ * @example
+ * ```ts
+ * const env = {
+ *   API_KEY: "${{ secrets.OPENAI_KEY }}",
+ *   REGION: "${{ vars.AWS_REGION }}",
+ *   STATIC: "hello",
+ * };
+ * const grouped = extractAndGroupVariables(env);
+ * // grouped.secrets => [{ source: "secrets", name: "OPENAI_KEY" }]
+ * // grouped.vars    => [{ source: "vars", name: "AWS_REGION" }]
+ * // grouped.env     => []
+ * ```
+ */
+export function extractAndGroupVariables(obj: unknown): {
+  env: VariableReference[];
+  vars: VariableReference[];
+  secrets: VariableReference[];
+} {
+  return groupVariablesBySource(extractVariableReferences(obj));
 }
 
 /**

@@ -60,9 +60,6 @@ export async function resolveCheckpoint(
     throw badRequest("Invalid checkpoint: missing agentComposeVersionId");
   }
 
-  // Get secret names from snapshot (values are NEVER stored)
-  const secretNames = agentComposeSnapshot.secretNames as string[] | undefined;
-
   // Verify checkpoint belongs to user (must complete before doing further work)
   const [originalRun] = await globalThis.services.db
     .select()
@@ -128,7 +125,6 @@ export async function resolveCheckpoint(
     artifactVersion: checkpointArtifact?.artifactVersion,
     memoryName: checkpointMemory?.memoryName,
     vars: agentComposeSnapshot.vars || {},
-    secretNames,
     volumeVersions: checkpointVolumeVersions?.versions,
     buildResumeArtifact: !!checkpointArtifact, // Only build resumeArtifact if checkpoint has artifact
   };

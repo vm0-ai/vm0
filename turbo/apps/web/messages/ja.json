@@ -97,7 +97,8 @@
     "language": "言語",
     "status": "ステータス",
     "termsOfUse": "利用規約",
-    "privacyPolicy": "プライバシーポリシー"
+    "privacyPolicy": "プライバシーポリシー",
+    "cookieSettings": "Cookie設定"
   },
   "skills": {
     "hero": {

@@ -39,6 +39,13 @@ let createdOrgs: Array<{
   creatorUserId: string;
 }> = [];
 
+// Module-level tracking of org mutations (slug updates, metadata updates).
+// Persists across mockClerk() calls so that route handlers that mutate
+// org data (e.g. updateOrganization, updateOrganizationMetadata) are
+// reflected in subsequent getOrganization calls.
+let orgSlugOverrides = new Map<string, string>();
+let orgMetadataOverrides = new Map<string, Record<string, unknown>>();
+
 /**
  * Configure Clerk auth mock
  * @param options - Auth configuration
@@ -51,6 +58,7 @@ let createdOrgs: Array<{
  * @param options.membershipTimezone - Timezone to include in JWT sessionClaims.membership_timezone (optional)
  * @param options.membershipNotifyEmail - Flag to include in JWT sessionClaims.membership_notify_email (optional)
  * @param options.membershipNotifySlack - Flag to include in JWT sessionClaims.membership_notify_slack (optional)
+ * @param options.orgDefaultAgentComposeId - Default agent compose ID to include in JWT sessionClaims.org_default_agent_compose_id (optional)
  */
 export function mockClerk(options: {
   userId: string | null;
@@ -62,6 +70,7 @@ export function mockClerk(options: {
   membershipTimezone?: string;
   membershipNotifyEmail?: boolean;
   membershipNotifySlack?: boolean;
+  orgDefaultAgentComposeId?: string | null;
   clerkOrgs?: Array<{ id: string; slug: string; name: string; role?: string }>;
 }) {
   const email = options.email ?? "test@example.com";
@@ -107,6 +116,9 @@ export function mockClerk(options: {
       }),
       ...(options.membershipNotifySlack !== undefined && {
         membership_notify_slack: options.membershipNotifySlack,
+      }),
+      ...(options.orgDefaultAgentComposeId !== undefined && {
+        org_default_agent_compose_id: options.orgDefaultAgentComposeId,
       }),
     },
   } as Awaited<ReturnType<typeof auth>>);
@@ -221,15 +233,26 @@ export function mockClerk(options: {
         .fn()
         .mockImplementation(
           (params: { organizationId?: string; slug?: string }) => {
+            // Check slug overrides for reverse lookup
             let org;
             if (params.organizationId) {
               org =
                 createdOrgs.find((o) => o.id === params.organizationId) ??
                 clerkOrgs.find((o) => o.id === params.organizationId);
             } else if (params.slug) {
-              org =
-                createdOrgs.find((o) => o.slug === params.slug) ??
-                clerkOrgs.find((o) => o.slug === params.slug);
+              // Also check slug overrides (an org's slug may have been updated)
+              const overriddenOrgId = [...orgSlugOverrides.entries()].find(
+                ([, slug]) => slug === params.slug,
+              )?.[0];
+              if (overriddenOrgId) {
+                org =
+                  createdOrgs.find((o) => o.id === overriddenOrgId) ??
+                  clerkOrgs.find((o) => o.id === overriddenOrgId);
+              } else {
+                org =
+                  createdOrgs.find((o) => o.slug === params.slug) ??
+                  clerkOrgs.find((o) => o.slug === params.slug);
+              }
             }
             if (!org) {
               return Promise.reject(
@@ -238,16 +261,42 @@ export function mockClerk(options: {
                 ),
               );
             }
+            // Apply slug and metadata overrides
+            const slug = orgSlugOverrides.get(org.id) ?? org.slug;
+            const metadata = orgMetadataOverrides.get(org.id) ?? {};
             return Promise.resolve({
               id: org.id,
-              slug: org.slug,
+              slug,
               name: org.name,
-              publicMetadata: {},
+              publicMetadata: metadata,
             });
           },
         ),
-      updateOrganization: vi.fn().mockResolvedValue({}),
-      updateOrganizationMetadata: vi.fn().mockResolvedValue({}),
+      updateOrganization: vi
+        .fn()
+        .mockImplementation((orgId: string, data: { slug?: string }) => {
+          if (data.slug) {
+            orgSlugOverrides.set(orgId, data.slug);
+          }
+          return Promise.resolve({});
+        }),
+      updateOrganizationMetadata: vi
+        .fn()
+        .mockImplementation(
+          (
+            orgId: string,
+            data: { publicMetadata?: Record<string, unknown> },
+          ) => {
+            if (data.publicMetadata) {
+              const existing = orgMetadataOverrides.get(orgId) ?? {};
+              orgMetadataOverrides.set(orgId, {
+                ...existing,
+                ...data.publicMetadata,
+              });
+            }
+            return Promise.resolve({});
+          },
+        ),
       updateOrganizationMembershipMetadata: vi.fn().mockResolvedValue({}),
     },
   } as unknown as Awaited<ReturnType<typeof clerkClient>>);
@@ -260,4 +309,6 @@ export function clearClerkMock() {
   mockAuth.mockClear();
   mockClerkClient.mockClear();
   createdOrgs = [];
+  orgSlugOverrides = new Map();
+  orgMetadataOverrides = new Map();
 }

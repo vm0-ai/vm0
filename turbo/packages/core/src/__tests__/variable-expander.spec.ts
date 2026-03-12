@@ -16,7 +16,6 @@ describe("extractVariableReferencesFromString", () => {
     expect(refs[0]).toEqual({
       source: "env",
       name: "MY_VAR",
-      fullMatch: "${{ env.MY_VAR }}",
     });
   });
 
@@ -26,7 +25,6 @@ describe("extractVariableReferencesFromString", () => {
     expect(refs[0]).toEqual({
       source: "vars",
       name: "myVar",
-      fullMatch: "${{ vars.myVar }}",
     });
   });
 
@@ -36,7 +34,6 @@ describe("extractVariableReferencesFromString", () => {
     expect(refs[0]).toEqual({
       source: "secrets",
       name: "apiKey",
-      fullMatch: "${{ secrets.apiKey }}",
     });
   });
 
@@ -295,9 +292,7 @@ describe("expandVariables", () => {
 
 describe("validateRequiredVariables", () => {
   test("returns empty for all present", () => {
-    const refs = [
-      { source: "env" as const, name: "VAR", fullMatch: "${{ env.VAR }}" },
-    ];
+    const refs = [{ source: "env" as const, name: "VAR" }];
     const missing = validateRequiredVariables(refs, {
       env: { VAR: "value" },
     });
@@ -305,9 +300,7 @@ describe("validateRequiredVariables", () => {
   });
 
   test("returns missing variables", () => {
-    const refs = [
-      { source: "env" as const, name: "MISS", fullMatch: "${{ env.MISS }}" },
-    ];
+    const refs = [{ source: "env" as const, name: "MISS" }];
     const missing = validateRequiredVariables(refs, {
       env: {},
     });
@@ -320,7 +313,6 @@ describe("validateRequiredVariables", () => {
       {
         source: "secrets" as const,
         name: "KEY",
-        fullMatch: "${{ secrets.KEY }}",
       },
     ];
     const missing = validateRequiredVariables(refs, {
@@ -333,11 +325,11 @@ describe("validateRequiredVariables", () => {
 describe("groupVariablesBySource", () => {
   test("groups variables correctly", () => {
     const refs = [
-      { source: "env" as const, name: "A", fullMatch: "" },
-      { source: "vars" as const, name: "B", fullMatch: "" },
-      { source: "secrets" as const, name: "C", fullMatch: "" },
-      { source: "secrets" as const, name: "D", fullMatch: "" },
-      { source: "env" as const, name: "E", fullMatch: "" },
+      { source: "env" as const, name: "A" },
+      { source: "vars" as const, name: "B" },
+      { source: "secrets" as const, name: "C" },
+      { source: "secrets" as const, name: "D" },
+      { source: "env" as const, name: "E" },
     ];
     const grouped = groupVariablesBySource(refs);
     expect(grouped.env).toHaveLength(2);
@@ -349,9 +341,9 @@ describe("groupVariablesBySource", () => {
 describe("formatMissingVariables", () => {
   test("formats all sources", () => {
     const missing = [
-      { source: "env" as const, name: "A", fullMatch: "" },
-      { source: "vars" as const, name: "b", fullMatch: "" },
-      { source: "secrets" as const, name: "c", fullMatch: "" },
+      { source: "env" as const, name: "A" },
+      { source: "vars" as const, name: "b" },
+      { source: "secrets" as const, name: "c" },
     ];
     const msg = formatMissingVariables(missing);
     expect(msg).toContain("Environment variables: A");
@@ -361,8 +353,8 @@ describe("formatMissingVariables", () => {
 
   test("lists multiple vars per source", () => {
     const missing = [
-      { source: "env" as const, name: "A", fullMatch: "" },
-      { source: "env" as const, name: "B", fullMatch: "" },
+      { source: "env" as const, name: "A" },
+      { source: "env" as const, name: "B" },
     ];
     const msg = formatMissingVariables(missing);
     expect(msg).toContain("Environment variables: A, B");

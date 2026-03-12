@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.11.2...sandbox-fc-v0.11.3) (2026-03-12)
+
+
+### Refactoring
+
+* remove balloon_reclaim flag and enable balloon reclaim unconditionally ([#4473](https://github.com/vm0-ai/vm0/issues/4473)) ([b386091](https://github.com/vm0-ai/vm0/commit/b38609140426569f3fe0c3cc3e56bf81ee477583))
+
 ## [0.11.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.11.1...sandbox-fc-v0.11.2) (2026-03-07)
 
 

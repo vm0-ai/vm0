@@ -130,7 +130,6 @@ function printTimeSchedule(schedule: ScheduleResponse): void {
 async function printRecentRuns(
   name: string,
   composeId: string,
-  scopeId: string,
   limit: number,
 ): Promise<void> {
   if (limit <= 0) return;
@@ -139,7 +138,6 @@ async function printRecentRuns(
     const { runs } = await listScheduleRuns({
       name,
       composeId,
-      scopeId,
       limit,
     });
 
@@ -179,9 +177,9 @@ export const statusCommand = new Command()
     withErrorHandler(
       async (agentName: string, options: { name?: string; limit: string }) => {
         const resolved = await resolveScheduleByAgent(agentName, options.name);
-        const { name, composeId, scopeId } = resolved;
+        const { name, composeId } = resolved;
 
-        const schedule = await getScheduleByName({ name, composeId, scopeId });
+        const schedule = await getScheduleByName({ name, composeId });
 
         console.log();
         console.log(`Schedule for agent: ${chalk.cyan(agentName)}`);
@@ -195,7 +193,7 @@ export const statusCommand = new Command()
           Math.max(0, Number.isNaN(parsed) ? 5 : parsed),
           100,
         );
-        await printRecentRuns(name, composeId, scopeId, limit);
+        await printRecentRuns(name, composeId, limit);
 
         console.log();
       },

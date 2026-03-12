@@ -6,32 +6,19 @@ import {
 import { scopeContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getAuthContext } from "../../../src/lib/auth/get-user-id";
-import {
-  createScope,
-  updateScopeSlug,
-  ensureDefaultScope,
-  resolveUnmatchedClerkOrg,
-  getScopeByOrgId,
-} from "../../../src/lib/scope/scope-service";
+import { updateScopeSlug } from "../../../src/lib/scope/scope-service";
 import { resolveScope } from "../../../src/lib/scope/resolve-scope";
+import type { ResolvedScope } from "../../../src/lib/scope/resolve-scope";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
 
 const log = logger("api:scope");
 
-function scopeToResponseBody(scope: {
-  id: string;
-  slug: string;
-  tier: string;
-  createdAt: Date;
-  updatedAt: Date;
-}) {
+function resolvedScopeToResponse(scope: ResolvedScope) {
   return {
-    id: scope.id,
+    id: scope.orgId,
     slug: scope.slug,
     tier: scope.tier,
-    createdAt: scope.createdAt.toISOString(),
-    updatedAt: scope.updatedAt.toISOString(),
   };
 }
 
@@ -59,70 +46,13 @@ const router = tsr.router(scopeContract, {
         tokenOrgId,
       );
 
-      // TODO: 5b-5 — remove scopes table query, change API response
-      const scopeRecord = await getScopeByOrgId(resolvedScope.orgId);
-      if (scopeRecord) {
-        return {
-          status: 200 as const,
-          body: scopeToResponseBody(scopeRecord),
-        };
-      }
-
-      // Fallback: no scope record yet — auto-create
-      const scope = await ensureDefaultScope(userId);
-      return { status: 200 as const, body: scopeToResponseBody(scope) };
+      return {
+        status: 200 as const,
+        body: resolvedScopeToResponse(resolvedScope),
+      };
     } catch (error) {
       if (isNotFound(error)) {
-        // Auto-create default scope for new users via JIT Clerk org discovery
-        try {
-          const scope = await ensureDefaultScope(userId);
-          return { status: 200 as const, body: scopeToResponseBody(scope) };
-        } catch (ensureError) {
-          if (isNotFound(ensureError)) {
-            return createErrorResponse("NOT_FOUND", ensureError.message);
-          }
-          throw ensureError;
-        }
-      }
-      throw error;
-    }
-  },
-
-  /**
-   * POST /api/scope - Create a scope
-   */
-  create: async ({ body, headers }) => {
-    initServices();
-
-    const authCtx = await getAuthContext(headers.authorization);
-    if (!authCtx) {
-      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
-    }
-    const { userId } = authCtx;
-
-    const { slug } = body;
-
-    log.debug("creating scope", { userId, slug });
-
-    try {
-      // Resolve orgId from user's Clerk org memberships
-      const unmatchedOrg = await resolveUnmatchedClerkOrg(userId);
-
-      if (!unmatchedOrg) {
-        return createErrorResponse(
-          "BAD_REQUEST",
-          "No available Clerk organization to associate with this scope",
-        );
-      }
-
-      const scope = await createScope(userId, slug, {
-        orgId: unmatchedOrg.organization.id,
-      });
-
-      return { status: 201 as const, body: scopeToResponseBody(scope) };
-    } catch (error) {
-      if (isBadRequest(error)) {
-        return createErrorResponse("BAD_REQUEST", error.message);
+        return createErrorResponse("NOT_FOUND", error.message);
       }
       throw error;
     }
@@ -165,16 +95,15 @@ const router = tsr.router(scopeContract, {
       throw error;
     }
 
-    // TODO: 5b-5 — updateScopeSlug still needs scope UUID, query scopes table
-    const scopeRecord = await getScopeByOrgId(resolvedScope.orgId);
-    if (!scopeRecord) {
-      return createErrorResponse("NOT_FOUND", "Scope not found");
-    }
-
     try {
-      const scope = await updateScopeSlug(scopeRecord.id, slug, userId, force);
+      const scope = await updateScopeSlug(
+        resolvedScope.orgId,
+        slug,
+        userId,
+        force,
+      );
 
-      return { status: 200 as const, body: scopeToResponseBody(scope) };
+      return { status: 200 as const, body: resolvedScopeToResponse(scope) };
     } catch (error) {
       if (isBadRequest(error)) {
         // Check if it's a conflict error (slug already exists)
@@ -237,4 +166,4 @@ const handler = createHandler(scopeContract, router, {
   errorHandler,
 });
 
-export { handler as GET, handler as POST, handler as PUT };
+export { handler as GET, handler as PUT };

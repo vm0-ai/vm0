@@ -30,23 +30,12 @@ export const scopeSlugSchema = z
  * Scope response schema
  */
 export const scopeResponseSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string(),
   slug: z.string(),
   tier: z.string().optional(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
 });
 
 export type ScopeResponse = z.infer<typeof scopeResponseSchema>;
-
-/**
- * Create scope request schema
- */
-export const createScopeRequestSchema = z.object({
-  slug: scopeSlugSchema,
-});
-
-export type CreateScopeRequest = z.infer<typeof createScopeRequestSchema>;
 
 /**
  * Update scope request schema
@@ -77,25 +66,6 @@ export const scopeContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Get current user's default scope",
-  },
-
-  /**
-   * POST /api/scope
-   * Create a scope
-   */
-  create: {
-    method: "POST",
-    path: "/api/scope",
-    headers: authHeadersSchema,
-    body: createScopeRequestSchema,
-    responses: {
-      201: scopeResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      409: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Create a scope",
   },
 
   /**

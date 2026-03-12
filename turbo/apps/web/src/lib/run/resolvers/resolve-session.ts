@@ -132,7 +132,6 @@ export async function resolveSession(
     artifactVersion: session.artifactName ? "latest" : undefined,
     memoryName: session.memoryName ?? undefined,
     vars: lastRunVars,
-    secretNames: undefined,
     volumeVersions: undefined,
     buildResumeArtifact: !!session.artifactName,
   };
