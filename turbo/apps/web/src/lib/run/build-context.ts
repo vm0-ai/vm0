@@ -1,7 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import {
-  extractVariableReferences,
-  groupVariablesBySource,
+  extractAndGroupVariables,
   getFrameworkForType,
   getSecretNameForType,
   getEnvironmentMapping,
@@ -498,8 +497,7 @@ async function fetchReferencedSecrets(
     return undefined;
   }
 
-  const refs = extractVariableReferences(environment);
-  const grouped = groupVariablesBySource(refs);
+  const grouped = extractAndGroupVariables(environment);
 
   if (grouped.secrets.length === 0) {
     return undefined;
@@ -585,8 +583,7 @@ function mergeConnectorSecretsForReferences(
   }
 
   // Extract ${{ secrets.* }} references from compose environment
-  const refs = extractVariableReferences(composeEnvironment);
-  const grouped = groupVariablesBySource(refs);
+  const grouped = extractAndGroupVariables(composeEnvironment);
 
   if (grouped.secrets.length === 0) {
     return existingSecrets;

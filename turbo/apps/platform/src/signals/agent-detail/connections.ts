@@ -1,7 +1,6 @@
 import { computed } from "ccstate";
 import {
-  extractVariableReferences,
-  groupVariablesBySource,
+  extractAndGroupVariables,
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
   CONNECTOR_TYPES,
@@ -36,8 +35,7 @@ const agentRequiredEnv$ = computed((get): AgentRequiredEnv => {
     return { requiredSecrets: [], requiredVariables: [] };
   }
 
-  const refs = extractVariableReferences(firstAgent.environment);
-  const grouped = groupVariablesBySource(refs);
+  const grouped = extractAndGroupVariables(firstAgent.environment);
 
   return {
     requiredSecrets: grouped.secrets.map((r) => r.name),
@@ -85,8 +83,7 @@ export const agentRequiredConnectorTypes$ = computed(
     // From environment field — match env var names against all connector secret names
     // (including api-token auth method secrets and OAuth environmentMapping keys)
     if (firstAgent.environment) {
-      const refs = extractVariableReferences(firstAgent.environment);
-      const grouped = groupVariablesBySource(refs);
+      const grouped = extractAndGroupVariables(firstAgent.environment);
 
       for (const ref of grouped.secrets) {
         const connectorType = getConnectorTypeForSecretName(ref.name);

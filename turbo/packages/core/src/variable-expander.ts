@@ -218,6 +218,31 @@ export function groupVariablesBySource(refs: VariableReference[]): {
 }
 
 /**
+ * Extract all variable references from an object and group them by source.
+ * Convenience wrapper combining extractVariableReferences + groupVariablesBySource.
+ *
+ * @example
+ * ```ts
+ * const env = {
+ *   API_KEY: "${{ secrets.OPENAI_KEY }}",
+ *   REGION: "${{ vars.AWS_REGION }}",
+ *   STATIC: "hello",
+ * };
+ * const grouped = extractAndGroupVariables(env);
+ * // grouped.secrets => [{ source: "secrets", name: "OPENAI_KEY", fullMatch: "${{ secrets.OPENAI_KEY }}" }]
+ * // grouped.vars    => [{ source: "vars", name: "AWS_REGION", fullMatch: "${{ vars.AWS_REGION }}" }]
+ * // grouped.env     => []
+ * ```
+ */
+export function extractAndGroupVariables(obj: unknown): {
+  env: VariableReference[];
+  vars: VariableReference[];
+  secrets: VariableReference[];
+} {
+  return groupVariablesBySource(extractVariableReferences(obj));
+}
+
+/**
  * Format missing variables for error messages
  * @param missing - Array of missing variable references
  * @returns Formatted error message
