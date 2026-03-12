@@ -54,20 +54,12 @@ export default function Footer() {
                 {t("privacyPolicy")}
               </Link>
               <span className="footer-legal-separator">•</span>
-              <button
-                type="button"
-                className="footer-legal-link"
-                onClick={() => {
-                  if (
-                    "displayPreferenceModal" in window &&
-                    typeof window.displayPreferenceModal === "function"
-                  ) {
-                    (window.displayPreferenceModal as () => void)();
-                  }
-                }}
+              <a
+                href="#"
+                className="footer-legal-link termly-display-preferences"
               >
-                {t("cookieSettings")}
-              </button>
+                {t("consentPreferences")}
+              </a>
             </div>
           </div>
           <div className="footer-right">

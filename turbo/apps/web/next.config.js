@@ -29,7 +29,7 @@ const nextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src * 'unsafe-inline'; script-src * 'unsafe-inline'; style-src * 'unsafe-inline'; worker-src * blob:; frame-ancestors 'none';",
+              "default-src * 'unsafe-inline'; script-src * 'unsafe-inline'; style-src * 'unsafe-inline'; worker-src 'self' blob:; frame-ancestors 'none';",
           },
         ],
       },

@@ -103,12 +103,11 @@ describe("Security Response Headers", () => {
       expect(csp).toContain("default-src *");
     });
 
-    it("should allow blob: URLs in worker-src for third-party scripts", async () => {
+    it("should restrict worker-src to self and blob: only", async () => {
       const headers = await getSecurityHeaders();
       const csp = findHeader(headers, "Content-Security-Policy");
 
-      expect(csp).toContain("worker-src");
-      expect(csp).toContain("blob:");
+      expect(csp).toContain("worker-src 'self' blob:");
     });
   });
 });

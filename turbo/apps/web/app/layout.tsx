@@ -11,6 +11,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { getClerkPublishableKey } from "../src/lib/clerk-config";
 import { getPlatformUrl } from "../src/lib/url";
 import { ThemeProvider } from "./components/ThemeProvider";
+import TermlyCMP from "./components/TermlyCMP";
 import "./globals.css";
 import "./landing.css";
 import "./blog.css";
@@ -142,10 +143,6 @@ export default function RootLayout({
     >
       <html lang="en" data-theme="dark" suppressHydrationWarning>
         <head>
-          <Script
-            src="https://app.termly.io/resource-blocker/058a3478-08ac-4f2f-a9c4-5b357bbe7433?autoBlock=off"
-            strategy="beforeInteractive"
-          />
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link
             rel="preconnect"
@@ -247,6 +244,10 @@ export default function RootLayout({
                 image: "https://vm0.ai/og-image.png",
               }),
             }}
+          />
+          <TermlyCMP
+            websiteUUID="058a3478-08ac-4f2f-a9c4-5b357bbe7433"
+            autoBlock
           />
           <ThemeProvider>{children}</ThemeProvider>
           <Script
