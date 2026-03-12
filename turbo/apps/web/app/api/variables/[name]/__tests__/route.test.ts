@@ -165,7 +165,7 @@ describe("DELETE /api/variables/:name - Delete Variable", () => {
 
     expect(response.status).toBe(404);
     expect(data.error.code).toBe("NOT_FOUND");
-    expect(data.error.message).toContain("NONEXISTENT_VAR");
+    expect(data.error.message).toBe("Resource not found");
   });
 
   it("should return 404 for other user's variable", async () => {
