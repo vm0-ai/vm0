@@ -224,7 +224,7 @@ async function getScopeSlug(orgId: string): Promise<string> {
 }
 
 /**
- * Verify the user owns this schedule (by composeId + name + scopeId + userId)
+ * Verify the user owns this schedule (by composeId + name + orgId + userId)
  */
 async function verifyScheduleOwnership(
   userId: string,
@@ -261,7 +261,7 @@ async function verifyScheduleOwnership(
 
 /**
  * Validate that all required secrets/vars are available in platform tables.
- * Uses the schedule's scopeId + userId (not compose's) for cross-scope support.
+ * Uses the schedule's orgId + userId (not compose's) for cross-org support.
  */
 async function validateRequiredConfig(
   compose: typeof agentComposes.$inferSelect,

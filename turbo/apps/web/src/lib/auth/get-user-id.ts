@@ -8,12 +8,10 @@ const log = logger("auth:user");
 
 /**
  * Authentication context returned by getAuthContext.
- * - scopeId: present when auth is via a CLI token that has a stored scope (legacy, prefer orgId)
  * - orgId: present when auth is via a CLI token that has a stored org
  */
 type AuthContext = {
   userId: string;
-  scopeId: string | null;
   orgId: string | null;
 };
 
@@ -21,8 +19,8 @@ type AuthContext = {
  * Get the full authentication context from CLI token or Clerk session.
  * Returns null if not authenticated.
  *
- * For Clerk sessions, scopeId is null (scope is resolved from JWT orgId).
- * For CLI tokens with scope_id, returns the stored scopeId.
+ * For Clerk sessions, orgId is null (org is resolved from Clerk JWT).
+ * For CLI tokens with org_id, returns the stored orgId.
  *
  * IMPORTANT: This function rejects sandbox JWT tokens.
  * Sandbox tokens can only be used on webhook endpoints via getSandboxAuth().
@@ -33,7 +31,7 @@ export async function getAuthContext(
   // Session auth via Clerk
   const { userId } = await auth();
   if (userId) {
-    return { userId, scopeId: null, orgId: null };
+    return { userId, orgId: null };
   }
 
   if (!authHeader?.startsWith("Bearer ")) {
@@ -72,7 +70,6 @@ export async function getAuthContext(
 
   return {
     userId: tokenRecord.userId,
-    scopeId: tokenRecord.scopeId,
     orgId: tokenRecord.orgId,
   };
 }
@@ -81,7 +78,7 @@ export async function getAuthContext(
  * Get the current user ID from CLI token or Clerk session.
  * Returns null if not authenticated.
  *
- * Use getAuthContext() when you also need the CLI token's scopeId.
+ * Use getAuthContext() when you also need the CLI token's orgId.
  */
 export async function getUserId(authHeader?: string): Promise<string | null> {
   const ctx = await getAuthContext(authHeader);

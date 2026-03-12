@@ -1064,7 +1064,7 @@ export async function buildExecutionContext(
     : undefined;
 
   // Step 4: Resolve secrets, user preferences, and runtime scope in parallel.
-  // pendingRuntimeScope may already be resolved (when scopeId was not explicit).
+  // pendingRuntimeScope may already be resolved (when orgId was not explicit).
   const resolveSecretsStart = Date.now();
   const [secretsResult, userPrefs, runtimeScope] = await Promise.all([
     resolveSecretsAndEnvironment(
