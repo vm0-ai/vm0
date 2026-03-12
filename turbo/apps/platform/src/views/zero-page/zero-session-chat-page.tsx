@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from "react";
-import { useRef } from "react";
+import { useRef, useState, useCallback } from "react";
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
@@ -332,35 +332,151 @@ function ChatMessageRow({
   );
 }
 
+/**
+ * Parse inline attachment lines from message content.
+ * Matches `[Attached file: name](url)` optionally followed by a curl line.
+ * Returns the cleaned content and parsed attachments.
+ */
+function parseInlineAttachments(content: string): {
+  cleanContent: string;
+  parsed: { filename: string; url: string }[];
+} {
+  const parsed: { filename: string; url: string }[] = [];
+  const cleaned = content.replace(
+    /\[Attached file: ([^\]]+)\]\(([^)]+)\)(?:\nDownload with: curl [^\n]*)?\n?/g,
+    (_match, filename: string, url: string) => {
+      parsed.push({ filename, url });
+      return "";
+    },
+  );
+  return { cleanContent: cleaned.trim(), parsed };
+}
+
+function isImageFilename(filename: string): boolean {
+  return /\.(png|jpe?g|gif|webp|svg)$/i.test(filename);
+}
+
+function getFileTypeIcon(filename: string): string | null {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  switch (ext) {
+    case "pdf":
+      return "/doc-types/PDF.svg";
+    case "doc":
+    case "docx":
+    case "md":
+    case "txt":
+    case "json":
+    case "html":
+      return "/doc-types/DOC.svg";
+    case "csv":
+      return "/doc-types/CSV.svg";
+    default:
+      return null;
+  }
+}
+
 function UserMessage({ message }: { message: ZeroChatMessage }) {
+  const { cleanContent, parsed } = parseInlineAttachments(message.content);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
+  // Merge explicit attachments with those parsed from content
+  const allAttachments = [
+    ...(message.attachments ?? []).map((a) => ({
+      filename: a.filename,
+      url: a.url,
+      isImage: a.contentType.startsWith("image/"),
+    })),
+    ...parsed
+      .filter(
+        (p) =>
+          !(message.attachments ?? []).some((a) => a.filename === p.filename),
+      )
+      .map((p) => ({
+        filename: p.filename,
+        url: p.url,
+        isImage: isImageFilename(p.filename),
+      })),
+  ];
+
   return (
-    <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="w-9 h-9 shrink-0" />
-      <div className="flex flex-col items-end gap-2 min-w-0">
-        {message.attachments && message.attachments.length > 0 && (
-          <div className="flex flex-wrap justify-end gap-2 max-w-[85%]">
-            {message.attachments.map((a, i) => (
-              <a
-                key={i}
-                href={a.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              >
-                {a.contentType.startsWith("image/") ? (
-                  <IconPhoto size={14} stroke={1.5} />
-                ) : (
-                  <IconFile size={14} stroke={1.5} />
+    <>
+      <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="w-9 h-9 shrink-0" />
+        <div className="flex flex-col items-end min-w-0">
+          <div className="zero-chat-bubble-user rounded-2xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
+            <div className="px-4 py-3">
+              <Markdown source={cleanContent} />
+            </div>
+            {allAttachments.length > 0 && (
+              <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
+                {allAttachments.map((a, i) =>
+                  a.isImage ? (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setLightboxUrl(a.url)}
+                      className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
+                    >
+                      <img
+                        src={a.url}
+                        alt={a.filename}
+                        className="h-7 max-w-[56px] object-cover"
+                      />
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                        <IconPhoto
+                          size={18}
+                          className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
+                        />
+                      </span>
+                    </button>
+                  ) : (
+                    <FileAttachmentChip
+                      key={i}
+                      filename={a.filename}
+                      url={a.url}
+                    />
+                  ),
                 )}
-                <span className="truncate max-w-[120px]">{a.filename}</span>
-              </a>
-            ))}
+              </div>
+            )}
           </div>
-        )}
-        <div className="zero-chat-bubble-user rounded-2xl px-4 py-3 max-w-[85%] text-sm leading-relaxed">
-          {message.content}
         </div>
       </div>
+      {lightboxUrl && (
+        <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+      )}
+    </>
+  );
+}
+
+function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  const handleBackdropClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.target === e.currentTarget) onClose();
+    },
+    [onClose],
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={handleBackdropClick}
+      role="dialog"
+      aria-modal="true"
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+        aria-label="Close"
+      >
+        <IconX size={20} stroke={2} />
+      </button>
+      <img
+        src={url}
+        alt=""
+        className="max-h-[85vh] max-w-[90vw] rounded-lg shadow-2xl object-contain animate-in zoom-in-95 duration-200"
+      />
     </div>
   );
 }
@@ -396,7 +512,7 @@ function AssistantMessage({
     return (
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
         {avatarButton}
-        <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0">
+        <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
           <div className="flex items-start gap-1.5 text-destructive">
             <IconAlertCircle size={14} className="shrink-0 mt-0.5" />
             <span>{message.error}</span>
@@ -410,7 +526,7 @@ function AssistantMessage({
     return (
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
         {avatarButton}
-        <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0">
+        <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
           <Markdown source={message.content} />
         </div>
       </div>
@@ -421,7 +537,7 @@ function AssistantMessage({
   return (
     <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
       {avatarButton}
-      <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0">
+      <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
         <div className="flex items-center gap-2">
           <IconLoader2
             size={14}
@@ -431,6 +547,39 @@ function AssistantMessage({
         </div>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// File attachment chip (shown in sent messages)
+// ---------------------------------------------------------------------------
+
+function FileAttachmentChip({
+  filename,
+  url,
+}: {
+  filename: string;
+  url: string;
+}) {
+  const iconSrc = getFileTypeIcon(filename);
+  return (
+    <a
+      href={url}
+      download={filename}
+      title={filename}
+      className="inline-flex items-center justify-center rounded-md hover:bg-foreground/10 transition-colors p-0.5"
+    >
+      {iconSrc ? (
+        <img
+          alt=""
+          className="h-6 w-6 object-contain opacity-80"
+          aria-hidden="true"
+          src={iconSrc}
+        />
+      ) : (
+        <IconFile size={20} stroke={1.5} className="text-muted-foreground" />
+      )}
+    </a>
   );
 }
 
@@ -446,24 +595,53 @@ function AttachmentChip({
   onRemove: () => void;
 }) {
   const isImage = attachment.contentType.startsWith("image/");
+  const iconSrc = isImage ? null : getFileTypeIcon(attachment.filename);
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-lg bg-muted/60 pl-2.5 pr-1.5 py-1.5 text-xs text-muted-foreground">
+    <div
+      className="relative inline-flex items-center justify-center"
+      title={attachment.filename}
+    >
       {isImage ? (
-        <IconPhoto size={14} stroke={1.5} />
+        <div className="relative h-6 w-6 rounded-md overflow-hidden border border-foreground/10">
+          {attachment.url ? (
+            <img
+              src={attachment.url}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <IconPhoto
+              size={16}
+              stroke={1.5}
+              className="text-muted-foreground m-auto h-full"
+            />
+          )}
+        </div>
+      ) : iconSrc ? (
+        <img
+          alt=""
+          className="h-6 w-6 object-contain opacity-80"
+          aria-hidden="true"
+          src={iconSrc}
+        />
       ) : (
-        <IconFile size={14} stroke={1.5} />
+        <IconFile size={20} stroke={1.5} className="text-muted-foreground" />
       )}
-      <span className="truncate max-w-[120px]">{attachment.filename}</span>
       {attachment.uploading ? (
-        <IconLoader2 size={12} className="animate-spin ml-0.5" />
+        <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">
+          <IconLoader2
+            size={10}
+            className="animate-spin text-muted-foreground"
+          />
+        </span>
       ) : (
         <button
           type="button"
           onClick={onRemove}
-          className="p-0.5 rounded hover:bg-muted transition-colors"
+          className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
           aria-label={`Remove ${attachment.filename}`}
         >
-          <IconX size={12} stroke={2} />
+          <IconX size={9} stroke={2.5} />
         </button>
       )}
     </div>
