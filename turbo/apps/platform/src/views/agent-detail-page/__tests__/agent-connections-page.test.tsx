@@ -1,7 +1,7 @@
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { describe, expect, it, vi } from "vitest";
-import { screen, within, fireEvent } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
 
@@ -106,7 +106,7 @@ describe("agent connections page", () => {
     ).toBeInTheDocument();
   });
 
-  it("should show connectors and secrets tabs", async () => {
+  it("should show connectors and secrets sections", async () => {
     mockAgentDetailAPI({
       environment: {
         GH_TOKEN: SECRET_REF_GH_TOKEN,
@@ -124,11 +124,13 @@ describe("agent connections page", () => {
 
     await vi.waitFor(() => {
       expect(
-        screen.getByRole("tab", { name: "Connectors" }),
+        screen.getByRole("heading", { name: "Connectors" }),
       ).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("tab", { name: "Custom API" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Secrets & Variables" }),
+    ).toBeInTheDocument();
   });
 
   it("should show connectors tab by default with connector types", async () => {
@@ -209,7 +211,7 @@ describe("agent connections page", () => {
     expect(connectButtons.length).toBeGreaterThan(0);
   });
 
-  it("should switch to secrets tab and show add row when no secrets required", async () => {
+  it("should show secrets and variables section alongside connectors", async () => {
     mockAgentDetailAPI({
       environment: {
         GH_TOKEN: SECRET_REF_GH_TOKEN,
@@ -226,17 +228,13 @@ describe("agent connections page", () => {
 
     await vi.waitFor(() => {
       expect(
-        screen.getByRole("tab", { name: "Custom API" }),
+        screen.getByRole("heading", { name: "Connectors" }),
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("tab", { name: "Custom API" }));
-
-    await vi.waitFor(() => {
-      expect(
-        screen.getByRole("tab", { name: "Custom API" }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      screen.getByRole("heading", { name: "Secrets & Variables" }),
+    ).toBeInTheDocument();
   });
 
   it("should show required secrets with configured and missing rows", async () => {
