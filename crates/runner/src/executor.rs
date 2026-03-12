@@ -504,26 +504,16 @@ fn is_valid_session_id(id: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
-/// Build the environment variables JSON, matching the TS `buildEnvironmentVariables`.
+/// Build the environment variables JSON.
 ///
 /// Priority (lowest → highest):
-///   1. `vars` (compose config variables)
-///   2. `environment` (user-provided env)
-///   3. `user_timezone` TZ (unless `environment` already sets TZ)
-///   4. System variables (VM0_*, secrets, etc.) — always win
+///   1. `environment` (user-provided env, includes expanded vars)
+///   2. `user_timezone` TZ (unless `environment` already sets TZ)
+///   3. System variables (VM0_*, secrets, etc.) — always win
 fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, String> {
     let mut env = HashMap::new();
 
-    // --- User-provided variables (lowest priority first) ---
-
-    // 1. Compose config vars (lowest)
-    if let Some(vars) = &context.vars {
-        for (k, v) in vars {
-            env.insert(k.clone(), v.clone());
-        }
-    }
-
-    // 2. User environment (overrides vars)
+    // --- User-provided environment ---
     if let Some(user_env) = &context.environment {
         for (k, v) in user_env {
             env.insert(k.clone(), v.clone());
@@ -761,13 +751,14 @@ mod tests {
     #[test]
     fn build_env_json_user_vars_cannot_override_system() {
         let mut ctx = minimal_context();
-        ctx.vars = Some(HashMap::from([
+        // vars are expanded into environment at compose time, so test via environment
+        ctx.environment = Some(HashMap::from([
             ("VM0_PROMPT".into(), "overridden".into()),
             ("CUSTOM".into(), "value".into()),
         ]));
 
         let env = build_env_json(&ctx, "http://localhost");
-        // System variables take precedence over user vars
+        // System variables take precedence over user environment
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
         assert_eq!(env.get("CUSTOM").unwrap(), "value");
     }
@@ -840,21 +831,15 @@ mod tests {
     }
 
     #[test]
-    fn build_env_json_environment_overrides_vars() {
+    fn build_env_json_vars_not_injected_directly() {
         let mut ctx = minimal_context();
-        ctx.vars = Some(HashMap::from([
-            ("SHARED_KEY".into(), "from-vars".into()),
-            ("ONLY_VARS".into(), "vars-value".into()),
-        ]));
-        ctx.environment = Some(HashMap::from([
-            ("SHARED_KEY".into(), "from-env".into()),
-            ("ONLY_ENV".into(), "env-value".into()),
-        ]));
+        // vars should NOT be injected as env vars — they are expanded into
+        // environment at compose time via ${{ vars.XXX }} templates.
+        ctx.vars = Some(HashMap::from([("ONLY_VARS".into(), "vars-value".into())]));
+        ctx.environment = Some(HashMap::from([("ONLY_ENV".into(), "env-value".into())]));
 
         let env = build_env_json(&ctx, "http://localhost");
-        // environment overrides vars for the same key
-        assert_eq!(env.get("SHARED_KEY").unwrap(), "from-env");
-        assert_eq!(env.get("ONLY_VARS").unwrap(), "vars-value");
+        assert!(!env.contains_key("ONLY_VARS"));
         assert_eq!(env.get("ONLY_ENV").unwrap(), "env-value");
     }
 

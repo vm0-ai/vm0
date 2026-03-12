@@ -32,6 +32,8 @@ pub struct ExecutionContext {
     #[allow(dead_code)]
     #[serde(default)]
     pub agent_compose_version_id: Option<String>,
+    // vars are expanded into environment at compose time — runner does not use them directly.
+    #[allow(dead_code)]
     #[serde(default)]
     pub vars: Option<HashMap<String, String>>,
     // TODO: remove allow(dead_code) when secret injection is implemented
