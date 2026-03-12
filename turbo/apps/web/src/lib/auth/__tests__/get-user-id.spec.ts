@@ -1,13 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { auth } from "@clerk/nextjs/server";
 import { getUserId } from "../get-user-id";
 
 describe("getUserId", () => {
   const mockAuth = vi.mocked(auth);
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
 
   it("should return userId from auth provider session", async () => {
     const testUserId = "user_123";

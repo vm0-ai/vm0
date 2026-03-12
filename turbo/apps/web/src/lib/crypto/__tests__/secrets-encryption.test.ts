@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   encryptSecrets,
   decryptSecrets,
@@ -11,10 +11,6 @@ const TEST_KEY =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 describe("secrets-encryption", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   describe("encryptSecrets (array)", () => {
     it("should return null for null input", () => {
       const result = encryptSecrets(null, TEST_KEY);

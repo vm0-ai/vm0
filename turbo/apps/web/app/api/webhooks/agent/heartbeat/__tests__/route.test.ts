@@ -24,7 +24,6 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
   let testToken: string;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
     context.setupMocks();
     user = await context.setupUser();
 

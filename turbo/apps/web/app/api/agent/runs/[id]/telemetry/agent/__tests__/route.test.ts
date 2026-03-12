@@ -46,7 +46,6 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
   let testRunId: string;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
     context.setupMocks();
     user = await context.setupUser();
 

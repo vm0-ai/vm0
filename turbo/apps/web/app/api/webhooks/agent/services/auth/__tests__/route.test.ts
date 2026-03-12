@@ -37,7 +37,6 @@ describe("POST /api/webhooks/agent/services/auth", () => {
   let testToken: string;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
     context.setupMocks();
     user = await context.setupUser();
 

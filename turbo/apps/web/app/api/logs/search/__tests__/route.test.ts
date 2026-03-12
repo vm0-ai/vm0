@@ -42,7 +42,6 @@ describe("GET /api/logs/search", () => {
   let testRunId: string;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
     context.setupMocks();
     await context.setupUser();
 

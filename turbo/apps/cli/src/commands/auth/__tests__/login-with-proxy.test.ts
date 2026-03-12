@@ -31,7 +31,6 @@ describe("auth login: proxy configuration", () => {
   vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
   beforeEach(async () => {
-    vi.clearAllMocks();
     vi.resetModules();
     chalk.level = 0;
 

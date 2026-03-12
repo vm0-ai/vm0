@@ -34,7 +34,6 @@ describe("POST /api/webhooks/agent/events", () => {
   let ingestToAxiomSpy: MockInstance<typeof axiomModule.ingestToAxiom>;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
     context.setupMocks();
     user = await context.setupUser();
 

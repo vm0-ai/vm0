@@ -291,7 +291,6 @@ describe("log-detail utils", () => {
     let container: HTMLDivElement;
 
     beforeEach(() => {
-      vi.clearAllMocks();
       container = document.createElement("div");
       container.id = EVENTS_CONTAINER_ID;
       container.style.height = "200px";
