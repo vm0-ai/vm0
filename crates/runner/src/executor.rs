@@ -959,6 +959,7 @@ mod tests {
         let mut ctx = minimal_context();
         ctx.experimental_services = Some(crate::types::ExperimentalServices {
             apis: vec![crate::types::ServiceApiEntry {
+                id: String::new(),
                 base: "https://gmail.googleapis.com/gmail/v1/users/me".into(),
                 auth: crate::types::ServiceApiAuth {
                     headers: std::collections::HashMap::from([(

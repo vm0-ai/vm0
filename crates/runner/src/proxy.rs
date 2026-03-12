@@ -425,6 +425,15 @@ impl ProxyRegistryHandle {
 
         let mut registry = read_registry(&self.registry_path).await?;
         let now = chrono::Utc::now().timestamp_millis();
+        let services = registration.services.map(|s| {
+            let mut s = s.clone();
+            for (i, api) in s.apis.iter_mut().enumerate() {
+                if api.id.is_empty() {
+                    api.id = format!("{}:{}", registration.run_id, i);
+                }
+            }
+            s
+        });
         registry.vms.insert(
             source_ip.to_string(),
             VmEntry {
@@ -433,7 +442,7 @@ impl ProxyRegistryHandle {
                 registered_at: now,
                 firewall_rules: registration.firewall_rules.to_vec(),
                 network_log_path: registration.network_log_path.to_string_lossy().into_owned(),
-                services: registration.services.cloned(),
+                services,
                 encrypted_secrets: registration.encrypted_secrets.map(String::from),
             },
         );
@@ -763,6 +772,7 @@ mod tests {
 
         let services = crate::types::ExperimentalServices {
             apis: vec![crate::types::ServiceApiEntry {
+                id: String::new(),
                 base: "https://gmail.googleapis.com/gmail/v1/users/me".to_string(),
                 auth: crate::types::ServiceApiAuth {
                     headers: std::collections::HashMap::from([(
@@ -797,6 +807,9 @@ mod tests {
             "https://gmail.googleapis.com/gmail/v1/users/me"
         );
 
+        // Verify id was assigned by register_vm.
+        assert_eq!(stored.apis[0].id, "run-svc:0");
+
         // Verify JSON shape matches what the Python addon expects.
         let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
@@ -806,6 +819,7 @@ mod tests {
             svc["base"],
             "https://gmail.googleapis.com/gmail/v1/users/me"
         );
+        assert_eq!(svc["id"], "run-svc:0");
     }
 
     #[tokio::test]
