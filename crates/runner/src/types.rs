@@ -21,6 +21,7 @@ pub struct Job {
 
 // ---------------------------------------------------------------------------
 // Claim (execution context)
+// Keep in sync with TS: packages/core/src/contracts/runners.ts → executionContextSchema
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
@@ -28,15 +29,15 @@ pub struct Job {
 pub struct ExecutionContext {
     pub run_id: Uuid,
     pub prompt: String,
-    // TODO: remove allow(dead_code) when consumed by compose pipeline
+    // Not yet used by runner — compose version for traceability
     #[allow(dead_code)]
     #[serde(default)]
     pub agent_compose_version_id: Option<String>,
-    // vars are expanded into environment at compose time — runner does not use them directly.
+    // Not yet used by runner — vars are expanded into environment at compose time
     #[allow(dead_code)]
     #[serde(default)]
     pub vars: Option<HashMap<String, String>>,
-    // TODO: remove allow(dead_code) when checkpoint resume is implemented
+    // Not yet used by runner — checkpoint resume not yet implemented
     #[allow(dead_code)]
     #[serde(default)]
     pub checkpoint_id: Option<Uuid>,
@@ -54,13 +55,25 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub experimental_firewall: Option<ExperimentalFirewall>,
     #[serde(default)]
-    pub experimental_services: Option<ExperimentalServices>,
-    #[serde(default)]
     pub debug_no_mock_claude: Option<bool>,
     #[serde(default)]
     pub api_start_time: Option<f64>,
     #[serde(default)]
     pub user_timezone: Option<String>,
+    // Not yet used by runner — agent display name for logging/UI
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub agent_name: Option<String>,
+    // Not yet used by runner — org/agent slug for scoping
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub agent_scope_slug: Option<String>,
+    // Not yet used by runner — memory storage name for first-run init
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub memory_name: Option<String>,
+    #[serde(default)]
+    pub experimental_services: Option<ExperimentalServices>,
 }
 
 /// Firewall and proxy configuration attached to each execution.

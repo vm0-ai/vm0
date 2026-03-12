@@ -158,7 +158,9 @@ export const storedExecutionContextSchema = z.object({
 });
 
 /**
- * Execution context returned when claiming a job
+ * Execution context returned when claiming a job.
+ *
+ * Keep in sync with Rust: crates/runner/src/types.rs → ExecutionContext
  */
 export const executionContextSchema = z.object({
   runId: z.string().uuid(),
