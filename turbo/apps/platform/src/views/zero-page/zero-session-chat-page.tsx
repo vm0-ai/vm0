@@ -58,9 +58,11 @@ export function ZeroSessionChatPage({
   const messagesEndEl = useGet(messagesEndEl$);
   const setMessagesEndEl = useSet(messagesEndEl$);
 
-  // Auto-scroll when messages change
+  // Auto-scroll when messages change (deferred to avoid side effect during render)
   if (messagesEndEl && messages.length > 0) {
-    messagesEndEl.scrollIntoView({ behavior: "smooth" });
+    queueMicrotask(() => {
+      messagesEndEl.scrollIntoView({ behavior: "smooth" });
+    });
   }
 
   const handleSend = () => {
