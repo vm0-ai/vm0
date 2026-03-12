@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.58.0](https://github.com/vm0-ai/vm0/compare/core-v8.57.0...core-v8.58.0) (2026-03-12)
+
+
+### Features
+
+* fix agent connections page to handle api-token connectors and unify layout ([#4480](https://github.com/vm0-ai/vm0/issues/4480)) ([9b55546](https://github.com/vm0-ai/vm0/commit/9b55546c85671b811130010c5cb32b7bc878cf3b))
+* **zero:** enhance schedule management with toggle, calendar, and multi-day support ([#4374](https://github.com/vm0-ai/vm0/issues/4374)) ([75b1539](https://github.com/vm0-ai/vm0/commit/75b1539e929a2d83b858d88e77f7cf05df97c197))
+
+
+### Refactoring
+
+* remove secret names from execution context ([#4489](https://github.com/vm0-ai/vm0/issues/4489)) ([bc70477](https://github.com/vm0-ai/vm0/commit/bc704775200d97dac742f730cb93350609636006))
+
 ## [8.57.0](https://github.com/vm0-ai/vm0/compare/core-v8.56.0...core-v8.57.0) (2026-03-11)
 
 

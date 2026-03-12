@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.105.0](https://github.com/vm0-ai/vm0/compare/platform-v0.104.0...platform-v0.105.0) (2026-03-12)
+
+
+### Features
+
+* fix agent connections page to handle api-token connectors and unify layout ([#4480](https://github.com/vm0-ai/vm0/issues/4480)) ([9b55546](https://github.com/vm0-ai/vm0/commit/9b55546c85671b811130010c5cb32b7bc878cf3b))
+* **zero:** enhance schedule management with toggle, calendar, and multi-day support ([#4374](https://github.com/vm0-ai/vm0/issues/4374)) ([75b1539](https://github.com/vm0-ai/vm0/commit/75b1539e929a2d83b858d88e77f7cf05df97c197))
+* **zero:** implement chat with real agent run pipeline ([#4384](https://github.com/vm0-ai/vm0/issues/4384)) ([d832baf](https://github.com/vm0-ai/vm0/commit/d832baf5e6b54dc7855d45a157050fde71837cb2))
+
+
+### Bug Fixes
+
+* address semgrep sast findings for casa tier 2 compliance ([#4487](https://github.com/vm0-ai/vm0/issues/4487)) ([e900299](https://github.com/vm0-ai/vm0/commit/e9002997cf58e7424344f6c494cac25faee07641)), closes [#4422](https://github.com/vm0-ai/vm0/issues/4422)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.58.0
+
 ## [0.104.0](https://github.com/vm0-ai/vm0/compare/platform-v0.103.0...platform-v0.104.0) (2026-03-11)
 
 

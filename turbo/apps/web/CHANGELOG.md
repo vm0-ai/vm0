@@ -1,5 +1,36 @@
 # Changelog
 
+## [12.100.0](https://github.com/vm0-ai/vm0/compare/web-v12.99.1...web-v12.100.0) (2026-03-12)
+
+
+### Features
+
+* **web:** add cookie consent banner via termly ([#4514](https://github.com/vm0-ai/vm0/issues/4514)) ([dcce5c7](https://github.com/vm0-ai/vm0/commit/dcce5c7e5113849808c4d413aaa2969790ee7be3)), closes [#4509](https://github.com/vm0-ai/vm0/issues/4509)
+* **zero:** enhance schedule management with toggle, calendar, and multi-day support ([#4374](https://github.com/vm0-ai/vm0/issues/4374)) ([75b1539](https://github.com/vm0-ai/vm0/commit/75b1539e929a2d83b858d88e77f7cf05df97c197))
+
+
+### Bug Fixes
+
+* address semgrep sast findings for casa tier 2 compliance ([#4487](https://github.com/vm0-ai/vm0/issues/4487)) ([e900299](https://github.com/vm0-ai/vm0/commit/e9002997cf58e7424344f6c494cac25faee07641)), closes [#4422](https://github.com/vm0-ai/vm0/issues/4422)
+
+
+### Refactoring
+
+* remove secret names from build context and resolvers ([#4493](https://github.com/vm0-ai/vm0/issues/4493)) ([b17f239](https://github.com/vm0-ai/vm0/commit/b17f239d4e11693f509ad4e609c66f195ca55bd5))
+* remove secret names from execution context ([#4489](https://github.com/vm0-ai/vm0/issues/4489)) ([bc70477](https://github.com/vm0-ai/vm0/commit/bc704775200d97dac742f730cb93350609636006))
+* replace scopes table reads with org_cache lookups (5b-4) ([#4453](https://github.com/vm0-ai/vm0/issues/4453)) ([c3561fb](https://github.com/vm0-ai/vm0/commit/c3561fba855a3ea2ee4d28ff8b3f7b76a894f175))
+* simplify secrets variable in build context ([#4496](https://github.com/vm0-ai/vm0/issues/4496)) ([4010a26](https://github.com/vm0-ai/vm0/commit/4010a260e013003556a0221cb728d7ddbfddbe40))
+* **web:** remove dead code and defensive try-catch in slack shared.ts ([#4478](https://github.com/vm0-ai/vm0/issues/4478)) ([626dab7](https://github.com/vm0-ai/vm0/commit/626dab726bc083b17ad0b4ef6e907b3a32c8adb3)), closes [#4436](https://github.com/vm0-ai/vm0/issues/4436)
+* **web:** remove defensive catch in enrich-message-content ([#4470](https://github.com/vm0-ai/vm0/issues/4470)) ([5a672b9](https://github.com/vm0-ai/vm0/commit/5a672b96257b7e794ad4d76dd33b4d1fc73d338f))
+* **web:** remove locale prefix from privacy-policy and terms-of-use routes ([#4501](https://github.com/vm0-ai/vm0/issues/4501)) ([97092ea](https://github.com/vm0-ai/vm0/commit/97092ea46218c6fa950f860951df5c852590d2fb)), closes [#4498](https://github.com/vm0-ai/vm0/issues/4498)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.58.0
+
 ## [12.99.1](https://github.com/vm0-ai/vm0/compare/web-v12.99.0...web-v12.99.1) (2026-03-11)
 
 
