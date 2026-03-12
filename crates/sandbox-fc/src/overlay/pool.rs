@@ -21,6 +21,13 @@ const OVERLAY_PREFIX: &str = "overlay-";
 /// File extension for overlay files.
 const OVERLAY_EXT: &str = ".ext4";
 
+/// Number of overlay files to pre-warm (blocking) at startup.
+/// Remaining files are created lazily via background replenishment.
+const INITIAL_POOL_SIZE: usize = 4;
+
+/// Maximum overlay files to create per replenishment cycle.
+const REPLENISH_BATCH: usize = 4;
+
 // ---------------------------------------------------------------------------
 // OverlayCreator trait
 // ---------------------------------------------------------------------------
@@ -164,13 +171,17 @@ pub struct OverlayPool {
 }
 
 impl OverlayPool {
-    /// Create a new pool, pre-warming `config.size` overlay files.
+    /// Create a new pool with lazy initialization.
     ///
     /// Creates the pool directory if it doesn't exist, removes stale files
-    /// from previous runs, and pre-creates overlay files in parallel.
+    /// from previous runs, and pre-creates a small batch of overlay files
+    /// (up to [`INITIAL_POOL_SIZE`]). Remaining files are created lazily
+    /// via background replenishment on each [`acquire`](Self::acquire).
     pub async fn create(config: OverlayPoolConfig) -> Result<Self> {
+        let initial = config.size.min(INITIAL_POOL_SIZE);
         info!(
             size = config.size,
+            initial,
             threshold = config.replenish_threshold,
             dir = %config.pool_dir.display(),
             "initializing overlay pool"
@@ -185,10 +196,10 @@ impl OverlayPool {
         let creator: Arc<dyn OverlayCreator> = Arc::from(config.creator);
         let mut queue = VecDeque::with_capacity(config.size);
 
-        // Pre-warm via JoinSet
-        if config.size > 0 {
+        // Pre-warm only `initial` files (blocking).
+        if initial > 0 {
             let mut join_set = tokio::task::JoinSet::new();
-            for _ in 0..config.size {
+            for _ in 0..initial {
                 let dir = config.pool_dir.clone();
                 let c = Arc::clone(&creator);
                 join_set.spawn(async move {
@@ -205,20 +216,29 @@ impl OverlayPool {
             }
         }
 
-        let available = queue.len();
-        if available < config.size {
-            warn!(
-                requested = config.size,
-                created = available,
-                "overlay pool initialized with fewer files than requested"
-            );
+        // Spawn a batch of background tasks for the remaining files.
+        let mut pending = tokio::task::JoinSet::new();
+        let background = config.size.saturating_sub(initial).min(REPLENISH_BATCH);
+        for _ in 0..background {
+            let dir = config.pool_dir.clone();
+            let c = Arc::clone(&creator);
+            pending.spawn(async move {
+                let path = dir.join(generate_file_name());
+                c.create(&path).await.map(|()| path)
+            });
         }
-        info!(available, "overlay pool initialized");
+
+        info!(
+            available = queue.len(),
+            pending = background,
+            target = config.size,
+            "overlay pool initialized"
+        );
 
         Ok(Self {
             active: true,
             queue,
-            pending: tokio::task::JoinSet::new(),
+            pending,
             pool_dir: config.pool_dir,
             size: config.size,
             replenish_threshold: config.replenish_threshold,
@@ -317,12 +337,16 @@ impl OverlayPool {
     }
 
     /// Spawn background creation tasks if the pool is running low.
+    ///
+    /// Spawns at most [`REPLENISH_BATCH`] tasks per call to avoid
+    /// bursting I/O. Subsequent [`acquire`](Self::acquire) calls will
+    /// trigger further batches until the pool reaches `size`.
     fn maybe_replenish(&mut self) {
         let total = self.queue.len() + self.pending.len();
         if total >= self.replenish_threshold {
             return;
         }
-        let needed = self.size.saturating_sub(total);
+        let needed = self.size.saturating_sub(total).min(REPLENISH_BATCH);
         for _ in 0..needed {
             let dir = self.pool_dir.clone();
             let c = Arc::clone(&self.creator);
@@ -431,6 +455,38 @@ mod tests {
         assert_eq!(entries.len(), 3);
         for entry in &entries {
             assert!(is_overlay_file(&entry.file_name().to_string_lossy()));
+        }
+
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn create_lazy_init_large_pool() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // size=10 > INITIAL_POOL_SIZE(4): only 4 should be pre-warmed,
+        // remaining created lazily via pending + replenishment.
+        let mut pool = OverlayPool::create(test_config(tmp.path(), 10, 5))
+            .await
+            .expect("create");
+
+        // Only INITIAL_POOL_SIZE files are ready in the queue.
+        assert_eq!(pool.available_count(), INITIAL_POOL_SIZE);
+
+        // But we can still acquire all 10 (from queue + pending + replenish).
+        let mut paths = Vec::new();
+        for i in 0..10 {
+            let path = pool.acquire().await.unwrap_or_else(|e| {
+                panic!("acquire {i} failed: {e}");
+            });
+            assert!(path.exists());
+            paths.push(path);
+        }
+
+        // All paths are unique.
+        for (i, a) in paths.iter().enumerate() {
+            for b in &paths[i + 1..] {
+                assert_ne!(a, b);
+            }
         }
 
         pool.cleanup().await;
