@@ -807,4 +807,50 @@ mod tests {
             "https://gmail.googleapis.com/gmail/v1/users/me"
         );
     }
+
+    #[tokio::test]
+    async fn register_vm_stores_encrypted_secrets() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let lock_path = dir.path().join("proxy-registry.lock");
+
+        let empty = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 0,
+        };
+        write_registry(&registry_path, &empty).await.unwrap();
+
+        let handle = ProxyRegistryHandle {
+            registry_path: registry_path.clone(),
+            lock_path,
+        };
+
+        let registration = VmRegistration {
+            run_id: "run-enc",
+            sandbox_token: "tok",
+            firewall_rules: &[],
+            network_log_path: std::path::Path::new("/tmp/network-run-enc.jsonl"),
+            services: None,
+            encrypted_secrets: Some("iv_b64:tag_b64:data_b64"),
+        };
+        handle
+            .register_vm("10.200.0.6", &registration)
+            .await
+            .unwrap();
+
+        let loaded = read_registry(&registry_path).await.unwrap();
+        let vm = loaded.vms.get("10.200.0.6").unwrap();
+        assert_eq!(
+            vm.encrypted_secrets.as_deref(),
+            Some("iv_b64:tag_b64:data_b64")
+        );
+
+        // Verify JSON key name matches what the Python addon expects.
+        let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
+        let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(
+            value["vms"]["10.200.0.6"]["encryptedSecrets"],
+            "iv_b64:tag_b64:data_b64"
+        );
+    }
 }
