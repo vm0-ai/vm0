@@ -13,6 +13,7 @@ import {
 import {
   testContext,
   uniqueId,
+  uniqueNumericId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { env } from "../../../../../../src/env";
@@ -118,7 +119,7 @@ describe("/api/github/oauth/callback", () => {
     await createTestScope(uniqueId("gh-scope"));
     const { composeId } = await createTestCompose("gh-test-agent");
 
-    const installationId = uniqueId("install");
+    const installationId = uniqueNumericId();
     server.use(
       http.get(
         `https://api.github.com/app/installations/${installationId}`,
@@ -147,7 +148,7 @@ describe("/api/github/oauth/callback", () => {
     await createTestScope(uniqueId("gh-scope"));
     const { composeId } = await createTestCompose("gh-test-agent");
 
-    const installationId = uniqueId("install");
+    const installationId = uniqueNumericId();
     setupGitHubMocks(installationId);
 
     const state = buildSignedState(userId, composeId);
@@ -220,7 +221,7 @@ describe("/api/github/oauth/callback", () => {
     await createTestScope(uniqueId("gh-scope"));
     const { composeId } = await createTestCompose("gh-test-agent");
 
-    const installationId = uniqueId("install");
+    const installationId = uniqueNumericId();
     setupGitHubMocks(installationId);
 
     const state = buildSignedState(userId, composeId);

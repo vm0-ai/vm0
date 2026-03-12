@@ -79,6 +79,17 @@ export async function forwardRequest(
   targetUrl: string,
   runId?: string,
 ): Promise<ProxyResult> {
+  // Validate target URL to prevent SSRF (defense-in-depth, caller should also validate)
+  const parsed = new URL(targetUrl);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`Invalid target URL protocol: ${parsed.protocol}`);
+  }
+  if (isPrivateOrInternalHost(parsed.hostname)) {
+    throw new Error(
+      `Blocked request to private/internal address: ${parsed.hostname}`,
+    );
+  }
+
   log.debug(`Forwarding request to ${targetUrl}`);
 
   // Build headers to forward (excluding hop-by-hop headers)

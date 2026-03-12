@@ -93,7 +93,7 @@ import {
 import { agentPermissions } from "../db/schema/agent-permission";
 import { scopes } from "../db/schema/scope";
 import { conversations } from "../db/schema/conversation";
-import { uniqueId } from "./test-helpers";
+import { uniqueId, uniqueNumericId } from "./test-helpers";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -2500,7 +2500,7 @@ export async function insertTestGitHubInstallation(
   composeId: string,
   installationId?: string,
 ) {
-  const id = installationId ?? uniqueId("gh-install");
+  const id = installationId ?? uniqueNumericId();
   const encryptedToken = encryptSecretValue(
     "ghs_test_token",
     globalThis.services.env.SECRETS_ENCRYPTION_KEY,
