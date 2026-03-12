@@ -1,6 +1,6 @@
 import { createHmac } from "crypto";
 import { clerkClient } from "@clerk/nextjs/server";
-import { requireScopeMember, getDefaultScope } from "./org-member-service";
+import { requireOrgMember, getDefaultScope } from "./org-member-service";
 import {
   getOrgData,
   getOrgBySlug,
@@ -86,8 +86,8 @@ export async function updateScopeSlug(
   userId: string,
   force: boolean = false,
 ): Promise<ResolvedScope> {
-  // Verify membership (requireScopeMember throws 403 if not a member)
-  await requireScopeMember(orgId, userId);
+  // Verify membership (requireOrgMember throws 403 if not a member)
+  await requireOrgMember(orgId, userId);
 
   // Require force flag for slug changes
   if (!force) {

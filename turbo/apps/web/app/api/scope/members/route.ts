@@ -4,7 +4,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { requireScopeFromRequest } from "../../../../src/lib/scope/resolve-scope";
 import {
-  getScopeMembers,
+  getOrgMembers,
   removeMember,
 } from "../../../../src/lib/scope/org-member-service";
 import {
@@ -37,7 +37,7 @@ export async function GET(request: Request) {
       userId,
       tokenOrgId,
     );
-    const status = await getScopeMembers(userId, scope.orgId, scope.slug);
+    const status = await getOrgMembers(userId, scope.orgId, scope.slug);
     return NextResponse.json(status);
   } catch (error) {
     if (isBadRequest(error)) {

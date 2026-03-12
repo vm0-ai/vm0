@@ -5,13 +5,13 @@ import { getOrgData } from "./org-cache-service";
 import type { ScopeRole } from "@vm0/core";
 import type { ResolvedScope, ResolvedMember } from "./resolve-scope";
 
-const log = logger("service:scope-member");
+const log = logger("service:org-member");
 
 /**
  * Require a user to be a member of a scope, or throw 403.
  * Verifies membership via Clerk API using the org ID directly.
  */
-export async function requireScopeMember(orgId: string, userId: string) {
+export async function requireOrgMember(orgId: string, userId: string) {
   if (!orgId || orgId.startsWith("pending_")) {
     throw forbidden("You are not a member of this scope");
   }
@@ -120,7 +120,7 @@ function mapClerkRole(clerkRole: string): ScopeRole {
  * Get scope members list.
  * Reads membership data directly from Clerk API.
  */
-export async function getScopeMembers(
+export async function getOrgMembers(
   userId: string,
   orgId: string,
   scopeSlug: string,
@@ -259,11 +259,7 @@ export async function removeMember(
  * Leave the scope.
  * Admins cannot leave (they must add another admin or delete the scope).
  */
-export async function leaveScope(
-  userId: string,
-  orgId: string,
-  role: ScopeRole,
-) {
+export async function leaveOrg(userId: string, orgId: string, role: ScopeRole) {
   if (role === "admin") {
     throw forbidden(
       "Admins cannot leave a scope. Add another admin or delete the scope.",
