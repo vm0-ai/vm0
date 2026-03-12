@@ -141,7 +141,7 @@ def match_service(url: str, vm_services: dict | None) -> dict | None:
         if base and url.startswith(base):
             # Ensure match is at a path boundary, not mid-hostname
             rest = url[len(base):]
-            if not rest or rest[0] in ("/" , "?", "#"):
+            if not rest or rest[0] in ("/", "?", "#"):
                 return api_entry
     return None
 
