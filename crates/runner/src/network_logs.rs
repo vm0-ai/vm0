@@ -112,16 +112,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn network_log_deserializes_sni() {
-        let json = r#"{"timestamp":"2026-02-15T10:00:00","mode":"sni","action":"ALLOW","host":"example.com","port":443,"rule_matched":"domain:*.example.com"}"#;
-        let log: NetworkLog = serde_json::from_str(json).unwrap();
-        assert_eq!(log.timestamp, "2026-02-15T10:00:00");
-        assert_eq!(log.mode.as_deref(), Some("sni"));
-        assert_eq!(log.host.as_deref(), Some("example.com"));
-        assert!(log.method.is_none());
-    }
-
-    #[test]
     fn network_log_deserializes_mitm() {
         let json = r#"{"timestamp":"2026-02-15T10:00:00","mode":"mitm","action":"ALLOW","host":"api.example.com","port":443,"rule_matched":"domain:*.example.com","method":"GET","url":"https://api.example.com/data","status":200,"latency_ms":150,"request_size":0,"response_size":1024,"resp_content_type":"application/json","resp_content_encoding":"gzip","resp_transfer_encoding":"chunked"}"#;
         let log: NetworkLog = serde_json::from_str(json).unwrap();
@@ -135,12 +125,13 @@ mod tests {
 
     #[test]
     fn network_log_round_trip() {
-        let json = r#"{"timestamp":"2026-02-15T10:00:00","mode":"sni","action":"DENY","host":"evil.com","port":443,"rule_matched":"final"}"#;
+        let json = r#"{"timestamp":"2026-02-15T10:00:00","mode":"mitm","action":"DENY","host":"evil.com","port":443,"rule_matched":"final","method":"GET","url":"https://evil.com","status":403,"latency_ms":5,"request_size":0,"response_size":0}"#;
         let log: NetworkLog = serde_json::from_str(json).unwrap();
         let reserialized = serde_json::to_value(&log).unwrap();
         assert_eq!(reserialized["timestamp"], "2026-02-15T10:00:00");
         assert_eq!(reserialized["action"], "DENY");
-        assert!(reserialized.get("method").is_none());
+        assert_eq!(reserialized["mode"], "mitm");
+        assert_eq!(reserialized["method"], "GET");
     }
 
     #[test]

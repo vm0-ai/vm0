@@ -735,36 +735,7 @@ describe("logs command", () => {
   });
 
   describe("network logs", () => {
-    it("should display SNI network logs with --network flag", async () => {
-      server.use(
-        http.get(
-          "http://localhost:3000/api/agent/runs/:id/telemetry/network",
-          () => {
-            return HttpResponse.json({
-              networkLogs: [
-                {
-                  timestamp: "2024-01-15T10:30:00Z",
-                  mode: "sni",
-                  host: "api.example.com",
-                  port: 443,
-                  action: "ALLOW",
-                  rule_matched: "allowlist",
-                },
-              ],
-              hasMore: false,
-            });
-          },
-        ),
-      );
-
-      await logsCommand.parseAsync(["node", "cli", "run-123", "--network"]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("api.example.com");
-      expect(logCalls).toContain("443");
-    });
-
-    it("should display MITM network logs", async () => {
+    it("should display network logs with --network flag", async () => {
       server.use(
         http.get(
           "http://localhost:3000/api/agent/runs/:id/telemetry/network",
@@ -813,7 +784,6 @@ describe("logs command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No network logs found");
-      expect(logCalls).toContain("experimental_firewall");
     });
   });
 
@@ -1095,7 +1065,9 @@ describe("logs command", () => {
               networkLogs: [
                 {
                   timestamp: "2024-01-15T10:30:00Z",
-                  mode: "sni",
+                  mode: "mitm",
+                  method: "GET",
+                  status: 200,
                   host: "api.example.com",
                   port: 443,
                   action: "ALLOW",

@@ -288,20 +288,14 @@ const sandboxOperationSchema = z.object({
 
 /**
  * Network log entry schema (from mitmproxy addon)
- *
- * Supports two modes:
- * - sni: SNI-only mode (no HTTPS decryption, only host/port/action)
- * - mitm: MITM mode (full HTTP details including method, status, latency, sizes)
  */
 const networkLogSchema = z.object({
   timestamp: z.string(),
-  // Common fields (all modes)
-  mode: z.enum(["mitm", "sni"]).optional(),
+  mode: z.literal("mitm").optional(),
   action: z.enum(["ALLOW", "DENY"]).optional(),
   host: z.string().optional(),
   port: z.number().optional(),
   rule_matched: z.string().nullable().optional(),
-  // MITM-only fields (optional)
   method: z.string().optional(),
   url: z.string().optional(),
   status: z.number().optional(),

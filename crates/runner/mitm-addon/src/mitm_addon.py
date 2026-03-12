@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-mitmproxy addon for VM0 runner-level network security mode.
+mitmproxy addon for VM0 runner-level network proxy.
 
 This addon runs on the runner HOST (not inside VMs) and:
 1. Intercepts all HTTPS requests from VMs
 2. Looks up the source VM's runId and firewall rules from the proxy registry
 3. Evaluates firewall rules (first-match-wins) to ALLOW or DENY
-4. For MITM mode: Rewrites requests to go through VM0 Proxy endpoint
-5. For SNI-only mode: Passes through or blocks without decryption
-6. Logs network activity per-run to JSONL files
+4. Injects auth headers for configured services (proxy-side token replacement)
+5. Logs network activity per-run to JSONL files
 """
 import os
 import json
