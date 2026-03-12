@@ -174,6 +174,8 @@ export const executionContextSchema = z.object({
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
   secretValues: z.array(z.string()).nullable(),
+  // AES-256-GCM encrypted Record<string, string> — passed through to mitm-addon for auth resolution
+  encryptedSecrets: z.string().nullable(),
   cliAgentType: z.string(),
   // Experimental firewall configuration
   experimentalFirewall: experimentalFirewallSchema.optional(),

@@ -149,6 +149,7 @@ impl JobProvider for LocalProvider {
             environment: req.environment,
             resume_session: None,
             secret_values: None,
+            encrypted_secrets: None,
             cli_agent_type: req.cli_agent_type,
             experimental_firewall: None,
             debug_no_mock_claude: None,

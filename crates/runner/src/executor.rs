@@ -652,6 +652,7 @@ mod tests {
             environment: None,
             resume_session: None,
             secret_values: None,
+            encrypted_secrets: None,
             cli_agent_type: String::new(),
             experimental_firewall: None,
             debug_no_mock_claude: None,

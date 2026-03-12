@@ -51,6 +51,10 @@ pub struct ExecutionContext {
     pub resume_session: Option<ResumeSession>,
     #[serde(default)]
     pub secret_values: Option<Vec<String>>,
+    // Not yet used by runner — forwarded to mitm-addon for auth resolution
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub encrypted_secrets: Option<String>,
     pub cli_agent_type: String,
     #[serde(default)]
     pub experimental_firewall: Option<ExperimentalFirewall>,
