@@ -624,11 +624,11 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     // are injected by the web API into `context.environment` directly.
 
     // Secret values (base64-encoded, comma-separated)
-    if let Some(secrets) = &context.secret_values
-        && !secrets.is_empty()
+    if let Some(secret_values) = &context.secret_values
+        && !secret_values.is_empty()
     {
         use base64::Engine as _;
-        let encoded: Vec<String> = secrets
+        let encoded: Vec<String> = secret_values
             .iter()
             .map(|s| base64::engine::general_purpose::STANDARD.encode(s))
             .collect();
