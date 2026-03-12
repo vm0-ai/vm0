@@ -27,6 +27,7 @@ struct VmEntry {
     firewall_rules: Vec<FirewallRule>,
     network_log_path: String,
     services: Option<crate::types::ExperimentalServices>,
+    encrypted_secrets: Option<String>,
 }
 
 /// Firewall rule for network filtering (first-match-wins).
@@ -63,6 +64,7 @@ pub struct VmRegistration<'a> {
     pub firewall_rules: &'a [FirewallRule],
     pub network_log_path: &'a std::path::Path,
     pub services: Option<&'a crate::types::ExperimentalServices>,
+    pub encrypted_secrets: Option<&'a str>,
 }
 
 /// Embedded mitmproxy addon script (compiled into the binary).
@@ -432,6 +434,7 @@ impl ProxyRegistryHandle {
                 firewall_rules: registration.firewall_rules.to_vec(),
                 network_log_path: registration.network_log_path.to_string_lossy().into_owned(),
                 services: registration.services.cloned(),
+                encrypted_secrets: registration.encrypted_secrets.map(String::from),
             },
         );
         registry.updated_at = now;
@@ -507,6 +510,7 @@ mod tests {
 
                 network_log_path: "/tmp/network-test-run.jsonl".to_string(),
                 services: None,
+                encrypted_secrets: None,
             },
         );
         write_registry(&registry_path, &registry).await.unwrap();
@@ -610,6 +614,7 @@ mod tests {
 
             network_log_path: std::path::Path::new("/tmp/network-run-1.jsonl"),
             services: None,
+            encrypted_secrets: None,
         };
         handle
             .register_vm("10.200.0.2", &registration)
@@ -627,6 +632,7 @@ mod tests {
             firewall_rules: &[],
             network_log_path: std::path::Path::new("/tmp/network-run-2.jsonl"),
             services: None,
+            encrypted_secrets: None,
         };
         handle
             .register_vm("10.200.0.2", &registration2)
@@ -677,6 +683,7 @@ mod tests {
                     firewall_rules: &[],
                     network_log_path: &log_path,
                     services: None,
+                    encrypted_secrets: None,
                 };
                 h.register_vm(&ip, &registration).await.unwrap();
             });
@@ -722,6 +729,7 @@ mod tests {
 
                 network_log_path: "/tmp/network-run-1.jsonl".to_string(),
                 services: None,
+                encrypted_secrets: None,
             },
         );
         write_registry(&registry_path, &registry).await.unwrap();
@@ -772,6 +780,7 @@ mod tests {
 
             network_log_path: std::path::Path::new("/tmp/network-run-svc.jsonl"),
             services: Some(&services),
+            encrypted_secrets: None,
         };
         handle
             .register_vm("10.200.0.5", &registration)
