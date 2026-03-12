@@ -694,4 +694,103 @@ describe("POST /api/internal/callbacks/slack", () => {
       expect(response.status).toBe(200);
     });
   });
+
+  describe("AskUserQuestion Denials", () => {
+    it("should post interactive card when run completes with askUserQuestion denials", async () => {
+      // Given a linked Slack user with an agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      const { binding } = await givenUserHasAgent(userLink, {
+        agentName: "test-agent",
+      });
+
+      // And a run with a registered callback
+      mockClerk({ userId: userLink.vm0UserId });
+      const { runId } = await createTestRun(binding.composeId, "Test prompt");
+      const channelId = `C-askuser-${Date.now()}`;
+      const threadTs = `${Date.now()}.000000`;
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/slack",
+        payload: {
+          workspaceId: installation.slackWorkspaceId,
+          channelId,
+          threadTs,
+          messageTs: `${Date.now()}.123456`,
+          userLinkId: userLink.id,
+          agentName: "test-agent",
+          composeId: binding.composeId,
+        },
+      });
+
+      // And Axiom returns a result event with askUserQuestion permission denials
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          eventData: {
+            result: "I need some information from you.",
+            permission_denials: [
+              {
+                tool_name: "AskUserQuestion",
+                tool_input: {
+                  questions: [
+                    {
+                      question: "Which environment should I deploy to?",
+                      options: [
+                        {
+                          label: "Production",
+                          description: "Live environment",
+                        },
+                        { label: "Staging" },
+                      ],
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ]);
+
+      // When the callback is invoked with completed status
+      const request = createCallbackRequest(
+        {
+          runId,
+          status: "completed",
+          payload: {
+            workspaceId: installation.slackWorkspaceId,
+            channelId,
+            threadTs,
+            messageTs: `${Date.now()}.123456`,
+            userLinkId: userLink.id,
+            agentName: "test-agent",
+            composeId: binding.composeId,
+          },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      // Then the request should succeed
+      expect(response.status).toBe(200);
+
+      // And two messages should be posted: the text response + the interactive card
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(2);
+
+      // The second call is the interactive card with formatted fallback text
+      const cardCallArgs = mockClient.chat.postMessage.mock.calls[1]![0] as {
+        channel: string;
+        thread_ts: string;
+        text: string;
+      };
+      expect(cardCallArgs.channel).toBe(channelId);
+      expect(cardCallArgs.thread_ts).toBe(threadTs);
+      // Verify formatAskUserDenials produced the expected fallback text
+      expect(cardCallArgs.text).toContain("The agent needs your input");
+      expect(cardCallArgs.text).toContain(
+        "Which environment should I deploy to?",
+      );
+      expect(cardCallArgs.text).toContain("Production");
+      expect(cardCallArgs.text).toContain("Live environment");
+      expect(cardCallArgs.text).toContain("Staging");
+    });
+  });
 });
