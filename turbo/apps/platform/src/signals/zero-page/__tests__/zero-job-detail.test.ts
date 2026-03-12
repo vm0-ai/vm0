@@ -13,6 +13,10 @@ import {
   zeroJobScheduleEntries$,
   zeroJobScheduleError$,
   fetchZeroJobData$,
+  saveZeroJobSchedule$,
+  deleteZeroJobSchedule$,
+  toggleZeroJobScheduleEnabled$,
+  type ZeroJobScheduleSaveParams,
 } from "../zero-job-detail";
 
 const context = testContext();
@@ -249,6 +253,336 @@ describe("zero-job-detail signals", () => {
       const detail = context.store.get(zeroJobDetail$);
       expect(detail).not.toBeNull();
       expect(detail!.isOwner).toBeFalsy();
+    });
+  });
+
+  describe("saveZeroJobSchedule$", () => {
+    async function setupWithAgent() {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentResponse());
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+      await context.store.set(fetchZeroJobData$, "my-agent");
+    }
+
+    it("should save a cron schedule with every_day frequency", async () => {
+      let capturedBody: Record<string, unknown> = {};
+
+      await setupWithAgent();
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/schedules",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({ id: "new-sched" });
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      const params: ZeroJobScheduleSaveParams = {
+        prompt: "Run daily task",
+        freq: "every_day",
+        date: "2030-01-01",
+        hour: 9,
+        minute: 30,
+        timezone: "UTC",
+        intervalSeconds: 0,
+      };
+
+      await context.store.set(saveZeroJobSchedule$, params);
+
+      expect(capturedBody).toMatchObject({
+        composeId: "compose-1",
+        timezone: "UTC",
+        prompt: "Run daily task",
+        enabled: true,
+        cronExpression: "30 9 * * *",
+      });
+    });
+
+    it("should save a loop schedule with intervalSeconds", async () => {
+      let capturedBody: Record<string, unknown> = {};
+
+      await setupWithAgent();
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/schedules",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({ id: "new-sched" });
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      const params: ZeroJobScheduleSaveParams = {
+        prompt: "Poll every 5 min",
+        freq: "every_n_minutes",
+        date: "2030-01-01",
+        hour: 0,
+        minute: 0,
+        timezone: "UTC",
+        intervalSeconds: 300,
+      };
+
+      await context.store.set(saveZeroJobSchedule$, params);
+
+      expect(capturedBody).toMatchObject({
+        composeId: "compose-1",
+        prompt: "Poll every 5 min",
+        intervalSeconds: 300,
+      });
+      expect(capturedBody).not.toHaveProperty("cronExpression");
+      expect(capturedBody).not.toHaveProperty("atTime");
+    });
+
+    it("should throw for save when API returns error", async () => {
+      await setupWithAgent();
+
+      server.use(
+        http.post("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json(
+            { error: { message: "Quota exceeded" } },
+            { status: 429, statusText: "Too Many Requests" },
+          );
+        }),
+      );
+
+      const params: ZeroJobScheduleSaveParams = {
+        prompt: "Task",
+        freq: "every_day",
+        date: "2030-01-01",
+        hour: 9,
+        minute: 0,
+        timezone: "UTC",
+        intervalSeconds: 0,
+      };
+
+      await expect(
+        context.store.set(saveZeroJobSchedule$, params),
+      ).rejects.toThrow("Quota exceeded");
+    });
+  });
+
+  describe("deleteZeroJobSchedule$", () => {
+    it("should send DELETE request with correct URL", async () => {
+      let capturedUrl = "";
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentResponse());
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json(mockSchedules());
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+      await context.store.set(fetchZeroJobData$, "my-agent");
+
+      server.use(
+        http.delete(
+          "http://localhost:3000/api/agent/schedules/:name",
+          ({ request }) => {
+            capturedUrl = request.url;
+            return new HttpResponse(null, { status: 204 });
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      await context.store.set(deleteZeroJobSchedule$, "daily-run");
+
+      expect(capturedUrl).toContain("/api/agent/schedules/daily-run");
+      expect(capturedUrl).toContain("composeId=compose-1");
+
+      const entries = await context.store.get(zeroJobScheduleEntries$);
+      expect(entries).toStrictEqual([]);
+    });
+
+    it("should throw when delete API returns error", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentResponse());
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json(mockSchedules());
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+      await context.store.set(fetchZeroJobData$, "my-agent");
+
+      server.use(
+        http.delete("http://localhost:3000/api/agent/schedules/:name", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found" } },
+            { status: 404, statusText: "Not Found" },
+          );
+        }),
+      );
+
+      await expect(
+        context.store.set(deleteZeroJobSchedule$, "nonexistent"),
+      ).rejects.toThrow("Not found");
+    });
+  });
+
+  describe("toggleZeroJobScheduleEnabled$", () => {
+    it("should send enable request for a schedule", async () => {
+      let capturedUrl = "";
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentResponse());
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json(mockSchedules());
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+      await context.store.set(fetchZeroJobData$, "my-agent");
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/schedules/:name/:action",
+          ({ request }) => {
+            capturedUrl = request.url;
+            return HttpResponse.json({ ok: true });
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json(mockSchedules());
+        }),
+      );
+
+      await context.store.set(toggleZeroJobScheduleEnabled$, {
+        name: "daily-run",
+        enabled: true,
+      });
+
+      expect(capturedUrl).toContain("/api/agent/schedules/daily-run/enable");
+    });
+
+    it("should send disable request for a schedule", async () => {
+      let capturedUrl = "";
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentResponse());
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json(mockSchedules());
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+      await context.store.set(fetchZeroJobData$, "my-agent");
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/schedules/:name/:action",
+          ({ request }) => {
+            capturedUrl = request.url;
+            return HttpResponse.json({ ok: true });
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json(mockSchedules());
+        }),
+      );
+
+      await context.store.set(toggleZeroJobScheduleEnabled$, {
+        name: "daily-run",
+        enabled: false,
+      });
+
+      expect(capturedUrl).toContain("/api/agent/schedules/daily-run/disable");
+    });
+
+    it("should show toast error when toggle API fails", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentResponse());
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json(mockSchedules());
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+      await context.store.set(fetchZeroJobData$, "my-agent");
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/schedules/:name/:action",
+          () => {
+            return HttpResponse.json(
+              { error: { message: "Server error" } },
+              { status: 500, statusText: "Internal Server Error" },
+            );
+          },
+        ),
+      );
+
+      await expect(
+        context.store.set(toggleZeroJobScheduleEnabled$, {
+          name: "daily-run",
+          enabled: true,
+        }),
+      ).rejects.toThrow("Server error");
     });
   });
 });
