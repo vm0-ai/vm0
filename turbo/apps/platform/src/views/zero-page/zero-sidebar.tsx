@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState, useMemo } from "react";
 import { useLoadable } from "ccstate-react";
 import {
   IconMessageCircle,
@@ -17,6 +17,8 @@ import {
   IconSettings,
   IconLoader2,
   IconRefresh,
+  IconSearch,
+  IconX,
 } from "@tabler/icons-react";
 import type { SessionListItem } from "@vm0/core";
 import {
@@ -356,6 +358,131 @@ function AccountDropdown({
   );
 }
 
+function RecentChatSection({
+  recentSessions,
+  recentSessionsLoading,
+  recentSessionsError,
+  selectedRecentId,
+  onRecentSelect,
+  onNewChat,
+}: {
+  recentSessions: SessionListItem[];
+  recentSessionsLoading: boolean;
+  recentSessionsError: string | null;
+  selectedRecentId: string | null;
+  onRecentSelect?: (id: string) => void;
+  onNewChat?: () => void;
+}) {
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const filteredSessions = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) {
+      return recentSessions;
+    }
+    return recentSessions.filter((s) =>
+      (s.preview ?? "").toLowerCase().includes(term),
+    );
+  }, [recentSessions, searchTerm]);
+
+  return (
+    <div className="mt-4 flex flex-col min-h-0 flex-1">
+      {searchOpen ? (
+        <div className="shrink-0 flex items-center gap-2 h-8 rounded-lg p-2 bg-sidebar-accent/50">
+          <IconSearch
+            size={13}
+            stroke={1.5}
+            className="shrink-0 text-sidebar-foreground/70"
+          />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search chats..."
+            autoFocus
+            className="flex-1 min-w-0 bg-transparent text-sm leading-5 text-sidebar-foreground placeholder:text-sidebar-foreground/40 focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setSearchOpen(false);
+              setSearchTerm("");
+            }}
+            className="shrink-0 text-sidebar-foreground/50 hover:text-sidebar-foreground transition-colors"
+            aria-label="Close search"
+          >
+            <IconX size={13} stroke={1.5} />
+          </button>
+        </div>
+      ) : (
+        <div className="shrink-0 zero-nav-recent-label h-8 flex items-center justify-between px-2">
+          <span className="text-xs leading-4 text-sidebar-foreground uppercase tracking-wider">
+            recent chat
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors"
+              aria-label="Search chats"
+            >
+              <IconSearch size={14} />
+            </button>
+            {onNewChat && (
+              <button
+                type="button"
+                onClick={onNewChat}
+                className="text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors"
+                aria-label="New chat"
+              >
+                <IconPlus size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+        <div className="flex flex-col gap-1">
+          {recentSessionsLoading ? (
+            <div className="flex items-center justify-center py-3">
+              <IconLoader2
+                size={14}
+                className="animate-spin text-muted-foreground"
+              />
+            </div>
+          ) : recentSessionsError ? (
+            <p className="px-2 py-2 text-xs text-destructive">
+              {recentSessionsError}
+            </p>
+          ) : filteredSessions.length === 0 ? (
+            <p className="px-2 py-2 text-xs text-muted-foreground">
+              {searchTerm.trim() ? "No matching chats" : "No recent chats"}
+            </p>
+          ) : (
+            filteredSessions.map((session) => (
+              <button
+                key={session.id}
+                type="button"
+                onClick={() => onRecentSelect?.(session.id)}
+                className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
+                  selectedRecentId === session.id
+                    ? "bg-sidebar-active text-sidebar-primary"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent"
+                }`}
+              >
+                <span className="truncate min-w-0 flex-1">
+                  {session.preview ?? "New chat"}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ZeroSidebar({
   activeId,
   agentName,
@@ -390,78 +517,38 @@ export function ZeroSidebar({
         </div>
 
         {/* Main nav */}
-        <nav className="flex-1 overflow-y-auto overflow-x-hidden p-2">
-          <div className="flex flex-col gap-1">
-            {mainNav.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => onSelect(id)}
-                className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
-                  activeId === id
-                    ? "bg-sidebar-active text-sidebar-primary font-medium"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent"
-                }`}
-              >
-                <Icon size={16} className="shrink-0" />
-                <span className="truncate">{label}</span>
-              </button>
-            ))}
+        <nav className="flex-1 flex flex-col min-h-0 overflow-hidden p-2">
+          <div className="shrink-0 flex flex-col gap-1">
+            {mainNav.map(({ id, label, icon: Icon }) => {
+              const isActive =
+                activeId === id && !(id === "chat" && selectedRecentId);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onSelect(id)}
+                  className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
+                    isActive
+                      ? "bg-sidebar-active text-sidebar-primary font-medium"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent"
+                  }`}
+                >
+                  <Icon size={16} className="shrink-0" />
+                  <span className="truncate">{label}</span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Recent chat sessions */}
-          <div className="mt-4">
-            <div className="zero-nav-recent-label h-8 flex items-center justify-between px-2">
-              <span className="text-xs leading-4 text-sidebar-foreground uppercase tracking-wider">
-                recent chat
-              </span>
-              {onNewChat && (
-                <button
-                  type="button"
-                  onClick={onNewChat}
-                  className="text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors"
-                  aria-label="New chat"
-                >
-                  <IconPlus size={14} />
-                </button>
-              )}
-            </div>
-            <div className="flex flex-col gap-1">
-              {recentSessionsLoading ? (
-                <div className="flex items-center justify-center py-3">
-                  <IconLoader2
-                    size={14}
-                    className="animate-spin text-muted-foreground"
-                  />
-                </div>
-              ) : recentSessionsError ? (
-                <p className="px-2 py-2 text-xs text-destructive">
-                  {recentSessionsError}
-                </p>
-              ) : recentSessions.length === 0 ? (
-                <p className="px-2 py-2 text-xs text-muted-foreground">
-                  No recent chats
-                </p>
-              ) : (
-                recentSessions.map((session) => (
-                  <button
-                    key={session.id}
-                    type="button"
-                    onClick={() => onRecentSelect?.(session.id)}
-                    className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
-                      selectedRecentId === session.id
-                        ? "bg-sidebar-active text-sidebar-primary"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent"
-                    }`}
-                  >
-                    <span className="truncate min-w-0 flex-1">
-                      {session.preview ?? "New chat"}
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
+          <RecentChatSection
+            recentSessions={recentSessions}
+            recentSessionsLoading={recentSessionsLoading}
+            recentSessionsError={recentSessionsError}
+            selectedRecentId={selectedRecentId}
+            onRecentSelect={onRecentSelect}
+            onNewChat={onNewChat}
+          />
         </nav>
 
         {/* Footer nav */}

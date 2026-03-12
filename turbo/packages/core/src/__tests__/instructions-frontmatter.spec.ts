@@ -27,110 +27,133 @@ describe("injectMetadataFrontmatter", () => {
     ).toBe(content);
   });
 
-  it("should prepend frontmatter with full metadata", () => {
+  it("should append profile block with full metadata as natural language", () => {
     const content = "# Instructions\nDo stuff.";
     const result = injectMetadataFrontmatter(content, {
       displayName: "Aria",
       sound: "professional",
     });
     expect(result).toBe(
-      "---\nname: Aria\ntone: professional\n---\n\n# Instructions\nDo stuff.",
+      "# Instructions\nDo stuff.\n\n<!-- ZERO_PROFILE\nYour name is Aria. Communicate in a clear, polished, and business-appropriate tone. This should be reflected in all your responses.\nZERO_PROFILE -->\n",
     );
   });
 
-  it("should prepend frontmatter with only displayName", () => {
+  it("should append profile block with only displayName", () => {
     const content = "# Instructions";
     const result = injectMetadataFrontmatter(content, {
       displayName: "Aria",
     });
-    expect(result).toBe("---\nname: Aria\n---\n\n# Instructions");
+    expect(result).toBe(
+      "# Instructions\n\n<!-- ZERO_PROFILE\nYour name is Aria.\nZERO_PROFILE -->\n",
+    );
   });
 
-  it("should prepend frontmatter with only sound", () => {
+  it("should append profile block with only sound", () => {
     const content = "# Instructions";
     const result = injectMetadataFrontmatter(content, {
       sound: "friendly",
     });
-    expect(result).toBe("---\ntone: friendly\n---\n\n# Instructions");
-  });
-
-  it("should merge with existing frontmatter preserving other fields", () => {
-    const content =
-      "---\nvm0_secrets:\n  - API_KEY\n---\n\n# Instructions\nDo stuff.";
-    const result = injectMetadataFrontmatter(content, {
-      displayName: "Aria",
-      sound: "professional",
-    });
     expect(result).toBe(
-      "---\nvm0_secrets:\n  - API_KEY\nname: Aria\ntone: professional\n---\n\n# Instructions\nDo stuff.",
+      "# Instructions\n\n<!-- ZERO_PROFILE\nCommunicate in a warm, approachable, and conversational tone. This should be reflected in all your responses.\nZERO_PROFILE -->\n",
     );
   });
 
-  it("should overwrite existing name and tone in frontmatter", () => {
-    const content = "---\nname: OldName\ntone: casual\n---\n\n# Instructions";
+  it("should use sound value directly for unknown tones", () => {
+    const content = "# Instructions";
+    const result = injectMetadataFrontmatter(content, {
+      sound: "playful",
+    });
+    expect(result).toContain("Communicate in a playful tone.");
+  });
+
+  it("should replace existing profile block", () => {
+    const content =
+      "# Instructions\nDo stuff.\n\n<!-- ZERO_PROFILE\nYour name is OldName.\nZERO_PROFILE -->\n";
     const result = injectMetadataFrontmatter(content, {
       displayName: "NewName",
-      sound: "formal",
+      sound: "direct",
+    });
+    expect(result).toContain("Your name is NewName.");
+    expect(result).toContain("concise, to the point, and no-nonsense");
+    expect(result).not.toContain("OldName");
+  });
+
+  it("should handle empty content with metadata", () => {
+    const result = injectMetadataFrontmatter("", {
+      displayName: "Aria",
     });
     expect(result).toBe(
-      "---\nname: NewName\ntone: formal\n---\n\n# Instructions",
+      "<!-- ZERO_PROFILE\nYour name is Aria.\nZERO_PROFILE -->\n",
     );
   });
 
-  it("should handle frontmatter with no trailing content", () => {
-    const content = "---\nkey: value\n---\n";
-    const result = injectMetadataFrontmatter(content, {
-      displayName: "Aria",
-    });
-    expect(result).toBe("---\nkey: value\nname: Aria\n---\n");
+  it("should describe all known tones correctly", () => {
+    for (const tone of ["professional", "friendly", "direct", "supportive"]) {
+      const result = injectMetadataFrontmatter("test", { sound: tone });
+      expect(result).toContain("Communicate in a ");
+      expect(result).toContain("tone.");
+    }
   });
 });
 
 describe("stripMetadataFrontmatter", () => {
-  it("should return content unchanged when no frontmatter", () => {
+  it("should return content unchanged when no profile block", () => {
     const content = "# Instructions\nDo stuff.";
     expect(stripMetadataFrontmatter(content)).toBe(content);
   });
 
-  it("should strip name and tone from frontmatter", () => {
+  it("should strip profile block", () => {
     const content =
-      "---\nname: Aria\ntone: professional\n---\n\n# Instructions";
+      "# Instructions\n\n<!-- ZERO_PROFILE\nYour name is Aria. Communicate in a clear, polished, and business-appropriate tone. This should be reflected in all your responses.\nZERO_PROFILE -->\n";
     expect(stripMetadataFrontmatter(content)).toBe("# Instructions");
   });
 
-  it("should preserve non-metadata frontmatter fields", () => {
+  it("should preserve content before profile block", () => {
     const content =
-      "---\nname: Aria\nvm0_secrets:\n  - API_KEY\ntone: friendly\n---\n\n# Instructions";
-    expect(stripMetadataFrontmatter(content)).toBe(
-      "---\nvm0_secrets:\n  - API_KEY\n---\n# Instructions",
-    );
+      "# Instructions\nDo stuff.\n\n<!-- ZERO_PROFILE\nYour name is Aria.\nZERO_PROFILE -->\n";
+    expect(stripMetadataFrontmatter(content)).toBe("# Instructions\nDo stuff.");
   });
 
-  it("should strip only metadata keys and keep the rest intact", () => {
-    const content = "---\ncustom: value\nname: Aria\n---\n\nBody text here.";
-    expect(stripMetadataFrontmatter(content)).toBe(
-      "---\ncustom: value\n---\nBody text here.",
-    );
+  it("should handle content with only profile block", () => {
+    const content = "<!-- ZERO_PROFILE\nYour name is Aria.\nZERO_PROFILE -->\n";
+    expect(stripMetadataFrontmatter(content)).toBe("");
   });
 
-  it("should handle frontmatter with only non-metadata keys", () => {
-    const content = "---\nvm0_secrets:\n  - KEY\n---\n\n# Instructions";
-    expect(stripMetadataFrontmatter(content)).toBe(
-      "---\nvm0_secrets:\n  - KEY\n---\n# Instructions",
-    );
-  });
-
-  it("should handle CRLF line endings in frontmatter delimiter", () => {
-    const content = "---\r\nname: Aria\r\n---\r\n\n# Instructions";
-    expect(stripMetadataFrontmatter(content)).toBe("# Instructions");
-  });
-
-  it("should be the inverse of injectMetadataFrontmatter for simple cases", () => {
+  it("should be the inverse of injectMetadataFrontmatter", () => {
     const original = "# Instructions\nDo stuff.";
     const injected = injectMetadataFrontmatter(original, {
       displayName: "Aria",
       sound: "professional",
     });
     expect(stripMetadataFrontmatter(injected)).toBe(original);
+  });
+
+  it("should strip legacy YAML frontmatter with name and tone", () => {
+    const content =
+      "---\nname: Boss\ntone: friendly\n---\n\n# Instructions\nDo stuff.";
+    expect(stripMetadataFrontmatter(content)).toBe("# Instructions\nDo stuff.");
+  });
+
+  it("should preserve non-metadata keys in legacy frontmatter", () => {
+    const content =
+      "---\nname: Boss\nvm0_secrets:\n  - API_KEY\ntone: friendly\n---\n\n# Instructions";
+    expect(stripMetadataFrontmatter(content)).toBe(
+      "---\nvm0_secrets:\n  - API_KEY\n---\n# Instructions",
+    );
+  });
+});
+
+describe("legacy migration", () => {
+  it("should replace old frontmatter with new profile block on inject", () => {
+    const content =
+      "---\nname: OldName\ntone: casual\n---\n\n# Instructions\nDo stuff.";
+    const result = injectMetadataFrontmatter(content, {
+      displayName: "NewName",
+      sound: "professional",
+    });
+    expect(result).not.toContain("---");
+    expect(result).toContain("<!-- ZERO_PROFILE");
+    expect(result).toContain("Your name is NewName.");
+    expect(result).toContain("# Instructions\nDo stuff.");
   });
 });

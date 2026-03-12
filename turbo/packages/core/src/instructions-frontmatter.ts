@@ -1,70 +1,21 @@
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-
 interface AgentMetadata {
   displayName?: string;
   sound?: string;
 }
 
-const METADATA_KEY_MAP: Record<string, string> = {
-  displayName: "name",
-  sound: "tone",
-};
+const PROFILE_START = "<!-- ZERO_PROFILE";
+const PROFILE_END = "ZERO_PROFILE -->";
+const PROFILE_REGEX =
+  /<!-- ZERO_PROFILE\r?\n[\s\S]*?\r?\nZERO_PROFILE -->\r?\n?/g;
+
+/** Keys used by the legacy YAML frontmatter format. */
+const LEGACY_METADATA_KEYS = new Set(["name", "tone"]);
 
 /**
- * Inject agent metadata into instructions content as YAML frontmatter.
- *
- * - If metadata is undefined/null or has no truthy fields, returns content unchanged.
- * - If content already has frontmatter, merges metadata fields into it.
- * - If no existing frontmatter, prepends a new frontmatter block.
- *
- * Key mapping: displayName → name, sound → tone
+ * Strip legacy `---` YAML frontmatter that only contains our metadata keys
+ * (name, tone). If user-defined keys exist, only our keys are removed.
  */
-export function injectMetadataFrontmatter(
-  content: string,
-  metadata?: AgentMetadata | null,
-): string {
-  if (!metadata) {
-    return content;
-  }
-
-  const fields: Record<string, string> = {};
-  for (const [key, value] of Object.entries(metadata)) {
-    if (value && METADATA_KEY_MAP[key]) {
-      fields[METADATA_KEY_MAP[key]] = value;
-    }
-  }
-
-  if (Object.keys(fields).length === 0) {
-    return content;
-  }
-
-  const frontmatterMatch = content.match(
-    /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/,
-  );
-
-  if (frontmatterMatch) {
-    const existingYaml = frontmatterMatch[1] ?? "";
-    const parsed = (parseYaml(existingYaml) ?? {}) as Record<string, unknown>;
-    const merged = { ...parsed, ...fields };
-    const newYaml = stringifyYaml(merged).trimEnd();
-    const rest = content.slice(frontmatterMatch[0].length);
-    return `---\n${newYaml}\n---\n${rest}`;
-  }
-
-  const yaml = stringifyYaml(fields).trimEnd();
-  return `---\n${yaml}\n---\n\n${content}`;
-}
-
-/** Frontmatter keys injected by {@link injectMetadataFrontmatter}. */
-const METADATA_FRONTMATTER_KEYS: ReadonlySet<string> = Object.freeze(
-  new Set(Object.values(METADATA_KEY_MAP)),
-);
-
-/**
- * Strip only our metadata keys (name, tone) from frontmatter.
- * User-defined frontmatter fields are preserved.
- */
-export function stripMetadataFrontmatter(content: string): string {
+function stripLegacyFrontmatter(content: string): string {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/);
   if (!match) {
     return content;
@@ -76,7 +27,7 @@ export function stripMetadataFrontmatter(content: string): string {
     .split("\n")
     .filter((line) => {
       const key = line.split(":")[0]?.trim();
-      return !key || !METADATA_FRONTMATTER_KEYS.has(key);
+      return !key || !LEGACY_METADATA_KEYS.has(key);
     })
     .join("\n")
     .trim();
@@ -85,4 +36,85 @@ export function stripMetadataFrontmatter(content: string): string {
     return body.replace(/^\n/, "");
   }
   return `---\n${remaining}\n---${body}`;
+}
+
+const TONE_DESCRIPTIONS: Record<string, string> = {
+  professional: "clear, polished, and business-appropriate",
+  friendly: "warm, approachable, and conversational",
+  direct: "concise, to the point, and no-nonsense",
+  supportive: "encouraging, empathetic, and reassuring",
+};
+
+function buildProfileParagraph(metadata: AgentMetadata): string | null {
+  const parts: string[] = [];
+
+  if (metadata.displayName) {
+    parts.push(`Your name is ${metadata.displayName}.`);
+  }
+
+  if (metadata.sound) {
+    const desc = TONE_DESCRIPTIONS[metadata.sound] ?? metadata.sound;
+    parts.push(
+      `Communicate in a ${desc} tone. This should be reflected in all your responses.`,
+    );
+  }
+
+  if (parts.length === 0) {
+    return null;
+  }
+
+  return parts.join(" ");
+}
+
+/**
+ * Inject agent metadata into instructions content as a hidden profile block.
+ *
+ * The block uses HTML comment syntax so it can be stripped before displaying
+ * in the instructions editor, while remaining readable to the agent at runtime.
+ *
+ * Format:
+ * ```
+ * <!-- ZERO_PROFILE
+ * Your name is Aria. Communicate in a clear, polished, and business-appropriate tone.
+ * This should be reflected in all your responses.
+ * ZERO_PROFILE -->
+ * ```
+ *
+ * - If metadata is undefined/null or has no truthy fields, returns content unchanged.
+ * - If content already has a profile block, replaces it.
+ * - Otherwise appends it at the end.
+ */
+export function injectMetadataFrontmatter(
+  content: string,
+  metadata?: AgentMetadata | null,
+): string {
+  if (!metadata) {
+    return content;
+  }
+
+  const paragraph = buildProfileParagraph(metadata);
+  if (!paragraph) {
+    return content;
+  }
+
+  const block = `${PROFILE_START}\n${paragraph}\n${PROFILE_END}`;
+
+  // Remove any existing profile block and legacy frontmatter first
+  const stripped = stripLegacyFrontmatter(content)
+    .replace(PROFILE_REGEX, "")
+    .trimEnd();
+
+  if (!stripped) {
+    return `${block}\n`;
+  }
+
+  return `${stripped}\n\n${block}\n`;
+}
+
+/**
+ * Strip the hidden profile block (and legacy YAML frontmatter) from
+ * instructions content for display in the editor.
+ */
+export function stripMetadataFrontmatter(content: string): string {
+  return stripLegacyFrontmatter(content).replace(PROFILE_REGEX, "").trim();
 }

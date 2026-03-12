@@ -5,6 +5,7 @@ import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { setupPollingLoop$, type PageResult } from "../agent-detail/polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
+import { navigateToZeroSession$ } from "./zero-nav.ts";
 import type { SessionListItem } from "@vm0/core";
 
 const L = logger("ZeroChat");
@@ -73,6 +74,13 @@ async function startAgentRun(
 // Chat message types
 // ---------------------------------------------------------------------------
 
+interface ZeroChatMessageAttachment {
+  filename: string;
+  contentType: string;
+  size: number;
+  url: string;
+}
+
 export interface ZeroChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -80,6 +88,7 @@ export interface ZeroChatMessage {
   runId?: string;
   status?: LogStatus;
   error?: string;
+  attachments?: ZeroChatMessageAttachment[];
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +128,11 @@ export const zeroSessionListError$ = computed((get) =>
 const internalSessionError$ = state<string | null>(null);
 export const zeroSessionError$ = computed((get) => get(internalSessionError$));
 
+const internalSessionSwitching$ = state(false);
+export const zeroSessionSwitching$ = computed((get) =>
+  get(internalSessionSwitching$),
+);
+
 // Chat input
 const internalChatInput$ = state("");
 export const zeroChatInput$ = computed((get) => get(internalChatInput$));
@@ -129,6 +143,81 @@ export const setZeroChatInput$ = command(({ set }, value: string) => {
 
 export const clearZeroChatInput$ = command(({ set }) => {
   set(internalChatInput$, "");
+});
+
+// Attachments
+export interface ZeroChatAttachment {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  url: string;
+  uploading?: boolean;
+}
+
+const internalAttachments$ = state<ZeroChatAttachment[]>([]);
+export const zeroChatAttachments$ = computed((get) =>
+  get(internalAttachments$),
+);
+
+export const uploadZeroAttachment$ = command(
+  async ({ get, set }, file: File) => {
+    const id = crypto.randomUUID();
+    const placeholder: ZeroChatAttachment = {
+      id,
+      filename: file.name,
+      contentType: file.type,
+      size: file.size,
+      url: "",
+      uploading: true,
+    };
+    set(internalAttachments$, (prev) => [...prev, placeholder]);
+
+    try {
+      const fetchFn = get(fetch$);
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetchFn("/api/agent/uploads", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        throw new Error(
+          err?.error?.message ?? `Upload failed: ${res.statusText}`,
+        );
+      }
+
+      const data = (await res.json()) as {
+        id: string;
+        filename: string;
+        contentType: string;
+        size: number;
+        url: string;
+      };
+
+      set(internalAttachments$, (prev) =>
+        prev.map((a) =>
+          a.id === id
+            ? { ...a, url: data.url, id: data.id, uploading: false }
+            : a,
+        ),
+      );
+    } catch (error) {
+      throwIfAbort(error);
+      L.error("Upload failed:", error);
+      // Remove the failed placeholder
+      set(internalAttachments$, (prev) => prev.filter((a) => a.id !== id));
+    }
+  },
+);
+
+export const removeZeroAttachment$ = command(({ set }, id: string) => {
+  set(internalAttachments$, (prev) => prev.filter((a) => a.id !== id));
 });
 
 // ---------------------------------------------------------------------------
@@ -180,6 +269,7 @@ export const switchZeroSession$ = command(
     set(internalRunError$, null);
     set(internalSending$, false);
     set(internalSessionError$, null);
+    set(internalSessionSwitching$, true);
 
     try {
       const fetchFn = get(fetch$);
@@ -214,6 +304,8 @@ export const switchZeroSession$ = command(
         error instanceof Error ? error.message : "Failed to load session";
       set(internalSessionError$, msg);
       L.error("Failed to switch session:", error);
+    } finally {
+      set(internalSessionSwitching$, false);
     }
   },
 );
@@ -243,13 +335,34 @@ export const sendZeroChatMessage$ = command(
 
     set(internalSending$, true);
 
-    // Add user message
+    // Build full prompt with attachments
+    const attachments = get(internalAttachments$).filter((a) => !a.uploading);
+    let fullPrompt = prompt.trim();
+    if (attachments.length > 0) {
+      const attachmentLines = attachments.map(
+        (a) =>
+          `[Attached file: ${a.filename}](${a.url})\nDownload with: curl -sL -o "${a.filename}" "${a.url}"`,
+      );
+      fullPrompt = `${fullPrompt}\n\n${attachmentLines.join("\n")}`;
+    }
+
+    // Add user message (show original prompt + attachment names in UI)
     const userMessage: ZeroChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
       content: prompt.trim(),
+      attachments:
+        attachments.length > 0
+          ? attachments.map((a) => ({
+              filename: a.filename,
+              contentType: a.contentType,
+              size: a.size,
+              url: a.url,
+            }))
+          : undefined,
     };
     set(internalMessages$, (prev) => [...prev, userMessage]);
+    set(internalAttachments$, []);
 
     // Add placeholder assistant message
     const assistantPlaceholder: ZeroChatMessage = {
@@ -263,7 +376,12 @@ export const sendZeroChatMessage$ = command(
       const fetchFn = get(fetch$);
       const sessionId = get(internalSessionId$);
 
-      const runId = await startAgentRun(fetchFn, composeId, prompt, sessionId);
+      const runId = await startAgentRun(
+        fetchFn,
+        composeId,
+        fullPrompt,
+        sessionId,
+      );
 
       if (!runId) {
         set(internalMessages$, (prev) => {
@@ -381,7 +499,12 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
         result?: { output?: string; agentSessionId?: string };
       };
       if (data.result?.agentSessionId) {
+        const prevSessionId = get(internalSessionId$);
         set(internalSessionId$, data.result.agentSessionId);
+        // Update URL when a new session is created
+        if (!prevSessionId) {
+          set(navigateToZeroSession$, data.result.agentSessionId);
+        }
       }
     }
 
@@ -403,43 +526,11 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
       });
     }
 
-    // Persist messages to server, then refresh session list
-    const sessionId = get(internalSessionId$);
-    const currentMessages = get(internalMessages$);
-    const assistantIdx = sessionId
-      ? currentMessages.findIndex(
-          (m) => m.role === "assistant" && m.runId === runId,
-        )
-      : -1;
-    const userMsg =
-      assistantIdx > 0 ? currentMessages[assistantIdx - 1] : undefined;
-    const assistantMsg =
-      assistantIdx > 0 ? currentMessages[assistantIdx] : undefined;
-
-    if (sessionId && userMsg?.role === "user" && assistantMsg) {
-      const persistRes = await fetchFn(
-        `/api/agent/sessions/${sessionId}/messages`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: [
-              { role: "user", content: userMsg.content },
-              { role: "assistant", content: assistantMsg.content, runId },
-            ],
-          }),
-        },
-      );
-      if (!persistRes.ok) {
-        L.error("Failed to persist messages:", persistRes.statusText);
-      }
-
-      // Refresh session list
-      set(fetchZeroSessionList$).catch((error: unknown) => {
-        throwIfAbort(error);
-        L.error("Failed to refresh session list:", error);
-      });
-    }
+    // Refresh session list (messages are persisted server-side via webhook)
+    set(fetchZeroSessionList$).catch((error: unknown) => {
+      throwIfAbort(error);
+      L.error("Failed to refresh session list:", error);
+    });
   } catch (error) {
     throwIfAbort(error);
     L.error("Failed to extract run result:", error);

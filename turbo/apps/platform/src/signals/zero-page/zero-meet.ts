@@ -344,21 +344,23 @@ async function resolveInstructionsContent(
   composeId: string | undefined,
   localContent: string | null | undefined,
 ): Promise<string | undefined> {
+  let raw: string | undefined;
   if (localContent) {
-    return localContent;
+    raw = localContent;
+  } else if (composeId) {
+    const resp = await fetchFn(`/api/agent/composes/${composeId}/instructions`);
+    if (!resp.ok) {
+      L.warn(
+        `Failed to fetch instructions for compose ${composeId}: ${resp.status} ${resp.statusText}`,
+      );
+      return undefined;
+    }
+    const data = (await resp.json()) as AgentInstructions;
+    raw = data.content ?? undefined;
   }
-  if (!composeId) {
-    return undefined;
-  }
-  const resp = await fetchFn(`/api/agent/composes/${composeId}/instructions`);
-  if (!resp.ok) {
-    L.warn(
-      `Failed to fetch instructions for compose ${composeId}: ${resp.status} ${resp.statusText}`,
-    );
-    return undefined;
-  }
-  const data = (await resp.json()) as AgentInstructions;
-  return data.content ?? undefined;
+  // Strip any existing metadata (legacy frontmatter or profile block)
+  // so the server can inject a clean copy from compose metadata.
+  return raw ? stripMetadataFrontmatter(raw) : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -372,7 +374,7 @@ async function buildAndSetDefaultAgent(
 ): Promise<void> {
   // Ensure instructions field is present when we have content to write.
   // Fall back to empty string so the server creates a CLAUDE.md with
-  // metadata frontmatter even when there are no user-written instructions.
+  // agent profile even when there are no user-written instructions.
   const agentKey = Object.keys(newContent.agents)[0];
   const agent = agentKey ? newContent.agents[agentKey] : undefined;
   const resolvedInstructions = instructions ?? "";
@@ -513,6 +515,8 @@ export const zeroUpdateSettings$ = command(
 
       await set(reloadOnboardingStatus$);
       set(internalComposeReload$, (x) => x + 1);
+      // Refresh instructions so the profile block reflects the new settings
+      await set(fetchZeroInstructions$);
       toast.success("Settings saved");
     } catch (error) {
       throwIfAbort(error);

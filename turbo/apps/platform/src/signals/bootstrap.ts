@@ -46,6 +46,10 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupSelectOrgPage$),
   },
   {
+    path: "/zero/chat/:sessionId",
+    setup: setupAuthPageWrapper(setupZeroPage$),
+  },
+  {
     path: "/zero/:tab/:sub",
     setup: setupAuthPageWrapper(setupZeroPage$),
   },

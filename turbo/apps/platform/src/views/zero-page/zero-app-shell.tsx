@@ -17,9 +17,13 @@ import { resetDefaultAgent$ } from "../../signals/zero-page/zero-dev-tools.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   zeroActiveId$,
+  zeroInChat$,
+  zeroSessionId$,
   setZeroActiveId$,
+  navigateToZeroSession$,
+  navigateFromZeroSession$,
 } from "../../signals/zero-page/zero-nav.ts";
-import { updateSearchParams$ } from "../../signals/route.ts";
+import { updateSearchParams$, updatePathname$ } from "../../signals/route.ts";
 import {
   zeroSessionList$,
   zeroSessionListLoading$,
@@ -206,8 +210,9 @@ export function ZeroAppShell() {
   });
   const cycleAvatar = useSet(cycleAvatar$);
 
-  const inSession$ = useCCState(false);
-  const inSession = useGet(inSession$);
+  const inChat = useGet(zeroInChat$);
+  const urlSessionId = useGet(zeroSessionId$);
+  const inSession = inChat;
   const currentSessionId = useGet(zeroCurrentSessionId$);
   const switchSession = useSet(switchZeroSession$);
   const startNewSession = useSet(startNewZeroSession$);
@@ -216,35 +221,50 @@ export function ZeroAppShell() {
   const { recentSessions, recentSessionsLoading, recentSessionsError } =
     useSessionLifecycle(isLoggedIn, onboardingReady, needsOnboarding);
 
+  // Sync URL session ID to chat signal (skip if signal already matches)
+  const prevUrlSessionId$ = useCCState<string | null>(null);
+  const prevUrlSessionId = useGet(prevUrlSessionId$);
+  const setPrevUrlSessionId = useSet(prevUrlSessionId$);
+  if (
+    urlSessionId &&
+    urlSessionId !== prevUrlSessionId &&
+    urlSessionId !== currentSessionId
+  ) {
+    queueMicrotask(() => {
+      setPrevUrlSessionId(urlSessionId);
+      detach(switchSession(urlSessionId), Reason.DomCallback);
+    });
+  } else if (urlSessionId && urlSessionId !== prevUrlSessionId) {
+    queueMicrotask(() => setPrevUrlSessionId(urlSessionId));
+  } else if (!urlSessionId && prevUrlSessionId) {
+    queueMicrotask(() => setPrevUrlSessionId(null));
+  }
+
   const handleRecentSelect$ = useCommand(({ set }, sessionId: string) => {
-    set(setZeroActiveId$, "chat");
-    set(inSession$, true);
-    detach(switchSession(sessionId), Reason.DomCallback);
+    set(navigateToZeroSession$, sessionId);
   });
   const handleRecentSelect = useSet(handleRecentSelect$);
 
   const handleNewChat$ = useCommand(({ set }) => {
-    set(setZeroActiveId$, "chat");
-    set(inSession$, true);
+    set(updatePathname$, "/zero/chat");
     startNewSession();
   });
   const handleNewChat = useSet(handleNewChat$);
 
   const handleSendFromDemo$ = useCommand(({ set }, message: string) => {
-    set(inSession$, true);
+    set(updatePathname$, "/zero/chat");
     startNewSession();
     detach(sendMessage(message), Reason.DomCallback);
   });
   const handleSendFromDemo = useSet(handleSendFromDemo$);
 
   const handleBackFromSession$ = useCommand(({ set }) => {
-    set(inSession$, false);
+    set(navigateFromZeroSession$);
   });
   const handleBackFromSession = useSet(handleBackFromSession$);
 
   const handleNavSelect$ = useCommand(({ set }, id: ZeroNavId) => {
     set(setZeroActiveId$, id);
-    set(inSession$, false);
     set(showAboutPage$, false);
   });
   const handleNavSelect = useSet(handleNavSelect$);
@@ -280,9 +300,7 @@ export function ZeroAppShell() {
         agentName={agentDisplayName}
         onSelect={handleNavSelect}
         onRecentSelect={handleRecentSelect}
-        selectedRecentId={
-          activeId === "chat" && inSession ? currentSessionId : null
-        }
+        selectedRecentId={urlSessionId}
         onAccountAction={handleAccountAction}
         recentSessions={recentSessions}
         recentSessionsLoading={recentSessionsLoading}

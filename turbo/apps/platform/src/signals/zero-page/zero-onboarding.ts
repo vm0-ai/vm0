@@ -312,7 +312,7 @@ export const completeZeroOnboarding$ = command(
       };
 
       // Run compose job (CLI processes skills, uploads assets)
-      // Pass empty instructions so the server creates a CLAUDE.md with metadata frontmatter
+      // Pass empty instructions so the server creates a CLAUDE.md with agent profile
       const job = await triggerAndPollComposeJob(fetchFn, content, "");
       signal.throwIfAborted();
 

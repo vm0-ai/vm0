@@ -19,6 +19,12 @@ import { logger } from "../../../../../src/lib/logger";
 import { dispatchCallbacks } from "../../../../../src/lib/callback";
 import { drainUserQueue } from "../../../../../src/lib/run/run-queue-service";
 import { executeQueuedRun } from "../../../../../src/lib/run/run-service";
+import { appendChatMessages } from "../../../../../src/lib/agent-session/agent-session-service";
+import {
+  queryAxiom,
+  getDatasetName,
+  DATASETS,
+} from "../../../../../src/lib/axiom";
 import { after } from "next/server";
 
 const log = logger("webhook:complete");
@@ -48,6 +54,52 @@ async function atomicTransition(
     )
     .returning({ id: agentRuns.id });
   return !!updated;
+}
+
+/**
+ * Query Axiom for the last "result" event of a run.
+ * Returns the result string or null if not found.
+ */
+async function extractResultFromAxiom(runId: string): Promise<string | null> {
+  const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
+  const apl = `['${dataset}']
+| where runId == "${runId}"
+| where eventType == "result"
+| order by sequenceNumber desc
+| limit 1`;
+
+  const events = await queryAxiom<{
+    eventData: { result?: string };
+  }>(apl);
+
+  const result = events[0]?.eventData?.result;
+  return typeof result === "string" ? result : null;
+}
+
+/**
+ * Persist user prompt and assistant result as chat messages on the session.
+ * Runs in after() — best-effort, errors are logged but not propagated.
+ */
+async function persistChatMessages(
+  runId: string,
+  sessionId: string,
+  userId: string,
+  prompt: string,
+): Promise<void> {
+  const result = await extractResultFromAxiom(runId);
+
+  const messages: Array<{
+    role: "user" | "assistant";
+    content: string;
+    runId?: string;
+  }> = [{ role: "user", content: prompt }];
+
+  if (result) {
+    messages.push({ role: "assistant", content: result, runId });
+  }
+
+  await appendChatMessages(sessionId, userId, messages);
+  log.debug(`Persisted ${messages.length} chat messages for run ${runId}`);
 }
 
 /**
@@ -228,6 +280,20 @@ const router = tsr.router(webhookCompleteContract, {
 
       finalStatus = "completed";
       log.debug(`Run ${body.runId} completed successfully`);
+
+      // Persist chat messages to session (non-blocking)
+      if (session) {
+        after(async () => {
+          await persistChatMessages(
+            body.runId,
+            session.id,
+            userId,
+            run.prompt,
+          ).catch((err) =>
+            log.error("Failed to persist chat messages", { err }),
+          );
+        });
+      }
     } else {
       // Failure: store error in run table
       const errorMessage =

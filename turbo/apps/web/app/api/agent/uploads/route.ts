@@ -1,0 +1,91 @@
+import { NextRequest, NextResponse } from "next/server";
+import { initServices } from "../../../../src/lib/init-services";
+import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import {
+  uploadS3Buffer,
+  generatePresignedUrl,
+} from "../../../../src/lib/s3/s3-client";
+import { env } from "../../../../src/env";
+import { logger } from "../../../../src/lib/logger";
+
+const log = logger("api:agent:uploads");
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "application/pdf",
+  "text/plain",
+  "text/csv",
+  "text/markdown",
+  "application/json",
+]);
+
+export async function POST(request: NextRequest) {
+  initServices();
+
+  const userId = await getUserId(
+    request.headers.get("authorization") ?? undefined,
+  );
+  if (!userId) {
+    return NextResponse.json(
+      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+      { status: 401 },
+    );
+  }
+
+  const formData = await request.formData();
+  const file = formData.get("file");
+
+  if (!file || !(file instanceof File)) {
+    return NextResponse.json(
+      { error: { message: "No file provided", code: "BAD_REQUEST" } },
+      { status: 400 },
+    );
+  }
+
+  if (file.size > MAX_FILE_SIZE) {
+    return NextResponse.json(
+      { error: { message: "File too large (max 10 MB)", code: "BAD_REQUEST" } },
+      { status: 400 },
+    );
+  }
+
+  if (!ALLOWED_TYPES.has(file.type)) {
+    return NextResponse.json(
+      {
+        error: {
+          message: `Unsupported file type: ${file.type}`,
+          code: "BAD_REQUEST",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  const id = crypto.randomUUID();
+  const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const s3Key = `uploads/${userId}/${id}/${sanitizedName}`;
+  const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  await uploadS3Buffer(bucket, s3Key, buffer, file.type);
+
+  // Generate a presigned GET URL valid for 24 hours
+  const url = await generatePresignedUrl(bucket, s3Key, 86400, sanitizedName);
+
+  log.debug(
+    `Uploaded ${sanitizedName} (${file.size} bytes) for user ${userId}`,
+  );
+
+  return NextResponse.json({
+    id,
+    filename: file.name,
+    contentType: file.type,
+    size: file.size,
+    url,
+  });
+}

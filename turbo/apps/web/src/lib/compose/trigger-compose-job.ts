@@ -299,7 +299,7 @@ async function spawnComposeJobSandbox(
     const yamlContent = JSON.stringify(params.content, null, 2);
     await sandbox.files.write("/tmp/compose/vm0.yaml", yamlContent);
 
-    // Write instructions file if provided, with metadata frontmatter injected
+    // Write instructions file if provided, with agent profile injected
     if (params.instructions !== undefined) {
       const instructionsFilename = getInstructionsFilename(params.content);
       if (instructionsFilename) {

@@ -18,7 +18,7 @@ function isValidTab(tab: string): tab is ZeroNavId {
 
 /**
  * Active zero nav id, derived from the URL path `/zero/:tab`.
- * `/zero` and `/zero/chat` both resolve to "chat".
+ * `/zero`, `/zero/chat`, and `/zero/chat/:sessionId` all resolve to "chat".
  */
 export const zeroActiveId$ = computed((get): ZeroNavId => {
   const path = get(pathname$);
@@ -27,6 +27,24 @@ export const zeroActiveId$ = computed((get): ZeroNavId => {
     return segment;
   }
   return "chat";
+});
+
+/**
+ * Whether the user is on a chat page — `/zero/chat` or `/zero/chat/:sessionId`.
+ */
+export const zeroInChat$ = computed((get): boolean => {
+  const path = get(pathname$);
+  return /^\/zero\/chat(\/|$)/.test(path);
+});
+
+/**
+ * Session ID extracted from `/zero/chat/:sessionId`.
+ * Returns null when on `/zero` or `/zero/chat` (no active session).
+ */
+export const zeroSessionId$ = computed((get): string | null => {
+  const path = get(pathname$);
+  const match = /^\/zero\/chat\/([^/]+)$/.exec(path);
+  return match ? match[1] : null;
 });
 
 /**
@@ -46,4 +64,18 @@ export const zeroTabSub$ = computed((get): string | null => {
   const path = get(pathname$);
   const parts = path.replace(/^\/zero\/?/, "").split("/");
   return parts[1] || null;
+});
+
+/**
+ * Navigate to a specific chat session — `/zero/chat/:sessionId`.
+ */
+export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
+  set(updatePathname$, `/zero/chat/${sessionId}`);
+});
+
+/**
+ * Navigate back from a chat session to the chat home — `/zero`.
+ */
+export const navigateFromZeroSession$ = command(({ set }) => {
+  set(updatePathname$, "/zero");
 });
