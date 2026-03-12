@@ -510,19 +510,6 @@ async function fetchReferencedSecrets(
 }
 
 /**
- * Merge DB secrets with CLI secrets (CLI takes priority)
- */
-function mergeSecrets(
-  dbSecrets: Record<string, string> | undefined,
-  cliSecrets: Record<string, string> | undefined,
-): Record<string, string> | undefined {
-  if (!dbSecrets) {
-    return cliSecrets;
-  }
-  return { ...dbSecrets, ...cliSecrets };
-}
-
-/**
  * Auto-inject environment variables from a provider source (model provider, connector, etc.)
  * Returns the potentially modified environment.
  *
@@ -557,54 +544,6 @@ function autoInjectEnvVarsToEnvironment(
   }
 
   return result;
-}
-
-/**
- * Merge connector-resolved secrets into the secrets pool, but ONLY for secrets
- * that the compose explicitly references via ${{ secrets.* }}.
- *
- * This ensures connector secrets are only injected when the compose asks for them
- * (via skills declaring vm0_secrets), not unconditionally.
- *
- * Precedence: user/CLI secrets > connector secrets (connector only fills gaps).
- */
-function mergeConnectorSecretsForReferences(
-  composeEnvironment: Record<string, string> | undefined,
-  existingSecrets: Record<string, string> | undefined,
-  connectorEnvVars: Record<string, string> | undefined,
-): Record<string, string> | undefined {
-  if (!composeEnvironment || !connectorEnvVars) {
-    return existingSecrets;
-  }
-
-  // Extract ${{ secrets.* }} references from compose environment
-  const grouped = extractAndGroupVariables(composeEnvironment);
-
-  if (grouped.secrets.length === 0) {
-    return existingSecrets;
-  }
-
-  const referencedSecretNames = new Set(grouped.secrets.map((r) => r.name));
-  let merged = existingSecrets;
-
-  for (const name of referencedSecretNames) {
-    // Skip if already provided by user/CLI secrets
-    if (merged?.[name]) {
-      continue;
-    }
-
-    // Check if connector can satisfy this secret
-    const connectorValue = connectorEnvVars[name];
-    if (connectorValue) {
-      merged = merged || {};
-      merged[name] = connectorValue;
-      log.debug(
-        `Connector secret satisfying ${"$"}{{ secrets.${name} }} reference`,
-      );
-    }
-  }
-
-  return merged;
 }
 
 /**
@@ -742,7 +681,6 @@ async function resolveSecretsAndEnvironment(
   userId: string,
 ): Promise<{
   secrets: Record<string, string> | undefined;
-  platformSecrets: Record<string, string> | undefined;
   environment: Record<string, string> | undefined;
 }> {
   // Model provider secret injection
@@ -768,39 +706,25 @@ async function resolveSecretsAndEnvironment(
       fetchAndMergeVariables(orgId, userId, vars),
     ]);
 
-  // Merge platform secrets from all sources for masking.
-  // All raw connector secrets are included (both OAuth intermediate and api-token target names).
-  const hasPlatformSecrets =
-    dbSecrets ||
+  // Single secrets map with explicit priority (later overrides earlier).
+  // All sources are included — extra secrets are harmless for environment expansion
+  // (only referenced ${{ secrets.* }} names are looked up) and for auth resolution
+  // (auth endpoint only resolves templates it receives).
+  const hasSecrets =
+    connectorResult.connectorSecrets ||
+    connectorResult.injectedEnvVars ||
     modelProviderResult.secrets ||
-    connectorResult.connectorSecrets;
-  const platformSecrets: Record<string, string> | undefined = hasPlatformSecrets
+    dbSecrets ||
+    cliSecrets;
+  const secrets: Record<string, string> | undefined = hasSecrets
     ? {
-        ...dbSecrets,
-        ...modelProviderResult.secrets,
-        ...connectorResult.connectorSecrets,
+        ...connectorResult.connectorSecrets, // lowest: raw connector secrets
+        ...connectorResult.injectedEnvVars, // connector env mappings override raw
+        ...modelProviderResult.secrets, // model provider
+        ...dbSecrets, // DB user secrets
+        ...cliSecrets, // highest: CLI --secrets
       }
     : undefined;
-
-  // Merge secrets: DB user secrets + CLI secrets (CLI takes priority)
-  let secrets = mergeSecrets(dbSecrets, cliSecrets);
-
-  // Merge connector secrets into secrets pool for explicit ${{ secrets.* }} references only.
-  // Two sources: raw connectorSecrets (api-token names like FIGMA_TOKEN) and
-  // injectedEnvVars (OAuth-mapped names like FIGMA_TOKEN from $secrets.FIGMA_ACCESS_TOKEN).
-  // injectedEnvVars overrides connectorSecrets so OAuth-mapped names take precedence.
-  const connectorEnvPool =
-    connectorResult.connectorSecrets || connectorResult.injectedEnvVars
-      ? {
-          ...connectorResult.connectorSecrets,
-          ...connectorResult.injectedEnvVars,
-        }
-      : undefined;
-  secrets = mergeConnectorSecretsForReferences(
-    firstAgent?.environment,
-    secrets,
-    connectorEnvPool,
-  );
 
   const modelProviderEnvVars = modelProviderResult.injectedEnvVars;
 
@@ -819,7 +743,7 @@ async function resolveSecretsAndEnvironment(
     "model provider",
   );
 
-  return { secrets, platformSecrets, environment };
+  return { secrets, environment };
 }
 
 /**
@@ -1060,19 +984,8 @@ export async function buildExecutionContext(
   ]);
   const resolveSecretsEnd = Date.now();
 
-  const {
-    secrets: resolvedSecrets,
-    platformSecrets,
-    environment,
-  } = secretsResult;
+  const { secrets, environment } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
-
-  // Step 5: Merge platform secrets into secrets for client-side log masking
-  // Platform secrets are server-stored user-level secrets and must be masked like CLI secrets
-  // Priority: CLI --secrets > platform secrets
-  const mergedSecrets = platformSecrets
-    ? { ...platformSecrets, ...resolvedSecrets }
-    : resolvedSecrets;
 
   // Build experimental services manifest (base + auth entries for the runner)
   const experimentalServices =
@@ -1088,7 +1001,7 @@ export async function buildExecutionContext(
       agentCompose,
       prompt: params.prompt,
       vars,
-      secrets: mergedSecrets,
+      secrets,
       sandboxToken: params.sandboxToken,
       artifactName,
       artifactVersion,
