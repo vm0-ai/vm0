@@ -122,16 +122,11 @@ async fn execute_inner(
 
     if proxy_registered {
         let fw = context.experimental_firewall.as_ref();
-        let fw_mitm = fw.is_some_and(|f| f.experimental_mitm.unwrap_or(false));
-        // Services require MITM for header injection
-        let mitm_enabled = fw_mitm || has_services;
-
         let run_id_str = context.run_id.to_string();
         let registration = proxy::VmRegistration {
             run_id: &run_id_str,
             sandbox_token: &context.sandbox_token,
             firewall_rules: fw.and_then(|f| f.rules.as_deref()).unwrap_or(&[]),
-            mitm_enabled,
             network_log_path: &network_log_path,
             services: context.experimental_services.as_ref(),
         };
@@ -568,18 +563,18 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         env.insert("USE_MOCK_CLAUDE".into(), val);
     }
 
-    // Tell Node.js to trust the proxy CA when MITM mode is enabled.
+    // Tell Node.js to trust the proxy CA when MITM proxy is active.
+    // MITM is always enabled when firewall or services are configured.
     // The certificate is pre-baked into the rootfs at build time.
-    // Connectors also require MITM for header injection.
-    let mitm_needed = context
+    let proxy_active = context
         .experimental_firewall
         .as_ref()
-        .is_some_and(|fw| fw.experimental_mitm.unwrap_or(false))
+        .is_some_and(|fw| fw.enabled)
         || context
             .experimental_services
             .as_ref()
             .is_some_and(|s| !s.apis.is_empty());
-    if mitm_needed {
+    if proxy_active {
         env.insert("NODE_EXTRA_CA_CERTS".into(), VM_PROXY_CA_PATH.into());
     }
 
@@ -863,8 +858,7 @@ mod tests {
                 "rules": [
                     {"domain": "*.example.com", "action": "ALLOW"},
                     {"final": "DENY"}
-                ],
-                "experimental_mitm": true
+                ]
             },
             "debugNoMockClaude": true,
             "apiStartTime": 1700000000.5,
@@ -883,8 +877,6 @@ mod tests {
         assert!(fw.enabled);
         let rules = fw.rules.as_ref().unwrap();
         assert_eq!(rules.len(), 2);
-        assert_eq!(fw.experimental_mitm, Some(true));
-
         assert_eq!(ctx.api_start_time, Some(1700000000.5));
         assert_eq!(ctx.user_timezone.as_deref(), Some("Asia/Shanghai"));
     }
@@ -928,37 +920,31 @@ mod tests {
     }
 
     #[test]
-    fn build_env_json_with_mitm_sets_ca_certs() {
+    fn build_env_json_with_firewall_sets_ca_certs() {
         let mut ctx = minimal_context();
         ctx.experimental_firewall = Some(crate::types::ExperimentalFirewall {
             enabled: true,
             rules: None,
-            experimental_mitm: Some(true),
         });
         let env = build_env_json(&ctx, "http://localhost");
         assert_eq!(env.get("NODE_EXTRA_CA_CERTS").unwrap(), VM_PROXY_CA_PATH);
     }
 
     #[test]
-    fn build_env_json_without_mitm_no_ca_certs() {
+    fn build_env_json_firewall_disabled_no_ca_certs() {
         let mut ctx = minimal_context();
         ctx.experimental_firewall = Some(crate::types::ExperimentalFirewall {
-            enabled: true,
+            enabled: false,
             rules: None,
-            experimental_mitm: Some(false),
         });
         let env = build_env_json(&ctx, "http://localhost");
         assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
     }
 
     #[test]
-    fn build_env_json_mitm_none_no_ca_certs() {
+    fn build_env_json_no_firewall_no_ca_certs() {
         let mut ctx = minimal_context();
-        ctx.experimental_firewall = Some(crate::types::ExperimentalFirewall {
-            enabled: true,
-            rules: None,
-            experimental_mitm: None,
-        });
+        ctx.experimental_firewall = None;
         let env = build_env_json(&ctx, "http://localhost");
         assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
     }

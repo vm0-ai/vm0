@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
-# Test experimental_firewall MITM mode (with HTTPS inspection)
+# Test experimental_firewall with HTTPS inspection (MITM)
 #
-# MITM mode decrypts and inspects HTTPS traffic, enabling:
+# When firewall is enabled, MITM mode is always active, providing:
 # - Full HTTP request/response inspection
 # - Detailed network logging
 # - HTTP 403 response for blocked requests
@@ -49,7 +49,6 @@ agents:
     working_dir: /home/user/workspace
     experimental_firewall:
       enabled: true
-      experimental_mitm: true
       rules:
         - domain: "httpbin.org"
           action: ALLOW
@@ -71,7 +70,6 @@ agents:
     working_dir: /home/user/workspace
     experimental_firewall:
       enabled: true
-      experimental_mitm: true
       rules:
         - domain: "httpbin.org"
           action: ALLOW
@@ -124,7 +122,6 @@ agents:
     working_dir: /home/user/workspace
     experimental_firewall:
       enabled: true
-      experimental_mitm: true
       rules:
         - domain: "httpbin.org"
           action: ALLOW

@@ -106,7 +106,6 @@ function processFirewallConfig(
   return {
     enabled: true,
     rules: allRules,
-    experimental_mitm: firewallConfig.experimental_mitm ?? false,
   };
 }
 

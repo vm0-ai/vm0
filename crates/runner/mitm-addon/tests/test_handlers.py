@@ -109,7 +109,7 @@ class TestRequestHandler:
         assert "firewall_action" not in flow.metadata
 
     def test_mitm_allowed_passes_through(self, registry_file):
-        """Allowed request with mitmEnabled=True passes through without rewrite."""
+        """Allowed request passes through without rewrite."""
         flow = _make_http_flow(host="api.anthropic.com", path="/v1/messages")
 
         with (
@@ -131,7 +131,6 @@ class TestRequestHandler:
                 "10.200.0.5": {
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
-                    "mitmEnabled": True,
                     "firewallRules": [{"final": "DENY"}],
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "services": {
@@ -162,9 +161,9 @@ class TestRequestHandler:
         assert call_args[0][0] is flow
         assert call_args[0][1]["base"] == "https://api.github.com"
 
-    def test_no_mitm_allows_through(self, registry_file):
-        """mitmEnabled=False with allowed request passes through."""
-        # 10.200.0.2 has mitmEnabled=False and no rules (ALLOW all)
+    def test_no_rules_allows_through(self, registry_file):
+        """VM with no firewall rules allows all requests through."""
+        # 10.200.0.2 has no rules (empty firewallRules = ALLOW all)
         flow = _make_http_flow(client_ip="10.200.0.2", host="example.com", path="/test")
 
         with (
@@ -212,7 +211,7 @@ class TestResponseHandler:
         # Simulate request handler setting metadata
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
-        flow.metadata["vm_mitm_enabled"] = True
+
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_rule"] = "domain:*.anthropic.com"
@@ -254,7 +253,7 @@ class TestResponseHandler:
         flow = _make_http_flow(host="api.github.com")
         flow.metadata["vm_run_id"] = "run-conn-1"
         flow.metadata["vm_client_ip"] = "10.200.0.5"
-        flow.metadata["vm_mitm_enabled"] = True
+
         flow.metadata["vm_network_log_path"] = ""
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_rule"] = "service:https://api.github.com"
@@ -283,7 +282,7 @@ class TestResponseHandler:
         flow = _make_http_flow(host="api.example.com")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
-        flow.metadata["vm_mitm_enabled"] = True
+
         flow.metadata["vm_network_log_path"] = ""
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_rule"] = "domain:*.example.com"
@@ -353,8 +352,8 @@ class TestTlsClienthello:
         # MITM VM (10.200.0.1) should NOT set ignore_connection
         assert data.ignore_connection is False
 
-    def test_sni_allow_sets_ignore(self, registry_file):
-        """SNI-only VM: allowed domain sets ignore_connection = True."""
+    def test_registered_vm_allows_mitm(self, registry_file):
+        """Registered VM does NOT set ignore_connection (allows MITM interception)."""
         data = _make_tls_data(client_ip="10.200.0.2", sni="anything.com")
 
         with (
@@ -364,64 +363,5 @@ class TestTlsClienthello:
         ):
             mitm_addon.tls_clienthello(data)
 
-        # 10.200.0.2 has no rules → evaluate_rules returns ALLOW
-        assert data.ignore_connection is True
-
-    def test_no_sni_blocks(self, registry_file):
-        """SNI-only VM with no SNI → blocked."""
-        data = _make_tls_data(client_ip="10.200.0.2", sni="")
-
-        with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-        ):
-            mitm_addon.tls_clienthello(data)
-
-        # No SNI → should NOT set ignore_connection (block)
-        assert data.ignore_connection is False
-
-    def test_sni_auto_allow_vm0_api(self, registry_file):
-        """SNI matching VM0 API hostname sets ignore_connection=True."""
-        # 10.200.0.2 is SNI-only (mitmEnabled=False)
-        data = _make_tls_data(client_ip="10.200.0.2", sni="api.vm0.ai")
-
-        with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-        ):
-            mitm_addon.tls_clienthello(data)
-
-        assert data.ignore_connection is True
-
-    def test_sni_deny_with_matching_rule(self, tmp_path):
-        """SNI-only VM with DENY rule blocks matching domain."""
-        registry = {
-            "vms": {
-                "10.200.0.10": {
-                    "runId": "run-deny-1",
-                    "sandboxToken": "tok-deny",
-                    "mitmEnabled": False,
-                    "firewallRules": [
-                        {"domain": "*.evil.com", "action": "DENY"},
-                        {"final": "ALLOW"},
-                    ],
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                }
-            }
-        }
-        reg_path = tmp_path / "registry.json"
-        reg_path.write_text(json.dumps(registry))
-
-        data = _make_tls_data(client_ip="10.200.0.10", sni="malware.evil.com")
-
-        with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-        ):
-            mitm_addon.tls_clienthello(data)
-
-        # DENY rule matched → should NOT set ignore_connection (blocks via TLS failure)
+        # All registered VMs use MITM — should NOT set ignore_connection
         assert data.ignore_connection is False

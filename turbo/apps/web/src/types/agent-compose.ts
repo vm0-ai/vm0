@@ -40,8 +40,6 @@ export interface ExperimentalFirewall {
   enabled: boolean;
   /** Firewall rules (evaluated top to bottom, first-match-wins) */
   rules?: FirewallRule[];
-  /** Enable HTTPS inspection via MITM (routes traffic through Platform Proxy) */
-  experimental_mitm?: boolean;
 }
 
 /**

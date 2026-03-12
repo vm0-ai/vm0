@@ -41,7 +41,6 @@ agents:
 | ----- | ---- | -------- | ------- | ----------- |
 | `enabled` | boolean | Yes | - | Enable network firewall |
 | `rules` | array | No | `[]` | List of firewall rules |
-| `experimental_mitm` | boolean | No | `false` | Enable HTTPS traffic inspection |
 
 ## Rule Types
 
@@ -114,39 +113,14 @@ The following domains are automatically allowed to ensure agent functionality:
 
 These rules are prepended to your custom rules and cannot be overridden.
 
-## Operating Modes
+## How It Works
 
-### SNI-Only Mode (Default)
+When the firewall is enabled, all HTTPS traffic is inspected using a MITM proxy:
 
-The default mode filters traffic at the TLS handshake using Server Name Indication (SNI):
-
-```yaml
-experimental_firewall:
-  enabled: true
-  # experimental_mitm: false (default)
-```
-
-**Characteristics:**
-- Filters based on hostname in TLS ClientHello
-- No decryption of HTTPS traffic
-- Blocked connections fail with TLS certificate error
-- Lower overhead, simpler setup
-
-### MITM Mode
-
-Enable full HTTPS inspection for detailed logging and control:
-
-```yaml
-experimental_firewall:
-  enabled: true
-  experimental_mitm: true # [!code highlight]
-```
-
-**Characteristics:**
-- Decrypts and inspects all HTTPS traffic
+- All outgoing HTTPS connections are decrypted and inspected
 - Blocked requests return HTTP 403 with "Blocked by firewall"
-- Detailed network logs include URL, method, status, latency
-- Higher overhead, requires CA certificate trust
+- Network logs include full HTTP details: URL, method, status, latency
+- The proxy CA certificate is pre-installed in the sandbox
 
 ## Viewing Network Logs
 
@@ -161,13 +135,7 @@ vm0 logs <runId> --network
 - `--head N` - Show first N entries
 - `--since TIME` - Filter by time (e.g., `5m`, `2h`, `2024-01-15T10:30:00Z`)
 
-**SNI mode output:**
-```
-[2024-01-15T10:30:00] SNI ALLOW api.github.com:443 domain:*.github.com
-[2024-01-15T10:30:01] SNI DENY evil.com:443 final:DENY
-```
-
-**MITM mode output:**
+**Example output:**
 ```
 [2024-01-15T10:30:00] GET    200 150ms 2.3KB/45KB https://api.github.com/repos
 [2024-01-15T10:30:01] POST   403 5ms   1.2KB/0B   https://evil.com/exfil (BLOCKED)
@@ -216,7 +184,6 @@ Block internal networks and allow only approved external services:
 ```yaml title="vm0.yaml"
 experimental_firewall:
   enabled: true
-  experimental_mitm: true
   rules:
     # Block internal networks
     - ip: "10.0.0.0/8"
@@ -254,20 +221,6 @@ Common causes:
 - Domain not in your allowlist
 - IP falls within a blocked CIDR range
 - Missing `final: ALLOW` when using blocklist pattern
-
-</Accordion>
-
-<Accordion title="Why do I see certificate errors instead of connection refused?">
-
-In SNI-only mode (default), blocked connections fail during TLS handshake, which appears as a certificate error to the client.
-
-To get cleaner HTTP 403 responses, enable MITM mode:
-
-```yaml
-experimental_firewall:
-  enabled: true
-  experimental_mitm: true
-```
 
 </Accordion>
 

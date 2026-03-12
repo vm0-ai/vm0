@@ -25,7 +25,6 @@ struct VmEntry {
     sandbox_token: String,
     registered_at: i64,
     firewall_rules: Vec<FirewallRule>,
-    mitm_enabled: bool,
     network_log_path: String,
     services: Option<crate::types::ExperimentalServices>,
 }
@@ -62,7 +61,6 @@ pub struct VmRegistration<'a> {
     pub run_id: &'a str,
     pub sandbox_token: &'a str,
     pub firewall_rules: &'a [FirewallRule],
-    pub mitm_enabled: bool,
     pub network_log_path: &'a std::path::Path,
     pub services: Option<&'a crate::types::ExperimentalServices>,
 }
@@ -432,7 +430,6 @@ impl ProxyRegistryHandle {
                 sandbox_token: registration.sandbox_token.to_string(),
                 registered_at: now,
                 firewall_rules: registration.firewall_rules.to_vec(),
-                mitm_enabled: registration.mitm_enabled,
                 network_log_path: registration.network_log_path.to_string_lossy().into_owned(),
                 services: registration.services.cloned(),
             },
@@ -507,7 +504,7 @@ mod tests {
                 sandbox_token: String::new(),
                 registered_at: 1000,
                 firewall_rules: Vec::new(),
-                mitm_enabled: true,
+
                 network_log_path: "/tmp/network-test-run.jsonl".to_string(),
                 services: None,
             },
@@ -518,7 +515,6 @@ mod tests {
         let loaded = read_registry(&registry_path).await.unwrap();
         let vm = loaded.vms.get("10.200.0.2").unwrap();
         assert_eq!(vm.run_id, "test-run");
-        assert!(vm.mitm_enabled);
 
         // Unregister the VM.
         let mut registry = read_registry(&registry_path).await.unwrap();
@@ -611,7 +607,7 @@ mod tests {
             run_id: "run-1",
             sandbox_token: "tok-1",
             firewall_rules: &[],
-            mitm_enabled: true,
+
             network_log_path: std::path::Path::new("/tmp/network-run-1.jsonl"),
             services: None,
         };
@@ -623,14 +619,12 @@ mod tests {
         let loaded = read_registry(&registry_path).await.unwrap();
         let vm = loaded.vms.get("10.200.0.2").unwrap();
         assert_eq!(vm.run_id, "run-1");
-        assert!(vm.mitm_enabled);
 
         // Re-register same IP overwrites the entry.
         let registration2 = VmRegistration {
             run_id: "run-2",
             sandbox_token: "tok-2",
             firewall_rules: &[],
-            mitm_enabled: false,
             network_log_path: std::path::Path::new("/tmp/network-run-2.jsonl"),
             services: None,
         };
@@ -641,7 +635,6 @@ mod tests {
         let loaded = read_registry(&registry_path).await.unwrap();
         let vm = loaded.vms.get("10.200.0.2").unwrap();
         assert_eq!(vm.run_id, "run-2");
-        assert!(!vm.mitm_enabled);
 
         // Unregister via handle.
         handle.unregister_vm("10.200.0.2").await.unwrap();
@@ -682,7 +675,6 @@ mod tests {
                     run_id: &run_id_owned,
                     sandbox_token: "",
                     firewall_rules: &[],
-                    mitm_enabled: false,
                     network_log_path: &log_path,
                     services: None,
                 };
@@ -727,7 +719,7 @@ mod tests {
                         action: None,
                     },
                 ],
-                mitm_enabled: true,
+
                 network_log_path: "/tmp/network-run-1.jsonl".to_string(),
                 services: None,
             },
@@ -743,7 +735,6 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let vm_json = &value["vms"]["10.200.0.2"];
         assert!(vm_json["firewallRules"].is_array());
-        assert_eq!(vm_json["mitmEnabled"], true);
     }
 
     #[tokio::test]
@@ -778,7 +769,7 @@ mod tests {
             run_id: "run-svc",
             sandbox_token: "tok",
             firewall_rules: &[],
-            mitm_enabled: true,
+
             network_log_path: std::path::Path::new("/tmp/network-run-svc.jsonl"),
             services: Some(&services),
         };

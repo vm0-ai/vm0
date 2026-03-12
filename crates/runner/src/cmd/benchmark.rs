@@ -174,8 +174,6 @@ async fn run_sandbox(
         run_id: &run_id,
         sandbox_token: "",
         firewall_rules: &[],
-        // mitm rewrites requests to the API proxy endpoint; benchmark doesn't need that.
-        mitm_enabled: false,
         network_log_path: &network_log_path,
         services: None,
     };

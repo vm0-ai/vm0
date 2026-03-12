@@ -203,7 +203,6 @@ def handle_service_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict) 
     flow.metadata["original_url"] = get_original_url(flow)
     flow.metadata["vm_run_id"] = run_id
     flow.metadata["vm_client_ip"] = client_ip
-    flow.metadata["vm_mitm_enabled"] = True
     flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
 
     ctx.log.info(f"[{run_id}] Service {service_base}: {flow.request.pretty_host}")
@@ -300,13 +299,14 @@ def evaluate_rules(rules: list, hostname: str, ip_str: str = None) -> tuple[str,
 
 
 # ============================================================================
-# TLS ClientHello Handler (SNI-only mode)
+# TLS ClientHello Handler
 # ============================================================================
 
 def tls_clienthello(data: tls.ClientHelloData) -> None:
     """
-    Handle TLS ClientHello for SNI-based filtering.
-    This is called BEFORE TLS decryption, allowing SNI-only filtering.
+    Handle TLS ClientHello — decide whether to MITM intercept.
+    All registered VMs use MITM mode for HTTP-level filtering and logging.
+    Unregistered IPs are passed through without interception.
     """
     client_ip = data.context.client.peername[0] if data.context.client.peername else None
     if not client_ip:
@@ -319,73 +319,8 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
         data.ignore_connection = True
         return
 
-    # If MITM is enabled, let the normal flow handle it
-    if vm_info.get("mitmEnabled", False):
-        return
-
-    # SNI-only mode: check rules based on SNI
-    sni = data.context.client.sni
-    run_id = vm_info.get("runId", "")
-    rules = vm_info.get("firewallRules", [])
-
-    # Auto-allow VM0 API requests - the agent MUST be able to communicate with VM0
-    api_url = get_api_url()
-    if api_url and sni:
-        parsed_api = urllib.parse.urlparse(api_url)
-        api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
-        sni_lower = sni.lower()
-        if api_hostname and (sni_lower == api_hostname or sni_lower.endswith(f".{api_hostname}")):
-            ctx.log.info(f"[{run_id}] SNI-only auto-allow VM0 API: {sni}")
-            log_network_entry(vm_info, {
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
-                "mode": "sni",
-                "action": "ALLOW",
-                "host": sni,
-                "port": 443,
-                "rule_matched": "vm0-api",
-            })
-            data.ignore_connection = True  # Pass through without MITM
-            return
-
-    if not sni:
-        # No SNI, can't determine target - block for security
-        ctx.log.warn(f"[{run_id}] SNI-only: No SNI in ClientHello, blocking")
-        log_network_entry(vm_info, {
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
-            "mode": "sni",
-            "action": "DENY",
-            "host": "",
-            "port": 443,
-            "rule_matched": "no-sni",
-        })
-        # Don't set ignore_connection - mitmproxy will attempt MITM handshake
-        # Since VM doesn't have CA cert (SNI-only mode), TLS will fail immediately
-        return
-
-    # Evaluate rules
-    action, matched_rule = evaluate_rules(rules, sni)
-
-    # Log the connection
-    log_network_entry(vm_info, {
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
-        "mode": "sni",
-        "action": action,
-        "host": sni,
-        "port": 443,
-        "rule_matched": matched_rule,
-    })
-
-    if action == "ALLOW":
-        # Pass through without MITM - mitmproxy will relay without decryption
-        ctx.log.info(f"[{run_id}] SNI-only ALLOW: {sni} (rule: {matched_rule})")
-        data.ignore_connection = True
-    else:
-        # Block the connection by NOT setting ignore_connection
-        # mitmproxy will attempt MITM handshake, but since VM doesn't have
-        # our CA certificate installed (SNI-only mode), the TLS handshake
-        # will fail immediately with a certificate error.
-        ctx.log.warn(f"[{run_id}] SNI-only DENY: {sni} (rule: {matched_rule})")
-        # Client will see: SSL certificate problem / certificate verify failed
+    # Registered VM: let mitmproxy perform MITM interception
+    # (firewall rules are evaluated in the request handler after decryption)
 
 
 # ============================================================================
@@ -417,13 +352,11 @@ def request(flow: http.HTTPFlow) -> None:
 
     run_id = vm_info.get("runId", "")
     sandbox_token = vm_info.get("sandboxToken", "")
-    mitm_enabled = vm_info.get("mitmEnabled", False)
     rules = vm_info.get("firewallRules", [])
 
     # Store info for response handler
     flow.metadata["vm_run_id"] = run_id
     flow.metadata["vm_client_ip"] = client_ip
-    flow.metadata["vm_mitm_enabled"] = mitm_enabled
     flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
 
     # Check service match BEFORE firewall rules.
@@ -500,7 +433,6 @@ def response(flow: http.HTTPFlow) -> None:
     # Get stored info
     run_id = flow.metadata.get("vm_run_id", "")
     original_url = flow.metadata.get("original_url", flow.request.pretty_url)
-    mitm_enabled = flow.metadata.get("vm_mitm_enabled", False)
     firewall_action = flow.metadata.get("firewall_action", "ALLOW")
     firewall_rule = flow.metadata.get("firewall_rule")
 
@@ -518,36 +450,31 @@ def response(flow: http.HTTPFlow) -> None:
         host = flow.request.pretty_host
         port = flow.request.port
 
-    # Log network entry for this run
+    # Log network entry for this run (always MITM mode with full HTTP details)
     network_log_path = flow.metadata.get("vm_network_log_path", "")
     if run_id and network_log_path:
         log_entry = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
-            "mode": "mitm" if mitm_enabled else "sni",
+            "mode": "mitm",
             "action": firewall_action,
             "host": host,
             "port": port,
             "rule_matched": firewall_rule,
+            "method": flow.request.method,
+            "path": flow.request.path.split("?")[0],  # Path without query
+            "url": original_url,
+            "status": status_code,
+            "latency_ms": latency_ms,
+            "request_size": request_size,
+            "response_size": response_size,
         }
 
-        # Add HTTP details only in MITM mode
-        if mitm_enabled:
-            log_entry.update({
-                "method": flow.request.method,
-                "path": flow.request.path.split("?")[0],  # Path without query
-                "url": original_url,
-                "status": status_code,
-                "latency_ms": latency_ms,
-                "request_size": request_size,
-                "response_size": response_size,
-            })
-
-            # Add response headers useful for debugging gzip/encoding issues
-            if flow.response:
-                for h in ("content-type", "content-encoding", "transfer-encoding"):
-                    v = flow.response.headers.get(h)
-                    if v:
-                        log_entry[f"resp_{h.replace('-', '_')}"] = v
+        # Add response headers useful for debugging gzip/encoding issues
+        if flow.response:
+            for h in ("content-type", "content-encoding", "transfer-encoding"):
+                v = flow.response.headers.get(h)
+                if v:
+                    log_entry[f"resp_{h.replace('-', '_')}"] = v
 
         log_network_entry({"networkLogPath": network_log_path}, log_entry)
 

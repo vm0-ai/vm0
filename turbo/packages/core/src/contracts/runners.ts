@@ -26,7 +26,6 @@ export const firewallRuleSchema = z.object({
 export const experimentalFirewallSchema = z.object({
   enabled: z.boolean(),
   rules: z.array(firewallRuleSchema).optional(),
-  experimental_mitm: z.boolean().optional(),
 });
 
 /**
