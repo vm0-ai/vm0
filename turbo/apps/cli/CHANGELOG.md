@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.56.5](https://github.com/vm0-ai/vm0/compare/cli-v9.56.4...cli-v9.56.5) (2026-03-12)
+
+
+### Bug Fixes
+
+* resolve semgrep error-level findings for compliance ([#4547](https://github.com/vm0-ai/vm0/issues/4547)) ([c3a20f2](https://github.com/vm0-ai/vm0/commit/c3a20f298654070e72785e06c8dfa1cd056b91a9)), closes [#4542](https://github.com/vm0-ai/vm0/issues/4542)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.58.3
+
 ## [9.56.4](https://github.com/vm0-ai/vm0/compare/cli-v9.56.3...cli-v9.56.4) (2026-03-12)
 
 

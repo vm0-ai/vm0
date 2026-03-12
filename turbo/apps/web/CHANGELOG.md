@@ -1,5 +1,30 @@
 # Changelog
 
+## [12.101.1](https://github.com/vm0-ai/vm0/compare/web-v12.101.0...web-v12.101.1) (2026-03-12)
+
+
+### Bug Fixes
+
+* resolve semgrep error-level findings for compliance ([#4547](https://github.com/vm0-ai/vm0/issues/4547)) ([c3a20f2](https://github.com/vm0-ai/vm0/commit/c3a20f298654070e72785e06c8dfa1cd056b91a9)), closes [#4542](https://github.com/vm0-ai/vm0/issues/4542)
+* **slack:** add ssrf protection warning log and integration tests ([#4556](https://github.com/vm0-ai/vm0/issues/4556)) ([c17b653](https://github.com/vm0-ai/vm0/commit/c17b65307ce5805d83e2b18818d9e19543aa98e6)), closes [#4553](https://github.com/vm0-ai/vm0/issues/4553)
+* **test:** scope user_cache cleanup to prevent parallel test interference ([#4532](https://github.com/vm0-ai/vm0/issues/4532)) ([09d10c7](https://github.com/vm0-ai/vm0/commit/09d10c75e63855d4038f4f57f172f0dd9bcff96d)), closes [#4527](https://github.com/vm0-ai/vm0/issues/4527)
+
+
+### Refactoring
+
+* drop scope_id column from 9 tables (phase 6) ([#4551](https://github.com/vm0-ai/vm0/issues/4551)) ([4d454d0](https://github.com/vm0-ai/vm0/commit/4d454d02e45414c4c7efcb02afd84e880aeba5bb))
+* drop scope_members table (phase 6) ([#4549](https://github.com/vm0-ai/vm0/issues/4549)) ([5d94776](https://github.com/vm0-ai/vm0/commit/5d9477621ff3e9627c5b08aa6f9ddd1c7e649c4e))
+* remove proxy rewrite endpoint and seal secrets ([#4539](https://github.com/vm0-ai/vm0/issues/4539)) ([f7af830](https://github.com/vm0-ai/vm0/commit/f7af8301f67b87f4615dad8e9b8a00adb449aeba))
+* reuse grouped message components in zero activity detail ([#4525](https://github.com/vm0-ai/vm0/issues/4525)) ([a6b4f1e](https://github.com/vm0-ai/vm0/commit/a6b4f1ec48f38b2156900d869cab3b5b24a42b39))
+* **web:** simplify termly integration and add unsafe-eval to csp ([#4546](https://github.com/vm0-ai/vm0/issues/4546)) ([56402f1](https://github.com/vm0-ai/vm0/commit/56402f1d7167704a87a7fe3fe54673466e49cd90))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.58.3
+
 ## [12.101.0](https://github.com/vm0-ai/vm0/compare/web-v12.100.1...web-v12.101.0) (2026-03-12)
 
 

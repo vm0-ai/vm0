@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.3](https://github.com/vm0-ai/vm0/compare/docs-v2.16.2...docs-v2.16.3) (2026-03-12)
+
+
+### Refactoring
+
+* remove proxy rewrite endpoint and seal secrets ([#4539](https://github.com/vm0-ai/vm0/issues/4539)) ([f7af830](https://github.com/vm0-ai/vm0/commit/f7af8301f67b87f4615dad8e9b8a00adb449aeba))
+
 ## [2.16.2](https://github.com/vm0-ai/vm0/compare/docs-v2.16.1...docs-v2.16.2) (2026-03-11)
 
 

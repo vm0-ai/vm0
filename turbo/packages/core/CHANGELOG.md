@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.58.3](https://github.com/vm0-ai/vm0/compare/core-v8.58.2...core-v8.58.3) (2026-03-12)
+
+
+### Refactoring
+
+* drop scope_id column from 9 tables (phase 6) ([#4551](https://github.com/vm0-ai/vm0/issues/4551)) ([4d454d0](https://github.com/vm0-ai/vm0/commit/4d454d02e45414c4c7efcb02afd84e880aeba5bb))
+* remove proxy rewrite endpoint and seal secrets ([#4539](https://github.com/vm0-ai/vm0/issues/4539)) ([f7af830](https://github.com/vm0-ai/vm0/commit/f7af8301f67b87f4615dad8e9b8a00adb449aeba))
+* reuse grouped message components in zero activity detail ([#4525](https://github.com/vm0-ai/vm0/issues/4525)) ([a6b4f1e](https://github.com/vm0-ai/vm0/commit/a6b4f1ec48f38b2156900d869cab3b5b24a42b39))
+
 ## [8.58.2](https://github.com/vm0-ai/vm0/compare/core-v8.58.1...core-v8.58.2) (2026-03-12)
 
 

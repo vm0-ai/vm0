@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.106.1](https://github.com/vm0-ai/vm0/compare/platform-v0.106.0...platform-v0.106.1) (2026-03-12)
+
+
+### Refactoring
+
+* reuse grouped message components in zero activity detail ([#4525](https://github.com/vm0-ai/vm0/issues/4525)) ([a6b4f1e](https://github.com/vm0-ai/vm0/commit/a6b4f1ec48f38b2156900d869cab3b5b24a42b39))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.58.3
+
 ## [0.106.0](https://github.com/vm0-ai/vm0/compare/platform-v0.105.1...platform-v0.106.0) (2026-03-12)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.4...runner-rs-v0.22.5) (2026-03-12)
+
+
+### Refactoring
+
+* remove proxy rewrite endpoint and seal secrets ([#4539](https://github.com/vm0-ai/vm0/issues/4539)) ([f7af830](https://github.com/vm0-ai/vm0/commit/f7af8301f67b87f4615dad8e9b8a00adb449aeba))
+
 ## [0.22.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.3...runner-rs-v0.22.4) (2026-03-12)
 
 
