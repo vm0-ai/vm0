@@ -4,4 +4,5 @@ export {
   updateAgentSession,
   listAgentSessions,
   appendChatMessages,
+  getSessionChatMessages,
 } from "./agent-session-service";

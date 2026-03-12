@@ -17,9 +17,10 @@ import {
   findTestQueueEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
-import { getAgentSessionWithConversation } from "../../../../../../src/lib/agent-session";
-import { agentSessions } from "../../../../../../src/db/schema/agent-session";
-import { eq } from "drizzle-orm";
+import {
+  getAgentSessionWithConversation,
+  getSessionChatMessages,
+} from "../../../../../../src/lib/agent-session";
 import {
   testContext,
   uniqueId,
@@ -458,16 +459,11 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Flush after() callbacks which trigger persistChatMessages
       await context.mocks.flushAfter();
 
-      // Verify session now has chat messages by querying DB directly
-      const [sessionRow] = await globalThis.services.db
-        .select({ chatMessages: agentSessions.chatMessages })
-        .from(agentSessions)
-        .where(eq(agentSessions.id, checkpointData.agentSessionId))
-        .limit(1);
-      expect(sessionRow).toBeDefined();
-
+      // Verify session now has chat messages
       type StoredMessage = { role: string; content: string; runId?: string };
-      const chatMessages = (sessionRow!.chatMessages ?? []) as StoredMessage[];
+      const chatMessages = (await getSessionChatMessages(
+        checkpointData.agentSessionId,
+      )) as StoredMessage[];
       expect(chatMessages.length).toBeGreaterThanOrEqual(2);
 
       // Verify user message from prompt
@@ -534,16 +530,11 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       await context.mocks.flushAfter();
 
-      // Verify session has only user message by querying DB directly
-      const [sessionRow] = await globalThis.services.db
-        .select({ chatMessages: agentSessions.chatMessages })
-        .from(agentSessions)
-        .where(eq(agentSessions.id, checkpointData.agentSessionId))
-        .limit(1);
-      expect(sessionRow).toBeDefined();
-
+      // Verify session has only user message
       type StoredMessage = { role: string; content: string };
-      const chatMessages = (sessionRow!.chatMessages ?? []) as StoredMessage[];
+      const chatMessages = (await getSessionChatMessages(
+        checkpointData.agentSessionId,
+      )) as StoredMessage[];
       expect(chatMessages).toHaveLength(1);
       expect(chatMessages[0]!.role).toBe("user");
       expect(chatMessages[0]!.content).toBe("Test prompt");
