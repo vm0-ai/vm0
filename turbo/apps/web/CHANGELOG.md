@@ -1,5 +1,35 @@
 # Changelog
 
+## [12.101.0](https://github.com/vm0-ai/vm0/compare/web-v12.100.1...web-v12.101.0) (2026-03-12)
+
+
+### Features
+
+* implement async GDPR data export with R2 storage and email notification ([#4513](https://github.com/vm0-ai/vm0/issues/4513)) ([6f2ef29](https://github.com/vm0-ai/vm0/commit/6f2ef2909eae9bf97105f4bd391905abaa786ce2))
+* **zero:** add settings page, deferred skill saving, and onboarding improvements ([#4511](https://github.com/vm0-ai/vm0/issues/4511)) ([7452cd8](https://github.com/vm0-ai/vm0/commit/7452cd8e6c99f66765e6346eface7305a25b6b5f))
+
+
+### Bug Fixes
+
+* add input validation and request-target safeguards for external integrations ([#4520](https://github.com/vm0-ai/vm0/issues/4520)) ([34464c9](https://github.com/vm0-ai/vm0/commit/34464c96e1dc311c47603e64a9f6106bb204a30d))
+* resolve 5 codeql code scanning alerts ([#4533](https://github.com/vm0-ai/vm0/issues/4533)) ([948b7af](https://github.com/vm0-ai/vm0/commit/948b7afa72d0ecf95095a704ada241ed1bc2c3bb))
+* **web:** use hmac instead of plain hash for scope slug generation ([#4530](https://github.com/vm0-ai/vm0/issues/4530)) ([72cf3db](https://github.com/vm0-ai/vm0/commit/72cf3dbe03a3b846ef9d9895e88e111cc55ffb11))
+
+
+### Refactoring
+
+* **auth:** remove scope-id from auth context types (5c-1) ([#4541](https://github.com/vm0-ai/vm0/issues/4541)) ([0c093af](https://github.com/vm0-ai/vm0/commit/0c093afb77b6ffe19923cb96593d5df8a4b7c725)), closes [#4536](https://github.com/vm0-ai/vm0/issues/4536)
+* remove all scopes table runtime dependencies (5b-5) ([#4484](https://github.com/vm0-ai/vm0/issues/4484)) ([4cfbb5a](https://github.com/vm0-ai/vm0/commit/4cfbb5a164c79cec7768fc6d6dc91c141bb34705))
+* remove residual scope-id writes and reads (5c-2) ([#4540](https://github.com/vm0-ai/vm0/issues/4540)) ([7512893](https://github.com/vm0-ai/vm0/commit/7512893a6da7bf90b738e1d5549617a7f24860aa)), closes [#4537](https://github.com/vm0-ai/vm0/issues/4537)
+* **web:** use react component for termly consent management ([#4534](https://github.com/vm0-ai/vm0/issues/4534)) ([ae01372](https://github.com/vm0-ai/vm0/commit/ae0137246527dcaf1935a838985bd770235842db))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.58.2
+
 ## [12.100.1](https://github.com/vm0-ai/vm0/compare/web-v12.100.0...web-v12.100.1) (2026-03-12)
 
 

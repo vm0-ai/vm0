@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.106.0](https://github.com/vm0-ai/vm0/compare/platform-v0.105.1...platform-v0.106.0) (2026-03-12)
+
+
+### Features
+
+* **zero:** add settings page, deferred skill saving, and onboarding improvements ([#4511](https://github.com/vm0-ai/vm0/issues/4511)) ([7452cd8](https://github.com/vm0-ai/vm0/commit/7452cd8e6c99f66765e6346eface7305a25b6b5f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.58.2
+
 ## [0.105.1](https://github.com/vm0-ai/vm0/compare/platform-v0.105.0...platform-v0.105.1) (2026-03-12)
 
 

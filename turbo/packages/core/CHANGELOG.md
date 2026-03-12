@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.58.2](https://github.com/vm0-ai/vm0/compare/core-v8.58.1...core-v8.58.2) (2026-03-12)
+
+
+### Bug Fixes
+
+* resolve 5 codeql code scanning alerts ([#4533](https://github.com/vm0-ai/vm0/issues/4533)) ([948b7af](https://github.com/vm0-ai/vm0/commit/948b7afa72d0ecf95095a704ada241ed1bc2c3bb))
+
+
+### Refactoring
+
+* remove all scopes table runtime dependencies (5b-5) ([#4484](https://github.com/vm0-ai/vm0/issues/4484)) ([4cfbb5a](https://github.com/vm0-ai/vm0/commit/4cfbb5a164c79cec7768fc6d6dc91c141bb34705))
+* remove unused full-match field from variable reference ([#4523](https://github.com/vm0-ai/vm0/issues/4523)) ([6b9fa20](https://github.com/vm0-ai/vm0/commit/6b9fa200ea00706dc9304f7aba6041bc12f3d563))
+
 ## [8.58.1](https://github.com/vm0-ai/vm0/compare/core-v8.58.0...core-v8.58.1) (2026-03-12)
 
 

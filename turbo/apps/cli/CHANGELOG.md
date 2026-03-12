@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.56.4](https://github.com/vm0-ai/vm0/compare/cli-v9.56.3...cli-v9.56.4) (2026-03-12)
+
+
+### Bug Fixes
+
+* resolve 5 codeql code scanning alerts ([#4533](https://github.com/vm0-ai/vm0/issues/4533)) ([948b7af](https://github.com/vm0-ai/vm0/commit/948b7afa72d0ecf95095a704ada241ed1bc2c3bb))
+
+
+### Refactoring
+
+* remove all scopes table runtime dependencies (5b-5) ([#4484](https://github.com/vm0-ai/vm0/issues/4484)) ([4cfbb5a](https://github.com/vm0-ai/vm0/commit/4cfbb5a164c79cec7768fc6d6dc91c141bb34705))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.58.2
+
 ## [9.56.3](https://github.com/vm0-ai/vm0/compare/cli-v9.56.2...cli-v9.56.3) (2026-03-12)
 
 
