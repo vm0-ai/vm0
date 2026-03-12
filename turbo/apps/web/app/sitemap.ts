@@ -5,7 +5,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const docsUrl = "https://docs.vm0.ai";
   const locales = ["en", "de", "es", "ja"];
 
-  const routes = [
+  const localizedRoutes = [
     {
       path: "",
       priority: 1,
@@ -36,6 +36,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.5,
       changeFrequency: "monthly" as const,
     },
+  ];
+
+  const rootRoutes = [
     {
       path: "/privacy-policy",
       priority: 0.6,
@@ -51,7 +54,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const urls: MetadataRoute.Sitemap = [];
 
   // Add main site URLs with locales
-  routes.forEach((route) => {
+  localizedRoutes.forEach((route) => {
     locales.forEach((locale) => {
       urls.push({
         url: `${baseUrl}/${locale}${route.path}`,
@@ -59,6 +62,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
         changeFrequency: route.changeFrequency,
         priority: route.priority,
       });
+    });
+  });
+
+  // Add non-localized legal pages at root
+  rootRoutes.forEach((route) => {
+    urls.push({
+      url: `${baseUrl}${route.path}`,
+      lastModified: new Date(),
+      changeFrequency: route.changeFrequency,
+      priority: route.priority,
     });
   });
 

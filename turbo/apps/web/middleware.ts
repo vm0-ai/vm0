@@ -4,6 +4,7 @@ import {
   runLayers,
   corsLayer,
   authRedirectLayer,
+  legalRedirectLayer,
   localeGuardLayer,
   i18nLayer,
   isProtectedSkipRoute,
@@ -20,8 +21,8 @@ const isPublicRoute = createRouteMatcher([
   "/:locale/skills",
   "/:locale/glossary",
   "/:locale/pricing",
-  "/:locale/terms-of-use",
-  "/:locale/privacy-policy",
+  "/terms-of-use",
+  "/privacy-policy",
   "/:locale/design-system",
   "/:locale/blog",
   "/:locale/blog/posts/:slug",
@@ -57,6 +58,7 @@ export default clerkMiddleware(async (auth, request: NextRequest) => {
   return runLayers(request, [
     corsLayer,
     authRedirectLayer,
+    legalRedirectLayer,
     localeGuardLayer,
     i18nLayer,
   ]);

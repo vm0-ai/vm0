@@ -19,6 +19,8 @@ const SKIP_I18N_PREFIXES = [
   "/slack/",
   "/sign-in",
   "/sign-up",
+  "/privacy-policy",
+  "/terms-of-use",
 ] as const;
 
 const STATIC_FILE_RE = /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/i;
@@ -120,6 +122,23 @@ const LOCALE_AUTH_RE = /^\/(\w{2})\/(sign-in|sign-up)(\/.*)?$/;
 
 export const authRedirectLayer: MiddlewareLayer = (ctx) => {
   const match = ctx.request.nextUrl.pathname.match(LOCALE_AUTH_RE);
+  if (match && locales.includes(match[1] as (typeof locales)[number])) {
+    const target = new URL(ctx.request.nextUrl);
+    target.pathname = `/${match[2]}${match[3] ?? ""}`;
+    return NextResponse.redirect(target, 308);
+  }
+  return null;
+};
+
+/**
+ * Redirect locale-prefixed legal pages (e.g. /en/privacy-policy) to the root
+ * paths (/privacy-policy). These pages use Termly iframe embeds and don't need
+ * i18n — Termly handles its own language.
+ */
+const LOCALE_LEGAL_RE = /^\/(\w{2})\/(privacy-policy|terms-of-use)(\/.*)?$/;
+
+export const legalRedirectLayer: MiddlewareLayer = (ctx) => {
+  const match = ctx.request.nextUrl.pathname.match(LOCALE_LEGAL_RE);
   if (match && locales.includes(match[1] as (typeof locales)[number])) {
     const target = new URL(ctx.request.nextUrl);
     target.pathname = `/${match[2]}${match[3] ?? ""}`;
