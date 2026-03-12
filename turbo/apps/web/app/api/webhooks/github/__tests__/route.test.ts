@@ -583,7 +583,7 @@ describe("POST /api/webhooks/github", () => {
     it("should activate pending installation on installation.created event", async () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
-      await createTestOrg(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
       const { composeId } = await createTestCompose("gh-webhook-agent");
 
       const targetId = String(Math.floor(Math.random() * 1_000_000_000));

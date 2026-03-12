@@ -113,7 +113,7 @@ async function setupTelegramCallback() {
   const userId = uniqueId("user");
   mockClerk({ userId });
 
-  // Create scope + compose (with version) through API
+  // Create org + compose (with version) through API
   await createTestOrg(uniqueId("org"));
   const { composeId } = await createTestCompose("test-agent");
 

@@ -105,7 +105,7 @@ export async function givenSlackWorkspaceInstalled(
   const accessToken = `xoxb-test-${uniqueId("token")}`;
   const adminSlackUserId = uniqueId("admin-slack");
 
-  // Create admin scope + compose for the workspace agent
+  // Create admin org + compose for the workspace agent
   const adminUserId = options.adminUserId ?? uniqueId("admin");
   mockClerk({ userId: adminUserId });
   await createTestOrg(uniqueId("admin-org"));
@@ -152,7 +152,7 @@ export async function givenSlackWorkspaceInstalled(
 
 /**
  * Given a Slack user has linked their account to VM0.
- * Creates installation, user link, and scope via API endpoints.
+ * Creates installation, user link, and org via API endpoints.
  */
 export async function givenLinkedSlackUser(
   options: LinkedUserOptions = {},
@@ -174,7 +174,7 @@ export async function givenLinkedSlackUser(
   // Restore Clerk mock to the linking user (givenSlackWorkspaceInstalled sets it to admin)
   mockClerk({ userId: vm0UserId });
 
-  // Create scope for the user (required for compose creation)
+  // Create org for the user (required for compose creation)
   const orgSlug = uniqueId("org");
   await createTestOrg(orgSlug);
 
