@@ -23,6 +23,10 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -36,6 +40,7 @@ import {
 } from "@vm0/ui";
 import { ZeroScheduleCard, DEFAULT_SCHEDULE } from "./zero-schedule-card";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import { setPendingChatPrompt$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   allConnectorTypes$,
   addConnectionDialogOpen$,
@@ -392,12 +397,15 @@ function ZeroConnectionsTab() {
 interface ZeroMeetPageProps {
   zeroAvatarSrc?: string;
   onAvatarClick?: () => void;
+  onNavigateToChat?: () => void;
 }
 
 export function ZeroMeetPage({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
+  onNavigateToChat,
 }: ZeroMeetPageProps) {
+  const setPrompt = useSet(setPendingChatPrompt$);
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const resolvedAgentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
@@ -511,14 +519,32 @@ export function ZeroMeetPage({
                 </TabsTrigger>
               </TabsList>
             </Tabs>
-            <Button
-              variant="outline"
-              size="sm"
-              className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
-            >
-              <IconMessageCircle size={14} stroke={1.5} />
-              Just ask
-            </Button>
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
+                    onClick={() => {
+                      setPrompt(
+                        `Help me update ${agentName}'s skills configuration and settings`,
+                      );
+                      onNavigateToChat?.();
+                    }}
+                  >
+                    <IconMessageCircle size={14} stroke={1.5} />
+                    Chat with {agentName}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  className="max-w-[220px] text-center"
+                >
+                  Make updates or assign tasks
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       </header>

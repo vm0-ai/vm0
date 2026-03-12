@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import { useLoadable } from "ccstate-react";
+import { useLoadable, useGet, useSet } from "ccstate-react";
+import { useCCState } from "ccstate-react/experimental";
 import {
   IconMessageCircle,
   IconRobot,
-  IconFile,
   IconChartLine,
   IconLayoutGrid,
   IconCalendar,
@@ -15,6 +15,10 @@ import {
   IconChevronRight,
   IconSwitchHorizontal,
   IconSettings,
+  IconSearch,
+  IconEdit,
+  IconChevronDown,
+  IconLayoutSidebarLeftCollapse,
 } from "@tabler/icons-react";
 import {
   DropdownMenu,
@@ -25,8 +29,13 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@vm0/ui";
 import slackIcon from "../settings-page/icons/slack.svg";
+import { ZERO_TEAM_JOBS } from "./zero-jobs-page.tsx";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
@@ -36,9 +45,10 @@ export type ZeroNavId =
   | "chat"
   | "meet"
   | "schedule"
+  | "search"
   | "job"
   | "production"
-  | "activity"
+  | "logs"
   | "works"
   | "settings"
   | "account";
@@ -46,11 +56,11 @@ export type ZeroNavId =
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 const MAIN_NAV = [
   { id: "chat", label: "Chat with Zero", icon: IconMessageCircle as NavIcon },
-  { id: "meet", label: "Meet Zero", icon: IconRobot as NavIcon },
-  { id: "job", label: "Zero's team", icon: IconUsers as NavIcon },
+  { id: "meet", label: "Zero's profile", icon: IconRobot as NavIcon },
+  { id: "job", label: "Sub-agents", icon: IconUsers as NavIcon },
   { id: "schedule", label: "Schedule", icon: IconCalendar as NavIcon },
-  { id: "production", label: "Documents", icon: IconFile as NavIcon },
-  { id: "activity", label: "Activities", icon: IconChartLine as NavIcon },
+  { id: "search", label: "Search", icon: IconSearch as NavIcon },
+  { id: "logs", label: "Activity logs", icon: IconChartLine as NavIcon },
 ] as const;
 
 const RECENT_ITEMS = [
@@ -92,10 +102,13 @@ interface SessionAccount {
 interface ZeroSidebarProps {
   activeId: ZeroNavId;
   agentName?: string | null;
+  zeroAvatarSrc?: string;
+  currentChatAgentId?: string | null;
   onSelect: (id: ZeroNavId) => void;
   onRecentSelect?: (id: string) => void;
   selectedRecentId?: string | null;
   onAccountAction?: (action: ZeroAccountAction) => void;
+  onNewChat?: (agentId: string | null) => void;
 }
 
 function AccountAvatar({
@@ -345,12 +358,22 @@ function AccountDropdown({
 export function ZeroSidebar({
   activeId,
   agentName,
+  zeroAvatarSrc = "/zero-avatar.png",
+  currentChatAgentId = null,
   onSelect,
   onRecentSelect,
   selectedRecentId = null,
   onAccountAction,
+  onNewChat,
 }: ZeroSidebarProps) {
   const displayName = agentName || "Zero";
+  const agentsExpanded$ = useCCState(true);
+  const agentsExpanded = useGet(agentsExpanded$);
+  const setAgentsExpanded = useSet(agentsExpanded$);
+  const talkToName = currentChatAgentId
+    ? (ZERO_TEAM_JOBS.find((j) => j.id === currentChatAgentId)?.title ??
+      displayName)
+    : displayName;
   const mainNav = MAIN_NAV.map((item) => ({
     ...item,
     label: item.label.replace("Zero", displayName),
@@ -368,14 +391,21 @@ export function ZeroSidebar({
     <VM0ClerkProvider>
       <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden">
         {/* Organization switcher */}
-        <div className="shrink-0 p-2 pb-1">
-          <div className="rounded-lg p-2">
+        <div className="shrink-0 px-2 pt-1.5 pb-0">
+          <div className="flex items-center justify-between rounded-lg pr-0 py-0.5">
             <ClerkOrgSwitcher />
+            <button
+              type="button"
+              className="flex h-7 w-7 -mr-[3px] shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+              aria-label="Collapse sidebar"
+            >
+              <IconLayoutSidebarLeftCollapse size={18} />
+            </button>
           </div>
         </div>
 
         {/* Main nav */}
-        <nav className="flex-1 overflow-y-auto overflow-x-hidden p-2">
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden p-2 pt-1">
           <div className="flex flex-col gap-1">
             {mainNav.map(({ id, label, icon: Icon }) => (
               <button
@@ -395,11 +425,111 @@ export function ZeroSidebar({
           </div>
 
           {/* Recent dialogue — no extra wrapper padding so label/items align with main nav (nav already has p-2) */}
-          <div className="mt-4">
-            <div className="zero-nav-recent-label h-8 flex items-center px-2">
-              <span className="text-xs leading-4 text-sidebar-foreground uppercase tracking-wider">
-                recent chat
+          <div className="mt-6">
+            <button
+              type="button"
+              className="flex h-7 w-full items-center gap-1 px-2 text-sidebar-foreground/50 hover:text-sidebar-foreground transition-colors"
+              onClick={() => setAgentsExpanded(!agentsExpanded)}
+            >
+              <span className="text-[13px] font-medium">
+                Talk to {talkToName}
               </span>
+              <IconChevronDown
+                size={14}
+                className={`shrink-0 transition-transform ${agentsExpanded ? "" : "-rotate-90"}`}
+              />
+            </button>
+            {agentsExpanded && (
+              <div className="flex items-center gap-1.5 px-2 pb-2 pt-1">
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg overflow-hidden transition-all ${
+                          currentChatAgentId === null
+                            ? "bg-foreground/10"
+                            : "hover:bg-foreground/5"
+                        }`}
+                        onClick={() => onNewChat?.(null)}
+                      >
+                        <img
+                          src={zeroAvatarSrc}
+                          alt={displayName}
+                          className="h-full w-full object-cover object-top"
+                        />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="text-xs">
+                      {displayName}
+                    </TooltipContent>
+                  </Tooltip>
+                  {ZERO_TEAM_JOBS.map((agent) => (
+                    <Tooltip key={agent.id}>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg overflow-hidden transition-all ${
+                            currentChatAgentId === agent.id
+                              ? "bg-foreground/10"
+                              : "hover:bg-foreground/5"
+                          }`}
+                          onClick={() => onNewChat?.(agent.id)}
+                        >
+                          <img
+                            src={agent.avatar}
+                            alt={agent.title}
+                            className="h-full w-full object-cover object-top"
+                          />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="text-xs">
+                        {agent.title}
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-dashed border-sidebar-foreground/25 text-sidebar-foreground/30 hover:border-sidebar-foreground/40 hover:text-sidebar-foreground/60 transition-colors"
+                        aria-label="Pin sub-agent"
+                      >
+                        <IconPlus size={14} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="text-xs">
+                      Pin sub-agent
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            )}
+            <div className="h-8 flex items-center justify-between pl-2 pr-0">
+              <span className="zero-nav-recent-label text-[13px] leading-4 text-sidebar-foreground font-medium">
+                Recent chats
+              </span>
+              <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex h-7 w-7 -mr-[3px] items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                      aria-label="New chat"
+                      onClick={() => onNewChat?.(currentChatAgentId)}
+                    >
+                      <IconEdit size={18} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs">
+                    New chat with{" "}
+                    {currentChatAgentId
+                      ? (ZERO_TEAM_JOBS.find((j) => j.id === currentChatAgentId)
+                          ?.title ?? displayName)
+                      : displayName}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
             <div className="flex flex-col gap-1">
               {recentItems.map(({ id, label }) => (

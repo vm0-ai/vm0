@@ -6,7 +6,7 @@ import {
   IconFileText,
   IconSettings,
   IconPlug,
-  IconSparkles,
+  IconMessageCircle,
   IconPlus,
   IconCalendar,
   IconPencil,
@@ -18,6 +18,10 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   Card,
   CardContent,
   Input,
@@ -29,11 +33,15 @@ import {
 } from "@vm0/ui";
 import { ConnectorIcon } from "../settings-page/connector-icons";
 import { ZeroScheduleCard, DUMMY_AGENT_SCHEDULE } from "./zero-schedule-card";
+import {
+  setPendingChatPrompt$,
+  setZeroActiveId$,
+} from "../../signals/zero-page/zero-nav.ts";
 
 export interface JobItem {
   id: string;
-  agentName: string;
   title: string;
+  avatar: string;
   description: string;
   scope: "personal" | "team";
 }
@@ -196,6 +204,8 @@ function SubAgentSkillsTab() {
 }
 
 export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
+  const setPrompt = useSet(setPendingChatPrompt$);
+  const navigateToChat = useSet(setZeroActiveId$);
   const activeTab$ = useCCState("connectors");
   const activeTab = useGet(activeTab$);
   const setActiveTab = useSet(activeTab$);
@@ -250,9 +260,12 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
         </div>
         <div className="mx-auto max-w-[900px]">
           <div className="space-y-1.5">
-            <div className="flex flex-wrap items-baseline gap-2 text-base">
-              <span className="text-muted-foreground">{job.agentName}</span>
-              <span className="text-muted-foreground/50">·</span>
+            <div className="flex items-center gap-3 text-base">
+              <img
+                src={job.avatar}
+                alt={job.title}
+                className="h-10 w-10 shrink-0 rounded-full object-cover"
+              />
               <h1 className="font-semibold tracking-tight text-foreground">
                 {job.title}
               </h1>
@@ -299,14 +312,32 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
                 </TabsTrigger>
               </TabsList>
             </Tabs>
-            <Button
-              variant="outline"
-              size="sm"
-              className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
-            >
-              <IconSparkles size={14} stroke={1.5} />
-              Just ask
-            </Button>
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
+                    onClick={() => {
+                      setPrompt(
+                        `Help me configure the "${job.title}" sub-agent settings and skills`,
+                      );
+                      navigateToChat("chat");
+                    }}
+                  >
+                    <IconMessageCircle size={14} stroke={1.5} />
+                    Chat with {job.title}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  className="max-w-[220px] text-center"
+                >
+                  Make updates or assign tasks
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       </header>

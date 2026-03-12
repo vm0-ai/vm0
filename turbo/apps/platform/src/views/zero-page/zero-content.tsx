@@ -25,11 +25,10 @@ interface ZeroContentProps {
   recentLabel?: string | null;
   recentId?: string | null;
   onClearRecent?: () => void;
-  onNavigateToActivity?: () => void;
+  onNavigateToLogs?: () => void;
   onNavigateToSchedule?: () => void;
   onNavigateToJob?: () => void;
   onNavigateToChat?: () => void;
-  onNavigateToMeet?: (tab?: string) => void;
   zeroAvatarSrc?: string;
   onAvatarClick?: () => void;
 }
@@ -39,11 +38,12 @@ function getSectionTitles(
 ): Readonly<Record<ZeroNavId, string>> {
   return {
     chat: `Chat with ${agentName}`,
-    meet: `Meet ${agentName}`,
+    meet: `${agentName}'s profile`,
     schedule: "Schedule",
-    job: `${agentName}'s team`,
+    search: "Search",
+    job: "Sub-agents",
     production: "Documents",
-    activity: "Activities",
+    logs: "Activity logs",
     works: `Where ${agentName} works`,
     settings: "Settings",
     account: "Account",
@@ -56,11 +56,10 @@ export function ZeroContent({
   recentLabel,
   recentId,
   onClearRecent,
-  onNavigateToActivity,
+  onNavigateToLogs,
   onNavigateToSchedule,
   onNavigateToJob,
   onNavigateToChat,
-  onNavigateToMeet,
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroContentProps) {
@@ -75,10 +74,9 @@ export function ZeroContent({
       <ZeroChatPage
         initialScenarioId={initialScenarioId}
         onClearScenario={onClearRecent}
-        onNavigateToActivity={onNavigateToActivity}
+        onNavigateToLogs={onNavigateToLogs}
         onNavigateToSchedule={onNavigateToSchedule}
         onNavigateToJob={onNavigateToJob}
-        onNavigateToMeet={onNavigateToMeet}
         zeroAvatarSrc={zeroAvatarSrc}
         onAvatarClick={onAvatarClick}
       />
@@ -89,6 +87,7 @@ export function ZeroContent({
       <ZeroMeetPage
         zeroAvatarSrc={zeroAvatarSrc}
         onAvatarClick={onAvatarClick}
+        onNavigateToChat={onNavigateToChat}
       />
     );
   }
@@ -101,7 +100,7 @@ export function ZeroContent({
   if (sectionId === "production") {
     return <ZeroProductionPage />;
   }
-  if (sectionId === "activity") {
+  if (sectionId === "logs") {
     return <ZeroActivityPage />;
   }
   if (sectionId === "works") {

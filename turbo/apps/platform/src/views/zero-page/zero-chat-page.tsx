@@ -5,10 +5,7 @@ import { onRef } from "../../signals/utils.ts";
 import {
   IconSend,
   IconPaperclip,
-  IconBriefcase,
-  IconSettings,
   IconPlug,
-  IconSparkles,
   IconChartBar,
   IconReceipt,
   IconUser,
@@ -17,6 +14,8 @@ import {
   IconArrowLeft,
   IconChartLine,
   IconCalendar,
+  IconArrowUpRight,
+  IconSparkles,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -27,10 +26,18 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   cn,
 } from "@vm0/ui";
 import { ZERO_TEAM_JOBS } from "./zero-jobs-page";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import {
+  pendingChatPrompt$,
+  setPendingChatPrompt$,
+} from "../../signals/zero-page/zero-nav.ts";
 
 export type DemoScenarioId =
   | "hello-from-zero"
@@ -42,26 +49,6 @@ export type DemoScenarioId =
   | "agent-operations";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
-type ActionId = "automate" | "customize" | "connectors";
-function getActionButtons(agentName: string) {
-  return [
-    {
-      id: "automate" as ActionId,
-      label: "Automate workflows",
-      icon: IconBriefcase as NavIcon,
-    },
-    {
-      id: "customize" as ActionId,
-      label: `Customize ${agentName}`,
-      icon: IconSettings as NavIcon,
-    },
-    {
-      id: "connectors" as ActionId,
-      label: "Add skills",
-      icon: IconPlug as NavIcon,
-    },
-  ] as const;
-}
 
 const SUGGESTED_PROMPTS = [
   {
@@ -69,14 +56,60 @@ const SUGGESTED_PROMPTS = [
     description: "Smart categorization, reply, and daily email digest",
     icon: IconChartBar as NavIcon,
     iconClassName: "text-emerald-600 dark:text-emerald-400",
+    prompt:
+      "Set up auto-organization for my inbox with smart categorization, auto-reply rules, and a daily email digest",
   },
   {
     title: "Daily morning brief",
     description: "Trending topics on a schedule, your personalized digest",
     icon: IconReceipt as NavIcon,
     iconClassName: "text-primary",
+    prompt:
+      "Create a daily morning brief that curates trending topics and delivers a personalized digest every morning",
+  },
+  {
+    title: "Create a sub-agent",
+    description: "Build a specialized agent for a specific workflow",
+    icon: IconUsers as NavIcon,
+    iconClassName: "text-sky-600 dark:text-sky-400",
+    prompt:
+      "I want to create a new sub-agent to handle a specific workflow for my team",
   },
 ] as const;
+
+interface AgentContext {
+  id: string | null;
+  name: string;
+  avatar: string;
+  description: string;
+  isMain: boolean;
+}
+
+function resolveAgentContext(
+  agentId: string | null,
+  mainName: string,
+  mainAvatar: string,
+): AgentContext {
+  if (agentId) {
+    const sub = ZERO_TEAM_JOBS.find((j) => j.id === agentId);
+    if (sub) {
+      return {
+        id: sub.id,
+        name: sub.title,
+        avatar: sub.avatar,
+        description: sub.description,
+        isMain: false,
+      };
+    }
+  }
+  return {
+    id: null,
+    name: mainName,
+    avatar: mainAvatar,
+    description: "Your AI teammate, tuned to you",
+    isMain: true,
+  };
+}
 
 function getStreamedScenarios(agentName: string): readonly Readonly<{
   id: DemoScenarioId;
@@ -151,7 +184,7 @@ interface StreamedScenario {
 
 interface ChatScenarioBlockProps {
   scene: StreamedScenario;
-  onNavigateToActivity?: () => void;
+  onNavigateToLogs?: () => void;
   commandAllowed: boolean;
   setCommandAllowed: (v: boolean) => void;
   approveDone: boolean;
@@ -228,7 +261,7 @@ function HelloFromZeroBlock({
 
 function ChatScenarioBlock({
   scene,
-  onNavigateToActivity,
+  onNavigateToLogs,
   commandAllowed,
   setCommandAllowed,
   approveDone,
@@ -270,7 +303,7 @@ function ChatScenarioBlock({
         <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-0">
           <ChatScenarioAssistantContent
             scene={scene}
-            onNavigateToActivity={onNavigateToActivity}
+            onNavigateToLogs={onNavigateToLogs}
             commandAllowed={commandAllowed}
             setCommandAllowed={setCommandAllowed}
             approveDone={approveDone}
@@ -293,7 +326,7 @@ type ChatScenarioAssistantContentProps = ChatScenarioBlockProps;
 
 function ChatScenarioAssistantContent({
   scene,
-  onNavigateToActivity,
+  onNavigateToLogs,
   commandAllowed,
   setCommandAllowed,
   approveDone,
@@ -382,10 +415,10 @@ function ChatScenarioAssistantContent({
             size="sm"
             variant="outline"
             className="zero-chat-btn rounded-lg h-8 px-3.5 text-sm font-medium gap-1.5 border"
-            onClick={onNavigateToActivity}
+            onClick={onNavigateToLogs}
           >
             <IconChartLine size={13} />
-            View activity
+            View logs
           </Button>
         </div>
       </div>
@@ -659,10 +692,9 @@ function ChatScenarioAgentOperations({
 interface ZeroChatPageProps {
   initialScenarioId?: DemoScenarioId;
   onClearScenario?: () => void;
-  onNavigateToActivity?: () => void;
+  onNavigateToLogs?: () => void;
   onNavigateToSchedule?: () => void;
   onNavigateToJob?: () => void;
-  onNavigateToMeet?: (tab?: string) => void;
   zeroAvatarSrc?: string;
   onAvatarClick?: () => void;
 }
@@ -670,19 +702,20 @@ interface ZeroChatPageProps {
 export function ZeroChatPage({
   initialScenarioId,
   onClearScenario,
-  onNavigateToActivity,
+  onNavigateToLogs,
   onNavigateToSchedule,
   onNavigateToJob,
-  onNavigateToMeet,
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroChatPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+  const agent = resolveAgentContext(null, agentName, zeroAvatarSrc);
   const input$ = useCCState("");
   const input = useGet(input$);
   const setInput = useSet(input$);
+
   const conversationActive$ = useCCState(false);
   const conversationActive = useGet(conversationActive$);
   const setConversationActive = useSet(conversationActive$);
@@ -715,7 +748,12 @@ export function ZeroChatPage({
   const carouselIndex = useGet(carouselIndex$);
   // Carousel interval — starts on mount via onRef, cleans up on unmount
   const carouselCommand$ = useCommand(
-    ({ set }, _el: HTMLElement, signal: AbortSignal) => {
+    ({ get, set }, _el: HTMLElement, signal: AbortSignal) => {
+      const prompt = get(pendingChatPrompt$);
+      if (prompt) {
+        set(input$, prompt);
+        set(setPendingChatPrompt$, null);
+      }
       const id = window.setInterval(() => {
         set(
           carouselIndex$,
@@ -917,7 +955,7 @@ export function ZeroChatPage({
                 <ChatScenarioBlock
                   key={scene.id}
                   scene={scene}
-                  onNavigateToActivity={onNavigateToActivity}
+                  onNavigateToLogs={onNavigateToLogs}
                   commandAllowed={commandAllowed}
                   setCommandAllowed={setCommandAllowed}
                   approveDone={approveDone}
@@ -971,35 +1009,38 @@ export function ZeroChatPage({
                         key={job.id}
                         className="hover:bg-muted/20 transition-colors"
                       >
-                        <div className="min-w-0 py-3 mx-4">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm text-muted-foreground">
-                              {job.agentName}
-                            </span>
-                            <span className="text-muted-foreground/60">·</span>
-                            <span className="text-sm font-medium text-foreground">
-                              {job.title}
-                            </span>
-                            <span className="zero-pill inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-xs font-medium">
-                              {job.scope === "team" ? (
-                                <IconUsers
-                                  size={12}
-                                  stroke={1.5}
-                                  className="h-3 w-3 shrink-0 text-sky-600 dark:text-sky-400"
-                                />
-                              ) : (
-                                <IconUser
-                                  size={12}
-                                  stroke={1.5}
-                                  className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400"
-                                />
-                              )}
-                              {job.scope === "team" ? "Team" : "Personal"}
-                            </span>
+                        <div className="min-w-0 py-3 mx-4 flex items-center gap-3">
+                          <img
+                            src={job.avatar}
+                            alt={job.title}
+                            className="h-7 w-7 shrink-0 rounded-full object-cover"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-medium text-foreground">
+                                {job.title}
+                              </span>
+                              <span className="zero-pill inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-xs font-medium">
+                                {job.scope === "team" ? (
+                                  <IconUsers
+                                    size={12}
+                                    stroke={1.5}
+                                    className="h-3 w-3 shrink-0 text-sky-600 dark:text-sky-400"
+                                  />
+                                ) : (
+                                  <IconUser
+                                    size={12}
+                                    stroke={1.5}
+                                    className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400"
+                                  />
+                                )}
+                                {job.scope === "team" ? "Team" : "Personal"}
+                              </span>
+                            </div>
+                            <p className="mt-0.5 text-xs text-muted-foreground truncate">
+                              {job.description}
+                            </p>
                           </div>
-                          <p className="mt-0.5 text-xs text-muted-foreground truncate">
-                            {job.description}
-                          </p>
                         </div>
                       </li>
                     ))}
@@ -1053,7 +1094,7 @@ export function ZeroChatPage({
                           )
                         }
                       >
-                        <SelectTrigger className="h-9 min-w-[140px] rounded-lg border-border/70 bg-transparent text-sm text-muted-foreground">
+                        <SelectTrigger className="h-9 min-w-[140px] rounded-lg border-border bg-transparent text-sm text-foreground">
                           <SelectValue placeholder="Model" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1101,12 +1142,12 @@ export function ZeroChatPage({
           <div className="flex items-center gap-4 w-full">
             <button
               type="button"
-              onClick={onAvatarClick}
+              onClick={agent.isMain ? onAvatarClick : undefined}
               className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="Switch Zero avatar"
+              aria-label={`${agent.name} avatar`}
             >
               <img
-                src={zeroAvatarSrc}
+                src={agent.avatar}
                 alt=""
                 role="presentation"
                 className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
@@ -1114,10 +1155,12 @@ export function ZeroChatPage({
             </button>
             <div className="h-[4.5rem] sm:h-20 overflow-hidden flex-1 min-w-0 flex flex-col justify-center">
               <h2
-                key={carouselIndex}
+                key={`${agent.id ?? "main"}-${carouselIndex}`}
                 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground zero-tagline-animate-in"
               >
-                {getLandingTaglines(agentName)[carouselIndex]}
+                {agent.isMain
+                  ? getLandingTaglines(agentName)[carouselIndex]
+                  : `I'm ${agent.name}. ${agent.description}`}
               </h2>
             </div>
           </div>
@@ -1129,7 +1172,11 @@ export function ZeroChatPage({
                 <textarea
                   className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
                   rows={3}
-                  placeholder="Ask me to automate workflows, manage tasks..."
+                  placeholder={
+                    agent.isMain
+                      ? "Ask me to automate workflows, manage tasks..."
+                      : `Chat with ${agent.name}...`
+                  }
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
@@ -1144,6 +1191,14 @@ export function ZeroChatPage({
                     >
                       <IconPaperclip size={18} stroke={1.5} />
                     </button>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 rounded-lg h-9 px-3 text-sm font-medium text-primary hover:bg-primary/5 transition-colors"
+                      onClick={handleFeelingLucky}
+                    >
+                      <IconSparkles size={16} />
+                      Feeling great
+                    </button>
                   </div>
                   <div className="flex items-center gap-2">
                     <Select
@@ -1154,7 +1209,7 @@ export function ZeroChatPage({
                         )
                       }
                     >
-                      <SelectTrigger className="h-9 min-w-[140px] rounded-lg border-border/70 bg-transparent text-sm text-muted-foreground">
+                      <SelectTrigger className="h-9 min-w-[140px] rounded-lg border-border bg-transparent text-sm text-foreground">
                         <SelectValue placeholder="Model" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1184,73 +1239,47 @@ export function ZeroChatPage({
             </CardContent>
           </Card>
 
-          {/* Action buttons */}
-          <div className="flex flex-wrap justify-between items-center gap-2 w-full">
-            <div className="flex flex-wrap gap-2">
-              {getActionButtons(agentName).map(({ id, label, icon: Icon }) => (
-                <Button
-                  key={id}
-                  variant="outline"
-                  size="sm"
-                  className="zero-btn-morandi rounded-lg h-8 px-3.5 text-sm font-medium gap-2 border"
-                  onClick={() => {
-                    if (id === "automate") {
-                      onNavigateToSchedule?.();
-                    } else if (id === "customize") {
-                      onNavigateToMeet?.("settings");
-                    } else if (id === "connectors") {
-                      onNavigateToMeet?.("connections");
-                    }
-                  }}
-                >
-                  <Icon size={16} />
-                  {label}
-                </Button>
-              ))}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-lg h-8 px-3.5 text-sm font-medium gap-2 border-primary/30 text-primary hover:bg-primary/5 hover:border-primary/50 shrink-0"
-              type="button"
-              onClick={handleFeelingLucky}
-            >
-              <IconSparkles size={16} />
-              Feeling great
-            </Button>
-          </div>
-
-          {/* Suggested prompts grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
-            {SUGGESTED_PROMPTS.map(
-              ({ title, description, icon: Icon, iconClassName }) => (
-                <button
-                  key={title}
-                  type="button"
-                  className={cn(
-                    "zero-card-morandi p-4 text-left transition-colors",
-                    "flex gap-3 items-start",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "shrink-0 mt-0.5 rounded-lg p-1.5 bg-[hsl(220,6%,95%)]",
-                      iconClassName ?? "text-muted-foreground",
-                    )}
-                  >
-                    <Icon size={18} />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground">
-                      {title}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {description}
-                    </p>
-                  </div>
-                </button>
-              ),
-            )}
+          {/* Suggested prompts */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
+            <TooltipProvider delayDuration={300}>
+              {SUGGESTED_PROMPTS.map(
+                ({ title, description, icon: Icon, iconClassName, prompt }) => (
+                  <Tooltip key={title}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="group relative rounded-xl border border-border p-4 text-left transition-colors duration-150 hover:bg-muted/40 flex gap-3 items-start"
+                        onClick={() => setInput(prompt)}
+                      >
+                        <span
+                          className={cn(
+                            "shrink-0 mt-0.5 rounded-lg p-1.5 bg-[hsl(220,6%,95%)]",
+                            iconClassName ?? "text-muted-foreground",
+                          )}
+                        >
+                          <Icon size={18} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-foreground">
+                            {title}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {description}
+                          </p>
+                        </div>
+                        <IconArrowUpRight
+                          size={15}
+                          className="absolute right-3 top-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                        />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      Try this prompt
+                    </TooltipContent>
+                  </Tooltip>
+                ),
+              )}
+            </TooltipProvider>
           </div>
         </div>
       </main>

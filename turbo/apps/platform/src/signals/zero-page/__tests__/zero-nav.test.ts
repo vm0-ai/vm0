@@ -38,9 +38,17 @@ describe("zero-nav", () => {
       expect(context.store.get(zeroActiveId$)).toBe("job");
     });
 
-    it("should resolve /zero/activity to 'activity'", () => {
-      mockLocation({ pathname: "/zero/activity", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("activity");
+    it("should resolve /zero/production to 'production'", () => {
+      mockLocation(
+        { pathname: "/zero/production", search: "" },
+        context.signal,
+      );
+      expect(context.store.get(zeroActiveId$)).toBe("production");
+    });
+
+    it("should resolve /zero/logs to 'logs'", () => {
+      mockLocation({ pathname: "/zero/logs", search: "" }, context.signal);
+      expect(context.store.get(zeroActiveId$)).toBe("logs");
     });
 
     it("should resolve /zero/works to 'works'", () => {
@@ -48,12 +56,9 @@ describe("zero-nav", () => {
       expect(context.store.get(zeroActiveId$)).toBe("works");
     });
 
-    it("should resolve /zero/preferences to 'preferences'", () => {
-      mockLocation(
-        { pathname: "/zero/preferences", search: "" },
-        context.signal,
-      );
-      expect(context.store.get(zeroActiveId$)).toBe("preferences");
+    it("should resolve /zero/account to 'account'", () => {
+      mockLocation({ pathname: "/zero/account", search: "" }, context.signal);
+      expect(context.store.get(zeroActiveId$)).toBe("account");
     });
 
     it("should fall back to 'chat' for invalid tab", () => {

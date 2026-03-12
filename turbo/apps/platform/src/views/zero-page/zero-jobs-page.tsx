@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconUser,
   IconUsers,
@@ -6,40 +7,53 @@ import {
   IconDotsVertical,
   IconMessageCircle,
 } from "@tabler/icons-react";
-import { Button, Card, CardContent } from "@vm0/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@vm0/ui/components/ui/popover";
 import { ZeroJobDetailPage, type JobItem } from "./zero-job-detail-page.tsx";
+import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import {
+  setPendingChatPrompt$,
+  setZeroActiveId$,
+} from "../../signals/zero-page/zero-nav.ts";
 
-export const ZERO_TEAM_JOBS: JobItem[] = [
+export const ZERO_TEAM_JOBS: readonly Readonly<JobItem>[] = [
   {
     id: "1",
-    agentName: "Minion 1",
-    title: "Daily Digest",
+    title: "Aria",
+    avatar: "/avatars/avatar-1.png",
     description: "Get a daily summary of your team's important updates.",
     scope: "team",
   },
   {
     id: "2",
-    agentName: "Minion 2",
-    title: "GitHub Issue Triage",
+    title: "Rex",
+    avatar: "/avatars/avatar-2.png",
     description: "Automatically categorize and prioritize new GitHub issues.",
     scope: "personal",
   },
   {
     id: "3",
-    agentName: "Minion 3",
-    title: "Weekly Report",
+    title: "Nova",
+    avatar: "/avatars/avatar-3.png",
     description: "Receive a weekly summary of your team's achievements.",
     scope: "team",
   },
   {
     id: "4",
-    agentName: "Minion 4",
-    title: "Customer Feedback Digest",
+    title: "Sage",
+    avatar: "/avatars/avatar-4.png",
     description: "Compile and analyze customer feedback from multiple sources.",
     scope: "personal",
   },
@@ -50,7 +64,14 @@ export function ZeroJobsPage({
 }: {
   onNavigateToChat?: () => void;
 } = {}) {
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const setPrompt = useSet(setPendingChatPrompt$);
+  const navigateToChat = useSet(setZeroActiveId$);
+  const agentNameLoadable = useLoadable(agentDisplayName$);
+  const agentName =
+    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+  const selectedJobId$ = useCCState<string | null>(null);
+  const selectedJobId = useGet(selectedJobId$);
+  const setSelectedJobId = useSet(selectedJobId$);
 
   const selectedJob = selectedJobId
     ? ZERO_TEAM_JOBS.find((j) => j.id === selectedJobId)
@@ -71,22 +92,41 @@ export function ZeroJobsPage({
         <div className="mx-auto max-w-[900px] flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              Zero&apos;s sub agents
+              {agentName}&apos;s sub agents
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Sub-agents created by Zero to run tailored workflows for you and
-              your team.
+              Sub-agents created by {agentName} to run tailored workflows for
+              you and your team.
             </p>
           </div>
-          {onNavigateToChat && (
-            <Button
-              className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
-              onClick={onNavigateToChat}
-            >
-              <IconMessageCircle size={14} stroke={1.5} />
-              Create sub agent
-            </Button>
-          )}
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
+                  onClick={() => {
+                    setPrompt(
+                      "I want to create a new sub-agent to handle a specific workflow for my team",
+                    );
+                    if (onNavigateToChat) {
+                      onNavigateToChat();
+                    } else {
+                      navigateToChat("chat");
+                    }
+                  }}
+                >
+                  <IconMessageCircle size={14} stroke={1.5} />
+                  Create sub agent
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                className="max-w-[220px] text-center"
+              >
+                Chat with {agentName} to create a sub-agent
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </header>
 
@@ -103,12 +143,13 @@ export function ZeroJobsPage({
             >
               <CardContent className="px-6 py-4">
                 <div className="flex items-center gap-4">
+                  <img
+                    src={job.avatar}
+                    alt={job.title}
+                    className="h-9 w-9 shrink-0 rounded-full object-cover"
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm text-muted-foreground">
-                        {job.agentName}
-                      </span>
-                      <span className="text-muted-foreground/60">·</span>
                       <h2 className="text-sm font-semibold tracking-tight text-foreground">
                         {job.title}
                       </h2>
