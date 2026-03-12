@@ -36,11 +36,17 @@ const log = logger("callback:slack");
 function isRunResult(value: unknown): value is RunResult {
   if (typeof value !== "object" || value === null) return false;
   const obj = value as Record<string, unknown>;
-  return (
-    typeof obj.checkpointId === "string" &&
-    typeof obj.agentSessionId === "string" &&
-    typeof obj.conversationId === "string"
-  );
+  if (
+    typeof obj.checkpointId !== "string" ||
+    typeof obj.agentSessionId !== "string" ||
+    typeof obj.conversationId !== "string"
+  ) {
+    return false;
+  }
+  if (obj.artifact !== undefined && typeof obj.artifact !== "object") {
+    return false;
+  }
+  return true;
 }
 
 interface CallbackPayload {
@@ -339,8 +345,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .limit(1);
 
     if (run) {
-      // Fire-and-forget: artifact file extraction is supplementary to the main
-      // text response. Failures are logged but must not block the callback.
       try {
         artifactFiles = await getNewArtifactFiles(
           runResult,
@@ -355,8 +359,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Upload artifact files to Slack thread
   if (artifactFiles.length > 0) {
-    // Fire-and-forget: uploading attachments is best-effort. The text response
-    // has already been composed and will be posted regardless of upload outcome.
     try {
       await uploadFilesToThread(
         client,

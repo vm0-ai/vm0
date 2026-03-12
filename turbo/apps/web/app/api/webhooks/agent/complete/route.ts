@@ -53,22 +53,22 @@ async function atomicTransition(
 /**
  * Schedule callback dispatch and queue drain in a non-blocking after() block.
  */
-function scheduleCallbackDispatch(
-  runId: string,
-  status: "completed" | "failed",
-  userId: string,
-  errorMsg?: string,
-  result?: RunResult,
-): void {
+function scheduleCallbackDispatch(opts: {
+  runId: string;
+  status: "completed" | "failed";
+  userId: string;
+  errorMsg?: string;
+  result?: RunResult;
+}): void {
   after(async () => {
     await Promise.all([
       dispatchCallbacks(
-        runId,
-        status,
-        result ? { ...result } : undefined,
-        errorMsg,
+        opts.runId,
+        opts.status,
+        opts.result ? { ...opts.result } : undefined,
+        opts.errorMsg,
       ).catch((err) => log.error("Failed to dispatch callbacks", { err })),
-      drainUserQueue(userId, executeQueuedRun).catch((err) =>
+      drainUserQueue(opts.userId, executeQueuedRun).catch((err) =>
         log.error("Failed to drain user queue", { err }),
       ),
     ]);
@@ -186,12 +186,12 @@ const router = tsr.router(webhookCompleteContract, {
         // Dispatch callbacks so the user gets notified about the failure
         // (previously this path returned without dispatching)
         if (transitioned) {
-          scheduleCallbackDispatch(
-            body.runId,
-            "failed",
+          scheduleCallbackDispatch({
+            runId: body.runId,
+            status: "failed",
             userId,
-            "Checkpoint for run not found",
-          );
+            errorMsg: "Checkpoint for run not found",
+          });
         }
 
         return {
@@ -263,13 +263,13 @@ const router = tsr.router(webhookCompleteContract, {
       finalStatus === "failed"
         ? (body.error ?? `Agent exited with code ${body.exitCode}`)
         : undefined;
-    scheduleCallbackDispatch(
-      body.runId,
-      finalStatus,
+    scheduleCallbackDispatch({
+      runId: body.runId,
+      status: finalStatus,
       userId,
       errorMsg,
-      runResult,
-    );
+      result: runResult,
+    });
 
     return {
       status: 200 as const,

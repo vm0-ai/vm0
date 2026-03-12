@@ -212,11 +212,18 @@ export async function updateMessage(
   });
 }
 
+/** Maximum total size of files to upload to Slack in a single batch (50 MB) */
+const MAX_UPLOAD_TOTAL_BYTES = 50 * 1024 * 1024;
+
 /**
  * Upload files to a Slack channel thread.
  *
  * Uses files.uploadV2() which supports batching multiple files in one call.
  * Requires the `files:write` OAuth scope.
+ *
+ * Files exceeding the total size limit are silently skipped to avoid
+ * OOM or Slack API errors. Files are added in order until the budget
+ * is exhausted.
  *
  * @param client - Slack WebClient
  * @param channelId - Channel ID to upload to
@@ -231,13 +238,20 @@ export async function uploadFilesToThread(
 ): Promise<void> {
   if (files.length === 0) return;
 
+  let totalSize = 0;
+  const uploads: Array<{ file: Buffer; filename: string }> = [];
+  for (const f of files) {
+    if (totalSize + f.content.length > MAX_UPLOAD_TOTAL_BYTES) break;
+    totalSize += f.content.length;
+    uploads.push({ file: f.content, filename: f.filename });
+  }
+
+  if (uploads.length === 0) return;
+
   await client.files.uploadV2({
     channel_id: channelId,
     thread_ts: threadTs,
-    file_uploads: files.map((f) => ({
-      file: f.content,
-      filename: f.filename,
-    })),
+    file_uploads: uploads,
   });
 }
 

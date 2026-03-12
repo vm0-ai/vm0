@@ -3,8 +3,7 @@ import * as zlib from "zlib";
 import { Readable } from "stream";
 import * as tar from "tar";
 import { eq, and, lt, desc } from "drizzle-orm";
-import { storages } from "../../db/schema/storage";
-import { storageVersions } from "../../db/schema/storage";
+import { storages, storageVersions } from "../../db/schema/storage";
 import { downloadManifest, downloadS3Buffer } from "../s3/s3-client";
 import type { S3StorageManifest } from "../s3/types";
 import type { RunResult } from "../run/types";
@@ -143,7 +142,9 @@ export async function extractFilesFromArchive(
     const gunzip = zlib.createGunzip();
     gunzip.on("error", reject);
 
-    Readable.from(archiveBuffer).pipe(gunzip).pipe(parser);
+    const source = Readable.from(archiveBuffer);
+    source.on("error", reject);
+    source.pipe(gunzip).pipe(parser);
   });
 }
 
