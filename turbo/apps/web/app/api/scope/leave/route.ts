@@ -35,21 +35,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Left scope" });
   } catch (error) {
     if (isBadRequest(error)) {
-      console.error("Leave scope failed:", error);
       return NextResponse.json(
         { error: { message: "Invalid request", code: "BAD_REQUEST" } },
         { status: 400 },
       );
     }
     if (isForbidden(error)) {
-      console.error("Leave scope failed:", error);
       return NextResponse.json(
         { error: { message: "Access denied", code: "FORBIDDEN" } },
         { status: 403 },
       );
     }
     if (isNotFound(error)) {
-      console.error("Leave scope failed:", error);
       return NextResponse.json(
         { error: { message: "Resource not found", code: "NOT_FOUND" } },
         { status: 404 },

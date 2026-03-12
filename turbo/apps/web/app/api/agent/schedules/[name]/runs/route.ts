@@ -49,7 +49,6 @@ const router = tsr.router(scheduleRunsContract, {
       };
     } catch (error) {
       if (isNotFound(error)) {
-        console.error("List schedule runs failed:", error);
         return {
           status: 404 as const,
           body: {

@@ -148,7 +148,6 @@ const router = tsr.router(modelProvidersMainContract, {
       };
     } catch (error) {
       if (isBadRequest(error)) {
-        console.error("Upsert model provider failed:", error);
         return createErrorResponse("BAD_REQUEST", "Invalid request");
       }
       throw error;

@@ -137,7 +137,7 @@ describe("GET /api/agent/composes/list", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error.message).toBe("Invalid request");
+    expect(data.error.code).toBe("BAD_REQUEST");
   });
 
   it("should return 403 when user tries to access another user's scope", async () => {

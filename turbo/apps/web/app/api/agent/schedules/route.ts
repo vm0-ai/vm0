@@ -55,7 +55,6 @@ const router = tsr.router(schedulesMainContract, {
       };
     } catch (error) {
       if (isNotFound(error)) {
-        console.error("Deploy schedule failed:", error);
         return {
           status: 404 as const,
           body: {
@@ -64,7 +63,6 @@ const router = tsr.router(schedulesMainContract, {
         };
       }
       if (isBadRequest(error)) {
-        console.error("Deploy schedule failed:", error);
         return {
           status: 400 as const,
           body: {

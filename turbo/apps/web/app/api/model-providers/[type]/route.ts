@@ -41,7 +41,6 @@ const router = tsr.router(modelProvidersByTypeContract, {
       };
     } catch (error) {
       if (isNotFound(error)) {
-        console.error("Delete model provider failed:", error);
         return createErrorResponse("NOT_FOUND", "Resource not found");
       }
       throw error;

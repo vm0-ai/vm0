@@ -49,7 +49,6 @@ const router = tsr.router(schedulesByNameContract, {
       };
     } catch (error) {
       if (isNotFound(error)) {
-        console.error("Get schedule by name failed:", error);
         return {
           status: 404 as const,
           body: {
@@ -90,7 +89,6 @@ const router = tsr.router(schedulesByNameContract, {
       };
     } catch (error) {
       if (isNotFound(error)) {
-        console.error("Delete schedule failed:", error);
         return {
           status: 404 as const,
           body: {

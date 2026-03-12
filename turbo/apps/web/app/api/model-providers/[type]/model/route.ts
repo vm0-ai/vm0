@@ -64,7 +64,6 @@ const router = tsr.router(modelProvidersUpdateModelContract, {
       };
     } catch (error) {
       if (isNotFound(error)) {
-        console.error("Update model provider model failed:", error);
         return createErrorResponse("NOT_FOUND", "Resource not found");
       }
       throw error;

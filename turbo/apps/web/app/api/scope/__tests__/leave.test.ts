@@ -46,7 +46,7 @@ describe("POST /api/scope/leave - Leave Scope", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error.message).toBe("Invalid request");
+    expect(data.error.code).toBe("BAD_REQUEST");
   });
 
   it("should prevent admin from leaving", async () => {
@@ -76,6 +76,6 @@ describe("POST /api/scope/leave - Leave Scope", () => {
     expect(leaveRes.status).toBe(403);
 
     const leaveData = await leaveRes.json();
-    expect(leaveData.error.message).toBe("Access denied");
+    expect(leaveData.error.code).toBe("FORBIDDEN");
   });
 });

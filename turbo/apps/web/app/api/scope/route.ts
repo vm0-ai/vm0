@@ -52,7 +52,6 @@ const router = tsr.router(scopeContract, {
       };
     } catch (error) {
       if (isNotFound(error)) {
-        console.error("Get scope failed:", error);
         return createErrorResponse("NOT_FOUND", "Resource not found");
       }
       throw error;
@@ -107,7 +106,6 @@ const router = tsr.router(scopeContract, {
       return { status: 200 as const, body: resolvedScopeToResponse(scope) };
     } catch (error) {
       if (isBadRequest(error)) {
-        console.error("Update scope failed:", error);
         // Check if it's a conflict error (slug already exists)
         if (error.message.includes("already exists")) {
           return {
@@ -120,11 +118,9 @@ const router = tsr.router(scopeContract, {
         return createErrorResponse("BAD_REQUEST", "Invalid request");
       }
       if (isForbidden(error)) {
-        console.error("Update scope failed:", error);
         return createErrorResponse("FORBIDDEN", "Access denied");
       }
       if (isNotFound(error)) {
-        console.error("Update scope failed:", error);
         return createErrorResponse("NOT_FOUND", "Resource not found");
       }
       throw error;

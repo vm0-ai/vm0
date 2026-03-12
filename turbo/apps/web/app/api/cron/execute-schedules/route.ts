@@ -40,12 +40,14 @@ export async function GET(request: Request) {
       skipped: result.skipped,
     });
   } catch (error) {
-    console.error("Cron execution failed:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    log.error(`Cron execution failed: ${errorMessage}`);
 
     return NextResponse.json(
       {
         success: false,
-        error: "Operation failed",
+        error: errorMessage,
       },
       { status: 500 },
     );

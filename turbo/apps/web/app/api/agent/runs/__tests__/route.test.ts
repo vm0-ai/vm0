@@ -298,7 +298,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       // API validates template variables when checkEnv is true
       expect(response.status).toBe(400);
-      expect(data.error.message).toBe("Invalid request");
+      expect(data.error.code).toBe("BAD_REQUEST");
     });
 
     it("should succeed when all required vars are provided", async () => {
@@ -1016,7 +1016,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await response.json();
 
       expect(response.status).toBe(404);
-      expect(data.error.message).toBe("Resource not found");
+      expect(data.error.code).toBe("NOT_FOUND");
     });
 
     it("should return 404 when session belongs to different user (security)", async () => {
@@ -1054,7 +1054,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       // Returns 404 for security (don't leak session existence)
       expect(response.status).toBe(404);
-      expect(data.error.message).toBe("Resource not found");
+      expect(data.error.code).toBe("NOT_FOUND");
     });
 
     // Note: "Missing required secrets" validation is tested in the Validation
@@ -1079,7 +1079,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await response.json();
 
       expect(response.status).toBe(404);
-      expect(data.error.message).toBe("Resource not found");
+      expect(data.error.code).toBe("NOT_FOUND");
     });
 
     it("should return 404 when checkpoint belongs to different user (security)", async () => {
@@ -1117,7 +1117,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       // Returns 404 for security (don't leak checkpoint existence)
       expect(response.status).toBe(404);
-      expect(data.error.message).toBe("Resource not found");
+      expect(data.error.code).toBe("NOT_FOUND");
     });
 
     // Note: "Missing required secrets" validation is tested in the Validation
@@ -1222,7 +1222,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       // API validates template variables when checkEnv is true
       expect(response.status).toBe(400);
-      expect(data.error.message).toBe("Invalid request");
+      expect(data.error.code).toBe("BAD_REQUEST");
     });
 
     it("should fail run when volume definition is missing", async () => {
@@ -1364,7 +1364,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error.message).toBe("Invalid request");
+      expect(data.error.code).toBe("BAD_REQUEST");
     });
   });
 
@@ -1424,7 +1424,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       // API validates template variables when checkEnv is true
       expect(response.status).toBe(400);
-      expect(data.error.message).toBe("Invalid request");
+      expect(data.error.code).toBe("BAD_REQUEST");
     });
 
     it("should succeed with checkEnv when all vars are provided", async () => {

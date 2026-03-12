@@ -105,7 +105,7 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error.message).toBe("Invalid request");
+    expect(data.error.code).toBe("BAD_REQUEST");
   });
 
   it("should remove member and return success message", async () => {

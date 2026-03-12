@@ -93,7 +93,6 @@ const router = tsr.router(secretsByNameContract, {
       };
     } catch (error) {
       if (isNotFound(error)) {
-        console.error("Delete secret failed:", error);
         return createErrorResponse("NOT_FOUND", "Resource not found");
       }
       throw error;

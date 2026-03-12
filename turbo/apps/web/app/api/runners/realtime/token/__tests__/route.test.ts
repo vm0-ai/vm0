@@ -137,7 +137,7 @@ describe("POST /api/runners/realtime/token", () => {
       const data = await response.json();
 
       expect(response.status).toBe(403);
-      expect(data.error.message).toBe("Access denied");
+      expect(data.error.code).toBe("FORBIDDEN");
     });
   });
 
