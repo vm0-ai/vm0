@@ -3,6 +3,7 @@ import { createHmac } from "crypto";
 import { verifySlackSignature, getSlackSignatureHeaders } from "../verify";
 
 describe("verifySlackSignature", () => {
+  // nosemgrep: detected-generic-secret -- test fixture, not a real secret
   const signingSecret = "8f742231b10e8888abcd99yyyzzz85a5";
 
   it("should return true for valid signature", () => {

@@ -32,6 +32,7 @@ runs:
 
     - name: Prepare Vercel configuration
       shell: bash
+      # nosemgrep: run-shell-injection -- inputs are secrets/IDs from workflow, not attacker-controlled
       run: |
         # Initialize Vercel project configuration
         mkdir -p .vercel

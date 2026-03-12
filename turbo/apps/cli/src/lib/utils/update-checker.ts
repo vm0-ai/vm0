@@ -153,6 +153,7 @@ export function performUpgrade(
         ? ["add", "-g", `${PACKAGE_NAME}@latest`]
         : ["install", "-g", `${PACKAGE_NAME}@latest`];
 
+    // nosemgrep: spawn-shell-true, detect-child-process -- shell only on Windows; command is hardcoded package manager name
     const child = spawn(command, args, {
       stdio: "inherit",
       shell: isWindows,
@@ -285,6 +286,7 @@ export async function startSilentUpgrade(
       ? ["add", "-g", `${PACKAGE_NAME}@latest`]
       : ["install", "-g", `${PACKAGE_NAME}@latest`];
 
+  // nosemgrep: spawn-shell-true, detect-child-process -- shell only on Windows; command is hardcoded package manager name
   const child = spawn(command, args, {
     stdio: "pipe", // Capture output instead of inheriting
     shell: isWindows,

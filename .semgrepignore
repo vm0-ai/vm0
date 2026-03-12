@@ -1,0 +1,6 @@
+# Development scripts — hardcoded commands with execSync, not user-controlled input
+turbo/scripts/rebuild-snapshots.ts
+turbo/scripts/rebuild-snapshots-from-db.ts
+
+# Devcontainer Dockerfile — remoteUser in devcontainer.json handles non-root execution
+docker/toolchain/Dockerfile

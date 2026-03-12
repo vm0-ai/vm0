@@ -21,6 +21,7 @@ runs:
   steps:
     - name: Install cloudflared
       shell: bash
+      # nosemgrep: run-shell-injection -- inputs.cloudflared-version is a hardcoded default, not attacker-controlled
       run: |
         curl -sfL "https://github.com/cloudflare/cloudflared/releases/download/${{ inputs.cloudflared-version }}/cloudflared-linux-amd64.deb" -o /tmp/cloudflared.deb
         if command -v sudo &>/dev/null; then

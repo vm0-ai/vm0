@@ -62,18 +62,20 @@ runs:
       env:
         NEON_API_KEY: ${{ inputs.neon-api-key }}
         NEON_PROJECT_ID: ${{ inputs.neon-project-id }}
+        INPUT_BRANCH_NAME: ${{ inputs.branch-name }}
+        INPUT_DATABASE_NAME: ${{ inputs.database-name }}
       run: |
-        BRANCH_NAME="preview/${{ inputs.branch-name }}"
+        BRANCH_NAME="preview/$INPUT_BRANCH_NAME"
 
-        if neonctl branches list --project-id $NEON_PROJECT_ID --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
+        if neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
           echo "Branch $BRANCH_NAME already exists"
           echo "Resetting branch to sync with parent (main)..."
-          neonctl branches reset $BRANCH_NAME --project-id $NEON_PROJECT_ID --parent
+          neonctl branches reset "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --parent
 
           # Wait for reset to complete (branch state changes to "ready")
           echo "Waiting for branch reset to complete..."
           for i in {1..30}; do
-            CURRENT_STATE=$(neonctl branches list --project-id $NEON_PROJECT_ID --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .current_state")
+            CURRENT_STATE=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .current_state")
             if [ "$CURRENT_STATE" = "ready" ]; then
               echo "Branch reset complete (state: $CURRENT_STATE)"
               break
@@ -87,21 +89,21 @@ runs:
           fi
         else
           echo "Creating branch $BRANCH_NAME"
-          neonctl branches create --name $BRANCH_NAME --project-id $NEON_PROJECT_ID
+          neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
         fi
 
-        DATABASE_URL=$(neonctl connection-string $BRANCH_NAME --project-id $NEON_PROJECT_ID --database-name ${{ inputs.database-name }} --pooled)
+        DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name "$INPUT_DATABASE_NAME" --pooled)
         if [ -z "$DATABASE_URL" ]; then
           echo "Error: Failed to get database URL from neonctl"
           echo "Attempting without --pooled flag..."
-          DATABASE_URL=$(neonctl connection-string $BRANCH_NAME --project-id $NEON_PROJECT_ID --database-name ${{ inputs.database-name }})
+          DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name "$INPUT_DATABASE_NAME")
         fi
         echo "DATABASE_URL value: $DATABASE_URL"
         echo "database-url=$DATABASE_URL" >> $GITHUB_OUTPUT
         echo "Neon branch ready: $BRANCH_NAME"
 
         # Get branch ID for console URL
-        BRANCH_ID=$(neonctl branches list --project-id $NEON_PROJECT_ID --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .id")
+        BRANCH_ID=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .id")
         CONSOLE_URL="https://console.neon.tech/app/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID"
         echo "console-url=$CONSOLE_URL" >> $GITHUB_OUTPUT
         echo "Console URL: $CONSOLE_URL"
@@ -127,13 +129,14 @@ runs:
       env:
         NEON_API_KEY: ${{ inputs.neon-api-key }}
         NEON_PROJECT_ID: ${{ inputs.neon-project-id }}
+        INPUT_BRANCH_NAME: ${{ inputs.branch-name }}
       run: |
-        BRANCH_NAME="preview/${{ inputs.branch-name }}"
+        BRANCH_NAME="preview/$INPUT_BRANCH_NAME"
 
         # Check if branch exists before trying to delete
-        if neonctl branches list --project-id $NEON_PROJECT_ID --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
+        if neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
           echo "Deleting branch $BRANCH_NAME"
-          neonctl branches delete $BRANCH_NAME --project-id $NEON_PROJECT_ID
+          neonctl branches delete "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
           echo "Branch $BRANCH_NAME deleted successfully"
         fi
 

@@ -606,23 +606,26 @@ jobs:
       - name: Deploy Web to Vercel
         id: deploy
         run: |
-          DEPLOY_CMD="vercel deploy --prebuilt --archive=tgz --token=${{ secrets.VERCEL_TOKEN }}"
-          DEPLOY_CMD="$DEPLOY_CMD --meta branch=${{ github.head_ref || github.ref_name }}"
-          DEPLOY_CMD="$DEPLOY_CMD --meta pr=${{ needs.prepare.outputs.job-ref }}"
+          DEPLOY_ARGS=(deploy --prebuilt --archive=tgz "--token=$VERCEL_TOKEN")
+          DEPLOY_ARGS+=(--meta "branch=$META_BRANCH")
+          DEPLOY_ARGS+=(--meta "pr=$META_PR")
 
           while IFS= read -r line; do
             line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             if [ -n "$line" ]; then
               KEY="${line%%=*}"
               VALUE="${line#*=}"
-              DEPLOY_CMD="$DEPLOY_CMD --env $KEY=\"$VALUE\""
+              DEPLOY_ARGS+=(--env "$KEY=$VALUE")
             fi
           done <<< "$ENV_VARS"
 
-          DEPLOYMENT_URL=$(eval $DEPLOY_CMD)
+          DEPLOYMENT_URL=$(vercel "${DEPLOY_ARGS[@]}")
           echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
           echo "Deployment URL: $DEPLOYMENT_URL"
         env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          META_BRANCH: ${{ github.head_ref || github.ref_name }}
+          META_PR: ${{ needs.prepare.outputs.job-ref }}
           ENV_VARS: |
             DATABASE_URL=${{ steps.neon.outputs.database-url }}
             BLOG_BASE_URL=${{ needs.prepare.outputs.web-preview-url }}

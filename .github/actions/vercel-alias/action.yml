@@ -40,6 +40,7 @@ runs:
     - name: Create Vercel alias
       id: alias
       shell: bash
+      # nosemgrep: run-shell-injection -- all inputs (job-ref, app-name, etc.) come from our own workflow, not attacker-controlled
       run: |
         # Build alias URL: {job-ref}-{app}.{preview-domain}
         ALIAS_URL="${{ inputs.job-ref }}-${{ inputs.app-name }}.${{ inputs.preview-domain }}"

@@ -28,6 +28,7 @@ export function execVm0Command(
     // - default: inherit all (full terminal passthrough, allows prompts)
     const stdio: "pipe" | "inherit" = options.silent ? "pipe" : "inherit";
 
+    // nosemgrep: spawn-shell-true -- shell only enabled on Windows for hardcoded "vm0" command
     const proc = spawn("vm0", args, {
       cwd: options.cwd,
       stdio,
@@ -75,6 +76,7 @@ export function execVm0RunWithCapture(
       ? { ...process.env, FORCE_COLOR: "1" }
       : process.env;
 
+    // nosemgrep: spawn-shell-true -- shell only enabled on Windows for hardcoded "vm0" command
     const proc = spawn("vm0", args, {
       cwd: options.cwd,
       env,

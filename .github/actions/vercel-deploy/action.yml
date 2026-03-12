@@ -73,14 +73,19 @@ runs:
     - name: Build and Deploy to Vercel
       id: deploy
       shell: bash
+      env:
+        INPUT_ENV_VARS: ${{ inputs.environment-variables }}
+        INPUT_PREBUILT: ${{ inputs.prebuilt }}
+        INPUT_ENVIRONMENT: ${{ inputs.environment }}
+        INPUT_VERCEL_TOKEN: ${{ inputs.vercel-token }}
+        INPUT_META_BRANCH: ${{ inputs.meta-branch }}
+        INPUT_META_PR: ${{ inputs.meta-pr }}
       run: |
-        ENV_VARS="${{ inputs.environment-variables }}"
-
-        if [ "${{ inputs.prebuilt }}" == "true" ]; then
+        if [ "$INPUT_PREBUILT" == "true" ]; then
           # === Prebuilt mode: build locally, deploy artifacts only ===
 
           # Export environment variables for local build
-          if [ -n "$ENV_VARS" ]; then
+          if [ -n "$INPUT_ENV_VARS" ]; then
             echo "Exporting environment variables for local build..."
             while IFS= read -r line; do
               line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -90,27 +95,27 @@ runs:
                 echo "Exporting env: $KEY"
                 export "$KEY=$VALUE"
               fi
-            done <<< "$ENV_VARS"
+            done <<< "$INPUT_ENV_VARS"
           fi
 
           # Build locally using Vercel CLI
           echo "Building locally with vercel build..."
-          BUILD_CMD="vercel build --token=${{ inputs.vercel-token }}"
-          if [ "${{ inputs.environment }}" == "production" ]; then
-            BUILD_CMD="$BUILD_CMD --prod"
+          BUILD_ARGS=(build "--token=$INPUT_VERCEL_TOKEN")
+          if [ "$INPUT_ENVIRONMENT" == "production" ]; then
+            BUILD_ARGS+=(--prod)
           fi
-          eval $BUILD_CMD
+          vercel "${BUILD_ARGS[@]}"
 
           # Deploy prebuilt artifacts (no remote build)
           echo "Deploying prebuilt artifacts..."
-          DEPLOY_CMD="vercel deploy --prebuilt --archive=tgz --token=${{ inputs.vercel-token }}"
+          DEPLOY_ARGS=(deploy --prebuilt --archive=tgz "--token=$INPUT_VERCEL_TOKEN")
 
-          if [ "${{ inputs.environment }}" == "production" ]; then
-            DEPLOY_CMD="$DEPLOY_CMD --prod"
+          if [ "$INPUT_ENVIRONMENT" == "production" ]; then
+            DEPLOY_ARGS+=(--prod)
           fi
 
           # Add runtime environment variables
-          if [ -n "$ENV_VARS" ]; then
+          if [ -n "$INPUT_ENV_VARS" ]; then
             echo "Adding runtime environment variables..."
             while IFS= read -r line; do
               line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -118,20 +123,20 @@ runs:
                 KEY="${line%%=*}"
                 VALUE="${line#*=}"
                 echo "Adding runtime env: $KEY"
-                DEPLOY_CMD="$DEPLOY_CMD --env $KEY=\"$VALUE\""
+                DEPLOY_ARGS+=(--env "$KEY=$VALUE")
               fi
-            done <<< "$ENV_VARS"
+            done <<< "$INPUT_ENV_VARS"
           fi
         else
           # === Standard mode: remote build on Vercel ===
-          DEPLOY_CMD="vercel deploy --archive=tgz --token=${{ inputs.vercel-token }}"
+          DEPLOY_ARGS=(deploy --archive=tgz "--token=$INPUT_VERCEL_TOKEN")
 
-          if [ "${{ inputs.environment }}" == "production" ]; then
-            DEPLOY_CMD="$DEPLOY_CMD --prod"
+          if [ "$INPUT_ENVIRONMENT" == "production" ]; then
+            DEPLOY_ARGS+=(--prod)
           fi
 
           # Add environment variables for both build-time and runtime
-          if [ -n "$ENV_VARS" ]; then
+          if [ -n "$INPUT_ENV_VARS" ]; then
             echo "Adding environment variables for build and runtime..."
             while IFS= read -r line; do
               line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -139,24 +144,24 @@ runs:
                 KEY="${line%%=*}"
                 VALUE="${line#*=}"
                 echo "Adding env: $KEY"
-                DEPLOY_CMD="$DEPLOY_CMD --build-env $KEY=\"$VALUE\" --env $KEY=\"$VALUE\""
+                DEPLOY_ARGS+=(--build-env "$KEY=$VALUE" --env "$KEY=$VALUE")
               fi
-            done <<< "$ENV_VARS"
+            done <<< "$INPUT_ENV_VARS"
           fi
         fi
 
         # Add metadata if provided
-        if [ -n "${{ inputs.meta-branch }}" ]; then
-          DEPLOY_CMD="$DEPLOY_CMD --meta branch=${{ inputs.meta-branch }}"
+        if [ -n "$INPUT_META_BRANCH" ]; then
+          DEPLOY_ARGS+=(--meta "branch=$INPUT_META_BRANCH")
         fi
 
-        if [ -n "${{ inputs.meta-pr }}" ]; then
-          DEPLOY_CMD="$DEPLOY_CMD --meta pr=${{ inputs.meta-pr }}"
+        if [ -n "$INPUT_META_PR" ]; then
+          DEPLOY_ARGS+=(--meta "pr=$INPUT_META_PR")
         fi
 
         # Execute deployment and capture URL
         echo "Executing deployment..."
-        DEPLOYMENT_URL=$(eval $DEPLOY_CMD)
+        DEPLOYMENT_URL=$(vercel "${DEPLOY_ARGS[@]}")
 
         # Output the deployment URL
         echo "url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
