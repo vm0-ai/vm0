@@ -82,11 +82,11 @@ describe("Security Response Headers", () => {
       expect(csp).toContain("'unsafe-inline'");
     });
 
-    it("should not allow unsafe-eval", async () => {
+    it("should allow unsafe-eval for Termly embed-policy.min.js", async () => {
       const headers = await getSecurityHeaders();
       const csp = findHeader(headers, "Content-Security-Policy");
 
-      expect(csp).not.toContain("unsafe-eval");
+      expect(csp).toContain("'unsafe-eval'");
     });
 
     it("should deny frame-ancestors", async () => {

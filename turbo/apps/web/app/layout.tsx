@@ -1,7 +1,6 @@
 // Root layout for the web application
 import type { Metadata } from "next";
 import Script from "next/script";
-import { Suspense } from "react";
 import {
   Noto_Sans,
   Fira_Code,
@@ -12,7 +11,6 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { getClerkPublishableKey } from "../src/lib/clerk-config";
 import { getPlatformUrl } from "../src/lib/url";
 import { ThemeProvider } from "./components/ThemeProvider";
-import TermlyCMP from "./components/TermlyCMP";
 import "./globals.css";
 import "./landing.css";
 import "./blog.css";
@@ -144,6 +142,10 @@ export default function RootLayout({
     >
       <html lang="en" data-theme="dark" suppressHydrationWarning>
         <head>
+          <Script
+            src="https://app.termly.io/resource-blocker/058a3478-08ac-4f2f-a9c4-5b357bbe7433?autoBlock=on"
+            strategy="afterInteractive"
+          />
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link
             rel="preconnect"
@@ -246,12 +248,6 @@ export default function RootLayout({
               }),
             }}
           />
-          <Suspense>
-            <TermlyCMP
-              websiteUUID="058a3478-08ac-4f2f-a9c4-5b357bbe7433"
-              autoBlock
-            />
-          </Suspense>
           <ThemeProvider>{children}</ThemeProvider>
           <Script
             src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
