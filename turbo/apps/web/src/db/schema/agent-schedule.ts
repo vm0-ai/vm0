@@ -19,9 +19,9 @@ import { agentRuns } from "./agent-run";
  * Stores schedule configurations for automated agent runs
  * Supports 1:N (one agent can have multiple named schedules)
  *
- * Each schedule carries its own (scopeId, userId) pair for execution identity.
- * This allows cross-scope sharing: User B (scope-b) can schedule User A's
- * agent (scope-a) and the schedule resolves secrets from scope-b + user-b.
+ * Each schedule carries its own (orgId, userId) pair for execution identity.
+ * This allows cross-org sharing: User B (org-b) can schedule User A's
+ * agent (org-a) and the schedule resolves secrets from org-b + user-b.
  *
  * Note: The migration includes a CHECK constraint (trigger_check) ensuring
  * exactly one trigger type is set, matching the trigger_type column:
@@ -36,7 +36,6 @@ export const agentSchedules = pgTable(
     composeId: uuid("compose_id")
       .notNull()
       .references(() => agentComposes.id, { onDelete: "cascade" }),
-    scopeId: uuid("scope_id"),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),

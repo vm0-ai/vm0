@@ -143,7 +143,7 @@ describe("POST /api/webhooks/agent/services/auth", () => {
     it("should return resolved auth headers for connected connector", async () => {
       // Restore Clerk auth for connector creation (OAuth callback requires auth)
       mockClerk({ userId: user.userId });
-      await createTestConnector(user.scopeId, {
+      await createTestConnector({
         type: "github",
         accessToken: "ghp_test_access_token_123",
       });
@@ -169,7 +169,7 @@ describe("POST /api/webhooks/agent/services/auth", () => {
 
     it("should return headers for different connector types", async () => {
       mockClerk({ userId: user.userId });
-      await createTestConnector(user.scopeId, {
+      await createTestConnector({
         type: "slack",
         accessToken: "xoxb-test-slack-token",
       });
@@ -203,7 +203,7 @@ describe("POST /api/webhooks/agent/services/auth", () => {
       );
 
       mockClerk({ userId: otherUser.userId });
-      await createTestConnector(otherUser.scopeId, {
+      await createTestConnector({
         type: "github",
         accessToken: "ghp_other_user_token",
       });

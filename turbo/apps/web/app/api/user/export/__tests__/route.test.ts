@@ -184,7 +184,7 @@ describe("POST /api/user/export", () => {
       const userA = await context.setupUser();
       mockClerk({ userId: userA.userId, orgId: userA.orgId });
 
-      await insertTestAgentCompose(userA.userId, userA.scopeId, "user-a-agent");
+      await insertTestAgentCompose(userA.userId, userA.orgId, "user-a-agent");
 
       // User B triggers export
       const userB = await context.setupUser({ prefix: "other" });

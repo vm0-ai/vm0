@@ -22,7 +22,6 @@ export const agentRuns = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(), // Clerk user ID - owner of this run
-    scopeId: uuid("scope_id"),
     agentComposeVersionId: varchar("agent_compose_version_id", {
       length: 64,
     }).references(() => agentComposeVersions.id, { onDelete: "set null" }),

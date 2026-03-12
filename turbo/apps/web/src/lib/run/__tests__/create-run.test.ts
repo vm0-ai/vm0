@@ -752,7 +752,7 @@ describe("createRun()", () => {
       });
 
       // Create a figma connector with api-token auth and secret stored under target name
-      await createTestConnector(user.scopeId, {
+      await createTestConnector({
         type: "figma",
         authMethod: "api-token",
         secretName: "FIGMA_TOKEN",
@@ -790,7 +790,7 @@ describe("createRun()", () => {
       );
 
       // Store secret as a user secret (api-token connector path)
-      await createTestConnector(user.scopeId, {
+      await createTestConnector({
         type: "productlane",
         authMethod: "api-token",
         secretName: "PRODUCTLANE_TOKEN",
@@ -824,7 +824,7 @@ describe("createRun()", () => {
       });
 
       // Create a github connector with oauth auth via callback route
-      await createTestConnector(user.scopeId, {
+      await createTestConnector({
         type: "github",
         authMethod: "oauth",
         accessToken: "ghp_oauth_test_456",

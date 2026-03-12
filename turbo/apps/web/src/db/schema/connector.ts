@@ -12,13 +12,12 @@ import {
  * Connectors table
  * Stores metadata for connected third-party services (GitHub, etc.)
  * Actual secrets stored in secrets table with type="connector"
- * Linked by (scopeId, name, type) - no FK needed
+ * Linked by (orgId, userId, type) unique index
  */
 export const connectors = pgTable(
   "connectors",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    scopeId: uuid("scope_id"),
     type: varchar("type", { length: 50 }).notNull(), // "github"
     authMethod: varchar("auth_method", { length: 50 }).notNull(), // "oauth"
 

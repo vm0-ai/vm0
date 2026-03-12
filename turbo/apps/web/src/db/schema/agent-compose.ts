@@ -8,8 +8,6 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
-import { scopes } from "./scope";
-
 /**
  * Agent Composes table
  * Metadata table for agent composes with HEAD pointer to current version
@@ -19,9 +17,6 @@ export const agentComposes = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(), // Clerk user ID
-    scopeId: uuid("scope_id").references(() => scopes.id, {
-      onDelete: "cascade",
-    }), // FK kept for cascade; Phase 5 drops column
     name: varchar("name", { length: 64 }).notNull().default(""), // Agent name from compose
     headVersionId: varchar("head_version_id", { length: 64 }), // Points to latest version hash
     orgId: text("org_id").notNull(),

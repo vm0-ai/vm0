@@ -364,25 +364,25 @@ export async function createTestScope(
 /**
  * Set the tier for a scope directly in the database.
  *
- * @param scopeId - The scope ID to update
+ * @param orgId - The org ID to look up the scope for
  * @param tier - The tier to set ("free", "pro", or "max")
  */
 export async function setScopeTier(
-  scopeId: string,
+  orgId: string,
   tier: "free" | "pro" | "max",
 ): Promise<void> {
   await globalThis.services.db
     .update(scopes)
     .set({ tier, updatedAt: new Date() })
-    .where(eq(scopes.id, scopeId));
+    .where(eq(scopes.orgId, orgId));
 
   // Also update org_cache so getOrgData returns the correct tier
   const [scope] = await globalThis.services.db
     .select()
     .from(scopes)
-    .where(eq(scopes.id, scopeId))
+    .where(eq(scopes.orgId, orgId))
     .limit(1);
-  if (scope?.orgId) {
+  if (scope) {
     await globalThis.services.db
       .insert(orgCache)
       .values({
@@ -399,13 +399,13 @@ export async function setScopeTier(
 }
 
 /**
- * Get a scope record by ID directly from the database.
+ * Get a scope record by org ID directly from the database.
  *
- * @param scopeId - The scope ID to look up
+ * @param orgId - The org ID to look up the scope for
  * @returns The scope record with slug and tier
  */
 export async function getTestScope(
-  scopeId: string,
+  orgId: string,
 ): Promise<{ id: string; slug: string; tier: string; orgId: string }> {
   const [scope] = await globalThis.services.db
     .select({
@@ -415,10 +415,10 @@ export async function getTestScope(
       orgId: scopes.orgId,
     })
     .from(scopes)
-    .where(eq(scopes.id, scopeId))
+    .where(eq(scopes.orgId, orgId))
     .limit(1);
   if (!scope) {
-    throw new Error(`Scope ${scopeId} not found`);
+    throw new Error(`Scope for org ${orgId} not found`);
   }
   return scope;
 }
@@ -584,14 +584,13 @@ async function createTestComposeVersion(
 async function createTestRunDirect(
   userId: string,
   versionId: string,
-  scopeId: string,
+  orgId: string,
   options?: {
     status?: string;
     prompt?: string;
     continuedFromSessionId?: string;
   },
 ): Promise<{ id: string }> {
-  const orgId = await getOrgIdFromScope(scopeId);
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
@@ -632,11 +631,10 @@ export async function createTestSessionWithConversation(
   userId: string,
   agentComposeId: string,
 ): Promise<{ id: string }> {
-  // Look up scopeId via orgId from the compose
+  // Look up orgId from the compose
   const [compose] = await globalThis.services.db
-    .select({ scopeId: scopes.id })
+    .select({ orgId: agentComposes.orgId })
     .from(agentComposes)
-    .innerJoin(scopes, eq(agentComposes.orgId, scopes.orgId))
     .where(eq(agentComposes.id, agentComposeId))
     .limit(1);
   if (!compose) {
@@ -645,7 +643,7 @@ export async function createTestSessionWithConversation(
   // Create compose version
   const versionId = await createTestComposeVersion(agentComposeId, userId);
   // Create run
-  const run = await createTestRunDirect(userId, versionId, compose.scopeId, {
+  const run = await createTestRunDirect(userId, versionId, compose.orgId, {
     status: "completed",
   });
   // Create conversation
@@ -675,11 +673,10 @@ export async function createTestRunInDb(
     prompt?: string;
   },
 ): Promise<{ runId: string }> {
-  // Look up scopeId via compose
+  // Look up orgId from compose
   const [compose] = await globalThis.services.db
-    .select({ scopeId: scopes.id })
+    .select({ orgId: agentComposes.orgId })
     .from(agentComposes)
-    .innerJoin(scopes, eq(agentComposes.orgId, scopes.orgId))
     .where(eq(agentComposes.id, agentComposeId))
     .limit(1);
   if (!compose) {
@@ -688,7 +685,7 @@ export async function createTestRunInDb(
   // Create a version for the run
   const versionId = await createTestComposeVersion(agentComposeId, userId);
   // Create run directly
-  const run = await createTestRunDirect(userId, versionId, compose.scopeId, {
+  const run = await createTestRunDirect(userId, versionId, compose.orgId, {
     status: options?.status ?? "pending",
     prompt: options?.prompt ?? "test prompt",
   });
@@ -1489,40 +1486,23 @@ export async function createTestVariable(
 // ============================================================================
 
 /**
- * Resolve scopeId from a compose version ID.
+ * Resolve orgId from a compose version ID.
  * Shared by test helpers that insert agent_runs records directly.
  */
-async function getScopeIdFromVersion(versionId: string): Promise<string> {
-  const [version] = await globalThis.services.db
-    .select({ scopeId: scopes.id })
+async function getOrgIdFromVersion(versionId: string): Promise<string> {
+  const [row] = await globalThis.services.db
+    .select({ orgId: agentComposes.orgId })
     .from(agentComposeVersions)
     .innerJoin(
       agentComposes,
       eq(agentComposes.id, agentComposeVersions.composeId),
     )
-    .innerJoin(scopes, eq(agentComposes.orgId, scopes.orgId))
     .where(eq(agentComposeVersions.id, versionId))
     .limit(1);
-  if (!version) {
+  if (!row) {
     throw new Error(`Compose version ${versionId} not found`);
   }
-  return version.scopeId;
-}
-
-/**
- * Resolve orgId from a scopeId.
- * Shared by test helpers that insert records into scope-dependent tables.
- */
-async function getOrgIdFromScope(scopeId: string): Promise<string> {
-  const [scope] = await globalThis.services.db
-    .select({ orgId: scopes.orgId })
-    .from(scopes)
-    .where(eq(scopes.id, scopeId))
-    .limit(1);
-  if (!scope) {
-    throw new Error(`Scope ${scopeId} not found`);
-  }
-  return scope.orgId;
+  return row.orgId;
 }
 
 /**
@@ -1541,15 +1521,13 @@ export async function insertStalePendingRun(
   agentComposeVersionId: string,
   ageMs: number = 20 * 60 * 1000,
 ): Promise<string> {
-  const scopeId = await getScopeIdFromVersion(agentComposeVersionId);
-  const orgId = await getOrgIdFromScope(scopeId);
+  const orgId = await getOrgIdFromVersion(agentComposeVersionId);
 
   const staleCreatedAt = new Date(Date.now() - ageMs);
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
-      scopeId,
       orgId,
       agentComposeVersionId,
       status: "pending",
@@ -1608,24 +1586,20 @@ export async function createTestPermission(
  * - api-token: calls POST /api/connectors/:type/token
  * - oauth: calls GET /api/connectors/:type/callback with MSW mocks
  *
- * @param scopeId - The scope ID (unused directly, kept for call-site compat)
  * @param options - Connector configuration
  */
-export async function createTestConnector(
-  _scopeId: string,
-  options?: {
-    type?: ConnectorType;
-    authMethod?: "oauth" | "api-token";
-    accessToken?: string;
-    /** Secret name for api-token (e.g. "FIGMA_TOKEN"). Required for api-token. */
-    secretName?: string;
-    externalUsername?: string;
-    externalId?: string | null;
-    externalEmail?: string | null;
-    oauthScopes?: string[];
-    userId?: string;
-  },
-): Promise<void> {
+export async function createTestConnector(options?: {
+  type?: ConnectorType;
+  authMethod?: "oauth" | "api-token";
+  accessToken?: string;
+  /** Secret name for api-token (e.g. "FIGMA_TOKEN"). Required for api-token. */
+  secretName?: string;
+  externalUsername?: string;
+  externalId?: string | null;
+  externalEmail?: string | null;
+  oauthScopes?: string[];
+  userId?: string;
+}): Promise<void> {
   const authMethod = options?.authMethod ?? "oauth";
 
   if (authMethod === "api-token") {
@@ -1806,16 +1780,15 @@ async function createTestOAuthConnector(options?: {
  * Find and decrypt a connector secret token from the database.
  * Used for verifying that the correct token was stored during connector OAuth flow.
  *
- * @param scopeId - The scope ID to look up the secret for
+ * @param orgId - The org ID to look up the secret for
  * @param secretName - The secret name (e.g. "SLACK_ACCESS_TOKEN")
  * @returns The decrypted token value, or undefined if not found
  */
 export async function findTestConnectorSecret(
-  scopeId: string,
+  orgId: string,
   secretName: string,
   type: "connector" | "user" = "connector",
 ): Promise<string | undefined> {
-  const orgId = await getOrgIdFromScope(scopeId);
   const [storedSecret] = await globalThis.services.db
     .select()
     .from(secrets)
@@ -1840,15 +1813,14 @@ export async function findTestConnectorSecret(
  * Get the tokenExpiresAt timestamp for a connector.
  * Used for verifying that token expiry was correctly stored during OAuth flow.
  *
- * @param scopeId - The scope ID
+ * @param orgId - The org ID
  * @param type - The connector type (e.g. "notion", "github")
  * @returns The tokenExpiresAt Date, or null if not set, or undefined if connector not found
  */
 export async function findTestConnectorTokenExpiresAt(
-  scopeId: string,
+  orgId: string,
   type: string,
 ): Promise<Date | null | undefined> {
-  const orgId = await getOrgIdFromScope(scopeId);
   const [row] = await globalThis.services.db
     .select({ tokenExpiresAt: connectors.tokenExpiresAt })
     .from(connectors)
@@ -1976,14 +1948,12 @@ export async function createCompletedTestRun(options: {
   startedAt: Date;
   completedAt: Date;
 }): Promise<string> {
-  const scopeId = await getScopeIdFromVersion(options.composeVersionId);
-  const orgId = await getOrgIdFromScope(scopeId);
+  const orgId = await getOrgIdFromVersion(options.composeVersionId);
 
   const [row] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId: options.userId,
-      scopeId,
       orgId,
       agentComposeVersionId: options.composeVersionId,
       status: "completed",
@@ -2422,14 +2392,12 @@ export async function createTestRunnerJob(
   runnerGroup: string,
   contextOverrides?: Partial<StoredExecutionContext>,
 ): Promise<{ runId: string }> {
-  const scopeId = await getScopeIdFromVersion(versionId);
-  const orgId = await getOrgIdFromScope(scopeId);
+  const orgId = await getOrgIdFromVersion(versionId);
 
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
-      scopeId,
       orgId,
       agentComposeVersionId: versionId,
       status: "pending",
@@ -2734,7 +2702,6 @@ export async function createTestTelegramInstallation(options?: {
     .insert(agentComposes)
     .values({
       userId: adminUserId,
-      scopeId: scope!.id,
       orgId: scope!.orgId,
       name: uniqueId("compose"),
     })
@@ -2837,10 +2804,9 @@ export async function expireQueueEntry(runId: string) {
  */
 export async function insertTestAgentCompose(
   userId: string,
-  scopeId: string,
+  orgId: string,
   name: string,
 ) {
-  const orgId = await getOrgIdFromScope(scopeId);
   const [row] = await globalThis.services.db
     .insert(agentComposes)
     .values({ userId, orgId, name })

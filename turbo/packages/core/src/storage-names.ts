@@ -6,8 +6,8 @@
 /**
  * Sentinel userId for scope-level storages (volumes).
  * Volumes are shared resources within a scope — they use this constant
- * instead of a real userId so the (scopeId, userId, name, type)
- * constraint keeps them unique per scope, not per user.
+ * instead of a real userId so the (orgId, userId, name, type)
+ * constraint keeps them unique per org, not per user.
  */
 export const VOLUME_SCOPE_USER_ID = "__scope__";
 

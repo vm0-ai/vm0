@@ -652,7 +652,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should allow 2 concurrent runs for pro tier scopes", async () => {
       // Set scope to pro tier (allows 2 concurrent runs)
-      await setScopeTier(user.scopeId, "pro");
+      await setScopeTier(user.orgId, "pro");
 
       const run1 = await createTestRun(testComposeId, "Run 1");
       const run2 = await createTestRun(testComposeId, "Run 2");
@@ -663,7 +663,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should queue 3rd concurrent run for pro tier scopes", async () => {
       // Pro tier only allows 2 concurrent runs
-      await setScopeTier(user.scopeId, "pro");
+      await setScopeTier(user.orgId, "pro");
 
       const run1 = await createTestRun(testComposeId, "Run 1");
       const run2 = await createTestRun(testComposeId, "Run 2");
@@ -881,7 +881,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
   describe("Connector Injection", () => {
     it("should satisfy ${{ secrets.GH_TOKEN }} from connector when user has no GH_TOKEN secret", async () => {
       // Create a GitHub connector for the test user
-      await createTestConnector(user.scopeId, {
+      await createTestConnector({
         accessToken: "ghp-test-connector-token",
       });
 
@@ -901,7 +901,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should not override user-provided GH_TOKEN secret with connector token", async () => {
       // Create a GitHub connector
-      await createTestConnector(user.scopeId, {
+      await createTestConnector({
         accessToken: "ghp-connector-token",
       });
 
@@ -924,7 +924,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should not inject connector secrets when compose does not reference them", async () => {
       // Create a GitHub connector
-      await createTestConnector(user.scopeId, {
+      await createTestConnector({
         accessToken: "ghp-should-not-appear",
       });
 
@@ -946,7 +946,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should satisfy ${{ secrets.SLACK_TOKEN }} from Slack connector when user has no SLACK_TOKEN secret", async () => {
       // Create a Slack connector for the test user
-      await createTestConnector(user.scopeId, {
+      await createTestConnector({
         type: "slack",
         accessToken: "xoxp-test-slack-connector-token",
       });
@@ -970,7 +970,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should not override user-provided SLACK_TOKEN secret with Slack connector token", async () => {
       // Create a Slack connector
-      await createTestConnector(user.scopeId, {
+      await createTestConnector({
         type: "slack",
         accessToken: "xoxp-connector-token",
       });

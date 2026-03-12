@@ -23,7 +23,6 @@ export const storages = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(), // Real userId for artifact/memory; VOLUME_SCOPE_USER_ID for volumes
-    scopeId: uuid("scope_id"), // Kept for Phase 5 removal, no longer used for queries
     name: varchar("name", { length: 256 }).notNull(),
     type: varchar("type", { length: 16 }).notNull().default("volume"),
     orgId: text("org_id").notNull(),

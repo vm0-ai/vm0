@@ -11,7 +11,7 @@
  *   test("my test", async () => {
  *     context.setupMocks();  // Setup S3, Axiom mocks
  *     const user = await context.setupUser();
- *     // user.userId and user.scopeId are unique to this test
+ *     // user.userId and user.orgId are unique to this test
  *     // No cleanup needed - data is isolated by unique IDs
  *   });
  */
@@ -203,16 +203,15 @@ interface TestContext {
   createAgentCompose(
     vm0UserId: string,
     options?: { name?: string },
-  ): Promise<{ id: string; name: string; scopeId: string; orgId: string }>;
+  ): Promise<{ id: string; name: string; orgId: string }>;
   createConnector(
-    scopeId: string,
+    orgId: string,
     options: { userId: string; type?: string; authMethod?: string },
   ): Promise<{ id: string; type: string }>;
 }
 
 export interface UserContext {
   readonly userId: string;
-  readonly scopeId: string;
   readonly orgId: string;
 }
 
@@ -432,7 +431,7 @@ export function testContext(): TestContext {
    * Usage:
    *   const user = await context.setupUser();
    *   // user.userId is unique, e.g., "test-user-1706123456789-a1b2c3d4"
-   *   // user.scopeId is the created scope's ID
+   *   // user.orgId is the created org's ID
    *
    * The Clerk mock is automatically configured for this user.
    */
@@ -479,7 +478,6 @@ export function testContext(): TestContext {
 
       return {
         userId,
-        scopeId: scopeData.id,
         orgId: scope!.orgId,
       };
     })();
@@ -615,7 +613,6 @@ export function testContext(): TestContext {
   ): Promise<{
     id: string;
     name: string;
-    scopeId: string;
     orgId: string;
   }> {
     const { name = uniqueId("test-compose") } = options;
@@ -645,7 +642,6 @@ export function testContext(): TestContext {
       .insert(agentComposes)
       .values({
         userId: vm0UserId,
-        scopeId: scopeData.id,
         orgId: scopeData.orgId,
         name,
       })
@@ -658,34 +654,27 @@ export function testContext(): TestContext {
     return {
       id: compose.id,
       name: compose.name,
-      scopeId: scopeData.id,
       orgId: scopeData.orgId,
     };
   }
 
   /**
-   * Creates a connector record for a scope.
+   * Creates a connector record for an org.
    * Used to test connector-aware secret checks.
    */
   async function createConnector(
-    scopeId: string,
+    orgId: string,
     options: { userId: string; type?: string; authMethod?: string },
   ): Promise<{ id: string; type: string }> {
     const { userId, type = "github", authMethod = "oauth" } = options;
 
     initServices();
 
-    const [scope] = await globalThis.services.db
-      .select({ orgId: scopes.orgId })
-      .from(scopes)
-      .where(eq(scopes.id, scopeId))
-      .limit(1);
-
     const [connector] = await globalThis.services.db
       .insert(connectors)
       .values({
         userId,
-        orgId: scope!.orgId,
+        orgId,
         type,
         authMethod,
       })

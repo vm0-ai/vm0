@@ -47,7 +47,6 @@ interface LinkedUserResult extends WorkspaceInstallationResult {
     slackUserId: string;
     slackWorkspaceId: string;
     vm0UserId: string;
-    scopeId: string;
   };
 }
 
@@ -177,7 +176,7 @@ export async function givenLinkedSlackUser(
 
   // Create scope for the user (required for compose creation)
   const scopeSlug = uniqueId("scope");
-  const scopeData = await createTestScope(scopeSlug);
+  await createTestScope(scopeSlug);
 
   // WebClient methods (views.publish, chat.postEphemeral) are already mocked in setup.ts
   // so linking triggers (refreshAppHome, postEphemeral) will use those mocks.
@@ -212,7 +211,6 @@ export async function givenLinkedSlackUser(
       slackUserId,
       slackWorkspaceId: installation.slackWorkspaceId,
       vm0UserId,
-      scopeId: scopeData.id,
     },
   };
 }

@@ -42,8 +42,8 @@ describe("GET /api/connectors - List Connectors", () => {
   });
 
   it("should list all connectors for user", async () => {
-    const user = await context.setupUser();
-    await createTestConnector(user.scopeId);
+    await context.setupUser();
+    await createTestConnector();
 
     const request = createTestRequest("http://localhost:3000/api/connectors");
     const response = await GET(request);
@@ -57,8 +57,8 @@ describe("GET /api/connectors - List Connectors", () => {
   });
 
   it("should return connector-provided secret names", async () => {
-    const user = await context.setupUser();
-    await createTestConnector(user.scopeId, { type: "github" });
+    await context.setupUser();
+    await createTestConnector({ type: "github" });
 
     const request = createTestRequest("http://localhost:3000/api/connectors");
     const response = await GET(request);
@@ -74,7 +74,7 @@ describe("GET /api/connectors - List Connectors", () => {
   it("should not return connectors from other users", async () => {
     // Create first user with connector
     const user1 = await context.setupUser();
-    await createTestConnector(user1.scopeId);
+    await createTestConnector();
 
     // Create second user
     await context.setupUser({ prefix: "other-user" });
@@ -129,8 +129,8 @@ describe("GET /api/connectors/:type - Get Connector", () => {
   });
 
   it("should return connector details", async () => {
-    const user = await context.setupUser();
-    await createTestConnector(user.scopeId);
+    await context.setupUser();
+    await createTestConnector();
 
     const request = createTestRequest(
       "http://localhost:3000/api/connectors/github",
@@ -180,8 +180,8 @@ describe("DELETE /api/connectors/:type - Delete Connector", () => {
   });
 
   it("should delete connector successfully", async () => {
-    const user = await context.setupUser();
-    await createTestConnector(user.scopeId, { type: "github" });
+    await context.setupUser();
+    await createTestConnector({ type: "github" });
 
     // Delete connector
     const deleteRequest = createTestRequest(

@@ -149,7 +149,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     const { composeId } = await createTestCompose(agentName);
 
     // Get the owner's scope slug
-    const ownerScope = await getTestScope(user.scopeId);
+    const ownerScope = await getTestScope(user.orgId);
 
     // Grant email permission to the recipient
     const recipientEmail = "recipient@example.com";
@@ -180,7 +180,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     await createTestCompose(agentName);
 
     // Get the owner's scope slug
-    const ownerScope = await getTestScope(user.scopeId);
+    const ownerScope = await getTestScope(user.orgId);
 
     // Switch to another user with no permission
     await context.setupUser({ prefix: "unauthorized" });
@@ -225,7 +225,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     const { composeId } = await createTestCompose(agentName);
 
     // Get the owner's scope slug to derive orgId
-    const ownerScope = await getTestScope(user.scopeId);
+    const ownerScope = await getTestScope(user.orgId);
     const ownerOrgId = ownerScope.orgId;
 
     // Grant email permission to the recipient
@@ -257,7 +257,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     await createTestCompose(agentName);
 
     // Get the owner's scope slug to derive orgId
-    const ownerScope = await getTestScope(user.scopeId);
+    const ownerScope = await getTestScope(user.orgId);
     const ownerOrgId = ownerScope.orgId;
 
     // Switch to another user with no permission

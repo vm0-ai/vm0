@@ -1362,7 +1362,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify the stored token is the user token (xoxp-), not a bot token (xoxb-)
       const decryptedToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "SLACK_ACCESS_TOKEN",
       );
       expect(decryptedToken).toBe("xoxp-user-token-12345");
@@ -1506,7 +1506,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify refresh token was stored as a secret
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "NOTION_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("notion-refresh-token-stored");
@@ -1541,7 +1541,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify tokenExpiresAt is set to now + expiresIn seconds
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "notion",
       );
       const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
@@ -1576,7 +1576,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify tokenExpiresAt is null (non-expiring token)
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "notion",
       );
       expect(tokenExpiresAt).toBeNull();
@@ -1671,7 +1671,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify refresh token was stored as a secret
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "GMAIL_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("gmail-refresh-token-stored");
@@ -1704,7 +1704,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "gmail",
       );
       const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
@@ -1824,7 +1824,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "GOOGLE_SHEETS_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("sheets-refresh-token-stored");
@@ -1857,7 +1857,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "google-sheets",
       );
       const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
@@ -1977,7 +1977,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "GOOGLE_DOCS_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("docs-refresh-token-stored");
@@ -2096,7 +2096,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "GOOGLE_DRIVE_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("drive-refresh-token-stored");
@@ -2215,7 +2215,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "GOOGLE_CALENDAR_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("calendar-refresh-token-stored");
@@ -2336,7 +2336,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify refresh token was stored as a secret
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "LINEAR_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("linear-refresh-token-stored");
@@ -2369,7 +2369,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "linear",
       );
       const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
@@ -2490,7 +2490,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify refresh token was stored as a secret
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "DOCUSIGN_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("docusign-refresh-token-stored");
@@ -2523,7 +2523,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "docusign",
       );
       const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
@@ -2642,7 +2642,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "FIGMA_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("figma-refresh-token-stored");
@@ -2675,7 +2675,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "figma",
       );
       const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
@@ -2795,7 +2795,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "STRAVA_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("strava-refresh-token-stored");
@@ -2828,7 +2828,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "strava",
       );
       const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
@@ -2946,7 +2946,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "GARMIN_CONNECT_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("garmin-refresh-token-stored");
@@ -2979,7 +2979,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "garmin-connect",
       );
       const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
@@ -3099,7 +3099,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify refresh token was stored as a secret
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "DEEL_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("deel-refresh-token-stored");
@@ -3132,7 +3132,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "deel",
       );
       const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
@@ -3252,7 +3252,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify refresh token was stored as a secret
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "MERCURY_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("mercury-refresh-token-stored");
@@ -3286,7 +3286,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "mercury",
       );
       const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
@@ -3405,7 +3405,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "NEON_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("neon-refresh-token-stored");
@@ -3438,7 +3438,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "neon",
       );
       const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
@@ -3557,7 +3557,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "REDDIT_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("reddit-refresh-token-stored");
@@ -3590,7 +3590,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "reddit",
       );
       const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
@@ -3709,7 +3709,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "X_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("x-refresh-token-stored");
@@ -3742,7 +3742,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "x",
       );
       const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
@@ -3951,7 +3951,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "SENTRY_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("sentry-refresh-token-stored");
@@ -3985,7 +3985,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "sentry",
       );
       const expectedExpiry = new Date(frozenNow + expiresIn * 1000);
@@ -4206,7 +4206,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const refreshToken = await findTestConnectorSecret(
-        user.scopeId,
+        user.orgId,
         "XERO_REFRESH_TOKEN",
       );
       expect(refreshToken).toBe("xero-refresh-token-stored");
@@ -4240,7 +4240,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(response.status).toBe(307);
 
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
-        user.scopeId,
+        user.orgId,
         "xero",
       );
       const expectedExpiry = new Date(frozenNow + expiresIn * 1000);

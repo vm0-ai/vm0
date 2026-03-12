@@ -5,7 +5,6 @@ export const cliTokens = pgTable("cli_tokens", {
   token: text("token").unique().notNull(), // vm0_live_xxxxx...
   userId: text("user_id").notNull(), // Clerk user ID
   name: text("name").notNull(), // User-friendly name
-  scopeId: uuid("scope_id"), // Scope bound at token creation (nullable for old tokens)
   orgId: text("org_id"), // Org ID dual-write (nullable for old tokens)
   expiresAt: timestamp("expires_at").notNull(),
   lastUsedAt: timestamp("last_used_at"),
