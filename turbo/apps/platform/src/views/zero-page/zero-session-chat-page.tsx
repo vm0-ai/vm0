@@ -1,5 +1,4 @@
-import type { KeyboardEvent } from "react";
-import { useRef, useState, useCallback } from "react";
+import type { KeyboardEvent, ChangeEvent, MouseEvent } from "react";
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
@@ -67,7 +66,9 @@ export function ZeroSessionChatPage({
   const attachments = useGet(zeroChatAttachments$);
   const uploadAttachment = useSet(uploadZeroAttachment$);
   const removeAttachment = useSet(removeZeroAttachment$);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputEl$ = useCCState<HTMLInputElement | null>(null);
+  const fileInputEl = useGet(fileInputEl$);
+  const setFileInputEl = useSet(fileInputEl$);
 
   const messagesEndEl$ = useCCState<HTMLDivElement | null>(null);
   const messagesEndEl = useGet(messagesEndEl$);
@@ -97,12 +98,14 @@ export function ZeroSessionChatPage({
   };
 
   const handleFileSelect = () => {
-    fileInputRef.current?.click();
+    fileInputEl?.click();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files) return;
+    if (!files) {
+      return;
+    }
     for (const file of files) {
       detach(uploadAttachment(file), Reason.DomCallback);
     }
@@ -224,7 +227,7 @@ export function ZeroSessionChatPage({
                 <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border/50">
                   <div className="flex items-center gap-1 text-muted-foreground">
                     <input
-                      ref={fileInputRef}
+                      ref={setFileInputEl}
                       type="file"
                       className="hidden"
                       accept="image/*,.pdf,.txt,.csv,.md,.json"
@@ -359,25 +362,31 @@ function isImageFilename(filename: string): boolean {
 function getFileTypeIcon(filename: string): string | null {
   const ext = filename.split(".").pop()?.toLowerCase();
   switch (ext) {
-    case "pdf":
+    case "pdf": {
       return "/doc-types/PDF.svg";
+    }
     case "doc":
     case "docx":
     case "md":
     case "txt":
     case "json":
-    case "html":
+    case "html": {
       return "/doc-types/DOC.svg";
-    case "csv":
+    }
+    case "csv": {
       return "/doc-types/CSV.svg";
-    default:
+    }
+    default: {
       return null;
+    }
   }
 }
 
 function UserMessage({ message }: { message: ZeroChatMessage }) {
   const { cleanContent, parsed } = parseInlineAttachments(message.content);
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const lightboxUrl$ = useCCState<string | null>(null);
+  const lightboxUrl = useGet(lightboxUrl$);
+  const setLightboxUrl = useSet(lightboxUrl$);
 
   // Merge explicit attachments with those parsed from content
   const allAttachments = [
@@ -409,10 +418,10 @@ function UserMessage({ message }: { message: ZeroChatMessage }) {
             </div>
             {allAttachments.length > 0 && (
               <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
-                {allAttachments.map((a, i) =>
+                {allAttachments.map((a) =>
                   a.isImage ? (
                     <button
-                      key={i}
+                      key={a.url}
                       type="button"
                       onClick={() => setLightboxUrl(a.url)}
                       className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
@@ -431,7 +440,7 @@ function UserMessage({ message }: { message: ZeroChatMessage }) {
                     </button>
                   ) : (
                     <FileAttachmentChip
-                      key={i}
+                      key={a.url}
                       filename={a.filename}
                       url={a.url}
                     />
@@ -450,12 +459,11 @@ function UserMessage({ message }: { message: ZeroChatMessage }) {
 }
 
 function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
-  const handleBackdropClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.target === e.currentTarget) onClose();
-    },
-    [onClose],
-  );
+  const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
 
   return (
     <div

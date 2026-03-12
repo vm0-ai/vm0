@@ -1,5 +1,6 @@
-import { type ReactNode, useState, useMemo } from "react";
-import { useLoadable } from "ccstate-react";
+import type { ReactNode } from "react";
+import { useLoadable, useGet, useSet } from "ccstate-react";
+import { useCCState } from "ccstate-react/experimental";
 import {
   IconMessageCircle,
   IconRobot,
@@ -373,18 +374,19 @@ function RecentChatSection({
   onRecentSelect?: (id: string) => void;
   onNewChat?: () => void;
 }) {
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
+  const searchOpen$ = useCCState(false);
+  const searchOpen = useGet(searchOpen$);
+  const setSearchOpen = useSet(searchOpen$);
+  const searchTerm$ = useCCState("");
+  const searchTerm = useGet(searchTerm$);
+  const setSearchTerm = useSet(searchTerm$);
 
-  const filteredSessions = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    if (!term) {
-      return recentSessions;
-    }
-    return recentSessions.filter((s) =>
-      (s.preview ?? "").toLowerCase().includes(term),
-    );
-  }, [recentSessions, searchTerm]);
+  const trimmedTerm = searchTerm.trim().toLowerCase();
+  const filteredSessions = trimmedTerm
+    ? recentSessions.filter((s) =>
+        (s.preview ?? "").toLowerCase().includes(trimmedTerm),
+      )
+    : recentSessions;
 
   return (
     <div className="mt-4 flex flex-col min-h-0 flex-1">

@@ -1,5 +1,4 @@
-import type { ReactNode, KeyboardEvent } from "react";
-import { useRef } from "react";
+import type { ReactNode, KeyboardEvent, ChangeEvent } from "react";
 import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { onRef, detach, Reason } from "../../signals/utils.ts";
@@ -683,7 +682,9 @@ export function ZeroChatPage({
   const attachments = useGet(zeroChatAttachments$);
   const uploadAttachment = useSet(uploadZeroAttachment$);
   const removeAttachment = useSet(removeZeroAttachment$);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputEl$ = useCCState<HTMLInputElement | null>(null);
+  const fileInputEl = useGet(fileInputEl$);
+  const setFileInputEl = useSet(fileInputEl$);
   const conversationActive$ = useCCState(false);
   const conversationActive = useGet(conversationActive$);
   const setConversationActive = useSet(conversationActive$);
@@ -810,12 +811,14 @@ export function ZeroChatPage({
   };
 
   const handleFileSelect = () => {
-    fileInputRef.current?.click();
+    fileInputEl?.click();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files) return;
+    if (!files) {
+      return;
+    }
     for (const file of files) {
       detach(uploadAttachment(file), Reason.DomCallback);
     }
@@ -834,7 +837,7 @@ export function ZeroChatPage({
 
   const fileInput = (
     <input
-      ref={fileInputRef}
+      ref={setFileInputEl}
       type="file"
       className="hidden"
       accept="image/*,.pdf,.txt,.csv,.md,.json"
@@ -1223,19 +1226,23 @@ export function ZeroChatPage({
 function getFileTypeIcon(filename: string): string | null {
   const ext = filename.split(".").pop()?.toLowerCase();
   switch (ext) {
-    case "pdf":
+    case "pdf": {
       return "/doc-types/PDF.svg";
+    }
     case "doc":
     case "docx":
     case "md":
     case "txt":
     case "json":
-    case "html":
+    case "html": {
       return "/doc-types/DOC.svg";
-    case "csv":
+    }
+    case "csv": {
       return "/doc-types/CSV.svg";
-    default:
+    }
+    default: {
       return null;
+    }
   }
 }
 
