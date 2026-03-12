@@ -11,7 +11,7 @@ import {
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { clerk$ } from "../auth.ts";
-import { initScope$, hasScope$ } from "../scope.ts";
+import { initOrg$, hasOrg$ } from "../org.ts";
 import { createModelProvider$ } from "../external/model-providers.ts";
 import { getProviderShape } from "../../views/settings-page/provider-ui-config.ts";
 import { skillValueToUrl } from "../../data/skills.ts";
@@ -225,7 +225,7 @@ export const initZeroOnboarding$ = command(
 
 /**
  * Save model provider (step 2 completion).
- * Creates scope if needed, then creates model provider.
+ * Creates org if needed, then creates model provider.
  */
 export const saveZeroModelProvider$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -236,12 +236,12 @@ export const saveZeroModelProvider$ = command(
       const formValues = get(internalFormValues$);
       const shape = getProviderShape(providerType);
 
-      // Create scope if needed
-      const scopeExists = await get(hasScope$);
+      // Create org if needed
+      const orgExists = await get(hasOrg$);
       signal.throwIfAborted();
 
-      if (!scopeExists) {
-        await set(initScope$, signal);
+      if (!orgExists) {
+        await set(initOrg$, signal);
         signal.throwIfAborted();
       }
 

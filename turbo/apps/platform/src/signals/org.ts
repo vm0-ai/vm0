@@ -3,18 +3,18 @@ import { user$ } from "./auth.ts";
 import { fetch$ } from "./fetch.ts";
 import { logger } from "./log.ts";
 
-const L = logger("Scope");
+const L = logger("Org");
 
 /**
- * Reload trigger for scope signals.
- * Increment to force recomputation of scope$.
+ * Reload trigger for org signals.
+ * Increment to force recomputation of org$.
  */
-const internalReloadScope$ = state(0);
+const internalReloadOrg$ = state(0);
 
 /**
- * Scope response type from API
+ * Org response type from API
  */
-export interface Scope {
+export interface Org {
   id: string;
   slug: string;
   createdAt: string;
@@ -22,11 +22,11 @@ export interface Scope {
 }
 
 /**
- * Current user's default scope.
- * Returns undefined if user has no scope or is not authenticated.
+ * Current user's default org.
+ * Returns undefined if user has no org or is not authenticated.
  */
-export const scope$ = computed(async (get) => {
-  get(internalReloadScope$); // Subscribe to reload trigger
+export const org$ = computed(async (get) => {
+  get(internalReloadOrg$); // Subscribe to reload trigger
   const user = await get(user$);
   if (!user) {
     return undefined;
@@ -41,22 +41,22 @@ export const scope$ = computed(async (get) => {
   }
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch scope: ${response.status}`);
+    throw new Error(`Failed to fetch org: ${response.status}`);
   }
 
-  return (await response.json()) as Scope;
+  return (await response.json()) as Org;
 });
 
 /**
- * Whether the current user has a scope.
+ * Whether the current user has an org.
  */
-export const hasScope$ = computed(async (get) => {
-  const scope = await get(scope$);
-  return scope !== undefined;
+export const hasOrg$ = computed(async (get) => {
+  const org = await get(org$);
+  return org !== undefined;
 });
 
 /**
- * Generate a deterministic scope slug from user ID.
+ * Generate a deterministic org slug from user ID.
  * Uses SubtleCrypto (browser-compatible) to hash the user ID.
  */
 async function generateDefaultSlug(userId: string): Promise<string> {
@@ -71,15 +71,15 @@ async function generateDefaultSlug(userId: string): Promise<string> {
 }
 
 /**
- * Create scope for current user with auto-generated slug.
+ * Create org for current user with auto-generated slug.
  * Triggers reload after successful creation.
  */
-export const initScope$ = command(async ({ get, set }, signal: AbortSignal) => {
+export const initOrg$ = command(async ({ get, set }, signal: AbortSignal) => {
   const user = await get(user$);
   signal.throwIfAborted();
 
   if (!user) {
-    throw new Error("User must be authenticated to create scope");
+    throw new Error("User must be authenticated to create org");
   }
 
   const slug = await generateDefaultSlug(user.id);
@@ -94,8 +94,8 @@ export const initScope$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (!response.ok) {
-    throw new Error(`Failed to create scope: ${response.status}`);
+    throw new Error(`Failed to create org: ${response.status}`);
   }
 
-  set(internalReloadScope$, (x) => x + 1);
+  set(internalReloadOrg$, (x) => x + 1);
 });

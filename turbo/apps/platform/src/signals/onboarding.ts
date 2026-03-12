@@ -7,7 +7,7 @@ import {
   hasModelSelection,
   type ModelProviderType,
 } from "@vm0/core";
-import { initScope$, hasScope$ } from "./scope.ts";
+import { initOrg$, hasOrg$ } from "./org.ts";
 import {
   hasAnyModelProvider$,
   createModelProvider$,
@@ -102,11 +102,11 @@ export const canSaveOnboarding$ = computed((get) => {
 
 /**
  * Whether the user needs to complete onboarding.
- * Returns true if scope is missing OR no model provider is configured.
+ * Returns true if org is missing OR no model provider is configured.
  */
 export const needsOnboarding$ = computed(async (get) => {
-  const scopeExists = await get(hasScope$);
-  if (!scopeExists) {
+  const orgExists = await get(hasOrg$);
+  if (!orgExists) {
     return true;
   }
   const hasProvider = await get(hasAnyModelProvider$);
@@ -209,18 +209,18 @@ export const copyToClipboard$ = command(({ get, set }, text: string) => {
 
 /**
  * Start the onboarding flow - show modal only.
- * Scope creation is deferred to save action.
+ * Org creation is deferred to save action.
  */
 export const startOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(internalShowOnboardingModal$, true);
 
-    // Create scope if it doesn't exist
-    const scopeExists = await get(hasScope$);
+    // Create org if it doesn't exist
+    const orgExists = await get(hasOrg$);
     signal.throwIfAborted();
 
-    if (!scopeExists) {
-      await set(initScope$, signal);
+    if (!orgExists) {
+      await set(initOrg$, signal);
       signal.throwIfAborted();
     }
   },
@@ -237,7 +237,7 @@ export const closeOnboardingModal$ = command(({ set }) => {
 
 /**
  * Save the onboarding configuration.
- * Creates scope if needed and creates the model provider.
+ * Creates org if needed and creates the model provider.
  */
 export const saveOnboardingConfig$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -263,12 +263,12 @@ export const saveOnboardingConfig$ = command(
         return;
       }
 
-      // Create scope if it doesn't exist
-      const scopeExists = await get(hasScope$);
+      // Create org if it doesn't exist
+      const orgExists = await get(hasOrg$);
       signal.throwIfAborted();
 
-      if (!scopeExists) {
-        await set(initScope$, signal);
+      if (!orgExists) {
+        await set(initOrg$, signal);
         signal.throwIfAborted();
       }
 

@@ -49,12 +49,12 @@ import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { COMMON_TIMEZONES } from "../../signals/agent-detail/cron.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
-  allScopeScheduleEntries$,
-  fetchAllScopeSchedules$,
-  saveScopeSchedule$,
-  toggleScopeScheduleEnabled$,
-  deleteScopeSchedule$,
-  type ScopeScheduleEntry,
+  allOrgScheduleEntries$,
+  fetchAllOrgSchedules$,
+  saveOrgSchedule$,
+  toggleOrgScheduleEnabled$,
+  deleteOrgSchedule$,
+  type OrgScheduleEntry,
   type ZeroScheduleSaveParams,
 } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
@@ -65,7 +65,7 @@ type CombinedEntry = ScheduleEntry & {
 };
 
 function buildCombinedSchedule(
-  entries: ScopeScheduleEntry[],
+  entries: OrgScheduleEntry[],
   agentName: string,
   defaultComposeId: string | null,
 ): CombinedEntry[] {
@@ -710,14 +710,14 @@ export function ZeroSchedulePage() {
       ? statusLoadable.data.defaultAgentComposeId
       : null;
 
-  const entriesLoadable = useLastLoadable(allScopeScheduleEntries$);
-  const entries: ScopeScheduleEntry[] =
+  const entriesLoadable = useLastLoadable(allOrgScheduleEntries$);
+  const entries: OrgScheduleEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
 
-  const fetchSchedules = useSet(fetchAllScopeSchedules$);
-  const saveSchedule = useSet(saveScopeSchedule$);
-  const toggleEnabled = useSet(toggleScopeScheduleEnabled$);
-  const deleteSchedule = useSet(deleteScopeSchedule$);
+  const fetchSchedules = useSet(fetchAllOrgSchedules$);
+  const saveSchedule = useSet(saveOrgSchedule$);
+  const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
+  const deleteSchedule = useSet(deleteOrgSchedule$);
 
   // Fetch on mount
   const initialized$ = useCCState(false);

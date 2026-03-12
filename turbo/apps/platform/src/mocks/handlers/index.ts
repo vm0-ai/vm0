@@ -13,7 +13,7 @@ import {
   apiConnectorsHandlers,
   resetMockConnectors,
 } from "./api-connectors.ts";
-import { apiScopeHandlers } from "./api-scope.ts";
+import { apiOrgHandlers } from "./api-org.ts";
 import { apiSecretsHandlers, resetMockSecrets } from "./api-secrets.ts";
 import { apiVariablesHandlers, resetMockVariables } from "./api-variables.ts";
 import { exampleHandlers } from "./example.ts";
@@ -36,7 +36,7 @@ import { apiOnboardingHandlers } from "./api-onboarding.ts";
 export const handlers = [
   ...apiModelProvidersHandlers,
   ...apiConnectorsHandlers,
-  ...apiScopeHandlers,
+  ...apiOrgHandlers,
   ...apiSecretsHandlers,
   ...apiVariablesHandlers,
   ...exampleHandlers,

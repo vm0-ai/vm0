@@ -17,7 +17,7 @@ import { setupAgentDetailPage$ } from "./agent-detail/agent-detail-page.ts";
 import { setupAgentLogsPage$ } from "./agent-detail/agent-logs-page.ts";
 import { setupAgentLogDetailPage$ } from "./agent-detail/agent-log-detail-page.ts";
 import { setupAgentConnectionsPage$ } from "./agent-detail/agent-connections-page.ts";
-import { hasScope$ } from "./scope.ts";
+import { hasOrg$ } from "./org.ts";
 import { logger } from "./log.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
@@ -172,13 +172,13 @@ function setupScopeRequiredPageWrapper(
       await set(fn, signal);
       signal.throwIfAborted();
 
-      // Then check scope in background (after page is already displayed)
-      const scopeExists = await get(hasScope$);
+      // Then check org in background (after page is already displayed)
+      const orgExists = await get(hasOrg$);
       signal.throwIfAborted();
-      L.debug("scopeExists", scopeExists);
+      L.debug("orgExists", orgExists);
 
-      if (!scopeExists) {
-        L.debug("redirect to homepage because scope does not exist");
+      if (!orgExists) {
+        L.debug("redirect to homepage because org does not exist");
         set(navigateInReact$, "/");
         return;
       }
