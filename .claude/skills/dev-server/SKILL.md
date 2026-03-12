@@ -282,6 +282,7 @@ Show the output in readable format. If empty, mention that no new logs since las
 - Only shows **NEW** output since last time logs were checked
 - Filter parameter uses regex patterns
 - Non-blocking operation
+- Full logs are also persisted to `/tmp/dev-server.log` — you can read them directly via `cat /tmp/dev-server.log` or `tail -f /tmp/dev-server.log`
 
 ---
 

@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "turbo run dev 2>&1 | tee /tmp/dev-server.log",
     "dev:auth": "bash ../scripts/dev-auth.sh",
     "lint": "turbo run lint --concurrency=2",
     "format": "prettier --write --ignore-unknown .",
