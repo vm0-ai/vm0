@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.7...runner-rs-v0.22.8) (2026-03-12)
+
+
+### Refactoring
+
+* reorder mitm-addon request handling to enforce firewall before services ([#4625](https://github.com/vm0-ai/vm0/issues/4625)) ([28ea3a5](https://github.com/vm0-ai/vm0/commit/28ea3a50e5598c293cb920cbe67ded089829d653)), closes [#4624](https://github.com/vm0-ai/vm0/issues/4624)
+* **services:** addon encrypted-secrets passthrough and auth endpoint rewrite ([#4613](https://github.com/vm0-ai/vm0/issues/4613)) ([3f19c4c](https://github.com/vm0-ai/vm0/commit/3f19c4c87102a69aeb75ed2f3102904c9479d7e9))
+
 ## [0.22.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.6...runner-rs-v0.22.7) (2026-03-12)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.5](https://github.com/vm0-ai/vm0/compare/docs-v2.16.4...docs-v2.16.5) (2026-03-12)
+
+
+### Refactoring
+
+* **cli:** rename `vm0 scope` command to `vm0 org` ([#4614](https://github.com/vm0-ai/vm0/issues/4614)) ([8b80a2f](https://github.com/vm0-ai/vm0/commit/8b80a2f80b33301a94cc1da640aeca773b5f1928))
+
 ## [2.16.4](https://github.com/vm0-ai/vm0/compare/docs-v2.16.3...docs-v2.16.4) (2026-03-12)
 
 

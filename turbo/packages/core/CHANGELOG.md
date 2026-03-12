@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.59.2](https://github.com/vm0-ai/vm0/compare/core-v8.59.1...core-v8.59.2) (2026-03-12)
+
+
+### Refactoring
+
+* **core:** rename scope-reference to org-reference ([#4615](https://github.com/vm0-ai/vm0/issues/4615)) ([f034820](https://github.com/vm0-ai/vm0/commit/f03482031f7cd3d3d20dea47309a606a1c8387c9)), closes [#4608](https://github.com/vm0-ai/vm0/issues/4608)
+
 ## [8.59.1](https://github.com/vm0-ai/vm0/compare/core-v8.59.0...core-v8.59.1) (2026-03-12)
 
 

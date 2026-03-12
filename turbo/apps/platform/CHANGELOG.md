@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.107.2](https://github.com/vm0-ai/vm0/compare/platform-v0.107.1...platform-v0.107.2) (2026-03-12)
+
+
+### Refactoring
+
+* rename scope to org in platform frontend signals and mocks ([#4618](https://github.com/vm0-ai/vm0/issues/4618)) ([f84f3c7](https://github.com/vm0-ai/vm0/commit/f84f3c73b4319593ac9a2bf83a98823c8e9bf5c9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.59.2
+
 ## [0.107.1](https://github.com/vm0-ai/vm0/compare/platform-v0.107.0...platform-v0.107.1) (2026-03-12)
 
 

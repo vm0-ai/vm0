@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.56.8](https://github.com/vm0-ai/vm0/compare/cli-v9.56.7...cli-v9.56.8) (2026-03-12)
+
+
+### Refactoring
+
+* **cli:** rename `vm0 scope` command to `vm0 org` ([#4614](https://github.com/vm0-ai/vm0/issues/4614)) ([8b80a2f](https://github.com/vm0-ai/vm0/commit/8b80a2f80b33301a94cc1da640aeca773b5f1928))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.59.2
+
 ## [9.56.7](https://github.com/vm0-ai/vm0/compare/cli-v9.56.6...cli-v9.56.7) (2026-03-12)
 
 

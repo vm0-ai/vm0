@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.102.2](https://github.com/vm0-ai/vm0/compare/web-v12.102.1...web-v12.102.2) (2026-03-12)
+
+
+### Refactoring
+
+* rename scope to org in test helpers and test descriptions ([#4619](https://github.com/vm0-ai/vm0/issues/4619)) ([a940c17](https://github.com/vm0-ai/vm0/commit/a940c17b49cab24219683ba4cb112453e30f95f0))
+* **services:** addon encrypted-secrets passthrough and auth endpoint rewrite ([#4613](https://github.com/vm0-ai/vm0/issues/4613)) ([3f19c4c](https://github.com/vm0-ai/vm0/commit/3f19c4c87102a69aeb75ed2f3102904c9479d7e9))
+* update scope to org in env.ts comment and resolve-default.ts logs ([#4612](https://github.com/vm0-ai/vm0/issues/4612)) ([b62840b](https://github.com/vm0-ai/vm0/commit/b62840b92d2d5c17a638131829051ab485003968))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.59.2
+
 ## [12.102.1](https://github.com/vm0-ai/vm0/compare/web-v12.102.0...web-v12.102.1) (2026-03-12)
 
 
