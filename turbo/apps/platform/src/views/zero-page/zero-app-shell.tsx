@@ -350,10 +350,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
             sectionId={activeId}
             inSession={inSession}
             onSendMessage={handleSendFromDemo}
-            recentLabel={recentLabel}
-            recentId={recentId}
             selectedAgentName={initialJobAgent}
-            onClearRecent={handleClearRecent}
             onNavigateToActivity={() => setActiveId("activity")}
             onNavigateToSchedule={() => setActiveId("schedule")}
             onNavigateToJob={() => setActiveId("job")}

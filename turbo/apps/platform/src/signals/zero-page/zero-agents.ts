@@ -8,6 +8,7 @@ import {
   fetchAgentsList$,
   getAgentScheduleStatus,
 } from "../agents-page/agents-list.ts";
+import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 
 export {
   schedules$,
@@ -24,5 +25,7 @@ export {
  */
 export const zeroSubagents$ = computed(async (get) => {
   const agents = await get(agentsList$);
-  return agents.filter((a) => !a.isDefault);
+  const status = await get(zeroOnboardingStatus$);
+  const defaultName = status.defaultAgentName;
+  return agents.filter((a) => a.name !== defaultName);
 });

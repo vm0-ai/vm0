@@ -371,16 +371,6 @@ export function getEntriesInCell(
   });
 }
 
-/** Dummy schedule for sub-agent (job) detail page — one entry per sub-agent. */
-const DUMMY_AGENT_SCHEDULE: readonly Readonly<ScheduleEntry>[] = [
-  {
-    id: "j1",
-    time: "Every weekday at 9:00 AM",
-    prompt: "Run the usual morning briefing and post a short summary.",
-  },
-];
-export { DUMMY_AGENT_SCHEDULE };
-
 function CalendarEntryPopover({
   entry,
   onEdit,

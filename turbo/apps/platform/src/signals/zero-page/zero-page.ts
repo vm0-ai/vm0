@@ -11,5 +11,6 @@ export const setupZeroPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(ZeroPage));
 
   await Promise.all([set(fetchAgentsList$), set(initZeroOnboarding$, signal)]);
+  signal.throwIfAborted();
   detach(set(initZeroActivity$), Reason.Daemon);
 });

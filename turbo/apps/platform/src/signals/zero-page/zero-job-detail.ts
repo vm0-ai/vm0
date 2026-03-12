@@ -1,8 +1,17 @@
 import { command, computed, state } from "ccstate";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import type { AgentDetail, AgentInstructions } from "../agent-detail/types.ts";
+import {
+  buildCronExpression,
+  buildAtTime,
+  isAtTimePast,
+  type ScheduleBody,
+  type CronTimeOption,
+} from "../agent-detail/cron.ts";
+import type { ScheduleEntry } from "../../views/zero-page/zero-schedule-card.tsx";
 
 const L = logger("ZeroJobDetail");
 
@@ -154,14 +163,87 @@ const fetchZeroJobInstructions$ = command(async ({ get, set }) => {
 
 interface ScheduleItem {
   id: string;
+  composeId: string;
   composeName: string;
   name: string;
   enabled: boolean;
+  triggerType: "cron" | "once" | "loop";
   cronExpression: string | null;
   atTime: string | null;
+  intervalSeconds: number | null;
   timezone: string;
   prompt: string;
+  createdAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// Schedule time string conversion
+// ---------------------------------------------------------------------------
+
+function cronToTimeString(cron: string): string {
+  const parts = cron.split(" ");
+  const minute = Number(parts[0]);
+  const hour = Number(parts[1]);
+  const dayOfMonth = parts[2] ?? "*";
+  const dayOfWeek = parts[4] ?? "*";
+
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  const timeStr = `${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
+
+  if (dayOfWeek === "1-5") {
+    return `Every weekday at ${timeStr}`;
+  }
+  if (dayOfMonth !== "*") {
+    return `Every month on day ${dayOfMonth} at ${timeStr}`;
+  }
+  if (dayOfWeek !== "*") {
+    const dayNames: Record<string, string> = {
+      "0": "Sunday",
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday",
+    };
+    const days = dayOfWeek
+      .split(",")
+      .map((d) => dayNames[d])
+      .filter(Boolean);
+    if (days.length > 0) {
+      return `Every week on ${days.join(", ")} at ${timeStr}`;
+    }
+    return `Every week at ${timeStr}`;
+  }
+  return `Every day at ${timeStr}`;
+}
+
+function scheduleToTimeString(s: ScheduleItem): string {
+  if (s.triggerType === "loop" && s.intervalSeconds !== null) {
+    if (s.intervalSeconds % 60 === 0) {
+      return `Every ${s.intervalSeconds / 60} minutes`;
+    }
+    return `Every ${s.intervalSeconds} seconds`;
+  }
+  if (s.triggerType === "once" && s.atTime) {
+    const at = new Date(s.atTime);
+    const date = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
+    const hour = at.getHours();
+    const minute = at.getMinutes();
+    const ampm = hour >= 12 ? "PM" : "AM";
+    const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+    return `Once on ${date} at ${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
+  }
+  if (s.cronExpression) {
+    return cronToTimeString(s.cronExpression);
+  }
+  return "Scheduled";
+}
+
+// ---------------------------------------------------------------------------
+// Schedule state
+// ---------------------------------------------------------------------------
 
 interface ZeroJobScheduleState {
   schedules: ScheduleItem[];
@@ -172,9 +254,23 @@ const scheduleState$ = state<ZeroJobScheduleState>({
   schedules: [],
   error: null,
 });
-export const zeroJobSchedule$ = computed(
-  (get) => get(scheduleState$).schedules,
-);
+
+export const zeroJobScheduleEntries$ = computed((get) => {
+  const items = get(scheduleState$).schedules;
+  return [...items]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map(
+      (s): ScheduleEntry => ({
+        id: s.id,
+        time: scheduleToTimeString(s),
+        prompt: s.prompt,
+        enabled: s.enabled,
+        name: s.name,
+        intervalSeconds: s.intervalSeconds,
+      }),
+    );
+});
+
 export const zeroJobScheduleError$ = computed(
   (get) => get(scheduleState$).error,
 );
@@ -207,6 +303,160 @@ const fetchZeroJobSchedule$ = command(async ({ get, set }) => {
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Schedule CRUD
+// ---------------------------------------------------------------------------
+
+export interface ZeroJobScheduleSaveParams {
+  prompt: string;
+  freq: string;
+  date: string;
+  hour: number;
+  minute: number;
+  timezone: string;
+  intervalSeconds: number;
+  dayOfWeek?: string;
+  dayOfMonth?: string;
+  editName?: string;
+}
+
+export const saveZeroJobSchedule$ = command(
+  async ({ get, set }, params: ZeroJobScheduleSaveParams) => {
+    const detail = get(zeroJobDetail$);
+    if (!detail) {
+      throw new Error("No agent detail loaded");
+    }
+
+    const fetchFn = get(fetch$);
+    const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
+
+    const base = {
+      composeId: detail.id,
+      name: scheduleName,
+      timezone: params.timezone,
+      prompt: params.prompt.trim(),
+      enabled: true,
+    };
+
+    let body: ScheduleBody;
+
+    if (params.freq === "every_n_minutes") {
+      body = { ...base, intervalSeconds: params.intervalSeconds };
+    } else if (params.freq === "once") {
+      if (
+        isAtTimePast(params.date, String(params.hour), String(params.minute))
+      ) {
+        throw new Error("Scheduled time must be in the future");
+      }
+      const atTime = buildAtTime(
+        params.date,
+        String(params.hour),
+        String(params.minute),
+      );
+      body = { ...base, atTime };
+    } else if (params.freq === "now") {
+      body = { ...base, atTime: new Date().toISOString() };
+    } else {
+      const freqMap: Record<string, CronTimeOption> = {
+        every_weekday: "every-weekday",
+        every_day: "every-day",
+        every_week: "every-week",
+        every_month: "every-month",
+      };
+      const timeOption = freqMap[params.freq];
+      if (!timeOption) {
+        throw new Error(`Unknown schedule frequency: ${params.freq}`);
+      }
+      const cronExpression = buildCronExpression({
+        timeOption,
+        hour: String(params.hour),
+        minute: String(params.minute),
+        dayOfWeek: params.dayOfWeek,
+        dayOfMonth: params.dayOfMonth,
+      });
+      body = { ...base, cronExpression };
+    }
+
+    const response = await fetchFn("/api/agent/schedules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      throw new Error(
+        errorData?.error?.message ?? `Save failed: ${response.statusText}`,
+      );
+    }
+
+    toast.success(params.editName ? "Schedule updated" : "Schedule created");
+    await set(fetchZeroJobSchedule$);
+  },
+);
+
+export const toggleZeroJobScheduleEnabled$ = command(
+  async ({ get, set }, params: { name: string; enabled: boolean }) => {
+    const detail = get(zeroJobDetail$);
+    if (!detail) {
+      throw new Error("No agent detail loaded");
+    }
+
+    const fetchFn = get(fetch$);
+    const action = params.enabled ? "enable" : "disable";
+    const response = await fetchFn(
+      `/api/agent/schedules/${encodeURIComponent(params.name)}/${action}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ composeId: detail.id }),
+      },
+    );
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      const message =
+        errorData?.error?.message ??
+        `Failed to ${action} schedule: ${response.statusText}`;
+      toast.error(message);
+      throw new Error(message);
+    }
+
+    await set(fetchZeroJobSchedule$);
+  },
+);
+
+export const deleteZeroJobSchedule$ = command(
+  async ({ get, set }, scheduleName: string) => {
+    const detail = get(zeroJobDetail$);
+    if (!detail) {
+      throw new Error("No agent detail loaded");
+    }
+
+    const fetchFn = get(fetch$);
+    const response = await fetchFn(
+      `/api/agent/schedules/${encodeURIComponent(scheduleName)}?composeId=${encodeURIComponent(detail.id)}`,
+      { method: "DELETE" },
+    );
+
+    if (!response.ok && response.status !== 204) {
+      const errorData = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      throw new Error(
+        errorData?.error?.message ?? `Delete failed: ${response.statusText}`,
+      );
+    }
+
+    toast.success("Schedule deleted");
+    await set(fetchZeroJobSchedule$);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Combined fetch — loads detail, then instructions + schedule in parallel

@@ -10,7 +10,7 @@ import {
   zeroJobInstructions$,
   zeroJobInstructionsLoading$,
   zeroJobInstructionsError$,
-  zeroJobSchedule$,
+  zeroJobScheduleEntries$,
   zeroJobScheduleError$,
   fetchZeroJobData$,
 } from "../zero-job-detail";
@@ -49,23 +49,31 @@ function mockSchedules() {
     schedules: [
       {
         id: "sched-1",
+        composeId: "compose-1",
         composeName: "my-agent",
         name: "daily-run",
         enabled: true,
+        triggerType: "cron",
         cronExpression: "0 9 * * *",
         atTime: null,
+        intervalSeconds: null,
         timezone: "UTC",
         prompt: "Run the daily digest",
+        createdAt: "2024-06-01T00:00:00Z",
       },
       {
         id: "sched-2",
+        composeId: "compose-2",
         composeName: "other-agent",
         name: "other-run",
         enabled: true,
+        triggerType: "cron",
         cronExpression: "0 12 * * *",
         atTime: null,
+        intervalSeconds: null,
         timezone: "UTC",
         prompt: "Something else",
+        createdAt: "2024-06-01T00:00:00Z",
       },
     ],
   };
@@ -111,11 +119,12 @@ describe("zero-job-detail signals", () => {
       expect(instructionsLoading).toBeFalsy();
       expect(instructionsError).toBeNull();
 
-      const schedules = context.store.get(zeroJobSchedule$);
+      const entries = await context.store.get(zeroJobScheduleEntries$);
       const scheduleError = context.store.get(zeroJobScheduleError$);
 
-      expect(schedules).toHaveLength(1);
-      expect(schedules[0]!.composeName).toBe("my-agent");
+      expect(entries).toHaveLength(1);
+      expect(entries[0]!.name).toBe("daily-run");
+      expect(entries[0]!.time).toBe("Every day at 9:00 AM");
       expect(scheduleError).toBeNull();
     });
 
@@ -197,10 +206,10 @@ describe("zero-job-detail signals", () => {
       await setupPage({ context, path: "/", withoutRender: true });
       await context.store.set(fetchZeroJobData$, "my-agent");
 
-      const schedules = context.store.get(zeroJobSchedule$);
+      const entries = await context.store.get(zeroJobScheduleEntries$);
       const scheduleError = context.store.get(zeroJobScheduleError$);
 
-      expect(schedules).toStrictEqual([]);
+      expect(entries).toStrictEqual([]);
       expect(scheduleError).toBe("Failed to fetch schedules: Forbidden");
 
       // Detail and instructions should still succeed
