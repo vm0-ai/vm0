@@ -44,44 +44,6 @@ class TestRequestHandler:
     def setup_method(self):
         _reset()
 
-    def test_denied_flow_returns_403(self, registry_file):
-        flow = _make_http_flow(host="blocked.com")
-
-        with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-        ):
-            mitm_addon.request(flow)
-
-        assert flow.response is not None
-        assert flow.response.status_code == 403
-
-    def test_allowed_domain_passes_through(self, registry_file):
-        flow = _make_http_flow(host="api.anthropic.com")
-
-        with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-        ):
-            mitm_addon.request(flow)
-
-        assert flow.metadata["firewall_action"] == "ALLOW"
-
-    def test_vm0_api_auto_allowed(self, registry_file):
-        flow = _make_http_flow(host="api.vm0.ai")
-
-        with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-        ):
-            mitm_addon.request(flow)
-
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_rule"] == "vm0-api"
-
     def test_tracks_start_time(self, registry_file):
         flow = _make_http_flow(host="api.anthropic.com")
 
@@ -108,22 +70,6 @@ class TestRequestHandler:
         assert flow.response is None
         assert "firewall_action" not in flow.metadata
 
-    def test_mitm_allowed_passes_through(self, registry_file):
-        """Allowed request passes through without rewrite."""
-        flow = _make_http_flow(host="api.anthropic.com", path="/v1/messages")
-
-        with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-        ):
-            mitm_addon.request(flow)
-
-        # Request should pass through without rewrite
-        assert flow.response is None
-        assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata.get("original_url") == "https://api.anthropic.com/v1/messages"
-
     def test_service_match_calls_handler(self, tmp_path):
         """When URL matches a service, handle_service_request is called."""
         registry = {
@@ -131,7 +77,6 @@ class TestRequestHandler:
                 "10.200.0.5": {
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
-                    "firewallRules": [{"final": "DENY"}],
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "services": {
                         "apis": [
@@ -162,9 +107,8 @@ class TestRequestHandler:
         assert call_args[0][0] is flow
         assert call_args[0][1]["base"] == "https://api.github.com"
 
-    def test_no_rules_allows_through(self, registry_file):
-        """VM with no firewall rules allows all requests through."""
-        # 10.200.0.2 has no rules (empty firewallRules = ALLOW all)
+    def test_registered_vm_passes_through(self, registry_file):
+        """Registered VM with no services passes through directly."""
         flow = _make_http_flow(client_ip="10.200.0.2", host="example.com", path="/test")
 
         with (

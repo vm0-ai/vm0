@@ -56,8 +56,6 @@ pub struct ExecutionContext {
     pub encrypted_secrets: Option<String>,
     pub cli_agent_type: String,
     #[serde(default)]
-    pub experimental_firewall: Option<ExperimentalFirewall>,
-    #[serde(default)]
     pub debug_no_mock_claude: Option<bool>,
     #[serde(default)]
     pub api_start_time: Option<f64>,
@@ -77,16 +75,6 @@ pub struct ExecutionContext {
     pub memory_name: Option<String>,
     #[serde(default)]
     pub experimental_services: Option<ExperimentalServices>,
-}
-
-/// Firewall and proxy configuration attached to each execution.
-///
-/// Field names use snake_case in JSON (matching the TS zod schema).
-#[derive(Debug, Deserialize)]
-pub struct ExperimentalFirewall {
-    pub enabled: bool,
-    #[serde(default)]
-    pub rules: Option<Vec<crate::proxy::FirewallRule>>,
 }
 
 /// Service manifest for proxy-side token replacement.

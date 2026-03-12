@@ -4,18 +4,15 @@ mitmproxy addon for VM0 runner-level network proxy.
 
 This addon runs on the runner HOST (not inside VMs) and:
 1. Intercepts all HTTPS requests from VMs
-2. Looks up the source VM's runId and firewall rules from the proxy registry
-3. Evaluates firewall rules (first-match-wins) to ALLOW or DENY
-4. Injects auth headers for configured services (proxy-side token replacement)
-5. Logs network activity per-run to JSONL files
+2. Looks up the source VM from the proxy registry
+3. Injects auth headers for configured services (proxy-side token replacement)
+4. Logs network activity per-run to JSONL files
 """
 import os
 import json
 import time
 import urllib.parse
 import urllib.request
-import ipaddress
-import socket
 from mitmproxy import http, ctx, tls
 from mitmproxy.addonmanager import Loader
 
@@ -232,96 +229,6 @@ def handle_service_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict) 
 
 
 # ============================================================================
-# Firewall Rule Matching
-# ============================================================================
-
-def match_domain(pattern: str, hostname: str) -> bool:
-    """
-    Match hostname against domain pattern.
-    Supports exact match and wildcard prefix (*.example.com).
-    """
-    if not pattern or not hostname:
-        return False
-
-    pattern = pattern.lower()
-    hostname = hostname.lower()
-
-    if pattern.startswith("*."):
-        # Wildcard: *.example.com matches sub.example.com, www.example.com
-        # Also matches example.com itself (without subdomain)
-        suffix = pattern[1:]  # .example.com
-        base = pattern[2:]    # example.com
-        return hostname.endswith(suffix) or hostname == base
-
-    return hostname == pattern
-
-
-def match_ip(cidr: str, ip_str: str) -> bool:
-    """
-    Match IP address against CIDR range.
-    Supports single IPs (1.2.3.4) and ranges (10.0.0.0/8).
-    """
-    if not cidr or not ip_str:
-        return False
-
-    try:
-        # Parse CIDR (automatically handles single IPs as /32)
-        if "/" not in cidr:
-            cidr = f"{cidr}/32"
-        network = ipaddress.ip_network(cidr, strict=False)
-        ip = ipaddress.ip_address(ip_str)
-        return ip in network
-    except ValueError:
-        return False
-
-
-def resolve_hostname_to_ip(hostname: str) -> str | None:
-    """Resolve hostname to IP address for IP-based rule matching."""
-    try:
-        return socket.gethostbyname(hostname)
-    except socket.gaierror:
-        return None
-
-
-def evaluate_rules(rules: list, hostname: str, ip_str: str = None) -> tuple[str, str | None]:
-    """
-    Evaluate firewall rules against hostname/IP.
-    Returns (action, matched_rule_description).
-
-    Rule evaluation is first-match-wins (top to bottom).
-
-    Rule formats:
-    - Domain/IP rule: { domain: "*.example.com", action: "ALLOW" }
-    - Terminal rule: { final: "DENY" }
-    """
-    if not rules:
-        return ("ALLOW", None)  # No rules = allow all
-
-    for rule in rules:
-        # Final/terminal rule - value is the action
-        final_action = rule.get("final")
-        if final_action:
-            return (final_action, "final")
-
-        # Domain rule
-        domain = rule.get("domain")
-        if domain and match_domain(domain, hostname):
-            return (rule.get("action", "DENY"), f"domain:{domain}")
-
-        # IP rule
-        ip_pattern = rule.get("ip")
-        if ip_pattern:
-            target_ip = ip_str
-            if not target_ip:
-                target_ip = resolve_hostname_to_ip(hostname)
-            if target_ip and match_ip(ip_pattern, target_ip):
-                return (rule.get("action", "DENY"), f"ip:{ip_pattern}")
-
-    # No rule matched - default deny (zero-trust)
-    return ("DENY", "default")
-
-
-# ============================================================================
 # TLS ClientHello Handler
 # ============================================================================
 
@@ -343,7 +250,7 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
         return
 
     # Registered VM: let mitmproxy perform MITM interception
-    # (firewall rules are evaluated in the request handler after decryption)
+    # (service matching and logging are handled in the request handler)
 
 
 # ============================================================================
@@ -352,8 +259,8 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
 
 def request(flow: http.HTTPFlow) -> None:
     """
-    Intercept request and apply firewall rules.
-    For MITM mode, rewrites allowed requests to VM0 Proxy.
+    Intercept request: check for service match and inject auth headers.
+    Non-service requests pass through directly.
     """
     # Track request start time
     _request_start_times[flow.id] = time.time()
@@ -374,15 +281,13 @@ def request(flow: http.HTTPFlow) -> None:
         return
 
     run_id = vm_info.get("runId", "")
-    rules = vm_info.get("firewallRules", [])
 
     # Store info for response handler
     flow.metadata["vm_run_id"] = run_id
     flow.metadata["vm_client_ip"] = client_ip
     flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
 
-    # Check service match BEFORE firewall rules.
-    # Service requests go directly to the target API with real tokens injected.
+    # Check service match — inject auth headers for configured APIs
     vm_services = vm_info.get("services")
     if vm_services:
         original_url = get_original_url(flow)
@@ -391,41 +296,8 @@ def request(flow: http.HTTPFlow) -> None:
             handle_service_request(flow, api_entry, vm_info)
             return
 
-    # Get target hostname
-    hostname = flow.request.pretty_host.lower()
-
-    # Auto-allow VM0 API requests - the agent MUST be able to communicate with VM0
-    # This is checked before user firewall rules to ensure agent functionality
-    api_url = get_api_url()
-    if api_url:
-        parsed_api = urllib.parse.urlparse(api_url)
-        api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
-        if api_hostname and (hostname == api_hostname or hostname.endswith(f".{api_hostname}")):
-            ctx.log.info(f"[{run_id}] Auto-allow VM0 API: {hostname}")
-            flow.metadata["firewall_action"] = "ALLOW"
-            flow.metadata["firewall_rule"] = "vm0-api"
-            # Continue to skip rewrite check below
-            flow.metadata["original_url"] = get_original_url(flow)
-            return
-
-    # Evaluate firewall rules
-    action, matched_rule = evaluate_rules(rules, hostname)
-    flow.metadata["firewall_action"] = action
-    flow.metadata["firewall_rule"] = matched_rule
-
-    if action == "DENY":
-        ctx.log.warn(f"[{run_id}] Firewall DENY: {hostname} (rule: {matched_rule})")
-        # Kill the flow and return error response
-        flow.response = http.Response.make(
-            403,
-            b"Blocked by firewall",
-            {"Content-Type": "text/plain"}
-        )
-        return
-
-    # Request is ALLOWED - pass through directly
+    # Non-service request — pass through directly
     flow.metadata["original_url"] = get_original_url(flow)
-    ctx.log.info(f"[{run_id}] Firewall ALLOW: {hostname}")
 
 
 def responseheaders(flow: http.HTTPFlow) -> None:
@@ -455,8 +327,8 @@ def response(flow: http.HTTPFlow) -> None:
     # Get stored info
     run_id = flow.metadata.get("vm_run_id", "")
     original_url = flow.metadata.get("original_url", flow.request.pretty_url)
-    firewall_action = flow.metadata.get("firewall_action", "ALLOW")
-    firewall_rule = flow.metadata.get("firewall_rule")
+    action = flow.metadata.get("firewall_action", "ALLOW")
+    rule_matched = flow.metadata.get("firewall_rule")
 
     # Calculate sizes
     request_size = len(flow.request.content) if flow.request.content else 0
@@ -478,10 +350,10 @@ def response(flow: http.HTTPFlow) -> None:
         log_entry = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
             "mode": "mitm",
-            "action": firewall_action,
+            "action": action,
             "host": host,
             "port": port,
-            "rule_matched": firewall_rule,
+            "rule_matched": rule_matched,
             "method": flow.request.method,
             "path": flow.request.path.split("?")[0],  # Path without query
             "url": original_url,
@@ -501,8 +373,8 @@ def response(flow: http.HTTPFlow) -> None:
         log_network_entry({"networkLogPath": network_log_path}, log_entry)
 
     # Invalidate service header cache on 401 so next request gets fresh headers
-    if flow.response and flow.response.status_code == 401 and firewall_rule:
-        if firewall_rule.startswith("service:"):
+    if flow.response and flow.response.status_code == 401 and rule_matched:
+        if rule_matched.startswith("service:"):
             api_id = flow.metadata.get("service_api_id", "")
             if api_id:
                 cache_key = (run_id, api_id)

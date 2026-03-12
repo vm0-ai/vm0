@@ -1,8 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { experimentalFirewallSchema } from "./runners";
-
 const c = initContract();
 
 /**
@@ -87,12 +85,6 @@ const agentDefinitionSchema = z.object({
         ),
     })
     .optional(),
-  /**
-   * Experimental firewall configuration for network egress control.
-   * Requires experimental_runner to be configured.
-   * When enabled, filters outbound traffic by domain/IP rules.
-   */
-  experimental_firewall: experimentalFirewallSchema.optional(),
   /**
    * External services for proxy-side token replacement.
    * CLI input: string[] (e.g., ["github", "slack"]) — expanded by CLI to full objects before API call.

@@ -107,26 +107,19 @@ async fn execute_inner(
     }
     telemetry.record("vm_create", t.elapsed(), true, None);
 
-    // Register VM in proxy registry when firewall is enabled or services are present
+    // Register VM in proxy registry when services are configured
     let source_ip = sandbox.source_ip().to_string();
-    let firewall_enabled = context
-        .experimental_firewall
-        .as_ref()
-        .is_some_and(|fw| fw.enabled);
-    let has_services = context
+    let proxy_registered = context
         .experimental_services
         .as_ref()
         .is_some_and(|s| !s.apis.is_empty());
-    let proxy_registered = firewall_enabled || has_services;
     let network_log_path = config.log_paths.network_log(context.run_id);
 
     if proxy_registered {
-        let fw = context.experimental_firewall.as_ref();
         let run_id_str = context.run_id.to_string();
         let registration = proxy::VmRegistration {
             run_id: &run_id_str,
             sandbox_token: &context.sandbox_token,
-            firewall_rules: fw.and_then(|f| f.rules.as_deref()).unwrap_or(&[]),
             network_log_path: &network_log_path,
             services: context.experimental_services.as_ref(),
             encrypted_secrets: context.encrypted_secrets.as_deref(),
@@ -565,16 +558,11 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     }
 
     // Tell Node.js to trust the proxy CA when MITM proxy is active.
-    // MITM is always enabled when firewall or services are configured.
     // The certificate is pre-baked into the rootfs at build time.
     let proxy_active = context
-        .experimental_firewall
+        .experimental_services
         .as_ref()
-        .is_some_and(|fw| fw.enabled)
-        || context
-            .experimental_services
-            .as_ref()
-            .is_some_and(|s| !s.apis.is_empty());
+        .is_some_and(|s| !s.apis.is_empty());
     if proxy_active {
         env.insert("NODE_EXTRA_CA_CERTS".into(), VM_PROXY_CA_PATH.into());
     }
@@ -655,7 +643,6 @@ mod tests {
             secret_values: None,
             encrypted_secrets: None,
             cli_agent_type: String::new(),
-            experimental_firewall: None,
             debug_no_mock_claude: None,
             api_start_time: None,
             user_timezone: None,
@@ -841,51 +828,6 @@ mod tests {
         assert_eq!(env.get("ONLY_ENV").unwrap(), "env-value");
     }
 
-    /// Verify ExecutionContext deserializes from JSON matching the TS schema,
-    /// including the snake_case `experimentalFirewall` inner fields.
-    #[test]
-    fn deserialize_execution_context_with_firewall() {
-        let json = r#"{
-            "runId": "00000000-0000-0000-0000-000000000001",
-            "prompt": "hello",
-            "agentComposeVersionId": null,
-            "vars": null,
-            "checkpointId": null,
-            "sandboxToken": "tok",
-            "workingDir": "/workspace",
-            "storageManifest": null,
-            "environment": null,
-            "resumeSession": null,
-            "secretValues": null,
-            "cliAgentType": "claude-code",
-            "experimentalFirewall": {
-                "enabled": true,
-                "rules": [
-                    {"domain": "*.example.com", "action": "ALLOW"},
-                    {"final": "DENY"}
-                ]
-            },
-            "debugNoMockClaude": true,
-            "apiStartTime": 1700000000.5,
-            "userTimezone": "Asia/Shanghai"
-        }"#;
-
-        let ctx: ExecutionContext = serde_json::from_str(json).unwrap();
-        assert_eq!(
-            ctx.run_id.to_string(),
-            "00000000-0000-0000-0000-000000000001"
-        );
-        assert_eq!(ctx.prompt, "hello");
-        assert_eq!(ctx.cli_agent_type, "claude-code");
-
-        let fw = ctx.experimental_firewall.as_ref().unwrap();
-        assert!(fw.enabled);
-        let rules = fw.rules.as_ref().unwrap();
-        assert_eq!(rules.len(), 2);
-        assert_eq!(ctx.api_start_time, Some(1700000000.5));
-        assert_eq!(ctx.user_timezone.as_deref(), Some("Asia/Shanghai"));
-    }
-
     /// SAFETY: set_var/remove_var are unsafe in edition 2024 due to potential
     /// data races. These tests are acceptable because cargo test runs each
     /// test in its own thread by default, and no other tests read this var.
@@ -922,36 +864,6 @@ mod tests {
             Some(v) => unsafe { std::env::set_var("USE_MOCK_CLAUDE", v) },
             None => unsafe { std::env::remove_var("USE_MOCK_CLAUDE") },
         }
-    }
-
-    #[test]
-    fn build_env_json_with_firewall_sets_ca_certs() {
-        let mut ctx = minimal_context();
-        ctx.experimental_firewall = Some(crate::types::ExperimentalFirewall {
-            enabled: true,
-            rules: None,
-        });
-        let env = build_env_json(&ctx, "http://localhost");
-        assert_eq!(env.get("NODE_EXTRA_CA_CERTS").unwrap(), VM_PROXY_CA_PATH);
-    }
-
-    #[test]
-    fn build_env_json_firewall_disabled_no_ca_certs() {
-        let mut ctx = minimal_context();
-        ctx.experimental_firewall = Some(crate::types::ExperimentalFirewall {
-            enabled: false,
-            rules: None,
-        });
-        let env = build_env_json(&ctx, "http://localhost");
-        assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
-    }
-
-    #[test]
-    fn build_env_json_no_firewall_no_ca_certs() {
-        let mut ctx = minimal_context();
-        ctx.experimental_firewall = None;
-        let env = build_env_json(&ctx, "http://localhost");
-        assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
     }
 
     #[test]

@@ -151,7 +151,6 @@ impl JobProvider for LocalProvider {
             secret_values: None,
             encrypted_secrets: None,
             cli_agent_type: req.cli_agent_type,
-            experimental_firewall: None,
             debug_no_mock_claude: None,
             api_start_time: None,
             user_timezone: req.user_timezone,
