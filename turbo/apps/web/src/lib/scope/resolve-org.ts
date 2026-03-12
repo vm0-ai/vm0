@@ -64,7 +64,7 @@ async function verifyMembership(
   }
 
   if (resolved.orgId.startsWith("pending_")) {
-    throw forbidden("You are not a member of this organization");
+    throw forbidden("You are not a member of this scope");
   }
 
   // Slow path: cross-org access → Clerk Backend API
@@ -79,7 +79,7 @@ async function verifyMembership(
       (m) => m.publicUserData?.userId === userId,
     );
     if (!membership) {
-      throw forbidden("You are not a member of this organization");
+      throw forbidden("You are not a member of this scope");
     }
 
     return {
@@ -97,7 +97,7 @@ async function verifyMembership(
       orgId: resolved.orgId,
       error,
     });
-    throw forbidden("You are not a member of this organization");
+    throw forbidden("You are not a member of this scope");
   }
 }
 

@@ -282,7 +282,7 @@ describe("resolveOrg", () => {
     });
 
     await expect(resolveOrg(otherUserId, slug)).rejects.toThrow(
-      "You are not a member of this scope",
+      "You are not a member of this organization",
     );
   });
 

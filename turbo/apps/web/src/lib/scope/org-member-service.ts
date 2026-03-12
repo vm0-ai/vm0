@@ -13,7 +13,7 @@ const log = logger("service:org-member");
  */
 export async function requireOrgMember(orgId: string, userId: string) {
   if (!orgId || orgId.startsWith("pending_")) {
-    throw forbidden("You are not a member of this scope");
+    throw forbidden("You are not a member of this organization");
   }
 
   const client = await clerkClient();
@@ -25,7 +25,7 @@ export async function requireOrgMember(orgId: string, userId: string) {
     (m) => m.publicUserData?.userId === userId,
   );
   if (!membership) {
-    throw forbidden("You are not a member of this scope");
+    throw forbidden("You are not a member of this organization");
   }
 
   return {
@@ -243,7 +243,7 @@ export async function removeMember(
   );
 
   if (!membership) {
-    throw notFound(`User "${email}" is not a member of this scope`);
+    throw notFound(`User "${email}" is not a member of this organization`);
   }
 
   // Remove from Clerk
