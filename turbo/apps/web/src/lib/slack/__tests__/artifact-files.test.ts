@@ -1,7 +1,8 @@
+import { execSync } from "child_process";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { describe, it, expect } from "vitest";
-import * as zlib from "zlib";
-import * as tarStream from "tar";
-import { Readable } from "stream";
 import { diffManifests, extractFilesFromArchive } from "../artifact-files";
 import type { S3StorageManifest } from "../../s3/types";
 
@@ -82,60 +83,7 @@ describe("diffManifests", () => {
 });
 
 describe("extractFilesFromArchive", () => {
-  async function createTarGz(
-    files: Array<{ path: string; content: string }>,
-  ): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const pack = new tarStream.Pack();
-      const chunks: Buffer[] = [];
-
-      for (const file of files) {
-        const buf = Buffer.from(file.content, "utf-8");
-        pack.write(
-          new tarStream.ReadEntry(
-            new tarStream.Header({
-              path: file.path,
-              size: buf.length,
-              type: "File",
-            }),
-            undefined,
-            { maxReadSize: buf.length },
-          ),
-        );
-      }
-
-      // Use tar.create with gzip to build the archive properly
-      // For testing, we'll build the archive manually
-      const gzip = zlib.createGzip();
-      const passthrough: Buffer[] = [];
-
-      gzip.on("data", (chunk: Buffer) => passthrough.push(chunk));
-      gzip.on("end", () => resolve(Buffer.concat(passthrough)));
-      gzip.on("error", reject);
-
-      pack.on("error", reject);
-      pack.pipe(gzip);
-
-      for (const file of files) {
-        const buf = Buffer.from(file.content, "utf-8");
-        pack.add(Readable.from(buf), {
-          path: file.path,
-          size: buf.length,
-          type: "File",
-        } as tarStream.HeaderData);
-      }
-
-      pack.end();
-    });
-  }
-
   it("should extract only targeted files from archive", async () => {
-    // Create a real tar.gz with known contents using shell
-    const { execSync } = await import("child_process");
-    const fs = await import("fs");
-    const path = await import("path");
-    const os = await import("os");
-
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tar-test-"));
     const srcDir = path.join(tmpDir, "src");
     fs.mkdirSync(srcDir);
@@ -168,11 +116,6 @@ describe("extractFilesFromArchive", () => {
   });
 
   it("should return empty array when no files match", async () => {
-    const { execSync } = await import("child_process");
-    const fs = await import("fs");
-    const path = await import("path");
-    const os = await import("os");
-
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tar-test-"));
     const srcDir = path.join(tmpDir, "src");
     fs.mkdirSync(srcDir);
