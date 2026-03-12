@@ -364,6 +364,12 @@ export interface ScopeScheduleEntry {
 }
 
 const internalAllSchedules$ = state<ScheduleResponse[]>([]);
+const internalAllSchedulesLoaded$ = state(false);
+
+/** Whether the scope schedules have been loaded at least once. */
+export const allScopeSchedulesLoaded$ = computed((get) =>
+  get(internalAllSchedulesLoaded$),
+);
 
 export const allScopeScheduleEntries$ = computed((get) => {
   const schedules = get(internalAllSchedules$);
@@ -399,6 +405,8 @@ export const fetchAllScopeSchedules$ = command(async ({ get, set }) => {
     throwIfAbort(error);
     L.error("Failed to fetch all scope schedules:", error);
     set(internalAllSchedules$, []);
+  } finally {
+    set(internalAllSchedulesLoaded$, true);
   }
 });
 

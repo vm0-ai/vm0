@@ -51,6 +51,7 @@ import { COMMON_TIMEZONES } from "../../signals/agent-detail/cron.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   allScopeScheduleEntries$,
+  allScopeSchedulesLoaded$,
   fetchAllScopeSchedules$,
   saveScopeSchedule$,
   toggleScopeScheduleEnabled$,
@@ -778,8 +779,8 @@ export function ZeroSchedulePage() {
   const entriesLoadable = useLastLoadable(allScopeScheduleEntries$);
   const entries: ScopeScheduleEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
-  const isInitialLoading =
-    entriesLoadable.state === "loading" && entries.length === 0;
+  const loaded = useGet(allScopeSchedulesLoaded$);
+  const isInitialLoading = !loaded;
 
   const fetchSchedules = useSet(fetchAllScopeSchedules$);
   const saveSchedule = useSet(saveScopeSchedule$);
