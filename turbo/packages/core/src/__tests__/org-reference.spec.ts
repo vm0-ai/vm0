@@ -8,7 +8,7 @@ import {
   SYSTEM_IMAGE_CODEX,
   SYSTEM_IMAGES,
   SYSTEM_VALID_TAGS,
-} from "../scope-reference";
+} from "../org-reference";
 
 describe("isLegacySystemTemplate", () => {
   it("returns true for vm0- prefix", () => {
