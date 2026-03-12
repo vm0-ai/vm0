@@ -14,35 +14,6 @@ interface AgentComposeConfig {
 }
 
 /**
- * Result of loading agent name from vm0.yaml
- */
-interface LoadAgentNameResult {
-  agentName: string | null;
-  error?: string;
-}
-
-/**
- * Load vm0.yaml and return the first agent name.
- * Returns error message if file exists but cannot be parsed.
- */
-export function loadAgentName(): LoadAgentNameResult {
-  if (!existsSync(CONFIG_FILE)) {
-    return { agentName: null };
-  }
-  try {
-    const content = readFileSync(CONFIG_FILE, "utf8");
-    const config = parseYaml(content) as AgentComposeConfig;
-    const agentNames = Object.keys(config.agents || {});
-    return { agentName: agentNames[0] || null };
-  } catch (err) {
-    return {
-      agentName: null,
-      error: err instanceof Error ? err.message : "Failed to parse vm0.yaml",
-    };
-  }
-}
-
-/**
  * Format a date string as relative time (e.g., "in 2h", "3d ago")
  */
 export function formatRelativeTime(dateStr: string | null): string {

@@ -258,6 +258,86 @@ describe("schedule list command", () => {
       expect(logCalls).toContain("0 10 * * 1");
     });
 
+    it("should show relative time for enabled schedule with future nextRunAt", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({
+            schedules: [
+              {
+                id: "schedule-1",
+                composeId: "compose-1",
+                composeName: "test-agent",
+                scopeSlug: "user-test",
+                name: "test-schedule",
+                cronExpression: "0 9 * * *",
+                atTime: null,
+                timezone: "UTC",
+                prompt: "Task",
+                vars: null,
+                secretNames: null,
+                artifactName: null,
+                artifactVersion: null,
+                volumeVersions: null,
+                enabled: true,
+                nextRunAt: new Date(
+                  Date.now() + 2 * 60 * 60 * 1000,
+                ).toISOString(),
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+          });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      // formatRelativeTime produces "in Xh" for a date 2 hours in the future
+      expect(logCalls).toMatch(/in \d+h/);
+    });
+
+    it("should show dash for disabled schedule next run", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({
+            schedules: [
+              {
+                id: "schedule-1",
+                composeId: "compose-1",
+                composeName: "disabled-agent",
+                scopeSlug: "user-test",
+                name: "disabled-schedule",
+                cronExpression: "0 9 * * *",
+                atTime: null,
+                timezone: "UTC",
+                prompt: "Task",
+                vars: null,
+                secretNames: null,
+                artifactName: null,
+                artifactVersion: null,
+                volumeVersions: null,
+                enabled: false,
+                nextRunAt: null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+          });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      // The NEXT RUN column for disabled schedules shows "-"
+      // Split into rows and check the data row (not header)
+      const rows = logCalls.split("\n").filter((r) => r.trim().length > 0);
+      const dataRow = rows.find((r) => r.includes("disabled-agent"));
+      expect(dataRow).toBeDefined();
+      expect(dataRow).toContain("-");
+    });
+
     it("should show table header with correct columns", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/schedules", () => {
