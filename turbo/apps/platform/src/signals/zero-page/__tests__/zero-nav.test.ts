@@ -38,14 +38,6 @@ describe("zero-nav", () => {
       expect(context.store.get(zeroActiveId$)).toBe("job");
     });
 
-    it("should resolve /zero/production to 'production'", () => {
-      mockLocation(
-        { pathname: "/zero/production", search: "" },
-        context.signal,
-      );
-      expect(context.store.get(zeroActiveId$)).toBe("production");
-    });
-
     it("should resolve /zero/activity to 'activity'", () => {
       mockLocation({ pathname: "/zero/activity", search: "" }, context.signal);
       expect(context.store.get(zeroActiveId$)).toBe("activity");

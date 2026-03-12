@@ -644,13 +644,15 @@ function ScheduleListView({
               onCheckedChange={(checked) => {
                 const id = entry.id;
                 setTogglingIds((prev) => new Set([...prev, id]));
-                onToggle(entry, checked).finally(() => {
-                  setTogglingIds((prev) => {
-                    const next = new Set(prev);
-                    next.delete(id);
-                    return next;
-                  });
-                });
+                onToggle(entry, checked)
+                  .finally(() => {
+                    setTogglingIds((prev) => {
+                      const next = new Set(prev);
+                      next.delete(id);
+                      return next;
+                    });
+                  })
+                  .catch(() => {});
               }}
               ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
             />
