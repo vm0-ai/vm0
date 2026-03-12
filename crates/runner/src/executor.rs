@@ -520,8 +520,8 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         }
     }
 
-    // --- User timezone (between user vars and system vars) ---
-    // Overrides vars TZ but respects explicit TZ in user environment.
+    // --- User timezone ---
+    // Respects explicit TZ in user environment.
     if let Some(tz) = &context.user_timezone {
         let has_tz = context
             .environment
