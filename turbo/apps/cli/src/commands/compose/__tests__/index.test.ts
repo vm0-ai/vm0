@@ -10,31 +10,68 @@ import * as os from "os";
 import * as yaml from "yaml";
 import chalk from "chalk";
 
-// Mock git-client boundary module (external system call: git sparse-checkout via child_process.exec)
-vi.mock("../../../lib/external/git-client", () => ({
-  downloadGitHubSkill: vi.fn(),
-  downloadGitHubDirectory: vi.fn(),
-}));
+// Configurable handler called when exec encounters a "git checkout" command.
+// Tests set this to populate the working directory with expected files.
+let onGitCheckout: ((cwd: string) => void) | undefined;
 
-// Mock child_process.spawn since it's an external system call boundary
-// Used by silentUpgradeAfterCommand to run npm/pnpm install
+// Mock child_process — the true external boundary for both spawn and exec.
+// spawn is used by silentUpgradeAfterCommand; exec is used by git-client for git operations.
 vi.mock("child_process", async (importOriginal) => {
   const original = await importOriginal<typeof import("child_process")>();
   return {
     ...original,
     spawn: vi.fn(),
+    exec: vi.fn(
+      (
+        cmd: string,
+        optionsOrCallback: unknown,
+        maybeCallback?: unknown,
+      ): { pid: number } => {
+        const callback =
+          typeof optionsOrCallback === "function"
+            ? (optionsOrCallback as (
+                err: Error | null,
+                result: { stdout: string; stderr: string },
+              ) => void)
+            : (maybeCallback as (
+                err: Error | null,
+                result: { stdout: string; stderr: string },
+              ) => void);
+        const options =
+          typeof optionsOrCallback === "object"
+            ? (optionsOrCallback as { cwd?: string })
+            : undefined;
+        const cwd = options?.cwd;
+
+        // git init: create .git/info/ so sparse-checkout file writes succeed
+        if (cmd.startsWith("git init") && cwd) {
+          mkdirSync(path.join(cwd, ".git", "info"), { recursive: true });
+        }
+
+        // git checkout: populate the working directory via test-provided handler
+        if (cmd.startsWith("git checkout") && cwd && onGitCheckout) {
+          onGitCheckout(cwd);
+        }
+
+        // git ls-remote: return a fake default branch reference
+        if (cmd.includes("git ls-remote")) {
+          callback(null, {
+            stdout: "ref: refs/heads/main\tHEAD\n",
+            stderr: "",
+          });
+          return { pid: 0 };
+        }
+
+        callback(null, { stdout: "", stderr: "" });
+        return { pid: 0 };
+      },
+    ),
   };
 });
 
-import {
-  downloadGitHubSkill,
-  downloadGitHubDirectory,
-} from "../../../lib/external/git-client";
-const mockDownloadGitHubSkill = vi.mocked(downloadGitHubSkill);
-const mockDownloadGitHubDirectory = vi.mocked(downloadGitHubDirectory);
-
-import { spawn } from "child_process";
+import { spawn, exec } from "child_process";
 const mockSpawn = vi.mocked(spawn);
+const mockExec = vi.mocked(exec);
 
 /**
  * Helper to create a mock skill directory with SKILL.md frontmatter.
@@ -100,6 +137,7 @@ describe("compose command", () => {
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
     chalk.level = 0;
+    onGitCheckout = undefined;
 
     // Default npm registry handler - return same version to skip upgrade
     // This prevents silentUpgradeAfterCommand from attempting real upgrades
@@ -1160,12 +1198,12 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs`,
         );
 
-        // Mock downloadGitHubSkill to create a skill directory with frontmatter
-        mockDownloadGitHubSkill.mockImplementation(async (parsed, destDir) => {
-          return createMockSkillDir(destDir, parsed.skillName, {
+        // Configure git checkout to populate skill directory with frontmatter
+        onGitCheckout = (cwd) => {
+          createMockSkillDir(cwd, "elevenlabs", {
             vm0_secrets: ["ELEVENLABS_API_KEY"],
           });
-        });
+        };
 
         server.use(
           ...storageUploadHandlers,
@@ -1214,12 +1252,12 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs`,
         );
 
-        // Mock downloadGitHubSkill to create a skill directory with frontmatter
-        mockDownloadGitHubSkill.mockImplementation(async (parsed, destDir) => {
-          return createMockSkillDir(destDir, parsed.skillName, {
+        // Configure git checkout to populate skill directory with frontmatter
+        onGitCheckout = (cwd) => {
+          createMockSkillDir(cwd, "elevenlabs", {
             vm0_secrets: ["ELEVENLABS_API_KEY"],
           });
-        });
+        };
 
         server.use(
           ...storageUploadHandlers,
@@ -1283,12 +1321,12 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs`,
         );
 
-        // Mock downloadGitHubSkill to create a skill directory with frontmatter
-        mockDownloadGitHubSkill.mockImplementation(async (parsed, destDir) => {
-          return createMockSkillDir(destDir, parsed.skillName, {
+        // Configure git checkout to populate skill directory with frontmatter
+        onGitCheckout = (cwd) => {
+          createMockSkillDir(cwd, "elevenlabs", {
             vm0_secrets: ["NEW_SECRET"],
           });
-        });
+        };
 
         server.use(
           ...storageUploadHandlers,
@@ -1326,12 +1364,12 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs`,
         );
 
-        // Mock downloadGitHubSkill to create a skill directory with frontmatter
-        mockDownloadGitHubSkill.mockImplementation(async (parsed, destDir) => {
-          return createMockSkillDir(destDir, parsed.skillName, {
+        // Configure git checkout to populate skill directory with frontmatter
+        onGitCheckout = (cwd) => {
+          createMockSkillDir(cwd, "elevenlabs", {
             vm0_secrets: ["ELEVENLABS_API_KEY"],
           });
-        });
+        };
 
         server.use(
           ...storageUploadHandlers,
@@ -1812,6 +1850,7 @@ describe("GitHub URL compose", () => {
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
     chalk.level = 0;
+    onGitCheckout = undefined;
 
     // Default npm registry handler
     server.use(
@@ -1830,20 +1869,17 @@ describe("GitHub URL compose", () => {
   });
 
   it("should accept deprecated --experimental-shared-compose flag without error", async () => {
-    // Setup mock for GitHub URL compose
-    const tempRoot = path.join(tempDir, "github-download");
-    const cookbookDir = createMockCookbookDir(
-      tempRoot,
-      "tutorials/101-intro",
-      `version: "1.0"
+    // Configure git checkout to populate the working directory with vm0.yaml
+    onGitCheckout = (cwd) => {
+      createMockCookbookDir(
+        cwd,
+        "tutorials/101-intro",
+        `version: "1.0"
 agents:
   intro:
     framework: claude-code`,
-    );
-    mockDownloadGitHubDirectory.mockResolvedValue({
-      dir: cookbookDir,
-      tempRoot,
-    });
+      );
+    };
 
     // Setup API mocks
     server.use(
@@ -1880,11 +1916,10 @@ agents:
   });
 
   it("should error when vm0.yaml not found in GitHub directory", async () => {
-    // Mock downloadGitHubDirectory to return an empty directory (no vm0.yaml)
-    const tempRoot = path.join(tempDir, "github-download");
-    const emptyDir = path.join(tempRoot, "tutorials/101-intro");
-    mkdirSync(emptyDir, { recursive: true });
-    mockDownloadGitHubDirectory.mockResolvedValue({ dir: emptyDir, tempRoot });
+    // Configure git checkout to create directory without vm0.yaml
+    onGitCheckout = (cwd) => {
+      mkdirSync(path.join(cwd, "tutorials/101-intro"), { recursive: true });
+    };
 
     await expect(async () => {
       await composeCommand.parseAsync([
@@ -1901,12 +1936,12 @@ agents:
   });
 
   it("should error when compose has volumes", async () => {
-    // Mock downloadGitHubDirectory to return a directory with vm0.yaml containing volumes
-    const tempRoot = path.join(tempDir, "github-download");
-    const cookbookDir = createMockCookbookDir(
-      tempRoot,
-      "tutorials/104-intro-volume",
-      `version: "1.0"
+    // Configure git checkout to populate directory with vm0.yaml containing volumes
+    onGitCheckout = (cwd) => {
+      createMockCookbookDir(
+        cwd,
+        "tutorials/104-intro-volume",
+        `version: "1.0"
 agents:
   intro-volume:
     framework: claude-code
@@ -1917,11 +1952,8 @@ volumes:
   claude-files:
     name: claude-files
     version: latest`,
-    );
-    mockDownloadGitHubDirectory.mockResolvedValue({
-      dir: cookbookDir,
-      tempRoot,
-    });
+      );
+    };
 
     await expect(async () => {
       await composeCommand.parseAsync([
@@ -1943,20 +1975,17 @@ volumes:
   });
 
   it("should successfully compose from GitHub URL with flag", async () => {
-    // Mock downloadGitHubDirectory to return a valid cookbook
-    const tempRoot = path.join(tempDir, "github-download");
-    const cookbookDir = createMockCookbookDir(
-      tempRoot,
-      "tutorials/101-intro",
-      `version: "1.0"
+    // Configure git checkout to populate directory with valid cookbook
+    onGitCheckout = (cwd) => {
+      createMockCookbookDir(
+        cwd,
+        "tutorials/101-intro",
+        `version: "1.0"
 agents:
   intro:
     framework: claude-code`,
-    );
-    mockDownloadGitHubDirectory.mockResolvedValue({
-      dir: cookbookDir,
-      tempRoot,
-    });
+      );
+    };
 
     server.use(
       http.get("http://localhost:3000/api/agent/composes", () => {
@@ -1993,22 +2022,22 @@ agents:
   });
 
   it("should handle compose with instructions from GitHub URL", async () => {
-    // Create cookbook directory with instructions file
-    const tempRoot = path.join(tempDir, "github-download");
-    const cookbookDir = createMockCookbookDir(
-      tempRoot,
-      "tutorials/101-intro",
-      `version: "1.0"
+    // Configure git checkout to populate directory with cookbook and instructions file
+    onGitCheckout = (cwd) => {
+      const cookbookDir = createMockCookbookDir(
+        cwd,
+        "tutorials/101-intro",
+        `version: "1.0"
 agents:
   intro:
     framework: claude-code
     instructions: AGENTS.md`,
-    );
-    writeFileSync(path.join(cookbookDir, "AGENTS.md"), "# Agent Instructions");
-    mockDownloadGitHubDirectory.mockResolvedValue({
-      dir: cookbookDir,
-      tempRoot,
-    });
+      );
+      writeFileSync(
+        path.join(cookbookDir, "AGENTS.md"),
+        "# Agent Instructions",
+      );
+    };
 
     server.use(
       http.post("http://localhost:3000/api/storages/prepare", () => {
@@ -2061,23 +2090,19 @@ agents:
   });
 
   it("should cleanup temp directory after successful compose", async () => {
-    // Create a temp directory structure that matches what downloadGitHubDirectory returns
-    // The function now returns { dir, tempRoot } so cleanup uses tempRoot directly
-
-    // Simulate the actual structure: vm0-github-xxx/tutorials/101-intro
-    const vm0TempRoot = mkdtempSync(path.join(tempDir, "vm0-github-"));
-    const cookbookDir = createMockCookbookDir(
-      vm0TempRoot,
-      "tutorials/101-intro",
-      `version: "1.0"
+    // Track the temp directory created by downloadGitHubDirectory
+    let gitTempDir: string | undefined;
+    onGitCheckout = (cwd) => {
+      gitTempDir = cwd;
+      createMockCookbookDir(
+        cwd,
+        "tutorials/101-intro",
+        `version: "1.0"
 agents:
   intro:
     framework: claude-code`,
-    );
-    mockDownloadGitHubDirectory.mockResolvedValue({
-      dir: cookbookDir,
-      tempRoot: vm0TempRoot,
-    });
+      );
+    };
 
     server.use(
       http.get("http://localhost:3000/api/agent/composes", () => {
@@ -2106,7 +2131,8 @@ agents:
     ]);
 
     // The tempRoot should be fully cleaned up (including the .git folder)
-    expect(existsSync(vm0TempRoot)).toBe(false);
+    expect(gitTempDir).toBeDefined();
+    expect(existsSync(gitTempDir!)).toBe(false);
   });
 
   it("should detect GitHub tree URLs correctly", async () => {
@@ -2122,19 +2148,16 @@ agents:
 
   describe("repository root URL support", () => {
     it("should recognize plain repository URL as GitHub URL", async () => {
-      const tempRoot = path.join(tempDir, "github-download");
-      mkdirSync(tempRoot, { recursive: true });
-      writeFileSync(
-        path.join(tempRoot, "vm0.yaml"),
-        `version: "1.0"
+      // Root URL (no path) — vm0.yaml placed directly in checkout root
+      onGitCheckout = (cwd) => {
+        writeFileSync(
+          path.join(cwd, "vm0.yaml"),
+          `version: "1.0"
 agents:
   test-agent:
     framework: claude-code`,
-      );
-      mockDownloadGitHubDirectory.mockResolvedValue({
-        dir: tempRoot,
-        tempRoot,
-      });
+        );
+      };
 
       server.use(
         http.get("http://localhost:3000/api/agent/composes", () => {
@@ -2162,8 +2185,11 @@ agents:
         "https://github.com/owner/repo",
       ]);
 
-      expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
-        "https://github.com/owner/repo",
+      // Verify git operations targeted the correct repository
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining("owner/repo.git"),
+        expect.anything(),
+        expect.anything(),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Downloading from GitHub"),
@@ -2171,19 +2197,16 @@ agents:
     });
 
     it("should recognize tree URL without path (root) as GitHub URL", async () => {
-      const tempRoot = path.join(tempDir, "github-download");
-      mkdirSync(tempRoot, { recursive: true });
-      writeFileSync(
-        path.join(tempRoot, "vm0.yaml"),
-        `version: "1.0"
+      // Root URL with explicit branch — vm0.yaml placed directly in checkout root
+      onGitCheckout = (cwd) => {
+        writeFileSync(
+          path.join(cwd, "vm0.yaml"),
+          `version: "1.0"
 agents:
   test-agent:
     framework: claude-code`,
-      );
-      mockDownloadGitHubDirectory.mockResolvedValue({
-        dir: tempRoot,
-        tempRoot,
-      });
+        );
+      };
 
       server.use(
         http.get("http://localhost:3000/api/agent/composes", () => {
@@ -2211,25 +2234,25 @@ agents:
         "https://github.com/owner/repo/tree/main",
       ]);
 
-      expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
-        "https://github.com/owner/repo/tree/main",
+      // Verify git operations targeted the correct repository
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining("owner/repo.git"),
+        expect.anything(),
+        expect.anything(),
       );
     });
 
     it("should handle tree URL with trailing slash (root)", async () => {
-      const tempRoot = path.join(tempDir, "github-download");
-      mkdirSync(tempRoot, { recursive: true });
-      writeFileSync(
-        path.join(tempRoot, "vm0.yaml"),
-        `version: "1.0"
+      // Root URL with trailing slash — vm0.yaml placed directly in checkout root
+      onGitCheckout = (cwd) => {
+        writeFileSync(
+          path.join(cwd, "vm0.yaml"),
+          `version: "1.0"
 agents:
   test-agent:
     framework: claude-code`,
-      );
-      mockDownloadGitHubDirectory.mockResolvedValue({
-        dir: tempRoot,
-        tempRoot,
-      });
+        );
+      };
 
       server.use(
         http.get("http://localhost:3000/api/agent/composes", () => {
@@ -2257,8 +2280,11 @@ agents:
         "https://github.com/owner/repo/tree/main/",
       ]);
 
-      expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
-        "https://github.com/owner/repo/tree/main/",
+      // Verify git operations targeted the correct repository
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining("owner/repo.git"),
+        expect.anything(),
+        expect.anything(),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Compose created"),
@@ -2266,20 +2292,17 @@ agents:
     });
 
     it("should handle tree URL with trailing slash (path)", async () => {
-      const tempRoot = path.join(tempDir, "github-download");
-      const subDir = path.join(tempRoot, "examples/101-intro");
-      mkdirSync(subDir, { recursive: true });
-      writeFileSync(
-        path.join(subDir, "vm0.yaml"),
-        `version: "1.0"
+      // Subdirectory URL with trailing slash — vm0.yaml placed in subdirectory
+      onGitCheckout = (cwd) => {
+        createMockCookbookDir(
+          cwd,
+          "examples/101-intro",
+          `version: "1.0"
 agents:
   test-agent:
     framework: claude-code`,
-      );
-      mockDownloadGitHubDirectory.mockResolvedValue({
-        dir: subDir,
-        tempRoot,
-      });
+        );
+      };
 
       server.use(
         http.get("http://localhost:3000/api/agent/composes", () => {
@@ -2307,8 +2330,11 @@ agents:
         "https://github.com/owner/repo/tree/main/examples/101-intro/",
       ]);
 
-      expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
-        "https://github.com/owner/repo/tree/main/examples/101-intro/",
+      // Verify git operations targeted the correct repository
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining("owner/repo.git"),
+        expect.anything(),
+        expect.anything(),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Compose created"),
@@ -2318,19 +2344,16 @@ agents:
 
   describe("existing agent overwrite confirmation", () => {
     it("should prompt for confirmation when agent already exists (non-interactive without --yes)", async () => {
-      const tempRoot = path.join(tempDir, "github-download");
-      const cookbookDir = createMockCookbookDir(
-        tempRoot,
-        "tutorials/101-intro",
-        `version: "1.0"
+      onGitCheckout = (cwd) => {
+        createMockCookbookDir(
+          cwd,
+          "tutorials/101-intro",
+          `version: "1.0"
 agents:
   intro:
     framework: claude-code`,
-      );
-      mockDownloadGitHubDirectory.mockResolvedValue({
-        dir: cookbookDir,
-        tempRoot,
-      });
+        );
+      };
 
       // Mock existing compose
       server.use(
@@ -2375,19 +2398,16 @@ agents:
     });
 
     it("should allow overwrite with --yes flag when agent exists (non-interactive)", async () => {
-      const tempRoot = path.join(tempDir, "github-download");
-      const cookbookDir = createMockCookbookDir(
-        tempRoot,
-        "tutorials/101-intro",
-        `version: "1.0"
+      onGitCheckout = (cwd) => {
+        createMockCookbookDir(
+          cwd,
+          "tutorials/101-intro",
+          `version: "1.0"
 agents:
   intro:
     framework: claude-code`,
-      );
-      mockDownloadGitHubDirectory.mockResolvedValue({
-        dir: cookbookDir,
-        tempRoot,
-      });
+        );
+      };
 
       // Mock existing compose for the name check
       server.use(
@@ -2436,19 +2456,16 @@ agents:
     });
 
     it("should not prompt when agent does not exist", async () => {
-      const tempRoot = path.join(tempDir, "github-download");
-      const cookbookDir = createMockCookbookDir(
-        tempRoot,
-        "tutorials/101-intro",
-        `version: "1.0"
+      onGitCheckout = (cwd) => {
+        createMockCookbookDir(
+          cwd,
+          "tutorials/101-intro",
+          `version: "1.0"
 agents:
   new-agent:
     framework: claude-code`,
-      );
-      mockDownloadGitHubDirectory.mockResolvedValue({
-        dir: cookbookDir,
-        tempRoot,
-      });
+        );
+      };
 
       server.use(
         http.get("http://localhost:3000/api/agent/composes", () => {
@@ -2490,19 +2507,16 @@ agents:
 
   describe("--json option with GitHub URL", () => {
     it("should output JSON result for GitHub URL compose", async () => {
-      const tempRoot = path.join(tempDir, "github-download");
-      const cookbookDir = createMockCookbookDir(
-        tempRoot,
-        "tutorials/101-intro",
-        `version: "1.0"
+      onGitCheckout = (cwd) => {
+        createMockCookbookDir(
+          cwd,
+          "tutorials/101-intro",
+          `version: "1.0"
 agents:
   intro:
     framework: claude-code`,
-      );
-      mockDownloadGitHubDirectory.mockResolvedValue({
-        dir: cookbookDir,
-        tempRoot,
-      });
+        );
+      };
 
       server.use(
         http.get("http://localhost:3000/api/agent/composes", () => {
@@ -2553,19 +2567,16 @@ agents:
     });
 
     it("should suppress intermediate output for GitHub URL in JSON mode", async () => {
-      const tempRoot = path.join(tempDir, "github-download");
-      const cookbookDir = createMockCookbookDir(
-        tempRoot,
-        "tutorials/101-intro",
-        `version: "1.0"
+      onGitCheckout = (cwd) => {
+        createMockCookbookDir(
+          cwd,
+          "tutorials/101-intro",
+          `version: "1.0"
 agents:
   intro:
     framework: claude-code`,
-      );
-      mockDownloadGitHubDirectory.mockResolvedValue({
-        dir: cookbookDir,
-        tempRoot,
-      });
+        );
+      };
 
       server.use(
         http.get("http://localhost:3000/api/agent/composes", () => {
@@ -2608,14 +2619,10 @@ agents:
     });
 
     it("should output JSON error for GitHub URL failures", async () => {
-      // Mock downloadGitHubDirectory to return an empty directory (no vm0.yaml)
-      const tempRoot = path.join(tempDir, "github-download");
-      const emptyDir = path.join(tempRoot, "tutorials/101-intro");
-      mkdirSync(emptyDir, { recursive: true });
-      mockDownloadGitHubDirectory.mockResolvedValue({
-        dir: emptyDir,
-        tempRoot,
-      });
+      // Configure git checkout to create directory without vm0.yaml
+      onGitCheckout = (cwd) => {
+        mkdirSync(path.join(cwd, "tutorials/101-intro"), { recursive: true });
+      };
 
       await expect(async () => {
         await composeCommand.parseAsync([
