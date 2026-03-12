@@ -1,6 +1,7 @@
 // Root layout for the web application
 import type { Metadata } from "next";
 import Script from "next/script";
+import { Suspense } from "react";
 import {
   Noto_Sans,
   Fira_Code,
@@ -245,10 +246,12 @@ export default function RootLayout({
               }),
             }}
           />
-          <TermlyCMP
-            websiteUUID="058a3478-08ac-4f2f-a9c4-5b357bbe7433"
-            autoBlock
-          />
+          <Suspense>
+            <TermlyCMP
+              websiteUUID="058a3478-08ac-4f2f-a9c4-5b357bbe7433"
+              autoBlock
+            />
+          </Suspense>
           <ThemeProvider>{children}</ThemeProvider>
           <Script
             src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
