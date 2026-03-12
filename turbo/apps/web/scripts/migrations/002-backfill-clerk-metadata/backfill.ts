@@ -1,11 +1,10 @@
 #!/usr/bin/env tsx
 
 /**
- * Backfill Clerk metadata for existing scopes and members.
+ * Backfill Clerk metadata for existing scopes.
  *
  * Phase 1 of the Scope → Clerk migration: writes scope `tier` to Clerk org
- * publicMetadata, and member preferences (timezone, notifyEmail, notifySlack)
- * to Clerk membership publicMetadata.
+ * publicMetadata.
  *
  * Usage:
  *   tsx scripts/migrations/002-backfill-clerk-metadata/backfill.ts [--migrate]
@@ -17,11 +16,10 @@
 
 import { parseArgs } from "node:util";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq, asc } from "drizzle-orm";
+import { asc } from "drizzle-orm";
 import postgres from "postgres";
 
 import { scopes } from "../../../src/db/schema/scope";
-import { scopeMembers } from "../../../src/db/schema/scope-member";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,11 +37,6 @@ interface ClerkOrganizationsApi {
     orgId: string,
     params: { publicMetadata: Record<string, unknown> },
   ) => Promise<unknown>;
-  updateOrganizationMembershipMetadata: (params: {
-    organizationId: string;
-    userId: string;
-    publicMetadata: Record<string, unknown>;
-  }) => Promise<unknown>;
 }
 
 interface ClerkClient {
@@ -167,91 +160,6 @@ async function backfillScopeTiers(
 }
 
 // ---------------------------------------------------------------------------
-// Backfill: Member preferences
-// ---------------------------------------------------------------------------
-
-async function backfillMemberPreferences(
-  db: ReturnType<typeof drizzle>,
-  client: ClerkClient | null,
-): Promise<Stats> {
-  console.log("\n--- Backfilling member preferences ---\n");
-
-  const members = await db
-    .select({
-      memberId: scopeMembers.id,
-      userId: scopeMembers.userId,
-      timezone: scopeMembers.timezone,
-      notifyEmail: scopeMembers.notifyEmail,
-      notifySlack: scopeMembers.notifySlack,
-      orgId: scopes.orgId,
-      scopeSlug: scopes.slug,
-    })
-    .from(scopeMembers)
-    .innerJoin(scopes, eq(scopeMembers.scopeId, scopes.id))
-    .orderBy(asc(scopeMembers.createdAt));
-
-  // Filter to members with non-default preferences
-  const membersWithPrefs = members.filter(
-    (m) =>
-      m.timezone !== null || m.notifyEmail !== false || m.notifySlack !== true,
-  );
-
-  const total = membersWithPrefs.length;
-  console.log(
-    `Found ${members.length} member(s), ${total} with non-default preferences\n`,
-  );
-
-  const stats: Stats = { total, success: 0, failed: 0, skipped: 0 };
-
-  for (let i = 0; i < membersWithPrefs.length; i++) {
-    const member = membersWithPrefs[i]!;
-    const idx = `[${i + 1}/${total}]`;
-    const metadata: Record<string, unknown> = {};
-
-    if (member.timezone !== null) {
-      metadata.timezone = member.timezone;
-    }
-    if (member.notifyEmail !== false) {
-      metadata.notify_email = member.notifyEmail;
-    }
-    if (member.notifySlack !== true) {
-      metadata.notify_slack = member.notifySlack;
-    }
-
-    if (DRY_RUN) {
-      console.log(
-        `${idx} (dry-run) user "${member.userId}" in scope "${member.scopeSlug}" — would write ${JSON.stringify(metadata)}`,
-      );
-      stats.success++;
-      continue;
-    }
-
-    try {
-      await withRetry(() =>
-        client!.organizations.updateOrganizationMembershipMetadata({
-          organizationId: member.orgId,
-          userId: member.userId,
-          publicMetadata: metadata,
-        }),
-      );
-      await sleep(THROTTLE_MS);
-      console.log(
-        `${idx} ✓ user "${member.userId}" in "${member.scopeSlug}" → ${JSON.stringify(metadata)}`,
-      );
-      stats.success++;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(
-        `${idx} ✗ user "${member.userId}" in "${member.scopeSlug}" — ${message}`,
-      );
-      stats.failed++;
-    }
-  }
-
-  return stats;
-}
-
-// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -283,21 +191,17 @@ async function main() {
 
   try {
     const tierStats = await backfillScopeTiers(db, client);
-    const prefStats = await backfillMemberPreferences(db, client);
 
     console.log("\n=== Summary ===");
     console.log(
       `Scope tiers:      ${tierStats.success} ok, ${tierStats.failed} failed (${tierStats.total} total)`,
-    );
-    console.log(
-      `Member prefs:     ${prefStats.success} ok, ${prefStats.failed} failed (${prefStats.total} total)`,
     );
 
     if (DRY_RUN) {
       console.log("\n⚠ Dry run — no changes were made.");
     }
 
-    if (tierStats.failed > 0 || prefStats.failed > 0) {
+    if (tierStats.failed > 0) {
       process.exitCode = 1;
     }
   } finally {
