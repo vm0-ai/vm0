@@ -68,6 +68,16 @@ if (
   process.argv[1]?.endsWith("index.ts") ||
   process.argv[1]?.endsWith("vm0")
 ) {
+  // Handle EPIPE gracefully (e.g., `vm0 logs ... | head`)
+  process.stdout.on("error", (err) => {
+    if (err.code === "EPIPE") process.exit(0);
+    throw err;
+  });
+  process.stderr.on("error", (err) => {
+    if (err.code === "EPIPE") process.exit(0);
+    throw err;
+  });
+
   configureGlobalProxyFromEnv();
   program.parse();
 }
