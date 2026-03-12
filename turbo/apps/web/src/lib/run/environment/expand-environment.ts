@@ -119,9 +119,7 @@ export function expandEnvironmentFromCompose(
   }
 
   const servicePlaceholders = buildServicePlaceholders(
-    (firstAgent?.experimental_services as
-      | ExpandedServiceConfig[]
-      | undefined) ?? [],
+    firstAgent?.experimental_services ?? [],
   );
 
   // Process secrets if needed

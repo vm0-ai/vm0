@@ -399,9 +399,7 @@ function expandServiceConfigs(config: unknown): void {
       return {
         name,
         apis: serviceConfig.apis,
-        ...(serviceConfig.placeholders
-          ? { placeholders: serviceConfig.placeholders }
-          : {}),
+        placeholders: serviceConfig.placeholders,
       };
     });
   }

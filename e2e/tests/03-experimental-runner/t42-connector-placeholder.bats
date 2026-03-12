@@ -7,9 +7,6 @@
 # 2. Placeholder env vars replace secret values in the sandbox (with custom formats)
 # 3. Multiple connectors work together
 # 4. Proxy replaces placeholder tokens with real tokens (via test-connector API)
-#
-# All tests require test-connector setup so the connector is "connected" in the DB,
-# which is needed for placeholder injection via buildConnectorEnvVars.
 
 load '../../helpers/setup'
 
@@ -100,7 +97,6 @@ agents:
     experimental_services:
       - github
     environment:
-      GH_TOKEN: \${{ secrets.GH_TOKEN }}
       GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
 EOF
 
@@ -109,19 +105,18 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    # Verify GITHUB_TOKEN and GH_TOKEN are set to the connector placeholder.
+    # Verify GITHUB_TOKEN is set to the connector placeholder.
     # Full values are masked by the runner (***), so we compare sha256 hashes.
     local expected_gh_hash
     expected_gh_hash=$(echo -n "gho_vm0placeholder0000000000000000000000" | sha256sum | cut -d' ' -f1)
     run $CLI_COMMAND run "${AGENT_NAME}-github" \
         --artifact-name "$ARTIFACT_NAME-github" \
-        "echo \"GH_HASH=\$(echo -n \$GH_TOKEN | sha256sum | cut -d' ' -f1)\" && echo \"GITHUB_HASH=\$(echo -n \$GITHUB_TOKEN | sha256sum | cut -d' ' -f1)\""
+        "echo \"GITHUB_HASH=\$(echo -n \$GITHUB_TOKEN | sha256sum | cut -d' ' -f1)\""
 
     echo "$output"
     assert_success
     assert_output --partial "Run completed successfully"
 
-    assert_output --partial "GH_HASH=${expected_gh_hash}"
     assert_output --partial "GITHUB_HASH=${expected_gh_hash}"
 }
 
@@ -141,7 +136,7 @@ agents:
       - github
       - slack
     environment:
-      GH_TOKEN: \${{ secrets.GH_TOKEN }}
+      GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
       SLACK_TOKEN: \${{ secrets.SLACK_TOKEN }}
 EOF
 
@@ -157,13 +152,13 @@ EOF
     expected_slack_hash=$(echo -n "xoxb-0000-0000-vm0placeholder" | sha256sum | cut -d' ' -f1)
     run $CLI_COMMAND run "${AGENT_NAME}-multi" \
         --artifact-name "$ARTIFACT_NAME-multi" \
-        "echo \"GH_HASH=\$(echo -n \$GH_TOKEN | sha256sum | cut -d' ' -f1)\" && echo \"SLACK_HASH=\$(echo -n \$SLACK_TOKEN | sha256sum | cut -d' ' -f1)\""
+        "echo \"GITHUB_HASH=\$(echo -n \$GITHUB_TOKEN | sha256sum | cut -d' ' -f1)\" && echo \"SLACK_HASH=\$(echo -n \$SLACK_TOKEN | sha256sum | cut -d' ' -f1)\""
 
     echo "$output"
     assert_success
     assert_output --partial "Run completed successfully"
 
-    assert_output --partial "GH_HASH=${expected_gh_hash}"
+    assert_output --partial "GITHUB_HASH=${expected_gh_hash}"
     assert_output --partial "SLACK_HASH=${expected_slack_hash}"
 }
 

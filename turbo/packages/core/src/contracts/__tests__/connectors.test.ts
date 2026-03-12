@@ -102,7 +102,6 @@ describe("getServiceConfig", () => {
       "Bearer ${secrets.GITHUB_TOKEN}",
     );
     expect(config!.placeholders).toEqual({
-      GH_TOKEN: "gho_vm0placeholder0000000000000000000000",
       GITHUB_TOKEN: "gho_vm0placeholder0000000000000000000000",
     });
   });
