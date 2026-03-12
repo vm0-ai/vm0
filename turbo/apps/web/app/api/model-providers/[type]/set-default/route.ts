@@ -62,7 +62,8 @@ const router = tsr.router(modelProvidersSetDefaultContract, {
       };
     } catch (error) {
       if (isNotFound(error)) {
-        return createErrorResponse("NOT_FOUND", error.message);
+        console.error("Set default model provider failed:", error);
+        return createErrorResponse("NOT_FOUND", "Resource not found");
       }
       throw error;
     }

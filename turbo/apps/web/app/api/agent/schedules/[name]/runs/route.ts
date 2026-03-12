@@ -49,10 +49,11 @@ const router = tsr.router(scheduleRunsContract, {
       };
     } catch (error) {
       if (isNotFound(error)) {
+        console.error("List schedule runs failed:", error);
         return {
           status: 404 as const,
           body: {
-            error: { message: error.message, code: "NOT_FOUND" },
+            error: { message: "Resource not found", code: "NOT_FOUND" },
           },
         };
       }

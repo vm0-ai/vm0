@@ -54,8 +54,9 @@ export async function POST(
     return NextResponse.json(schedule, { status: 200 });
   } catch (error) {
     if (isNotFound(error)) {
+      console.error("Disable schedule failed:", error);
       return NextResponse.json(
-        { error: { message: error.message, code: "NOT_FOUND" } },
+        { error: { message: "Resource not found", code: "NOT_FOUND" } },
         { status: 404 },
       );
     }

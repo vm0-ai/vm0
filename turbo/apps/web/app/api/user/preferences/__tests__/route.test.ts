@@ -279,7 +279,7 @@ describe("PUT /api/user/preferences", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error.message).toContain("Invalid timezone");
+    expect(data.error.message).toBe("Invalid request");
   });
 
   it("should reject empty timezone", async () => {

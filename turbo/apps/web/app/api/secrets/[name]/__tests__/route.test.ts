@@ -166,7 +166,7 @@ describe("DELETE /api/secrets/:name - Delete Secret", () => {
 
     expect(response.status).toBe(404);
     expect(data.error.code).toBe("NOT_FOUND");
-    expect(data.error.message).toContain("NONEXISTENT_KEY");
+    expect(data.error.message).toBe("Resource not found");
   });
 
   it("should return 404 for other user's secret", async () => {

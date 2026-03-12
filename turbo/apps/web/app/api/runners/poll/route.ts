@@ -50,10 +50,8 @@ const router = tsr.router(runnersPollContract, {
       try {
         await validateRunnerGroupScope(auth.userId, group, auth.orgId);
       } catch (error) {
-        return createErrorResponse(
-          "FORBIDDEN",
-          error instanceof Error ? error.message : "Scope validation failed",
-        );
+        console.error("Runner scope validation failed:", error);
+        return createErrorResponse("FORBIDDEN", "Access denied");
       }
       whereConditions = [
         eq(runnerJobQueue.runnerGroup, group),

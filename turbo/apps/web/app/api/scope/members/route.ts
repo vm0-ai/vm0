@@ -38,20 +38,23 @@ export async function GET(request: Request) {
     return NextResponse.json(status);
   } catch (error) {
     if (isBadRequest(error)) {
+      console.error("Get scope members failed:", error);
       return NextResponse.json(
-        { error: { message: error.message, code: "BAD_REQUEST" } },
+        { error: { message: "Invalid request", code: "BAD_REQUEST" } },
         { status: 400 },
       );
     }
     if (isForbidden(error)) {
+      console.error("Get scope members failed:", error);
       return NextResponse.json(
-        { error: { message: error.message, code: "FORBIDDEN" } },
+        { error: { message: "Access denied", code: "FORBIDDEN" } },
         { status: 403 },
       );
     }
     if (isNotFound(error)) {
+      console.error("Get scope members failed:", error);
       return NextResponse.json(
-        { error: { message: error.message, code: "NOT_FOUND" } },
+        { error: { message: "Resource not found", code: "NOT_FOUND" } },
         { status: 404 },
       );
     }
@@ -95,20 +98,23 @@ export async function DELETE(request: Request) {
     });
   } catch (error) {
     if (isBadRequest(error)) {
+      console.error("Remove scope member failed:", error);
       return NextResponse.json(
-        { error: { message: error.message, code: "BAD_REQUEST" } },
+        { error: { message: "Invalid request", code: "BAD_REQUEST" } },
         { status: 400 },
       );
     }
     if (isForbidden(error)) {
+      console.error("Remove scope member failed:", error);
       return NextResponse.json(
-        { error: { message: error.message, code: "FORBIDDEN" } },
+        { error: { message: "Access denied", code: "FORBIDDEN" } },
         { status: 403 },
       );
     }
     if (isNotFound(error)) {
+      console.error("Remove scope member failed:", error);
       return NextResponse.json(
-        { error: { message: error.message, code: "NOT_FOUND" } },
+        { error: { message: "Resource not found", code: "NOT_FOUND" } },
         { status: 404 },
       );
     }

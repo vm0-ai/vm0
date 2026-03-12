@@ -93,7 +93,8 @@ const router = tsr.router(variablesByNameContract, {
       };
     } catch (error) {
       if (isNotFound(error)) {
-        return createErrorResponse("NOT_FOUND", error.message);
+        console.error("Delete variable failed:", error);
+        return createErrorResponse("NOT_FOUND", "Resource not found");
       }
       throw error;
     }

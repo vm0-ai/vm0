@@ -36,10 +36,11 @@ const router = tsr.router(composesListContract, {
       orgId = resolvedScope.orgId;
     } catch (error) {
       if (isNotFound(error)) {
+        console.error("List composes scope resolution failed:", error);
         return {
           status: 400 as const,
           body: {
-            error: { message: error.message, code: "BAD_REQUEST" },
+            error: { message: "Invalid request", code: "BAD_REQUEST" },
           },
         };
       }

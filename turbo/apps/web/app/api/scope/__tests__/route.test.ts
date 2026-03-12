@@ -77,7 +77,7 @@ describe("/api/scope", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error.message).toContain("--force");
+      expect(data.error.message).toBe("Invalid request");
     });
 
     it("should update scope slug with force flag", async () => {

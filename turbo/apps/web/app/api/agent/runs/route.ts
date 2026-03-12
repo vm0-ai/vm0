@@ -139,12 +139,12 @@ async function resolveCheckpointResume(
     const checkpointData = await validateCheckpoint(checkpointId, userId);
     agentComposeVersionId = checkpointData.agentComposeVersionId;
   } catch (error) {
+    console.error("Checkpoint validation failed:", error);
     return {
       status: 404 as const,
       body: {
         error: {
-          message:
-            error instanceof Error ? error.message : "Checkpoint not found",
+          message: "Resource not found",
           code: "NOT_FOUND",
         },
       },
@@ -175,11 +175,12 @@ async function resolveSessionContinue(
   try {
     sessionData = await validateAgentSession(sessionId, userId);
   } catch (error) {
+    console.error("Session validation failed:", error);
     return {
       status: 404 as const,
       body: {
         error: {
-          message: error instanceof Error ? error.message : "Session not found",
+          message: "Resource not found",
           code: "NOT_FOUND",
         },
       },
@@ -238,10 +239,10 @@ function isErrorResponse(
 function handleCreateRunError(error: unknown) {
   const dispatchError = error as RunDispatchError;
   if (dispatchError.runId) {
-    let errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error("Run dispatch failed:", error);
     const errorWithResult = error as { result?: { stderr?: string } };
     if (errorWithResult.result?.stderr) {
-      errorMessage = errorWithResult.result.stderr;
+      console.error("Run stderr:", errorWithResult.result.stderr);
     }
 
     return {
@@ -249,28 +250,31 @@ function handleCreateRunError(error: unknown) {
       body: {
         runId: dispatchError.runId,
         status: "failed" as const,
-        error: errorMessage,
+        error: "Run failed",
         createdAt: dispatchError.createdAt?.toISOString() ?? "",
       },
     };
   }
 
   if (isForbidden(error)) {
+    console.error("Create run forbidden:", error);
     return {
       status: 403 as const,
-      body: { error: { message: error.message, code: "FORBIDDEN" } },
+      body: { error: { message: "Access denied", code: "FORBIDDEN" } },
     };
   }
   if (isBadRequest(error)) {
+    console.error("Create run bad request:", error);
     return {
       status: 400 as const,
-      body: { error: { message: error.message, code: "BAD_REQUEST" } },
+      body: { error: { message: "Invalid request", code: "BAD_REQUEST" } },
     };
   }
   if (isNotFound(error)) {
+    console.error("Create run not found:", error);
     return {
       status: 404 as const,
-      body: { error: { message: error.message, code: "NOT_FOUND" } },
+      body: { error: { message: "Resource not found", code: "NOT_FOUND" } },
     };
   }
 

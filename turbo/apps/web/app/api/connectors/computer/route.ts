@@ -40,10 +40,12 @@ const router = tsr.router(computerConnectorContract, {
       return { status: 200 as const, body: result };
     } catch (error) {
       if (isBadRequest(error)) {
-        return createErrorResponse("BAD_REQUEST", error.message);
+        console.error("Create computer connector failed:", error);
+        return createErrorResponse("BAD_REQUEST", "Invalid request");
       }
       if (isConflict(error)) {
-        return createErrorResponse("CONFLICT", error.message);
+        console.error("Create computer connector failed:", error);
+        return createErrorResponse("CONFLICT", "Resource conflict");
       }
       throw error;
     }

@@ -55,18 +55,20 @@ const router = tsr.router(schedulesMainContract, {
       };
     } catch (error) {
       if (isNotFound(error)) {
+        console.error("Deploy schedule failed:", error);
         return {
           status: 404 as const,
           body: {
-            error: { message: error.message, code: "NOT_FOUND" },
+            error: { message: "Resource not found", code: "NOT_FOUND" },
           },
         };
       }
       if (isBadRequest(error)) {
+        console.error("Deploy schedule failed:", error);
         return {
           status: 400 as const,
           body: {
-            error: { message: error.message, code: "BAD_REQUEST" },
+            error: { message: "Invalid request", code: "BAD_REQUEST" },
           },
         };
       }

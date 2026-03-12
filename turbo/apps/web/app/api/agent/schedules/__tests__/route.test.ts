@@ -192,7 +192,7 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error.message).toContain("timezone");
+      expect(data.error.message).toBe("Invalid request");
     });
 
     it("should reject missing composeId", async () => {
@@ -308,7 +308,7 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
       const data = await response.json();
 
       expect(response.status).toBe(404);
-      expect(data.error.message).toContain("compose");
+      expect(data.error.message).toBe("Resource not found");
     });
 
     it("should allow scheduling another user's compose (cross-scope sharing)", async () => {
@@ -677,8 +677,7 @@ describe("POST /api/agent/schedules - Platform Configuration Validation", () => 
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error.message).toContain("Missing required configuration");
-    expect(data.error.message).toContain("MISSING_SECRET");
+    expect(data.error.message).toBe("Invalid request");
   });
 
   it("should accept schedule when required vars exist in platform", async () => {
@@ -752,7 +751,6 @@ describe("POST /api/agent/schedules - Platform Configuration Validation", () => 
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error.message).toContain("Missing required configuration");
-    expect(data.error.message).toContain("MISSING_VAR");
+    expect(data.error.message).toBe("Invalid request");
   });
 });

@@ -233,15 +233,13 @@ const router = tsr.router(cronCleanupSandboxesContract, {
             reason: timeoutReason,
           });
         } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : "Unknown error";
-          log.error(`Failed to cleanup run ${run.id}: ${errorMessage}`);
+          console.error(`Failed to cleanup run ${run.id}:`, error);
 
           results.push({
             runId: run.id,
             sandboxId: run.sandboxId,
             status: "error",
-            error: errorMessage,
+            error: "Operation failed",
           });
         }
       }
@@ -294,9 +292,7 @@ const router = tsr.router(cronCleanupSandboxesContract, {
           );
           composeJobsCleaned++;
         } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : "Unknown error";
-          log.error(`Failed to cleanup compose job ${job.id}: ${errorMessage}`);
+          console.error(`Failed to cleanup compose job ${job.id}:`, error);
           composeJobErrors++;
         }
       }

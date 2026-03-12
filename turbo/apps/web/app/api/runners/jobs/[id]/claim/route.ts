@@ -90,10 +90,8 @@ const router = tsr.router(runnersJobClaimContract, {
           auth.orgId,
         );
       } catch (error) {
-        return createErrorResponse(
-          "FORBIDDEN",
-          error instanceof Error ? error.message : "Scope validation failed",
-        );
+        console.error("Runner scope validation failed:", error);
+        return createErrorResponse("FORBIDDEN", "Access denied");
       }
     }
 

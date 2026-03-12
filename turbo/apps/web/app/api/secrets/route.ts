@@ -97,7 +97,8 @@ const router = tsr.router(secretsMainContract, {
       };
     } catch (error) {
       if (isBadRequest(error)) {
-        return createErrorResponse("BAD_REQUEST", error.message);
+        console.error("Set secret failed:", error);
+        return createErrorResponse("BAD_REQUEST", "Invalid request");
       }
       throw error;
     }
