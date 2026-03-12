@@ -848,7 +848,6 @@ function applyResolutionDefaults(
   artifactVersion: string | undefined;
   memoryName: string | undefined;
   vars: Record<string, string> | undefined;
-  secretNames: string[] | undefined;
   volumeVersions: Record<string, string> | undefined;
   resumeSession: ResumeSession;
   resumeArtifact: ArtifactSnapshot | undefined;
@@ -873,7 +872,6 @@ function applyResolutionDefaults(
     artifactVersion,
     memoryName: params.memoryName || resolution.memoryName,
     vars: params.vars || resolution.vars,
-    secretNames: resolution.secretNames,
     volumeVersions: params.volumeVersions || resolution.volumeVersions,
     resumeSession: {
       sessionId: resolution.conversationData.cliAgentSessionId,
@@ -1008,7 +1006,6 @@ export async function buildExecutionContext(
   let artifactVersion: string | undefined = params.artifactVersion;
   let vars: Record<string, string> | undefined = params.vars;
   let secrets: Record<string, string> | undefined = params.secrets;
-  let secretNames: string[] | undefined;
   let memoryName: string | undefined = params.memoryName;
   let volumeVersions: Record<string, string> | undefined =
     params.volumeVersions;
@@ -1033,7 +1030,6 @@ export async function buildExecutionContext(
     artifactVersion = defaults.artifactVersion;
     memoryName = defaults.memoryName;
     vars = defaults.vars;
-    secretNames = defaults.secretNames;
     volumeVersions = defaults.volumeVersions;
     resumeSession = defaults.resumeSession;
     resumeArtifact = defaults.resumeArtifact;
@@ -1047,11 +1043,6 @@ export async function buildExecutionContext(
     agentCompose =
       params.agentCompose ??
       (await loadAgentComposeForNewRun(agentComposeVersionId));
-
-    // For new runs, derive secretNames from provided secrets
-    if (secrets) {
-      secretNames = Object.keys(secrets);
-    }
   }
 
   // Validate required fields
@@ -1128,7 +1119,6 @@ export async function buildExecutionContext(
       prompt: params.prompt,
       vars,
       secrets: mergedSecrets,
-      secretNames,
       sandboxToken: params.sandboxToken,
       artifactName,
       artifactVersion,
