@@ -125,7 +125,48 @@ class TestRequestHandler:
         assert flow.metadata.get("original_url") == "https://api.anthropic.com/v1/messages"
 
     def test_service_match_calls_handler(self, tmp_path):
-        """When URL matches a service, handle_service_request is called."""
+        """When URL matches a service and firewall allows, handle_service_request is called."""
+        registry = {
+            "vms": {
+                "10.200.0.5": {
+                    "runId": "run-conn-1",
+                    "sandboxToken": "tok-conn",
+                    "firewallRules": [
+                        {"domain": "*.github.com", "action": "ALLOW"},
+                        {"final": "DENY"},
+                    ],
+                    "networkLogPath": str(tmp_path / "net.jsonl"),
+                    "services": {
+                        "apis": [
+                            {"base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}}},
+                        ]
+                    },
+                    "encryptedSecrets": "iv:tag:data",
+                }
+            }
+        }
+        reg_path = tmp_path / "registry.json"
+        reg_path.write_text(json.dumps(registry))
+
+        flow = _make_http_flow(
+            client_ip="10.200.0.5", host="api.github.com", path="/repos"
+        )
+
+        with (
+            patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
+            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(mitm_addon, "handle_service_request") as mock_handler,
+        ):
+            mitm_addon.request(flow)
+
+        mock_handler.assert_called_once()
+        call_args = mock_handler.call_args
+        assert call_args[0][0] is flow
+        assert call_args[0][1]["base"] == "https://api.github.com"
+
+    def test_firewall_denies_service_domain(self, tmp_path):
+        """Firewall DENY blocks service-matched domains — firewall is the security boundary."""
         registry = {
             "vms": {
                 "10.200.0.5": {
@@ -157,10 +198,11 @@ class TestRequestHandler:
         ):
             mitm_addon.request(flow)
 
-        mock_handler.assert_called_once()
-        call_args = mock_handler.call_args
-        assert call_args[0][0] is flow
-        assert call_args[0][1]["base"] == "https://api.github.com"
+        # Firewall should block before service matching
+        mock_handler.assert_not_called()
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        assert flow.metadata["firewall_action"] == "DENY"
 
     def test_no_rules_allows_through(self, registry_file):
         """VM with no firewall rules allows all requests through."""

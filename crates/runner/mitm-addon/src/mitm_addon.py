@@ -352,8 +352,12 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
 
 def request(flow: http.HTTPFlow) -> None:
     """
-    Intercept request and apply firewall rules.
-    For MITM mode, rewrites allowed requests to VM0 Proxy.
+    Intercept request: enforce firewall rules, then inject service auth headers.
+
+    Order:
+    1. VM0 API auto-allow (agent must always reach the platform)
+    2. Firewall rules (security boundary — nothing bypasses this)
+    3. Service match (inject auth headers for allowed requests)
     """
     # Track request start time
     _request_start_times[flow.id] = time.time()
@@ -381,21 +385,12 @@ def request(flow: http.HTTPFlow) -> None:
     flow.metadata["vm_client_ip"] = client_ip
     flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
 
-    # Check service match BEFORE firewall rules.
-    # Service requests go directly to the target API with real tokens injected.
-    vm_services = vm_info.get("services")
-    if vm_services:
-        original_url = get_original_url(flow)
-        api_entry = match_service(original_url, vm_services)
-        if api_entry:
-            handle_service_request(flow, api_entry, vm_info)
-            return
-
     # Get target hostname
     hostname = flow.request.pretty_host.lower()
 
-    # Auto-allow VM0 API requests - the agent MUST be able to communicate with VM0
-    # This is checked before user firewall rules to ensure agent functionality
+    # --- Step 1: Auto-allow VM0 API requests ---
+    # The agent MUST be able to communicate with the platform.
+    # Checked before firewall rules to ensure agent functionality.
     api_url = get_api_url()
     if api_url:
         parsed_api = urllib.parse.urlparse(api_url)
@@ -404,18 +399,17 @@ def request(flow: http.HTTPFlow) -> None:
             ctx.log.info(f"[{run_id}] Auto-allow VM0 API: {hostname}")
             flow.metadata["firewall_action"] = "ALLOW"
             flow.metadata["firewall_rule"] = "vm0-api"
-            # Continue to skip rewrite check below
             flow.metadata["original_url"] = get_original_url(flow)
             return
 
-    # Evaluate firewall rules
+    # --- Step 2: Evaluate firewall rules (security boundary) ---
+    # Nothing bypasses the firewall — including service-matched requests.
     action, matched_rule = evaluate_rules(rules, hostname)
     flow.metadata["firewall_action"] = action
     flow.metadata["firewall_rule"] = matched_rule
 
     if action == "DENY":
         ctx.log.warn(f"[{run_id}] Firewall DENY: {hostname} (rule: {matched_rule})")
-        # Kill the flow and return error response
         flow.response = http.Response.make(
             403,
             b"Blocked by firewall",
@@ -423,7 +417,17 @@ def request(flow: http.HTTPFlow) -> None:
         )
         return
 
-    # Request is ALLOWED - pass through directly
+    # --- Step 3: Service match (only for allowed requests) ---
+    # Inject auth headers for configured API services.
+    vm_services = vm_info.get("services")
+    if vm_services:
+        original_url = get_original_url(flow)
+        api_entry = match_service(original_url, vm_services)
+        if api_entry:
+            handle_service_request(flow, api_entry, vm_info)
+            return
+
+    # Request is ALLOWED, no service match — pass through directly
     flow.metadata["original_url"] = get_original_url(flow)
     ctx.log.info(f"[{run_id}] Firewall ALLOW: {hostname}")
 
