@@ -46,7 +46,13 @@
       "glob": ">=10.5.0",
       "tar": ">=7.5.7",
       "@isaacs/brace-expansion": ">=5.0.1",
-      "axios": ">=1.13.5"
+      "axios": ">=1.13.5",
+      "dompurify": ">=3.3.2",
+      "js-yaml": ">=4.1.1",
+      "lodash": ">=4.17.23",
+      "lodash-es": ">=4.17.23",
+      "mdast-util-to-hast": ">=13.2.1",
+      "minimatch": ">=10.2.3"
     }
   },
   "packageManager": "pnpm@10.15.0",
