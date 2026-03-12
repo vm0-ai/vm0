@@ -147,10 +147,11 @@ export async function deleteInstallation(
   privateKeyBase64: string,
   installationId: string,
 ): Promise<void> {
+  const safeId = validateInstallationId(installationId);
   const jwt = createAppJWT(appId, privateKeyBase64);
 
   const res = await fetch(
-    `https://api.github.com/app/installations/${installationId}`,
+    `https://api.github.com/app/installations/${safeId}`,
     {
       method: "DELETE",
       headers: {
