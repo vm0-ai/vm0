@@ -78,7 +78,9 @@ export function createProxyToken(
 
   const key = getEncryptionKey();
   const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv(ALGORITHM, key, iv);
+  const cipher = createCipheriv(ALGORITHM, key, iv, {
+    authTagLength: AUTH_TAG_LENGTH,
+  });
 
   const plaintext = JSON.stringify(payload);
   const encrypted = Buffer.concat([
@@ -123,7 +125,9 @@ export function decryptProxyToken(
     const ciphertext = combined.subarray(IV_LENGTH + AUTH_TAG_LENGTH);
 
     const key = getEncryptionKey();
-    const decipher = createDecipheriv(ALGORITHM, key, iv);
+    const decipher = createDecipheriv(ALGORITHM, key, iv, {
+      authTagLength: AUTH_TAG_LENGTH,
+    });
     decipher.setAuthTag(authTag);
 
     const decrypted = Buffer.concat([

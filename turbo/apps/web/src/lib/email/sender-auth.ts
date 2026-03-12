@@ -69,17 +69,16 @@ function parseAuthenticationResults(
 ): AuthenticationResults {
   const lower = headerValue.toLowerCase();
 
-  function extractResult(method: string): AuthResult {
-    const regex = new RegExp(`${method}\\s*=\\s*(\\w+)`);
-    const match = lower.match(regex);
+  function extractResult(method: RegExp): AuthResult {
+    const match = lower.match(method);
     if (!match?.[1]) return null;
     return isAuthResultValue(match[1]) ? match[1] : null;
   }
 
   return {
-    dmarc: extractResult("dmarc"),
-    dkim: extractResult("dkim"),
-    spf: extractResult("spf"),
+    dmarc: extractResult(/dmarc\s*=\s*(\w+)/),
+    dkim: extractResult(/dkim\s*=\s*(\w+)/),
+    spf: extractResult(/spf\s*=\s*(\w+)/),
   };
 }
 

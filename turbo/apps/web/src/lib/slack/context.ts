@@ -649,6 +649,8 @@ export async function formatCurrentMessageFiles(
  */
 export function extractMessageContent(text: string, botUserId: string): string {
   // Slack mentions look like: <@U12345678> message
-  const mentionPattern = new RegExp(`^<@${botUserId}>\\s*`, "i");
+  // Escape botUserId to prevent ReDoS from non-literal RegExp
+  const escapedId = botUserId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const mentionPattern = new RegExp(`^<@${escapedId}>\\s*`, "i");
   return text.replace(mentionPattern, "").trim();
 }
