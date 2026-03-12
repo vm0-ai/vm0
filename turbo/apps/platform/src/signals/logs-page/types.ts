@@ -13,6 +13,8 @@ export interface LogEntry {
   framework: string | null;
   status: LogStatus;
   createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
 }
 
 export interface LogsListResponse {

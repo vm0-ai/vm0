@@ -71,6 +71,8 @@ export const platformLogsHandlers = [
         framework: log.framework,
         status: log.status,
         createdAt: log.createdAt,
+        startedAt: log.startedAt,
+        completedAt: log.completedAt,
       })),
       pagination: {
         hasMore,

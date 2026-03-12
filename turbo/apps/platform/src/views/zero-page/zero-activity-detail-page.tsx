@@ -1,6 +1,11 @@
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
-import { IconArrowLeft, IconSearch, IconLoader2 } from "@tabler/icons-react";
+import {
+  IconArrowLeft,
+  IconSearch,
+  IconLoader2,
+  IconDownload,
+} from "@tabler/icons-react";
 import { Button, Input } from "@vm0/ui";
 import type { LogStatus, AgentEvent } from "../../signals/logs-page/types.ts";
 import { StatusBadge } from "../logs-page/status-badge.tsx";
@@ -16,6 +21,8 @@ import {
   groupedMessageMatchesSearch,
 } from "../logs-page/log-detail/utils.ts";
 import { GroupedMessageCard } from "../logs-page/components/grouped-message-card.tsx";
+import { StatusDot } from "../logs-page/components/status-dot.tsx";
+import { Markdown } from "../components/markdown.tsx";
 
 // ---------------------------------------------------------------------------
 // Component
@@ -65,12 +72,12 @@ export function ZeroActivityDetailPage({
     groupedMessageMatchesSearch(m, stepSearch.trim()),
   );
 
+  const prompt = detail?.prompt ?? "";
   const status: LogStatus = detail?.status ?? "running";
   const time = detail ? formatLogTime(detail.createdAt) : "";
   const duration = detail
     ? formatDuration(detail.startedAt, detail.completedAt)
     : undefined;
-
   return (
     <div className="h-full flex flex-col min-h-0">
       <div className="flex-1 flex flex-col min-h-0 overflow-auto">
@@ -92,11 +99,7 @@ export function ZeroActivityDetailPage({
           <div className="zero-card shrink-0 px-4 py-3">
             <div className="flex flex-wrap items-center gap-y-2">
               <h2 className="text-base font-semibold tracking-tight text-foreground truncate min-w-0 pr-3">
-                {detail?.prompt
-                  ? detail.prompt.length > 80
-                    ? `${detail.prompt.slice(0, 80)}...`
-                    : detail.prompt
-                  : agentName}
+                {agentName}
               </h2>
               <span
                 className="w-px h-3.5 shrink-0 bg-border self-center"
@@ -106,14 +109,6 @@ export function ZeroActivityDetailPage({
                 <div className="flex items-center gap-1.5 pl-3 pr-3">
                   <span className="text-muted-foreground shrink-0">Status</span>
                   <StatusBadge status={status} zeroStyle />
-                </div>
-                <span
-                  className="w-px h-3.5 shrink-0 bg-border self-center"
-                  aria-hidden
-                />
-                <div className="flex items-center gap-1.5 pl-3 pr-3">
-                  <span className="text-muted-foreground shrink-0">Agent</span>
-                  <span className="text-foreground truncate">{agentName}</span>
                 </div>
                 <span
                   className="w-px h-3.5 shrink-0 bg-border self-center"
@@ -138,6 +133,16 @@ export function ZeroActivityDetailPage({
                   </span>
                 </div>
               </div>
+              <div className="flex-1 min-w-0" />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 shrink-0 gap-1 rounded-md text-sm text-muted-foreground hover:text-foreground ml-auto"
+                onClick={() => downloadCsv(events, detail?.id ?? "activity")}
+              >
+                <IconDownload size={14} stroke={1.5} />
+                Download
+              </Button>
             </div>
           </div>
 
@@ -171,6 +176,12 @@ export function ZeroActivityDetailPage({
               </div>
 
               <div>
+                {prompt.trim().length > 0 && (
+                  <PromptCard
+                    prompt={prompt}
+                    showConnector={messages.length > 0}
+                  />
+                )}
                 {eventsLoadable.state === "loading" && events.length === 0 ? (
                   <div className="flex justify-center py-8">
                     <IconLoader2
@@ -179,7 +190,7 @@ export function ZeroActivityDetailPage({
                       className="animate-spin text-muted-foreground"
                     />
                   </div>
-                ) : messages.length === 0 ? (
+                ) : messages.length === 0 && prompt.trim().length === 0 ? (
                   <div className="py-8 text-center text-muted-foreground">
                     No events available
                   </div>
@@ -198,6 +209,89 @@ export function ZeroActivityDetailPage({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function escapeCsvField(value: string): string {
+  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function downloadCsv(events: AgentEvent[], logId: string) {
+  const header = "sequenceNumber,eventType,eventData,createdAt";
+  const rows = events.map((e) =>
+    [
+      String(e.sequenceNumber),
+      escapeCsvField(e.eventType),
+      escapeCsvField(JSON.stringify(e.eventData)),
+      escapeCsvField(e.createdAt),
+    ].join(","),
+  );
+  const csv = [header, ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${logId}-logs.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function summarizePrompt(prompt: string): string {
+  const lines = prompt.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (
+      line.length > 0 &&
+      !line.startsWith("#") &&
+      !line.startsWith("---") &&
+      !line.startsWith("- ") &&
+      !line.startsWith("[file]")
+    ) {
+      return line.length > 80 ? `${line.slice(0, 77)}...` : line;
+    }
+  }
+  const first = lines.find((l) => l.trim().length > 0)?.trim() ?? "";
+  return first.length > 80 ? `${first.slice(0, 77)}...` : first;
+}
+
+function PromptCard({
+  prompt,
+  showConnector,
+}: {
+  prompt: string;
+  showConnector: boolean;
+}) {
+  const summary = summarizePrompt(prompt);
+
+  return (
+    <div className="relative">
+      {showConnector && (
+        <div
+          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
+          aria-hidden="true"
+        />
+      )}
+      <details className="group relative py-2">
+        <summary className="cursor-pointer list-none">
+          <div className="flex gap-2 items-center">
+            <StatusDot variant="neutral" />
+            <span className="font-semibold text-sm text-foreground shrink-0">
+              Prompt
+            </span>
+            <span className="text-sm text-muted-foreground truncate">
+              {summary}
+            </span>
+          </div>
+        </summary>
+        <div className="absolute left-[2px] top-[2.25rem] bottom-0 w-[1px] bg-border/70 group-open:block hidden" />
+        <div className="ml-[18px] mt-2">
+          <Markdown source={prompt} />
+        </div>
+      </details>
     </div>
   );
 }

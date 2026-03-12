@@ -11,6 +11,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  cn,
 } from "@vm0/ui";
 
 const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100] as const;
@@ -22,6 +23,10 @@ interface PaginationProps {
   hasNext: boolean;
   hasPrev: boolean;
   isLoading?: boolean;
+  /** Override text/button styling for the label spans. */
+  labelClassName?: string;
+  /** Override styling for navigation buttons. */
+  buttonClassName?: string;
   onNextPage: () => void;
   onPrevPage: () => void;
   onForwardTwoPages: () => void;
@@ -36,6 +41,8 @@ export function Pagination({
   hasNext,
   hasPrev,
   isLoading = false,
+  labelClassName,
+  buttonClassName,
   onNextPage,
   onPrevPage,
   onForwardTwoPages,
@@ -53,7 +60,12 @@ export function Pagination({
     <div className="flex flex-wrap items-center justify-end gap-4 sm:gap-8">
       {/* Rows per page selector */}
       <div className="flex items-center gap-2">
-        <span className="pr-2 text-sm font-medium text-foreground whitespace-nowrap">
+        <span
+          className={cn(
+            "pr-2 text-sm font-medium text-foreground whitespace-nowrap",
+            labelClassName,
+          )}
+        >
           Rows per page
         </span>
         <Select
@@ -74,7 +86,12 @@ export function Pagination({
       </div>
 
       {/* Page indicator */}
-      <span className="pr-2 text-sm font-medium text-foreground whitespace-nowrap">
+      <span
+        className={cn(
+          "pr-2 text-sm font-medium text-foreground whitespace-nowrap",
+          labelClassName,
+        )}
+      >
         Page {currentPage}
         {totalPages !== undefined ? ` of ${totalPages}` : ""}
       </span>
@@ -85,7 +102,7 @@ export function Pagination({
         <Button
           variant="outline"
           size="icon"
-          className="size-7 bg-card"
+          className={cn("size-7 bg-card", buttonClassName)}
           onClick={onBackTwoPages}
           disabled={!canGoBackTwo}
         >
@@ -95,7 +112,7 @@ export function Pagination({
         <Button
           variant="outline"
           size="icon"
-          className="size-7 bg-card"
+          className={cn("size-7 bg-card", buttonClassName)}
           onClick={onPrevPage}
           disabled={!hasPrev}
         >
@@ -105,7 +122,7 @@ export function Pagination({
         <Button
           variant="outline"
           size="icon"
-          className="size-7 bg-card"
+          className={cn("size-7 bg-card", buttonClassName)}
           onClick={onNextPage}
           disabled={!hasNext || isLoading}
         >
@@ -115,7 +132,7 @@ export function Pagination({
         <Button
           variant="outline"
           size="icon"
-          className="size-7 bg-card"
+          className={cn("size-7 bg-card", buttonClassName)}
           onClick={onForwardTwoPages}
           disabled={!hasNext || isLoading}
         >

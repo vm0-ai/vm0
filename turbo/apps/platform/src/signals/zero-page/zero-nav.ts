@@ -37,3 +37,13 @@ export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
   const newPath = id === "chat" ? "/zero" : `/zero/${id}`;
   set(updatePathname$, newPath);
 });
+
+/**
+ * Sub-path segment under the current tab, e.g. `/zero/activity/:sub`.
+ * Returns null when there is no sub-segment.
+ */
+export const zeroTabSub$ = computed((get): string | null => {
+  const path = get(pathname$);
+  const parts = path.replace(/^\/zero\/?/, "").split("/");
+  return parts[1] || null;
+});

@@ -36,6 +36,7 @@ interface LogsQuery {
   scope?: string;
   agent?: string;
   search?: string;
+  status?: PlatformLogStatus;
   cursor?: string;
   limit?: number;
 }
@@ -92,6 +93,9 @@ async function getTotalCount(
 ): Promise<number> {
   const conditions: SQL[] = [eq(agentRuns.userId, userId)];
   conditions.push(...buildAgentFilterConditions(query, scopeOrgId));
+  if (query.status) {
+    conditions.push(eq(agentRuns.status, query.status));
+  }
 
   const needsComposeJoin = !!(query.name || query.agent || query.search);
 
@@ -175,11 +179,17 @@ const router = tsr.router(platformLogsListContract, {
 
     conditions.push(...buildAgentFilterConditions(query, scopeOrgId));
 
+    if (query.status) {
+      conditions.push(eq(agentRuns.status, query.status));
+    }
+
     const runs = await globalThis.services.db
       .select({
         id: agentRuns.id,
         status: agentRuns.status,
         createdAt: agentRuns.createdAt,
+        startedAt: agentRuns.startedAt,
+        completedAt: agentRuns.completedAt,
         composeName: agentComposes.name,
         orgId: agentComposes.orgId,
         sessionId: conversations.cliAgentSessionId,
@@ -243,6 +253,8 @@ const router = tsr.router(platformLogsListContract, {
           framework: extractFramework(run.composeContent),
           status: run.status as PlatformLogStatus,
           createdAt: run.createdAt.toISOString(),
+          startedAt: run.startedAt?.toISOString() ?? null,
+          completedAt: run.completedAt?.toISOString() ?? null,
         })),
         pagination: {
           hasMore,

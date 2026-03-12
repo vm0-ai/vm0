@@ -46,6 +46,10 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupSelectOrgPage$),
   },
   {
+    path: "/zero/:tab/:sub",
+    setup: setupAuthPageWrapper(setupZeroPage$),
+  },
+  {
     path: "/zero/:tab",
     setup: setupAuthPageWrapper(setupZeroPage$),
   },

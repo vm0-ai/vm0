@@ -4,10 +4,10 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
-  fetchZeroActivityLogs$,
-  zeroActivityLogs$,
-  zeroActivityHasMore$,
-  setZeroActivitySearch$,
+  zeroActivityData$,
+  zeroActivityHasPrev$,
+  initZeroActivityAgentName$,
+  setZeroActivityFilter$,
   setZeroActivitySelectedLogId$,
   zeroActivityDetail$,
   logStatusToActivityStatus,
@@ -74,7 +74,7 @@ async function setup() {
 }
 
 describe("zero-activity signals", () => {
-  describe("fetchZeroActivityLogs$", () => {
+  describe("zeroActivityData$", () => {
     it("should fetch logs for the default agent", async () => {
       server.use(
         http.get("http://localhost:3000/api/platform/logs", ({ request }) => {
@@ -94,12 +94,12 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroActivityLogs$);
+      await context.store.set(initZeroActivityAgentName$);
 
-      const logs = context.store.get(zeroActivityLogs$);
-      expect(logs).toHaveLength(3);
-      expect(logs[0]?.id).toBe("log-1");
-      expect(logs[0]?.status).toBe("completed");
+      const response = await context.store.get(zeroActivityData$);
+      expect(response.data).toHaveLength(3);
+      expect(response.data[0]?.id).toBe("log-1");
+      expect(response.data[0]?.status).toBe("completed");
     });
 
     it("should handle empty response", async () => {
@@ -113,10 +113,10 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroActivityLogs$);
+      await context.store.set(initZeroActivityAgentName$);
 
-      const logs = context.store.get(zeroActivityLogs$);
-      expect(logs).toHaveLength(0);
+      const response = await context.store.get(zeroActivityData$);
+      expect(response.data).toHaveLength(0);
     });
 
     it("should throw on API error", async () => {
@@ -127,12 +127,14 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await expect(context.store.set(fetchZeroActivityLogs$)).rejects.toThrow(
+      await context.store.set(initZeroActivityAgentName$);
+
+      await expect(context.store.get(zeroActivityData$)).rejects.toThrow(
         "Failed to fetch logs",
       );
     });
 
-    it("should report hasMore from pagination", async () => {
+    it("should report hasPrev as false on first page", async () => {
       server.use(
         http.get("http://localhost:3000/api/platform/logs", () => {
           return HttpResponse.json({
@@ -147,19 +149,19 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroActivityLogs$);
+      await context.store.set(initZeroActivityAgentName$);
 
-      expect(context.store.get(zeroActivityHasMore$)).toBeTruthy();
+      expect(context.store.get(zeroActivityHasPrev$)).toBe(false);
     });
   });
 
-  describe("setZeroActivitySearch$", () => {
-    it("should filter logs by search term", async () => {
-      const captured: { search: string | null } = { search: null };
+  describe("setZeroActivityFilter$", () => {
+    it("should pass status filter to API query params", async () => {
+      const captured: { status: string | null } = { status: null };
       server.use(
         http.get("http://localhost:3000/api/platform/logs", ({ request }) => {
           const url = new URL(request.url);
-          captured.search = url.searchParams.get("search");
+          captured.status = url.searchParams.get("status");
           return HttpResponse.json({
             data: [],
             pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
@@ -168,9 +170,12 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await context.store.set(setZeroActivitySearch$, "test query");
+      await context.store.set(initZeroActivityAgentName$);
+      context.store.set(setZeroActivityFilter$, "status", "completed");
+      // The computed data$ will re-fetch with the new status param
+      await context.store.get(zeroActivityData$);
 
-      expect(captured.search).toBe("test query");
+      expect(captured.status).toBe("completed");
     });
   });
 
