@@ -1005,7 +1005,6 @@ export async function buildExecutionContext(
   let artifactName: string | undefined = params.artifactName;
   let artifactVersion: string | undefined = params.artifactVersion;
   let vars: Record<string, string> | undefined = params.vars;
-  let secrets: Record<string, string> | undefined = params.secrets;
   let memoryName: string | undefined = params.memoryName;
   let volumeVersions: Record<string, string> | undefined =
     params.volumeVersions;
@@ -1094,15 +1093,14 @@ export async function buildExecutionContext(
     platformSecrets,
     environment,
   } = secretsResult;
-  secrets = resolvedSecrets;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
   // Step 5: Merge platform secrets into secrets for client-side log masking
   // Platform secrets are server-stored user-level secrets and must be masked like CLI secrets
   // Priority: CLI --secrets > platform secrets
   const mergedSecrets = platformSecrets
-    ? { ...platformSecrets, ...secrets }
-    : secrets;
+    ? { ...platformSecrets, ...resolvedSecrets }
+    : resolvedSecrets;
 
   // Build experimental services manifest (base + auth entries for the runner)
   const experimentalServices =
