@@ -33,8 +33,6 @@ export const scopeResponseSchema = z.object({
   id: z.string(),
   slug: z.string(),
   tier: z.string().optional(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
 });
 
 export type ScopeResponse = z.infer<typeof scopeResponseSchema>;

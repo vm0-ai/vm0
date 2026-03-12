@@ -15,13 +15,10 @@ import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
 const log = logger("api:scope");
 
 function resolvedScopeToResponse(scope: ResolvedScope) {
-  const now = new Date().toISOString();
   return {
     id: scope.orgId,
     slug: scope.slug,
     tier: scope.tier,
-    createdAt: now,
-    updatedAt: now,
   };
 }
 
