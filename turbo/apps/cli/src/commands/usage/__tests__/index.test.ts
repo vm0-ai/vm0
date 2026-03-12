@@ -13,20 +13,18 @@ describe("usage command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
-    vi.useFakeTimers({ now: new Date("2026-01-19T12:00:00Z") });
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
   });
 
   describe("default behavior", () => {
-    it("should fetch usage with default 7 day range", async () => {
+    it("should fetch usage with explicit date range", async () => {
       server.use(
         http.get("http://localhost:3000/api/usage", () => {
           return HttpResponse.json({
@@ -47,7 +45,14 @@ describe("usage command", () => {
         }),
       );
 
-      await usageCommand.parseAsync(["node", "cli"]);
+      await usageCommand.parseAsync([
+        "node",
+        "cli",
+        "--since",
+        "2026-01-12",
+        "--until",
+        "2026-01-19",
+      ]);
 
       // Check output contains expected header and data
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -74,7 +79,14 @@ describe("usage command", () => {
         }),
       );
 
-      await usageCommand.parseAsync(["node", "cli"]);
+      await usageCommand.parseAsync([
+        "node",
+        "cli",
+        "--since",
+        "2026-01-12",
+        "--until",
+        "2026-01-19",
+      ]);
 
       // Check totals row
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -100,7 +112,14 @@ describe("usage command", () => {
         }),
       );
 
-      await usageCommand.parseAsync(["node", "cli", "--since", "2026-01-15"]);
+      await usageCommand.parseAsync([
+        "node",
+        "cli",
+        "--since",
+        "2026-01-15",
+        "--until",
+        "2026-01-19",
+      ]);
 
       expect(capturedUrl).toContain("start_date");
       expect(capturedUrl).toContain("2026-01-15");
@@ -197,7 +216,14 @@ describe("usage command", () => {
       );
 
       // Unix timestamp for 2026-01-15T10:30:00Z = 1768483800
-      await usageCommand.parseAsync(["node", "cli", "--since", "1768483800"]);
+      await usageCommand.parseAsync([
+        "node",
+        "cli",
+        "--since",
+        "1768483800",
+        "--until",
+        "2026-01-19",
+      ]);
 
       expect(capturedUrl).toContain("start_date");
     });
@@ -222,6 +248,8 @@ describe("usage command", () => {
         "cli",
         "--since",
         "1768483800000",
+        "--until",
+        "2026-01-19",
       ]);
       expect(mockConsoleLog).toHaveBeenCalled();
     });
@@ -248,6 +276,8 @@ describe("usage command", () => {
         "cli",
         "--since",
         "2026-01-15T10:30:00+08:00",
+        "--until",
+        "2026-01-19",
       ]);
 
       expect(capturedUrl).toContain("start_date");
@@ -419,7 +449,14 @@ describe("usage command", () => {
         }),
       );
 
-      await usageCommand.parseAsync(["node", "cli"]);
+      await usageCommand.parseAsync([
+        "node",
+        "cli",
+        "--since",
+        "2026-01-15",
+        "--until",
+        "2026-01-19",
+      ]);
 
       // Should have called console.log multiple times for each day
       // The missing dates should be filled in
@@ -440,13 +477,29 @@ describe("usage command", () => {
         }),
       );
 
-      await usageCommand.parseAsync(["node", "cli"]);
+      await usageCommand.parseAsync([
+        "node",
+        "cli",
+        "--since",
+        "2026-01-15",
+        "--until",
+        "2026-01-19",
+      ]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("-"));
     });
   });
 
   describe("duration formatting in output", () => {
+    const durationArgs = [
+      "node",
+      "cli",
+      "--since",
+      "2026-01-12",
+      "--until",
+      "2026-01-19",
+    ];
+
     it("should format hours, minutes, and seconds (2h 53m 22s)", async () => {
       server.use(
         http.get("http://localhost:3000/api/usage", () => {
@@ -460,7 +513,7 @@ describe("usage command", () => {
           });
         }),
       );
-      await usageCommand.parseAsync(["node", "cli"]);
+      await usageCommand.parseAsync(durationArgs);
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("2h 53m 22s"),
       );
@@ -479,7 +532,7 @@ describe("usage command", () => {
           });
         }),
       );
-      await usageCommand.parseAsync(["node", "cli"]);
+      await usageCommand.parseAsync(durationArgs);
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("2h 30m"),
       );
@@ -498,7 +551,7 @@ describe("usage command", () => {
           });
         }),
       );
-      await usageCommand.parseAsync(["node", "cli"]);
+      await usageCommand.parseAsync(durationArgs);
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("1h 30s"),
       );
@@ -517,7 +570,7 @@ describe("usage command", () => {
           });
         }),
       );
-      await usageCommand.parseAsync(["node", "cli"]);
+      await usageCommand.parseAsync(durationArgs);
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("2h"),
       );
@@ -536,7 +589,7 @@ describe("usage command", () => {
           });
         }),
       );
-      await usageCommand.parseAsync(["node", "cli"]);
+      await usageCommand.parseAsync(durationArgs);
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("45m 32s"),
       );
@@ -555,7 +608,7 @@ describe("usage command", () => {
           });
         }),
       );
-      await usageCommand.parseAsync(["node", "cli"]);
+      await usageCommand.parseAsync(durationArgs);
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("15m"),
       );
@@ -574,7 +627,7 @@ describe("usage command", () => {
           });
         }),
       );
-      await usageCommand.parseAsync(["node", "cli"]);
+      await usageCommand.parseAsync(durationArgs);
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("32s"),
       );
@@ -593,7 +646,7 @@ describe("usage command", () => {
           });
         }),
       );
-      await usageCommand.parseAsync(["node", "cli"]);
+      await usageCommand.parseAsync(durationArgs);
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("< 1s"),
       );
@@ -612,7 +665,7 @@ describe("usage command", () => {
           });
         }),
       );
-      await usageCommand.parseAsync(["node", "cli"]);
+      await usageCommand.parseAsync(durationArgs);
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("1s"),
       );
@@ -631,7 +684,7 @@ describe("usage command", () => {
           });
         }),
       );
-      await usageCommand.parseAsync(["node", "cli"]);
+      await usageCommand.parseAsync(durationArgs);
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("1m"),
       );
@@ -650,7 +703,7 @@ describe("usage command", () => {
           });
         }),
       );
-      await usageCommand.parseAsync(["node", "cli"]);
+      await usageCommand.parseAsync(durationArgs);
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("1h"),
       );
