@@ -58,6 +58,15 @@ export default [
     },
   },
   {
+    files: ["app/api/**/route.ts"],
+    plugins: {
+      web: webPlugin,
+    },
+    rules: {
+      "web/no-request-json-as": "error",
+    },
+  },
+  {
     files: ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
     plugins: {
       web: webPlugin,

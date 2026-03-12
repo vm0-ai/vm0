@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import {
   extractAndGroupVariables,
@@ -25,6 +26,8 @@ import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import { deleteInstallation } from "../../../../src/lib/github/github-app";
 import { logger } from "../../../../src/lib/logger";
+
+const patchGithubBodySchema = z.object({ agentName: z.string().min(1) });
 
 /**
  * GET /api/integrations/github
@@ -271,13 +274,16 @@ export async function PATCH(request: Request) {
   }
   const { userId } = authCtx;
 
-  const body = (await request.json()) as { agentName?: string };
-  if (!body.agentName) {
+  const parseResult = patchGithubBodySchema.safeParse(
+    await request.json().catch(() => undefined),
+  );
+  if (!parseResult.success) {
     return NextResponse.json(
       { error: { message: "agentName is required", code: "BAD_REQUEST" } },
       { status: 400 },
     );
   }
+  const body = parseResult.data;
 
   const db = globalThis.services.db;
 

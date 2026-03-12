@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-user-id";
 import { disableSchedule } from "../../../../../../src/lib/schedule";
@@ -7,6 +8,10 @@ import { isNotFound } from "../../../../../../src/lib/errors";
 import { resolveOrgId } from "../../../../../../src/lib/scope/scope-member-service";
 
 const log = logger("api:schedules:disable");
+
+const disableScheduleBodySchema = z.object({
+  composeId: z.string().uuid(),
+});
 
 export async function POST(
   request: Request,
@@ -27,22 +32,21 @@ export async function POST(
 
   const { name } = await params;
 
-  let body: { composeId: string };
-  try {
-    body = await request.json();
-  } catch {
+  const parseResult = disableScheduleBodySchema.safeParse(
+    await request.json().catch(() => undefined),
+  );
+  if (!parseResult.success) {
     return NextResponse.json(
-      { error: { message: "Invalid JSON body", code: "BAD_REQUEST" } },
+      {
+        error: {
+          message: "composeId must be a valid UUID",
+          code: "BAD_REQUEST",
+        },
+      },
       { status: 400 },
     );
   }
-
-  if (!body.composeId) {
-    return NextResponse.json(
-      { error: { message: "composeId is required", code: "BAD_REQUEST" } },
-      { status: 400 },
-    );
-  }
+  const body = parseResult.data;
 
   const orgId = await resolveOrgId(userId, undefined, tokenOrgId);
 

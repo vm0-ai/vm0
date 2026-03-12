@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { requireScopeFromRequest } from "../../../../src/lib/scope/resolve-scope";
@@ -11,6 +12,8 @@ import {
   isNotFound,
   isForbidden,
 } from "../../../../src/lib/errors";
+
+const removeMemberBodySchema = z.object({ email: z.string().email() });
 
 /**
  * GET /api/scope/members - Get scope members and status
@@ -75,13 +78,16 @@ export async function DELETE(request: Request) {
   }
   const { userId, orgId: tokenOrgId } = authCtx;
 
-  const body = (await request.json()) as { email: string };
-  if (!body.email) {
+  const parseResult = removeMemberBodySchema.safeParse(
+    await request.json().catch(() => undefined),
+  );
+  if (!parseResult.success) {
     return NextResponse.json(
-      { error: { message: "Email is required", code: "BAD_REQUEST" } },
+      { error: { message: "Invalid email format", code: "BAD_REQUEST" } },
       { status: 400 },
     );
   }
+  const body = parseResult.data;
 
   try {
     const { scope, member } = await requireScopeFromRequest(

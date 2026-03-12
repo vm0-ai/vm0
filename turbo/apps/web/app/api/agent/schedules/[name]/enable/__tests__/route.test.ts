@@ -80,7 +80,7 @@ describe("POST /api/agent/schedules/:name/enable", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error.message).toContain("Invalid JSON");
+    expect(data.error.message).toContain("composeId must be a valid UUID");
   });
 
   it("should reject missing composeId", async () => {
@@ -104,7 +104,7 @@ describe("POST /api/agent/schedules/:name/enable", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error.message).toContain("composeId");
+    expect(data.error.message).toContain("composeId must be a valid UUID");
   });
 
   it("should return 400 for expired one-time schedule (SchedulePastError)", async () => {

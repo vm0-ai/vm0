@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
@@ -23,6 +24,18 @@ import { syncWorkspaceAgentPermissions } from "../../../../../src/lib/slack/perm
 
 const log = logger("api:slack:link");
 
+const slackLinkQuerySchema = z.object({
+  slackUserId: z.string().min(1),
+  workspaceId: z.string().min(1),
+});
+
+const slackLinkBodySchema = z.object({
+  slackUserId: z.string().min(1),
+  workspaceId: z.string().min(1),
+  channelId: z.string().min(1).optional(),
+  agentId: z.string().uuid().optional(),
+});
+
 /**
  * GET /api/integrations/slack/link
  *
@@ -43,10 +56,11 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const slackUserId = url.searchParams.get("slackUserId");
-  const workspaceId = url.searchParams.get("workspaceId");
-
-  if (!slackUserId || !workspaceId) {
+  const queryResult = slackLinkQuerySchema.safeParse({
+    slackUserId: url.searchParams.get("slackUserId"),
+    workspaceId: url.searchParams.get("workspaceId"),
+  });
+  if (!queryResult.success) {
     return NextResponse.json(
       {
         error: {
@@ -57,6 +71,7 @@ export async function GET(request: Request) {
       { status: 400 },
     );
   }
+  const { slackUserId, workspaceId } = queryResult.data;
 
   // Look up installation (needed for both linked and non-linked responses)
   const [installation] = await globalThis.services.db
@@ -163,26 +178,21 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json()) as {
-    slackUserId?: string;
-    workspaceId?: string;
-    channelId?: string;
-    agentId?: string;
-  };
-
-  const { slackUserId, workspaceId, channelId, agentId } = body;
-
-  if (!slackUserId || !workspaceId) {
+  const parseResult = slackLinkBodySchema.safeParse(
+    await request.json().catch(() => undefined),
+  );
+  if (!parseResult.success) {
     return NextResponse.json(
       {
         error: {
-          message: "Missing slackUserId or workspaceId",
+          message: "Missing or invalid slackUserId or workspaceId",
           code: "BAD_REQUEST",
         },
       },
       { status: 400 },
     );
   }
+  const { slackUserId, workspaceId, channelId, agentId } = parseResult.data;
 
   // Check if the workspace installation exists
   const [installation] = await globalThis.services.db

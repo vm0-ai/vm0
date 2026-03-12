@@ -10,6 +10,7 @@
 import noDirectDbInTests from "./rules/no-direct-db-in-tests.ts";
 import noDuplicateMigrationPrefix from "./rules/no-duplicate-migration-prefix.ts";
 import noRelativeViMock from "./rules/no-relative-vi-mock.ts";
+import noRequestJsonAs from "./rules/no-request-json-as.ts";
 
 const plugin = {
   meta: {
@@ -20,6 +21,7 @@ const plugin = {
     "no-direct-db-in-tests": noDirectDbInTests,
     "no-duplicate-migration-prefix": noDuplicateMigrationPrefix,
     "no-relative-vi-mock": noRelativeViMock,
+    "no-request-json-as": noRequestJsonAs,
   },
 };
 

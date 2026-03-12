@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { eq } from "drizzle-orm";
 import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
@@ -8,6 +9,29 @@ import {
   listPermissions,
 } from "../../../../../../src/lib/agent/permission-service";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
+
+const addPermissionBodySchema = z
+  .object({
+    granteeType: z.enum(["public", "email"]),
+    granteeEmail: z.string().email().nullish(),
+  })
+  .refine(
+    (data) =>
+      data.granteeType !== "email" ||
+      (data.granteeEmail != null && data.granteeEmail !== ""),
+    { message: "grantee_email required for email type" },
+  );
+
+const deletePermissionParamsSchema = z
+  .object({
+    type: z.enum(["public", "email"]),
+    email: z.string().email().nullish(),
+  })
+  .refine(
+    (data) =>
+      data.type !== "email" || (data.email != null && data.email !== ""),
+    { message: "email parameter required for email type" },
+  );
 
 // PostgreSQL error code 23505 = unique_violation
 function isDuplicateKeyError(error: unknown): boolean {
@@ -90,30 +114,21 @@ export async function POST(
   }
 
   const { id } = await params;
-  const body = (await request.json()) as {
-    granteeType?: string;
-    granteeEmail?: string | null;
-  };
-
-  // Validate request
-  const { granteeType, granteeEmail } = body;
-  if (!granteeType || !["public", "email"].includes(granteeType)) {
+  const parseResult = addPermissionBodySchema.safeParse(
+    await request.json().catch(() => undefined),
+  );
+  if (!parseResult.success) {
+    const msg = parseResult.error.issues[0]?.message;
+    const message =
+      msg === "grantee_email required for email type"
+        ? msg
+        : "Invalid grantee_type";
     return NextResponse.json(
-      { error: { message: "Invalid grantee_type", code: "BAD_REQUEST" } },
+      { error: { message, code: "BAD_REQUEST" } },
       { status: 400 },
     );
   }
-  if (granteeType === "email" && !granteeEmail) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "grantee_email required for email type",
-          code: "BAD_REQUEST",
-        },
-      },
-      { status: 400 },
-    );
-  }
+  const { granteeType, granteeEmail } = parseResult.data;
 
   // Verify compose exists and user is owner
   const [compose] = await globalThis.services.db
@@ -142,12 +157,7 @@ export async function POST(
   }
 
   try {
-    await addPermission(
-      id,
-      granteeType as "public" | "email",
-      userId,
-      granteeEmail ?? undefined,
-    );
+    await addPermission(id, granteeType, userId, granteeEmail ?? undefined);
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (error) {
     // Handle duplicate permission error (PostgreSQL error code 23505)
@@ -181,27 +191,22 @@ export async function DELETE(
 
   const { id } = await params;
   const { searchParams } = new URL(request.url);
-  const granteeType = searchParams.get("type") as "public" | "email" | null;
-  const granteeEmail = searchParams.get("email");
-
-  if (!granteeType || !["public", "email"].includes(granteeType)) {
+  const parseResult = deletePermissionParamsSchema.safeParse({
+    type: searchParams.get("type"),
+    email: searchParams.get("email"),
+  });
+  if (!parseResult.success) {
+    const msg = parseResult.error.issues[0]?.message;
+    const message =
+      msg === "email parameter required for email type"
+        ? msg
+        : "type parameter required";
     return NextResponse.json(
-      { error: { message: "type parameter required", code: "BAD_REQUEST" } },
+      { error: { message, code: "BAD_REQUEST" } },
       { status: 400 },
     );
   }
-
-  if (granteeType === "email" && !granteeEmail) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "email parameter required for email type",
-          code: "BAD_REQUEST",
-        },
-      },
-      { status: 400 },
-    );
-  }
+  const { type: granteeType, email: granteeEmail } = parseResult.data;
 
   // Verify compose exists and user is owner
   const [compose] = await globalThis.services.db

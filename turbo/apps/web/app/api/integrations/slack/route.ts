@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import {
   extractAndGroupVariables,
@@ -34,6 +35,8 @@ import { syncWorkspaceAgentPermissions } from "../../../../src/lib/slack/permiss
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:slack");
+
+const patchSlackBodySchema = z.object({ agentName: z.string().min(1) });
 
 /**
  * GET /api/integrations/slack
@@ -259,13 +262,16 @@ export async function PATCH(request: Request) {
   }
   const { userId, orgId: tokenOrgId } = authCtx;
 
-  const body = (await request.json()) as { agentName?: string };
-  if (!body.agentName) {
+  const parseResult = patchSlackBodySchema.safeParse(
+    await request.json().catch(() => undefined),
+  );
+  if (!parseResult.success) {
     return NextResponse.json(
       { error: { message: "agentName is required", code: "BAD_REQUEST" } },
       { status: 400 },
     );
   }
+  const body = parseResult.data;
 
   const db = globalThis.services.db;
 

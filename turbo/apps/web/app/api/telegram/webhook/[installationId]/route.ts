@@ -72,7 +72,8 @@ export async function POST(
   // Parse update
   let update: TelegramWebhookUpdate;
   try {
-    update = (await request.json()) as TelegramWebhookUpdate;
+    const json: unknown = await request.json();
+    update = json as TelegramWebhookUpdate;
   } catch {
     return new Response("Bad Request", { status: 400 });
   }

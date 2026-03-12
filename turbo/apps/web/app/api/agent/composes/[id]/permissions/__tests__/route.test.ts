@@ -235,6 +235,25 @@ describe("Permission Management API", () => {
       expect(data.error.message).toBe("Unauthorized");
     });
 
+    it("should return 400 for malformed JSON body", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/composes/${testComposeId}/permissions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "not valid json",
+        },
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ id: testComposeId }),
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.message).toContain("Invalid grantee_type");
+    });
+
     it("should return 403 for compose owned by another user", async () => {
       // Switch to another user
       await context.setupUser({ prefix: "other-user" });
