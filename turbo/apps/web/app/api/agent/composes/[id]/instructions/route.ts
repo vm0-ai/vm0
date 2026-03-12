@@ -54,7 +54,6 @@ export async function GET(
     .select({
       id: agentComposes.id,
       userId: agentComposes.userId,
-      scopeId: agentComposes.scopeId,
       orgId: agentComposes.orgId,
       name: agentComposes.name,
       content: agentComposeVersions.content,

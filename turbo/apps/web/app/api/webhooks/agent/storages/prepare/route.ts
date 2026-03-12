@@ -100,7 +100,6 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       .insert(storages)
       .values({
         userId: storageUserId,
-        scopeId: null,
         orgId: resolvedScope.orgId,
         name: storageName,
         type: storageType,

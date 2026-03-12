@@ -102,7 +102,6 @@ export async function POST(request: Request) {
     token,
     userId,
     name: "CI Test Token",
-    scopeId: null,
     orgId,
     expiresAt,
     createdAt: now,

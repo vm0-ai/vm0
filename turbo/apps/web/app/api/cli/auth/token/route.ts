@@ -87,7 +87,6 @@ const router = tsr.router(cliAuthTokenContract, {
           token: cliToken,
           userId,
           name: "CLI Device Flow Authentication",
-          scopeId: null,
           orgId: scope.orgId,
           expiresAt,
           createdAt: now,
