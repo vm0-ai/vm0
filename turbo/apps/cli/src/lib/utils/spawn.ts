@@ -10,7 +10,6 @@ import type { ChildProcess } from "child_process";
  * function must be hardcoded strings (not user input), and arguments
  * must use array form to prevent shell injection.
  *
- * nosemgrep: spawn-shell-true, detect-child-process -- shell only on Windows; callers pass hardcoded command names
  */
 export function safeSpawn(
   command: string,
@@ -20,6 +19,7 @@ export function safeSpawn(
   const isWindows = process.platform === "win32";
   const resolvedCommand = isWindows ? `${command}.cmd` : command;
 
+  // nosemgrep: javascript.lang.security.audit.spawn-shell-true.spawn-shell-true, javascript.lang.security.detect-child-process.detect-child-process
   return spawn(resolvedCommand, args, {
     ...options,
     shell: isWindows,
