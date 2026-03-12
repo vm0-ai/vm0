@@ -5,8 +5,7 @@ interface AgentMetadata {
 
 const PROFILE_START = "<!-- ZERO_PROFILE";
 const PROFILE_END = "ZERO_PROFILE -->";
-const PROFILE_REGEX =
-  /<!-- ZERO_PROFILE\r?\n[\s\S]*?\r?\nZERO_PROFILE -->\r?\n?/g;
+const PROFILE_REGEX = /<!-- ZERO_PROFILE\n(?:[^\n]*\n)*?ZERO_PROFILE -->\n?/g;
 
 /** Keys used by the legacy YAML frontmatter format. */
 const LEGACY_METADATA_KEYS = new Set(["name", "tone"]);
