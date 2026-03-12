@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.56.7](https://github.com/vm0-ai/vm0/compare/cli-v9.56.6...cli-v9.56.7) (2026-03-12)
+
+
+### Bug Fixes
+
+* **cli:** handle epipe gracefully when piped output closes early ([#4594](https://github.com/vm0-ai/vm0/issues/4594)) ([03c5edf](https://github.com/vm0-ai/vm0/commit/03c5edfebbe6a80a72c14e9fd3a56455e778dd5b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.59.1
+
 ## [9.56.6](https://github.com/vm0-ai/vm0/compare/cli-v9.56.5...cli-v9.56.6) (2026-03-12)
 
 
