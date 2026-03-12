@@ -1585,6 +1585,14 @@ jobs:
       github.event_name != 'push' &&
       needs.deploy-runner-prepare.outputs.bin-dir != ''
     steps:
+      # Guard: if any test/deploy job didn't succeed, fail this job WITHOUT
+      # cleaning up. This makes "Re-run failed jobs" include cleanup-runner,
+      # so on successful retry the cleanup runs automatically.
+      #
+      # - deploy-runner-start != success (not just failure/cancelled):
+      #   covers deploy-web failure → start is "skipped" but binaries exist
+      # - cli-e2e-03-runner / runner-stress-test failure/cancelled:
+      #   the main re-run scenario — keep runner alive for E2E retry
       - name: Fail if tests failed (keep runner for re-run)
         if: |
           needs.deploy-runner-start.result != 'success' ||
