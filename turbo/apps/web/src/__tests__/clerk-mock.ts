@@ -46,6 +46,11 @@ let createdOrgs: Array<{
 let orgSlugOverrides = new Map<string, string>();
 let orgMetadataOverrides = new Map<string, Record<string, unknown>>();
 
+// Module-level tracking of all userIds configured via mockClerk().
+// Used by testContext afterEach to scope user_cache cleanup to rows created
+// by this test, avoiding cross-file interference in parallel test runs.
+let mockUserIds: string[] = [];
+
 /**
  * Configure Clerk auth mock
  * @param options - Auth configuration
@@ -74,6 +79,11 @@ export function mockClerk(options: {
   clerkOrgs?: Array<{ id: string; slug: string; name: string; role?: string }>;
 }) {
   const email = options.email ?? "test@example.com";
+
+  // Track userId for scoped user_cache cleanup in testContext afterEach
+  if (options.userId) {
+    mockUserIds.push(options.userId);
+  }
 
   // Default: one org per user (simulates signup-created org).
   // The org ID is derived from userId to ensure uniqueness across tests.
@@ -303,12 +313,17 @@ export function mockClerk(options: {
 }
 
 /**
- * Clear all Clerk mock calls and reset to default state
+ * Clear all Clerk mock calls and reset to default state.
+ * Returns the list of userIds that were configured via mockClerk() since
+ * the last clear, so callers can scope DB cleanup (e.g. user_cache).
  */
-export function clearClerkMock() {
+export function clearClerkMock(): string[] {
+  const userIds = [...mockUserIds];
   mockAuth.mockClear();
   mockClerkClient.mockClear();
   createdOrgs = [];
   orgSlugOverrides = new Map();
   orgMetadataOverrides = new Map();
+  mockUserIds = [];
+  return userIds;
 }

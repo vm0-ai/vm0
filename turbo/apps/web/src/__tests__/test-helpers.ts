@@ -44,7 +44,7 @@ export function uniqueNumericId(): string {
   return String(Math.floor(Math.random() * 900_000_000) + 100_000_000);
 }
 
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { Axiom } from "@axiomhq/js";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
 import { initServices } from "../lib/init-services";
@@ -242,6 +242,7 @@ export function testContext(): TestContext {
   let controller = new AbortController();
   let mockHelpers: MockHelpers | null = null;
   let mockUser: Promise<UserContext> | null = null;
+  const trackedUserIds: string[] = [];
 
   /**
    * Creates mock helpers (called by getter or setupMocks)
@@ -390,12 +391,20 @@ export function testContext(): TestContext {
   }
 
   afterEach(async () => {
-    // Clear Clerk mock
-    clearClerkMock();
+    // Clear Clerk mock and collect all userIds it was configured with.
+    // These include both setupUser() IDs and hardcoded IDs from direct
+    // mockClerk() calls in tests (e.g. "different-user-id" in email tests).
+    const clerkUserIds = clearClerkMock();
 
-    // Clear user_cache to prevent cross-test contamination via shared emails
+    // Scope user_cache cleanup to IDs used in this test only, so parallel
+    // test files don't wipe each other's cache entries (the original flaky bug).
     if (globalThis.services?.db) {
-      await globalThis.services.db.delete(userCache);
+      const allIds = [...new Set([...trackedUserIds, ...clerkUserIds])];
+      if (allIds.length > 0) {
+        await globalThis.services.db
+          .delete(userCache)
+          .where(inArray(userCache.userId, allIds));
+      }
     }
 
     // Abort the signal to trigger any cleanup handlers
@@ -410,9 +419,10 @@ export function testContext(): TestContext {
     // next test's beforeEach runs with the real clock.
     vi.unstubAllGlobals();
 
-    // Reset mocks and cached user for next test
+    // Reset mocks, cached user, and tracked IDs for next test
     mockHelpers = null;
     mockUser = null;
+    trackedUserIds.length = 0;
   });
 
   /**
@@ -442,6 +452,7 @@ export function testContext(): TestContext {
       // This allows tests to derive scope slug from userId if needed
       const suffix = uniqueSuffix();
       const userId = `${prefix}-${suffix}`;
+      trackedUserIds.push(userId);
 
       // Mock Clerk for this user
       mockClerk({ userId });
