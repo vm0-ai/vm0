@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { execSync, spawn } = require("child_process");
+const { execFileSync, spawn } = require("child_process");
 const path = require("path");
 
 const CADDYFILE = path.join(__dirname, "../Caddyfile");
@@ -9,7 +9,7 @@ console.log("🚀 Starting Caddy reverse proxy...\n");
 
 // Check if certificates exist
 try {
-  execSync("node " + path.join(__dirname, "check-certs.js"), {
+  execFileSync(process.execPath, [path.join(__dirname, "check-certs.js")], {
     stdio: "inherit",
   });
 } catch (error) {
@@ -20,7 +20,7 @@ try {
 // Stop any existing Caddy instance
 try {
   console.log("Stopping any existing Caddy instances...");
-  execSync("pkill -9 caddy 2>/dev/null || true", { stdio: "pipe" });
+  execFileSync("pkill", ["-9", "caddy"], { stdio: "pipe" });
 } catch (error) {
   // Ignore errors if no Caddy is running
 }
