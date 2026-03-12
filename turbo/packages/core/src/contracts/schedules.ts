@@ -73,7 +73,7 @@ const deployScheduleRequestSchema = z
     // Resolved agent compose ID (CLI resolves scope/name:version → composeId)
     composeId: z.string().uuid("Invalid compose ID"),
     // Caller's active scope ID for secrets/variables resolution
-    scopeId: z.string().uuid("Invalid scope ID").optional(),
+    scopeId: z.string().optional(),
     // Enable schedule immediately upon creation
     enabled: z.boolean().optional(),
   })
@@ -221,7 +221,7 @@ export const schedulesByNameContract = c.router({
     }),
     query: z.object({
       composeId: z.string().uuid("Compose ID required"),
-      scopeId: z.string().uuid("Scope ID required").optional(),
+      scopeId: z.string().optional(),
     }),
     responses: {
       200: scheduleResponseSchema,
@@ -244,7 +244,7 @@ export const schedulesByNameContract = c.router({
     }),
     query: z.object({
       composeId: z.string().uuid("Compose ID required"),
-      scopeId: z.string().uuid("Scope ID required").optional(),
+      scopeId: z.string().optional(),
     }),
     responses: {
       204: c.noBody(),
@@ -272,7 +272,7 @@ export const schedulesEnableContract = c.router({
     }),
     body: z.object({
       composeId: z.string().uuid("Compose ID required"),
-      scopeId: z.string().uuid("Scope ID required").optional(),
+      scopeId: z.string().optional(),
     }),
     responses: {
       200: scheduleResponseSchema,
@@ -295,7 +295,7 @@ export const schedulesEnableContract = c.router({
     }),
     body: z.object({
       composeId: z.string().uuid("Compose ID required"),
-      scopeId: z.string().uuid("Scope ID required").optional(),
+      scopeId: z.string().optional(),
     }),
     responses: {
       200: scheduleResponseSchema,
@@ -324,7 +324,7 @@ export const scheduleRunsContract = c.router({
     }),
     query: z.object({
       composeId: z.string().uuid("Compose ID required"),
-      scopeId: z.string().uuid("Scope ID required").optional(),
+      scopeId: z.string().optional(),
       limit: z.coerce.number().min(0).max(100).default(5),
     }),
     responses: {
