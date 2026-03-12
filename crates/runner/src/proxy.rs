@@ -26,7 +26,6 @@ struct VmEntry {
     registered_at: i64,
     firewall_rules: Vec<FirewallRule>,
     mitm_enabled: bool,
-    seal_secrets_enabled: bool,
     network_log_path: String,
     services: Option<crate::types::ExperimentalServices>,
 }
@@ -64,7 +63,6 @@ pub struct VmRegistration<'a> {
     pub sandbox_token: &'a str,
     pub firewall_rules: &'a [FirewallRule],
     pub mitm_enabled: bool,
-    pub seal_secrets_enabled: bool,
     pub network_log_path: &'a std::path::Path,
     pub services: Option<&'a crate::types::ExperimentalServices>,
 }
@@ -435,7 +433,6 @@ impl ProxyRegistryHandle {
                 registered_at: now,
                 firewall_rules: registration.firewall_rules.to_vec(),
                 mitm_enabled: registration.mitm_enabled,
-                seal_secrets_enabled: registration.seal_secrets_enabled,
                 network_log_path: registration.network_log_path.to_string_lossy().into_owned(),
                 services: registration.services.cloned(),
             },
@@ -511,7 +508,6 @@ mod tests {
                 registered_at: 1000,
                 firewall_rules: Vec::new(),
                 mitm_enabled: true,
-                seal_secrets_enabled: false,
                 network_log_path: "/tmp/network-test-run.jsonl".to_string(),
                 services: None,
             },
@@ -616,7 +612,6 @@ mod tests {
             sandbox_token: "tok-1",
             firewall_rules: &[],
             mitm_enabled: true,
-            seal_secrets_enabled: false,
             network_log_path: std::path::Path::new("/tmp/network-run-1.jsonl"),
             services: None,
         };
@@ -636,7 +631,6 @@ mod tests {
             sandbox_token: "tok-2",
             firewall_rules: &[],
             mitm_enabled: false,
-            seal_secrets_enabled: true,
             network_log_path: std::path::Path::new("/tmp/network-run-2.jsonl"),
             services: None,
         };
@@ -648,7 +642,6 @@ mod tests {
         let vm = loaded.vms.get("10.200.0.2").unwrap();
         assert_eq!(vm.run_id, "run-2");
         assert!(!vm.mitm_enabled);
-        assert!(vm.seal_secrets_enabled);
 
         // Unregister via handle.
         handle.unregister_vm("10.200.0.2").await.unwrap();
@@ -690,7 +683,6 @@ mod tests {
                     sandbox_token: "",
                     firewall_rules: &[],
                     mitm_enabled: false,
-                    seal_secrets_enabled: false,
                     network_log_path: &log_path,
                     services: None,
                 };
@@ -736,7 +728,6 @@ mod tests {
                     },
                 ],
                 mitm_enabled: true,
-                seal_secrets_enabled: true,
                 network_log_path: "/tmp/network-run-1.jsonl".to_string(),
                 services: None,
             },
@@ -746,14 +737,12 @@ mod tests {
         let loaded = read_registry(&registry_path).await.unwrap();
         let vm = loaded.vms.get("10.200.0.2").unwrap();
         assert_eq!(vm.firewall_rules.len(), 2);
-        assert!(vm.seal_secrets_enabled);
 
         // Verify JSON field names match TS/Python format.
         let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let vm_json = &value["vms"]["10.200.0.2"];
         assert!(vm_json["firewallRules"].is_array());
-        assert_eq!(vm_json["sealSecretsEnabled"], true);
         assert_eq!(vm_json["mitmEnabled"], true);
     }
 
@@ -790,7 +779,6 @@ mod tests {
             sandbox_token: "tok",
             firewall_rules: &[],
             mitm_enabled: true,
-            seal_secrets_enabled: false,
             network_log_path: std::path::Path::new("/tmp/network-run-svc.jsonl"),
             services: Some(&services),
         };

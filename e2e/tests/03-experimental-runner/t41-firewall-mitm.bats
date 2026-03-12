@@ -4,7 +4,6 @@
 #
 # MITM mode decrypts and inspects HTTPS traffic, enabling:
 # - Full HTTP request/response inspection
-# - Secret sealing (vm0_enc_ prefix)
 # - Detailed network logging
 # - HTTP 403 response for blocked requests
 #
@@ -149,94 +148,3 @@ EOF
     assert_output --partial "BLOCKED"
 }
 
-@test "mitm-firewall: seal_secrets encrypts environment secrets" {
-    export TEST_SECRET="secret-$(date +%s%3N)-$RANDOM"
-
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  ${AGENT_NAME}-seal:
-    description: "MITM seal_secrets test"
-    framework: claude-code
-    working_dir: /home/user/workspace
-    experimental_firewall:
-      enabled: true
-      experimental_mitm: true
-      experimental_seal_secrets: true
-      rules:
-        - domain: "httpbin.org"
-          action: ALLOW
-        - final: DENY
-    environment:
-      MY_SECRET: "\${{ secrets.MY_SECRET }}"
-EOF
-
-    create_artifact "$ARTIFACT_NAME-seal"
-
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    run $CLI_COMMAND run "${AGENT_NAME}-seal" \
-        --artifact-name "$ARTIFACT_NAME-seal" \
-        --secrets "MY_SECRET=$TEST_SECRET" \
-        --verbose \
-        "echo \"VALUE=\$MY_SECRET\""
-
-    echo "$output"
-    assert_success
-    assert_output --partial "Run completed successfully"
-
-    # Secret should be encrypted with vm0_enc_ prefix
-    assert_output --partial "VALUE=vm0_enc_"
-
-    # Original secret value should NOT appear
-    if [[ "$output" == *"$TEST_SECRET"* ]]; then
-        fail "Original secret should not appear in output"
-    fi
-}
-
-@test "mitm-firewall: secrets not encrypted without seal_secrets" {
-    export TEST_SECRET="plain-$(date +%s%3N)-$RANDOM"
-
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  ${AGENT_NAME}-noseal:
-    description: "MITM without seal_secrets"
-    framework: claude-code
-    working_dir: /home/user/workspace
-    experimental_firewall:
-      enabled: true
-      experimental_mitm: true
-      experimental_seal_secrets: false
-      rules:
-        - domain: "httpbin.org"
-          action: ALLOW
-        - final: DENY
-    environment:
-      MY_SECRET: "\${{ secrets.MY_SECRET }}"
-EOF
-
-    create_artifact "$ARTIFACT_NAME-noseal"
-
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    run $CLI_COMMAND run "${AGENT_NAME}-noseal" \
-        --artifact-name "$ARTIFACT_NAME-noseal" \
-        --secrets "MY_SECRET=$TEST_SECRET" \
-        "echo \"VALUE=\$MY_SECRET\""
-
-    echo "$output"
-    assert_success
-    assert_output --partial "Run completed successfully"
-
-    # Secret should NOT be encrypted with vm0_enc_ prefix when seal_secrets is disabled
-    # Note: CLI masks secret values in output (shows ***) for security, but the actual
-    # value passed to the agent is not encrypted
-    if [[ "$output" == *"VALUE=vm0_enc_"* ]]; then
-        fail "Secret should not be encrypted when seal_secrets is disabled"
-    fi
-}

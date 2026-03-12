@@ -107,10 +107,9 @@ class TestRequestHandler:
         assert flow.response is None
         assert "firewall_action" not in flow.metadata
 
-    def test_mitm_rewrite_proxies_request(self, registry_file):
-        """Allowed request with mitmEnabled=True is rewritten to proxy URL."""
+    def test_mitm_allowed_passes_through(self, registry_file):
+        """Allowed request with mitmEnabled=True passes through without rewrite."""
         flow = _make_http_flow(host="api.anthropic.com", path="/v1/messages")
-        flow.request.headers["Authorization"] = "Bearer user-token"
 
         with (
             patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
@@ -119,40 +118,10 @@ class TestRequestHandler:
         ):
             mitm_addon.request(flow)
 
-        # Host should be rewritten to the proxy host
-        assert flow.request.host == "api.vm0.ai"
-        assert flow.request.port == 443
-        assert flow.request.scheme == "https"
-
-        # Path should include the proxy endpoint with url and runId params
-        assert "/api/webhooks/agent/proxy?" in flow.request.path
-        assert "url=" in flow.request.path
-        assert "runId=run-abc-123" in flow.request.path
-
-        # Authorization should be set to the sandbox token
-        assert flow.request.headers["Authorization"] == "Bearer tok-xyz"
-
-        # Original Authorization should be saved
-        assert flow.request.headers["x-vm0-original-authorization"] == "Bearer user-token"
-
-    def test_trusted_s3_domain_skips_rewrite(self, registry_file):
-        """Request to S3 domain sets skip_rewrite=True and is not rewritten."""
-        # Use 10.200.0.2 (no rules → ALLOW, mitmEnabled=False) so domain passes firewall
-        flow = _make_http_flow(
-            client_ip="10.200.0.2", host="mybucket.s3.amazonaws.com", path="/object-key"
-        )
-
-        with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-        ):
-            mitm_addon.request(flow)
-
-        assert flow.metadata.get("skip_rewrite") is True
-        # Should not be rewritten — host stays the same
-        assert flow.request.pretty_host == "mybucket.s3.amazonaws.com"
+        # Request should pass through without rewrite
         assert flow.response is None
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata.get("original_url") == "https://api.anthropic.com/v1/messages"
 
     def test_service_match_calls_handler(self, tmp_path):
         """When URL matches a service, handle_service_request is called."""
@@ -192,8 +161,8 @@ class TestRequestHandler:
         assert call_args[0][0] is flow
         assert call_args[0][1]["base"] == "https://api.github.com"
 
-    def test_no_mitm_allows_without_rewrite(self, registry_file):
-        """mitmEnabled=False with allowed request passes through without rewrite."""
+    def test_no_mitm_allows_through(self, registry_file):
+        """mitmEnabled=False with allowed request passes through."""
         # 10.200.0.2 has mitmEnabled=False and no rules (ALLOW all)
         flow = _make_http_flow(client_ip="10.200.0.2", host="example.com", path="/test")
 
@@ -204,11 +173,9 @@ class TestRequestHandler:
         ):
             mitm_addon.request(flow)
 
-        # Request should pass through with no rewrite and no block
+        # Request should pass through with no block
         assert flow.response is None
         assert flow.metadata.get("original_url") == "https://example.com/test"
-        # Host should NOT be rewritten to proxy
-        assert flow.request.pretty_host == "example.com"
 
 
 class TestResponseHeadersHandler:

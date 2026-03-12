@@ -5,7 +5,6 @@ import {
   getConnectorEnvironmentMapping,
   getServiceConfig,
 } from "@vm0/core";
-import { createProxyToken } from "../../proxy/token-service";
 import { badRequest } from "../../errors";
 import { logger } from "../../logger";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
@@ -20,15 +19,12 @@ interface ExpandedEnvironmentResult {
 }
 
 /**
- * Process secret values: validate, optionally encrypt via proxy tokens.
+ * Process secret values: validate and resolve from passed secrets or connector placeholders.
  */
 function processSecretValues(
   secretNames: string[],
   passedSecrets: Record<string, string> | undefined,
-  sealSecretsEnabled: boolean,
   checkEnv: boolean | undefined,
-  runId: string,
-  userId: string,
   connectorEnvVars?: Record<string, string>,
 ): Record<string, string> | undefined {
   if (secretNames.length === 0) return undefined;
@@ -48,11 +44,6 @@ function processSecretValues(
   for (const name of secretNames) {
     if (connectorEnvVars?.[name]) {
       secrets[name] = connectorEnvVars[name];
-    } else if (sealSecretsEnabled) {
-      const secretValue = passedSecrets?.[name];
-      if (secretValue) {
-        secrets[name] = createProxyToken(runId, userId, name, secretValue);
-      }
     } else {
       secrets[name] = passedSecrets![name]!;
     }
@@ -95,17 +86,14 @@ function buildConnectorEnvVars(
  * Extract and expand environment variables from agent compose config
  * Expands ${{ vars.xxx }} and ${{ secrets.xxx }} references
  *
- * When experimental_firewall.experimental_seal_secrets is enabled:
- * - Secrets are encrypted into proxy tokens (vm0_enc_xxx)
- *
  * When experimental_services is declared:
  * - Connector env vars are set to placeholder values (proxy replaces at runtime)
  *
  * @param agentCompose Agent compose configuration
  * @param vars Variables for expansion (from --vars CLI param)
  * @param passedSecrets Secrets for expansion (from --secrets CLI param, already decrypted)
- * @param userId User ID for token binding
- * @param runId Run ID for token binding (required for seal_secrets)
+ * @param userId User ID (unused, kept for API compatibility)
+ * @param runId Run ID (unused, kept for API compatibility)
  * @param checkEnv When true, validates that all required secrets/vars are provided
  * @returns Expanded environment variables
  */
@@ -146,10 +134,6 @@ export function expandEnvironmentFromCompose(
     );
   }
 
-  // Check if seal_secrets is enabled via firewall config
-  const sealSecretsEnabled =
-    firstAgent?.experimental_firewall?.experimental_seal_secrets ?? false;
-
   // Build connector env var placeholders from experimental_services ∩ connectedTypes
   const connectorEnvVars = buildConnectorEnvVars(
     firstAgent?.experimental_services ?? [],
@@ -161,10 +145,7 @@ export function expandEnvironmentFromCompose(
   const secrets = processSecretValues(
     secretNames,
     passedSecrets,
-    sealSecretsEnabled,
     checkEnv,
-    runId,
-    userId,
     connectorEnvVars,
   );
 

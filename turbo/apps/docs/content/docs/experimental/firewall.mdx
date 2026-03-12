@@ -42,7 +42,6 @@ agents:
 | `enabled` | boolean | Yes | - | Enable network firewall |
 | `rules` | array | No | `[]` | List of firewall rules |
 | `experimental_mitm` | boolean | No | `false` | Enable HTTPS traffic inspection |
-| `experimental_seal_secrets` | boolean | No | `false` | Encrypt secrets (requires MITM) |
 
 ## Rule Types
 
@@ -148,21 +147,6 @@ experimental_firewall:
 - Blocked requests return HTTP 403 with "Blocked by firewall"
 - Detailed network logs include URL, method, status, latency
 - Higher overhead, requires CA certificate trust
-
-### Secret Sealing
-
-Encrypt environment secrets to prevent exfiltration:
-
-```yaml
-experimental_firewall:
-  enabled: true
-  experimental_mitm: true
-  experimental_seal_secrets: true # [!code highlight]
-```
-
-<Callout type="info">
-  Secret sealing requires MITM mode to be enabled.
-</Callout>
 
 ## Viewing Network Logs
 

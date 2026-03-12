@@ -63,16 +63,6 @@ function processFirewallConfig(
     firstAgent.experimental_firewall as ExperimentalFirewall;
   if (!firewallConfig.enabled) return null;
 
-  // Validate experimental_seal_secrets requires experimental_mitm
-  if (
-    firewallConfig.experimental_seal_secrets &&
-    !firewallConfig.experimental_mitm
-  ) {
-    throw badRequest(
-      "experimental_seal_secrets requires experimental_mitm to be enabled",
-    );
-  }
-
   // Build auto-injected rules
   const autoRules: FirewallRule[] = [];
 
@@ -117,8 +107,6 @@ function processFirewallConfig(
     enabled: true,
     rules: allRules,
     experimental_mitm: firewallConfig.experimental_mitm ?? false,
-    experimental_seal_secrets:
-      firewallConfig.experimental_seal_secrets ?? false,
   };
 }
 

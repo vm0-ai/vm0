@@ -42,8 +42,6 @@ export interface ExperimentalFirewall {
   rules?: FirewallRule[];
   /** Enable HTTPS inspection via MITM (routes traffic through Platform Proxy) */
   experimental_mitm?: boolean;
-  /** Encrypt secrets in VM environment (requires experimental_mitm) */
-  experimental_seal_secrets?: boolean;
 }
 
 /**

@@ -156,12 +156,6 @@ export {
   type CronCleanupSandboxesContract,
 } from "./cron";
 export {
-  proxyErrorSchema,
-  ProxyErrorCode,
-  type ProxyError,
-  type ProxyErrorCode as ProxyErrorCodeType,
-} from "./proxy";
-export {
   scopeContract,
   scopeDefaultAgentContract,
   scopeSlugSchema,

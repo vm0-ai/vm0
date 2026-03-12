@@ -51,10 +51,6 @@ def get_registry_path() -> str:
     return ctx.options.vm0_proxy_registry_path
 
 
-def get_proxy_url() -> str:
-    """Construct proxy URL from API URL."""
-    return f"{get_api_url()}/api/webhooks/agent/proxy"
-
 # Cache for proxy registry (invalidated by file stat change)
 _registry_cache = {}
 _registry_cache_key = (0, 0)
@@ -474,73 +470,9 @@ def request(flow: http.HTTPFlow) -> None:
         )
         return
 
-    # Request is ALLOWED - proceed with processing
-
-    # Skip if no API URL configured
-    if not api_url:
-        ctx.log.warn("vm0_api_url not set, passing through")
-        return
-
-    # Skip rewriting requests already going to VM0 (avoid loops)
-    if api_url in flow.request.pretty_url:
-        flow.metadata["original_url"] = flow.request.pretty_url
-        flow.metadata["skip_rewrite"] = True
-        return
-
-    # Skip rewriting requests to trusted storage domains (S3, etc.)
-    # S3 presigned URLs have signatures that break when proxied
-    TRUSTED_DOMAINS = [
-        ".s3.amazonaws.com",
-        ".s3-",  # Regional S3 endpoints like s3-us-west-2.amazonaws.com
-        "s3.amazonaws.com",
-        ".r2.cloudflarestorage.com",
-        ".storage.googleapis.com",
-    ]
-    for domain in TRUSTED_DOMAINS:
-        if domain in hostname or hostname.endswith(domain.lstrip(".")):
-            ctx.log.info(f"[{run_id}] Skipping trusted storage domain: {hostname}")
-            flow.metadata["original_url"] = get_original_url(flow)
-            flow.metadata["skip_rewrite"] = True
-            return
-
-    # Get original target URL
-    original_url = get_original_url(flow)
-    flow.metadata["original_url"] = original_url
-
-    # If MITM is not enabled, just allow the request through without rewriting
-    if not mitm_enabled:
-        ctx.log.info(f"[{run_id}] Firewall ALLOW (no MITM): {hostname}")
-        return
-
-    # MITM mode: rewrite to VM0 Proxy
-    ctx.log.info(f"[{run_id}] Proxying via MITM: {original_url}")
-
-    # Parse proxy URL
-    parsed = urllib.parse.urlparse(get_proxy_url())
-
-    # Build query params
-    query_params = {"url": original_url}
-    if run_id:
-        query_params["runId"] = run_id
-    query_string = urllib.parse.urlencode(query_params)
-
-    # Rewrite request to proxy
-    flow.request.host = parsed.hostname
-    flow.request.port = 443 if parsed.scheme == "https" else 80
-    flow.request.scheme = parsed.scheme
-    flow.request.path = f"{parsed.path}?{query_string}"
-
-    # Save original Authorization header before overwriting
-    if "Authorization" in flow.request.headers:
-        flow.request.headers["x-vm0-original-authorization"] = flow.request.headers["Authorization"]
-
-    # Add sandbox authentication token
-    if sandbox_token:
-        flow.request.headers["Authorization"] = f"Bearer {sandbox_token}"
-
-    # Add Vercel bypass header if configured
-    if VERCEL_BYPASS:
-        flow.request.headers["x-vercel-protection-bypass"] = VERCEL_BYPASS
+    # Request is ALLOWED - pass through directly
+    flow.metadata["original_url"] = get_original_url(flow)
+    ctx.log.info(f"[{run_id}] Firewall ALLOW: {hostname}")
 
 
 def responseheaders(flow: http.HTTPFlow) -> None:

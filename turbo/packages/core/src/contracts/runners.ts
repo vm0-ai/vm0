@@ -27,7 +27,6 @@ export const experimentalFirewallSchema = z.object({
   enabled: z.boolean(),
   rules: z.array(firewallRuleSchema).optional(),
   experimental_mitm: z.boolean().optional(),
-  experimental_seal_secrets: z.boolean().optional(),
 });
 
 /**

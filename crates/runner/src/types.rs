@@ -73,8 +73,6 @@ pub struct ExperimentalFirewall {
     pub rules: Option<Vec<crate::proxy::FirewallRule>>,
     #[serde(default)]
     pub experimental_mitm: Option<bool>,
-    #[serde(default)]
-    pub experimental_seal_secrets: Option<bool>,
 }
 
 /// Service manifest for proxy-side token replacement.
