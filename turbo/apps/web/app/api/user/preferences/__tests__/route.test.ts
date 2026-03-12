@@ -187,7 +187,7 @@ describe("GET /api/user/preferences (error paths)", () => {
   it("should return BAD_REQUEST when no organization context is available", async () => {
     const user = await context.setupUser();
 
-    // No orgId in session and no scopeId in auth context
+    // No orgId in session and no orgId in auth context
     mockClerk({ userId: user.userId });
 
     const request = createTestRequest(
@@ -226,7 +226,7 @@ describe("PUT /api/user/preferences", () => {
 
   it("should return BAD_REQUEST when no organization context is available", async () => {
     const user = await context.setupUser();
-    // No orgId in session and no scopeId in auth context
+    // No orgId in session and no orgId in auth context
     mockClerk({ userId: user.userId });
 
     const request = createTestRequest(
