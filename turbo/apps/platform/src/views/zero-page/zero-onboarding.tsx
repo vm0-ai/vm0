@@ -516,7 +516,7 @@ export function ZeroOnboarding({
                 <span className="text-sm font-semibold text-foreground mb-1">
                   Add {name || "Zero"} to Slack
                 </span>
-                <p className="text-xs text-muted-foreground leading-relaxed mb-4">
+                <p className="text-xs text-muted-foreground leading-relaxed mb-4 flex-1">
                   Work with {name || "Zero"} in your Slack workspace where your
                   team already collaborates.
                 </p>
@@ -542,7 +542,7 @@ export function ZeroOnboarding({
                 <span className="text-sm font-semibold text-foreground mb-1">
                   Continue in web
                 </span>
-                <p className="text-xs text-muted-foreground leading-relaxed mb-4">
+                <p className="text-xs text-muted-foreground leading-relaxed mb-4 flex-1">
                   Chat with {name || "Zero"} in your browser with full access to
                   workflows and settings.
                 </p>

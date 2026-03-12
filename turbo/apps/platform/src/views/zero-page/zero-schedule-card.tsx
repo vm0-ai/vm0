@@ -74,7 +74,7 @@ export const WEEKDAY_LABELS = [
   "Sat",
   "Sun",
 ] as const;
-export const CALENDAR_TIME_SLOTS = [
+const CALENDAR_TIME_SLOTS = [
   "6:00 AM",
   "9:00 AM",
   "12:00 PM",
@@ -126,7 +126,7 @@ function formatTimeOfDay(hour: number, minute: number): string {
   return `${hour - 12}:${minute.toString().padStart(2, "0")} PM`;
 }
 
-export function buildScheduleTimeString(params: {
+function buildScheduleTimeString(params: {
   freq: string;
   date?: string;
   hour: number;
@@ -340,7 +340,7 @@ function timeLabelToMinutes(label: string): number {
  * Build the calendar time slots by merging default slots with entry-specific times,
  * sorted chronologically.
  */
-function buildCalendarTimeSlots(
+export function buildCalendarTimeSlots(
   scheduleList: readonly Readonly<ScheduleEntry>[],
 ): string[] {
   const slotSet = new Set<string>(CALENDAR_TIME_SLOTS);
@@ -371,26 +371,6 @@ export function getEntriesInCell(
     return t === timeLabel && dayIndices.includes(dayIndex);
   });
 }
-
-export const DEFAULT_SCHEDULE: readonly Readonly<ScheduleEntry>[] = [
-  {
-    id: "1",
-    time: "Every weekday at 9:00 AM",
-    prompt:
-      "Summarize yesterday's Slack threads and flag anything that needs a response.",
-  },
-  {
-    id: "2",
-    time: "Every 15 minutes",
-    prompt:
-      "Check inbox and calendar; notify me if something is time-sensitive.",
-  },
-  {
-    id: "3",
-    time: "Once on 2026-03-15 at 2:00 PM",
-    prompt: "Generate the Q1 review report and email the link to stakeholders.",
-  },
-];
 
 /** Dummy schedule for sub-agent (job) detail page — one entry per sub-agent. */
 const DUMMY_AGENT_SCHEDULE: readonly Readonly<ScheduleEntry>[] = [
