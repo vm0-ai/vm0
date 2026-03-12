@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import {
   getComposeByName,
-  getScope,
+  getOrg,
   httpPost,
   type ApiError,
 } from "../../lib/api";
@@ -42,7 +42,7 @@ export const shareCommand = new Command()
         }
 
         // Get scope for display
-        const scope = await getScope();
+        const scope = await getOrg();
 
         // Add email permission
         const response = await httpPost(

@@ -315,6 +315,7 @@ export const composesVersionsContract = c.router({
  */
 const composeListItemSchema = z.object({
   name: z.string(),
+  displayName: z.string().nullable().optional(),
   headVersionId: z.string().nullable(),
   updatedAt: z.string(),
   isOwner: z.boolean(),

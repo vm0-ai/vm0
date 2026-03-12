@@ -138,6 +138,7 @@ class TestRequestHandler:
                             {"base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}}},
                         ]
                     },
+                    "encryptedSecrets": "iv:tag:data",
                 }
             }
         }
@@ -258,24 +259,24 @@ class TestResponseHandler:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_rule"] = "service:https://api.github.com"
         flow.metadata["service_base"] = "https://api.github.com"
+        flow.metadata["service_api_id"] = "run-conn-1:0"
         flow.metadata["original_url"] = "https://api.github.com/repos"
 
         flow.response = MagicMock()
         flow.response.status_code = 401
         flow.response.headers = {}
 
-        # Pre-populate service token cache
-        cache_key = ("run-conn-1", "https://api.github.com")
-        mitm_addon._service_token_cache[cache_key] = {
+        # Pre-populate service header cache keyed by api_id
+        cache_key = ("run-conn-1", "run-conn-1:0")
+        mitm_addon._service_header_cache[cache_key] = {
             "headers": {"Authorization": "Bearer old-token"},
-            "expires_at": time.time() + 3600,
         }
 
         with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
             mitm_addon.response(flow)
 
         # Cache entry should have been removed
-        assert cache_key not in mitm_addon._service_token_cache
+        assert cache_key not in mitm_addon._service_header_cache
 
     def test_error_status_logs_warning(self, tmp_path):
         """Response with status >= 400 calls ctx.log.warn."""

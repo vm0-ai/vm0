@@ -10,7 +10,7 @@ import {
   createTestCallback,
   createTestAgentSession,
   createTestRequest,
-  createTestScope,
+  createTestOrg,
   createTestCompose,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { computeHmacSignature } from "../../../../../../src/lib/callback/hmac";
@@ -113,8 +113,8 @@ async function setupTelegramCallback() {
   const userId = uniqueId("user");
   mockClerk({ userId });
 
-  // Create scope + compose (with version) through API
-  await createTestScope(uniqueId("scope"));
+  // Create org + compose (with version) through API
+  await createTestOrg(uniqueId("org"));
   const { composeId } = await createTestCompose("test-agent");
 
   // Create installation with encrypted bot token + user link via helper

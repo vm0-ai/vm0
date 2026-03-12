@@ -3,7 +3,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { testContext, uniqueId } from "../../../__tests__/test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
 import {
-  createTestScope,
+  createTestOrg,
   insertUserCacheEntry,
 } from "../../../__tests__/api-test-helpers";
 import { getCachedUser, getCachedUserIdByEmail } from "../user-cache-service";
@@ -19,8 +19,8 @@ describe("getCachedUser", () => {
     const userId = uniqueId("test-user");
     const email = `${userId}@example.com`;
     mockClerk({ userId, email });
-    // createTestScope triggers initServices() via the route handler
-    await createTestScope(uniqueId("scope"));
+    // createTestOrg triggers initServices() via the route handler
+    await createTestOrg(uniqueId("org"));
 
     const result = await getCachedUser(userId);
 
@@ -41,7 +41,7 @@ describe("getCachedUser", () => {
     const userId = uniqueId("test-user");
     const email = `${userId}@cached.com`;
     mockClerk({ userId });
-    await createTestScope(uniqueId("scope"));
+    await createTestOrg(uniqueId("org"));
 
     // Pre-populate cache with fresh entry
     await insertUserCacheEntry({ userId, email });
@@ -59,7 +59,7 @@ describe("getCachedUser", () => {
     const userId = uniqueId("test-user");
     const freshEmail = `${userId}@example.com`;
     mockClerk({ userId, email: freshEmail });
-    await createTestScope(uniqueId("scope"));
+    await createTestOrg(uniqueId("org"));
 
     // Pre-populate cache with stale entry (2 minutes ago)
     const twoMinutesAgo = new Date(Date.now() - 120_000);
@@ -88,7 +88,7 @@ describe("getCachedUser", () => {
   it("throws when user has no primary email", async () => {
     const userId = uniqueId("test-user");
     mockClerk({ userId });
-    await createTestScope(uniqueId("scope"));
+    await createTestOrg(uniqueId("org"));
 
     // Override getUser to return no primary email
     const client = await clerkClient();
@@ -112,7 +112,7 @@ describe("getCachedUserIdByEmail", () => {
     const userId = uniqueId("test-user");
     const email = `${userId}@cached.com`;
     mockClerk({ userId });
-    await createTestScope(uniqueId("scope"));
+    await createTestOrg(uniqueId("org"));
 
     // Pre-populate cache
     await insertUserCacheEntry({ userId, email });
@@ -130,7 +130,7 @@ describe("getCachedUserIdByEmail", () => {
     const userId = uniqueId("test-user");
     const email = `${userId}@example.com`;
     mockClerk({ userId, email });
-    await createTestScope(uniqueId("scope"));
+    await createTestOrg(uniqueId("org"));
 
     const result = await getCachedUserIdByEmail(email);
 
@@ -150,7 +150,7 @@ describe("getCachedUserIdByEmail", () => {
   it("returns null when user not found", async () => {
     const userId = uniqueId("test-user");
     mockClerk({ userId });
-    await createTestScope(uniqueId("scope"));
+    await createTestOrg(uniqueId("org"));
 
     const result = await getCachedUserIdByEmail("nonexistent@example.com");
 

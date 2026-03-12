@@ -5,6 +5,7 @@ import type {
   AgentEventsResponse,
   LogStatus,
 } from "../logs-page/types.ts";
+import type { ComposeListItem } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { searchParams$, updateSearchParams$ } from "../route.ts";
 import { createCursorPagination } from "../cursor-pagination.ts";
@@ -31,21 +32,52 @@ export const zeroActivityStatusFilter$ = computed((get) => {
 });
 
 // ---------------------------------------------------------------------------
+// Scope agents — fetch all composes for name → displayName mapping
+// ---------------------------------------------------------------------------
+
+interface AgentOption {
+  name: string;
+  displayName: string;
+}
+
+const internalScopeAgents$ = state<AgentOption[]>([]);
+
+/** All agents in the current scope with display names. */
+export const zeroActivityScopeAgents$ = computed((get) =>
+  get(internalScopeAgents$),
+);
+
+const fetchScopeAgents$ = command(async ({ get, set }) => {
+  const fetchFn = get(fetch$);
+  const resp = await fetchFn("/api/agent/composes/list");
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch scope agents: ${resp.statusText}`);
+  }
+  const data = (await resp.json()) as { composes: ComposeListItem[] };
+  const agents: AgentOption[] = data.composes.map((c) => ({
+    name: c.name,
+    displayName:
+      c.displayName ?? c.name.charAt(0).toUpperCase() + c.name.slice(1),
+  }));
+  set(internalScopeAgents$, agents);
+});
+
+// ---------------------------------------------------------------------------
 // List — cursor pagination with URL-synced limit/cursor/filters
 // ---------------------------------------------------------------------------
 
 /** Agent name from onboarding (cached so pagination factory can read it). */
 const internalAgentName$ = state<string | null>(null);
-const cachedAgentName$ = computed((get) => get(internalAgentName$));
 
 export const initZeroActivityAgentName$ = command(async ({ get, set }) => {
   const status = await get(zeroOnboardingStatus$);
   set(internalAgentName$, status.defaultAgentName);
 });
 
-/** Initialize activity page: load agent name and seed cursor history. */
+/** Initialize activity page: load agent name, scope agents, and seed cursor history. */
 export const initZeroActivity$ = command(async ({ set }) => {
   await set(initZeroActivityAgentName$);
+  await set(fetchScopeAgents$);
   set(seedZeroActivityCursorHistory$);
 });
 
@@ -63,15 +95,16 @@ export const {
   resetPaginationState$: resetZeroActivityPagination$,
 } = createCursorPagination({
   buildFetchParams: (limit, cursor, get) => {
-    const agentName = get(cachedAgentName$);
-    if (!agentName) {
-      return null;
-    }
-
     const params = new URLSearchParams({
       limit: String(limit),
-      name: agentName,
     });
+
+    // Filter by specific agent when selected, otherwise fetch all
+    const agentFilter = get(zeroActivityAgentFilter$);
+    if (agentFilter !== "all") {
+      params.set("name", agentFilter);
+    }
+
     if (cursor) {
       params.set("cursor", cursor);
     }

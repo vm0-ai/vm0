@@ -4,7 +4,7 @@ import { DELETE } from "../members/route";
 import { GET as getMembersRoute } from "../members/route";
 import {
   createTestRequest,
-  createTestScope as createTestScopeHelper,
+  createTestOrg as createTestOrgHelper,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
@@ -14,10 +14,10 @@ import { clerkClient } from "@clerk/nextjs/server";
 const context = testContext();
 
 /**
- * Helper to create a scope with a fresh user.
+ * Helper to create an org with a fresh user.
  */
-async function createTestScope(userId: string) {
-  const slug = uniqueId("scope");
+async function createTestOrg(userId: string) {
+  const slug = uniqueId("org");
   const orgId = `org_mock_${userId}`;
   setupClerkOrgMock({
     userId,
@@ -26,7 +26,7 @@ async function createTestScope(userId: string) {
     memberships: [{ userId, role: "org:admin" }],
   });
 
-  await createTestScopeHelper(slug);
+  await createTestOrgHelper(slug);
 
   return { slug, orgId };
 }
@@ -89,7 +89,7 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     expect(data.error.message).toContain("Not authenticated");
   });
 
-  it("should require scope query parameter", async () => {
+  it("should require org query parameter", async () => {
     const userId = uniqueId("members-user");
     mockClerk({ userId });
 
@@ -113,7 +113,7 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     const memberEmail = "member@example.com";
     // Clerk mock maps "member@example.com" -> "user_member"
     const memberUserId = "user_member";
-    const { slug, orgId } = await createTestScope(adminUserId);
+    const { slug, orgId } = await createTestOrg(adminUserId);
 
     // Add member via invite API
     await addMember(adminUserId, memberUserId, memberEmail, slug, orgId);
@@ -150,7 +150,7 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     const memberEmail = "member-revoke@example.com";
     // Clerk mock maps "member-revoke@example.com" -> "user_member-revoke"
     const memberUserId = "user_member-revoke";
-    const { slug, orgId } = await createTestScope(adminUserId);
+    const { slug, orgId } = await createTestOrg(adminUserId);
 
     // Add member via invite API
     await addMember(adminUserId, memberUserId, memberEmail, slug, orgId);

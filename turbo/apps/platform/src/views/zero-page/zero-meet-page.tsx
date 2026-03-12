@@ -61,6 +61,7 @@ import {
 } from "../../signals/settings-page/connectors.ts";
 import { deleteConnector$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { updatePathname$ } from "../../signals/route.ts";
 import {
   AddConnectionDialog,
   ConnectModal,
@@ -847,6 +848,7 @@ export function ZeroMeetPage({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroMeetPageProps) {
+  const navigate = useSet(updatePathname$);
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const resolvedAgentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
@@ -963,6 +965,7 @@ export function ZeroMeetPage({
               variant="outline"
               size="sm"
               className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
+              onClick={() => navigate("/zero/chat")}
             >
               <IconMessageCircle size={14} stroke={1.5} />
               Just ask

@@ -143,6 +143,11 @@ export function ZeroActivityDetailPage({
                 Download
               </Button>
             </div>
+            {detail?.error && status === "failed" && (
+              <div className="mt-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {detail.error}
+              </div>
+            )}
           </div>
 
           {/* Steps section */}

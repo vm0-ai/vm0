@@ -22,6 +22,7 @@ import {
   SelectValue,
   cn,
 } from "@vm0/ui";
+import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import {
   Popover,
   PopoverContent,
@@ -50,6 +51,7 @@ import { COMMON_TIMEZONES } from "../../signals/agent-detail/cron.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
+  allOrgSchedulesLoaded$,
   fetchAllOrgSchedules$,
   saveOrgSchedule$,
   toggleOrgScheduleEnabled$,
@@ -603,6 +605,70 @@ function ScheduleEditDialog(props: ScheduleEditDialogProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Skeleton
+// ---------------------------------------------------------------------------
+
+const SKELETON_LIST_KEYS = ["s-0", "s-1", "s-2", "s-3", "s-4"] as const;
+const SKELETON_ROW_KEYS = ["r-0", "r-1", "r-2", "r-3"] as const;
+
+function ScheduleListSkeleton() {
+  return (
+    <ul className="flex flex-col" role="list">
+      {SKELETON_LIST_KEYS.map((key) => (
+        <li
+          key={key}
+          className="flex items-center gap-3 py-2.5 border-b border-border/50 last:border-b-0 -mx-1 px-1"
+        >
+          <Skeleton className="h-5 w-9 rounded-full shrink-0" />
+          <Skeleton className="h-3.5 w-[100px] shrink-0" />
+          <Skeleton className="h-3.5 w-[120px] shrink-0" />
+          <Skeleton className="h-3.5 flex-1" />
+          <Skeleton className="h-6 w-6 rounded shrink-0" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ScheduleCalendarSkeleton() {
+  return (
+    <section className="flex flex-col gap-2">
+      <Skeleton className="h-4 w-20" />
+      <div className="rounded-xl border border-border/70 bg-muted/20 overflow-hidden">
+        <div className="grid grid-cols-8">
+          <div className="bg-muted/50 p-2 border-b border-r border-border/60 h-9" />
+          {WEEKDAY_LABELS.map((d) => (
+            <div
+              key={d}
+              className="bg-muted/50 p-2 border-b border-border/60 flex justify-center"
+            >
+              <Skeleton className="h-4 w-8" />
+            </div>
+          ))}
+          {SKELETON_ROW_KEYS.map((rowKey, row) => (
+            <div key={rowKey} className="contents">
+              <div className="bg-muted/30 p-2 border-r border-b border-border/60 flex items-center">
+                <Skeleton className="h-3 w-12" />
+              </div>
+              {WEEKDAY_LABELS.map((day, col) => (
+                <div
+                  key={`${rowKey}-${day}`}
+                  className="min-h-[52px] p-1.5 border-r border-b border-border/60 flex items-center justify-center"
+                >
+                  {(row + col) % 3 === 0 && (
+                    <Skeleton className="h-6 w-full rounded" />
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // List view
 // ---------------------------------------------------------------------------
 
@@ -713,6 +779,8 @@ export function ZeroSchedulePage() {
   const entriesLoadable = useLastLoadable(allOrgScheduleEntries$);
   const entries: OrgScheduleEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
+  const loaded = useGet(allOrgSchedulesLoaded$);
+  const isInitialLoading = !loaded;
 
   const fetchSchedules = useSet(fetchAllOrgSchedules$);
   const saveSchedule = useSet(saveOrgSchedule$);
@@ -830,16 +898,20 @@ export function ZeroSchedulePage() {
         <div className="mx-auto max-w-[900px]">
           <Card className="zero-card">
             <CardContent className="py-5 flex flex-col gap-6">
-              {scheduleViewMode === "list" && (
+              {isInitialLoading ? (
+                scheduleViewMode === "calendar" ? (
+                  <ScheduleCalendarSkeleton />
+                ) : (
+                  <ScheduleListSkeleton />
+                )
+              ) : scheduleViewMode === "list" ? (
                 <ScheduleListView
                   combinedSchedule={combinedSchedule}
                   onEdit={openEditSchedule}
                   onToggle={handleToggle}
                   onDelete={handleDelete}
                 />
-              )}
-
-              {scheduleViewMode === "calendar" && (
+              ) : (
                 <ScheduleCalendarView
                   combinedSchedule={combinedSchedule}
                   agentOrder={agentOrder}

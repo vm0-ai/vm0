@@ -12,7 +12,8 @@ import { artifactCommand } from "./commands/artifact";
 import { memoryCommand } from "./commands/memory";
 import { cookCommand } from "./commands/cook";
 import { logsCommand } from "./commands/logs";
-import { scopeCommand } from "./commands/scope";
+import chalk from "chalk";
+import { orgCommand } from "./commands/org";
 import { agentCommand } from "./commands/agent";
 import { initCommand } from "./commands/init";
 import { scheduleCommand } from "./commands/schedule";
@@ -46,7 +47,22 @@ program.addCommand(artifactCommand);
 program.addCommand(memoryCommand);
 program.addCommand(cookCommand);
 program.addCommand(logsCommand);
-program.addCommand(scopeCommand);
+program.addCommand(orgCommand);
+
+// Deprecated scope command alias — shows deprecation warning
+const deprecatedScopeCommand = new Command("scope")
+  .allowUnknownOption()
+  .allowExcessArguments()
+  .action((_options: unknown, command: Command) => {
+    const args = command.args.join(" ");
+    console.error(
+      chalk.yellow(
+        `⚠ 'vm0 scope' is deprecated. Use 'vm0 org${args ? " " + args : ""}' instead.`,
+      ),
+    );
+    process.exit(1);
+  });
+program.addCommand(deprecatedScopeCommand, { hidden: true });
 program.addCommand(agentCommand);
 program.addCommand(initCommand);
 program.addCommand(scheduleCommand);

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import {
   createTestCompose,
-  createTestScope,
+  createTestOrg,
 } from "../../../../__tests__/api-test-helpers";
 import { mockClerk } from "../../../../__tests__/clerk-mock";
 import * as runModule from "../../../run";
@@ -20,7 +20,7 @@ describe("runAgentForSlack", () => {
     // Given a user with an agent compose (created via API so it has a version)
     const userId = uniqueId("test-user");
     mockClerk({ userId });
-    await createTestScope(uniqueId("scope"));
+    await createTestOrg(uniqueId("org"));
     const { composeId } = await createTestCompose("test-agent");
 
     // And createRun is spied on to capture the call without executing

@@ -1,5 +1,5 @@
 /**
- * Tests for scope list command
+ * Tests for org use command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -7,24 +7,23 @@
  * - Real (internal): All CLI code, formatters, validators
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
-import { listCommand } from "../list";
+import { useCommand } from "../use";
 import { mkdtempSync } from "fs";
-import { mkdir, writeFile, rm } from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import chalk from "chalk";
 
 // Mock os.homedir to use temp directory
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "test-scope-list-"));
+const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "test-org-use-"));
 vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
   return { ...original, homedir: () => TEST_HOME };
 });
 
-describe("scope list command", () => {
+describe("org use command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -33,61 +32,64 @@ describe("scope list command", () => {
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
-  beforeEach(async () => {
+  beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
-    const configDir = path.join(TEST_HOME, ".vm0");
-    await mkdir(configDir, { recursive: true });
-    await writeFile(
-      path.join(configDir, "config.json"),
-      JSON.stringify({ activeScope: "my-org" }),
-    );
   });
 
-  afterEach(async () => {
-    await rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
-  });
-
-  it("should display scopes with roles", async () => {
+  it("should switch to organization and show success", async () => {
     server.use(
       http.get("http://localhost:3000/api/scope/list", () => {
         return HttpResponse.json({
-          scopes: [
-            { slug: "personal-user", role: "admin" },
-            { slug: "my-org", role: "admin" },
-          ],
+          scopes: [{ slug: "my-org", role: "admin" }],
           active: undefined,
         });
       }),
     );
 
-    await listCommand.parseAsync(["node", "cli"]);
+    await useCommand.parseAsync(["node", "cli", "my-org"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("personal-user");
-    expect(logCalls).toContain("admin");
     expect(logCalls).toContain("my-org");
-    expect(logCalls).toContain("admin");
   });
 
-  it("should mark current scope", async () => {
+  it("should switch to personal scope with --personal flag", async () => {
+    await useCommand.parseAsync(["node", "cli", "--personal"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("personal scope");
+  });
+
+  it("should require slug argument without --personal", async () => {
+    await expect(async () => {
+      await useCommand.parseAsync(["node", "cli"]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("Organization slug is required"),
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("should handle organization not found", async () => {
     server.use(
       http.get("http://localhost:3000/api/scope/list", () => {
         return HttpResponse.json({
-          scopes: [
-            { slug: "personal-user", role: "admin" },
-            { slug: "my-org", role: "admin" },
-          ],
+          scopes: [],
           active: undefined,
         });
       }),
     );
 
-    await listCommand.parseAsync(["node", "cli"]);
+    await expect(async () => {
+      await useCommand.parseAsync(["node", "cli", "nonexistent"]);
+    }).rejects.toThrow("process.exit called");
 
-    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("current");
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("not found"),
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
   });
 
   it("should handle API error", async () => {
@@ -97,7 +99,7 @@ describe("scope list command", () => {
           {
             error: {
               message: "Internal server error",
-              code: "SERVER_ERROR",
+              code: "INTERNAL_ERROR",
             },
           },
           { status: 500 },
@@ -106,12 +108,9 @@ describe("scope list command", () => {
     );
 
     await expect(async () => {
-      await listCommand.parseAsync(["node", "cli"]);
+      await useCommand.parseAsync(["node", "cli", "nonexistent"]);
     }).rejects.toThrow("process.exit called");
 
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("Internal server error"),
-    );
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

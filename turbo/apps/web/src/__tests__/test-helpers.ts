@@ -447,7 +447,7 @@ export function testContext(): TestContext {
       initServices();
 
       // Generate unique suffix shared between userId and scope
-      // This allows tests to derive scope slug from userId if needed
+      // This allows tests to derive org slug from userId if needed
       const suffix = uniqueSuffix();
       const userId = `${prefix}-${suffix}`;
       trackedUserIds.push(userId);
@@ -457,10 +457,10 @@ export function testContext(): TestContext {
 
       // Pre-populate org_cache for the default Clerk org so that
       // getOrgData() works without hitting the Clerk API mock.
-      // Use scope-${suffix} as slug to match test conventions that derive
-      // scope slug from userId suffix.
+      // Use org-${suffix} as slug to match test conventions that derive
+      // org slug from userId suffix.
       const defaultOrgId = `org_mock_${userId}`;
-      const defaultOrgSlug = `scope-${suffix}`;
+      const defaultOrgSlug = `org-${suffix}`;
       await insertOrgCacheEntry({ orgId: defaultOrgId, slug: defaultOrgSlug });
       controller.signal.throwIfAborted();
 
@@ -502,7 +502,7 @@ export function testContext(): TestContext {
     const adminUserId = optVm0UserId ?? uniqueId("test-admin");
     let composeId = options.composeId;
     if (!composeId) {
-      const orgSlug = uniqueId("scope");
+      const orgSlug = uniqueId("org");
       const orgId = uniqueId("org");
 
       // Pre-populate org cache for getOrgData()
@@ -597,7 +597,7 @@ export function testContext(): TestContext {
     initServices();
 
     // Create org cache and compose for this user
-    const orgSlug = uniqueId("scope");
+    const orgSlug = uniqueId("org");
     const orgId = uniqueId("org");
 
     // Pre-populate org cache for getOrgData()

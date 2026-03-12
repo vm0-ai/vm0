@@ -107,74 +107,37 @@ class TestMatchService:
 
 class TestGetServiceHeaders:
     def setup_method(self):
-        mitm_addon._service_token_cache.clear()
+        mitm_addon._service_header_cache.clear()
 
     def test_cache_miss_fetches_and_caches(self):
         mock_headers = {"Authorization": "Bearer fresh-token"}
-        mock_result = {"headers": mock_headers, "expiresIn": 900}
+        mock_result = {"headers": mock_headers}
+        encrypted = "iv:tag:data"
+        auth_templates = {"Authorization": "Bearer ${secrets.TOKEN}"}
 
         with patch.object(mitm_addon, "fetch_service_headers", return_value=mock_result) as mock_fetch:
-            headers = mitm_addon.get_service_headers("run-1", "https://api.github.com", "tok-xyz")
+            headers = mitm_addon.get_service_headers("run-1", "https://api.github.com", encrypted, auth_templates, "tok-xyz")
 
         assert headers == mock_headers
-        mock_fetch.assert_called_once_with("https://api.github.com", "tok-xyz", "run-1")
+        mock_fetch.assert_called_once_with(encrypted, auth_templates, "tok-xyz")
 
         # Verify the cache was populated
         cache_key = ("run-1", "https://api.github.com")
-        assert cache_key in mitm_addon._service_token_cache
-        assert mitm_addon._service_token_cache[cache_key]["headers"] == mock_headers
+        assert cache_key in mitm_addon._service_header_cache
+        assert mitm_addon._service_header_cache[cache_key]["headers"] == mock_headers
 
     def test_cache_hit_returns_cached(self):
         cache_key = ("run-1", "https://api.github.com")
         cached_headers = {"Authorization": "Bearer cached-token"}
-        mitm_addon._service_token_cache[cache_key] = {
+        mitm_addon._service_header_cache[cache_key] = {
             "headers": cached_headers,
-            "expires_at": time.time() + 600,  # 10 minutes in future
         }
 
         with patch.object(mitm_addon, "fetch_service_headers") as mock_fetch:
-            headers = mitm_addon.get_service_headers("run-1", "https://api.github.com", "tok-xyz")
+            headers = mitm_addon.get_service_headers("run-1", "https://api.github.com", "iv:tag:data", {}, "tok-xyz")
 
         assert headers == cached_headers
         mock_fetch.assert_not_called()
-
-    def test_cache_expired_fetches_again(self):
-        cache_key = ("run-1", "https://api.github.com")
-        mitm_addon._service_token_cache[cache_key] = {
-            "headers": {"Authorization": "Bearer old-token"},
-            "expires_at": time.time() - 1,  # expired 1 second ago
-        }
-        new_headers = {"Authorization": "Bearer new-token"}
-        mock_result = {"headers": new_headers, "expiresIn": 900}
-
-        with patch.object(mitm_addon, "fetch_service_headers", return_value=mock_result) as mock_fetch:
-            headers = mitm_addon.get_service_headers("run-1", "https://api.github.com", "tok-xyz")
-
-        assert headers == new_headers
-        mock_fetch.assert_called_once()
-
-    def test_expires_in_capped_at_1800(self):
-        """expiresIn values above 1800 are capped to 1800 seconds."""
-        mock_result = {"headers": {"Authorization": "Bearer tok"}, "expiresIn": 7200}
-
-        with patch.object(mitm_addon, "fetch_service_headers", return_value=mock_result):
-            mitm_addon.get_service_headers("run-1", "https://api.github.com", "tok-xyz")
-
-        cache_key = ("run-1", "https://api.github.com")
-        cached = mitm_addon._service_token_cache[cache_key]
-        # The expiry should be at most ~1800 seconds from now
-        assert cached["expires_at"] <= time.time() + 1801
-
-    def test_default_expires_in_used_when_missing(self):
-        mock_result = {"headers": {"Authorization": "Bearer tok"}}
-
-        with patch.object(mitm_addon, "fetch_service_headers", return_value=mock_result):
-            mitm_addon.get_service_headers("run-1", "https://api.github.com", "tok-xyz")
-
-        cache_key = ("run-1", "https://api.github.com")
-        cached = mitm_addon._service_token_cache[cache_key]
-        # Default expiresIn is 1800, so expires_at should be ~1800s from now
-        assert cached["expires_at"] > time.time() + 1700
 
 
 # =========================================================================
@@ -184,14 +147,15 @@ class TestGetServiceHeaders:
 
 class TestHandleServiceRequest:
     def setup_method(self):
-        mitm_addon._service_token_cache.clear()
+        mitm_addon._service_header_cache.clear()
 
     def test_success_injects_headers(self):
         flow = _make_http_flow()
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}}}
+        api_entry = {"id": "run-1:0", "base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}}}
         vm_info = {
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
             "networkLogPath": "/tmp/net.jsonl",
         }
         resolved_headers = {"Authorization": "Bearer real-token", "X-Custom": "value"}
@@ -210,6 +174,7 @@ class TestHandleServiceRequest:
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata["firewall_rule"] == "service:https://api.github.com"
         assert flow.metadata["service_base"] == "https://api.github.com"
+        assert flow.metadata["service_api_id"] == "run-1:0"
         assert flow.metadata["vm_run_id"] == "run-1"
 
     def test_failure_returns_502(self):
@@ -218,6 +183,7 @@ class TestHandleServiceRequest:
         vm_info = {
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
             "networkLogPath": "/tmp/net.jsonl",
         }
 
@@ -240,7 +206,7 @@ class TestHandleServiceRequest:
         """On success, flow.response should remain None (request continues to origin)."""
         flow = _make_http_flow()
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {"runId": "run-1", "sandboxToken": "tok-xyz", "networkLogPath": ""}
+        vm_info = {"runId": "run-1", "sandboxToken": "tok-xyz", "encryptedSecrets": "iv:tag:data", "networkLogPath": ""}
 
         with (
             patch.object(mitm_addon, "get_service_headers", return_value={"Auth": "tok"}),
@@ -249,6 +215,19 @@ class TestHandleServiceRequest:
             mitm_addon.handle_service_request(flow, api_entry, vm_info)
 
         assert flow.response is None
+
+    def test_missing_encrypted_secrets_returns_502(self):
+        """When encryptedSecrets is missing from vm_info, return 502."""
+        flow = _make_http_flow()
+        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
+        vm_info = {"runId": "run-1", "sandboxToken": "tok-xyz", "networkLogPath": ""}
+
+        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+            mitm_addon.handle_service_request(flow, api_entry, vm_info)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["firewall_action"] == "DENY"
 
 
 # =========================================================================
@@ -267,7 +246,7 @@ class TestFetchServiceHeaders:
             patch("mitm_addon.urllib.request.urlopen", return_value=mock_resp),
             patch.object(mitm_addon, "VERCEL_BYPASS", ""),
         ):
-            result = mitm_addon.fetch_service_headers("https://api.github.com", "tok-xyz", "run-1")
+            result = mitm_addon.fetch_service_headers("iv:tag:data", {"Authorization": "Bearer ${secrets.TOKEN}"}, "tok-xyz")
 
         assert result == {"headers": {"Authorization": "Bearer tok"}}
 
@@ -276,9 +255,10 @@ class TestFetchServiceHeaders:
         call_args = mock_req_cls.call_args
         assert call_args[0][0] == "https://api.vm0.ai/api/webhooks/agent/services/auth"
         body = json.loads(call_args[1]["data"])
-        assert body["runId"] == "run-1"
-        assert body["base"] == "https://api.github.com"
-        assert "connectorName" not in body
+        assert body["encryptedSecrets"] == "iv:tag:data"
+        assert body["authHeaders"] == {"Authorization": "Bearer ${secrets.TOKEN}"}
+        assert "runId" not in body
+        assert "base" not in body
         assert call_args[1]["headers"]["Authorization"] == "Bearer tok-xyz"
         assert call_args[1]["headers"]["Content-Type"] == "application/json"
 
@@ -294,7 +274,7 @@ class TestFetchServiceHeaders:
             patch("mitm_addon.urllib.request.urlopen", return_value=mock_resp),
             patch.object(mitm_addon, "VERCEL_BYPASS", "secret-bypass-value"),
         ):
-            mitm_addon.fetch_service_headers("https://api.github.com", "tok-xyz", "run-1")
+            mitm_addon.fetch_service_headers("iv:tag:data", {}, "tok-xyz")
 
         mock_req_instance.add_header.assert_called_once_with("x-vercel-protection-bypass", "secret-bypass-value")
 
@@ -310,6 +290,6 @@ class TestFetchServiceHeaders:
             patch("mitm_addon.urllib.request.urlopen", return_value=mock_resp),
             patch.object(mitm_addon, "VERCEL_BYPASS", ""),
         ):
-            mitm_addon.fetch_service_headers("https://api.github.com", "tok-xyz", "run-1")
+            mitm_addon.fetch_service_headers("iv:tag:data", {}, "tok-xyz")
 
         mock_req_instance.add_header.assert_not_called()

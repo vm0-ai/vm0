@@ -24,7 +24,7 @@ describe("/api/scope", () => {
       expect(data.error.message).toContain("Not authenticated");
     });
 
-    it("should return user's default scope from org_cache", async () => {
+    it("should return user's default org from org_cache", async () => {
       await context.setupUser();
 
       const request = createTestRequest("http://localhost:3000/api/scope");
@@ -80,7 +80,7 @@ describe("/api/scope", () => {
       expect(data.error.code).toBe("BAD_REQUEST");
     });
 
-    it("should update scope slug with force flag", async () => {
+    it("should update org slug with force flag", async () => {
       const newSlug = `updated-${Date.now()}`;
 
       const request = createTestRequest("http://localhost:3000/api/scope", {

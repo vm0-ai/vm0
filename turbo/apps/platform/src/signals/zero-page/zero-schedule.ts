@@ -364,6 +364,12 @@ export interface OrgScheduleEntry {
 }
 
 const internalAllSchedules$ = state<ScheduleResponse[]>([]);
+const internalAllSchedulesLoaded$ = state(false);
+
+/** Whether the org schedules have been loaded at least once. */
+export const allOrgSchedulesLoaded$ = computed((get) =>
+  get(internalAllSchedulesLoaded$),
+);
 
 export const allOrgScheduleEntries$ = computed((get) => {
   const schedules = get(internalAllSchedules$);
@@ -399,6 +405,8 @@ export const fetchAllOrgSchedules$ = command(async ({ get, set }) => {
     throwIfAbort(error);
     L.error("Failed to fetch all org schedules:", error);
     set(internalAllSchedules$, []);
+  } finally {
+    set(internalAllSchedulesLoaded$, true);
   }
 });
 

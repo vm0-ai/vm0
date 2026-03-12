@@ -17,10 +17,10 @@ import type { LogEntry } from "../../signals/logs-page/types.ts";
 import { StatusBadge } from "../logs-page/status-badge.tsx";
 import { Pagination } from "../components/pagination.tsx";
 import { ZeroActivityDetailPage } from "./zero-activity-detail-page.tsx";
-import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
   zeroActivityAgentFilter$,
   zeroActivityStatusFilter$,
+  zeroActivityScopeAgents$,
   setZeroActivityFilter$,
   zeroActivityData$,
   zeroActivityLimit$,
@@ -115,10 +115,6 @@ function ActivityRow({
 }
 
 export function ZeroActivityPage() {
-  const agentNameLoadable = useLoadable(agentDisplayName$);
-  const agentName =
-    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-
   const dataLoadable = useLoadable(zeroActivityData$);
   const hasPrev = useGet(zeroActivityHasPrev$);
   const currentPage = useGet(zeroActivityCurrentPage$);
@@ -138,6 +134,7 @@ export function ZeroActivityPage() {
   const agentFilter = useGet(zeroActivityAgentFilter$);
   const statusFilter = useGet(zeroActivityStatusFilter$);
   const setFilter = useSet(setZeroActivityFilter$);
+  const scopeAgents = useGet(zeroActivityScopeAgents$);
 
   const logs = dataLoadable.state === "hasData" ? dataLoadable.data.data : [];
   const hasNext =
@@ -148,12 +145,15 @@ export function ZeroActivityPage() {
       : undefined;
   const isLoading = dataLoadable.state === "loading";
 
-  // Derive unique agent names for the filter dropdown (show display name)
+  // Build name → displayName lookup from scope agents
+  const nameToDisplay = new Map(
+    scopeAgents.map((a) => [a.name, a.displayName]),
+  );
+
+  // Agent filter options: show display names, map back to compose name
   const agentOptions = [
     { value: "all", label: "All Agents" },
-    ...Array.from(new Set(logs.map((e) => e.agentName)))
-      .sort()
-      .map((name) => ({ value: name, label: name })),
+    ...scopeAgents.map((a) => ({ value: a.name, label: a.displayName })),
   ];
 
   // Detail view when sub-route is present
@@ -163,6 +163,7 @@ export function ZeroActivityPage() {
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
+      {/* Fixed header: title + filters */}
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
         <div className="mx-auto max-w-[900px]">
           <div>
@@ -170,7 +171,7 @@ export function ZeroActivityPage() {
               Activity
             </h1>
             <p className="text-sm text-muted-foreground">
-              Logs and runs from {agentName} and your workflows.
+              Logs and runs from your agents.
             </p>
           </div>
 
@@ -219,69 +220,74 @@ export function ZeroActivityPage() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto px-4 sm:px-6 pt-2 pb-8">
+      {/* Scrollable table area */}
+      <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6">
         <div className="mx-auto max-w-[900px]">
-          {logs.length > 0 && (
-            <div>
-              <div
-                className={cn(
-                  ROW_GRID,
-                  "zero-activity-header py-2 pb-1.5 border-b text-sm font-medium text-muted-foreground",
-                )}
-              >
-                <div className="text-left">Agent</div>
-                <div className="text-left">Status</div>
-                <div className="text-left">Start Time</div>
-                <div className="text-left">Duration</div>
-                <div />
-              </div>
+          {(logs.length > 0 || isLoading) && (
+            <div
+              className={cn(
+                ROW_GRID,
+                "sticky top-0 z-10 py-2 pb-1.5 border-b text-sm font-medium text-muted-foreground backdrop-blur-md bg-background/60",
+              )}
+            >
+              <div className="text-left">Agent</div>
+              <div className="text-left">Status</div>
+              <div className="text-left">Start Time</div>
+              <div className="text-left">Duration</div>
+              <div />
             </div>
           )}
-          {logs.map((entry) => (
-            <ActivityRow
-              key={entry.id}
-              entry={entry}
-              onSelect={(id) => navigate(`/zero/activity/${id}`)}
-              agentName={agentName}
-            />
-          ))}
-          {logs.length === 0 && !isLoading && (
-            <p className="text-sm text-muted-foreground py-8 text-center">
-              {agentFilter === "all" && statusFilter === "all"
-                ? "No activity found."
-                : "No activity matches your filters."}
-            </p>
-          )}
-          {isLoading && (
-            <div className="flex justify-center py-8">
+          {isLoading ? (
+            <div className="flex items-center justify-center min-h-[20rem]">
               <IconLoader2
                 size={20}
                 stroke={1.5}
                 className="animate-spin text-muted-foreground"
               />
             </div>
+          ) : logs.length === 0 ? (
+            <div className="flex items-center justify-center min-h-[20rem]">
+              <p className="text-sm text-muted-foreground">
+                {agentFilter === "all" && statusFilter === "all"
+                  ? "No activity found."
+                  : "No activity matches your filters."}
+              </p>
+            </div>
+          ) : (
+            logs.map((entry) => (
+              <ActivityRow
+                key={entry.id}
+                entry={entry}
+                onSelect={(id) => navigate(`/zero/activity/${id}`)}
+                agentName={
+                  nameToDisplay.get(entry.agentName) ?? entry.agentName
+                }
+              />
+            ))
           )}
-          <div className="pt-8">
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              rowsPerPage={rowsPerPage}
-              hasNext={hasNext}
-              hasPrev={hasPrev}
-              isLoading={isLoading}
-              labelClassName="font-normal text-muted-foreground"
-              buttonClassName="bg-transparent border-border/70"
-              onNextPage={() => detach(goToNext(), Reason.DomCallback)}
-              onPrevPage={() => goToPrev()}
-              onForwardTwoPages={() =>
-                detach(goForwardTwo(), Reason.DomCallback)
-              }
-              onBackTwoPages={() => goBackTwo()}
-              onRowsPerPageChange={(limit) => setRowsPerPage(limit)}
-            />
-          </div>
         </div>
-      </main>
+      </div>
+
+      {/* Fixed pagination footer */}
+      <div className="shrink-0 px-4 sm:px-6 py-4">
+        <div className="mx-auto max-w-[900px]">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            rowsPerPage={rowsPerPage}
+            hasNext={hasNext}
+            hasPrev={hasPrev}
+            isLoading={isLoading}
+            labelClassName="font-normal text-muted-foreground"
+            buttonClassName="bg-transparent border-border/70"
+            onNextPage={() => detach(goToNext(), Reason.DomCallback)}
+            onPrevPage={() => goToPrev()}
+            onForwardTwoPages={() => detach(goForwardTwo(), Reason.DomCallback)}
+            onBackTwoPages={() => goBackTwo()}
+            onRowsPerPageChange={(limit) => setRowsPerPage(limit)}
+          />
+        </div>
+      </div>
     </div>
   );
 }

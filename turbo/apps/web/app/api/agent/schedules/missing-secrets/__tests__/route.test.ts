@@ -134,7 +134,7 @@ describe("GET /api/agent/schedules/missing-secrets", () => {
     await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
 
     const ownerSuffix = owner.userId.replace("ms-owner-", "");
-    const agentScopeSlug = `scope-${ownerSuffix}`;
+    const agentOrgSlug = `org-${ownerSuffix}`;
 
     // Switch to recipient — they don't have SHARED_KEY configured
     mockClerk({ userId: user.userId });
@@ -147,7 +147,7 @@ describe("GET /api/agent/schedules/missing-secrets", () => {
     expect(response.status).toBe(200);
     const agent = data.agents.find(
       (a: { agentName: string }) =>
-        a.agentName === `${agentScopeSlug}/${agentName}`,
+        a.agentName === `${agentOrgSlug}/${agentName}`,
     );
     expect(agent).toBeDefined();
     expect(agent.missingSecrets).toContain("SHARED_KEY");

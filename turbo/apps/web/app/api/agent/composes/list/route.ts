@@ -1,13 +1,55 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { composesListContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import { agentComposes } from "../../../../../src/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../../../src/db/schema/agent-compose";
 import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { eq, desc } from "drizzle-orm";
 import { resolveOrg } from "../../../../../src/lib/scope/resolve-org";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 import { getEmailSharedAgents } from "../../../../../src/lib/agent/permission-service";
+
+function extractDisplayName(content: unknown): string | null {
+  if (
+    content === null ||
+    content === undefined ||
+    typeof content !== "object"
+  ) {
+    return null;
+  }
+  const record = content as Record<string, unknown>;
+  const agents = record["agents"];
+  if (agents === null || agents === undefined || typeof agents !== "object") {
+    return null;
+  }
+  const agentKeys = Object.keys(agents);
+  if (agentKeys.length === 0) return null;
+  const agentsRecord = agents as Record<string, unknown>;
+  const firstAgent = agentsRecord[agentKeys[0]!];
+  if (
+    firstAgent === null ||
+    firstAgent === undefined ||
+    typeof firstAgent !== "object"
+  ) {
+    return null;
+  }
+  const agentRecord = firstAgent as Record<string, unknown>;
+  const metadata = agentRecord["metadata"];
+  if (
+    metadata === null ||
+    metadata === undefined ||
+    typeof metadata !== "object"
+  ) {
+    return null;
+  }
+  const metadataRecord = metadata as Record<string, unknown>;
+  const displayName = metadataRecord["displayName"];
+  if (typeof displayName !== "string") return null;
+  return displayName;
+}
 
 const router = tsr.router(composesListContract, {
   list: async ({ query, headers }) => {
@@ -57,15 +99,20 @@ const router = tsr.router(composesListContract, {
       throw error;
     }
 
-    // Query own composes for this scope
+    // Query own composes for this scope (join head version for displayName)
     const ownComposes = await globalThis.services.db
       .select({
         id: agentComposes.id,
         name: agentComposes.name,
         headVersionId: agentComposes.headVersionId,
         updatedAt: agentComposes.updatedAt,
+        headContent: agentComposeVersions.content,
       })
       .from(agentComposes)
+      .leftJoin(
+        agentComposeVersions,
+        eq(agentComposes.headVersionId, agentComposeVersions.id),
+      )
       .where(eq(agentComposes.orgId, orgId))
       .orderBy(desc(agentComposes.updatedAt));
 
@@ -87,12 +134,14 @@ const router = tsr.router(composesListContract, {
     const allComposes = [
       ...ownComposes.map((c) => ({
         name: c.name,
+        displayName: extractDisplayName(c.headContent),
         headVersionId: c.headVersionId,
         updatedAt: c.updatedAt.toISOString(),
         isOwner: true,
       })),
       ...sharedComposes.map((c) => ({
         name: `${c.orgSlug}/${c.name}`,
+        displayName: null as string | null,
         headVersionId: c.headVersionId,
         updatedAt: c.updatedAt.toISOString(),
         isOwner: false,

@@ -61,8 +61,8 @@ export function resolveSystemImageToE2b(
   name: string,
   tag?: string,
 ): { e2bTemplate: string; deprecationWarning?: string } {
-  // TODO: "vm0" is hardcoded as the system scope slug. This should be configurable.
-  const systemScopeSlug = "vm0";
+  // TODO: "vm0" is hardcoded as the system org slug. This should be configurable.
+  const systemOrgSlug = "vm0";
 
   // Resolve legacy aliases (e.g., claude-code-github → claude-code)
   const resolvedName = IMAGE_ALIASES[name] ?? name;
@@ -70,7 +70,7 @@ export function resolveSystemImageToE2b(
   // Validate system image name
   if (!SYSTEM_IMAGES.includes(resolvedName as (typeof SYSTEM_IMAGES)[number])) {
     throw new Error(
-      `Unknown system image: ${systemScopeSlug}/${name}. Available: ${SYSTEM_IMAGES.map((img) => `${systemScopeSlug}/${img}`).join(", ")}`,
+      `Unknown system image: ${systemOrgSlug}/${name}. Available: ${SYSTEM_IMAGES.map((img) => `${systemOrgSlug}/${img}`).join(", ")}`,
     );
   }
 
@@ -82,7 +82,7 @@ export function resolveSystemImageToE2b(
   }
 
   // Convert to E2B template name: vm0-{resolvedName}
-  return { e2bTemplate: `${systemScopeSlug}-${resolvedName}` };
+  return { e2bTemplate: `${systemOrgSlug}-${resolvedName}` };
 }
 
 /**

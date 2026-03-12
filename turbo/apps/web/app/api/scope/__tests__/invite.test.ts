@@ -3,7 +3,7 @@ import { POST } from "../invite/route";
 import { GET as getMembersRoute } from "../members/route";
 import {
   createTestRequest,
-  createTestScope as createTestScopeHelper,
+  createTestOrg as createTestOrgHelper,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
@@ -12,10 +12,10 @@ import { setupClerkOrgMock } from "../../../../src/__tests__/clerk-org-mock";
 const context = testContext();
 
 /**
- * Helper to create a scope and return its slug.
+ * Helper to create an org and return its slug.
  */
-async function createTestScope(userId: string) {
-  const slug = uniqueId("scope");
+async function createTestOrg(userId: string) {
+  const slug = uniqueId("org");
   const orgId = `org_mock_${userId}`;
   setupClerkOrgMock({
     userId,
@@ -24,7 +24,7 @@ async function createTestScope(userId: string) {
     memberships: [{ userId, role: "org:admin" }],
   });
 
-  await createTestScopeHelper(slug);
+  await createTestOrgHelper(slug);
 
   return { slug, orgId };
 }
@@ -52,7 +52,7 @@ describe("POST /api/scope/invite - Invite Member", () => {
     expect(data.error.message).toContain("Not authenticated");
   });
 
-  it("should require scope query parameter", async () => {
+  it("should require org query parameter", async () => {
     const userId = uniqueId("invite-user");
     mockClerk({ userId });
 
@@ -73,7 +73,7 @@ describe("POST /api/scope/invite - Invite Member", () => {
 
   it("should invite member and return success message", async () => {
     const userId = uniqueId("invite-admin");
-    const { slug } = await createTestScope(userId);
+    const { slug } = await createTestOrg(userId);
 
     const inviteReq = createTestRequest(
       `http://localhost:3000/api/scope/invite?scope=${slug}`,
@@ -90,11 +90,11 @@ describe("POST /api/scope/invite - Invite Member", () => {
     expect(inviteData.message).toContain("new-member@example.com");
   });
 
-  it("should make invited member visible in scope members list", async () => {
+  it("should make invited member visible in org members list", async () => {
     const adminUserId = uniqueId("invite-admin2");
     const memberUserId = "user_new-member";
     const memberEmail = "new-member@example.com";
-    const { slug, orgId } = await createTestScope(adminUserId);
+    const { slug, orgId } = await createTestOrg(adminUserId);
 
     // Invite the member
     const inviteReq = createTestRequest(

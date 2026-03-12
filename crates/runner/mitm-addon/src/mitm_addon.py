@@ -57,8 +57,8 @@ _registry_cache_key = (0, 0)
 # Track request start times for latency calculation
 _request_start_times = {}
 
-# Cache for service auth headers: (run_id, base) -> {"headers": dict, "expires_at": float}
-_service_token_cache = {}
+# Cache for service auth headers: (run_id, api_id) -> {"headers": dict}
+_service_header_cache = {}
 
 
 def load_registry() -> dict:
@@ -72,8 +72,16 @@ def load_registry() -> dict:
         if key == _registry_cache_key:
             return _registry_cache
         with open(registry_path, "r") as f:
-            _registry_cache = json.load(f).get("vms", {})
-            _registry_cache_key = key
+            new_registry = json.load(f).get("vms", {})
+
+        # Evict cache entries for runs no longer in the registry
+        active_run_ids = {vm.get("runId") for vm in new_registry.values()}
+        stale = [k for k in _service_header_cache if k[0] not in active_run_ids]
+        for k in stale:
+            _service_header_cache.pop(k, None)
+
+        _registry_cache = new_registry
+        _registry_cache_key = key
     except Exception as e:
         ctx.log.warn(f"Failed to load proxy registry: {e}")
 
@@ -117,7 +125,7 @@ def get_original_url(flow: http.HTTPFlow) -> str:
 
 
 # ============================================================================
-# Service Token Replacement
+# Service Header Resolution
 # ============================================================================
 
 def match_service(url: str, vm_services: dict | None) -> dict | None:
@@ -133,16 +141,16 @@ def match_service(url: str, vm_services: dict | None) -> dict | None:
         if base and url.startswith(base):
             # Ensure match is at a path boundary, not mid-hostname
             rest = url[len(base):]
-            if not rest or rest[0] in ("/" , "?", "#"):
+            if not rest or rest[0] in ("/", "?", "#"):
                 return api_entry
     return None
 
 
-def fetch_service_headers(base: str, sandbox_token: str, run_id: str) -> dict:
-    """Fetch resolved auth headers from API."""
+def fetch_service_headers(encrypted_secrets: str, auth_headers: dict, sandbox_token: str) -> dict:
+    """Resolve auth headers via server-side decryption."""
     api_url = get_api_url()
     url = f"{api_url}/api/webhooks/agent/services/auth"
-    data = json.dumps({"runId": run_id, "base": base}).encode()
+    data = json.dumps({"encryptedSecrets": encrypted_secrets, "authHeaders": auth_headers}).encode()
     req = urllib.request.Request(url, data=data, headers={
         "Authorization": f"Bearer {sandbox_token}",
         "Content-Type": "application/json",
@@ -153,20 +161,20 @@ def fetch_service_headers(base: str, sandbox_token: str, run_id: str) -> dict:
     return json.loads(resp.read())
 
 
-def get_service_headers(run_id: str, base: str, sandbox_token: str) -> dict:
-    """Get service auth headers with caching. Returns resolved headers dict."""
-    cache_key = (run_id, base)
-    cached = _service_token_cache.get(cache_key)
-    if cached and cached["expires_at"] > time.time():
+def get_service_headers(run_id: str, api_id: str, encrypted_secrets: str, auth_headers: dict, sandbox_token: str) -> dict:
+    """Get service auth headers with caching.
+
+    Cache is evicted when the run is removed from the registry (see
+    load_registry) or on 401 response (see response handler).
+    """
+    cache_key = (run_id, api_id)
+    cached = _service_header_cache.get(cache_key)
+    if cached:
         return cached["headers"]
 
-    result = fetch_service_headers(base, sandbox_token, run_id)
+    result = fetch_service_headers(encrypted_secrets, auth_headers, sandbox_token)
     headers = result["headers"]
-    expires_in = result.get("expiresIn", 1800)
-    _service_token_cache[cache_key] = {
-        "headers": headers,
-        "expires_at": time.time() + min(expires_in, 1800),
-    }
+    _service_header_cache[cache_key] = {"headers": headers}
     return headers
 
 
@@ -174,11 +182,26 @@ def handle_service_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict) 
     """Handle a service-matched request: fetch resolved headers, inject into request."""
     client_ip = flow.client_conn.peername[0]
     service_base = api_entry["base"]
+    api_id = api_entry.get("id", service_base)  # fallback to base for backward compat
     run_id = vm_info.get("runId", "")
     sandbox_token = vm_info.get("sandboxToken", "")
+    encrypted_secrets = vm_info.get("encryptedSecrets")
+    auth_headers = api_entry.get("auth", {}).get("headers", {})
+
+    if not encrypted_secrets:
+        ctx.log.error(f"[{run_id}] No encryptedSecrets for service {service_base}")
+        flow.metadata["firewall_action"] = "DENY"
+        flow.metadata["firewall_rule"] = f"service:{service_base}"
+        flow.metadata["original_url"] = get_original_url(flow)
+        flow.response = http.Response.make(
+            502,
+            b"Service auth unavailable",
+            {"Content-Type": "text/plain"},
+        )
+        return
 
     try:
-        headers = get_service_headers(run_id, service_base, sandbox_token)
+        headers = get_service_headers(run_id, api_id, encrypted_secrets, auth_headers, sandbox_token)
     except Exception as e:
         ctx.log.error(f"[{run_id}] Service {service_base} header fetch failed: {e}")
         flow.metadata["firewall_action"] = "DENY"
@@ -199,6 +222,7 @@ def handle_service_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict) 
     flow.metadata["firewall_action"] = "ALLOW"
     flow.metadata["firewall_rule"] = f"service:{service_base}"
     flow.metadata["service_base"] = service_base
+    flow.metadata["service_api_id"] = api_id
     flow.metadata["original_url"] = get_original_url(flow)
     flow.metadata["vm_run_id"] = run_id
     flow.metadata["vm_client_ip"] = client_ip
@@ -350,7 +374,6 @@ def request(flow: http.HTTPFlow) -> None:
         return
 
     run_id = vm_info.get("runId", "")
-    sandbox_token = vm_info.get("sandboxToken", "")
     rules = vm_info.get("firewallRules", [])
 
     # Store info for response handler
@@ -480,10 +503,11 @@ def response(flow: http.HTTPFlow) -> None:
     # Invalidate service header cache on 401 so next request gets fresh headers
     if flow.response and flow.response.status_code == 401 and firewall_rule:
         if firewall_rule.startswith("service:"):
-            service_base = flow.metadata.get("service_base", "")
-            cache_key = (run_id, service_base)
-            if _service_token_cache.pop(cache_key, None):
-                ctx.log.info(f"[{run_id}] Service {service_base}: 401 - cleared header cache")
+            api_id = flow.metadata.get("service_api_id", "")
+            if api_id:
+                cache_key = (run_id, api_id)
+                if _service_header_cache.pop(cache_key, None):
+                    ctx.log.info(f"[{run_id}] Service {api_id}: 401 - cleared header cache")
 
     # Log errors to mitmproxy console
     if flow.response and flow.response.status_code >= 400:

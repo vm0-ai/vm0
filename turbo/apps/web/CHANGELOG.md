@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.102.1](https://github.com/vm0-ai/vm0/compare/web-v12.102.0...web-v12.102.1) (2026-03-12)
+
+
+### Refactoring
+
+* rename internal scope terminology to org ([#4590](https://github.com/vm0-ai/vm0/issues/4590)) ([af7e338](https://github.com/vm0-ai/vm0/commit/af7e3381e4a50b34699642511583eccebe842240))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.59.1
+
 ## [12.102.0](https://github.com/vm0-ai/vm0/compare/web-v12.101.1...web-v12.102.0) (2026-03-12)
 
 

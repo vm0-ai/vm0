@@ -8,7 +8,7 @@ const log = logger("agent-compose:resolve-default");
 
 /**
  * Resolve the default agent compose ID from VM0_DEFAULT_AGENT env var.
- * Format: "scope-slug/agent-name" (e.g. "yuma/deep-dive")
+ * Format: "org-slug/agent-name" (e.g. "yuma/deep-dive")
  *
  * Returns the compose ID if found, or null.
  */
@@ -21,7 +21,7 @@ export async function resolveDefaultAgentComposeId(): Promise<string | null> {
 
   const [orgSlug, agentName] = VM0_DEFAULT_AGENT.split("/");
   if (!orgSlug || !agentName) {
-    log.warn("VM0_DEFAULT_AGENT has invalid format, expected 'scope/name'", {
+    log.warn("VM0_DEFAULT_AGENT has invalid format, expected 'org/name'", {
       value: VM0_DEFAULT_AGENT,
     });
     return null;
@@ -30,7 +30,7 @@ export async function resolveDefaultAgentComposeId(): Promise<string | null> {
   const orgData = await getOrgBySlug(orgSlug);
 
   if (!orgData) {
-    log.warn("Scope not found for VM0_DEFAULT_AGENT", { orgSlug });
+    log.warn("Org not found for VM0_DEFAULT_AGENT", { orgSlug });
     return null;
   }
 

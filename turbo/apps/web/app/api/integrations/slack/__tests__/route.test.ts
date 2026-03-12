@@ -12,7 +12,7 @@ import {
 } from "../../../../../src/__tests__/slack/api-helpers";
 import {
   createTestCompose,
-  createTestScope,
+  createTestOrg,
   findTestAgentPermissions,
   findTestComposeWithScope,
   insertTestAgentPermission,
@@ -362,7 +362,7 @@ describe("/api/integrations/slack", () => {
       // Create a compose in a different scope (simulating a shared agent)
       const otherUserId = uniqueId("other-user");
       mockClerk({ userId: otherUserId });
-      await createTestScope(uniqueId("other-scope"));
+      await createTestOrg(uniqueId("other-org"));
       const { composeId: otherComposeId } =
         await createTestCompose("shared-agent");
 

@@ -668,13 +668,13 @@ if (!isValid(value)) {
 
 // Configuration
 if (error.message.includes("No scope configured")) {
-  console.log(chalk.yellow("No scope configured"));
+  console.log(chalk.yellow("No organization configured"));
   console.log();
-  console.log("Set your scope with:");
-  console.log(chalk.cyan("  vm0 scope set <slug>"));
+  console.log("Set your organization with:");
+  console.log(chalk.cyan("  vm0 org set <slug>"));
   console.log();
   console.log("Example:");
-  console.log(chalk.dim("  vm0 scope set myusername"));
+  console.log(chalk.dim("  vm0 org set myusername"));
 }
 
 // File system

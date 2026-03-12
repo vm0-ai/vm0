@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.6...runner-rs-v0.22.7) (2026-03-12)
+
+
+### Refactoring
+
+* **services:** forward encryptedSecrets through proxy registry ([#4604](https://github.com/vm0-ai/vm0/issues/4604)) ([21ca7a1](https://github.com/vm0-ai/vm0/commit/21ca7a138f7633c2204ae38a82ce6b1a9c9c1193))
+
 ## [0.22.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.5...runner-rs-v0.22.6) (2026-03-12)
 
 

@@ -74,19 +74,14 @@ async function setup() {
 
 describe("zero-activity signals", () => {
   describe("zeroActivityData$", () => {
-    it("should fetch logs for the default agent", async () => {
+    it("should fetch logs for all agents in scope", async () => {
       server.use(
         http.get("http://localhost:3000/api/platform/logs", ({ request }) => {
           const url = new URL(request.url);
-          const name = url.searchParams.get("name");
-          if (name === "zero") {
-            return HttpResponse.json({
-              data: createMockLogs(),
-              pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
-            });
-          }
+          // No name filter → returns all agents' logs
+          expect(url.searchParams.has("name")).toBeFalsy();
           return HttpResponse.json({
-            data: [],
+            data: createMockLogs(),
             pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
           });
         }),

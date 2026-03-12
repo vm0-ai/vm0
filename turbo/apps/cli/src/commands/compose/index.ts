@@ -15,7 +15,7 @@ import type { ExpandedServiceConfig } from "@vm0/core";
 import {
   getComposeByName,
   createOrUpdateCompose,
-  getScope,
+  getOrg,
   listSecrets,
   listVariables,
   listConnectors,
@@ -534,7 +534,7 @@ async function finalizeCompose(
   const response = await createOrUpdateCompose({ content: config });
 
   // Get scope for display name
-  const scopeResponse = await getScope();
+  const scopeResponse = await getOrg();
   const shortVersionId = response.versionId.slice(0, 8);
   const displayName = `${scopeResponse.slug}/${response.name}`;
 

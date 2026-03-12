@@ -63,7 +63,7 @@ describe("org status command", () => {
     expect(logCalls).toContain("member@example.com");
   });
 
-  it("should show helpful error when no org scope active", async () => {
+  it("should show helpful error when no active organization", async () => {
     server.use(
       http.get("http://localhost:3000/api/scope/members", () => {
         return HttpResponse.json(
@@ -83,7 +83,7 @@ describe("org status command", () => {
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("No active scope selected"),
+      expect.stringContaining("No active organization selected"),
     );
     expect(mockExit).toHaveBeenCalledWith(1);
   });

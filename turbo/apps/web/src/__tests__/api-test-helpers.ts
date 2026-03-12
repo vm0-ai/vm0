@@ -311,15 +311,15 @@ export async function findTestCliToken(token: string) {
 }
 
 /**
- * Create a test scope by inserting into org_cache.
+ * Create a test org by inserting into org_cache.
  *
  * Pre-populates org_cache so getOrgData() works without Clerk API calls.
  * The scopes table has been dropped (Phase 6 🆉).
  *
- * @param slug - The scope slug
- * @returns The created scope with id and slug
+ * @param slug - The org slug
+ * @returns The created org with id and slug
  */
-export async function createTestScope(
+export async function createTestOrg(
   slug: string,
 ): Promise<{ id: string; slug: string }> {
   initServices();
@@ -1957,7 +1957,7 @@ export async function findTestArtifactStorage(orgId: string) {
 
 /**
  * Find a storage volume by clerk org and name.
- * Volumes use the sentinel VOLUME_SCOPE_USER_ID for scope-level sharing.
+ * Volumes use the sentinel VOLUME_SCOPE_USER_ID for org-level sharing.
  * Returns the storage id and name, or undefined if not found.
  */
 export async function findTestStorageByName(
@@ -2304,7 +2304,7 @@ export async function findTestComposeWithScope(composeId: string) {
  *
  * @param userId - The user who owns the run
  * @param versionId - The agent compose version ID
- * @param runnerGroup - The runner group (e.g., "scope-slug/default")
+ * @param runnerGroup - The runner group (e.g., "org-slug/default")
  * @param contextOverrides - Optional overrides for the stored execution context
  * @returns The created run ID
  */
@@ -2601,7 +2601,7 @@ export async function createTestTelegramInstallation(options?: {
   const suffix = uniqueId("tg");
   const adminUserId = options?.adminUserId ?? uniqueId("test-admin");
 
-  const orgSlug = uniqueId("scope");
+  const orgSlug = uniqueId("org");
   const orgId = uniqueId("org");
 
   // Pre-populate org cache for getOrgData()
@@ -2823,7 +2823,7 @@ export async function insertOrgCacheEntry(entry: {
 
 /**
  * Delete an org_cache row by orgId.
- * Useful for testing cache-miss behavior after createTestScope pre-populates cache.
+ * Useful for testing cache-miss behavior after createTestOrg pre-populates cache.
  */
 export async function deleteOrgCacheEntry(orgId: string): Promise<void> {
   await globalThis.services.db

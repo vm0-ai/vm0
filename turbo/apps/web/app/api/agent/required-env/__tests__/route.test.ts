@@ -78,7 +78,7 @@ describe("GET /api/agent/required-env", () => {
     await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
 
     const ownerSuffix = owner.userId.replace("env-owner-", "");
-    const agentScopeSlug = `scope-${ownerSuffix}`;
+    const agentOrgSlug = `org-${ownerSuffix}`;
 
     // Switch to recipient and fetch required env
     mockClerk({ userId: user.userId });
@@ -91,7 +91,7 @@ describe("GET /api/agent/required-env", () => {
     expect(response.status).toBe(200);
     const agent = data.agents.find(
       (a: { agentName: string }) =>
-        a.agentName === `${agentScopeSlug}/${agentName}`,
+        a.agentName === `${agentOrgSlug}/${agentName}`,
     );
     expect(agent).toBeDefined();
     expect(agent.requiredSecrets).toContain("SHARED_SECRET");

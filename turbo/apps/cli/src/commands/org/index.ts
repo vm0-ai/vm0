@@ -8,9 +8,9 @@ import { inviteCommand } from "./invite";
 import { removeCommand } from "./remove";
 import { leaveCommand } from "./leave";
 
-export const scopeCommand = new Command()
-  .name("scope")
-  .description("Manage your scope (namespace for agents)")
+export const orgCommand = new Command()
+  .name("org")
+  .description("Manage your organization (namespace for agents)")
   .addCommand(statusCommand)
   .addCommand(setCommand)
   .addCommand(listCommand)

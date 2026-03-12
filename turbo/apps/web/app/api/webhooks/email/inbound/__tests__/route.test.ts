@@ -518,13 +518,13 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should dispatch agent run for valid trigger email", async () => {
       // Given a user with a scope and compose
       // setupUser creates a user with userId = "trigger-user-{suffix}" and
-      // scope slug = "scope-{suffix}" using the same suffix
+      // scope slug = "org-{suffix}" using the same suffix
       const user = await context.setupUser({ prefix: "trigger-user" });
 
       // Extract suffix from userId to derive scope slug
       // userId format: "{prefix}-{suffix}" where suffix is an 8-char UUID
       const suffix = user.userId.slice("trigger-user-".length);
-      const orgSlug = `scope-${suffix}`;
+      const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("trigger-agent");
 
       // Create compose (automatically associates with user's scope)
@@ -659,7 +659,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Create a compose owned by user A
       const ownerUser = await context.setupUser({ prefix: "perm-owner" });
       const suffix = ownerUser.userId.slice("perm-owner-".length);
-      const orgSlug = `scope-${suffix}`;
+      const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("perm-agent");
       await createTestCompose(agentName);
 
@@ -698,7 +698,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should send error reply when DMARC fails", async () => {
       const user = await context.setupUser({ prefix: "dmarc-fail" });
       const suffix = user.userId.slice("dmarc-fail-".length);
-      const orgSlug = `scope-${suffix}`;
+      const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("dmarc-agent");
       await createTestCompose(agentName);
 
@@ -752,7 +752,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should send error reply when DMARC is none even if DKIM passes", async () => {
       const user = await context.setupUser({ prefix: "dkim-pass" });
       const suffix = user.userId.slice("dkim-pass-".length);
-      const orgSlug = `scope-${suffix}`;
+      const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("dkim-agent");
       await createTestCompose(agentName);
 
@@ -804,7 +804,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should send error reply when authentication-results header is missing", async () => {
       const user = await context.setupUser({ prefix: "no-auth" });
       const suffix = user.userId.slice("no-auth-".length);
-      const orgSlug = `scope-${suffix}`;
+      const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("noauth-agent");
       await createTestCompose(agentName);
 
@@ -853,7 +853,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should send error reply when all authentication methods fail", async () => {
       const user = await context.setupUser({ prefix: "all-fail" });
       const suffix = user.userId.slice("all-fail-".length);
-      const orgSlug = `scope-${suffix}`;
+      const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("allfail-agent");
       await createTestCompose(agentName);
 
@@ -905,7 +905,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should send error reply when email body is empty", async () => {
       const user = await context.setupUser({ prefix: "empty-trigger" });
       const suffix = user.userId.slice("empty-trigger-".length);
-      const orgSlug = `scope-${suffix}`;
+      const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("empty-body-agent");
       await createTestCompose(agentName);
 
@@ -952,7 +952,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should extract content from HTML when text is empty", async () => {
       const user = await context.setupUser({ prefix: "html-trigger" });
       const suffix = user.userId.slice("html-trigger-".length);
-      const orgSlug = `scope-${suffix}`;
+      const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("html-agent");
       await createTestCompose(agentName);
 
@@ -1061,7 +1061,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should include attachment URLs in prompt when email has attachments", async () => {
       const user = await context.setupUser({ prefix: "att-trigger" });
       const suffix = user.userId.slice("att-trigger-".length);
-      const orgSlug = `scope-${suffix}`;
+      const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("att-agent");
       await createTestCompose(agentName);
 
@@ -1156,7 +1156,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should skip oversized attachment with 'exceeds size limit' message", async () => {
       const user = await context.setupUser({ prefix: "att-oversize" });
       const suffix = user.userId.slice("att-oversize-".length);
-      const orgSlug = `scope-${suffix}`;
+      const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("oversize-agent");
       await createTestCompose(agentName);
 
@@ -1217,7 +1217,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should skip attachment with 'download failed' when download returns error", async () => {
       const user = await context.setupUser({ prefix: "att-dl-fail" });
       const suffix = user.userId.slice("att-dl-fail-".length);
-      const orgSlug = `scope-${suffix}`;
+      const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("dlfail-agent");
       await createTestCompose(agentName);
 
@@ -1286,7 +1286,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should handle multiple attachments with mixed results", async () => {
       const user = await context.setupUser({ prefix: "att-mixed" });
       const suffix = user.userId.slice("att-mixed-".length);
-      const orgSlug = `scope-${suffix}`;
+      const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("mixed-agent");
       await createTestCompose(agentName);
 
@@ -1392,7 +1392,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should replace inline image data URI with placeholder in prompt", async () => {
       const user = await context.setupUser({ prefix: "inline-img" });
       const suffix = user.userId.slice("inline-img-".length);
-      const orgSlug = `scope-${suffix}`;
+      const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("inline-agent");
       await createTestCompose(agentName);
 
@@ -1475,7 +1475,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should handle inline image without alt text", async () => {
       const user = await context.setupUser({ prefix: "inline-noalt" });
       const suffix = user.userId.slice("inline-noalt-".length);
-      const orgSlug = `scope-${suffix}`;
+      const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("noalt-agent");
       await createTestCompose(agentName);
 
@@ -1878,7 +1878,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     // Set up a valid trigger scenario so the handler proceeds past address parsing
     const user = await context.setupUser({ prefix: "crash-user" });
     const suffix = user.userId.slice("crash-user-".length);
-    const orgSlug = `scope-${suffix}`;
+    const orgSlug = `org-${suffix}`;
     const agentName = uniqueId("crash-agent");
     await createTestCompose(agentName);
 

@@ -60,7 +60,7 @@ export const apiHandlers = [
     );
   }),
 
-  // GET /api/scope - getScope
+  // GET /api/scope - getOrg
   http.get("http://localhost:3000/api/scope", () => {
     return HttpResponse.json(
       {

@@ -31,7 +31,7 @@ const mockClerkClient = vi.mocked(clerkClient);
 
 // Module-level tracking of orgs created via createOrganization.
 // Persists across mockClerk() calls so that re-mocking (e.g. to set orgId)
-// doesn't lose orgs created by earlier API calls (like createTestScope).
+// doesn't lose orgs created by earlier API calls (like createTestOrg).
 let createdOrgs: Array<{
   id: string;
   slug: string;
@@ -107,9 +107,9 @@ export function mockClerk(options: {
 
   // Note: createdOrgs is module-level (declared above) so it persists across
   // mockClerk() calls. This is critical: setupUser() calls mockClerk() then
-  // createTestScope() (which calls createOrganization), and tests often call
+  // createTestOrg() (which calls createOrganization), and tests often call
   // mockClerk() again to configure orgId — without module-level tracking,
-  // the org from createTestScope would be lost.
+  // the org from createTestOrg would be lost.
 
   mockAuth.mockResolvedValue({
     userId: options.userId,

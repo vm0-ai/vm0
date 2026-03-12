@@ -5,14 +5,13 @@ import {
   createTestCompose,
   createTestRun,
   createTestSandboxToken,
-  createTestConnector,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
-import { randomUUID } from "crypto";
+import { encryptSecretsMap } from "../../../../../../../src/lib/crypto/secrets-encryption";
 
 const context = testContext();
 
@@ -30,9 +29,17 @@ function makeRequest(body: Record<string, unknown>, token?: string): Request {
   );
 }
 
+function encryptTestSecrets(secrets: Record<string, string>): string {
+  const encrypted = encryptSecretsMap(
+    secrets,
+    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+  );
+  if (!encrypted) throw new Error("Failed to encrypt test secrets");
+  return encrypted;
+}
+
 describe("POST /api/webhooks/agent/services/auth", () => {
   let user: UserContext;
-  let testComposeId: string;
   let testRunId: string;
   let testToken: string;
 
@@ -43,11 +50,8 @@ describe("POST /api/webhooks/agent/services/auth", () => {
     const { composeId } = await createTestCompose(
       `agent-service-auth-${Date.now()}`,
     );
-    testComposeId = composeId;
-
-    const { runId } = await createTestRun(testComposeId, "Test prompt");
+    const { runId } = await createTestRun(composeId, "Test prompt");
     testRunId = runId;
-
     testToken = await createTestSandboxToken(user.userId, testRunId);
 
     mockClerk({ userId: null });
@@ -57,8 +61,8 @@ describe("POST /api/webhooks/agent/services/auth", () => {
     it("should reject without auth header", async () => {
       const response = await POST(
         makeRequest({
-          runId: testRunId,
-          base: "https://api.github.com",
+          encryptedSecrets: "iv:tag:data",
+          authHeaders: {},
         }),
       );
       expect(response.status).toBe(401);
@@ -68,24 +72,10 @@ describe("POST /api/webhooks/agent/services/auth", () => {
       const response = await POST(
         makeRequest(
           {
-            runId: testRunId,
-            base: "https://api.github.com",
+            encryptedSecrets: "iv:tag:data",
+            authHeaders: {},
           },
           "invalid-token",
-        ),
-      );
-      expect(response.status).toBe(401);
-    });
-
-    it("should reject with mismatched runId", async () => {
-      const otherRunId = randomUUID();
-      const response = await POST(
-        makeRequest(
-          {
-            runId: otherRunId,
-            base: "https://api.github.com",
-          },
-          testToken,
         ),
       );
       expect(response.status).toBe(401);
@@ -93,66 +83,45 @@ describe("POST /api/webhooks/agent/services/auth", () => {
   });
 
   describe("Validation", () => {
-    it("should reject without runId", async () => {
+    it("should reject without encryptedSecrets", async () => {
+      const response = await POST(makeRequest({ authHeaders: {} }, testToken));
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject without authHeaders", async () => {
       const response = await POST(
-        makeRequest({ base: "https://api.github.com" }, testToken),
+        makeRequest({ encryptedSecrets: "iv:tag:data" }, testToken),
       );
       expect(response.status).toBe(400);
     });
 
-    it("should reject without base", async () => {
-      const response = await POST(makeRequest({ runId: testRunId }, testToken));
-      expect(response.status).toBe(400);
-    });
-
-    it("should reject unknown base URL", async () => {
+    it("should reject invalid encrypted data", async () => {
       const response = await POST(
         makeRequest(
           {
-            runId: testRunId,
-            base: "https://unknown-api.example.com",
+            encryptedSecrets: "not-valid-encrypted-data",
+            authHeaders: { Authorization: "Bearer ${secrets.TOKEN}" },
           },
           testToken,
         ),
       );
       expect(response.status).toBe(400);
-      const data = await response.json();
-      expect(data.error.message).toContain("No service config matching base");
     });
   });
 
-  describe("Connector not connected", () => {
-    it("should return 404 when connector is not connected", async () => {
-      const response = await POST(
-        makeRequest(
-          {
-            runId: testRunId,
-            base: "https://api.github.com",
-          },
-          testToken,
-        ),
-      );
-      expect(response.status).toBe(404);
-      const data = await response.json();
-      expect(data.error.message).toContain("not connected");
-    });
-  });
-
-  describe("Success", () => {
-    it("should return resolved auth headers for connected connector", async () => {
-      // Restore Clerk auth for connector creation (OAuth callback requires auth)
-      mockClerk({ userId: user.userId });
-      await createTestConnector({
-        type: "github",
-        accessToken: "ghp_test_access_token_123",
+  describe("Template resolution", () => {
+    it("should resolve auth header templates with decrypted secrets", async () => {
+      const encrypted = encryptTestSecrets({
+        GITHUB_TOKEN: "ghp_test_token_123",
       });
-      mockClerk({ userId: null });
 
       const response = await POST(
         makeRequest(
           {
-            runId: testRunId,
-            base: "https://api.github.com",
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${secrets.GITHUB_TOKEN}",
+            },
           },
           testToken,
         ),
@@ -161,24 +130,25 @@ describe("POST /api/webhooks/agent/services/auth", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.headers).toEqual({
-        Authorization: "Bearer ghp_test_access_token_123",
+        Authorization: "Bearer ghp_test_token_123",
       });
-      expect(data.expiresIn).toBe(3600);
+      expect(data.expiresIn).toBeUndefined();
     });
 
-    it("should return headers for different connector types", async () => {
-      mockClerk({ userId: user.userId });
-      await createTestConnector({
-        type: "slack",
-        accessToken: "xoxb-test-slack-token",
+    it("should resolve multiple headers", async () => {
+      const encrypted = encryptTestSecrets({
+        API_KEY: "key-123",
+        API_SECRET: "secret-456",
       });
-      mockClerk({ userId: null });
 
       const response = await POST(
         makeRequest(
           {
-            runId: testRunId,
-            base: "https://slack.com/api",
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              "X-Api-Key": "${secrets.API_KEY}",
+              "X-Api-Secret": "${secrets.API_SECRET}",
+            },
           },
           testToken,
         ),
@@ -186,45 +156,48 @@ describe("POST /api/webhooks/agent/services/auth", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.headers.Authorization).toBe("Bearer xoxb-test-slack-token");
-    });
-  });
-
-  describe("Authorization", () => {
-    it("should reject run owned by different user", async () => {
-      const otherUser = await context.setupUser({ prefix: "other" });
-      const { composeId: otherComposeId } = await createTestCompose(
-        `other-service-auth-${Date.now()}`,
-      );
-      const { runId: otherRunId } = await createTestRun(
-        otherComposeId,
-        "Other prompt",
-      );
-
-      mockClerk({ userId: otherUser.userId });
-      await createTestConnector({
-        type: "github",
-        accessToken: "ghp_other_user_token",
+      expect(data.headers).toEqual({
+        "X-Api-Key": "key-123",
+        "X-Api-Secret": "secret-456",
       });
-      mockClerk({ userId: null });
+    });
 
-      const tokenForOtherRun = await createTestSandboxToken(
-        user.userId,
-        otherRunId,
-      );
+    it("should resolve unknown secret to empty string", async () => {
+      const encrypted = encryptTestSecrets({ KNOWN: "value" });
 
       const response = await POST(
         makeRequest(
           {
-            runId: otherRunId,
-            base: "https://api.github.com",
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${secrets.UNKNOWN_KEY}",
+            },
           },
-          tokenForOtherRun,
+          testToken,
         ),
       );
 
-      // Should fail: token userId doesn't match run's userId
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers.Authorization).toBe("Bearer ");
+    });
+
+    it("should pass through headers without template syntax", async () => {
+      const encrypted = encryptTestSecrets({ KEY: "value" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: { "X-Static": "plain-value" },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers["X-Static"]).toBe("plain-value");
     });
   });
 });

@@ -27,6 +27,7 @@ struct VmEntry {
     firewall_rules: Vec<FirewallRule>,
     network_log_path: String,
     services: Option<crate::types::ExperimentalServices>,
+    encrypted_secrets: Option<String>,
 }
 
 /// Firewall rule for network filtering (first-match-wins).
@@ -63,6 +64,7 @@ pub struct VmRegistration<'a> {
     pub firewall_rules: &'a [FirewallRule],
     pub network_log_path: &'a std::path::Path,
     pub services: Option<&'a crate::types::ExperimentalServices>,
+    pub encrypted_secrets: Option<&'a str>,
 }
 
 /// Embedded mitmproxy addon script (compiled into the binary).
@@ -423,6 +425,15 @@ impl ProxyRegistryHandle {
 
         let mut registry = read_registry(&self.registry_path).await?;
         let now = chrono::Utc::now().timestamp_millis();
+        let services = registration.services.map(|s| {
+            let mut s = s.clone();
+            for (i, api) in s.apis.iter_mut().enumerate() {
+                if api.id.is_empty() {
+                    api.id = format!("{}:{}", registration.run_id, i);
+                }
+            }
+            s
+        });
         registry.vms.insert(
             source_ip.to_string(),
             VmEntry {
@@ -431,7 +442,8 @@ impl ProxyRegistryHandle {
                 registered_at: now,
                 firewall_rules: registration.firewall_rules.to_vec(),
                 network_log_path: registration.network_log_path.to_string_lossy().into_owned(),
-                services: registration.services.cloned(),
+                services,
+                encrypted_secrets: registration.encrypted_secrets.map(String::from),
             },
         );
         registry.updated_at = now;
@@ -507,6 +519,7 @@ mod tests {
 
                 network_log_path: "/tmp/network-test-run.jsonl".to_string(),
                 services: None,
+                encrypted_secrets: None,
             },
         );
         write_registry(&registry_path, &registry).await.unwrap();
@@ -610,6 +623,7 @@ mod tests {
 
             network_log_path: std::path::Path::new("/tmp/network-run-1.jsonl"),
             services: None,
+            encrypted_secrets: None,
         };
         handle
             .register_vm("10.200.0.2", &registration)
@@ -627,6 +641,7 @@ mod tests {
             firewall_rules: &[],
             network_log_path: std::path::Path::new("/tmp/network-run-2.jsonl"),
             services: None,
+            encrypted_secrets: None,
         };
         handle
             .register_vm("10.200.0.2", &registration2)
@@ -677,6 +692,7 @@ mod tests {
                     firewall_rules: &[],
                     network_log_path: &log_path,
                     services: None,
+                    encrypted_secrets: None,
                 };
                 h.register_vm(&ip, &registration).await.unwrap();
             });
@@ -722,6 +738,7 @@ mod tests {
 
                 network_log_path: "/tmp/network-run-1.jsonl".to_string(),
                 services: None,
+                encrypted_secrets: None,
             },
         );
         write_registry(&registry_path, &registry).await.unwrap();
@@ -755,6 +772,7 @@ mod tests {
 
         let services = crate::types::ExperimentalServices {
             apis: vec![crate::types::ServiceApiEntry {
+                id: String::new(),
                 base: "https://gmail.googleapis.com/gmail/v1/users/me".to_string(),
                 auth: crate::types::ServiceApiAuth {
                     headers: std::collections::HashMap::from([(
@@ -772,6 +790,7 @@ mod tests {
 
             network_log_path: std::path::Path::new("/tmp/network-run-svc.jsonl"),
             services: Some(&services),
+            encrypted_secrets: None,
         };
         handle
             .register_vm("10.200.0.5", &registration)
@@ -788,6 +807,9 @@ mod tests {
             "https://gmail.googleapis.com/gmail/v1/users/me"
         );
 
+        // Verify id was assigned by register_vm.
+        assert_eq!(stored.apis[0].id, "run-svc:0");
+
         // Verify JSON shape matches what the Python addon expects.
         let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
@@ -796,6 +818,53 @@ mod tests {
         assert_eq!(
             svc["base"],
             "https://gmail.googleapis.com/gmail/v1/users/me"
+        );
+        assert_eq!(svc["id"], "run-svc:0");
+    }
+
+    #[tokio::test]
+    async fn register_vm_stores_encrypted_secrets() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let lock_path = dir.path().join("proxy-registry.lock");
+
+        let empty = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 0,
+        };
+        write_registry(&registry_path, &empty).await.unwrap();
+
+        let handle = ProxyRegistryHandle {
+            registry_path: registry_path.clone(),
+            lock_path,
+        };
+
+        let registration = VmRegistration {
+            run_id: "run-enc",
+            sandbox_token: "tok",
+            firewall_rules: &[],
+            network_log_path: std::path::Path::new("/tmp/network-run-enc.jsonl"),
+            services: None,
+            encrypted_secrets: Some("iv_b64:tag_b64:data_b64"),
+        };
+        handle
+            .register_vm("10.200.0.6", &registration)
+            .await
+            .unwrap();
+
+        let loaded = read_registry(&registry_path).await.unwrap();
+        let vm = loaded.vms.get("10.200.0.6").unwrap();
+        assert_eq!(
+            vm.encrypted_secrets.as_deref(),
+            Some("iv_b64:tag_b64:data_b64")
+        );
+
+        // Verify JSON key name matches what the Python addon expects.
+        let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
+        let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(
+            value["vms"]["10.200.0.6"]["encryptedSecrets"],
+            "iv_b64:tag_b64:data_b64"
         );
     }
 }

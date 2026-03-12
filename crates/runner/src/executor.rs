@@ -129,6 +129,7 @@ async fn execute_inner(
             firewall_rules: fw.and_then(|f| f.rules.as_deref()).unwrap_or(&[]),
             network_log_path: &network_log_path,
             services: context.experimental_services.as_ref(),
+            encrypted_secrets: context.encrypted_secrets.as_deref(),
         };
         if let Err(e) = config.registry.register_vm(&source_ip, &registration).await {
             warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
@@ -958,6 +959,7 @@ mod tests {
         let mut ctx = minimal_context();
         ctx.experimental_services = Some(crate::types::ExperimentalServices {
             apis: vec![crate::types::ServiceApiEntry {
+                id: String::new(),
                 base: "https://gmail.googleapis.com/gmail/v1/users/me".into(),
                 auth: crate::types::ServiceApiAuth {
                     headers: std::collections::HashMap::from([(

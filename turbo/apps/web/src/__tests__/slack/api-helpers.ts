@@ -12,7 +12,7 @@ import { vi } from "vitest";
 import { WebClient } from "@slack/web-api";
 import { eq, and, sql } from "drizzle-orm";
 import { mockClerk } from "../clerk-mock";
-import { createTestCompose, createTestScope } from "../api-test-helpers";
+import { createTestCompose, createTestOrg } from "../api-test-helpers";
 import { uniqueId } from "../test-helpers";
 import { initServices } from "../../lib/init-services";
 import { slackUserLinks } from "../../db/schema/slack-user-link";
@@ -105,10 +105,10 @@ export async function givenSlackWorkspaceInstalled(
   const accessToken = `xoxb-test-${uniqueId("token")}`;
   const adminSlackUserId = uniqueId("admin-slack");
 
-  // Create admin scope + compose for the workspace agent
+  // Create admin org + compose for the workspace agent
   const adminUserId = options.adminUserId ?? uniqueId("admin");
   mockClerk({ userId: adminUserId });
-  await createTestScope(uniqueId("admin-scope"));
+  await createTestOrg(uniqueId("admin-org"));
   const { composeId } = await createTestCompose(
     options.agentName ?? "default-agent",
   );
@@ -152,7 +152,7 @@ export async function givenSlackWorkspaceInstalled(
 
 /**
  * Given a Slack user has linked their account to VM0.
- * Creates installation, user link, and scope via API endpoints.
+ * Creates installation, user link, and org via API endpoints.
  */
 export async function givenLinkedSlackUser(
   options: LinkedUserOptions = {},
@@ -174,9 +174,9 @@ export async function givenLinkedSlackUser(
   // Restore Clerk mock to the linking user (givenSlackWorkspaceInstalled sets it to admin)
   mockClerk({ userId: vm0UserId });
 
-  // Create scope for the user (required for compose creation)
-  const orgSlug = uniqueId("scope");
-  await createTestScope(orgSlug);
+  // Create org for the user (required for compose creation)
+  const orgSlug = uniqueId("org");
+  await createTestOrg(orgSlug);
 
   // WebClient methods (views.publish, chat.postEphemeral) are already mocked in setup.ts
   // so linking triggers (refreshAppHome, postEphemeral) will use those mocks.

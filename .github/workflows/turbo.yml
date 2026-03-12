@@ -932,7 +932,7 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-  # Run CLI E2E tests - Phase 1: Serial tests (scope/provider CRUD)
+  # Run CLI E2E tests - Phase 1: Serial tests (org/provider CRUD)
   cli-e2e-01-serial:
     runs-on: ubuntu-latest
     container:
@@ -1416,7 +1416,7 @@ jobs:
 
       - name: Bootstrap test account
         run: |
-          vm0 scope set "e2e-runner" --force
+          vm0 org set "e2e-runner" --force
           vm0 model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
@@ -1540,7 +1540,7 @@ jobs:
 
       - name: Bootstrap test account
         run: |
-          vm0 scope set "e2e-runner" --force
+          vm0 org set "e2e-runner" --force
           vm0 model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
