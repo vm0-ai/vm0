@@ -5,8 +5,8 @@ import {
   IconList,
   IconLayoutGrid,
   IconTrash,
-  IconLoader2,
 } from "@tabler/icons-react";
+import { LoadingSwitch } from "../components/loading-switch.tsx";
 import {
   Card,
   CardContent,
@@ -15,7 +15,6 @@ import {
   TabsTrigger,
   Button,
   Input,
-  Switch,
   Select,
   SelectContent,
   SelectItem,
@@ -615,7 +614,7 @@ function ScheduleListView({
 }: {
   combinedSchedule: CombinedEntry[];
   onEdit: (entry: CombinedEntry) => void;
-  onToggle: (entry: CombinedEntry, enabled: boolean) => void;
+  onToggle: (entry: CombinedEntry, enabled: boolean) => Promise<void>;
   onDelete: (entry: CombinedEntry) => void;
 }) {
   const togglingIds$ = useCCState<Set<string>>(new Set());
@@ -639,30 +638,22 @@ function ScheduleListView({
             key={entry.id}
             className="flex items-center gap-3 py-2.5 border-b border-border/50 last:border-b-0 text-sm text-foreground hover:bg-muted/30 -mx-1 px-1 rounded transition-colors"
           >
-            {toggling ? (
-              <IconLoader2
-                size={16}
-                stroke={2}
-                className="shrink-0 animate-spin text-muted-foreground"
-              />
-            ) : (
-              <Switch
-                checked={entry.enabled !== false}
-                onCheckedChange={(checked) => {
-                  const id = entry.id;
-                  setTogglingIds((prev) => new Set([...prev, id]));
-                  onToggle(entry, checked);
-                  // Clear toggling after a tick (signal refetch will update UI)
+            <LoadingSwitch
+              checked={entry.enabled !== false}
+              loading={toggling}
+              onCheckedChange={(checked) => {
+                const id = entry.id;
+                setTogglingIds((prev) => new Set([...prev, id]));
+                onToggle(entry, checked).finally(() => {
                   setTogglingIds((prev) => {
                     const next = new Set(prev);
                     next.delete(id);
                     return next;
                   });
-                }}
-                aria-label={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
-                className="shrink-0 h-5 w-9 data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted [&>span]:h-4 [&>span]:w-4 [&>span]:data-[state=checked]:translate-x-4"
-              />
-            )}
+                });
+              }}
+              ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
+            />
             <span className="w-[140px] shrink-0 text-muted-foreground text-xs truncate">
               {entry.agentLabel}
             </span>
@@ -775,18 +766,15 @@ export function ZeroSchedulePage() {
     );
   };
 
-  const handleToggle = (entry: CombinedEntry, enabled: boolean) => {
+  const handleToggle = async (entry: CombinedEntry, enabled: boolean) => {
     if (entry.name === undefined) {
       return;
     }
-    detach(
-      toggleEnabled({
-        name: entry.name,
-        enabled,
-        composeId: entry.composeId,
-      }),
-      Reason.DomCallback,
-    );
+    await toggleEnabled({
+      name: entry.name,
+      enabled,
+      composeId: entry.composeId,
+    });
   };
 
   const handleDelete = (entry: CombinedEntry) => {

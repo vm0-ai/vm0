@@ -5,7 +5,6 @@ import { ZeroSessionChatPage } from "./zero-session-chat-page.tsx";
 import { ZeroAccountPage } from "./zero-account-page.tsx";
 import { ZeroJobsPage } from "./zero-jobs-page.tsx";
 import { ZeroMeetPage } from "./zero-meet-page.tsx";
-import { ZeroProductionPage } from "./zero-production-page.tsx";
 import { ZeroActivityPage } from "./zero-activity-page.tsx";
 import { ZeroWorksPage } from "./zero-works-page.tsx";
 import { ZeroSchedulePage } from "./zero-schedule-page.tsx";
@@ -36,7 +35,6 @@ function getSectionTitles(
     meet: `Meet ${agentName}`,
     schedule: "Schedule",
     job: `${agentName}'s team`,
-    production: "Documents",
     activity: "Activities",
     works: `Where ${agentName} works`,
     settings: "Settings",
@@ -98,9 +96,6 @@ export function ZeroContent({
   }
   if (sectionId === "job") {
     return <ZeroJobsPage onNavigateToChat={onNavigateToChat} />;
-  }
-  if (sectionId === "production") {
-    return <ZeroProductionPage />;
   }
   if (sectionId === "activity") {
     return <ZeroActivityPage />;

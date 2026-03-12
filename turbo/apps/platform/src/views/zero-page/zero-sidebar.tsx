@@ -3,7 +3,6 @@ import { useLoadable } from "ccstate-react";
 import {
   IconMessageCircle,
   IconRobot,
-  IconFile,
   IconChartLine,
   IconLayoutGrid,
   IconCalendar,
@@ -40,7 +39,6 @@ export type ZeroNavId =
   | "meet"
   | "schedule"
   | "job"
-  | "production"
   | "activity"
   | "works"
   | "settings"
@@ -52,7 +50,6 @@ const MAIN_NAV = [
   { id: "meet", label: "Meet Zero", icon: IconRobot as NavIcon },
   { id: "job", label: "Zero's team", icon: IconUsers as NavIcon },
   { id: "schedule", label: "Schedule", icon: IconCalendar as NavIcon },
-  { id: "production", label: "Documents", icon: IconFile as NavIcon },
   { id: "activity", label: "Activities", icon: IconChartLine as NavIcon },
 ] as const;
 

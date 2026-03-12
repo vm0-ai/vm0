@@ -8,8 +8,8 @@ import {
   IconLayoutGrid,
   IconPencil,
   IconTrash,
-  IconLoader2,
 } from "@tabler/icons-react";
+import { LoadingSwitch } from "../components/loading-switch.tsx";
 import {
   Card,
   CardContent,
@@ -23,7 +23,6 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Switch,
   cn,
 } from "@vm0/ui";
 import {
@@ -691,42 +690,34 @@ export function ZeroScheduleCard({
                       key={entry.id}
                       className="flex items-center gap-3 py-2.5 border-b border-border/50 last:border-b-0 text-sm text-foreground hover:bg-muted/30 -mx-1 px-1 rounded transition-colors"
                     >
-                      {onToggleEnabled &&
-                        entry.name !== undefined &&
-                        (toggling ? (
-                          <IconLoader2
-                            size={16}
-                            stroke={2}
-                            className="shrink-0 animate-spin text-muted-foreground"
-                          />
-                        ) : (
-                          <Switch
-                            checked={entry.enabled !== false}
-                            onCheckedChange={(checked) => {
-                              const id = entry.id;
-                              const name = entry.name;
-                              if (name === undefined) {
-                                return;
-                              }
-                              setTogglingIds((prev) => new Set([...prev, id]));
-                              detach(
-                                onToggleEnabled({
-                                  name,
-                                  enabled: checked,
-                                }).finally(() => {
-                                  setTogglingIds((prev) => {
-                                    const next = new Set(prev);
-                                    next.delete(id);
-                                    return next;
-                                  });
-                                }),
-                                Reason.DomCallback,
-                              );
-                            }}
-                            aria-label={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
-                            className="shrink-0 h-5 w-9 data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted [&>span]:h-4 [&>span]:w-4 [&>span]:data-[state=checked]:translate-x-4"
-                          />
-                        ))}
+                      {onToggleEnabled && entry.name !== undefined && (
+                        <LoadingSwitch
+                          checked={entry.enabled !== false}
+                          loading={toggling}
+                          onCheckedChange={(checked) => {
+                            const id = entry.id;
+                            const name = entry.name;
+                            if (name === undefined) {
+                              return;
+                            }
+                            setTogglingIds((prev) => new Set([...prev, id]));
+                            detach(
+                              onToggleEnabled({
+                                name,
+                                enabled: checked,
+                              }).finally(() => {
+                                setTogglingIds((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete(id);
+                                  return next;
+                                });
+                              }),
+                              Reason.DomCallback,
+                            );
+                          }}
+                          ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
+                        />
+                      )}
                       <span
                         className={cn(
                           "min-w-0 shrink-0",

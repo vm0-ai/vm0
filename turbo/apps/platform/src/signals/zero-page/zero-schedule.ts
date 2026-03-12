@@ -129,16 +129,18 @@ interface ZeroScheduleEntry {
 
 export const zeroScheduleEntries$ = computed((get) => {
   const schedules = get(internalSchedules$);
-  return schedules.map(
-    (s): ZeroScheduleEntry => ({
-      id: s.id,
-      time: scheduleToTimeString(s),
-      prompt: s.prompt,
-      enabled: s.enabled,
-      name: s.name,
-      intervalSeconds: s.intervalSeconds,
-    }),
-  );
+  return [...schedules]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map(
+      (s): ZeroScheduleEntry => ({
+        id: s.id,
+        time: scheduleToTimeString(s),
+        prompt: s.prompt,
+        enabled: s.enabled,
+        name: s.name,
+        intervalSeconds: s.intervalSeconds,
+      }),
+    );
 });
 
 // ---------------------------------------------------------------------------
@@ -365,18 +367,20 @@ const internalAllSchedules$ = state<ScheduleResponse[]>([]);
 
 export const allScopeScheduleEntries$ = computed((get) => {
   const schedules = get(internalAllSchedules$);
-  return schedules.map(
-    (s): ScopeScheduleEntry => ({
-      id: s.id,
-      time: scheduleToTimeString(s),
-      prompt: s.prompt,
-      enabled: s.enabled,
-      name: s.name,
-      intervalSeconds: s.intervalSeconds,
-      composeId: s.composeId,
-      composeName: s.composeName,
-    }),
-  );
+  return [...schedules]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map(
+      (s): ScopeScheduleEntry => ({
+        id: s.id,
+        time: scheduleToTimeString(s),
+        prompt: s.prompt,
+        enabled: s.enabled,
+        name: s.name,
+        intervalSeconds: s.intervalSeconds,
+        composeId: s.composeId,
+        composeName: s.composeName,
+      }),
+    );
 });
 
 export const fetchAllScopeSchedules$ = command(async ({ get, set }) => {
