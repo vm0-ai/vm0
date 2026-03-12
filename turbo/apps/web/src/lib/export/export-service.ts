@@ -104,18 +104,12 @@ async function collectInstructions(
         .limit(1);
 
       if (sv) {
-        try {
-          const archiveKey = `${sv.s3Key}/archive.tar.gz`;
-          const archiveBuffer = await downloadS3Buffer(bucket, archiveKey);
-          entries.push({
-            path: `instructions/${compose.name}/instructions.tar.gz`,
-            content: archiveBuffer,
-          });
-        } catch {
-          log.debug(
-            `Could not download instructions archive for ${compose.name}`,
-          );
-        }
+        const archiveKey = `${sv.s3Key}/archive.tar.gz`;
+        const archiveBuffer = await downloadS3Buffer(bucket, archiveKey);
+        entries.push({
+          path: `instructions/${compose.name}/instructions.tar.gz`,
+          content: archiveBuffer,
+        });
       }
     }
   }

@@ -91,7 +91,19 @@ export async function POST(request: Request) {
     })
     .returning({ id: exportJobs.id });
 
-  const jobId = newJob!.id;
+  if (!newJob) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Failed to create export job",
+        },
+      },
+      { status: 500 },
+    );
+  }
+
+  const jobId = newJob.id;
 
   // Run export asynchronously
   after(async () => {
