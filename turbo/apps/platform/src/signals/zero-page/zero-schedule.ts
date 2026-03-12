@@ -184,7 +184,7 @@ export const fetchZeroSchedules$ = command(async ({ get, set }) => {
 // Save schedule (create or update)
 // ---------------------------------------------------------------------------
 
-export interface ZeroScheduleSaveParams {
+interface ZeroScheduleSaveParams {
   prompt: string;
   freq: string;
   date: string;

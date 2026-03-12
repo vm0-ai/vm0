@@ -41,6 +41,7 @@ export const zeroOnboardingStatus$ = computed(async (get) => {
     hasDefaultAgent: true,
     defaultAgentName: "zero",
     defaultAgentComposeId: null,
+    defaultAgentMetadata: null,
   };
   get(internalReload$);
   const fetchFn = get(fetch$);

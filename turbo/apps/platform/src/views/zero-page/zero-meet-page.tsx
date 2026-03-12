@@ -97,34 +97,34 @@ function ZeroConnectionsTab() {
   const DUMMY_SKILL_ITEMS: {
     type: ConnectorType;
     label: string;
-    helpText: string;
+    description: string;
     connected: boolean;
     showApiKey?: boolean;
   }[] = [
     {
       type: "notion",
       label: "Notion",
-      helpText: "Connected as ming@vm0.ai",
+      description:
+        "Connect your Notion workspace to access pages and databases",
       connected: true,
     },
     {
       type: "github",
       label: "GitHub",
-      helpText:
+      description:
         "Sign in with GitHub to manage repos, issues, and pull requests",
       connected: false,
     },
     {
       type: "axiom",
       label: "Axiom",
-      helpText: "Connected as ming@vm0.ai",
+      description: "Query logs, manage datasets, and access observability data",
       connected: true,
     },
     {
       type: "ahrefs",
       label: "Ahrefs",
-      helpText:
-        "Connect your Ahrefs account to access SEO data, backlink analysis, and keyword research",
+      description: "Access SEO data, backlink analysis, and keyword research",
       connected: false,
       showApiKey: true,
     },
@@ -159,10 +159,11 @@ function ZeroConnectionsTab() {
       ? connectedItems.map((item) => ({
           type: item.type,
           label: item.label,
-          helpText:
+          description: item.helpText ?? "",
+          statusText:
             item.connected && item.connector?.externalUsername
               ? `Connected as @${item.connector.externalUsername}`
-              : (item.helpText ?? ""),
+              : "Connected",
           isDummy: false,
           isPolling: pollingType === item.type,
           connected: true,
@@ -171,7 +172,8 @@ function ZeroConnectionsTab() {
       : dummyItemsFiltered.map((item) => ({
           type: item.type,
           label: item.label,
-          helpText: item.helpText,
+          description: item.description,
+          statusText: item.connected ? "Connected as ming@vm0.ai" : "",
           isDummy: true,
           isPolling: false,
           connected: item.connected,
@@ -179,152 +181,135 @@ function ZeroConnectionsTab() {
         }));
 
   return (
-    <div className="mx-auto max-w-[900px] px-7 flex flex-col gap-6">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight text-foreground">
-            Add skills
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Skills manage your connections and help you get more out of these
-            services.
-          </p>
-        </div>
-        <Button
-          size="sm"
-          className="h-9 shrink-0 gap-2 rounded-lg"
-          onClick={() => setAddDialogOpen(true)}
-        >
-          <IconPlus size={16} stroke={2} />
-          Add skill
-        </Button>
-      </div>
+    <div className="mx-auto max-w-[900px] px-7 flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Skills manage your connections and help you get more out of these
+        services.
+      </p>
 
-      {displayItems.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 py-12">
-          <IconPlug
-            size={32}
-            stroke={1.2}
-            className="text-muted-foreground/50"
-          />
-          <p className="text-sm text-muted-foreground">
-            No skills yet. Add one to get started.
-          </p>
-        </div>
-      ) : (
-        <Card className="zero-card">
-          <CardContent className="p-0">
-            {displayItems.map((item, index) => (
-              <div
-                key={item.type}
-                className={cn(
-                  "flex items-center gap-4 px-4 py-3",
-                  index < displayItems.length - 1 &&
-                    "border-b border-border/60",
-                )}
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center">
-                  <ConnectorIcon type={item.type} size={24} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground">
-                    {item.label}
-                  </p>
-                </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {/* Add skill */}
+        <button
+          type="button"
+          onClick={() => setAddDialogOpen(true)}
+          className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-border/80 transition-colors hover:border-border hover:bg-muted/30 group"
+        >
+          <div className="flex h-14 items-center gap-2.5 px-5">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+              <IconPlus
+                size={18}
+                stroke={2}
+                className="text-muted-foreground group-hover:text-foreground"
+              />
+            </span>
+            <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground">
+              Add skill
+            </span>
+          </div>
+          <div className="flex h-11 items-center border-t border-dashed border-border/80 px-5 group-hover:border-border">
+            <span className="text-xs text-muted-foreground/70">
+              Browse 100+ popular skills
+            </span>
+          </div>
+        </button>
+
+        {/* Connector cards */}
+        {displayItems.map((item) => (
+          <div
+            key={item.type}
+            className="flex flex-col rounded-[var(--zero-card-radius)] border border-[var(--zero-card-border)] bg-card shadow-[var(--zero-card-shadow)]"
+          >
+            <div className="flex h-14 items-center gap-2.5 px-5">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+                <ConnectorIcon type={item.type} size={22} />
+              </span>
+              <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
+                {item.label}
+              </span>
+            </div>
+
+            <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
+              <div className="flex items-center gap-2 min-w-0">
                 {item.isPolling ? (
-                  <span className="flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <IconLoader2
-                      size={14}
+                      size={12}
                       stroke={1.5}
                       className="animate-spin"
                     />
                     Connecting…
                   </span>
-                ) : !item.connected ? (
-                  <div className="flex h-8 shrink-0 items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 rounded-lg px-3 zero-btn-morandi border"
-                      onClick={() => setSelected(item.type)}
-                    >
-                      Connect
-                    </Button>
-                    {item.showApiKey && (
-                      <>
-                        <span className="text-xs text-muted-foreground px-1">
-                          or
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 rounded-lg px-3 zero-btn-morandi border"
-                          onClick={() => setAhrefsApiKeyDialogOpen(true)}
-                        >
-                          API key
-                        </Button>
-                      </>
-                    )}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                          aria-label="More options"
-                        >
-                          <IconDotsVertical size={16} stroke={1.5} />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem
-                          onClick={() =>
-                            setRemovedDummyTypes((prev) =>
-                              prev.includes(item.type)
-                                ? prev
-                                : [...prev, item.type],
-                            )
-                          }
-                        >
-                          Remove skill
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
+                ) : item.connected ? (
+                  <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                    {item.statusText}
+                  </span>
                 ) : (
                   <>
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      {item.helpText}
-                    </span>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                          aria-label="More options"
+                    <button
+                      type="button"
+                      onClick={() => setSelected(item.type)}
+                      className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                    >
+                      Connect
+                    </button>
+                    {item.showApiKey && (
+                      <>
+                        <span className="text-xs text-muted-foreground">
+                          or
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setAhrefsApiKeyDialogOpen(true)}
+                          className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
                         >
-                          <IconDotsVertical size={16} stroke={1.5} />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem
-                          onClick={() =>
-                            !item.isDummy &&
-                            detach(disconnect(item.type), Reason.DomCallback)
-                          }
-                        >
-                          Disconnect
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          API key
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
               </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+                    aria-label="More options"
+                  >
+                    <IconDotsVertical size={14} stroke={1.5} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  {item.connected ? (
+                    <DropdownMenuItem
+                      onClick={() =>
+                        !item.isDummy &&
+                        detach(disconnect(item.type), Reason.DomCallback)
+                      }
+                    >
+                      Disconnect
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem
+                      onClick={() =>
+                        setRemovedDummyTypes((prev) =>
+                          prev.includes(item.type)
+                            ? prev
+                            : [...prev, item.type],
+                        )
+                      }
+                    >
+                      Remove skill
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        ))}
+      </div>
 
       <AddConnectionDialog
         open={addDialogOpen}
