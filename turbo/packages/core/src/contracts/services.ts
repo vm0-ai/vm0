@@ -21,8 +21,35 @@ interface ServiceApi {
 
 export interface ServiceConfig {
   apis: ServiceApi[];
-  /** Custom placeholder values per env var (e.g., `{ GITHUB_TOKEN: "gho_..." }`). Falls back to auto-generated `VM0_PLACEHOLDER_{envVar}`. */
+  /**
+   * Custom placeholder values keyed by secret name (matching `${secrets.XXX}` in auth templates).
+   * Falls back to auto-generated `VM0_PLACEHOLDER_{secretName}`.
+   * Only needed when the service requires a specific credential format (e.g., GitHub's `gho_` prefix).
+   */
   placeholders?: Record<string, string>;
+}
+
+/**
+ * Regex pattern matching `${secrets.XXX}` references in auth header templates.
+ */
+const AUTH_SECRET_PATTERN = /\$\{secrets\.([^}]+)\}/g;
+
+/**
+ * Extract all secret names referenced in service API auth header templates.
+ * E.g., `Bearer ${secrets.GITHUB_TOKEN}` → `["GITHUB_TOKEN"]`
+ */
+export function extractSecretNamesFromApis(
+  apis: ServiceConfig["apis"],
+): string[] {
+  const names = new Set<string>();
+  for (const entry of apis) {
+    for (const value of Object.values(entry.auth.headers)) {
+      for (const match of value.matchAll(AUTH_SECRET_PATTERN)) {
+        names.add(match[1]!);
+      }
+    }
+  }
+  return [...names];
 }
 
 /** Helper to build standard Bearer auth header with a secret reference. */
@@ -48,7 +75,6 @@ const SERVICE_CONFIGS: Partial<Record<ConnectorType, ServiceConfig>> = {
   github: {
     apis: [api("https://api.github.com", bearerAuth("GITHUB_TOKEN"))],
     placeholders: {
-      GH_TOKEN: "gho_vm0placeholder0000000000000000000000",
       GITHUB_TOKEN: "gho_vm0placeholder0000000000000000000000",
     },
   },
@@ -479,6 +505,16 @@ const SERVICE_CONFIGS: Partial<Record<ConnectorType, ServiceConfig>> = {
     ],
   },
 };
+
+/**
+ * Expanded service config stored in compose content.
+ * Resolved from service name + ServiceConfig at compose time, then frozen.
+ */
+export interface ExpandedServiceConfig {
+  name: string;
+  apis: ServiceApi[];
+  placeholders?: Record<string, string>;
+}
 
 /**
  * Get service config for a connector type (base URLs + auth headers).

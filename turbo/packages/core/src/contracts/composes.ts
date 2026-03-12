@@ -94,9 +94,8 @@ const agentDefinitionSchema = z.object({
    */
   experimental_firewall: experimentalFirewallSchema.optional(),
   /**
-   * External services for proxy-side token replacement (e.g., github, slack).
-   * Service-referenced env vars are replaced with placeholders; the proxy injects real secrets at runtime.
-   * Requires experimental_runner to be configured.
+   * External services for proxy-side token replacement.
+   * CLI input: string[] (e.g., ["github", "slack"]) — expanded by CLI to full objects before API call.
    */
   experimental_services: z.array(z.string()).optional(),
   /**
@@ -123,11 +122,42 @@ const agentDefinitionSchema = z.object({
 });
 
 /**
- * Agent compose YAML content schema
+ * Agent compose YAML content schema (CLI input — experimental_services is string[])
  */
 const agentComposeContentSchema = z.object({
   version: z.string().min(1, "Version is required"),
   agents: z.record(z.string(), agentDefinitionSchema),
+  volumes: z.record(z.string(), volumeConfigSchema).optional(),
+});
+
+/**
+ * Expanded service config schema (after CLI expansion)
+ */
+const expandedServiceConfigSchema = z.object({
+  name: z.string(),
+  apis: z.array(
+    z.object({
+      base: z.string(),
+      auth: z.object({
+        headers: z.record(z.string(), z.string()),
+      }),
+    }),
+  ),
+  placeholders: z.record(z.string(), z.string()).optional(),
+});
+
+/**
+ * Agent compose content schema for API requests.
+ * Same as agentComposeContentSchema but experimental_services is pre-expanded by CLI.
+ */
+const agentComposeApiContentSchema = z.object({
+  version: z.string().min(1, "Version is required"),
+  agents: z.record(
+    z.string(),
+    agentDefinitionSchema.extend({
+      experimental_services: z.array(expandedServiceConfigSchema).optional(),
+    }),
+  ),
   volumes: z.record(z.string(), volumeConfigSchema).optional(),
 });
 
@@ -138,7 +168,7 @@ const composeResponseSchema = z.object({
   id: z.string(),
   name: z.string(),
   headVersionId: z.string().nullable(),
-  content: agentComposeContentSchema.nullable(),
+  content: agentComposeApiContentSchema.nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -193,7 +223,7 @@ export const composesMainContract = c.router({
     path: "/api/agent/composes",
     headers: authHeadersSchema,
     body: z.object({
-      content: agentComposeContentSchema,
+      content: agentComposeApiContentSchema,
     }),
     responses: {
       200: createComposeResponseSchema,
@@ -329,6 +359,7 @@ export {
   volumeConfigSchema,
   agentDefinitionSchema,
   agentComposeContentSchema,
+  agentComposeApiContentSchema,
   composeResponseSchema,
   composeListItemSchema,
 };

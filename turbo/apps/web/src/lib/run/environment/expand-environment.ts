@@ -1,10 +1,9 @@
 import {
   expandVariables,
   extractAndGroupVariables,
-  connectorTypeSchema,
-  getConnectorEnvironmentMapping,
-  getServiceConfig,
+  extractSecretNamesFromApis,
 } from "@vm0/core";
+import type { ExpandedServiceConfig } from "@vm0/core";
 import { badRequest } from "../../errors";
 import { logger } from "../../logger";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
@@ -19,13 +18,13 @@ interface ExpandedEnvironmentResult {
 }
 
 /**
- * Process secret values: validate and resolve from passed secrets or connector placeholders.
+ * Process secret values: validate and resolve from passed secrets or service placeholders.
  */
 function processSecretValues(
   secretNames: string[],
   passedSecrets: Record<string, string> | undefined,
   checkEnv: boolean | undefined,
-  connectorEnvVars?: Record<string, string>,
+  servicePlaceholders?: Record<string, string>,
 ): Record<string, string> | undefined {
   if (secretNames.length === 0) return undefined;
 
@@ -42,8 +41,8 @@ function processSecretValues(
 
   const secrets: Record<string, string> = {};
   for (const name of secretNames) {
-    if (connectorEnvVars?.[name]) {
-      secrets[name] = connectorEnvVars[name];
+    if (servicePlaceholders?.[name]) {
+      secrets[name] = servicePlaceholders[name];
     } else {
       secrets[name] = passedSecrets![name]!;
     }
@@ -52,34 +51,25 @@ function processSecretValues(
 }
 
 /**
- * Build connector env var placeholders for experimental_services that are actually connected.
- * Returns a map of env var name → placeholder value, or undefined if no connectors qualify.
+ * Build service placeholder map keyed by canonical secret name.
+ * Reads pre-expanded service configs and extracts secret names from auth templates
+ * (`${secrets.XXX}`), then maps each to a placeholder value (custom or auto-generated).
  */
-function buildConnectorEnvVars(
-  declaredServices: string[],
-  connectedTypes: string[],
+function buildServicePlaceholders(
+  expandedServices: ExpandedServiceConfig[],
 ): Record<string, string> | undefined {
-  if (declaredServices.length === 0 || connectedTypes.length === 0)
-    return undefined;
+  if (expandedServices.length === 0) return undefined;
 
-  const connected = new Set(connectedTypes);
-  const envVars: Record<string, string> = {};
+  const placeholders: Record<string, string> = {};
 
-  for (const name of declaredServices) {
-    if (!connected.has(name)) continue;
-    const parsed = connectorTypeSchema.safeParse(name);
-    if (!parsed.success) continue;
-    const connectorType = parsed.data;
-    const serviceConfig = getServiceConfig(connectorType);
-    if (!serviceConfig) continue;
-
-    const envMapping = getConnectorEnvironmentMapping(connectorType);
-    for (const envVar of Object.keys(envMapping)) {
-      envVars[envVar] =
-        serviceConfig.placeholders?.[envVar] ?? `VM0_PLACEHOLDER_${envVar}`;
+  for (const service of expandedServices) {
+    const secretNames = extractSecretNamesFromApis(service.apis);
+    for (const secretName of secretNames) {
+      placeholders[secretName] =
+        service.placeholders?.[secretName] ?? `VM0_PLACEHOLDER_${secretName}`;
     }
   }
-  return Object.keys(envVars).length > 0 ? envVars : undefined;
+  return Object.keys(placeholders).length > 0 ? placeholders : undefined;
 }
 
 /**
@@ -87,7 +77,7 @@ function buildConnectorEnvVars(
  * Expands ${{ vars.xxx }} and ${{ secrets.xxx }} references
  *
  * When experimental_services is declared:
- * - Connector env vars are set to placeholder values (proxy replaces at runtime)
+ * - Service secret values are replaced with placeholders (proxy resolves real secrets at runtime)
  *
  * @param agentCompose Agent compose configuration
  * @param vars Variables for expansion (from --vars CLI param)
@@ -100,8 +90,6 @@ export function expandEnvironmentFromCompose(
   vars: Record<string, string> | undefined,
   passedSecrets: Record<string, string> | undefined,
   checkEnv?: boolean,
-  /** Connected connector type names — only these get placeholder injection. */
-  connectedTypes?: string[],
 ): ExpandedEnvironmentResult {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) {
@@ -130,10 +118,10 @@ export function expandEnvironmentFromCompose(
     );
   }
 
-  // Build connector env var placeholders from experimental_services ∩ connectedTypes
-  const connectorEnvVars = buildConnectorEnvVars(
-    firstAgent?.experimental_services ?? [],
-    connectedTypes ?? [],
+  const servicePlaceholders = buildServicePlaceholders(
+    (firstAgent?.experimental_services as
+      | ExpandedServiceConfig[]
+      | undefined) ?? [],
   );
 
   // Process secrets if needed
@@ -142,7 +130,7 @@ export function expandEnvironmentFromCompose(
     secretNames,
     passedSecrets,
     checkEnv,
-    connectorEnvVars,
+    servicePlaceholders,
   );
 
   // Build sources for expansion

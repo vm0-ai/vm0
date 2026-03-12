@@ -33,6 +33,7 @@ export {
   volumeConfigSchema,
   agentDefinitionSchema,
   agentComposeContentSchema,
+  agentComposeApiContentSchema,
   composeResponseSchema,
   composeListItemSchema,
   // Inferred types
@@ -425,7 +426,12 @@ export {
   type ComputerConnectorCreateResponse,
 } from "./connectors";
 
-export { getServiceConfig, type ServiceConfig } from "./services";
+export {
+  getServiceConfig,
+  extractSecretNamesFromApis,
+  type ServiceConfig,
+  type ExpandedServiceConfig,
+} from "./services";
 
 export {
   userPreferencesContract,

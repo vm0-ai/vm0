@@ -21,7 +21,7 @@ import {
   schedulesByNameContract,
   schedulesEnableContract,
   scheduleRunsContract,
-  agentComposeContentSchema,
+  agentComposeApiContentSchema,
   type ApiErrorResponse,
   type ScheduleResponse,
   type ScheduleListResponse,
@@ -247,7 +247,7 @@ class ApiClient {
     });
 
     const result = await client.create({
-      body: body as { content: z.infer<typeof agentComposeContentSchema> },
+      body: body as { content: z.infer<typeof agentComposeApiContentSchema> },
     });
 
     // ts-rest returns discriminated union based on status code

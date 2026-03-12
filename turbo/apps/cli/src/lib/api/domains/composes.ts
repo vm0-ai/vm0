@@ -3,7 +3,7 @@ import {
   composesMainContract,
   composesByIdContract,
   composesVersionsContract,
-  agentComposeContentSchema,
+  agentComposeApiContentSchema,
 } from "@vm0/core";
 import type { z } from "zod";
 import { getClientConfig, handleError } from "../core/client-factory";
@@ -79,7 +79,7 @@ export async function createOrUpdateCompose(body: {
   const client = initClient(composesMainContract, config);
 
   const result = await client.create({
-    body: body as { content: z.infer<typeof agentComposeContentSchema> },
+    body: body as { content: z.infer<typeof agentComposeApiContentSchema> },
   });
 
   // Both 200 and 201 are success cases

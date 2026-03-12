@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { expandEnvironmentFromCompose } from "../expand-environment";
+import type { ExpandedServiceConfig } from "@vm0/core";
 
-function makeCompose(environment: Record<string, string>, services?: string[]) {
+function makeCompose(
+  environment: Record<string, string>,
+  services?: ExpandedServiceConfig[],
+) {
   return {
     version: "1.0",
     agents: {
@@ -16,14 +20,46 @@ function makeCompose(environment: Record<string, string>, services?: string[]) {
   };
 }
 
+const githubService: ExpandedServiceConfig = {
+  name: "github",
+  apis: [
+    {
+      base: "https://api.github.com",
+      auth: { headers: { Authorization: "Bearer ${secrets.GITHUB_TOKEN}" } },
+    },
+  ],
+  placeholders: { GITHUB_TOKEN: "gho_vm0placeholder0000000000000000000000" },
+};
+
+const slackService: ExpandedServiceConfig = {
+  name: "slack",
+  apis: [
+    {
+      base: "https://slack.com/api",
+      auth: { headers: { Authorization: "Bearer ${secrets.SLACK_TOKEN}" } },
+    },
+  ],
+  placeholders: { SLACK_TOKEN: "xoxb-0000-0000-vm0placeholder" },
+};
+
+const airtableService: ExpandedServiceConfig = {
+  name: "airtable",
+  apis: [
+    {
+      base: "https://api.airtable.com",
+      auth: { headers: { Authorization: "Bearer ${secrets.AIRTABLE_TOKEN}" } },
+    },
+  ],
+};
+
 describe("expandEnvironmentFromCompose — service env vars", () => {
-  it("replaces secret values with service placeholders when service is connected", () => {
+  it("replaces secret values with service placeholders", () => {
     const compose = makeCompose(
       {
-        GH_TOKEN: "${{ secrets.GH_TOKEN }}",
-        GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+        GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+        MY_GH: "${{ secrets.GITHUB_TOKEN }}",
       },
-      ["github"],
+      [githubService],
     );
 
     const { environment } = expandEnvironmentFromCompose(
@@ -31,67 +67,38 @@ describe("expandEnvironmentFromCompose — service env vars", () => {
       undefined,
       undefined,
       false,
-      ["github"],
     );
 
     expect(environment).toBeDefined();
     expect(environment!.GH_TOKEN).toBe(
       "gho_vm0placeholder0000000000000000000000",
     );
-    expect(environment!.GITHUB_TOKEN).toBe(
-      "gho_vm0placeholder0000000000000000000000",
-    );
-  });
-
-  it("does not inject placeholders when service is not connected", () => {
-    const compose = makeCompose(
-      {
-        GH_TOKEN: "${{ secrets.GH_TOKEN }}",
-      },
-      ["github"],
-    );
-
-    const { environment } = expandEnvironmentFromCompose(
-      compose,
-      undefined,
-      { GH_TOKEN: "user-provided" },
-      false,
-      [], // no connected types
-    );
-
-    expect(environment).toBeDefined();
-    // Service not connected → falls back to passed secret
-    expect(environment!.GH_TOKEN).toBe("user-provided");
+    expect(environment!.MY_GH).toBe("gho_vm0placeholder0000000000000000000000");
   });
 
   it("does not inject placeholders when service is not declared", () => {
-    const compose = makeCompose(
-      {
-        GH_TOKEN: "${{ secrets.GH_TOKEN }}",
-      },
-      // no experimental_services
-    );
+    const compose = makeCompose({
+      GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+    });
 
     const { environment } = expandEnvironmentFromCompose(
       compose,
       undefined,
-      { GH_TOKEN: "user-provided" },
+      { GITHUB_TOKEN: "user-provided" },
       false,
-      ["github"],
     );
 
     expect(environment).toBeDefined();
-    // Service not declared → falls back to passed secret
     expect(environment!.GH_TOKEN).toBe("user-provided");
   });
 
   it("handles multiple services with different placeholders", () => {
     const compose = makeCompose(
       {
-        GH_TOKEN: "${{ secrets.GH_TOKEN }}",
+        GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
         SLACK_TOKEN: "${{ secrets.SLACK_TOKEN }}",
       },
-      ["github", "slack"],
+      [githubService, slackService],
     );
 
     const { environment } = expandEnvironmentFromCompose(
@@ -99,7 +106,6 @@ describe("expandEnvironmentFromCompose — service env vars", () => {
       undefined,
       undefined,
       false,
-      ["github", "slack"],
     );
 
     expect(environment).toBeDefined();
@@ -112,17 +118,16 @@ describe("expandEnvironmentFromCompose — service env vars", () => {
   it("service placeholder takes precedence over passed secrets", () => {
     const compose = makeCompose(
       {
-        GH_TOKEN: "${{ secrets.GH_TOKEN }}",
+        GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
       },
-      ["github"],
+      [githubService],
     );
 
     const { environment } = expandEnvironmentFromCompose(
       compose,
       undefined,
-      { GH_TOKEN: "user-provided-token" },
+      { GITHUB_TOKEN: "user-provided-token" },
       false,
-      ["github"],
     );
 
     expect(environment).toBeDefined();
@@ -136,7 +141,7 @@ describe("expandEnvironmentFromCompose — service env vars", () => {
       {
         AIRTABLE_TOKEN: "${{ secrets.AIRTABLE_TOKEN }}",
       },
-      ["airtable"],
+      [airtableService],
     );
 
     const { environment } = expandEnvironmentFromCompose(
@@ -144,11 +149,9 @@ describe("expandEnvironmentFromCompose — service env vars", () => {
       undefined,
       undefined,
       false,
-      ["airtable"],
     );
 
     expect(environment).toBeDefined();
-    // Airtable has no custom placeholder → uses default VM0_PLACEHOLDER_ prefix
     expect(environment!.AIRTABLE_TOKEN).toBe("VM0_PLACEHOLDER_AIRTABLE_TOKEN");
   });
 });

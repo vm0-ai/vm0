@@ -10,7 +10,7 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
-import { agentComposeContentSchema } from "@vm0/core";
+import { agentComposeApiContentSchema } from "@vm0/core";
 import { auth } from "@clerk/nextjs/server";
 
 const router = tsr.router(onboardingStatusContract, {
@@ -75,7 +75,9 @@ const router = tsr.router(onboardingStatusContract, {
           defaultAgentComposeId = claimAgentComposeId;
 
           // Extract metadata from compose content
-          const parsed = agentComposeContentSchema.safeParse(compose.content);
+          const parsed = agentComposeApiContentSchema.safeParse(
+            compose.content,
+          );
           if (parsed.success) {
             const agentKey = Object.keys(parsed.data.agents)[0];
             const agentDef = agentKey

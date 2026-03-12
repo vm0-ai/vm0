@@ -8,7 +8,10 @@ import {
   getLegacySystemTemplateWarning,
   extractAndGroupVariables,
   resolveSkillRef,
+  connectorTypeSchema,
+  getServiceConfig,
 } from "@vm0/core";
+import type { ExpandedServiceConfig } from "@vm0/core";
 import {
   getComposeByName,
   createOrUpdateCompose,
@@ -68,6 +71,7 @@ interface AgentConfig {
   skills?: string[];
   environment?: Record<string, string>;
   metadata?: { displayName?: string; sound?: string };
+  experimental_services?: string[];
 }
 
 interface LoadedConfig {
@@ -360,6 +364,50 @@ function mergeSkillVariables(
 }
 
 /**
+ * Expand experimental_services from string[] to ExpandedServiceConfig[] in-place.
+ * Mutates the config object so the API receives pre-expanded service objects.
+ *
+ * TODO: Support resolving services from GitHub URLs (like skills).
+ * Currently only resolves from built-in SERVICE_CONFIGS via connectorTypeSchema.
+ */
+function expandServiceConfigs(config: unknown): void {
+  const compose = config as {
+    agents?: Record<
+      string,
+      { experimental_services?: string[] | ExpandedServiceConfig[] }
+    >;
+  };
+  if (!compose?.agents) return;
+
+  for (const agent of Object.values(compose.agents)) {
+    const services = agent.experimental_services;
+    if (!services || services.length === 0) continue;
+    // Skip if already expanded (object array, not string array)
+    if (typeof services[0] !== "string") continue;
+
+    agent.experimental_services = (services as string[]).map((name) => {
+      const parsed = connectorTypeSchema.safeParse(name);
+      if (!parsed.success) {
+        throw new Error(`Unknown service: "${name}"`);
+      }
+      const serviceConfig = getServiceConfig(parsed.data);
+      if (!serviceConfig) {
+        throw new Error(
+          `Service "${name}" does not support proxy-side token replacement`,
+        );
+      }
+      return {
+        name,
+        apis: serviceConfig.apis,
+        ...(serviceConfig.placeholders
+          ? { placeholders: serviceConfig.placeholders }
+          : {}),
+      };
+    });
+  }
+}
+
+/**
  * Derive the platform URL from the API URL by replacing "www" with "platform" in the hostname.
  */
 function getPlatformUrl(apiUrl: string): string {
@@ -477,6 +525,9 @@ async function finalizeCompose(
 
   // Merge skill variables into environment
   mergeSkillVariables(agent, variables);
+
+  // Expand experimental_services from names to full configs before sending to API
+  expandServiceConfigs(config);
 
   // Call API
   if (!options.json) {

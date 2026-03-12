@@ -8,7 +8,6 @@ import {
   hasAuthMethods,
   getSecretNamesForAuthMethod,
   getConnectorEnvironmentMapping,
-  getServiceConfig,
   connectorTypeSchema,
   MODEL_PROVIDER_TYPES,
   type ExperimentalServices,
@@ -17,6 +16,7 @@ import {
   type ModelProviderFramework,
 } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
+import type { AgentComposeYaml } from "../../types/agent-compose";
 import { badRequest, notFound } from "../errors";
 import { getOrgData } from "../scope/org-cache-service";
 import { logger } from "../logger";
@@ -391,8 +391,6 @@ interface ConnectorSecretResult {
   connectorSecrets: Record<string, string> | undefined;
   /** Environment variables mapped from OAuth connectors via environmentMapping */
   injectedEnvVars: Record<string, string> | undefined;
-  /** Connected connector type names (used to filter experimental_services placeholders) */
-  connectedTypes: string[];
 }
 
 /**
@@ -414,7 +412,6 @@ async function resolveConnectorSecrets(
     return {
       connectorSecrets: undefined,
       injectedEnvVars: undefined,
-      connectedTypes: [],
     };
   }
 
@@ -423,7 +420,6 @@ async function resolveConnectorSecrets(
     return {
       connectorSecrets: undefined,
       injectedEnvVars: undefined,
-      connectedTypes: [],
     };
   }
 
@@ -481,7 +477,6 @@ async function resolveConnectorSecrets(
   return {
     connectorSecrets,
     injectedEnvVars: allInjectedEnvVars,
-    connectedTypes: validConnectors.map((c) => c.type),
   };
 }
 
@@ -815,7 +810,6 @@ async function resolveSecretsAndEnvironment(
     mergedVars,
     secrets,
     checkEnv,
-    connectorResult.connectedTypes,
   );
 
   // Auto-inject model provider env vars into environment
@@ -932,46 +926,30 @@ interface BuildContextResult {
 }
 
 /**
- * Build ExperimentalServices manifest from agent compose's experimental_services array.
+ * Build ExperimentalServices manifest from agent compose's expanded experimental_services.
  * Returns null if no services are declared.
  *
- * For each declared service name:
- * 1. Validates it's a known connector type with service config
- * 2. Flattens apis to one entry per base URL with auth headers (for runner-side matching)
+ * Reads pre-expanded ExpandedServiceConfig objects (resolved at compose time)
+ * and flattens apis to one entry per base URL with auth headers (for runner-side matching).
  *
  * Placeholder env var injection is handled by expandEnvironmentFromCompose.
  */
 function buildExperimentalServices(
   agentCompose: unknown,
 ): ExperimentalServices | null {
-  const compose = agentCompose as
-    | { agents?: Record<string, { experimental_services?: string[] }> }
-    | undefined;
+  const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) return null;
 
   const firstAgent = Object.values(compose.agents)[0];
-  const serviceNames = firstAgent?.experimental_services;
-  if (!serviceNames || serviceNames.length === 0) return null;
+  const services = firstAgent?.experimental_services;
+  if (!services || services.length === 0) return null;
 
   const entries: { base: string; auth: { headers: Record<string, string> } }[] =
     [];
 
-  for (const name of serviceNames) {
-    const parsed = connectorTypeSchema.safeParse(name);
-    if (!parsed.success) {
-      throw badRequest(`Unknown connector type: "${name}"`);
-    }
-    const connectorType = parsed.data;
-
-    const serviceConfig = getServiceConfig(connectorType);
-    if (!serviceConfig) {
-      throw badRequest(
-        `Connector "${name}" does not support proxy-side token replacement`,
-      );
-    }
-
-    for (const api of serviceConfig.apis) {
-      entries.push({ base: api.base, auth: api.auth });
+  for (const service of services) {
+    for (const serviceApi of service.apis) {
+      entries.push({ base: serviceApi.base, auth: serviceApi.auth });
     }
   }
 
