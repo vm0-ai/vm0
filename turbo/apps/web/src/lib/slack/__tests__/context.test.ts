@@ -1496,4 +1496,116 @@ describe("Feature: Format Current Message Files", () => {
 
     expect(result).toBe("");
   });
+
+  describe("Scenario: SSRF protection rejects non-Slack URLs", () => {
+    it("should reject non-Slack domain and fall back to permalink", async () => {
+      const files = [
+        {
+          id: "F100",
+          name: "malicious.png",
+          mimetype: "image/png",
+          url_private_download: "https://evil.com/malicious.png",
+          permalink: "https://slack.com/files/malicious.png",
+        },
+      ];
+
+      const result = await formatCurrentMessageFiles(
+        files,
+        "xoxb-test-token",
+        "test-session-ssrf",
+      );
+
+      expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
+      expect(result).toContain("URL: https://slack.com/files/malicious.png");
+      expect(result).not.toContain("View: curl");
+    });
+
+    it("should reject private IP address URL", async () => {
+      const files = [
+        {
+          id: "F101",
+          name: "internal.png",
+          mimetype: "image/png",
+          url_private_download: "http://192.168.1.1/internal.png",
+          permalink: "https://slack.com/files/internal.png",
+        },
+      ];
+
+      const result = await formatCurrentMessageFiles(
+        files,
+        "xoxb-test-token",
+        "test-session-ssrf",
+      );
+
+      expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
+      expect(result).toContain("URL: https://slack.com/files/internal.png");
+      expect(result).not.toContain("View: curl");
+    });
+
+    it("should reject non-HTTPS Slack URL", async () => {
+      const files = [
+        {
+          id: "F102",
+          name: "file.png",
+          mimetype: "image/png",
+          url_private_download: "http://files.slack.com/file.png",
+          permalink: "https://slack.com/files/file.png",
+        },
+      ];
+
+      const result = await formatCurrentMessageFiles(
+        files,
+        "xoxb-test-token",
+        "test-session-ssrf",
+      );
+
+      expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
+      expect(result).toContain("URL: https://slack.com/files/file.png");
+      expect(result).not.toContain("View: curl");
+    });
+
+    it("should reject cloud metadata URL", async () => {
+      const files = [
+        {
+          id: "F103",
+          name: "metadata.png",
+          mimetype: "image/png",
+          url_private_download: "http://169.254.169.254/latest/meta-data",
+          permalink: "https://slack.com/files/metadata.png",
+        },
+      ];
+
+      const result = await formatCurrentMessageFiles(
+        files,
+        "xoxb-test-token",
+        "test-session-ssrf",
+      );
+
+      expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
+      expect(result).toContain("URL: https://slack.com/files/metadata.png");
+      expect(result).not.toContain("View: curl");
+    });
+
+    it("should reject invalid URL string", async () => {
+      const files = [
+        {
+          id: "F104",
+          name: "bad.png",
+          mimetype: "image/png",
+          url_private_download: "not-a-url",
+          permalink: "https://slack.com/files/bad.png",
+        },
+      ];
+
+      const result = await formatCurrentMessageFiles(
+        files,
+        "xoxb-test-token",
+        "test-session-ssrf",
+      );
+
+      expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
+      expect(result).toContain("URL: https://slack.com/files/bad.png");
+      expect(result).not.toContain("View: curl");
+    });
+  });
 });

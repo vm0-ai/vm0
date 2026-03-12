@@ -287,7 +287,10 @@ async function downloadAndUploadSlackFile(
 ): Promise<string | null> {
   const downloadUrl = file.url_private_download;
   if (!downloadUrl || !isValidSlackDownloadUrl(downloadUrl)) {
-    log.debug("No valid Slack download URL available", { fileId: file.id });
+    log.warn("Rejected non-Slack download URL", {
+      fileId: file.id,
+      downloadUrl,
+    });
     return null;
   }
 
