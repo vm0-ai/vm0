@@ -405,6 +405,8 @@ export {
   getConnectorEnvironmentMapping,
   getConnectorDerivedNames,
   getConnectorProvidedSecretNames,
+  getConnectorManagedSecretNames,
+  getConnectorTypeForSecretName,
   getConnectorOAuthConfig,
   hasRequiredScopes,
   getApiTokenRequiredSecretNames,

@@ -6,7 +6,6 @@ import {
   IconPlus,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import {
   Popover,
@@ -30,8 +29,6 @@ import {
   agentConnectorStatus$,
   agentMergedItems$,
   agentRequiredConnectorTypes$,
-  connectionsActiveTab$,
-  setConnectionsActiveTab$,
   type AgentConnectorStatus,
   type AgentMergedItem,
 } from "../../signals/agent-detail/connections.ts";
@@ -432,7 +429,9 @@ function SecretsAndVariablesTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-base font-medium text-foreground">Custom API</h3>
+      <h3 className="text-base font-medium text-foreground">
+        Secrets & Variables
+      </h3>
       <div className="flex flex-col">
         {items.map((item, index) => (
           <ItemRow
@@ -456,11 +455,8 @@ export function AgentConnectionsPage() {
   const agentName = useGet(agentName$);
   const detail = useGet(agentDetail$);
   const loading = useGet(agentDetailLoading$);
-  const activeTab = useGet(connectionsActiveTab$);
-  const setActiveTab = useSet(setConnectionsActiveTab$);
   const requiredConnectors = useGet(agentRequiredConnectorTypes$);
   const hasConnectors = requiredConnectors.size > 0;
-  const effectiveTab = hasConnectors ? activeTab : "secrets";
 
   return (
     <AppShell
@@ -499,16 +495,8 @@ export function AgentConnectionsPage() {
                 Add connection
               </Button>
             </div>
-            {hasConnectors ? (
-              <Tabs value={effectiveTab} onValueChange={setActiveTab}>
-                <TabsList className="w-fit">
-                  <TabsTrigger value="connectors">Connectors</TabsTrigger>
-                  <TabsTrigger value="secrets">Custom API</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            ) : null}
-            {effectiveTab === "connectors" && <ConnectorsTab />}
-            {effectiveTab === "secrets" && <SecretsAndVariablesTab />}
+            {hasConnectors && <ConnectorsTab />}
+            <SecretsAndVariablesTab />
             <AddConnectionDialog
               open={addDialogOpen}
               onOpenChange={setAddDialogOpen}

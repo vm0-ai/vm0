@@ -1,6 +1,6 @@
 import { computed } from "ccstate";
 import {
-  CONNECTOR_TYPES,
+  getConnectorManagedSecretNames,
   type ConnectorType,
   type SecretResponse,
   type VariableResponse,
@@ -25,24 +25,6 @@ export type MergedItem =
       data: VariableResponse;
     };
 
-/**
- * Collect all secret and variable names managed by connected connectors.
- */
-function getConnectorManagedNames(
-  connectedTypes: ConnectorType[],
-): Set<string> {
-  const managed = new Set<string>();
-  for (const type of connectedTypes) {
-    const config = CONNECTOR_TYPES[type];
-    for (const method of Object.values(config.authMethods)) {
-      for (const name of Object.keys(method.secrets)) {
-        managed.add(name);
-      }
-    }
-  }
-  return managed;
-}
-
 export const mergedItems$ = computed(async (get) => {
   const [secretsList, variablesList, connectorsData] = await Promise.all([
     get(secrets$),
@@ -53,7 +35,7 @@ export const mergedItems$ = computed(async (get) => {
   const connectedTypes = connectorsData.connectors.map(
     (c) => c.type as ConnectorType,
   );
-  const managedNames = getConnectorManagedNames(connectedTypes);
+  const managedNames = getConnectorManagedSecretNames(connectedTypes);
 
   const items: MergedItem[] = [];
 

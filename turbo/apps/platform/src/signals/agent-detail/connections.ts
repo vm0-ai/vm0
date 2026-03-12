@@ -1,15 +1,14 @@
-import { computed, state, command } from "ccstate";
+import { computed } from "ccstate";
 import {
   extractVariableReferences,
   groupVariablesBySource,
-  getConnectorProvidedSecretNames,
-  getConnectorEnvironmentMapping,
+  getConnectorManagedSecretNames,
+  getConnectorTypeForSecretName,
   CONNECTOR_TYPES,
   type ConnectorType,
   type SecretResponse,
   type VariableResponse,
 } from "@vm0/core";
-import { searchParams$, updateSearchParams$ } from "../route.ts";
 import { agentDetail$ } from "./agent-detail.ts";
 import { connectors$ } from "../external/connectors.ts";
 import { secrets$ } from "../settings-page/secrets.ts";
@@ -83,22 +82,16 @@ export const agentRequiredConnectorTypes$ = computed(
       return required;
     }
 
-    // From environment field — match env var names against connector environmentMappings
+    // From environment field — match env var names against all connector secret names
+    // (including api-token auth method secrets and OAuth environmentMapping keys)
     if (firstAgent.environment) {
       const refs = extractVariableReferences(firstAgent.environment);
       const grouped = groupVariablesBySource(refs);
-      const envVarNames = new Set(grouped.secrets.map((r) => r.name));
 
-      for (const type of Object.keys(CONNECTOR_TYPES) as ConnectorType[]) {
-        if (type === "computer") {
-          continue;
-        }
-        const mapping = getConnectorEnvironmentMapping(type);
-        for (const envKey of Object.keys(mapping)) {
-          if (envVarNames.has(envKey)) {
-            required.add(type);
-            break;
-          }
+      for (const ref of grouped.secrets) {
+        const connectorType = getConnectorTypeForSecretName(ref.name);
+        if (connectorType && connectorType !== "computer") {
+          required.add(connectorType);
         }
       }
     }
@@ -150,7 +143,7 @@ export const agentMergedItems$ = computed(async (get) => {
     get(variables$),
   ]);
 
-  const allConnectorEnvVars = getConnectorProvidedSecretNames(
+  const allConnectorEnvVars = getConnectorManagedSecretNames(
     Object.keys(CONNECTOR_TYPES) as ConnectorType[],
   );
 
@@ -202,48 +195,4 @@ export const agentMergedItems$ = computed(async (get) => {
   }
 
   return items;
-});
-
-// ---------------------------------------------------------------------------
-// Active tab state
-// ---------------------------------------------------------------------------
-
-type ConnectionsTab = "connectors" | "secrets";
-
-const internalActiveTab$ = state<ConnectionsTab>("connectors");
-
-export const connectionsActiveTab$ = computed((get) => get(internalActiveTab$));
-
-function isConnectionsTab(v: string): v is ConnectionsTab {
-  return v === "connectors" || v === "secrets";
-}
-
-/**
- * Initialize tab state from URL search params.
- * Called during connections page setup.
- */
-export const initConnectionsTabs$ = command(({ get, set }) => {
-  const params = get(searchParams$);
-  const tab = params.get("tab");
-  if (tab && isConnectionsTab(tab)) {
-    set(internalActiveTab$, tab);
-  }
-});
-
-/**
- * Switch active tab and sync to URL.
- */
-export const setConnectionsActiveTab$ = command(({ get, set }, tab: string) => {
-  if (!isConnectionsTab(tab)) {
-    return;
-  }
-  set(internalActiveTab$, tab);
-
-  const params = new URLSearchParams(get(searchParams$));
-  if (tab === "connectors") {
-    params.delete("tab");
-  } else {
-    params.set("tab", tab);
-  }
-  set(updateSearchParams$, params);
 });

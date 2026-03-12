@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { hasRequiredScopes, CONNECTOR_TYPES } from "../connectors";
+import {
+  hasRequiredScopes,
+  CONNECTOR_TYPES,
+  getConnectorManagedSecretNames,
+  getConnectorTypeForSecretName,
+} from "../connectors";
 import type { ConnectorType } from "../connectors";
 import { getServiceConfig } from "../services";
 
@@ -35,6 +40,56 @@ describe("hasRequiredScopes", () => {
     expect(
       hasRequiredScopes("github", ["repo", "project", "read:org", "user"]),
     ).toBe(true);
+  });
+});
+
+describe("getConnectorManagedSecretNames", () => {
+  it("includes OAuth environmentMapping keys for OAuth connectors", () => {
+    const managed = getConnectorManagedSecretNames(["github"]);
+    // OAuth env mapping keys
+    expect(managed.has("GH_TOKEN")).toBe(true);
+    expect(managed.has("GITHUB_TOKEN")).toBe(true);
+    // OAuth auth method secret
+    expect(managed.has("GITHUB_ACCESS_TOKEN")).toBe(true);
+  });
+
+  it("includes api-token auth method secrets for api-token-only connectors", () => {
+    const managed = getConnectorManagedSecretNames(["atlassian"]);
+    expect(managed.has("ATLASSIAN_TOKEN")).toBe(true);
+    expect(managed.has("ATLASSIAN_EMAIL")).toBe(true);
+    expect(managed.has("ATLASSIAN_DOMAIN")).toBe(true);
+  });
+
+  it("returns empty set for empty input", () => {
+    const managed = getConnectorManagedSecretNames([]);
+    expect(managed.size).toBe(0);
+  });
+
+  it("combines managed names across multiple connector types", () => {
+    const managed = getConnectorManagedSecretNames(["github", "atlassian"]);
+    expect(managed.has("GH_TOKEN")).toBe(true);
+    expect(managed.has("ATLASSIAN_TOKEN")).toBe(true);
+  });
+});
+
+describe("getConnectorTypeForSecretName", () => {
+  it("finds connector type for OAuth env mapping key", () => {
+    expect(getConnectorTypeForSecretName("GH_TOKEN")).toBe("github");
+    expect(getConnectorTypeForSecretName("GITHUB_TOKEN")).toBe("github");
+  });
+
+  it("finds connector type for api-token auth method secret", () => {
+    expect(getConnectorTypeForSecretName("ATLASSIAN_TOKEN")).toBe("atlassian");
+    expect(getConnectorTypeForSecretName("ATLASSIAN_EMAIL")).toBe("atlassian");
+    expect(getConnectorTypeForSecretName("ATLASSIAN_DOMAIN")).toBe("atlassian");
+  });
+
+  it("finds connector type for OAuth auth method secret", () => {
+    expect(getConnectorTypeForSecretName("GITHUB_ACCESS_TOKEN")).toBe("github");
+  });
+
+  it("returns null for unknown secret name", () => {
+    expect(getConnectorTypeForSecretName("UNKNOWN_SECRET")).toBeNull();
   });
 });
 

@@ -2918,6 +2918,59 @@ export function hasRequiredScopes(
 }
 
 /**
+ * Get all secret/variable names managed by connectors across ALL auth methods.
+ * Unlike `getConnectorProvidedSecretNames` (which only reads environmentMapping),
+ * this function also includes api-token auth method secrets.
+ *
+ * Used to hide connector-managed secrets from the secrets & variables list.
+ */
+export function getConnectorManagedSecretNames(
+  types: ConnectorType[],
+): Set<string> {
+  const managed = new Set<string>();
+  for (const type of types) {
+    const config = CONNECTOR_TYPES[type];
+    for (const method of Object.values(config.authMethods)) {
+      for (const name of Object.keys(method.secrets)) {
+        managed.add(name);
+      }
+    }
+    // Also include environmentMapping keys (OAuth-derived env vars like GH_TOKEN)
+    const mapping = getConnectorEnvironmentMapping(type);
+    for (const envVar of Object.keys(mapping)) {
+      managed.add(envVar);
+    }
+  }
+  return managed;
+}
+
+/**
+ * Reverse lookup: given a secret/env-var name, find which connector type manages it.
+ * Checks both authMethods.secrets keys and environmentMapping keys.
+ * Returns null if no connector manages this name.
+ */
+export function getConnectorTypeForSecretName(
+  name: string,
+): ConnectorType | null {
+  const allTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+  for (const type of allTypes) {
+    const config = CONNECTOR_TYPES[type];
+    // Check authMethods secrets
+    for (const method of Object.values(config.authMethods)) {
+      if (name in method.secrets) {
+        return type;
+      }
+    }
+    // Check environmentMapping keys
+    const mapping = getConnectorEnvironmentMapping(type);
+    if (name in mapping) {
+      return type;
+    }
+  }
+  return null;
+}
+
+/**
  * Get required secret names for a connector's api-token auth method.
  * Returns null if the connector type does not support api-token auth.
  * Note: Returns ALL required field names regardless of storage type (secret or variable).
