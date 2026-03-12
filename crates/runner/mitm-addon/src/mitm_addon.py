@@ -201,7 +201,6 @@ def handle_service_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict) 
     flow.metadata["firewall_rule"] = f"service:{service_base}"
     flow.metadata["service_base"] = service_base
     flow.metadata["original_url"] = get_original_url(flow)
-    flow.metadata["skip_rewrite"] = True
     flow.metadata["vm_run_id"] = run_id
     flow.metadata["vm_client_ip"] = client_ip
     flow.metadata["vm_mitm_enabled"] = True
@@ -452,7 +451,6 @@ def request(flow: http.HTTPFlow) -> None:
             flow.metadata["firewall_rule"] = "vm0-api"
             # Continue to skip rewrite check below
             flow.metadata["original_url"] = get_original_url(flow)
-            flow.metadata["skip_rewrite"] = True
             return
 
     # Evaluate firewall rules

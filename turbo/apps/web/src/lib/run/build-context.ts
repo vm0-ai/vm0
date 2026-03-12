@@ -814,8 +814,6 @@ async function resolveSecretsAndEnvironment(
     agentCompose,
     mergedVars,
     secrets,
-    userId,
-    runId,
     checkEnv,
     connectorResult.connectedTypes,
   );

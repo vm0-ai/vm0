@@ -92,8 +92,6 @@ function buildConnectorEnvVars(
  * @param agentCompose Agent compose configuration
  * @param vars Variables for expansion (from --vars CLI param)
  * @param passedSecrets Secrets for expansion (from --secrets CLI param, already decrypted)
- * @param userId User ID (unused, kept for API compatibility)
- * @param runId Run ID (unused, kept for API compatibility)
  * @param checkEnv When true, validates that all required secrets/vars are provided
  * @returns Expanded environment variables
  */
@@ -101,8 +99,6 @@ export function expandEnvironmentFromCompose(
   agentCompose: unknown,
   vars: Record<string, string> | undefined,
   passedSecrets: Record<string, string> | undefined,
-  userId: string,
-  runId: string,
   checkEnv?: boolean,
   /** Connected connector type names — only these get placeholder injection. */
   connectedTypes?: string[],

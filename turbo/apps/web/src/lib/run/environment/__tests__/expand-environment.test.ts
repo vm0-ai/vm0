@@ -30,8 +30,6 @@ describe("expandEnvironmentFromCompose — service env vars", () => {
       compose,
       undefined,
       undefined,
-      "user-1",
-      "run-1",
       false,
       ["github"],
     );
@@ -57,8 +55,6 @@ describe("expandEnvironmentFromCompose — service env vars", () => {
       compose,
       undefined,
       { GH_TOKEN: "user-provided" },
-      "user-1",
-      "run-1",
       false,
       [], // no connected types
     );
@@ -80,8 +76,6 @@ describe("expandEnvironmentFromCompose — service env vars", () => {
       compose,
       undefined,
       { GH_TOKEN: "user-provided" },
-      "user-1",
-      "run-1",
       false,
       ["github"],
     );
@@ -104,8 +98,6 @@ describe("expandEnvironmentFromCompose — service env vars", () => {
       compose,
       undefined,
       undefined,
-      "user-1",
-      "run-1",
       false,
       ["github", "slack"],
     );
@@ -129,8 +121,6 @@ describe("expandEnvironmentFromCompose — service env vars", () => {
       compose,
       undefined,
       { GH_TOKEN: "user-provided-token" },
-      "user-1",
-      "run-1",
       false,
       ["github"],
     );
@@ -153,8 +143,6 @@ describe("expandEnvironmentFromCompose — service env vars", () => {
       compose,
       undefined,
       undefined,
-      "user-1",
-      "run-1",
       false,
       ["airtable"],
     );

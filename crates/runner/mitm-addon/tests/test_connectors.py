@@ -210,7 +210,6 @@ class TestHandleServiceRequest:
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata["firewall_rule"] == "service:https://api.github.com"
         assert flow.metadata["service_base"] == "https://api.github.com"
-        assert flow.metadata["skip_rewrite"] is True
         assert flow.metadata["vm_run_id"] == "run-1"
 
     def test_failure_returns_502(self):
