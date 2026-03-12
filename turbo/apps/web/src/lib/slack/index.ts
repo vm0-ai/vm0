@@ -39,6 +39,7 @@ export {
   postMessage,
   updateMessage,
   setThreadStatus,
+  uploadFilesToThread,
   openModal,
   updateModal,
   publishAppHome,

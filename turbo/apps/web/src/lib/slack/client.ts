@@ -213,6 +213,35 @@ export async function updateMessage(
 }
 
 /**
+ * Upload files to a Slack channel thread.
+ *
+ * Uses files.uploadV2() which supports batching multiple files in one call.
+ * Requires the `files:write` OAuth scope.
+ *
+ * @param client - Slack WebClient
+ * @param channelId - Channel ID to upload to
+ * @param threadTs - Thread timestamp to attach files to
+ * @param files - Array of files with filename and content buffer
+ */
+export async function uploadFilesToThread(
+  client: WebClient,
+  channelId: string,
+  threadTs: string,
+  files: Array<{ filename: string; content: Buffer }>,
+): Promise<void> {
+  if (files.length === 0) return;
+
+  await client.files.uploadV2({
+    channel_id: channelId,
+    thread_ts: threadTs,
+    file_uploads: files.map((f) => ({
+      file: f.content,
+      filename: f.filename,
+    })),
+  });
+}
+
+/**
  * Set the assistant thread status indicator.
  *
  * Shows a typing-style status below the thread (e.g. "is thinking...").

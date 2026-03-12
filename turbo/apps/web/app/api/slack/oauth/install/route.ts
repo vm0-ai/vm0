@@ -25,6 +25,7 @@ const BOT_SCOPES = [
   "users:read", // Get user info
   "reactions:write", // Add reactions to messages (for thinking indicator)
   "files:read", // Download files shared in messages (images, etc.)
+  "files:write", // Upload artifact files to Slack threads
 ].join(",");
 
 export async function GET(request: Request) {

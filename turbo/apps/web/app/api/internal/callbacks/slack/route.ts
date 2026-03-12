@@ -11,6 +11,7 @@ import {
   createSlackClient,
   postMessage,
   setThreadStatus,
+  uploadFilesToThread,
   buildAgentResponseMessage,
   buildAskUserQuestionBlocks,
   detectDeepLinks,
@@ -22,11 +23,13 @@ import {
 import { buildLogsUrl } from "../../../../../src/lib/slack/handlers/shared";
 import { getPlatformUrl } from "../../../../../src/lib/url";
 import { slackPendingQuestions } from "../../../../../src/db/schema/slack-pending-question";
+import { getNewArtifactFiles } from "../../../../../src/lib/slack/artifact-files";
 import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/logger";
 import type { AskUserQuestion } from "../../../../../src/lib/slack";
 import type { WebClient } from "@slack/web-api";
 import type { PermissionDenial } from "../../../../../src/lib/slack/handlers/run-agent";
+import type { RunResult } from "../../../../../src/lib/run/types";
 
 const log = logger("callback:slack");
 
@@ -309,6 +312,49 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // gets the correct sessionId (on first run, the session doesn't exist yet
   // when the callback payload was constructed).
   const resolvedSessionId = await saveThreadSession(payload, runId, status);
+
+  // Extract new artifact files for upload (only on successful completion)
+  const runResult = result.data.result as RunResult | undefined;
+  let artifactFiles: Awaited<ReturnType<typeof getNewArtifactFiles>> = [];
+  if (status === "completed" && runResult?.artifact) {
+    const [run] = await globalThis.services.db
+      .select({
+        userId: agentRuns.userId,
+        clerkOrgId: agentRuns.clerkOrgId,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId))
+      .limit(1);
+
+    if (run) {
+      try {
+        artifactFiles = await getNewArtifactFiles(
+          runResult,
+          run.userId,
+          run.clerkOrgId,
+        );
+      } catch (err) {
+        log.error("Failed to extract artifact files", { runId, error: err });
+      }
+    }
+  }
+
+  // Upload artifact files to Slack thread
+  if (artifactFiles.length > 0) {
+    try {
+      await uploadFilesToThread(
+        client,
+        payload.channelId,
+        payload.threadTs,
+        artifactFiles,
+      );
+    } catch (err) {
+      log.error("Failed to upload artifact files to Slack", {
+        runId,
+        error: err,
+      });
+    }
+  }
 
   // Post text response (if any content)
   if (responseText) {

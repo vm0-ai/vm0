@@ -58,12 +58,16 @@ function scheduleCallbackDispatch(
   status: "completed" | "failed",
   userId: string,
   errorMsg?: string,
+  result?: RunResult,
 ): void {
   after(async () => {
     await Promise.all([
-      dispatchCallbacks(runId, status, undefined, errorMsg).catch((err) =>
-        log.error("Failed to dispatch callbacks", { err }),
-      ),
+      dispatchCallbacks(
+        runId,
+        status,
+        result ? { ...result } : undefined,
+        errorMsg,
+      ).catch((err) => log.error("Failed to dispatch callbacks", { err })),
       drainUserQueue(userId, executeQueuedRun).catch((err) =>
         log.error("Failed to drain user queue", { err }),
       ),
@@ -162,6 +166,7 @@ const router = tsr.router(webhookCompleteContract, {
     }
 
     let finalStatus: "completed" | "failed";
+    let runResult: RunResult | undefined;
 
     if (body.exitCode === 0) {
       // Success: query checkpoint and store result in run table
@@ -207,13 +212,13 @@ const router = tsr.router(webhookCompleteContract, {
         .where(eq(agentSessions.conversationId, checkpoint.conversationId))
         .limit(1);
 
-      const result = buildRunResult(checkpoint, session?.id);
+      runResult = buildRunResult(checkpoint, session?.id);
 
       // Atomically transition to "completed" only if still pending/running
       const transitioned = await atomicTransition(body.runId, {
         status: "completed",
         completedAt: new Date(),
-        result,
+        result: runResult,
       });
 
       if (!transitioned) {
@@ -258,7 +263,13 @@ const router = tsr.router(webhookCompleteContract, {
       finalStatus === "failed"
         ? (body.error ?? `Agent exited with code ${body.exitCode}`)
         : undefined;
-    scheduleCallbackDispatch(body.runId, finalStatus, userId, errorMsg);
+    scheduleCallbackDispatch(
+      body.runId,
+      finalStatus,
+      userId,
+      errorMsg,
+      runResult,
+    );
 
     return {
       status: 200 as const,
