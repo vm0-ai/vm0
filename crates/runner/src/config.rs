@@ -197,7 +197,6 @@ impl RunnerConfig {
             concurrency: self.sandbox.max_concurrent,
             proxy_port: None,
             snapshot: self.snapshot_config(),
-            balloon_reclaim: false,
         }
     }
 }

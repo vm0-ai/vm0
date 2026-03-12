@@ -350,8 +350,7 @@ jobs:
           # Start transient runner service
           echo "--- Starting runner ---"
           "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true \
-            --balloon-reclaim
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
 
           # Submit a long-running job in background (keeps sandbox alive during tests)
           echo "--- Submitting long-running job ---"
@@ -448,11 +447,10 @@ jobs:
           }
           trap cleanup EXIT
 
-          # Start transient runner service with balloon reclaim enabled
+          # Start transient runner service
           echo "--- Starting runner ---"
           "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true \
-            --balloon-reclaim
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
 
           # Submit a long-running job in background (keeps sandbox alive during tests)
           echo "--- Submitting long-running job ---"
@@ -644,8 +642,7 @@ jobs:
           # 1. Install runner A
           echo "--- Installing runner A ---"
           "$BIN_DIR/runner" service install --name "$SVC_A" \
-            --config "$RUNNER_DIR_A/runner.yaml" --local --env USE_MOCK_CLAUDE=true \
-            --balloon-reclaim
+            --config "$RUNNER_DIR_A/runner.yaml" --local --env USE_MOCK_CLAUDE=true
 
           # 2. Submit job 1 (background, long-running) → only A running
           echo "--- Submit job 1 (only A, long-running) ---"
@@ -655,8 +652,7 @@ jobs:
           # 3. Install runner B while job 1 still in-flight on A
           echo "--- Installing runner B ---"
           "$BIN_DIR/runner" service install --name "$SVC_B" \
-            --config "$RUNNER_DIR_B/runner.yaml" --local --env USE_MOCK_CLAUDE=true \
-            --balloon-reclaim
+            --config "$RUNNER_DIR_B/runner.yaml" --local --env USE_MOCK_CLAUDE=true
 
           # 4. Submit job 2 (background, long-running) → A and B compete
           echo "--- Submit job 2 (A and B compete, long-running) ---"

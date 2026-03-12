@@ -84,7 +84,6 @@
         {{ bin_dir }}/runner service install
         --name {{ runner_name }}
         --config {{ runner_dir }}/runner.yaml
-        --balloon-reclaim
 
     # ========================================
     # Phase 4: Health check

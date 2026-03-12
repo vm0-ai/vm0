@@ -44,9 +44,6 @@ struct ServiceRunArgs {
     /// Use local file queue provider instead of API
     #[arg(long)]
     local: bool,
-    /// Enable active balloon memory reclaim per sandbox
-    #[arg(long)]
-    balloon_reclaim: bool,
 }
 
 #[derive(Args)]
@@ -138,18 +135,12 @@ fn generate_unit_file(
     user: &str,
     env_vars: &[String],
     local: bool,
-    balloon_reclaim: bool,
 ) -> String {
     let mut env_lines = String::new();
     for entry in env_vars {
         env_lines.push_str(&format!("Environment=\"{entry}\"\n"));
     }
     let local_flag = if local { " --local" } else { "" };
-    let balloon_flag = if balloon_reclaim {
-        " --balloon-reclaim"
-    } else {
-        ""
-    };
     format!(
         "\
 [Unit]
@@ -159,7 +150,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=\"{exe}\" start --config \"{config}\"{local_flag}{balloon_flag}
+ExecStart=\"{exe}\" start --config \"{config}\"{local_flag}
 Restart=on-failure
 RestartSec=5
 MemoryMax=2G
@@ -315,9 +306,6 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     if args.local {
         cmd.arg("--local");
     }
-    if args.balloon_reclaim {
-        cmd.arg("--balloon-reclaim");
-    }
 
     let status = cmd
         .status()
@@ -359,15 +347,8 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
         .ok_or_else(|| RunnerError::Internal(format!("no user found for uid {uid}")))?
         .name;
 
-    let unit_content = generate_unit_file(
-        &unit,
-        &exe_path,
-        &config_path,
-        &user,
-        &args.env,
-        args.local,
-        args.balloon_reclaim,
-    );
+    let unit_content =
+        generate_unit_file(&unit, &exe_path, &config_path, &user, &args.env, args.local);
     let upath = unit_file_path(&unit);
 
     write_unit_file(&upath, &unit_content).await?;
@@ -520,7 +501,6 @@ mod tests {
             "ubuntu",
             &[],
             false,
-            false,
         );
         assert!(content.contains("Description=VM0 Runner (vm0-runner-v0.1.0)"));
         assert!(content.contains(
@@ -551,7 +531,6 @@ mod tests {
             "ubuntu",
             &env,
             false,
-            false,
         );
         assert!(content.contains("Environment=\"VERCEL_AUTOMATION_BYPASS_SECRET=xxx\""));
         assert!(content.contains("Environment=\"USE_MOCK_CLAUDE=true\""));
@@ -567,7 +546,6 @@ mod tests {
             Path::new("/opt/my config/runner.yaml"),
             "deploy-user",
             &[],
-            false,
             false,
         );
         assert!(content.contains(
@@ -585,42 +563,9 @@ mod tests {
             "ubuntu",
             &[],
             true,
-            false,
         );
         assert!(content.contains(
             "ExecStart=\"/usr/bin/runner\" start --config \"/etc/runner.yaml\" --local\n"
-        ));
-    }
-
-    #[test]
-    fn test_generate_unit_file_balloon_reclaim() {
-        let content = generate_unit_file(
-            "vm0-runner-v0.1.0",
-            Path::new("/usr/bin/runner"),
-            Path::new("/etc/runner.yaml"),
-            "ubuntu",
-            &[],
-            false,
-            true,
-        );
-        assert!(content.contains(
-            "ExecStart=\"/usr/bin/runner\" start --config \"/etc/runner.yaml\" --balloon-reclaim\n"
-        ));
-    }
-
-    #[test]
-    fn test_generate_unit_file_local_and_balloon_reclaim() {
-        let content = generate_unit_file(
-            "vm0-runner-v0.1.0",
-            Path::new("/usr/bin/runner"),
-            Path::new("/etc/runner.yaml"),
-            "ubuntu",
-            &[],
-            true,
-            true,
-        );
-        assert!(content.contains(
-            "ExecStart=\"/usr/bin/runner\" start --config \"/etc/runner.yaml\" --local --balloon-reclaim\n"
         ));
     }
 

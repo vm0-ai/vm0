@@ -116,8 +116,7 @@ cmd_deploy() {
   # Start service
   log "Starting new service..."
   ssh_cmd "$RUNNER_BIN service start --name $RUNNER_NAME \
-    --config $RUNNER_DIR/runner.yaml \
-    --balloon-reclaim"
+    --config $RUNNER_DIR/runner.yaml"
 
   log "Done! Runner $RUNNER_NAME deployed to $HOST"
 }

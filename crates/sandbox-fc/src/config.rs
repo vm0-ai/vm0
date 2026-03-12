@@ -13,8 +13,6 @@ pub struct FirecrackerConfig {
     pub proxy_port: Option<u16>,
     /// Snapshot to restore from. When set, VMs boot via snapshot restore instead of fresh boot.
     pub snapshot: Option<SnapshotConfig>,
-    /// Enable active balloon memory reclaim per sandbox (requires snapshot mode).
-    pub balloon_reclaim: bool,
 }
 
 #[derive(Debug, Clone)]
