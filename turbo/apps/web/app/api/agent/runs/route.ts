@@ -138,7 +138,7 @@ async function resolveCheckpointResume(
   try {
     const checkpointData = await validateCheckpoint(checkpointId, userId);
     agentComposeVersionId = checkpointData.agentComposeVersionId;
-  } catch (error) {
+  } catch {
     return {
       status: 404 as const,
       body: {
@@ -173,7 +173,7 @@ async function resolveSessionContinue(
   let sessionData;
   try {
     sessionData = await validateAgentSession(sessionId, userId);
-  } catch (error) {
+  } catch {
     return {
       status: 404 as const,
       body: {

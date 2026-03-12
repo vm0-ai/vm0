@@ -36,7 +36,7 @@ const router = tsr.router(runnerRealtimeTokenContract, {
       // User runners: validate scope
       try {
         await validateRunnerGroupScope(auth.userId, group, auth.orgId);
-      } catch (error) {
+      } catch {
         return createErrorResponse("FORBIDDEN", "Access denied");
       }
       log.debug(`User runner ${auth.userId} requesting token for ${group}`);
