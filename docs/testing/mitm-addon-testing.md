@@ -90,7 +90,6 @@ def _reset():
     mitm_addon._request_start_times.clear()
     mitm_addon._registry_cache = {}
     mitm_addon._registry_cache_key = (0, 0)
-    mitm_addon._service_token_cache.clear()
 
 class TestRequestHandler:
     def setup_method(self):
