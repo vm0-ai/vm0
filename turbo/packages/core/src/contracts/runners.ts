@@ -138,7 +138,7 @@ export const storedExecutionContextSchema = z.object({
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
-  encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted secrets
+  encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted Record<string, string> (secret name → value)
   cliAgentType: z.string(),
   experimentalFirewall: experimentalFirewallSchema.optional(),
   // Debug flag to force real Claude in mock environments (internal use only)
